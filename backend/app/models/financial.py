@@ -145,6 +145,56 @@ class ExamTimetable(db.Model):
             'instructions': self.instructions or '',
         
         }
+
+
+class FeeTransaction(db.Model):
+    """
+    Har individual fee payment ka ledger entry — FeeRecord.amount_paid sirf
+    RUNNING TOTAL rakhta hai (kab collect hua ye pata nahi chalta), isliye
+    month-wise / date-wise collection report (Today's Collection, This Month's
+    Collection, Cash vs UPI breakdown) sahi se nahi ban sakti thi.
+
+    Ye table FeeRecord ko REPLACE nahi karti — sirf uske saath-saath har
+    payment installment ko apni date/mode ke saath record karti hai.
+    collect_fee route ab har payment pe ek FeeTransaction row bhi banayega,
+    bilkul waise jaise Salary → Expense auto-link hota hai.
+    """
+    __tablename__ = 'fee_transactions'
+
+    id              = db.Column(db.Integer, primary_key=True)
+    fee_record_id   = db.Column(db.Integer, db.ForeignKey('fee_records.id'), nullable=False, index=True)
+    student_id      = db.Column(db.Integer, db.ForeignKey('students.id'),   nullable=False, index=True)
+    school_id       = db.Column(db.Integer, db.ForeignKey('schools.id'),    nullable=False, index=True)
+
+    amount          = db.Column(db.Float, nullable=False)
+    payment_mode    = db.Column(db.String(30))
+    transaction_date= db.Column(db.Date, nullable=False, default=datetime.utcnow)
+    # "July 2026" — auto-set from transaction_date, isi se month-wise report chalega
+    txn_month       = db.Column(db.String(20), index=True)
+
+    receipt_no      = db.Column(db.String(50), unique=True)   # per-transaction receipt
+    remarks         = db.Column(db.String(300), default='')
+    collected_by    = db.Column(db.Integer, db.ForeignKey('users.id'))
+    created_at      = db.Column(db.DateTime, default=datetime.utcnow)
+
+    fee_record = db.relationship('FeeRecord', backref='transactions')
+
+    def to_dict(self):
+        return {
+            'id':               self.id,
+            'fee_record_id':    self.fee_record_id,
+            'student_id':       self.student_id,
+            'amount':           self.amount,
+            'payment_mode':     self.payment_mode,
+            'transaction_date': str(self.transaction_date) if self.transaction_date else None,
+            'txn_month':        self.txn_month,
+            'receipt_no':       self.receipt_no,
+            'remarks':          self.remarks or '',
+            'created_at':       self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+
 class SalaryRecord(db.Model):
     """Manual salary payment records per teacher."""
     __tablename__ = 'salary_records'
