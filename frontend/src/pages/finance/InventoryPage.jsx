@@ -59,8 +59,15 @@ export default function InventoryPage() {
   const [restockForm, setRestockForm] = useState(EMPTY_RESTOCK);
   const [restocking, setRestocking]   = useState(false);
 
+  const [vendors, setVendors]                       = useState([]);
+  const [vendorDropdownOpen, setVendorDropdownOpen] = useState(false);
+  const [creatingVendor, setCreatingVendor]         = useState(false);
+  const [newVendorName, setNewVendorName]           = useState('');
+  const [savingVendor, setSavingVendor]             = useState(false);
+
   useEffect(() => {
     api.get('/finance/inventory/meta').then(r => setMeta(r.data)).catch(() => {});
+    api.get('/finance/vendors').then(r => setVendors(r.data || [])).catch(() => {});
   }, []);
 
   const load = () => {
@@ -132,6 +139,38 @@ export default function InventoryPage() {
     } catch {
       alert('Delete nahi hua');
     }
+  };
+
+  const filteredVendors = vendors.filter(v =>
+    v.name.toLowerCase().includes((form.vendor_name || '').toLowerCase())
+  );
+  const exactVendorMatch = vendors.some(
+    v => v.name.toLowerCase() === (form.vendor_name || '').trim().toLowerCase()
+  );
+
+  const selectVendor = (name) => {
+    setForm(f => ({ ...f, vendor_name: name }));
+    setVendorDropdownOpen(false);
+  };
+
+  const openCreateVendor = () => {
+    setNewVendorName(form.vendor_name.trim());
+    setCreatingVendor(true);
+  };
+
+  const saveNewVendor = async () => {
+    if (!newVendorName.trim()) return;
+    setSavingVendor(true);
+    try {
+      const r = await api.post('/finance/vendors', { name: newVendorName.trim(), category: 'OTHER' });
+      setVendors(v => [...v, r.data]);
+      setForm(f => ({ ...f, vendor_name: r.data.name }));
+      setCreatingVendor(false);
+      setVendorDropdownOpen(false);
+    } catch (err) {
+      alert(err?.response?.data?.error || 'Vendor save nahi hua');
+    }
+    setSavingVendor(false);
   };
 
   const chartData = (summary?.by_category || []).map(c => ({ category: c.category, value: c.value }));
@@ -333,10 +372,38 @@ export default function InventoryPage() {
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
+                <div style={{ position: 'relative' }}>
                   <label className="form-label">Vendor</label>
-                  <input className="form-input" placeholder="ABC Stationery" value={form.vendor_name}
-                    onChange={e => setForm(f => ({ ...f, vendor_name: e.target.value }))} />
+                  <input
+                    className="form-input"
+                    placeholder="Type ya list se select karo"
+                    value={form.vendor_name}
+                    onChange={e => { setForm(f => ({ ...f, vendor_name: e.target.value })); setVendorDropdownOpen(true); }}
+                    onFocus={() => setVendorDropdownOpen(true)}
+                    onBlur={() => setTimeout(() => setVendorDropdownOpen(false), 150)}
+                  />
+                  {vendorDropdownOpen && (
+                    <div style={{
+                      position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20,
+                      background: darkMode ? '#1c2436' : '#fff',
+                      border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                      borderRadius: 8, marginTop: 4, maxHeight: 160, overflowY: 'auto',
+                      boxShadow: '0 6px 16px rgba(0,0,0,0.15)',
+                    }}>
+                      {filteredVendors.map(v => (
+                        <div key={v.id}
+                          onMouseDown={() => selectVendor(v.name)}
+                          style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer', color: darkMode ? '#e2e8f0' : '#0f172a' }}
+                        >{v.name}</div>
+                      ))}
+                      {form.vendor_name.trim() && !exactVendorMatch && (
+                        <div
+                          onMouseDown={openCreateVendor}
+                          style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer', color: '#4f46e5', fontWeight: 600, borderTop: filteredVendors.length ? `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` : 'none' }}
+                        >+ Create "{form.vendor_name.trim()}"</div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="form-label">Min Stock (alert level)</label>
@@ -412,10 +479,31 @@ export default function InventoryPage() {
                     onChange={e => setRestockForm(f => ({ ...f, purchase_date: e.target.value }))} />
                 </div>
               </div>
-              <div>
+              <div style={{ position: 'relative' }}>
                 <label className="form-label">Vendor</label>
-                <input className="form-input" value={restockForm.vendor_name}
-                  onChange={e => setRestockForm(f => ({ ...f, vendor_name: e.target.value }))} />
+                <input
+                  className="form-input"
+                  value={restockForm.vendor_name}
+                  onChange={e => { setRestockForm(f => ({ ...f, vendor_name: e.target.value })); setVendorDropdownOpen(true); }}
+                  onFocus={() => setVendorDropdownOpen(true)}
+                  onBlur={() => setTimeout(() => setVendorDropdownOpen(false), 150)}
+                />
+                {vendorDropdownOpen && (
+                  <div style={{
+                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20,
+                    background: darkMode ? '#1c2436' : '#fff',
+                    border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                    borderRadius: 8, marginTop: 4, maxHeight: 140, overflowY: 'auto',
+                    boxShadow: '0 6px 16px rgba(0,0,0,0.15)',
+                  }}>
+                    {vendors.filter(v => v.name.toLowerCase().includes((restockForm.vendor_name || '').toLowerCase())).map(v => (
+                      <div key={v.id}
+                        onMouseDown={() => { setRestockForm(f => ({ ...f, vendor_name: v.name })); setVendorDropdownOpen(false); }}
+                        style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer', color: darkMode ? '#e2e8f0' : '#0f172a' }}
+                      >{v.name}</div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -423,6 +511,28 @@ export default function InventoryPage() {
               <button className="btn btn-neutral btn-sm" onClick={() => setRestockItem(null)}>Cancel</button>
               <button className="btn btn-primary btn-sm" disabled={restocking} onClick={doRestock}>
                 {restocking ? 'Saving...' : 'Confirm Restock'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {creatingVendor && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }} onClick={() => setCreatingVendor(false)}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: darkMode ? '#141b2d' : '#fff', borderRadius: 14, width: 360, maxWidth: '90vw', padding: 22,
+          }}>
+            <h3 style={{ margin: '0 0 14px', fontSize: 15, color: darkMode ? '#f1f5f9' : '#0f172a' }}>Create New Vendor</h3>
+            <label className="form-label">Vendor Name *</label>
+            <input className="form-input" value={newVendorName}
+              onChange={e => setNewVendorName(e.target.value)} autoFocus />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
+              <button className="btn btn-neutral btn-sm" onClick={() => setCreatingVendor(false)}>Cancel</button>
+              <button className="btn btn-primary btn-sm" disabled={savingVendor} onClick={saveNewVendor}>
+                {savingVendor ? 'Saving...' : 'Create & Select'}
               </button>
             </div>
           </div>
