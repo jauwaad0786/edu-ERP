@@ -6,7 +6,7 @@ from app.models.academic import (
     Class, Teacher, Student, Subject, Marks,
     Attendance, TeacherAttendance, TeacherAttendanceRequest, Note
 )
-from app.models.financial import FeeRecord, FeeStructure, ExamSchedule, ExamTimetable, Holiday, Timetable, TimetablePeriod
+from app.models.financial import FeeRecord, FeeStructure, FeeTransaction, ExamSchedule, ExamTimetable, Holiday, Timetable, TimetablePeriod
 
 from app.utils.decorators import role_required, get_current_user
 from app.utils.feature_gate import feature_required
@@ -826,6 +826,7 @@ def collect_fee():
         return jsonify({'error': 'amount_paid must be greater than 0'}), 400
 
     # Accumulate — this is a new installment, not the new total
+    # Accumulate — this is a new installment, not the new total
     record.amount_paid  = (record.amount_paid or 0) + new_payment
     record.payment_mode = data.get('payment_mode', 'CASH')
     record.paid_date    = date.today()
@@ -845,6 +846,30 @@ def collect_fee():
             if not FeeRecord.query.filter_by(receipt_no=rno).first():
                 record.receipt_no = rno
                 break
+
+    # ── FeeTransaction ledger entry ──
+    # Har payment ka apna receipt + date + mode — isi se ab month-wise /
+    # date-wise / mode-wise collection report accurately ban sakti hai,
+    # record.amount_paid (running total) pe depend kiye bina.
+    today = date.today()
+    while True:
+        txn_receipt = _gen_receipt()
+        if not FeeTransaction.query.filter_by(receipt_no=txn_receipt).first():
+            break
+
+    txn = FeeTransaction(
+        fee_record_id    = record.id,
+        student_id       = record.student_id,
+        school_id        = _school_id(),
+        amount           = new_payment,
+        payment_mode     = record.payment_mode,
+        transaction_date = today,
+        txn_month        = today.strftime('%B %Y'),
+        receipt_no       = txn_receipt,
+        remarks          = data.get('remarks', ''),
+        collected_by     = get_current_user().id,
+    )
+    db.session.add(txn)
 
     db.session.commit()
 
