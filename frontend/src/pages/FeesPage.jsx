@@ -63,9 +63,8 @@ export default function FeesPage() {
     if (filterStatus) params.append('status',   filterStatus);
     if (filterClass)  params.append('class_id', filterClass);
     if (filterMonth) {
-      const [y, m] = filterMonth.split('-');
-      const monthName = new Date(y, m - 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' });
-      params.append('month', monthName);
+      // FeeRecord.month DB mein "YYYY-MM" format mein store hota hai (Generate Fees se seedha aata hai)
+      params.append('month', filterMonth);
     }
     if (filterFeeType) params.append('fee_type', filterFeeType);
 
