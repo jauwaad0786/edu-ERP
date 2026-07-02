@@ -241,6 +241,24 @@ async function generateFees() {
             ))}
           </div>
 
+          {/* ── month-wise collection cards (FeeTransaction based) ── */}
+          <div className="grid-4 mb-6">
+            {[
+              { icon: '📅', label: "Today's Collection",     value: `₹${fmt(summary?.today_collection)}`,      color: '#2e844a', bg: '#eaf5ea' },
+              { icon: '🗓️', label: `${summary?.this_month || 'This Month'} Collection`, value: `₹${fmt(summary?.this_month_collection)}`, color: '#0176d3', bg: '#e8f4fd' },
+              { icon: '💵', label: 'Cash Collection',         value: `₹${fmt(summary?.cash_collection)}`,       color: '#dd7a01', bg: '#fef5e4' },
+              { icon: '📱', label: 'UPI + Online Collection',  value: `₹${fmt((summary?.upi_collection || 0) + (summary?.online_collection || 0))}`, color: '#5867e8', bg: '#f3f0ff' },
+            ].map(s => (
+              <div className="stat-card" key={s.label}>
+                <div className="stat-icon" style={{ background: s.bg }}>
+                  <span style={{ fontSize: 20 }}>{s.icon}</span>
+                </div>
+                <div className="stat-label">{s.label}</div>
+                <div className="stat-value" style={{ color: s.color }}>{s.value}</div>
+              </div>
+            ))}
+          </div>
+
           {/* ── collection rate bar ── */}
           {summary && (
             <div className="card mb-6">
