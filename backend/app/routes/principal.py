@@ -733,10 +733,40 @@ def fees_summary():
     total_paid = db.session.query(func.sum(FeeRecord.amount_paid)).filter_by(school_id=sid).scalar() or 0
     pending    = db.session.query(func.count(FeeRecord.id)).filter_by(school_id=sid, status='PENDING').scalar() or 0
     overdue    = db.session.query(func.count(FeeRecord.id)).filter_by(school_id=sid, status='OVERDUE').scalar() or 0
+
+    # ── FeeTransaction-based cards ──
+    # record.amount_paid sirf running total hai, isliye "kab collect hua" ye
+    # FeeTransaction se nikalta hai — ab date/month/mode-wise sahi hai.
+    today      = date.today()
+    this_month = today.strftime('%B %Y')
+
+    today_collection = db.session.query(func.sum(FeeTransaction.amount)).filter_by(
+        school_id=sid, transaction_date=today
+    ).scalar() or 0
+
+    month_collection = db.session.query(func.sum(FeeTransaction.amount)).filter_by(
+        school_id=sid, txn_month=this_month
+    ).scalar() or 0
+
+    mode_agg = db.session.query(
+        FeeTransaction.payment_mode,
+        func.sum(FeeTransaction.amount)
+    ).filter_by(school_id=sid, txn_month=this_month)\
+     .group_by(FeeTransaction.payment_mode).all()
+    mode_map = {mode: amt for mode, amt in mode_agg}
+
     return jsonify({
         'total_due': total_due, 'total_collected': total_paid,
         'pending_count': pending, 'overdue_count': overdue,
-        'collection_rate': round(total_paid / total_due * 100, 1) if total_due else 0
+        'collection_rate': round(total_paid / total_due * 100, 1) if total_due else 0,
+
+        'today_collection':    today_collection,
+        'this_month':          this_month,
+        'this_month_collection': month_collection,
+        'cash_collection':      mode_map.get('CASH', 0),
+        'upi_collection':       mode_map.get('UPI', 0),
+        'online_collection':    mode_map.get('ONLINE', 0),
+        'cheque_collection':    mode_map.get('CHEQUE', 0),
     }), 200
 
 
