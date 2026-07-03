@@ -36,6 +36,8 @@ export default function FeesPage() {
   const [filterClass,   setFilterClass]   = useState('');
   const [filterMonth, setFilterMonth] = useState('');
   const [filterFeeType, setFilterFeeType] = useState('');
+  const [monthlyTrend, setMonthlyTrend] = useState([]);
+  const [classSummary, setClassSummary] = useState([]);
   const [loading,  setLoading]  = useState(false);
   const [msg,      setMsg]      = useState({ text: '', type: '' });
 
@@ -72,8 +74,12 @@ export default function FeesPage() {
       api.get('/principal/fees/summary'),
       api.get('/principal/fees/records?' + params.toString()),
       api.get('/principal/classes'),
+      api.get('/principal/fees/monthly-trend'),
+      api.get('/principal/fees/class-summary' + (filterMonth ? `?month=${filterMonth}` : '')),
     ])
-      .then(([s, r, c]) => {
+      .then(([s, r, c, mt, cs]) => {
+        setMonthlyTrend(Array.isArray(mt.data) ? mt.data : []);
+        setClassSummary(Array.isArray(cs.data) ? cs.data : []);
   // records — array ya nested object dono handle karo
         const rawR = r.data;
         setRecords(
@@ -258,6 +264,67 @@ async function generateFees() {
               </div>
             ))}
           </div>
+
+          {/* ── monthly collection trend ── */}
+          {monthlyTrend.length > 0 && (
+            <div className="card mb-6">
+              <div className="card-header"><h4>📊 Monthly Collection Trend</h4></div>
+              <div className="card-body" style={{ padding: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, height: 200, overflowX: 'auto' }}>
+                  {monthlyTrend.map(m => {
+                    const max = Math.max(...monthlyTrend.map(x => x.expected || 0), 1);
+                    const expH = Math.round((m.expected / max) * 150);
+                    const colH = Math.round((m.collected / max) * 150);
+                    return (
+                      <div key={m.month} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 64 }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 150 }}>
+                          <div title={`Expected ₹${fmt(m.expected)}`} style={{ width: 16, height: expH, background: '#cbd5e1', borderRadius: 3 }} />
+                          <div title={`Collected ₹${fmt(m.collected)}`} style={{ width: 16, height: colH, background: '#2e844a', borderRadius: 3 }} />
+                        </div>
+                        <div style={{ fontSize: 11, marginTop: 6, color: 'var(--neutral-6)' }}>{m.month}</div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: m.collection_pct >= 70 ? '#2e844a' : '#ba0517' }}>{m.collection_pct}%</div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ display: 'flex', gap: 16, marginTop: 14, fontSize: 12 }}>
+                  <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#cbd5e1', borderRadius: 2, marginRight: 6 }} />Expected</span>
+                  <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#2e844a', borderRadius: 2, marginRight: 6 }} />Collected</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── class-wise fee due ── */}
+          {classSummary.length > 0 && (
+            <div className="card mb-6">
+              <div className="card-header"><h4>🏛 Class-wise Fee Due</h4></div>
+              <div className="table-container">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Class</th><th>Students</th><th>Total Due (₹)</th>
+                      <th>Collected (₹)</th><th>Pending (₹)</th><th>Collection %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {classSummary.map(c => (
+                      <tr key={c.class_id}>
+                        <td style={{ fontWeight: 600 }}>{c.class_name} - {c.section}</td>
+                        <td>{c.student_count}</td>
+                        <td>₹{fmt(c.total_due)}</td>
+                        <td style={{ color: '#2e844a', fontWeight: 600 }}>₹{fmt(c.total_collected)}</td>
+                        <td style={{ color: c.pending > 0 ? '#ba0517' : '#2e844a', fontWeight: 700 }}>
+                          {c.pending > 0 ? `₹${fmt(c.pending)}` : '✅ Clear'}
+                        </td>
+                        <td>{c.collection_pct}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* ── collection rate bar ── */}
           {summary && (
