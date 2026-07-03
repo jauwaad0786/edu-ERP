@@ -737,9 +737,21 @@ def fees_summary():
     # ── FeeTransaction-based cards ──
     # record.amount_paid sirf running total hai, isliye "kab collect hua" ye
     # FeeTransaction se nikalta hai — ab date/month/mode-wise sahi hai.
-    today      = date.today()
-    this_month = today.strftime('%B %Y')
+    today = date.today()
 
+    # optional month filter — "YYYY-MM" (top filter se aata hai)
+    # diya hai to usi month ka label banao, warna current month use karo.
+    month_param = request.args.get('month')
+    if month_param:
+        try:
+            y, m = map(int, month_param.split('-'))
+            this_month = date(y, m, 1).strftime('%B %Y')
+        except (ValueError, TypeError):
+            this_month = today.strftime('%B %Y')
+    else:
+        this_month = today.strftime('%B %Y')
+
+    # "Today's Collection" hamesha actual aaj ka din hi rahega — filter se independent
     today_collection = db.session.query(func.sum(FeeTransaction.amount)).filter_by(
         school_id=sid, transaction_date=today
     ).scalar() or 0
