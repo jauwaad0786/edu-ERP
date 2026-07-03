@@ -36,6 +36,7 @@ export default function FeesPage() {
   const [filterClass,   setFilterClass]   = useState('');
   const [filterMonth, setFilterMonth] = useState('');
   const [filterFeeType, setFilterFeeType] = useState('');
+  const [snapshotMonth, setSnapshotMonth] = useState(''); // Collection Snapshot + Class-wise Due — Fee Records se independent
   const [classSummary, setClassSummary] = useState([]);
   const [loading,  setLoading]  = useState(false);
   const [msg,      setMsg]      = useState({ text: '', type: '' });
@@ -70,10 +71,10 @@ export default function FeesPage() {
     if (filterFeeType) params.append('fee_type', filterFeeType);
 
     Promise.all([
-      api.get('/principal/fees/summary' + (filterMonth ? `?month=${filterMonth}` : '')),
+      api.get('/principal/fees/summary' + (snapshotMonth ? `?month=${snapshotMonth}` : '')),
       api.get('/principal/fees/records?' + params.toString()),
       api.get('/principal/classes'),
-      api.get('/principal/fees/class-summary' + (filterMonth ? `?month=${filterMonth}` : '')),
+      api.get('/principal/fees/class-summary' + (snapshotMonth ? `?month=${snapshotMonth}` : '')),
     ])
       .then(([s, r, c, cs]) => {
         setClassSummary(Array.isArray(cs.data) ? cs.data : []);
@@ -98,7 +99,7 @@ export default function FeesPage() {
       })
       .catch(() => flash('❌ Data load karne mein error aaya', 'error'))
       .finally(() => setLoading(false));
-}, [filterStatus, filterClass, filterMonth, filterFeeType]);
+}, [filterStatus, filterClass, filterMonth, filterFeeType, snapshotMonth]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -246,19 +247,22 @@ async function generateFees() {
 
           {/* ── month-wise collection cards (FeeTransaction based) ── */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
-            <h4 style={{ margin: 0 }}>🗓️ Collection Snapshot</h4>
+            <div>
+              <h4 style={{ margin: 0 }}>🗓️ Collection Snapshot</h4>
+              <span style={{ fontSize: 11, color: 'var(--neutral-6)' }}>Cards + Class-wise Due neeche — dono isi filter se refresh honge</span>
+            </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 12, color: 'var(--neutral-6)' }}>Month/Year:</span>
               <input
                 type="month"
                 className="form-input"
                 style={{ width: 170 }}
-                value={filterMonth}
-                onChange={e => setFilterMonth(e.target.value)}
+                value={snapshotMonth}
+                onChange={e => setSnapshotMonth(e.target.value)}
               />
-              {filterMonth && (
+              {snapshotMonth && (
                 <button
-                  onClick={() => setFilterMonth('')}
+                  onClick={() => setSnapshotMonth('')}
                   style={{
                     background: '#f1f1f1', border: 'none', borderRadius: 4,
                     padding: '6px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer',
@@ -290,7 +294,14 @@ async function generateFees() {
           {/* ── class-wise fee due ── */}
           {classSummary.length > 0 && (
             <div className="card mb-6">
-              <div className="card-header"><h4>🏛 Class-wise Fee Due</h4></div>
+              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h4>🏛 Class-wise Fee Due</h4>
+                <span style={{ fontSize: 11, color: 'var(--neutral-6)' }}>
+                  {snapshotMonth
+                    ? `Showing: ${new Date(snapshotMonth + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}`
+                    : 'Showing: All Time — upar month select karo'}
+                </span>
+              </div>
               <div className="table-container">
                 <table>
                   <thead>
