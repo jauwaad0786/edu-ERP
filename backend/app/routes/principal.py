@@ -1017,7 +1017,6 @@ def fees_class_summary():
     sid     = _school_id()
     month   = request.args.get('month')  # optional — "YYYY-MM"
     classes = Class.query.filter_by(school_id=sid).all()
-
     # ONE query: aggregate per student
     from sqlalchemy import case
     agg_q = db.session.query(
@@ -1029,6 +1028,9 @@ def fees_class_summary():
     if month:
         agg_q = agg_q.filter(FeeRecord.month == month)
     agg = agg_q.group_by(Student.class_id).all()
+
+    agg_map = {r.class_id: {'due': r.total_due or 0, 'paid': r.total_paid or 0}
+               for r in agg}
 
     result = []
     for c in classes:
