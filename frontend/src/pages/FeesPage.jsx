@@ -36,7 +36,6 @@ export default function FeesPage() {
   const [filterClass,   setFilterClass]   = useState('');
   const [filterMonth, setFilterMonth] = useState('');
   const [filterFeeType, setFilterFeeType] = useState('');
-  const [monthlyTrend, setMonthlyTrend] = useState([]);
   const [classSummary, setClassSummary] = useState([]);
   const [loading,  setLoading]  = useState(false);
   const [msg,      setMsg]      = useState({ text: '', type: '' });
@@ -71,14 +70,12 @@ export default function FeesPage() {
     if (filterFeeType) params.append('fee_type', filterFeeType);
 
     Promise.all([
-      api.get('/principal/fees/summary'),
+      api.get('/principal/fees/summary' + (filterMonth ? `?month=${filterMonth}` : '')),
       api.get('/principal/fees/records?' + params.toString()),
       api.get('/principal/classes'),
-      api.get('/principal/fees/monthly-trend'),
       api.get('/principal/fees/class-summary' + (filterMonth ? `?month=${filterMonth}` : '')),
     ])
-      .then(([s, r, c, mt, cs]) => {
-        setMonthlyTrend(Array.isArray(mt.data) ? mt.data : []);
+      .then(([s, r, c, cs]) => {
         setClassSummary(Array.isArray(cs.data) ? cs.data : []);
   // records — array ya nested object dono handle karo
         const rawR = r.data;
@@ -248,6 +245,29 @@ async function generateFees() {
           </div>
 
           {/* ── month-wise collection cards (FeeTransaction based) ── */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+            <h4 style={{ margin: 0 }}>🗓️ Collection Snapshot</h4>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 12, color: 'var(--neutral-6)' }}>Month/Year:</span>
+              <input
+                type="month"
+                className="form-input"
+                style={{ width: 170 }}
+                value={filterMonth}
+                onChange={e => setFilterMonth(e.target.value)}
+              />
+              {filterMonth && (
+                <button
+                  onClick={() => setFilterMonth('')}
+                  style={{
+                    background: '#f1f1f1', border: 'none', borderRadius: 4,
+                    padding: '6px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                  }}>
+                  ✕ Clear
+                </button>
+              )}
+            </div>
+          </div>
           <div className="grid-4 mb-6">
             {[
               { icon: '📅', label: "Today's Collection",     value: `₹${fmt(summary?.today_collection)}`,      color: '#2e844a', bg: '#eaf5ea' },
@@ -265,35 +285,7 @@ async function generateFees() {
             ))}
           </div>
 
-          {/* ── monthly collection trend ── */}
-          {monthlyTrend.length > 0 && (
-            <div className="card mb-6">
-              <div className="card-header"><h4>📊 Monthly Collection Trend</h4></div>
-              <div className="card-body" style={{ padding: 20 }}>
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, height: 200, overflowX: 'auto' }}>
-                  {monthlyTrend.map(m => {
-                    const max = Math.max(...monthlyTrend.map(x => x.expected || 0), 1);
-                    const expH = Math.round((m.expected / max) * 150);
-                    const colH = Math.round((m.collected / max) * 150);
-                    return (
-                      <div key={m.month} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 64 }}>
-                        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 150 }}>
-                          <div title={`Expected ₹${fmt(m.expected)}`} style={{ width: 16, height: expH, background: '#cbd5e1', borderRadius: 3 }} />
-                          <div title={`Collected ₹${fmt(m.collected)}`} style={{ width: 16, height: colH, background: '#2e844a', borderRadius: 3 }} />
-                        </div>
-                        <div style={{ fontSize: 11, marginTop: 6, color: 'var(--neutral-6)' }}>{m.month}</div>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: m.collection_pct >= 70 ? '#2e844a' : '#ba0517' }}>{m.collection_pct}%</div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div style={{ display: 'flex', gap: 16, marginTop: 14, fontSize: 12 }}>
-                  <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#cbd5e1', borderRadius: 2, marginRight: 6 }} />Expected</span>
-                  <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#2e844a', borderRadius: 2, marginRight: 6 }} />Collected</span>
-                </div>
-              </div>
-            </div>
-          )}
+          
 
           {/* ── class-wise fee due ── */}
           {classSummary.length > 0 && (
