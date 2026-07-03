@@ -982,26 +982,53 @@ def generate_fees():
         'skipped': skipped
     }), 201
 
+@principal_bp.route('/fees/monthly-trend', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER')
+def fees_monthly_trend():
+    """
+    Month-wise Expected vs Collected vs Pending — FeeRecord.month based
+    (jis month record generate hua, wahi group-by key — records/generate
+    flow mein already yahi field use ho raha hai, isliye consistent hai).
+    """
+    sid = _school_id()
+    agg = db.session.query(
+        FeeRecord.month,
+        func.sum(FeeRecord.amount_due).label('due'),
+        func.sum(FeeRecord.amount_paid).label('paid'),
+    ).filter(FeeRecord.school_id == sid, FeeRecord.month.isnot(None))\
+     .group_by(FeeRecord.month).all()
 
+    result = []
+    for r in agg:
+        due, paid = r.due or 0, r.paid or 0
+        result.append({
+            'month':           r.month,
+            'expected':        due,
+            'collected':       paid,
+            'pending':         due - paid,
+            'collection_pct':  round(paid / due * 100, 1) if due else 0,
+        })
+    result.sort(key=lambda x: x['month'])
+    return jsonify(result), 200
 
 @principal_bp.route('/fees/class-summary', methods=['GET'])
 @role_required('PRINCIPAL', 'TEACHER')
 def fees_class_summary():
     sid     = _school_id()
+    month   = request.args.get('month')  # optional — "YYYY-MM"
     classes = Class.query.filter_by(school_id=sid).all()
 
     # ONE query: aggregate per student
     from sqlalchemy import case
-    agg = db.session.query(
+    agg_q = db.session.query(
         Student.class_id,
         func.sum(FeeRecord.amount_due).label('total_due'),
         func.sum(FeeRecord.amount_paid).label('total_paid'),
     ).join(FeeRecord, FeeRecord.student_id == Student.id)\
-     .filter(Student.school_id == sid)\
-     .group_by(Student.class_id).all()
-
-    agg_map = {r.class_id: {'due': r.total_due or 0, 'paid': r.total_paid or 0}
-               for r in agg}
+     .filter(Student.school_id == sid)
+    if month:
+        agg_q = agg_q.filter(FeeRecord.month == month)
+    agg = agg_q.group_by(Student.class_id).all()
 
     result = []
     for c in classes:
