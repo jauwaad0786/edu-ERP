@@ -21,7 +21,9 @@ export default function StudentsPage() {
   const [saving,       setSaving]       = useState(false);
   const [msg,          setMsg]          = useState('');
   // Fix #2 — downloading state
-const [downloading, setDownloading] = useState(null);
+  const [downloading, setDownloading] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null); // { id, name }
+  const [deleting, setDeleting] = useState(false);
 
 useEffect(() => {
   const q = classFilter ? `?class_id=${classFilter}` : '';
@@ -91,6 +93,20 @@ useEffect(() => {
     }
     setSaving(false);
   };
+
+  async function confirmDeleteStudent() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/principal/students/${deleteTarget.id}`);
+      toast.success(`${deleteTarget.name} deleted successfully`);
+      setStudents(prev => prev.filter(s => s.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Delete nahi ho paya');
+    }
+    setDeleting(false);
+  }
 
   const filtered = students.filter(s =>
     s.name?.toLowerCase().includes(filter.toLowerCase()) ||
@@ -256,6 +272,17 @@ useEffect(() => {
                             }}
                           >
                             {downloading === s.id ? '⏳ Loading...' : '🎓 Admission Card'}
+                          </button>
+                          <button
+                            onClick={() => setDeleteTarget({ id: s.id, name: s.name })}
+                            style={{
+                              background: '#fef2f2', color: '#dc2626',
+                              border: 'none', borderRadius: 4,
+                              padding: '4px 10px', fontSize: 11,
+                              fontWeight: 700, cursor: 'pointer',
+                            }}
+                          >
+                            🗑️ Delete
                           </button>
                         </div>
                       </td>
@@ -459,6 +486,48 @@ useEffect(() => {
           </div>
         </div>
       )}
+
+      {/* ── Delete Confirmation Modal ── */}
+      {deleteTarget && (
+        <div className="modal-backdrop"
+          onClick={e => e.target === e.currentTarget && !deleting && setDeleteTarget(null)}>
+          <div className="modal" style={{ maxWidth: 400 }}>
+            <div className="modal-header">
+              <h3>🗑️ Delete Student</h3>
+              <button className="modal-close" disabled={deleting}
+                onClick={() => setDeleteTarget(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div style={{
+                background: '#fef2f2', border: '1px solid #fecaca',
+                borderRadius: 8, padding: '14px 16px', fontSize: 13, color: '#991b1b',
+              }}>
+                ⚠️ Kya aap sach mein <strong>{deleteTarget.name}</strong> ko delete karna
+                chahte hain? Iske saath uska attendance, fee records, aur marks bhi
+                permanently delete ho jayenge. Ye action undo nahi ho sakta.
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-neutral" disabled={deleting}
+                onClick={() => setDeleteTarget(null)}>
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteStudent}
+                disabled={deleting}
+                style={{
+                  background: '#dc2626', color: '#fff', border: 'none',
+                  borderRadius: 6, padding: '8px 18px', fontSize: 13,
+                  fontWeight: 700, cursor: deleting ? 'not-allowed' : 'pointer',
+                  opacity: deleting ? 0.7 : 1,
+                }}>
+                {deleting ? 'Deleting...' : '🗑️ Yes, Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+      
