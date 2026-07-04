@@ -7,7 +7,10 @@ from app.models.academic import (
     Attendance, TeacherAttendance, TeacherAttendanceRequest, Note
 )
 from app.models.financial import FeeRecord, FeeStructure, FeeTransaction, ExamSchedule, ExamTimetable, Holiday, Timetable, TimetablePeriod
+from app.models.documents import IssuedDocument, StudentDocument
 
+STUDENT_DOC_TYPES = ['AADHAR', 'RATION_CARD', 'BIRTH_CERTIFICATE', 'CASTE_CERTIFICATE', 'OTHER']
+ISSUED_DOC_TYPES  = ['BONAFIDE', 'TC', 'CHARACTER_CERTIFICATE', 'FEE_RECEIPT', 'OTHER']
 from app.utils.decorators import role_required, get_current_user
 from app.utils.feature_gate import feature_required
 from app.utils.pdf_generator import generate_admit_card, generate_result_card
@@ -3160,11 +3163,12 @@ def delete_student(student_id):
         return jsonify({'error': 'Unauthorized'}), 403
 
     user = student.user
-
-    # ── Academic / financial records tied to student_id ──
+    # Delete related records first
     Attendance.query.filter_by(student_id=student_id).delete()
     FeeRecord.query.filter_by(student_id=student_id).delete()
     Marks.query.filter_by(student_id=student_id).delete()
+    IssuedDocument.query.filter_by(student_id=student_id).delete()
+    StudentDocument.query.filter_by(student_id=student_id).delete()
 
     try:
         from app.models.financial import FeeTransaction
@@ -3244,3 +3248,141 @@ def my_teaching_assignments():
 
     db.session.commit()
     return jsonify(user.to_dict_with_credentials()), 200
+
+
+# ─── Documents (School-Issued + Student-Uploaded KYC) ─────────────────────────
+
+@principal_bp.route('/students/<int:student_id>/documents', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER')
+def list_student_documents(student_id):
+    """Both school-issued and student-uploaded documents for a student."""
+    student = Student.query.get_or_404(student_id)
+    if student.school_id != _school_id():
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    issued = IssuedDocument.query.filter_by(
+        student_id=student_id, school_id=_school_id()
+    ).order_by(IssuedDocument.issued_at.desc()).all()
+
+    student_docs = StudentDocument.query.filter_by(
+        student_id=student_id, school_id=_school_id()
+    ).order_by(StudentDocument.uploaded_at.desc()).all()
+
+    return jsonify({
+        'issued_documents':  [d.to_dict() for d in issued],
+        'student_documents': [d.to_dict() for d in student_docs],
+        'issued_doc_types':  ISSUED_DOC_TYPES,
+        'student_doc_types': STUDENT_DOC_TYPES,
+    }), 200
+
+
+@principal_bp.route('/students/<int:student_id>/documents/issued', methods=['POST'])
+@role_required('PRINCIPAL', 'TEACHER')
+def upload_issued_document(student_id):
+    """
+    School issues an official document to a student.
+    multipart/form-data: doc_type, custom_label (required if OTHER), file
+    """
+    student = Student.query.get_or_404(student_id)
+    if student.school_id != _school_id():
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    doc_type = (request.form.get('doc_type') or '').strip().upper()
+    if doc_type not in ISSUED_DOC_TYPES:
+        return jsonify({'error': f'doc_type must be one of {ISSUED_DOC_TYPES}'}), 400
+
+    custom_label = (request.form.get('custom_label') or '').strip()
+    if doc_type == 'OTHER' and not custom_label:
+        return jsonify({'error': 'custom_label zaroori hai jab doc_type OTHER ho'}), 400
+
+    file = request.files.get('file')
+    if not file:
+        return jsonify({'error': 'File nahi mila — field name: file'}), 400
+
+    result = cloudinary.uploader.upload(
+        file,
+        folder=f'eduerp/schools/{_school_id()}/students/{student_id}/issued_documents',
+        resource_type='auto',
+        use_filename=True,
+        unique_filename=True,
+    )
+
+    doc = IssuedDocument(
+        school_id    = _school_id(),
+        student_id   = student_id,
+        doc_type     = doc_type,
+        custom_label = custom_label,
+        file_url     = result['secure_url'],
+        file_name    = file.filename,
+        issued_by    = get_current_user().id,
+    )
+    db.session.add(doc)
+    db.session.commit()
+    return jsonify(doc.to_dict()), 201
+
+
+@principal_bp.route('/documents/issued/<int:doc_id>', methods=['DELETE'])
+@role_required('PRINCIPAL')
+def delete_issued_document(doc_id):
+    doc = IssuedDocument.query.get_or_404(doc_id)
+    if doc.school_id != _school_id():
+        return jsonify({'error': 'Unauthorized'}), 403
+    db.session.delete(doc)
+    db.session.commit()
+    return jsonify({'message': 'Document deleted'}), 200
+
+
+@principal_bp.route('/students/<int:student_id>/documents/student', methods=['POST'])
+@role_required('PRINCIPAL', 'TEACHER')
+def upload_student_document(student_id):
+    """
+    Student's own KYC document (Aadhar, Ration Card, etc.).
+    multipart/form-data: doc_type, custom_label (required if OTHER), file
+    """
+    student = Student.query.get_or_404(student_id)
+    if student.school_id != _school_id():
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    doc_type = (request.form.get('doc_type') or '').strip().upper()
+    if doc_type not in STUDENT_DOC_TYPES:
+        return jsonify({'error': f'doc_type must be one of {STUDENT_DOC_TYPES}'}), 400
+
+    custom_label = (request.form.get('custom_label') or '').strip()
+    if doc_type == 'OTHER' and not custom_label:
+        return jsonify({'error': 'custom_label zaroori hai jab doc_type OTHER ho'}), 400
+
+    file = request.files.get('file')
+    if not file:
+        return jsonify({'error': 'File nahi mila — field name: file'}), 400
+
+    result = cloudinary.uploader.upload(
+        file,
+        folder=f'eduerp/schools/{_school_id()}/students/{student_id}/kyc_documents',
+        resource_type='auto',
+        use_filename=True,
+        unique_filename=True,
+    )
+
+    doc = StudentDocument(
+        school_id    = _school_id(),
+        student_id   = student_id,
+        doc_type     = doc_type,
+        custom_label = custom_label,
+        file_url     = result['secure_url'],
+        file_name    = file.filename,
+        uploaded_by  = get_current_user().id,
+    )
+    db.session.add(doc)
+    db.session.commit()
+    return jsonify(doc.to_dict()), 201
+
+
+@principal_bp.route('/documents/student/<int:doc_id>', methods=['DELETE'])
+@role_required('PRINCIPAL', 'TEACHER')
+def delete_student_document(doc_id):
+    doc = StudentDocument.query.get_or_404(doc_id)
+    if doc.school_id != _school_id():
+        return jsonify({'error': 'Unauthorized'}), 403
+    db.session.delete(doc)
+    db.session.commit()
+    return jsonify({'message': 'Document deleted'}), 200
