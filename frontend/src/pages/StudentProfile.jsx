@@ -131,6 +131,15 @@ export default function StudentProfile() {
 
   const [examMarks, setExamMarks] = useState([]);
 
+  // ── Documents tab state ──
+  const [docsData, setDocsData]       = useState(null);
+  const [docsLoading, setDocsLoading] = useState(false);
+  const [showIssueModal, setShowIssueModal]   = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [docForm, setDocForm] = useState({ doc_type: '', custom_label: '', file: null });
+  const [docSaving, setDocSaving] = useState(false);
+  const [deleteDocTarget, setDeleteDocTarget] = useState(null); // { kind: 'issued'|'student', id }
+
   useEffect(() => {
     setLoading(true);
     api.get(`/principal/students/${id}/profile`)
@@ -138,6 +147,68 @@ export default function StudentProfile() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [id]);
+
+  const loadDocuments = () => {
+    setDocsLoading(true);
+    api.get(`/principal/students/${id}/documents`)
+      .then(r => setDocsData(r.data))
+      .catch(() => toast.error('Documents load nahi hue'))
+      .finally(() => setDocsLoading(false));
+  };
+
+  useEffect(() => {
+    if (tab === 'documents' && !docsData) loadDocuments();
+  }, [tab]);
+
+  function openDocModal(kind) {
+    setDocForm({ doc_type: '', custom_label: '', file: null });
+    if (kind === 'issue') setShowIssueModal(true);
+    else setShowUploadModal(true);
+  }
+
+  async function submitDocUpload(kind) {
+    if (!docForm.doc_type) { toast.error('Document type select karo'); return; }
+    if (docForm.doc_type === 'OTHER' && !docForm.custom_label.trim()) {
+      toast.error('Document ka naam likho'); return;
+    }
+    if (!docForm.file) { toast.error('File select karo'); return; }
+
+    setDocSaving(true);
+    const fd = new FormData();
+    fd.append('doc_type', docForm.doc_type);
+    fd.append('custom_label', docForm.custom_label);
+    fd.append('file', docForm.file);
+
+    const url = kind === 'issue'
+      ? `/principal/students/${id}/documents/issued`
+      : `/principal/students/${id}/documents/student`;
+
+    try {
+      await api.post(url, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      toast.success('Document upload ho gaya');
+      setShowIssueModal(false);
+      setShowUploadModal(false);
+      loadDocuments();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Upload nahi hua');
+    }
+    setDocSaving(false);
+  }
+
+  async function confirmDeleteDoc() {
+    if (!deleteDocTarget) return;
+    try {
+      const url = deleteDocTarget.kind === 'issued'
+        ? `/principal/documents/issued/${deleteDocTarget.id}`
+        : `/principal/documents/student/${deleteDocTarget.id}`;
+      await api.delete(url);
+      toast.success('Document deleted');
+      setDeleteDocTarget(null);
+      loadDocuments();
+    } catch {
+      toast.error('Delete nahi hua');
+    }
+  }
 
   const downloadCard = async (type) => {
     setDlLoading(type);
@@ -516,30 +587,237 @@ export default function StudentProfile() {
           )}
 
           {/* ══ DOCUMENTS ══ */}
+          {/* ══ DOCUMENTS ══ */}
           {tab === 'documents' && (
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(240px,1fr))', gap:16 }}>
-              {[
-                { type:'admission', icon:'🎓', title:'Admission Card',
-                  desc:'Student ka official admission card PDF' },
-              ].map(doc => (
-                <div key={doc.type} className="card" style={{ margin:0, padding:24, textAlign:'center' }}>
-                  <div style={{ fontSize:40, marginBottom:12 }}>{doc.icon}</div>
-                  <div style={{ fontWeight:700, fontSize:15, marginBottom:6 }}>{doc.title}</div>
-                  <div style={{ fontSize:12, color:'var(--neutral-5)', marginBottom:16 }}>{doc.desc}</div>
-                  <button
-                    className="btn btn-primary btn-sm"
-                    disabled={dlLoading === doc.type}
-                    onClick={() => downloadCard(doc.type)}
-                    style={{ width:'100%' }}>
-                    {dlLoading === doc.type ? '⏳ Generating...' : '⬇️ Download PDF'}
-                  </button>
-                </div>
-              ))}
+            <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+
+              {/* Admission Card download (existing) */}
+              <div className="card" style={{ margin:0, padding:24, textAlign:'center', maxWidth:280 }}>
+                <div style={{ fontSize:40, marginBottom:12 }}>🎓</div>
+                <div style={{ fontWeight:700, fontSize:15, marginBottom:6 }}>Admission Card</div>
+                <div style={{ fontSize:12, color:'var(--neutral-5)', marginBottom:16 }}>Student ka official admission card PDF</div>
+                <button
+                  className="btn btn-primary btn-sm"
+                  disabled={dlLoading === 'admission'}
+                  onClick={() => downloadCard('admission')}
+                  style={{ width:'100%' }}>
+                  {dlLoading === 'admission' ? '⏳ Generating...' : '⬇️ Download PDF'}
+                </button>
+              </div>
+
+              {docsLoading && (
+                <div style={{ padding:30, textAlign:'center', color:'var(--neutral-5)' }}>⏳ Loading documents...</div>
+              )}
+
+              {!docsLoading && docsData && (
+                <>
+                  {/* ── School Issued Documents ── */}
+                  <div className="card" style={{ margin:0 }}>
+                    <div className="card-header" style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                      <h4>🏫 School Issued Documents</h4>
+                      <button className="btn btn-primary btn-sm" onClick={() => openDocModal('issue')}>
+                        + Issue Document
+                      </button>
+                    </div>
+                    <div className="table-container">
+                      <table>
+                        <thead>
+                          <tr><th>Document</th><th>File</th><th>Issued Date</th><th>Actions</th></tr>
+                        </thead>
+                        <tbody>
+                          {(docsData.issued_documents || []).length === 0 ? (
+                            <tr><td colSpan={4} style={{ textAlign:'center', padding:24, color:'var(--neutral-4)' }}>
+                              Koi document issue nahi hua abhi tak
+                            </td></tr>
+                          ) : docsData.issued_documents.map(d => (
+                            <tr key={d.id}>
+                              <td style={{ fontWeight:600 }}>{d.label}</td>
+                              <td style={{ fontSize:12, color:'var(--neutral-6)' }}>{d.file_name || '—'}</td>
+                              <td style={{ fontSize:12, color:'var(--neutral-6)' }}>
+                                {d.issued_at ? new Date(d.issued_at).toLocaleDateString('en-IN') : '—'}
+                              </td>
+                              <td>
+                                <div style={{ display:'flex', gap:6 }}>
+                                  <a href={d.file_url} target="_blank" rel="noreferrer"
+                                    style={{ background:'#e8f4fd', color:'#0176d3', border:'none', borderRadius:4, padding:'4px 10px', fontSize:11, fontWeight:700, textDecoration:'none' }}>
+                                    👁️ View
+                                  </a>
+                                  <button
+                                    onClick={() => setDeleteDocTarget({ kind:'issued', id:d.id })}
+                                    style={{ background:'#fef2f2', color:'#dc2626', border:'none', borderRadius:4, padding:'4px 10px', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                                    🗑️
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* ── Student's Own Documents ── */}
+                  <div className="card" style={{ margin:0 }}>
+                    <div className="card-header" style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                      <h4>📁 Student Documents</h4>
+                      <button className="btn btn-primary btn-sm" onClick={() => openDocModal('upload')}>
+                        + Upload Document
+                      </button>
+                    </div>
+                    <div className="table-container">
+                      <table>
+                        <thead>
+                          <tr><th>Document</th><th>File</th><th>Uploaded Date</th><th>Actions</th></tr>
+                        </thead>
+                        <tbody>
+                          {(docsData.student_documents || []).length === 0 ? (
+                            <tr><td colSpan={4} style={{ textAlign:'center', padding:24, color:'var(--neutral-4)' }}>
+                              Koi document upload nahi hua abhi tak
+                            </td></tr>
+                          ) : docsData.student_documents.map(d => (
+                            <tr key={d.id}>
+                              <td style={{ fontWeight:600 }}>{d.label}</td>
+                              <td style={{ fontSize:12, color:'var(--neutral-6)' }}>{d.file_name || '—'}</td>
+                              <td style={{ fontSize:12, color:'var(--neutral-6)' }}>
+                                {d.uploaded_at ? new Date(d.uploaded_at).toLocaleDateString('en-IN') : '—'}
+                              </td>
+                              <td>
+                                <div style={{ display:'flex', gap:6 }}>
+                                  <a href={d.file_url} target="_blank" rel="noreferrer"
+                                    style={{ background:'#e8f4fd', color:'#0176d3', border:'none', borderRadius:4, padding:'4px 10px', fontSize:11, fontWeight:700, textDecoration:'none' }}>
+                                    👁️ View
+                                  </a>
+                                  <button
+                                    onClick={() => setDeleteDocTarget({ kind:'student', id:d.id })}
+                                    style={{ background:'#fef2f2', color:'#dc2626', border:'none', borderRadius:4, padding:'4px 10px', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                                    🗑️
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
         </div>
       </div>
+
+      {/* ── Issue Document Modal (School → Student) ── */}
+      {showIssueModal && (
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && !docSaving && setShowIssueModal(false)}>
+          <div className="modal" style={{ maxWidth: 420 }}>
+            <div className="modal-header">
+              <h3>🏫 Issue Document</h3>
+              <button className="modal-close" disabled={docSaving} onClick={() => setShowIssueModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label className="form-label">Document Type *</label>
+                <select className="form-select" value={docForm.doc_type}
+                  onChange={e => setDocForm(f => ({ ...f, doc_type: e.target.value }))}>
+                  <option value="">Select type...</option>
+                  {(docsData?.issued_doc_types || ['BONAFIDE','TC','CHARACTER_CERTIFICATE','FEE_RECEIPT','OTHER']).map(t => (
+                    <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>
+                  ))}
+                </select>
+              </div>
+              {docForm.doc_type === 'OTHER' && (
+                <div className="form-group">
+                  <label className="form-label">Document Name *</label>
+                  <input className="form-input" placeholder="e.g. Sports Certificate"
+                    value={docForm.custom_label}
+                    onChange={e => setDocForm(f => ({ ...f, custom_label: e.target.value }))} />
+                </div>
+              )}
+              <div className="form-group">
+                <label className="form-label">File *</label>
+                <input type="file" className="form-input"
+                  onChange={e => setDocForm(f => ({ ...f, file: e.target.files[0] }))} />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-neutral" disabled={docSaving} onClick={() => setShowIssueModal(false)}>Cancel</button>
+              <button className="btn btn-primary" disabled={docSaving} onClick={() => submitDocUpload('issue')}>
+                {docSaving ? 'Uploading...' : '✅ Issue Document'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Upload Student Document Modal ── */}
+      {showUploadModal && (
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && !docSaving && setShowUploadModal(false)}>
+          <div className="modal" style={{ maxWidth: 420 }}>
+            <div className="modal-header">
+              <h3>📁 Upload Document</h3>
+              <button className="modal-close" disabled={docSaving} onClick={() => setShowUploadModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label className="form-label">Document Type *</label>
+                <select className="form-select" value={docForm.doc_type}
+                  onChange={e => setDocForm(f => ({ ...f, doc_type: e.target.value }))}>
+                  <option value="">Select type...</option>
+                  {(docsData?.student_doc_types || ['AADHAR','RATION_CARD','BIRTH_CERTIFICATE','CASTE_CERTIFICATE','OTHER']).map(t => (
+                    <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>
+                  ))}
+                </select>
+              </div>
+              {docForm.doc_type === 'OTHER' && (
+                <div className="form-group">
+                  <label className="form-label">Document Name *</label>
+                  <input className="form-input" placeholder="e.g. Migration Certificate"
+                    value={docForm.custom_label}
+                    onChange={e => setDocForm(f => ({ ...f, custom_label: e.target.value }))} />
+                </div>
+              )}
+              <div className="form-group">
+                <label className="form-label">File *</label>
+                <input type="file" className="form-input"
+                  onChange={e => setDocForm(f => ({ ...f, file: e.target.files[0] }))} />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-neutral" disabled={docSaving} onClick={() => setShowUploadModal(false)}>Cancel</button>
+              <button className="btn btn-primary" disabled={docSaving} onClick={() => submitDocUpload('upload')}>
+                {docSaving ? 'Uploading...' : '✅ Upload'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete Document Confirmation ── */}
+      {deleteDocTarget && (
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setDeleteDocTarget(null)}>
+          <div className="modal" style={{ maxWidth: 380 }}>
+            <div className="modal-header">
+              <h3>🗑️ Delete Document</h3>
+              <button className="modal-close" onClick={() => setDeleteDocTarget(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div style={{ background:'#fef2f2', border:'1px solid #fecaca', borderRadius:8, padding:'12px 16px', fontSize:13, color:'#991b1b' }}>
+                ⚠️ Ye document permanently delete ho jayega. Confirm karo.
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-neutral" onClick={() => setDeleteDocTarget(null)}>Cancel</button>
+              <button
+                onClick={confirmDeleteDoc}
+                style={{ background:'#dc2626', color:'#fff', border:'none', borderRadius:6, padding:'8px 18px', fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                Yes, Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
