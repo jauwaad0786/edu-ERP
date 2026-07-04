@@ -3196,7 +3196,74 @@ def principal_update_user(user_id):
             setattr(user, field, (data[field] or '').strip() or None)
 
 
+@principal_bp.route('/students/<int:student_id>', methods=['DELETE'])
+@role_required('PRINCIPAL')
+def delete_student(student_id):
+    """Delete a student — cascades through academic records + Communication Hub."""
+    student = Student.query.get_or_404(student_id)
+    if student.school_id != _school_id():
+        return jsonify({'error': 'Unauthorized'}), 403
 
+    user = student.user
+
+    # ── Academic / financial records tied to student_id ──
+    Attendance.query.filter_by(student_id=student_id).delete()
+    FeeRecord.query.filter_by(student_id=student_id).delete()
+    Marks.query.filter_by(student_id=student_id).delete()
+
+    try:
+        from app.models.financial import FeeTransaction
+        FeeTransaction.query.filter_by(student_id=student_id).delete()
+    except Exception:
+        pass
+
+    db.session.flush()
+
+    # ── Communication Hub — NOT NULL FKs to users.id must be deleted, not nullified ──
+    if user:
+        from app.models.communication import (
+            SupportTicket, TicketReply, ChatMessage,
+            SupportNotification, MeetingRequest, SupportAttachment
+        )
+
+        # Ticket replies authored by this user (replied_by NOT NULL)
+        TicketReply.query.filter_by(replied_by=user.id).delete(synchronize_session=False)
+
+        # Attachments uploaded by this user (uploaded_by NOT NULL)
+        SupportAttachment.query.filter_by(uploaded_by=user.id).delete(synchronize_session=False)
+
+        # Tickets raised by this user (raised_by NOT NULL) — cascades to that
+        # ticket's own replies/attachments/notifications via model-level cascade
+        SupportTicket.query.filter_by(raised_by=user.id).delete(synchronize_session=False)
+
+        # Nullable FKs on tickets — clear references without deleting the ticket
+        SupportTicket.query.filter_by(assigned_to=user.id)\
+            .update({'assigned_to': None}, synchronize_session=False)
+        SupportTicket.query.filter_by(resolved_by=user.id)\
+            .update({'resolved_by': None}, synchronize_session=False)
+
+        # Chat messages — sender_id / receiver_id both NOT NULL
+        ChatMessage.query.filter(
+            db.or_(ChatMessage.sender_id == user.id, ChatMessage.receiver_id == user.id)
+        ).delete(synchronize_session=False)
+
+        # In-app notifications (user_id NOT NULL)
+        SupportNotification.query.filter_by(user_id=user.id).delete(synchronize_session=False)
+
+        # Meeting requests raised by this user (requested_by NOT NULL)
+        MeetingRequest.query.filter_by(requested_by=user.id).delete(synchronize_session=False)
+        # Nullable handled_by reference
+        MeetingRequest.query.filter_by(handled_by=user.id)\
+            .update({'handled_by': None}, synchronize_session=False)
+
+        db.session.flush()
+
+    db.session.delete(student)
+    db.session.flush()
+    if user:
+        db.session.delete(user)
+    db.session.commit()
+    return jsonify({'message': 'Student deleted'}), 200
 
 @principal_bp.route('/teacher/my-assignments', methods=['GET'])
 @role_required('TEACHER')
