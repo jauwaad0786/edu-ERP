@@ -461,7 +461,11 @@ async function generateFees() {
 
                           {/* student */}
                           <td>
-                            <div style={{ fontWeight: 600, fontSize: 13 }}>
+                            <div
+                              style={{ fontWeight: 600, fontSize: 13, color: '#0176d3', cursor: r.student_id ? 'pointer' : 'default', textDecoration: r.student_id ? 'underline dashed' : 'none' }}
+                              onClick={() => r.student_id && navigate(`/students/${r.student_id}`)}
+                              title={r.student_id ? 'Profile dekhne ke liye click karein' : ''}
+                            >
                               {r.student_name || '—'}
                             </div>
                             <div style={{ fontSize: 11, color: 'var(--neutral-5)' }}>
