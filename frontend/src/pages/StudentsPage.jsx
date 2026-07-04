@@ -368,9 +368,14 @@ useEffect(() => {
                     </select>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Parent / Guardian Name</label>
-                    <input className="form-input" placeholder="Father/Mother name"
-                      onChange={e => setForm(f => ({ ...f, parent_name: e.target.value }))} />
+                    <label className="form-label">Father Name</label>
+                    <input className="form-input" placeholder="e.g. Rahman"
+                      onChange={e => setForm(f => ({ ...f, father_name: e.target.value, parent_name: e.target.value }))} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Mother Name</label>
+                    <input className="form-input" placeholder="e.g. Ayesha"
+                      onChange={e => setForm(f => ({ ...f, mother_name: e.target.value }))} />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Parent Phone</label>
