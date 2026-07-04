@@ -2694,17 +2694,51 @@ def generate_staff_id_card(user_id):
 @principal_bp.route('/students/<int:student_id>', methods=['DELETE'])
 @role_required('PRINCIPAL')
 def delete_student(student_id):
-    """Delete a student."""
+    """Delete a student — cascades through every table with a user_id/student_id FK."""
     student = Student.query.get_or_404(student_id)
     if student.school_id != _school_id():
         return jsonify({'error': 'Unauthorized'}), 403
 
     user = student.user
-    # Delete related records first
+
+    # ── Academic / financial records tied to student_id ──
     Attendance.query.filter_by(student_id=student_id).delete()
     FeeRecord.query.filter_by(student_id=student_id).delete()
     Marks.query.filter_by(student_id=student_id).delete()
+
+    try:
+        from app.models.financial import FeeTransaction
+        FeeTransaction.query.filter_by(student_id=student_id).delete()
+    except Exception:
+        pass
+
     db.session.flush()
+
+    # ── Communication Hub records tied to user_id (sender/receiver) ──
+    # NOT NULL constraints on these FKs mean we must delete, not nullify.
+    if user:
+        try:
+            from app.models.communication import ChatMessage
+            ChatMessage.query.filter(
+                db.or_(ChatMessage.sender_id == user.id, ChatMessage.receiver_id == user.id)
+            ).delete(synchronize_session=False)
+        except Exception:
+            pass
+
+        try:
+            from app.models.communication import Ticket
+            Ticket.query.filter_by(created_by=user.id).delete(synchronize_session=False)
+        except Exception:
+            pass
+
+        try:
+            from app.models.communication import Notification
+            Notification.query.filter_by(user_id=user.id).delete(synchronize_session=False)
+        except Exception:
+            pass
+
+        db.session.flush()
+
     db.session.delete(student)
     db.session.flush()
     if user:
