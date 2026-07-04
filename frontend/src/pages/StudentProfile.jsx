@@ -237,11 +237,11 @@ export default function StudentProfile() {
             {/* Quick status pills */}
             <div style={{ display:'flex', gap:10 }}>
               <div style={{
-                background: feeData.month_status === 'PAID' ? '#dcfce7' : '#fee2e2',
-                color:      feeData.month_status === 'PAID' ? '#16a34a' : '#dc2626',
+                background: (feeData.month_status === 'PAID' || feeData.month_status === 'NO_RECORD') ? '#dcfce7' : '#fee2e2',
+                color:      (feeData.month_status === 'PAID' || feeData.month_status === 'NO_RECORD') ? '#16a34a' : '#dc2626',
                 padding:'6px 14px', borderRadius:20, fontSize:12, fontWeight:700,
               }}>
-                💰 {feeData.month_status === 'PAID' ? 'Fees Paid' : 'Fees Pending'}
+                💰 {feeData.month_status === 'PAID' ? 'Fees Paid' : feeData.month_status === 'NO_RECORD' ? 'No Dues' : 'Fees Pending'}
               </div>
               <div style={{
                 background: att.percentage >= 75 ? '#dcfce7' : '#fee2e2',
@@ -327,7 +327,7 @@ export default function StudentProfile() {
                       color: att.percentage>=75 ? '#16a34a' : '#dc2626' },
                     { icon:'💰', label:'Fees This Month', value: feeData.month_status || 'N/A',
                       sub:`Paid: ₹${fmt(feeData.month_paid)} / Due: ₹${fmt(feeData.month_due)}`,
-                      color: feeData.month_status==='PAID' ? '#16a34a' : '#dc2626' },
+                      color: (feeData.month_status==='PAID' || feeData.month_status==='NO_RECORD') ? '#16a34a' : '#dc2626' },
                     { icon:'💸', label:'Total Paid', value: fmtK(feeData.total_paid),
                       sub:`Pending: ₹${fmt(feeData.pending)}`, color:'#0176d3' },
                     { icon:'📝', label:'Exams',
@@ -454,8 +454,8 @@ export default function StudentProfile() {
                   { label:'Total Paid',   value:fmtK(feeData.total_paid), color:'#16a34a', bg:'#f0fdf4' },
                   { label:'Pending',      value:fmtK(feeData.pending),    color:'#dc2626', bg:'#fef2f2' },
                   { label:`${feeData.this_month}`, value: feeData.month_status || '—',
-                    color: feeData.month_status==='PAID'?'#16a34a':'#dc2626',
-                    bg:    feeData.month_status==='PAID'?'#f0fdf4':'#fef2f2' },
+                    color: (feeData.month_status==='PAID' || feeData.month_status==='NO_RECORD')?'#16a34a':'#dc2626',
+                    bg:    (feeData.month_status==='PAID' || feeData.month_status==='NO_RECORD')?'#f0fdf4':'#fef2f2' },
                 ].map(s => (
                   <div key={s.label} style={{
                     background:s.bg, borderRadius:12, padding:'16px', textAlign:'center',
