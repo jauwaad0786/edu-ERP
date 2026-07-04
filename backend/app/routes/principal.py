@@ -723,6 +723,12 @@ def create_student():
         address=data.get('address'),
         session=data.get('session', '2024-25')
     )
+    db.session.add(student)
+    db.session.commit()
+    return jsonify(student.to_dict()), 201
+
+
+# ─── Fees ─────────────────────────────────────────────────────────────────────
 
 
 # ─── Fees ─────────────────────────────────────────────────────────────────────
