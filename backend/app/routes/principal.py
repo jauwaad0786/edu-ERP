@@ -713,14 +713,13 @@ def create_student():
         parent_name=data.get('parent_name'),
         parent_phone=data.get('parent_phone'),
         parent_email=data.get('parent_email'),
+        father_name=data.get('father_name'),
+        mother_name=data.get('mother_name'),
         gender=data.get('gender'),
         dob=date.fromisoformat(data['dob']) if data.get('dob') else None,
         address=data.get('address'),
         session=data.get('session', '2024-25')
     )
-    db.session.add(student)
-    db.session.commit()
-    return jsonify(student.to_dict()), 201
 
 
 # ─── Fees ─────────────────────────────────────────────────────────────────────
