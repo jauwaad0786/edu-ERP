@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Navbar  from '../components/Navbar';
 import api     from '../api/axios';
@@ -28,6 +29,7 @@ function Badge({ status }) {
 
 /* ── main component ─────────────────────────────────────────────────────── */
 export default function FeesPage() {
+  const navigate = useNavigate();
   const [summary,  setSummary]  = useState(null);
   const [records,  setRecords]  = useState([]);
   const [classes,  setClasses]  = useState([]);
@@ -313,7 +315,13 @@ async function generateFees() {
                   <tbody>
                     {classSummary.map(c => (
                       <tr key={c.class_id}>
-                        <td style={{ fontWeight: 600 }}>{c.class_name} - {c.section}</td>
+                        <td
+                          style={{ fontWeight: 600, color: '#0176d3', cursor: 'pointer', textDecoration: 'underline dashed' }}
+                          title="Is class ke students dekhne ke liye click karein"
+                          onClick={() => navigate(`/students?class_id=${c.class_id}`)}
+                        >
+                          {c.class_name} - {c.section}
+                        </td>
                         <td>{c.student_count}</td>
                         <td>₹{fmt(c.total_due)}</td>
                         <td style={{ color: '#2e844a', fontWeight: 600 }}>₹{fmt(c.total_collected)}</td>
