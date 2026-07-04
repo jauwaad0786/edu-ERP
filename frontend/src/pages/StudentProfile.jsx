@@ -399,7 +399,7 @@ export default function StudentProfile() {
                     { icon:'💰', label:'Fees This Month', value: feeData.month_status || 'N/A',
                       sub:`Paid: ₹${fmt(feeData.month_paid)} / Due: ₹${fmt(feeData.month_due)}`,
                       color: (feeData.month_status==='PAID' || feeData.month_status==='NO_RECORD') ? '#16a34a' : '#dc2626' },
-                    { icon:'💸', label:'Total Paid', value: fmtK(feeData.total_paid),
+                    { icon:'💸', label:'Total Paid', value: `₹${fmt(feeData.total_paid)}`,
                       sub:`Pending: ₹${fmt(feeData.pending)}`, color:'#0176d3' },
                     { icon:'📝', label:'Exams',
                       value: `${exams?.length || 0} exams`,
@@ -521,9 +521,9 @@ export default function StudentProfile() {
               {/* Summary */}
               <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14 }}>
                 {[
-                  { label:'Total Due',    value:fmtK(feeData.total_due),  color:'#0176d3', bg:'#eff6ff' },
-                  { label:'Total Paid',   value:fmtK(feeData.total_paid), color:'#16a34a', bg:'#f0fdf4' },
-                  { label:'Pending',      value:fmtK(feeData.pending),    color:'#dc2626', bg:'#fef2f2' },
+                  { label:'Total Due',    value:`₹${fmt(feeData.total_due)}`,  color:'#0176d3', bg:'#eff6ff' },
+                  { label:'Total Paid',   value:`₹${fmt(feeData.total_paid)}`, color:'#16a34a', bg:'#f0fdf4' },
+                  { label:'Pending',      value:`₹${fmt(feeData.pending)}`,    color:'#dc2626', bg:'#fef2f2' },
                   { label:`${feeData.this_month}`, value: feeData.month_status || '—',
                     color: (feeData.month_status==='PAID' || feeData.month_status==='NO_RECORD')?'#16a34a':'#dc2626',
                     bg:    (feeData.month_status==='PAID' || feeData.month_status==='NO_RECORD')?'#f0fdf4':'#fef2f2' },
