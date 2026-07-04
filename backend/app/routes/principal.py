@@ -829,11 +829,13 @@ def fee_records():
         student = r.student if hasattr(r, 'student') and r.student else Student.query.get(r.student_id)
         if student:
             cls = Class.query.get(student.class_id)
+            d['student_id']   = student.id  # frontend navigation ke liye guaranteed
             d['student_name'] = student.user.name if student.user else ''
             d['father_name']  = student.parent_name or ''
             d['roll_number']  = student.roll_number or ''
             d['class_name']   = f"{cls.name} - {cls.section}" if cls else ''
         result.append(d)
+    
 
     return jsonify({
         'data':     result,
@@ -1645,8 +1647,14 @@ def student_profile(student_id):
     pending     = total_due - total_paid
 
     # This month's fees
-    this_month  = date.today().strftime('%B %Y')
-    month_fees  = [f for f in fee_records if f.month == this_month]
+    # This month's fees — FeeRecord.month DB mein "YYYY-MM" format mein store
+    # hota hai (Generate Fees flow), isliye comparison bhi usi format mein
+    # honi chahiye. Display ke liye alag se human-readable label banaya.
+    today             = date.today()
+    this_month_key    = today.strftime('%Y-%m')   # matches FeeRecord.month
+    this_month_label  = today.strftime('%B %Y')   # sirf UI display ke liye
+
+    month_fees  = [f for f in fee_records if f.month == this_month_key]
     month_paid  = sum(f.amount_paid for f in month_fees)
     month_due   = sum(f.amount_due  for f in month_fees)
 
@@ -1654,11 +1662,12 @@ def student_profile(student_id):
         'total_due':    total_due,
         'total_paid':   total_paid,
         'pending':      pending,
-        'this_month':   this_month,
+        'this_month':   this_month_label,
         'month_due':    month_due,
         'month_paid':   month_paid,
         'month_status': 'PAID' if month_paid >= month_due and month_due > 0
                         else 'PARTIAL' if month_paid > 0
+                        else 'NO_RECORD' if month_due == 0
                         else 'PENDING',
         'records': [
             {
