@@ -46,7 +46,7 @@ def create_hostel():
         gender         = data.get('gender', 'MALE'),
         description    = data.get('description', ''),
         address        = data.get('address', ''),
-        warden_id      = data.get('warden_id'),
+        warden_id      = int(data['warden_id']) if data.get('warden_id') else None,
         contact_number = data.get('contact_number', ''),
         contact_email  = data.get('contact_email', ''),
         created_by     = get_current_user().id,
@@ -70,7 +70,7 @@ def update_hostel(hostel_id):
         if field in data:
             setattr(h, field, data[field])
     if 'warden_id' in data:
-        h.warden_id = data['warden_id']
+        h.warden_id = int(data['warden_id']) if data['warden_id'] else None
     db.session.commit()
     return jsonify(h.to_dict()), 200
 
