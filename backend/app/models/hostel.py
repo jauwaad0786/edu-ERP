@@ -46,6 +46,7 @@ class Hostel(db.Model):
     created_at  = db.Column(db.DateTime, default=datetime.utcnow)
 
     buildings = db.relationship('HostelBuilding', backref='hostel', lazy='dynamic', cascade='all, delete-orphan')
+    warden    = db.relationship('User', foreign_keys=[warden_id])
 
     __table_args__ = (
         db.UniqueConstraint('school_id', 'code', name='uq_hostel_school_code'),
@@ -270,6 +271,8 @@ class HostelBed(db.Model):
         db.UniqueConstraint('room_id', 'bed_number', name='uq_bed_room_number'),
     )
 
+    current_student = db.relationship('Student', foreign_keys=[current_student_id])
+
     def to_dict(self):
         room = self.room
         return {
@@ -314,6 +317,8 @@ class HostelBedAllocation(db.Model):
 
     allocated_by = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at   = db.Column(db.DateTime, default=datetime.utcnow)
+
+    student = db.relationship('Student', foreign_keys=[student_id])
 
     def to_dict(self):
         student = self.student
