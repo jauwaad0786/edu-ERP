@@ -165,6 +165,7 @@ const ROLE_MENUS = {
       items: [
         { icon: 'ti-bolt',     label: 'My Plan & Services', path: '/my-services' },
         { icon: 'ti-settings', label: 'School Settings',    path: '/school-settings' },
+        { icon: 'ti-brand-whatsapp', label: 'WhatsApp Integration', path: '/settings/whatsapp' },
       ],
     },
   ],
