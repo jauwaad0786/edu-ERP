@@ -36,7 +36,9 @@ import StaffProfile     from './pages/StaffProfile';
 import ExpensesPage     from './pages/finance/ExpensesPage';
 import InventoryPage    from './pages/finance/InventoryPage';
 import VendorsPage      from './pages/finance/VendorsPage';
+
 import PayrollPage       from './pages/PayrollPage';
+import WhatsAppSettings  from './pages/settings/WhatsAppSettings';
 
 // ── Library Management ────────────────────────────────────────────────────
 import LibraryDashboard  from './pages/library/LibraryDashboard';
@@ -189,6 +191,11 @@ export default function App() {
             <Route path="/school-settings" element={
               <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']}>
                 <SchoolSettings />
+              </ProtectedRoute>
+            } />
+            <Route path="/settings/whatsapp" element={
+              <ProtectedRoute roles={['PRINCIPAL']}>
+                <WhatsAppSettings />
               </ProtectedRoute>
             } />
             <Route path="/my-services" element={
