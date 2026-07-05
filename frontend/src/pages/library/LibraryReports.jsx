@@ -44,12 +44,16 @@ export default function LibraryReports() {
   const loadFines = useCallback(() => {
     setLoading(true);
     const params = new URLSearchParams();
-    if (fineFrom) params.set('from', fineFrom);
-    if (fineTo)   params.set('to', fineTo);
-    api.get('/library/reports/fines?' + params.toString())
+    if (fineFrom) params.set('from_date', fineFrom);
+    if (fineTo)   params.set('to_date', fineTo);
+    api.get('/library/reports/fine-collection?' + params.toString())
       .then(r => {
-        setFines(r.data.transactions || []);
-        setFineSummary(r.data.summary || { total_collected: 0, total_pending: 0, total_waived: 0 });
+        setFines(r.data.data || []);
+        setFineSummary({
+          total_collected: r.data.total_collected || 0,
+          total_pending: 0,   // backend ye split nahi karta abhi — sirf PAID fines return karta hai
+          total_waived: 0,
+        });
       })
       .catch(() => toast.error('Fine report load nahi ho payi'))
       .finally(() => setLoading(false));
@@ -65,7 +69,7 @@ export default function LibraryReports() {
 
   const loadActivity = useCallback(() => {
     setLoading(true);
-    api.get('/library/activity-log?per_page=50')
+    api.get('/library/reports/activity-log?limit=50')
       .then(r => setActivity(r.data || []))
       .catch(() => toast.error('Activity log load nahi ho paya'))
       .finally(() => setLoading(false));
