@@ -742,3 +742,110 @@ def student_hostel_status(student_id):
         'current': active.to_dict() if active else None,
         'history': [a.to_dict() for a in history],
     }), 200
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  DASHBOARD
+# ═══════════════════════════════════════════════════════════════════════════
+
+@hostel_bp.route('/dashboard', methods=['GET'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def hostel_dashboard():
+    sid   = _school_id()
+    today = date.today()
+
+    total_hostels   = Hostel.query.filter_by(school_id=sid).count()
+    total_buildings = HostelBuilding.query.filter_by(school_id=sid).count()
+    total_rooms     = HostelRoom.query.filter_by(school_id=sid).count()
+
+    all_beds = HostelBed.query.filter_by(school_id=sid).all()
+    total_beds = len(all_beds)
+    occupied   = sum(1 for b in all_beds if b.status == 'OCCUPIED')
+    vacant     = sum(1 for b in all_beds if b.status == 'VACANT')
+    reserved   = sum(1 for b in all_beds if b.status == 'RESERVED')
+    maintenance= sum(1 for b in all_beds if b.status == 'MAINTENANCE')
+
+    hostel_students = HostelBedAllocation.query.filter_by(school_id=sid, status='ACTIVE').count()
+
+    todays_admissions = HostelBedAllocation.query.filter_by(
+        school_id=sid, admission_date=today, status='ACTIVE'
+    ).count()
+    todays_transfers = HostelBedAllocation.query.filter_by(
+        school_id=sid, admission_date=today
+    ).filter(HostelBedAllocation.transfer_type.isnot(None)).count()
+    todays_vacate = HostelBedAllocation.query.filter_by(
+        school_id=sid, vacate_date=today, status='VACATED'
+    ).count()
+
+    # Per-hostel occupancy breakdown for chart
+    hostels = Hostel.query.filter_by(school_id=sid).all()
+    hostel_breakdown = [
+        {
+            'id':   h.id,
+            'name': h.name,
+            **h.counts(),
+        }
+        for h in hostels
+    ]
+
+    return jsonify({
+        'total_hostels':    total_hostels,
+        'total_buildings':  total_buildings,
+        'total_rooms':      total_rooms,
+        'total_beds':       total_beds,
+        'occupied_beds':    occupied,
+        'vacant_beds':      vacant,
+        'reserved_beds':    reserved,
+        'maintenance_beds': maintenance,
+        'hostel_students':  hostel_students,
+        'todays_admissions':todays_admissions,
+        'todays_transfers': todays_transfers,
+        'todays_vacate':    todays_vacate,
+        'occupancy_pct':    round(occupied / total_beds * 100, 1) if total_beds else 0,
+        'hostel_breakdown': hostel_breakdown,
+    }), 200
+
+
+@hostel_bp.route('/warden-dashboard', methods=['GET'])
+@role_required('HOSTEL')
+def warden_dashboard():
+    """
+    Warden sees only their assigned hostel(s).
+    Matches Hostel.warden_id == current logged-in user.
+    """
+    user = get_current_user()
+    sid  = _school_id()
+
+    my_hostels = Hostel.query.filter_by(school_id=sid, warden_id=user.id).all()
+    if not my_hostels:
+        return jsonify({'error': 'Koi hostel assign nahi hai aapko'}), 404
+
+    hostel_ids = [h.id for h in my_hostels]
+    today = date.today()
+
+    beds = HostelBed.query.join(HostelRoom).join(HostelFloor).join(HostelBuilding)\
+             .filter(HostelBuilding.hostel_id.in_(hostel_ids)).all()
+    total    = len(beds)
+    occupied = sum(1 for b in beds if b.status == 'OCCUPIED')
+
+    active_students = HostelBedAllocation.query.filter(
+        HostelBedAllocation.hostel_id.in_(hostel_ids),
+        HostelBedAllocation.status == 'ACTIVE',
+    ).count()
+
+    return jsonify({
+        'hostels':        [h.to_dict() for h in my_hostels],
+        'total_beds':     total,
+        'occupied_beds':  occupied,
+        'vacant_beds':    total - occupied,
+        'occupancy_pct':  round(occupied / total * 100, 1) if total else 0,
+        'active_students':active_students,
+        # Leave/Visitors/Complaints/Attendance cards will populate once
+        # those modules (Phase 3) exist — placeholders for now:
+        'leave_requests_pending': 0,
+        'visitors_today':         0,
+        'complaints_open':        0,
+        'attendance_marked_today': False,
+    }), 200
+
+
+
