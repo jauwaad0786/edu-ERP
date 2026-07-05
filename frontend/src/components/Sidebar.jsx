@@ -103,6 +103,7 @@ const ROLE_MENUS = {
       ],
     },
     // ── OLD ──
+    // ── OLD ──
     {
       group: 'Examinations',
       items: [
@@ -113,6 +114,23 @@ const ROLE_MENUS = {
             { icon: 'ti-chart-bar', label: 'Marks',              path: '/marks' },
             { icon: 'ti-ticket',    label: 'Admit Cards',        path: '/admit-card' },
             { icon: 'ti-books',     label: 'Subject Management', path: '/subjects' },
+          ],
+        },
+      ],
+    },
+    // ── NEW: Library ──
+    {
+      group: 'Library',
+      items: [
+        {
+          icon: 'ti-book-2', label: 'Library', path: '/library',
+          children: [
+            { icon: 'ti-layout-dashboard', label: 'Dashboard',     path: '/library' },
+            { icon: 'ti-books',            label: 'Book Master',   path: '/library/books' },
+            { icon: 'ti-arrows-exchange',  label: 'Issue / Return',path: '/library/issue-return' },
+            { icon: 'ti-clock',            label: 'Reservations',  path: '/library/reservations' },
+            { icon: 'ti-users',            label: 'Members',       path: '/library/members' },
+            { icon: 'ti-report',           label: 'Reports',       path: '/library/reports' },
           ],
         },
       ],
@@ -180,6 +198,31 @@ const ROLE_MENUS = {
     },
   ],
 
+  LIBRARIAN: [
+    {
+      group: 'Overview',
+      items: [{ icon: 'ti-layout-dashboard', label: 'Dashboard', path: '/library' }],
+    },
+    {
+      group: 'Library',
+      items: [
+        { icon: 'ti-books',           label: 'Book Master',    path: '/library/books' },
+        { icon: 'ti-arrows-exchange', label: 'Issue / Return',  path: '/library/issue-return' },
+        { icon: 'ti-clock',           label: 'Reservations',    path: '/library/reservations' },
+        { icon: 'ti-users',           label: 'Members',         path: '/library/members' },
+        { icon: 'ti-report',          label: 'Reports',         path: '/library/reports' },
+      ],
+    },
+    {
+      group: 'Customer Service',
+      items: [
+        { icon: 'ti-ticket',       label: 'My Tickets',    path: '/support/tickets' },
+        { icon: 'ti-message-2',    label: 'Messages',      path: '/support/chat' },
+        { icon: 'ti-help-circle',  label: 'Help Center',   path: '/support/help' },
+      ],
+    },
+  ],
+
   STUDENT: [
     {
       group: 'Overview',
@@ -193,6 +236,7 @@ const ROLE_MENUS = {
         { icon: 'ti-chart-bar',       label: 'Results',    path: '/results' },
         { icon: 'ti-receipt',         label: 'Fees',       path: '/fees' },
         { icon: 'ti-notes',           label: 'Notes',      path: '/notes' },
+        { icon: 'ti-book',            label: 'Library',    path: '/library/books' },
         { icon: 'ti-ticket',          label: 'Admit Card', path: '/admit-card' },
       ],
     },
