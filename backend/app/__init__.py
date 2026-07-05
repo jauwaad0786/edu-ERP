@@ -75,6 +75,9 @@ def create_app(config_name='default'):
 
     from app.routes.whatsapp_settings import whatsapp_settings_bp
     app.register_blueprint(whatsapp_settings_bp, url_prefix='/api/principal/whatsapp')
+
+    from app.routes.whatsapp_webhook import webhook_bp
+    app.register_blueprint(webhook_bp, url_prefix='/api/webhooks')
     app.register_blueprint(tickets_bp,       url_prefix='/api/support/tickets')
     app.register_blueprint(notifications_bp, url_prefix='/api/support/notifications')
     app.register_blueprint(meetings_bp,      url_prefix='/api/support/meetings')
