@@ -13,8 +13,15 @@ export default function LibraryIssueReturn() {
   const [memberResults, setMemberResults] = useState([]);
   const [selectedMember, setSelectedMember] = useState(null);
 
+  const [searchMode, setSearchMode]       = useState('TITLE'); // 'TITLE' | 'BARCODE'
+
   const [barcodeInput, setBarcodeInput]   = useState('');
   const [scannedCopy, setScannedCopy]     = useState(null);
+
+  const [bookTitleSearch, setBookTitleSearch] = useState('');
+  const [bookTitleResults, setBookTitleResults] = useState([]);
+  const [selectedBookForIssue, setSelectedBookForIssue] = useState(null); // { id, title, author, available_copies }
+
   const [issuing, setIssuing]             = useState(false);
 
   // ── Return state ──
@@ -40,6 +47,18 @@ export default function LibraryIssueReturn() {
   }, [memberSearch]);
 
   // ── Barcode lookup (Issue tab) ──
+  // ── Book title search (Issue tab — alternative jab barcode na ho) ──
+  useEffect(() => {
+    if (!bookTitleSearch.trim()) { setBookTitleResults([]); return; }
+    const t = setTimeout(() => {
+      api.get('/library/books?search=' + encodeURIComponent(bookTitleSearch) + '&per_page=8')
+        .then(r => setBookTitleResults(r.data.data || []))
+        .catch(() => setBookTitleResults([]));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [bookTitleSearch]);
+
+  // ── Barcode lookup (Issue tab) ──
   async function handleBarcodeLookup() {
     if (!barcodeInput.trim()) return;
     try {
@@ -53,17 +72,23 @@ export default function LibraryIssueReturn() {
 
   async function handleIssue() {
     if (!selectedMember) { toast.error('Pehle member select karo'); return; }
-    if (!scannedCopy) { toast.error('Pehle book scan/search karo'); return; }
+    if (!scannedCopy && !selectedBookForIssue) { toast.error('Pehle book scan/search karo'); return; }
+
+    const payload = { member_id: selectedMember.id };
+    if (searchMode === 'BARCODE' && scannedCopy) {
+      payload.barcode = scannedCopy.barcode;
+    } else if (selectedBookForIssue) {
+      payload.book_id = selectedBookForIssue.id; // backend khud ek AVAILABLE copy auto-pick karega
+    }
 
     setIssuing(true);
     try {
-      const { data } = await api.post('/library/issue', {
-        member_id: selectedMember.id,
-        barcode: scannedCopy.barcode,
-      });
+      const { data } = await api.post('/library/issue', payload);
       toast.success(`Issued: ${data.book_title} → ${data.member_name} (Due ${data.due_date})`);
       setScannedCopy(null);
       setBarcodeInput('');
+      setSelectedBookForIssue(null);
+      setBookTitleSearch('');
       barcodeRef.current?.focus();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Issue nahi ho paya');
@@ -208,41 +233,122 @@ export default function LibraryIssueReturn() {
                 )}
               </div>
 
-              {/* Barcode scan */}
+              {/* Find Book — Title search OR Barcode scan */}
               <div style={cardStyle}>
-                <h4 style={{ margin: '0 0 12px', fontSize: 14, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
-                  2. Scan / Enter Barcode
-                </h4>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input
-                    ref={barcodeRef}
-                    value={barcodeInput}
-                    onChange={e => setBarcodeInput(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleBarcodeLookup()}
-                    placeholder="Scan barcode or type manually..."
-                    style={inputStyle}
-                    autoFocus
-                  />
-                  <button onClick={handleBarcodeLookup} style={{
-                    background: '#0176d3', color: '#fff', border: 'none', borderRadius: 8,
-                    padding: '0 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                  }}>
-                    Find
-                  </button>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <h4 style={{ margin: 0, fontSize: 14, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
+                    2. Find Book
+                  </h4>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button onClick={() => { setSearchMode('TITLE'); setScannedCopy(null); setBarcodeInput(''); }} style={{
+                      padding: '5px 12px', fontSize: 11, fontWeight: 700, borderRadius: 6, border: 'none', cursor: 'pointer',
+                      background: searchMode === 'TITLE' ? '#4f46e5' : (darkMode ? '#334155' : '#e2e8f0'),
+                      color: searchMode === 'TITLE' ? '#fff' : (darkMode ? '#94a3b8' : '#64748b'),
+                    }}>
+                      🔤 By Title
+                    </button>
+                    <button onClick={() => { setSearchMode('BARCODE'); setSelectedBookForIssue(null); setBookTitleSearch(''); }} style={{
+                      padding: '5px 12px', fontSize: 11, fontWeight: 700, borderRadius: 6, border: 'none', cursor: 'pointer',
+                      background: searchMode === 'BARCODE' ? '#4f46e5' : (darkMode ? '#334155' : '#e2e8f0'),
+                      color: searchMode === 'BARCODE' ? '#fff' : (darkMode ? '#94a3b8' : '#64748b'),
+                    }}>
+                      📷 By Barcode
+                    </button>
+                  </div>
                 </div>
 
-                {scannedCopy && (
-                  <div style={{
-                    marginTop: 12, background: '#eff6ff', border: '1px solid #bfdbfe',
-                    borderRadius: 8, padding: 12,
-                  }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#0176d3' }}>
-                      {scannedCopy.book?.title}
+                {searchMode === 'TITLE' ? (
+                  <>
+                    {selectedBookForIssue ? (
+                      <div style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: 12,
+                      }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: '#0176d3' }}>{selectedBookForIssue.title}</div>
+                          <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                            {selectedBookForIssue.author} · {selectedBookForIssue.available_copies} available
+                          </div>
+                        </div>
+                        <button onClick={() => setSelectedBookForIssue(null)} style={{
+                          background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 12, fontWeight: 700,
+                        }}>
+                          Change
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <input
+                          value={bookTitleSearch}
+                          onChange={e => setBookTitleSearch(e.target.value)}
+                          placeholder="Search book by title, author, or subject..."
+                          style={inputStyle}
+                          autoFocus
+                        />
+                        {bookTitleResults.length > 0 && (
+                          <div style={{ marginTop: 8, maxHeight: 220, overflowY: 'auto' }}>
+                            {bookTitleResults.map(b => {
+                              const unavailable = b.available_copies === 0;
+                              return (
+                                <div key={b.id}
+                                  onClick={() => { if (!unavailable) { setSelectedBookForIssue(b); setBookTitleSearch(''); setBookTitleResults([]); } }}
+                                  style={{
+                                    padding: '8px 10px', borderRadius: 6, fontSize: 13,
+                                    cursor: unavailable ? 'not-allowed' : 'pointer',
+                                    opacity: unavailable ? 0.5 : 1,
+                                    borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}`,
+                                  }}
+                                  onMouseEnter={e => !unavailable && (e.currentTarget.style.background = darkMode ? '#273349' : '#f8fafc')}
+                                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                                  <strong>{b.title}</strong> — {b.author}
+                                  <span style={{
+                                    marginLeft: 8, fontSize: 11, fontWeight: 700,
+                                    color: unavailable ? '#dc2626' : '#16a34a',
+                                  }}>
+                                    {unavailable ? '(0 available — reserve instead)' : `(${b.available_copies} available)`}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input
+                        ref={barcodeRef}
+                        value={barcodeInput}
+                        onChange={e => setBarcodeInput(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleBarcodeLookup()}
+                        placeholder="Scan barcode or type manually..."
+                        style={inputStyle}
+                        autoFocus
+                      />
+                      <button onClick={handleBarcodeLookup} style={{
+                        background: '#0176d3', color: '#fff', border: 'none', borderRadius: 8,
+                        padding: '0 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                      }}>
+                        Find
+                      </button>
                     </div>
-                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                      {scannedCopy.book?.author} · Copy: {scannedCopy.copy_accession_no} · Status: {scannedCopy.status}
-                    </div>
-                  </div>
+
+                    {scannedCopy && (
+                      <div style={{
+                        marginTop: 12, background: '#eff6ff', border: '1px solid #bfdbfe',
+                        borderRadius: 8, padding: 12,
+                      }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: '#0176d3' }}>
+                          {scannedCopy.book?.title}
+                        </div>
+                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                          {scannedCopy.book?.author} · Copy: {scannedCopy.copy_accession_no} · Status: {scannedCopy.status}
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -250,12 +356,12 @@ export default function LibraryIssueReturn() {
               <div style={{ ...cardStyle, gridColumn: 'span 2', display: 'flex', justifyContent: 'flex-end' }}>
                 <button
                   onClick={handleIssue}
-                  disabled={issuing || !selectedMember || !scannedCopy}
+                  disabled={issuing || !selectedMember || (!scannedCopy && !selectedBookForIssue)}
                   style={{
-                    background: (!selectedMember || !scannedCopy) ? '#cbd5e1' : '#16a34a',
+                    background: (!selectedMember || (!scannedCopy && !selectedBookForIssue)) ? '#cbd5e1' : '#16a34a',
                     color: '#fff', border: 'none', borderRadius: 8,
                     padding: '12px 30px', fontSize: 14, fontWeight: 700,
-                    cursor: (!selectedMember || !scannedCopy) ? 'not-allowed' : 'pointer',
+                    cursor: (!selectedMember || (!scannedCopy && !selectedBookForIssue)) ? 'not-allowed' : 'pointer',
                   }}>
                   {issuing ? 'Issuing...' : '✅ Confirm Issue'}
                 </button>
