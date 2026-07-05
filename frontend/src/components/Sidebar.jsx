@@ -135,6 +135,23 @@ const ROLE_MENUS = {
         },
       ],
     },
+    // ── NEW: Hostel ──
+    {
+      group: 'Hostel',
+      items: [
+        {
+          icon: 'ti-building-community', label: 'Hostel', path: '/hostel',
+          children: [
+            { icon: 'ti-layout-dashboard', label: 'Dashboard',       path: '/hostel' },
+            { icon: 'ti-settings',         label: 'Hostel Setup',    path: '/hostel/setup' },
+            { icon: 'ti-layout-grid',      label: 'Room Map',        path: '/hostel/room-map' },
+            { icon: 'ti-user-plus',        label: 'Admission',       path: '/hostel/admission' },
+            { icon: 'ti-arrows-exchange',  label: 'Transfer / Vacate', path: '/hostel/transfers' },
+            { icon: 'ti-report',           label: 'Reports',         path: '/hostel/reports' },
+          ],
+        },
+      ],
+    },
     // ── NEW ──
     {
       group: '',
@@ -212,6 +229,30 @@ const ROLE_MENUS = {
         { icon: 'ti-clock',           label: 'Reservations',    path: '/library/reservations' },
         { icon: 'ti-users',           label: 'Members',         path: '/library/members' },
         { icon: 'ti-report',          label: 'Reports',         path: '/library/reports' },
+      ],
+    },
+    {
+      group: 'Customer Service',
+      items: [
+        { icon: 'ti-ticket',       label: 'My Tickets',    path: '/support/tickets' },
+        { icon: 'ti-message-2',    label: 'Messages',      path: '/support/chat' },
+        { icon: 'ti-help-circle',  label: 'Help Center',   path: '/support/help' },
+      ],
+    },
+  ],
+
+  HOSTEL: [
+    {
+      group: 'Overview',
+      items: [{ icon: 'ti-layout-dashboard', label: 'Dashboard', path: '/hostel' }],
+    },
+    {
+      group: 'Hostel',
+      items: [
+        { icon: 'ti-layout-grid',      label: 'Room Map',         path: '/hostel/room-map' },
+        { icon: 'ti-user-plus',        label: 'Admission',        path: '/hostel/admission' },
+        { icon: 'ti-arrows-exchange',  label: 'Transfer / Vacate',path: '/hostel/transfers' },
+        { icon: 'ti-report',           label: 'Reports',          path: '/hostel/reports' },
       ],
     },
     {
