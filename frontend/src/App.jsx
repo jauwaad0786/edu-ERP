@@ -36,8 +36,15 @@ import StaffProfile     from './pages/StaffProfile';
 import ExpensesPage     from './pages/finance/ExpensesPage';
 import InventoryPage    from './pages/finance/InventoryPage';
 import VendorsPage      from './pages/finance/VendorsPage';
-import PayrollPage      from './pages/PayrollPage';
+import PayrollPage       from './pages/PayrollPage';
 
+// ── Library Management ────────────────────────────────────────────────────
+import LibraryDashboard  from './pages/library/LibraryDashboard';
+import LibraryBooks      from './pages/library/LibraryBooks';
+import LibraryIssueReturn from './pages/library/LibraryIssueReturn';
+import LibraryReservations from './pages/library/LibraryReservations';
+import LibraryMembers    from './pages/library/LibraryMembers';
+import LibraryReports    from './pages/library/LibraryReports';
 // ── Communication Hub Pages ───────────────────────────────────────────────────
 import SupportInbox     from './pages/communication/SupportInbox';
 import TicketDetail     from './pages/communication/TicketDetail';
@@ -192,6 +199,38 @@ export default function App() {
             <Route path="/subjects" element={
               <ProtectedRoute roles={['PRINCIPAL', 'TEACHER']}>
                 <SubjectsPage />
+              </ProtectedRoute>
+            } />
+
+            {/* ── Library Management ── */}
+            <Route path="/library" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN']}>
+                <LibraryDashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/library/books" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN', 'TEACHER', 'STUDENT']}>
+                <LibraryBooks />
+              </ProtectedRoute>
+            } />
+            <Route path="/library/issue-return" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN']}>
+                <LibraryIssueReturn />
+              </ProtectedRoute>
+            } />
+            <Route path="/library/reservations" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN', 'STUDENT']}>
+                <LibraryReservations />
+              </ProtectedRoute>
+            } />
+            <Route path="/library/members" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN']}>
+                <LibraryMembers />
+              </ProtectedRoute>
+            } />
+            <Route path="/library/reports" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN']}>
+                <LibraryReports />
               </ProtectedRoute>
             } />
 
