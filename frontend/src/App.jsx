@@ -47,6 +47,10 @@ import LibraryIssueReturn from './pages/library/LibraryIssueReturn';
 import LibraryReservations from './pages/library/LibraryReservations';
 import LibraryMembers    from './pages/library/LibraryMembers';
 import LibraryReports    from './pages/library/LibraryReports';
+
+// ── Hostel Management ─────────────────────────────────────────────────────
+import HostelSetup       from './pages/hostel/HostelSetup';
+import HostelTransfers   from './pages/hostel/HostelTransfers';
 // ── Communication Hub Pages ───────────────────────────────────────────────────
 import SupportInbox     from './pages/communication/SupportInbox';
 import TicketDetail     from './pages/communication/TicketDetail';
@@ -238,6 +242,18 @@ export default function App() {
             <Route path="/library/reports" element={
               <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN']}>
                 <LibraryReports />
+              </ProtectedRoute>
+            } />
+
+            {/* ── Hostel Management ── */}
+            <Route path="/hostel/setup" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
+                <HostelSetup />
+              </ProtectedRoute>
+            } />
+            <Route path="/hostel/transfers" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
+                <HostelTransfers />
               </ProtectedRoute>
             } />
 
