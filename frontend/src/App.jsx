@@ -49,7 +49,10 @@ import LibraryMembers    from './pages/library/LibraryMembers';
 import LibraryReports    from './pages/library/LibraryReports';
 
 // ── Hostel Management ─────────────────────────────────────────────────────
+import HostelDashboard   from './pages/hostel/HostelDashboard';
 import HostelSetup       from './pages/hostel/HostelSetup';
+import HostelRoomMap     from './pages/hostel/HostelRoomMap';
+import HostelAdmission   from './pages/hostel/HostelAdmission';
 import HostelTransfers   from './pages/hostel/HostelTransfers';
 // ── Communication Hub Pages ───────────────────────────────────────────────────
 import SupportInbox     from './pages/communication/SupportInbox';
@@ -246,9 +249,24 @@ export default function App() {
             } />
 
             {/* ── Hostel Management ── */}
+            <Route path="/hostel" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
+                <HostelDashboard />
+              </ProtectedRoute>
+            } />
             <Route path="/hostel/setup" element={
               <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
                 <HostelSetup />
+              </ProtectedRoute>
+            } />
+            <Route path="/hostel/room-map" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
+                <HostelRoomMap />
+              </ProtectedRoute>
+            } />
+            <Route path="/hostel/admission" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
+                <HostelAdmission />
               </ProtectedRoute>
             } />
             <Route path="/hostel/transfers" element={
