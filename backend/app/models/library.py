@@ -175,6 +175,7 @@ class LibraryMember(db.Model):
         db.UniqueConstraint('school_id', 'user_id', name='uq_library_member_user'),
     )
 
+    user   = db.relationship('User', foreign_keys=[user_id])
     issues = db.relationship('BookIssue', backref='member', lazy='dynamic')
 
     def to_dict(self):
