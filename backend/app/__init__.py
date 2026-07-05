@@ -75,6 +75,16 @@ def create_app(config_name='default'):
     from app.routes.hostel import hostel_bp
     app.register_blueprint(hostel_bp, url_prefix='/api/hostel')
 
+    # ── RBAC: seed default role-permissions for all schools on boot ──
+    # Idempotent — only inserts missing (role, permission_key) rows, never
+    # overwrites a Principal's manual customization. Safe to run every deploy.
+    with app.app_context():
+        try:
+            from app.models.permissions import seed_default_permissions_all_schools
+            seed_default_permissions_all_schools()
+        except Exception as e:
+            app.logger.warning(f'Permission seed skipped: {e}')
+
     from app.routes.whatsapp_settings import whatsapp_settings_bp
     app.register_blueprint(whatsapp_settings_bp, url_prefix='/api/principal/whatsapp')
 
