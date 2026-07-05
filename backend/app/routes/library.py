@@ -5,7 +5,9 @@ from app.models.library import (
     BookCategory, Book, BookCopy, LibraryMember, BookIssue,
     BookReservation, FineTransaction, LibrarySettings, log_activity
 )
+
 from app.models.academic import Class
+from app.models.user import User
 from datetime import datetime, date
 import random
 import string
@@ -1102,13 +1104,9 @@ def global_search():
     copy_match = BookCopy.query.filter_by(barcode=q, school_id=sid).first()
 
     members = LibraryMember.query.filter_by(school_id=sid).join(
-        __import__('app.models.user', fromlist=['User']).User,
-        LibraryMember.user_id == __import__('app.models.user', fromlist=['User']).User.id
+        User, LibraryMember.user_id == User.id
     ).filter(
-        db.or_(
-            __import__('app.models.user', fromlist=['User']).User.name.ilike(like),
-            LibraryMember.card_number.ilike(like),
-        )
+        db.or_(User.name.ilike(like), LibraryMember.card_number.ilike(like))
     ).limit(10).all()
 
     return jsonify({
