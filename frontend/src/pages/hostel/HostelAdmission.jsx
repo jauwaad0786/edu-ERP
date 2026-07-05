@@ -26,17 +26,15 @@ export default function HostelAdmission() {
   const [classes, setClasses] = useState([]);
   const [creating, setCreating] = useState(false);
 
-  // ── Hierarchy picker ──
-  const [hostels, setHostels]     = useState([]);
-  const [hostelId, setHostelId]   = useState('');
-  const [buildings, setBuildings] = useState([]);
-  const [buildingId, setBuildingId] = useState('');
-  const [floors, setFloors]       = useState([]);
-  const [floorId, setFloorId]     = useState('');
-  const [rooms, setRooms]         = useState([]);
-  const [roomId, setRoomId]       = useState('');
-  const [beds, setBeds]           = useState([]);
-  const [bedId, setBedId]         = useState('');
+  // ── Visual hierarchy picker ──
+  const [hostels, setHostels]         = useState([]);
+  const [hostelId, setHostelId]       = useState('');
+  const [roomMap, setRoomMap]         = useState([]);   // full nested tree from /room-map
+  const [mapLoading, setMapLoading]   = useState(false);
+  const [expandedBuilding, setExpandedBuilding] = useState(null);
+  const [expandedFloor, setExpandedFloor]       = useState(null);
+  const [bedId, setBedId]             = useState('');
+  const [selectedBedInfo, setSelectedBedInfo] = useState(null); // { building, floor, room, bed }
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -67,30 +65,26 @@ export default function HostelAdmission() {
     return () => clearTimeout(t);
   }, [search, tab, hostelId, hostels]);
 
-  // ── Hierarchy cascading loads ──
+  // ── Load full visual room-map for selected hostel ──
   useEffect(() => {
-    setBuildingId(''); setBuildings([]); setFloors([]); setRooms([]); setBeds([]);
+    setRoomMap([]); setExpandedBuilding(null); setExpandedFloor(null);
+    setBedId(''); setSelectedBedInfo(null);
     if (!hostelId) return;
-    api.get(`/hostel/hostels/${hostelId}/buildings`).then(r => setBuildings(r.data || []));
+    setMapLoading(true);
+    api.get(`/hostel/hostels/${hostelId}/room-map`)
+      .then(r => setRoomMap(r.data || []))
+      .catch(() => toast.error('Room map load nahi hua'))
+      .finally(() => setMapLoading(false));
   }, [hostelId]);
 
-  useEffect(() => {
-    setFloorId(''); setFloors([]); setRooms([]); setBeds([]);
-    if (!buildingId) return;
-    api.get(`/hostel/buildings/${buildingId}/floors`).then(r => setFloors(r.data || []));
-  }, [buildingId]);
-
-  useEffect(() => {
-    setRoomId(''); setRooms([]); setBeds([]);
-    if (!floorId) return;
-    api.get(`/hostel/floors/${floorId}/rooms`).then(r => setRooms(r.data || []));
-  }, [floorId]);
-
-  useEffect(() => {
-    setBedId(''); setBeds([]);
-    if (!roomId) return;
-    api.get(`/hostel/rooms/${roomId}/beds`).then(r => setBeds((r.data || []).filter(b => b.status === 'VACANT')));
-  }, [roomId]);
+  function pickBed(building, floor, room, bed) {
+    if (bed.status !== 'VACANT') return;
+    setBedId(bed.id);
+    setSelectedBedInfo({
+      building: building.name, floor: floor.name,
+      room: room.room_number, bed: bed.bed_number,
+    });
+  }
 
   async function handleCreateNewStudent() {
     if (!newForm.name.trim() || !newForm.email.trim()) {
@@ -105,7 +99,7 @@ export default function HostelAdmission() {
         student_id: data.id, name: newForm.name,
         gender: newForm.gender, roll_number: newForm.roll_number,
       });
-      setTab('EXISTING'); // switch view to show selected student + hierarchy picker
+      setTab('EXISTING'); // switch view to show selected student
     } catch (err) {
       toast.error(err.response?.data?.error || 'Student create nahi hua');
     }
@@ -142,14 +136,22 @@ export default function HostelAdmission() {
   const labelStyle = { fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4, display: 'block' };
   const selectStyle = { ...inputStyle };
 
+  const BED_COLORS = {
+    VACANT:      { bg: '#f0fdf4', border: '#bbf7d0', text: '#16a34a' },
+    OCCUPIED:    { bg: '#fef2f2', border: '#fecaca', text: '#dc2626' },
+    RESERVED:    { bg: '#fefce8', border: '#fef08a', text: '#ca8a04' },
+    MAINTENANCE: { bg: '#f1f5f9', border: '#cbd5e1', text: '#64748b' },
+    BLOCKED:     { bg: '#f1f5f9', border: '#cbd5e1', text: '#64748b' },
+  };
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: darkMode ? '#0f172a' : '#f8fafc' }}>
       <Sidebar darkMode={darkMode} />
       <div style={{ marginLeft: 232, flex: 1, display: 'flex', flexDirection: 'column' }}>
         <Navbar title="Hostel Admission" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
 
-        <div style={{ padding: 24, maxWidth: 1000 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+        <div style={{ padding: 24, maxWidth: 1100 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: 20, alignItems: 'start' }}>
 
             {/* ── LEFT: Student selection ── */}
             <div style={cardStyle}>
@@ -193,7 +195,7 @@ export default function HostelAdmission() {
                     <>
                       <input value={search} onChange={e => setSearch(e.target.value)}
                         placeholder="Search by name, roll no, admission no..." style={inputStyle} />
-                      <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+                      <div style={{ maxHeight: 420, overflowY: 'auto' }}>
                         {results.length === 0 ? (
                           <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', padding: 20 }}>
                             {search ? 'Koi eligible student nahi mila' : 'Naam type karke search karo'}
@@ -285,69 +287,166 @@ export default function HostelAdmission() {
               )}
             </div>
 
-            {/* ── RIGHT: Hierarchy picker ── */}
+            {/* ── RIGHT: Visual bed picker ── */}
             <div style={cardStyle}>
               <h4 style={{ margin: '0 0 14px', fontSize: 14, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
                 2. Assign Bed
               </h4>
 
               <label style={labelStyle}>Hostel</label>
-              <select style={selectStyle} value={hostelId} onChange={e => setHostelId(e.target.value)}>
+              <select style={{ ...selectStyle, marginBottom: 16 }} value={hostelId} onChange={e => setHostelId(e.target.value)}>
                 <option value="">Select Hostel</option>
                 {hostels.map(h => (
                   <option key={h.id} value={h.id}>{h.name} ({h.gender})</option>
                 ))}
               </select>
 
-              <label style={labelStyle}>Building</label>
-              <select style={selectStyle} value={buildingId} onChange={e => setBuildingId(e.target.value)} disabled={!hostelId}>
-                <option value="">Select Building</option>
-                {buildings.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </select>
+              {!hostelId && (
+                <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', padding: '40px 0' }}>
+                  Pehle hostel select karo — building/floor/room niche dikhega
+                </div>
+              )}
 
-              <label style={labelStyle}>Floor</label>
-              <select style={selectStyle} value={floorId} onChange={e => setFloorId(e.target.value)} disabled={!buildingId}>
-                <option value="">Select Floor</option>
-                {floors.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-              </select>
+              {mapLoading && (
+                <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', padding: '40px 0' }}>Loading...</div>
+              )}
 
-              <label style={labelStyle}>Room</label>
-              <select style={selectStyle} value={roomId} onChange={e => setRoomId(e.target.value)} disabled={!floorId}>
-                <option value="">Select Room</option>
-                {rooms.map(r => (
-                  <option key={r.id} value={r.id}>
-                    {r.room_number} ({r.room_type}) — {r.available_beds} vacant
-                  </option>
-                ))}
-              </select>
+              {hostelId && !mapLoading && roomMap.length === 0 && (
+                <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', padding: '40px 0' }}>
+                  Is hostel mein koi building/room nahi bani — pehle Hostel Setup se banao
+                </div>
+              )}
 
-              <label style={labelStyle}>Bed</label>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-                {beds.length === 0 && roomId && (
-                  <div style={{ fontSize: 12, color: '#dc2626' }}>Is room mein vacant bed nahi hai</div>
-                )}
-                {beds.map(b => (
-                  <div key={b.id}
-                    onClick={() => setBedId(b.id)}
-                    style={{
-                      width: 44, height: 44, borderRadius: 8, cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 13, fontWeight: 700,
-                      background: bedId === b.id ? '#4f46e5' : (darkMode ? '#273349' : '#f0fdf4'),
-                      color: bedId === b.id ? '#fff' : '#16a34a',
-                      border: `2px solid ${bedId === b.id ? '#4f46e5' : '#bbf7d0'}`,
-                    }}
-                  >
-                    {b.bed_number}
-                  </div>
-                ))}
-              </div>
+              {/* Building cards */}
+              {roomMap.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {roomMap.map(building => {
+                    const totalBeds = building.floors.reduce((acc, f) =>
+                      acc + f.rooms.reduce((a2, r) => a2 + r.beds.length, 0), 0);
+                    const vacantBeds = building.floors.reduce((acc, f) =>
+                      acc + f.rooms.reduce((a2, r) => a2 + r.beds.filter(b => b.status === 'VACANT').length, 0), 0);
+                    const isExpanded = expandedBuilding === building.id;
+
+                    return (
+                      <div key={building.id} style={{
+                        border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 10,
+                        overflow: 'hidden',
+                      }}>
+                        <div onClick={() => setExpandedBuilding(isExpanded ? null : building.id)}
+                          style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            padding: '10px 14px', cursor: 'pointer',
+                            background: isExpanded ? (darkMode ? '#273349' : '#eef2ff') : (darkMode ? '#0f172a' : '#fafbfc'),
+                          }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: 13, color: '#94a3b8' }}>{isExpanded ? '▾' : '▸'}</span>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
+                              🏢 {building.name}
+                            </span>
+                          </div>
+                          <span style={{
+                            fontSize: 11, fontWeight: 700, padding: '2px 10px', borderRadius: 20,
+                            background: vacantBeds > 0 ? '#f0fdf4' : '#fef2f2',
+                            color: vacantBeds > 0 ? '#16a34a' : '#dc2626',
+                          }}>
+                            {vacantBeds}/{totalBeds} vacant
+                          </span>
+                        </div>
+
+                        {isExpanded && (
+                          <div style={{ padding: '10px 14px', borderTop: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+                            {/* Floor tabs */}
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+                              {building.floors.map(floor => {
+                                const floorActive = expandedFloor === floor.id;
+                                return (
+                                  <button key={floor.id}
+                                    onClick={() => setExpandedFloor(floorActive ? null : floor.id)}
+                                    style={{
+                                      padding: '5px 12px', fontSize: 11, fontWeight: 700, borderRadius: 20,
+                                      border: 'none', cursor: 'pointer',
+                                      background: floorActive ? '#4f46e5' : (darkMode ? '#273349' : '#f1f5f9'),
+                                      color: floorActive ? '#fff' : (darkMode ? '#94a3b8' : '#64748b'),
+                                    }}>
+                                    {floor.name}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {/* Rooms + beds for expanded floor */}
+                            {building.floors.filter(f => f.id === expandedFloor).map(floor => (
+                              <div key={floor.id} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                {floor.rooms.length === 0 ? (
+                                  <div style={{ fontSize: 12, color: '#94a3b8' }}>Is floor pe koi room nahi hai</div>
+                                ) : floor.rooms.map(room => (
+                                  <div key={room.id} style={{
+                                    border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 8, padding: 10,
+                                    background: darkMode ? '#0f172a' : '#fff',
+                                  }}>
+                                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, color: darkMode ? '#e2e8f0' : '#1e293b' }}>
+                                      Room {room.room_number} <span style={{ fontWeight: 400, color: '#94a3b8' }}>({room.room_type})</span>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                      {room.beds.map(bed => {
+                                        const c = BED_COLORS[bed.status] || BED_COLORS.MAINTENANCE;
+                                        const isSelected = bedId === bed.id;
+                                        return (
+                                          <div key={bed.id}
+                                            onClick={() => pickBed(building, floor, room, bed)}
+                                            title={bed.status === 'OCCUPIED' ? bed.student_name : bed.status}
+                                            style={{
+                                              width: 46, height: 46, borderRadius: 8,
+                                              cursor: bed.status === 'VACANT' ? 'pointer' : 'not-allowed',
+                                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                              fontSize: 13, fontWeight: 700,
+                                              background: isSelected ? '#4f46e5' : c.bg,
+                                              color: isSelected ? '#fff' : c.text,
+                                              border: `2px solid ${isSelected ? '#4f46e5' : c.border}`,
+                                              opacity: bed.status === 'VACANT' || isSelected ? 1 : 0.7,
+                                            }}>
+                                            {bed.bed_number}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Legend */}
+              {roomMap.length > 0 && (
+                <div style={{ display: 'flex', gap: 14, marginTop: 14, fontSize: 11, color: '#94a3b8', flexWrap: 'wrap' }}>
+                  <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: '#bbf7d0', marginRight: 4 }} />Vacant</span>
+                  <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: '#fecaca', marginRight: 4 }} />Occupied</span>
+                  <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: '#fef08a', marginRight: 4 }} />Reserved</span>
+                  <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: '#cbd5e1', marginRight: 4 }} />Maintenance</span>
+                </div>
+              )}
+
+              {/* Selected bed summary */}
+              {selectedBedInfo && (
+                <div style={{
+                  marginTop: 16, background: '#eef2ff', border: '1px solid #c7d2fe',
+                  borderRadius: 8, padding: 12, fontSize: 12, color: '#4338ca',
+                }}>
+                  Selected: <strong>{selectedBedInfo.building} / {selectedBedInfo.floor} / Room {selectedBedInfo.room} / Bed {selectedBedInfo.bed}</strong>
+                </div>
+              )}
 
               <button
                 onClick={handleAdmit}
                 disabled={submitting || !selectedStudent || !bedId}
                 style={{
-                  width: '100%',
+                  width: '100%', marginTop: 16,
                   background: (!selectedStudent || !bedId) ? '#cbd5e1' : '#4f46e5',
                   color: '#fff', border: 'none', borderRadius: 8,
                   padding: '12px 0', fontSize: 14, fontWeight: 700,
