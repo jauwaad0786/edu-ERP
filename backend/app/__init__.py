@@ -69,7 +69,8 @@ def create_app(config_name='default'):
     app.register_blueprint(knowledge_base_bp, url_prefix='/api/support/kb')
     from app.routes.finance import finance_bp
     app.register_blueprint(finance_bp, url_prefix='/api/finance')
-    
+    from app.routes.library import library_bp
+    app.register_blueprint(library_bp, url_prefix='/api/library')
     app.register_blueprint(tickets_bp,       url_prefix='/api/support/tickets')
     app.register_blueprint(notifications_bp, url_prefix='/api/support/notifications')
     app.register_blueprint(meetings_bp,      url_prefix='/api/support/meetings')
