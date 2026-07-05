@@ -72,6 +72,8 @@ def create_app(config_name='default'):
     
     from app.routes.library import library_bp
     app.register_blueprint(library_bp, url_prefix='/api/library')
+    from app.routes.hostel import hostel_bp
+    app.register_blueprint(hostel_bp, url_prefix='/api/hostel')
 
     from app.routes.whatsapp_settings import whatsapp_settings_bp
     app.register_blueprint(whatsapp_settings_bp, url_prefix='/api/principal/whatsapp')
