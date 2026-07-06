@@ -25,8 +25,8 @@ class FeeStructure(db.Model):
         }
 
 
+# NEW
 class FeeRecord(db.Model):
-    """Individual student fee payment record."""
     __tablename__ = 'fee_records'
 
     id           = db.Column(db.Integer, primary_key=True)
@@ -35,6 +35,11 @@ class FeeRecord(db.Model):
     fee_type     = db.Column(db.String(50))
     amount_due   = db.Column(db.Float, nullable=False)
     amount_paid  = db.Column(db.Float, default=0.0)
+
+    # ── Source tracking — same pattern as Expense.source/source_ref_id ──
+    # 'ACADEMIC' (default, existing behaviour untouched) / 'HOSTEL' / 'TRANSPORT' / 'LIBRARY'
+    source        = db.Column(db.String(20), default='ACADEMIC', index=True)
+    source_ref_id = db.Column(db.Integer)   # e.g. HostelBedAllocation.id
     discount     = db.Column(db.Float, default=0.0)
     fine         = db.Column(db.Float, default=0.0)
     status       = db.Column(db.String(20), default='PENDING')
@@ -65,8 +70,11 @@ class FeeRecord(db.Model):
             'paid_date':    str(self.paid_date) if self.paid_date else None,
             'receipt_no':   self.receipt_no,
             'payment_mode': self.payment_mode,
+            # NEW
             'remarks':      self.remarks or '',
             'collected_by': self.collected_by,
+            'source':         self.source or 'ACADEMIC',
+            'source_ref_id':  self.source_ref_id,
         }
 
 
