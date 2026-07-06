@@ -2,11 +2,16 @@ from flask import Blueprint, request, jsonify
 from app import db
 from app.models.user import User, UserRole
 from app.models.academic import Student, Class
+# NEW
 from app.models.hostel import (
     Hostel, HostelBuilding, HostelFloor, HostelWing, HostelRoom, HostelBed,
     HostelBedAllocation, HostelActivityLog, HostelSettings, log_hostel_activity,
+    HostelFeeStructure,
     HOSTEL_TYPES, HOSTEL_GENDERS, ROOM_TYPES, BED_STATUSES, TRANSFER_TYPES,
 )
+from app.models.financial import FeeRecord
+from app.services.hostel_fee_service import resolve_fee_structure, generate_hostel_fee_record
+from sqlalchemy import func
 from app.utils.decorators import role_required, get_current_user
 from datetime import date, datetime
 
@@ -624,14 +629,22 @@ def create_admission():
     bed.current_student_id = student_id
     bed.allocation_date = today
 
+    # NEW
     log_hostel_activity(sid, get_current_user().id, 'STUDENT_ALLOCATED',
                          f'{student.user.name if student.user else student_id} → {hostel.name}/{room.room_number}/{bed.bed_number}')
+
+    db.session.flush()   # allocation.id chahiye fee record link karne ke liye
+    fee_record, fee_reason = generate_hostel_fee_record(allocation, get_current_user().id)
+
     db.session.commit()
 
     return jsonify({
-        'message':    'Hostel admission successful',
-        'allocation': allocation.to_dict(),
-        'bed':        bed.to_dict(),
+        'message':     'Hostel admission successful',
+        'allocation':  allocation.to_dict(),
+        'bed':         bed.to_dict(),
+        'fee_record':  fee_record.to_dict() if fee_record else None,
+        'fee_warning': 'Koi fee structure define nahi hai is room type ke liye — fee manually generate karo'
+                       if fee_reason == 'no_fee_structure' else None,
     }), 201
 
 
@@ -711,18 +724,42 @@ def transfer_student(allocation_id):
     )
     db.session.add(new_alloc)
 
+    # NEW
     new_bed.status = 'OCCUPIED'
     new_bed.current_student_id = old.student_id
     new_bed.allocation_date = date.today()
 
     log_hostel_activity(sid, get_current_user().id, 'TRANSFERRED',
                          f'Student #{old.student_id}: {old_bed.bed_number} → {new_bed.bed_number}')
+
+    db.session.flush()   # new_alloc.id chahiye
+
+    # ── Fee auto-adjust agar room category (AC/Non-AC ya sharing type) badla ──
+    old_fs = resolve_fee_structure(old_bed)
+    new_fs = resolve_fee_structure(new_bed)
+    fee_adjusted = False
+    if new_fs and (not old_fs or new_fs.id != old_fs.id):
+        current_month = date.today().strftime('%Y-%m')
+        pending_rec = FeeRecord.query.filter_by(
+            student_id=old.student_id, month=current_month,
+            fee_type='HOSTEL', source='HOSTEL', status='PENDING',
+        ).first()
+        if pending_rec:
+            pending_rec.amount_due = new_fs.total_monthly()
+            pending_rec.remarks = (pending_rec.remarks or '') + \
+                f' [Transfer ke baad adjusted → {new_fs.sharing_type} / {"AC" if new_fs.is_ac else "Non-AC"}]'
+            pending_rec.source_ref_id = new_alloc.id
+        else:
+            generate_hostel_fee_record(new_alloc, get_current_user().id, month=current_month)
+        fee_adjusted = True
+
     db.session.commit()
 
     return jsonify({
-        'message': 'Transfer successful',
+        'message':      'Transfer successful',
         'old_allocation': old.to_dict(),
         'new_allocation': new_alloc.to_dict(),
+        'fee_adjusted':   fee_adjusted,
     }), 201
 
 
@@ -787,6 +824,12 @@ def hostel_dashboard():
         for h in hostels
     ]
 
+    # NEW
+    hostel_fee_due  = db.session.query(func.sum(FeeRecord.amount_due)).filter_by(
+        school_id=sid, fee_type='HOSTEL', source='HOSTEL').scalar() or 0
+    hostel_fee_paid = db.session.query(func.sum(FeeRecord.amount_paid)).filter_by(
+        school_id=sid, fee_type='HOSTEL', source='HOSTEL').scalar() or 0
+
     return jsonify({
         'total_hostels':    total_hostels,
         'total_buildings':  total_buildings,
@@ -802,6 +845,14 @@ def hostel_dashboard():
         'todays_vacate':    todays_vacate,
         'occupancy_pct':    round(occupied / total_beds * 100, 1) if total_beds else 0,
         'hostel_breakdown': hostel_breakdown,
+        'hostel_fee_collected': hostel_fee_paid,
+        'hostel_fee_pending':   hostel_fee_due - hostel_fee_paid,
+        'students_fee_paid':    FeeRecord.query.filter_by(
+            school_id=sid, fee_type='HOSTEL', source='HOSTEL', status='PAID').count(),
+        'students_fee_pending': FeeRecord.query.filter(
+            FeeRecord.school_id == sid, FeeRecord.fee_type == 'HOSTEL',
+            FeeRecord.source == 'HOSTEL', FeeRecord.status.in_(['PENDING', 'PARTIAL']),
+        ).count(),
     }), 200
 
 
@@ -848,4 +899,136 @@ def warden_dashboard():
     }), 200
 
 
+# NEW — append at end of app/routes/hostel.py
 
+# ═══════════════════════════════════════════════════════════════════════════
+#  HOSTEL FEE STRUCTURE
+# ═══════════════════════════════════════════════════════════════════════════
+
+@hostel_bp.route('/fee-structures', methods=['GET'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def list_fee_structures():
+    sid = _school_id()
+    hostel_id = request.args.get('hostel_id')
+    q = HostelFeeStructure.query.filter_by(school_id=sid)
+    if hostel_id:
+        q = q.filter_by(hostel_id=hostel_id)
+    return jsonify([f.to_dict() for f in q.order_by(HostelFeeStructure.created_at.desc()).all()]), 200
+
+
+@hostel_bp.route('/fee-structures', methods=['POST'])
+@role_required('PRINCIPAL')
+def create_fee_structure():
+    """
+    Body: { hostel_id, building_id, floor_id, is_ac, sharing_type,
+            monthly_fee, quarterly_fee, yearly_fee, security_deposit,
+            electricity_charges, laundry_charges, mess_charges,
+            maintenance_charges, late_fine, discount }
+    """
+    sid  = _school_id()
+    data = request.get_json() or {}
+
+    hostel_id = data.get('hostel_id')
+    sharing_type = data.get('sharing_type')
+    if not hostel_id or not sharing_type:
+        return jsonify({'error': 'hostel_id aur sharing_type zaroori hai'}), 400
+
+    h = Hostel.query.get_or_404(hostel_id)
+    if h.school_id != sid:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    building_id = data.get('building_id') or None
+    floor_id    = data.get('floor_id') or None
+    is_ac       = bool(data.get('is_ac', False))
+
+    existing = HostelFeeStructure.query.filter_by(
+        hostel_id=hostel_id, building_id=building_id, floor_id=floor_id,
+        is_ac=is_ac, sharing_type=sharing_type,
+    ).first()
+    if existing:
+        return jsonify({'error': 'Is exact combination ke liye fee structure already bani hui hai — usko edit karo'}), 409
+
+    fs = HostelFeeStructure(
+        school_id=sid, hostel_id=hostel_id, building_id=building_id, floor_id=floor_id,
+        is_ac=is_ac, sharing_type=sharing_type,
+        monthly_fee=float(data.get('monthly_fee', 0)),
+        quarterly_fee=float(data.get('quarterly_fee', 0)),
+        yearly_fee=float(data.get('yearly_fee', 0)),
+        security_deposit=float(data.get('security_deposit', 0)),
+        electricity_charges=float(data.get('electricity_charges', 0)),
+        laundry_charges=float(data.get('laundry_charges', 0)),
+        mess_charges=float(data.get('mess_charges', 0)),
+        maintenance_charges=float(data.get('maintenance_charges', 0)),
+        late_fine=float(data.get('late_fine', 0)),
+        discount=float(data.get('discount', 0)),
+        created_by=get_current_user().id,
+    )
+    db.session.add(fs)
+    log_hostel_activity(sid, get_current_user().id, 'FEE_STRUCTURE_CREATED',
+                         f'{h.name} — {sharing_type} / {"AC" if is_ac else "Non-AC"} → ₹{fs.total_monthly()}/mo')
+    db.session.commit()
+    return jsonify(fs.to_dict()), 201
+
+
+@hostel_bp.route('/fee-structures/<int:fs_id>', methods=['PATCH'])
+@role_required('PRINCIPAL')
+def update_fee_structure(fs_id):
+    fs = HostelFeeStructure.query.get_or_404(fs_id)
+    if fs.school_id != _school_id():
+        return jsonify({'error': 'Unauthorized'}), 403
+    data = request.get_json() or {}
+    numeric_fields = ['monthly_fee', 'quarterly_fee', 'yearly_fee', 'security_deposit',
+                       'electricity_charges', 'laundry_charges', 'mess_charges',
+                       'maintenance_charges', 'late_fine', 'discount']
+    for f in numeric_fields:
+        if f in data:
+            setattr(fs, f, float(data[f]))
+    if 'status' in data:
+        fs.status = data['status']
+    db.session.commit()
+    return jsonify(fs.to_dict()), 200
+
+
+@hostel_bp.route('/fee-structures/<int:fs_id>', methods=['DELETE'])
+@role_required('PRINCIPAL')
+def delete_fee_structure(fs_id):
+    fs = HostelFeeStructure.query.get_or_404(fs_id)
+    if fs.school_id != _school_id():
+        return jsonify({'error': 'Unauthorized'}), 403
+    db.session.delete(fs)
+    db.session.commit()
+    return jsonify({'message': 'Fee structure deleted'}), 200
+
+
+@hostel_bp.route('/fees/generate-monthly', methods=['POST'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def generate_monthly_hostel_fees():
+    """
+    Bulk-generate this/next month's hostel fee for every ACTIVE allocation —
+    same intent as principal.generate_fees() but hostel-scoped and structure-driven
+    (no amount input needed — resolve_fee_structure decides it per student).
+    Body: { month: "2026-08" }  (optional — defaults to current month)
+    """
+    sid   = _school_id()
+    data  = request.get_json() or {}
+    month = data.get('month') or date.today().strftime('%Y-%m')
+
+    allocations = HostelBedAllocation.query.filter_by(school_id=sid, status='ACTIVE').all()
+    created, skipped, no_structure = 0, 0, 0
+
+    for alloc in allocations:
+        rec, reason = generate_hostel_fee_record(alloc, get_current_user().id, month=month)
+        if reason == 'created':
+            created += 1
+        elif reason == 'already_exists':
+            skipped += 1
+        else:
+            no_structure += 1
+
+    db.session.commit()
+    return jsonify({
+        'message':      f'{created} hostel fee records generated for {month}',
+        'created':      created,
+        'skipped':      skipped,
+        'no_structure': no_structure,
+    }), 201
