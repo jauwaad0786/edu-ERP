@@ -136,6 +136,7 @@ const ROLE_MENUS = {
       ],
     },
     // ── NEW: Hostel ──
+    // NEW
     {
       group: 'Hostel',
       items: [
@@ -145,6 +146,7 @@ const ROLE_MENUS = {
             { icon: 'ti-layout-dashboard', label: 'Dashboard',       path: '/hostel' },
             { icon: 'ti-settings',         label: 'Hostel Setup',    path: '/hostel/setup' },
             { icon: 'ti-layout-grid',      label: 'Room Map',        path: '/hostel/room-map' },
+            { icon: 'ti-currency-rupee',   label: 'Fee Structures',  path: '/hostel/fee-structures' },
             { icon: 'ti-user-plus',        label: 'Admission',       path: '/hostel/admission' },
             { icon: 'ti-arrows-exchange',  label: 'Transfer / Vacate', path: '/hostel/transfers' },
             { icon: 'ti-report',           label: 'Reports',         path: '/hostel/reports' },
@@ -241,6 +243,7 @@ const ROLE_MENUS = {
     },
   ],
 
+  // NEW
   HOSTEL: [
     {
       group: 'Overview',
@@ -250,6 +253,7 @@ const ROLE_MENUS = {
       group: 'Hostel',
       items: [
         { icon: 'ti-layout-grid',      label: 'Room Map',         path: '/hostel/room-map' },
+        { icon: 'ti-currency-rupee',   label: 'Fee Structures',   path: '/hostel/fee-structures' },
         { icon: 'ti-user-plus',        label: 'Admission',        path: '/hostel/admission' },
         { icon: 'ti-arrows-exchange',  label: 'Transfer / Vacate',path: '/hostel/transfers' },
         { icon: 'ti-report',           label: 'Reports',          path: '/hostel/reports' },
