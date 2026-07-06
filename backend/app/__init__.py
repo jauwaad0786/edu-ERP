@@ -115,6 +115,7 @@ def create_app(config_name='default'):
         _ensure_school_columns()
         _ensure_user_columns()   # ← must be BEFORE db.create_all()
         _ensure_communication_columns()
+        _ensure_fee_record_columns()
         db.create_all()
         _seed_super_admin()
 
@@ -127,6 +128,35 @@ def _ensure_communication_columns():
     # Tables db.create_all() se ban jayenge automatically
     # Yeh function future column additions ke liye placeholder hai
     pass
+
+# NEW — add after _ensure_communication_columns()
+
+def _ensure_fee_record_columns():
+    """
+    fee_records table mein 'source' aur 'source_ref_id' columns add karo —
+    Hostel/Library/Transport modules ab FeeRecord ko share karte hain
+    (Expense model ke source/source_ref_id pattern jaisa).
+    Existing rows automatically source='ACADEMIC' fallback lete hain.
+    """
+    from sqlalchemy import text, inspect
+    inspector = inspect(db.engine)
+    if 'fee_records' not in inspector.get_table_names():
+        return  # brand-new DB — create_all() handles it fully
+
+    existing = {c['name'] for c in inspector.get_columns('fee_records')}
+    to_add = {
+        'source':        "VARCHAR(20) DEFAULT 'ACADEMIC'",
+        'source_ref_id': 'INTEGER',
+    }
+    with db.engine.connect() as conn:
+        for col, defn in to_add.items():
+            if col not in existing:
+                try:
+                    conn.execute(text(f'ALTER TABLE fee_records ADD COLUMN {col} {defn}'))
+                    conn.commit()
+                    print(f'✅ Added column fee_records.{col}')
+                except Exception as e:
+                    print(f'⚠️  fee_records.{col}: {e}')
 # ── School columns ────────────────────────────────────────────────────────────
 
 def _ensure_school_columns():
