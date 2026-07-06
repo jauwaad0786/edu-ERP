@@ -27,7 +27,11 @@ export default function HostelSetup() {
   const [buildingModal, setBuildingModal] = useState(null); // { hostelId, data }
   const [floorModal, setFloorModal] = useState(null);       // { buildingId, data }
   const [wingModal, setWingModal] = useState(null);         // { floorId, data }
+  // NEW
   const [roomModal, setRoomModal] = useState(null);         // { floorId, data }
+  const [bulkFloorModal, setBulkFloorModal] = useState(null); // { buildingId }
+  const [bulkRoomModal, setBulkRoomModal]   = useState(null); // { floorId }
+  const [editRoomModal, setEditRoomModal]   = useState(null); // room object + floorId      // { floorId, data }
 
   const loadHostels = useCallback(() => {
     setLoading(true);
@@ -175,6 +179,7 @@ export default function HostelSetup() {
     }
   }
 
+  // NEW
   async function deleteRoom(floorId, id) {
     if (!window.confirm('Ye room delete karna hai? (Sabhi beds bhi delete ho jayengi)')) return;
     try {
@@ -183,6 +188,42 @@ export default function HostelSetup() {
       api.get(`/hostel/floors/${floorId}/rooms`).then(r => setRooms(prev => ({ ...prev, [floorId]: r.data || [] })));
     } catch (err) {
       toast.error(err.response?.data?.error || 'Delete fail hua');
+    }
+  }
+
+  // ── Bulk Floors ──
+  async function saveBulkFloors(buildingId, floorsList) {
+    try {
+      const { data } = await api.post(`/hostel/buildings/${buildingId}/floors/bulk`, { floors: floorsList });
+      toast.success(`${data.length} floors ban gayi`);
+      setBulkFloorModal(null);
+      api.get(`/hostel/buildings/${buildingId}/floors`).then(r => setFloors(prev => ({ ...prev, [buildingId]: r.data || [] })));
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Save fail hua');
+    }
+  }
+
+  // ── Bulk Rooms ──
+  async function saveBulkRooms(floorId, form) {
+    try {
+      const { data } = await api.post(`/hostel/floors/${floorId}/rooms/bulk`, form);
+      toast.success(`${data.created_count} rooms + beds ban gaye${data.skipped_room_numbers.length ? ` (skipped: ${data.skipped_room_numbers.join(', ')})` : ''}`);
+      setBulkRoomModal(null);
+      api.get(`/hostel/floors/${floorId}/rooms`).then(r => setRooms(prev => ({ ...prev, [floorId]: r.data || [] })));
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Save fail hua');
+    }
+  }
+
+  // ── Edit single room ──
+  async function saveRoomEdit(floorId, roomId, form) {
+    try {
+      await api.patch(`/hostel/rooms/${roomId}`, form);
+      toast.success('Room updated');
+      setEditRoomModal(null);
+      api.get(`/hostel/floors/${floorId}/rooms`).then(r => setRooms(prev => ({ ...prev, [floorId]: r.data || [] })));
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Update fail hua');
     }
   }
 
@@ -263,9 +304,12 @@ export default function HostelSetup() {
                       </div>
 
                       {/* Floors */}
+                      // NEW
+                      {/* Floors */}
                       {expandedBuilding === b.id && (
                         <div style={{ marginTop: 8, paddingLeft: 20, borderLeft: `2px solid ${darkMode ? '#334155' : '#f1f5f9'}` }}>
-                          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginBottom: 8 }}>
+                            <button onClick={() => setBulkFloorModal({ buildingId: b.id })} style={{ ...rowBtn, background: '#f0fdf4', color: '#16a34a' }}>⚡ Bulk Add Floors</button>
                             <button onClick={() => setFloorModal({ buildingId: b.id, data: {} })} style={rowBtn}>+ Floor</button>
                           </div>
                           {(floors[b.id] || []).map(f => (
@@ -282,10 +326,12 @@ export default function HostelSetup() {
 
                               {/* Wings + Rooms */}
                               {expandedFloor === f.id && (
+                                // NEW
                                 <div style={{ marginTop: 8, paddingLeft: 20 }}>
-                                  <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                                  <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
                                     <button onClick={() => setWingModal({ floorId: f.id, data: {} })} style={rowBtn}>+ Wing</button>
                                     <button onClick={() => setRoomModal({ floorId: f.id, data: {} })} style={rowBtn}>+ Room</button>
+                                    <button onClick={() => setBulkRoomModal({ floorId: f.id })} style={{ ...rowBtn, background: '#f0fdf4', color: '#16a34a' }}>⚡ Bulk Add Rooms</button>
                                   </div>
 
                                   {(wings[f.id] || []).length > 0 && (
@@ -309,6 +355,7 @@ export default function HostelSetup() {
                                         border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 8, padding: 10,
                                         background: darkMode ? '#0f172a' : '#fafbfc',
                                       }}>
+                                        // NEW
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
                                           <div>
                                             <div style={{ fontSize: 12, fontWeight: 700, color: darkMode ? '#e2e8f0' : '#1e293b' }}>
@@ -323,7 +370,10 @@ export default function HostelSetup() {
                                               {r.has_wifi && <Tag>WiFi</Tag>}
                                             </div>
                                           </div>
-                                          <span onClick={() => deleteRoom(f.id, r.id)} style={{ cursor: 'pointer', color: '#dc2626', fontSize: 12 }}>✕</span>
+                                          <div style={{ display: 'flex', gap: 8 }}>
+                                            <span onClick={() => setEditRoomModal({ ...r, floorId: f.id })} style={{ cursor: 'pointer', color: '#4f46e5', fontSize: 12 }}>✎</span>
+                                            <span onClick={() => deleteRoom(f.id, r.id)} style={{ cursor: 'pointer', color: '#dc2626', fontSize: 12 }}>✕</span>
+                                          </div>
                                         </div>
                                       </div>
                                     ))}
@@ -386,10 +436,36 @@ export default function HostelSetup() {
         </FormModal>
       )}
 
+      // NEW
       {/* ── Room Modal ── */}
       {roomModal && (
         <FormModal title="New Room" onClose={() => setRoomModal(null)}>
           <RoomForm onSave={(form) => saveRoom(roomModal.floorId, form)} inputStyle={inputStyle} labelStyle={labelStyle} />
+        </FormModal>
+      )}
+
+      {/* ── Bulk Floors Modal ── */}
+      {bulkFloorModal && (
+        <FormModal title="Bulk Add Floors" onClose={() => setBulkFloorModal(null)}>
+          <BulkFloorForm onSave={(floorsList) => saveBulkFloors(bulkFloorModal.buildingId, floorsList)}
+            inputStyle={inputStyle} labelStyle={labelStyle} />
+        </FormModal>
+      )}
+
+      {/* ── Bulk Rooms Modal ── */}
+      {bulkRoomModal && (
+        <FormModal title="Bulk Add Rooms" onClose={() => setBulkRoomModal(null)}>
+          <BulkRoomForm onSave={(form) => saveBulkRooms(bulkRoomModal.floorId, form)}
+            inputStyle={inputStyle} labelStyle={labelStyle} />
+        </FormModal>
+      )}
+
+      {/* ── Edit Room Modal ── */}
+      {editRoomModal && (
+        <FormModal title={`Edit Room ${editRoomModal.room_number}`} onClose={() => setEditRoomModal(null)}>
+          <EditRoomForm room={editRoomModal}
+            onSave={(form) => saveRoomEdit(editRoomModal.floorId, editRoomModal.id, form)}
+            inputStyle={inputStyle} labelStyle={labelStyle} />
         </FormModal>
       )}
     </div>
@@ -520,6 +596,155 @@ function RoomForm({ onSave, inputStyle, labelStyle }) {
         width: '100%', background: '#16a34a', color: '#fff', border: 'none',
         borderRadius: 8, padding: '10px 0', fontSize: 13, fontWeight: 700, cursor: 'pointer',
       }}>Create Room + Beds</button>
+    </div>
+  );
+}
+
+// NEW — append after existing RoomForm function, at end of file
+
+function BulkFloorForm({ onSave, inputStyle, labelStyle }) {
+  const [rows, setRows] = useState([{ name: '', floor_number: 0 }]);
+
+  function update(idx, field, val) {
+    setRows(r => r.map((row, i) => i === idx ? { ...row, [field]: val } : row));
+  }
+  function addRow() {
+    setRows(r => [...r, { name: '', floor_number: r.length }]);
+  }
+  function removeRow(idx) {
+    setRows(r => r.filter((_, i) => i !== idx));
+  }
+
+  return (
+    <div>
+      {rows.map((row, idx) => (
+        <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+          <input placeholder="Floor name (e.g. Ground Floor)" style={{ ...inputStyle, flex: 2, marginBottom: 0 }}
+            value={row.name} onChange={e => update(idx, 'name', e.target.value)} />
+          <input type="number" placeholder="#" style={{ ...inputStyle, width: 60, marginBottom: 0 }}
+            value={row.floor_number} onChange={e => update(idx, 'floor_number', Number(e.target.value))} />
+          {rows.length > 1 && (
+            <button onClick={() => removeRow(idx)} style={{
+              background: '#fef2f2', color: '#dc2626', border: 'none', borderRadius: 6,
+              padding: '0 10px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            }}>✕</button>
+          )}
+        </div>
+      ))}
+      <button onClick={addRow} style={{
+        background: '#eef2ff', color: '#4f46e5', border: 'none', borderRadius: 6,
+        padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', marginBottom: 14,
+      }}>+ Add another floor</button>
+      <button onClick={() => onSave(rows.filter(r => r.name.trim()))} style={{
+        width: '100%', background: '#4f46e5', color: '#fff', border: 'none',
+        borderRadius: 8, padding: '10px 0', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+      }}>Create Floors</button>
+    </div>
+  );
+}
+
+function BulkRoomForm({ onSave, inputStyle, labelStyle }) {
+  const [form, setForm] = useState({
+    count: 5, start_number: 101, room_type: 'DOUBLE', is_ac: false,
+    has_attached_bath: false, has_wifi: false, bed_count: 2,
+  });
+
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div>
+          <label style={labelStyle}>Kitne rooms?</label>
+          <input type="number" min="1" style={inputStyle} value={form.count}
+            onChange={e => setForm({ ...form, count: Number(e.target.value) })} />
+        </div>
+        <div>
+          <label style={labelStyle}>Room number kahan se start?</label>
+          <input type="number" style={inputStyle} value={form.start_number}
+            onChange={e => setForm({ ...form, start_number: Number(e.target.value) })} />
+        </div>
+      </div>
+      <div style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 12px' }}>
+        Preview: Room {form.start_number} se Room {form.start_number + Math.max(form.count - 1, 0)} tak
+      </div>
+
+      <label style={labelStyle}>Sharing Type</label>
+      <select style={inputStyle} value={form.room_type} onChange={e => setForm({ ...form, room_type: e.target.value })}>
+        {ROOM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+      </select>
+
+      {form.room_type === 'CUSTOM' && (
+        <>
+          <label style={labelStyle}>Number of Beds per room</label>
+          <input type="number" style={inputStyle} value={form.bed_count}
+            onChange={e => setForm({ ...form, bed_count: Number(e.target.value) })} />
+        </>
+      )}
+
+      <label style={labelStyle}>AC / Non-AC</label>
+      <select style={inputStyle} value={form.is_ac ? 'AC' : 'NON_AC'}
+        onChange={e => setForm({ ...form, is_ac: e.target.value === 'AC' })}>
+        <option value="NON_AC">Non-AC</option>
+        <option value="AC">AC</option>
+      </select>
+
+      <div style={{ display: 'flex', gap: 16, margin: '12px 0 16px', fontSize: 12 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <input type="checkbox" checked={form.has_attached_bath}
+            onChange={e => setForm({ ...form, has_attached_bath: e.target.checked })} /> Attached Bath
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <input type="checkbox" checked={form.has_wifi}
+            onChange={e => setForm({ ...form, has_wifi: e.target.checked })} /> WiFi
+        </label>
+      </div>
+
+      <button onClick={() => onSave(form)} style={{
+        width: '100%', background: '#16a34a', color: '#fff', border: 'none',
+        borderRadius: 8, padding: '10px 0', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+      }}>Create Rooms + Beds</button>
+    </div>
+  );
+}
+
+function EditRoomForm({ room, onSave, inputStyle, labelStyle }) {
+  const [form, setForm] = useState({
+    room_number: room.room_number, room_type: room.room_type, is_ac: room.is_ac,
+    has_attached_bath: room.has_attached_bath, has_wifi: room.has_wifi,
+  });
+
+  return (
+    <div>
+      <label style={labelStyle}>Room Number</label>
+      <input style={inputStyle} value={form.room_number}
+        onChange={e => setForm({ ...form, room_number: e.target.value })} />
+
+      <label style={labelStyle}>Sharing Type</label>
+      <select style={inputStyle} value={form.room_type} onChange={e => setForm({ ...form, room_type: e.target.value })}>
+        {ROOM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+      </select>
+
+      <label style={labelStyle}>AC / Non-AC</label>
+      <select style={inputStyle} value={form.is_ac ? 'AC' : 'NON_AC'}
+        onChange={e => setForm({ ...form, is_ac: e.target.value === 'AC' })}>
+        <option value="NON_AC">Non-AC</option>
+        <option value="AC">AC</option>
+      </select>
+
+      <div style={{ display: 'flex', gap: 16, margin: '12px 0 16px', fontSize: 12 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <input type="checkbox" checked={form.has_attached_bath}
+            onChange={e => setForm({ ...form, has_attached_bath: e.target.checked })} /> Attached Bath
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <input type="checkbox" checked={form.has_wifi}
+            onChange={e => setForm({ ...form, has_wifi: e.target.checked })} /> WiFi
+        </label>
+      </div>
+
+      <button onClick={() => onSave(form)} style={{
+        width: '100%', background: '#4f46e5', color: '#fff', border: 'none',
+        borderRadius: 8, padding: '10px 0', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+      }}>Save Changes</button>
     </div>
   );
 }
