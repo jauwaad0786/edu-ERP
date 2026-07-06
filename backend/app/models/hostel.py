@@ -387,3 +387,78 @@ class HostelSettings(db.Model):
             'default_mess_charge':      self.default_mess_charge,
             'default_electricity_charge': self.default_electricity_charge,
         }
+
+
+# NEW — add at the end of app/models/hostel.py
+
+FEE_ROOM_TYPES = ['AC', 'NON_AC']  # maps to HostelRoom.is_ac True/False
+
+
+class HostelFeeStructure(db.Model):
+    """
+    Pricing rule per Hostel → Building(optional) → Floor(optional) → AC/Non-AC → Sharing type.
+    Most specific match wins at resolution time (floor > building > hostel-wide).
+    This table NEVER stores actual student fee amounts — it's config only.
+    Actual billing happens in FeeRecord (source='HOSTEL') via hostel_fee_service.
+    """
+    __tablename__ = 'hostel_fee_structures'
+
+    id          = db.Column(db.Integer, primary_key=True)
+    school_id   = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    hostel_id   = db.Column(db.Integer, db.ForeignKey('hostels.id'), nullable=False, index=True)
+    building_id = db.Column(db.Integer, db.ForeignKey('hostel_buildings.id'), nullable=True)
+    floor_id    = db.Column(db.Integer, db.ForeignKey('hostel_floors.id'), nullable=True)
+
+    is_ac         = db.Column(db.Boolean, nullable=False, default=False)   # matches HostelRoom.is_ac
+    sharing_type  = db.Column(db.String(20), nullable=False)                # matches HostelRoom.room_type
+
+    monthly_fee         = db.Column(db.Float, nullable=False, default=0)
+    quarterly_fee       = db.Column(db.Float, default=0)
+    yearly_fee          = db.Column(db.Float, default=0)
+    security_deposit    = db.Column(db.Float, default=0)
+    electricity_charges = db.Column(db.Float, default=0)
+    laundry_charges     = db.Column(db.Float, default=0)
+    mess_charges        = db.Column(db.Float, default=0)
+    maintenance_charges = db.Column(db.Float, default=0)
+    late_fine           = db.Column(db.Float, default=0)
+    discount            = db.Column(db.Float, default=0)
+
+    status      = db.Column(db.String(20), default='ACTIVE')
+    created_by  = db.Column(db.Integer, db.ForeignKey('users.id'))
+    created_at  = db.Column(db.DateTime, default=datetime.utcnow)
+
+    hostel   = db.relationship('Hostel', foreign_keys=[hostel_id])
+    building = db.relationship('HostelBuilding', foreign_keys=[building_id])
+    floor    = db.relationship('HostelFloor', foreign_keys=[floor_id])
+
+    def total_monthly(self):
+        return round(
+            (self.monthly_fee or 0) + (self.electricity_charges or 0) +
+            (self.laundry_charges or 0) + (self.mess_charges or 0) +
+            (self.maintenance_charges or 0) - (self.discount or 0), 2
+        )
+
+    def to_dict(self):
+        return {
+            'id':                  self.id,
+            'hostel_id':           self.hostel_id,
+            'hostel_name':         self.hostel.name if self.hostel else '',
+            'building_id':         self.building_id,
+            'building_name':       self.building.name if self.building else 'All Buildings',
+            'floor_id':            self.floor_id,
+            'floor_name':          self.floor.name if self.floor else 'All Floors',
+            'is_ac':               self.is_ac,
+            'sharing_type':        self.sharing_type,
+            'monthly_fee':         self.monthly_fee,
+            'quarterly_fee':       self.quarterly_fee or 0,
+            'yearly_fee':          self.yearly_fee or 0,
+            'security_deposit':    self.security_deposit or 0,
+            'electricity_charges': self.electricity_charges or 0,
+            'laundry_charges':     self.laundry_charges or 0,
+            'mess_charges':        self.mess_charges or 0,
+            'maintenance_charges': self.maintenance_charges or 0,
+            'late_fine':           self.late_fine or 0,
+            'discount':            self.discount or 0,
+            'total_monthly':       self.total_monthly(),
+            'status':              self.status,
+        }
