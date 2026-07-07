@@ -876,8 +876,17 @@ def student_hostel_status(student_id):
     history = HostelBedAllocation.query.filter_by(student_id=student_id)\
                 .order_by(HostelBedAllocation.created_at.desc()).all()
 
+    current_dict = None
+    if active:
+        current_dict = active.to_dict()
+        fee_rec = FeeRecord.query.filter_by(
+            student_id=student_id, fee_type='HOSTEL', source='HOSTEL'
+        ).order_by(FeeRecord.created_at.desc()).first()
+        current_dict['fee_amount_due'] = fee_rec.amount_due if fee_rec else None
+        current_dict['fee_status']     = fee_rec.status if fee_rec else None
+
     return jsonify({
-        'current': active.to_dict() if active else None,
+        'current': current_dict,
         'history': [a.to_dict() for a in history],
     }), 200
 
