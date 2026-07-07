@@ -303,8 +303,7 @@ export default function HostelSetup() {
                         <button onClick={() => deleteBuilding(h.id, b.id)} style={delBtn}>Delete</button>
                       </div>
 
-                      {/* Floors */}
-                      // NEW
+                      
                       {/* Floors */}
                       {expandedBuilding === b.id && (
                         <div style={{ marginTop: 8, paddingLeft: 20, borderLeft: `2px solid ${darkMode ? '#334155' : '#f1f5f9'}` }}>
@@ -326,7 +325,6 @@ export default function HostelSetup() {
 
                               {/* Wings + Rooms */}
                               {expandedFloor === f.id && (
-                                // NEW
                                 <div style={{ marginTop: 8, paddingLeft: 20 }}>
                                   <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
                                     <button onClick={() => setWingModal({ floorId: f.id, data: {} })} style={rowBtn}>+ Wing</button>
