@@ -171,12 +171,18 @@ export default function HostelRoomMap() {
                             borderRadius: 10, padding: 10,
                             background: darkMode ? '#0f172a' : '#fafbfc',
                           }}>
-                            <div style={{
-                              fontSize: 12, fontWeight: 700, marginBottom: 8,
-                              color: darkMode ? '#e2e8f0' : '#1e293b',
-                              display: 'flex', justifyContent: 'space-between',
-                            }}>
-                              <span>Room {room.room_number}</span>
+                            <div
+                              onClick={() => navigate(`/hostel/rooms/${room.id}`)}
+                              style={{
+                                fontSize: 12, fontWeight: 700, marginBottom: 8,
+                                color: darkMode ? '#e2e8f0' : '#1e293b',
+                                display: 'flex', justifyContent: 'space-between',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <span style={{ textDecoration: 'underline', textDecorationStyle: 'dotted' }}>
+                                Room {room.room_number}
+                              </span>
                               <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 500 }}>{room.room_type}</span>
                             </div>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
