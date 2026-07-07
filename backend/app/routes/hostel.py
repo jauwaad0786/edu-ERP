@@ -197,6 +197,98 @@ def create_floor(building_id):
     db.session.commit()
     return jsonify(f.to_dict()), 201
 
+# NEW — paste right after create_room() function
+
+@hostel_bp.route('/floors/<int:floor_id>/rooms/bulk', methods=['POST'])
+@role_required('PRINCIPAL')
+def create_rooms_bulk(floor_id):
+    """
+    Body: { count, start_number, room_type, is_ac, has_attached_bath,
+            has_wifi, bed_count(only for CUSTOM) }
+    Creates `count` rooms numbered start_number..start_number+count-1,
+    auto-generating beds for each — same rule as single create_room.
+    """
+    f   = HostelFloor.query.get_or_404(floor_id)
+    sid = _school_id()
+    if f.school_id != sid:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    data  = request.get_json() or {}
+    count = int(data.get('count', 0))
+    start_number = data.get('start_number')
+    if count <= 0 or start_number is None:
+        return jsonify({'error': 'count aur start_number zaroori hai'}), 400
+
+    room_type = data.get('room_type', 'DOUBLE')
+    bed_count = ROOM_TYPE_BED_COUNT.get(room_type) or int(data.get('bed_count', 2))
+
+    created_count = 0
+    skipped_room_numbers = []
+
+    for i in range(count):
+        room_number = str(int(start_number) + i)
+        if HostelRoom.query.filter_by(floor_id=floor_id, room_number=room_number).first():
+            skipped_room_numbers.append(room_number)
+            continue
+
+        room = HostelRoom(
+            floor_id=floor_id, school_id=sid,
+            room_number=room_number, room_type=room_type,
+            is_ac=bool(data.get('is_ac', False)),
+            has_attached_bath=bool(data.get('has_attached_bath', False)),
+            has_wifi=bool(data.get('has_wifi', False)),
+        )
+        db.session.add(room)
+        db.session.flush()
+
+        for label in [chr(65 + j) for j in range(bed_count)]:
+            db.session.add(HostelBed(room_id=room.id, school_id=sid, bed_number=label))
+        created_count += 1
+
+    log_hostel_activity(sid, get_current_user().id, 'ROOMS_BULK_CREATED',
+                         f'Floor #{floor_id} → {created_count} rooms')
+    db.session.commit()
+
+    return jsonify({
+        'created_count': created_count,
+        'skipped_room_numbers': skipped_room_numbers,
+    }), 201
+# NEW — paste right after create_floor() function
+
+@hostel_bp.route('/buildings/<int:building_id>/floors/bulk', methods=['POST'])
+@role_required('PRINCIPAL')
+def create_floors_bulk(building_id):
+    """Body: { floors: [{name, floor_number}, ...] } — used by BulkFloorForm."""
+    b   = HostelBuilding.query.get_or_404(building_id)
+    sid = _school_id()
+    if b.school_id != sid:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    data = request.get_json() or {}
+    floors_list = data.get('floors', [])
+    if not floors_list:
+        return jsonify({'error': 'floors list zaroori hai'}), 400
+
+    created = []
+    for item in floors_list:
+        name = (item.get('name') or '').strip()
+        if not name:
+            continue
+        if HostelFloor.query.filter_by(building_id=building_id, name=name).first():
+            continue  # duplicate floor name — skip silently
+        f = HostelFloor(
+            building_id=building_id, school_id=sid,
+            name=name, floor_number=item.get('floor_number', 0),
+        )
+        db.session.add(f)
+        created.append(f)
+
+    db.session.flush()
+    result = [f.to_dict() for f in created]
+    log_hostel_activity(sid, get_current_user().id, 'FLOORS_BULK_CREATED',
+                         f'{b.name} → {len(created)} floors')
+    db.session.commit()
+    return jsonify(result), 201
 
 @hostel_bp.route('/floors/<int:floor_id>', methods=['PATCH'])
 @role_required('PRINCIPAL')
@@ -449,11 +541,20 @@ def room_map(hostel_id):
         for floor in building.floors.order_by(HostelFloor.floor_number).all():
             f_out = {'id': floor.id, 'name': floor.name, 'rooms': []}
             for room in floor.rooms.all():
-                beds_out = [{
-                    'id': bed.id, 'bed_number': bed.bed_number, 'status': bed.status,
-                    'student_name': bed.current_student.user.name
-                                     if bed.current_student and bed.current_student.user else None,
-                } for bed in room.beds.all()]
+                beds_out = []
+                for bed in room.beds.all():
+                    active_alloc = None
+                    if bed.status == 'OCCUPIED':
+                        active_alloc = HostelBedAllocation.query.filter_by(
+                            bed_id=bed.id, status='ACTIVE'
+                        ).first()
+                    beds_out.append({
+                        'id': bed.id, 'bed_number': bed.bed_number, 'status': bed.status,
+                        'student_id': bed.current_student_id,
+                        'student_name': bed.current_student.user.name
+                                         if bed.current_student and bed.current_student.user else None,
+                        'allocation_id': active_alloc.id if active_alloc else None,
+                    })
                 f_out['rooms'].append({
                     'id': room.id, 'room_number': room.room_number,
                     'room_type': room.room_type, 'beds': beds_out,
@@ -1032,3 +1133,52 @@ def generate_monthly_hostel_fees():
         'skipped':      skipped,
         'no_structure': no_structure,
     }), 201
+# NEW — append at end of file
+
+@hostel_bp.route('/rooms/<int:room_id>/detail', methods=['GET'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def room_detail(room_id):
+    """Full room detail: hostel/building/floor path + all beds + occupancy — used by HostelRoomDetail.jsx"""
+    r = HostelRoom.query.get_or_404(room_id)
+    if r.school_id != _school_id():
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    floor    = r.floor
+    building = floor.building if floor else None
+    hostel   = building.hostel if building else None
+
+    beds_out = []
+    for bed in r.beds.all():
+        active_alloc = None
+        if bed.status == 'OCCUPIED':
+            active_alloc = HostelBedAllocation.query.filter_by(bed_id=bed.id, status='ACTIVE').first()
+        beds_out.append({
+            'id':             bed.id,
+            'bed_number':     bed.bed_number,
+            'status':         bed.status,
+            'student_id':     bed.current_student_id,
+            'student_name':   bed.current_student.user.name
+                               if bed.current_student and bed.current_student.user else None,
+            'allocation_id':  active_alloc.id if active_alloc else None,
+            'allocation_date':str(bed.allocation_date) if bed.allocation_date else None,
+        })
+
+    counts = r.counts()
+
+    return jsonify({
+        'id':            r.id,
+        'room_number':   r.room_number,
+        'room_type':     r.room_type,
+        'is_ac':         r.is_ac,
+        'status':        r.status,
+        'capacity':      counts['capacity'],
+        'occupied':      counts['occupied'],
+        'available':     counts['available_beds'],
+        'hostel_id':     hostel.id   if hostel   else None,
+        'hostel_name':   hostel.name if hostel   else '',
+        'building_id':   building.id if building else None,
+        'building_name': building.name if building else '',
+        'floor_id':      floor.id    if floor    else None,
+        'floor_name':    floor.name  if floor    else '',
+        'beds':          beds_out,
+    }), 200
