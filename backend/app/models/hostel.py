@@ -321,16 +321,28 @@ class HostelBedAllocation(db.Model):
     student = db.relationship('Student', foreign_keys=[student_id])
 
     def to_dict(self):
-        student = self.student
+        student  = self.student
+        room     = HostelRoom.query.get(self.room_id)
+        floor    = HostelFloor.query.get(self.floor_id)
+        building = HostelBuilding.query.get(self.building_id)
+        hostel   = Hostel.query.get(self.hostel_id)
+        bed      = HostelBed.query.get(self.bed_id)
         return {
             'id':              self.id,
             'student_id':      self.student_id,
             'student_name':    student.user.name if student and student.user else '',
             'hostel_id':       self.hostel_id,
+            'hostel_name':     hostel.name if hostel else '',
             'building_id':     self.building_id,
+            'building_name':   building.name if building else '',
             'floor_id':        self.floor_id,
+            'floor_name':      floor.name if floor else '',
             'room_id':         self.room_id,
+            'room_number':     room.room_number if room else '',
+            'room_type':       room.room_type if room else '',
+            'is_ac':           room.is_ac if room else False,
             'bed_id':          self.bed_id,
+            'bed_number':      bed.bed_number if bed else '',
             'admission_date':  str(self.admission_date) if self.admission_date else None,
             'vacate_date':     str(self.vacate_date) if self.vacate_date else None,
             'status':          self.status,
