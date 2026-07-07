@@ -148,13 +148,21 @@ function HostelTab({ studentId }) {
   );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div className="card" style={{ margin: 0 }}>
-        <div className="card-header"><h4>🏨 Current Hostel Allocation</h4></div>
-        <div className="card-body">
-          {[
-            ['Admission Date', current.admission_date || '—'],
-          ].map(([label, value]) => (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div className="card" style={{ margin: 0 }}>
+          <div className="card-header"><h4>🏨 Current Hostel Allocation</h4></div>
+          <div className="card-body">
+            {[
+              ['Hostel',         current.hostel_name || '—'],
+              ['Building',       current.building_name || '—'],
+              ['Floor',          current.floor_name || '—'],
+              ['Room Number',    current.room_number || '—'],
+              ['Bed',            current.bed_number ? `Bed-${current.bed_number}` : '—'],
+              ['Room Type',      current.is_ac ? 'AC' : 'Non-AC'],
+              ['Sharing Type',   current.room_type || '—'],
+              ['Admission Date', current.admission_date || '—'],
+              ['Hostel Fee',     current.fee_amount_due ? `₹${current.fee_amount_due} (${current.fee_status || 'PENDING'})` : 'Not generated yet'],
+            ].map(([label, value]) => (
             <div key={label} style={{
               display: 'flex', justifyContent: 'space-between',
               padding: '8px 0', borderBottom: '1px solid var(--neutral-1)', fontSize: 13,
