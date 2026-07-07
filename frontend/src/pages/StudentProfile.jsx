@@ -238,6 +238,7 @@ export default function StudentProfile() {
     { key: 'attendance',  label: '📅 Attendance'  },
     { key: 'fees',        label: '💰 Fees'        },
     { key: 'marks',       label: '📝 Marks'       },
+    { key: 'hostel',      label: '🏨 Hostel'      },
     { key: 'documents',   label: '🎓 Documents'   },
   ];
 
@@ -585,6 +586,85 @@ export default function StudentProfile() {
           {tab === 'marks' && (
             <MarksTab studentId={id} exams={exams} />
           )}
+
+          {tab === 'hostel' && (
+            <HostelTab studentId={id} />
+          )}
+
+          // NEW — paste after MarksTab, before export default function StudentProfile()
+
+          function HostelTab({ studentId }) {
+            const [status, setStatus] = useState(null);
+            const [loading, setLoading] = useState(true);
+          
+            useEffect(() => {
+              setLoading(true);
+              api.get(`/hostel/students/${studentId}/hostel-status`)
+                .then(r => setStatus(r.data))
+                .catch(() => {})
+                .finally(() => setLoading(false));
+            }, [studentId]);
+          
+            if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--neutral-5)' }}>⏳ Loading...</div>;
+          
+            const current = status?.current;
+          
+            if (!current) return (
+              <div className="card" style={{ margin: 0 }}>
+                <div className="empty-state" style={{ padding: 48 }}>
+                  <div className="empty-state-icon">🏨</div>
+                  <p>Ye student kisi hostel mein allocated nahi hai</p>
+                </div>
+              </div>
+            );
+          
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div className="card" style={{ margin: 0 }}>
+                  <div className="card-header"><h4>🏨 Current Hostel Allocation</h4></div>
+                  <div className="card-body">
+                    {[
+                      ['Admission Date', current.admission_date || '—'],
+                    ].map(([label, value]) => (
+                      <div key={label} style={{
+                        display: 'flex', justifyContent: 'space-between',
+                        padding: '8px 0', borderBottom: '1px solid var(--neutral-1)', fontSize: 13,
+                      }}>
+                        <span style={{ color: 'var(--neutral-6)' }}>{label}</span>
+                        <span style={{ fontWeight: 600 }}>{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+          
+                {status.history?.length > 1 && (
+                  <div className="card" style={{ margin: 0 }}>
+                    <div className="card-header"><h4>📜 Allocation History</h4></div>
+                    <div className="table-container">
+                      <table>
+                        <thead>
+                          <tr><th>From</th><th>To</th><th>Status</th></tr>
+                        </thead>
+                        <tbody>
+                          {status.history.map(h => (
+                            <tr key={h.id}>
+                              <td style={{ fontSize: 12 }}>{h.admission_date || '—'}</td>
+                              <td style={{ fontSize: 12 }}>{h.vacate_date || 'Active'}</td>
+                              <td>
+                                <span className={`badge ${h.status === 'ACTIVE' ? 'badge-success' : 'badge-info'}`}>
+                                  {h.status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          }
 
           {/* ══ DOCUMENTS ══ */}
           {/* ══ DOCUMENTS ══ */}
