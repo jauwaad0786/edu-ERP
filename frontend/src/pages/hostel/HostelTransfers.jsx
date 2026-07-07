@@ -55,6 +55,8 @@ export default function HostelTransfers() {
                   if (bed.status === 'OCCUPIED' && bed.student_name) {
                     rows.push({
                       bed_id: bed.id,
+                      student_id: bed.student_id,
+                      allocation_id: bed.allocation_id,
                       student_name: bed.student_name,
                       hostel_name: hostel?.name || '',
                       building_name: building.name,
@@ -87,21 +89,17 @@ export default function HostelTransfers() {
   // ── Need allocation_id + student_id for transfer/vacate — fetch via bed's student profile ──
   // Since room-map doesn't expose allocation_id/student_id directly, we fetch full
   // detail on-demand when user clicks Transfer/Vacate.
-  async function openTransfer(row) {
-    try {
-      // Find the active allocation for this bed by checking the bed detail
-      const bedDetail = await api.get(`/hostel/rooms/search-by-bed/${row.bed_id}`).catch(() => null);
-      // Fallback: use student search by name isn't reliable — instead we rely on
-      // a helper endpoint. If not available yet, this will be added server-side.
-      setTransferTarget({ ...row, bedDetailFailed: !bedDetail });
-      setTHostelId(''); setTBuildingId(''); setTFloorId(''); setTRoomId(''); setTBedId('');
-      setTransferType('BED');
-      setReason('');
-    } catch {
-      toast.error('Allocation detail load nahi hui');
+  function openTransfer(row) {
+    if (!row.allocation_id) {
+      toast.error('Allocation ID nahi mila — page refresh karke dobara try karo');
+      return;
     }
+    setTransferTarget(row);
+    setTHostelId(''); setTBuildingId(''); setTFloorId(''); setTRoomId(''); setTBedId('');
+    setTransferType('BED');
+    setReason('');
   }
-
+  
   function openVacate(row) {
     setVacateTarget(row);
     setVacateReason('');
