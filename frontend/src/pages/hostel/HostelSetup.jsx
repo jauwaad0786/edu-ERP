@@ -353,20 +353,26 @@ export default function HostelSetup() {
                                         border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 8, padding: 10,
                                         background: darkMode ? '#0f172a' : '#fafbfc',
                                       }}>
-                                        // NEW
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                                          <div>
-                                            <div style={{ fontSize: 12, fontWeight: 700, color: darkMode ? '#e2e8f0' : '#1e293b' }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            <span style={{ fontSize: 12, fontWeight: 700, color: darkMode ? '#e2e8f0' : '#1e293b' }}>
                                               Room {r.room_number}
-                                            </div>
-                                            <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>
-                                              {r.room_type} · {r.occupied}/{r.capacity} beds
-                                            </div>
-                                            <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
-                                              {r.is_ac && <Tag>AC</Tag>}
-                                              {r.has_attached_bath && <Tag>Bath</Tag>}
-                                              {r.has_wifi && <Tag>WiFi</Tag>}
-                                            </div>
+                                            </span>
+                                            <span style={{
+                                              fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 20,
+                                              background: r.is_ac ? '#4f46e5' : '#f1f5f9',
+                                              color: r.is_ac ? '#fff' : '#64748b',
+                                            }}>
+                                              {r.is_ac ? '❄️ AC' : 'Non-AC'}
+                                            </span>
+                                          </div>
+                                          <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>
+                                            {r.room_type} · {r.occupied}/{r.capacity} beds
+                                          </div>
+                                          <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
+                                            {r.has_attached_bath && <Tag>Bath</Tag>}
+                                            {r.has_wifi && <Tag>WiFi</Tag>}
+                                          </div>
                                           </div>
                                           <div style={{ display: 'flex', gap: 8 }}>
                                             <span onClick={() => setEditRoomModal({ ...r, floorId: f.id })} style={{ cursor: 'pointer', color: '#4f46e5', fontSize: 12 }}>✎</span>
