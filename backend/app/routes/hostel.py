@@ -21,6 +21,13 @@ hostel_bp = Blueprint('hostel', __name__)
 def _school_id():
     return get_current_user().school_id
 
+def _safe_float(value, default=0.0):
+    """Empty string ya None ko bhi safely handle karta hai."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  HOSTEL
@@ -1061,16 +1068,16 @@ def create_fee_structure():
     fs = HostelFeeStructure(
         school_id=sid, hostel_id=hostel_id, building_id=building_id, floor_id=floor_id,
         is_ac=is_ac, sharing_type=sharing_type,
-        monthly_fee=float(data.get('monthly_fee', 0)),
-        quarterly_fee=float(data.get('quarterly_fee', 0)),
-        yearly_fee=float(data.get('yearly_fee', 0)),
-        security_deposit=float(data.get('security_deposit', 0)),
-        electricity_charges=float(data.get('electricity_charges', 0)),
-        laundry_charges=float(data.get('laundry_charges', 0)),
-        mess_charges=float(data.get('mess_charges', 0)),
-        maintenance_charges=float(data.get('maintenance_charges', 0)),
-        late_fine=float(data.get('late_fine', 0)),
-        discount=float(data.get('discount', 0)),
+        monthly_fee=_safe_float(data.get('monthly_fee')),
+        quarterly_fee=_safe_float(data.get('quarterly_fee')),
+        yearly_fee=_safe_float(data.get('yearly_fee')),
+        security_deposit=_safe_float(data.get('security_deposit')),
+        electricity_charges=_safe_float(data.get('electricity_charges')),
+        laundry_charges=_safe_float(data.get('laundry_charges')),
+        mess_charges=_safe_float(data.get('mess_charges')),
+        maintenance_charges=_safe_float(data.get('maintenance_charges')),
+        late_fine=_safe_float(data.get('late_fine')),
+        discount=_safe_float(data.get('discount')),
         created_by=get_current_user().id,
     )
     db.session.add(fs)
@@ -1092,7 +1099,7 @@ def update_fee_structure(fs_id):
                        'maintenance_charges', 'late_fine', 'discount']
     for f in numeric_fields:
         if f in data:
-            setattr(fs, f, float(data[f]))
+            setattr(fs, f, _safe_float(data[f]))
     if 'status' in data:
         fs.status = data['status']
     db.session.commit()
