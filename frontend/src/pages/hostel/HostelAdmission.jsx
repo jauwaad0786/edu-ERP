@@ -38,6 +38,11 @@ export default function HostelAdmission() {
 
   const [submitting, setSubmitting] = useState(false);
 
+  // ── Admission list table ──
+  const [admissions, setAdmissions] = useState([]);
+  const [admissionsLoading, setAdmissionsLoading] = useState(true);
+  const [tableSearch, setTableSearch] = useState('');
+
   // ── Load hostels + classes on mount ──
   useEffect(() => {
     api.get('/hostel/hostels').then(r => setHostels(r.data || [])).catch(() => {});
@@ -76,7 +81,19 @@ export default function HostelAdmission() {
       .catch(() => toast.error('Room map load nahi hua'))
       .finally(() => setMapLoading(false));
   }, [hostelId]);
+  const loadAdmissions = useCallback(() => {
+    setAdmissionsLoading(true);
+    const params = tableSearch ? `?search=${encodeURIComponent(tableSearch)}` : '';
+    api.get('/hostel/admissions' + params)
+      .then(r => setAdmissions(r.data || []))
+      .catch(() => toast.error('Admission list load nahi hui'))
+      .finally(() => setAdmissionsLoading(false));
+  }, [tableSearch]);
 
+  useEffect(() => {
+    const t = setTimeout(() => loadAdmissions(), 300);
+    return () => clearTimeout(t);
+  }, [loadAdmissions]);
   function pickBed(building, floor, room, bed) {
     if (bed.status !== 'VACANT') return;
     setBedId(bed.id);
@@ -116,7 +133,10 @@ export default function HostelAdmission() {
         bed_id: bedId,
       });
       toast.success(`${selectedStudent.name} hostel mein admit ho gaya`);
-      navigate('/hostel/room-map');
+      loadAdmissions();
+      setSelectedStudent(null);
+      setBedId('');
+      setSelectedBedInfo(null);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Admission fail hua');
     }
@@ -458,6 +478,80 @@ export default function HostelAdmission() {
           </div>
         </div>
       </div>
+      {/* ── Admitted Students Table ── */}
+          <div style={{ marginTop: 24, ...cardStyle, maxWidth: 'none' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <h4 style={{ margin: 0, fontSize: 15, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
+                🏨 Admitted Students ({admissions.length})
+              </h4>
+              <input
+                value={tableSearch}
+                onChange={e => setTableSearch(e.target.value)}
+                placeholder="Search name / admission no..."
+                style={{ ...inputStyle, width: 240, marginBottom: 0 }}
+              />
+            </div>
+
+            {admissionsLoading ? (
+              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Loading...</div>
+            ) : admissions.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Koi admission nahi hui abhi</div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, textAlign: 'left' }}>
+                      {['Student', 'Admission No', 'Class', 'Room', 'Bed', 'Building', 'Floor',
+                        'Guardian', 'Guardian Phone', 'Check-in', 'Fee Status', 'Due', 'Paid', 'Pending'
+                      ].map(h => (
+                        <th key={h} style={{ padding: '8px 10px', color: '#94a3b8', fontWeight: 600, fontSize: 10, whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {admissions.map(a => (
+                      <tr
+                        key={a.allocation_id}
+                        onClick={() => navigate(`/students/${a.student_id}`)}
+                        style={{
+                          borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}`,
+                          cursor: 'pointer',
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = darkMode ? '#273349' : '#f8fafc'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <td style={{ padding: '9px 10px', fontWeight: 700, color: '#4f46e5', whiteSpace: 'nowrap' }}>{a.student_name}</td>
+                        <td style={{ padding: '9px 10px', whiteSpace: 'nowrap' }}>{a.admission_no}</td>
+                        <td style={{ padding: '9px 10px', whiteSpace: 'nowrap' }}>{a.class_name}</td>
+                        <td style={{ padding: '9px 10px', whiteSpace: 'nowrap' }}>
+                          {a.room_number} {a.is_ac ? <span style={{ color: '#4f46e5', fontWeight: 700 }}>❄️</span> : ''}
+                        </td>
+                        <td style={{ padding: '9px 10px', whiteSpace: 'nowrap' }}>{a.bed_number}</td>
+                        <td style={{ padding: '9px 10px', whiteSpace: 'nowrap' }}>{a.building_name}</td>
+                        <td style={{ padding: '9px 10px', whiteSpace: 'nowrap' }}>{a.floor_name}</td>
+                        <td style={{ padding: '9px 10px', whiteSpace: 'nowrap' }}>{a.guardian_name || '—'}</td>
+                        <td style={{ padding: '9px 10px', whiteSpace: 'nowrap' }}>{a.guardian_phone || '—'}</td>
+                        <td style={{ padding: '9px 10px', whiteSpace: 'nowrap' }}>{a.admission_date}</td>
+                        <td style={{ padding: '9px 10px', whiteSpace: 'nowrap' }}>
+                          <span style={{
+                            fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
+                            background: a.fee_status === 'PAID' ? '#f0fdf4' : a.fee_status === 'PARTIAL' ? '#fefce8' : '#fef2f2',
+                            color: a.fee_status === 'PAID' ? '#16a34a' : a.fee_status === 'PARTIAL' ? '#ca8a04' : '#dc2626',
+                          }}>
+                            {a.fee_status === 'NOT_GENERATED' ? 'NOT GENERATED' : a.fee_status}
+                          </span>
+                        </td>
+                        <td style={{ padding: '9px 10px', whiteSpace: 'nowrap' }}>₹{a.total_due}</td>
+                        <td style={{ padding: '9px 10px', whiteSpace: 'nowrap', color: '#16a34a', fontWeight: 600 }}>₹{a.total_paid}</td>
+                        <td style={{ padding: '9px 10px', whiteSpace: 'nowrap', color: a.pending > 0 ? '#dc2626' : '#16a34a', fontWeight: 600 }}>₹{a.pending}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
     </div>
+    
   );
 }
