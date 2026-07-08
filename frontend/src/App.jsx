@@ -56,6 +56,8 @@ import HostelAdmission   from './pages/hostel/HostelAdmission';
 import HostelRoomDetail  from './pages/hostel/HostelRoomDetail';
 import HostelTransfers   from './pages/hostel/HostelTransfers';
 import HostelFeeStructures from './pages/hostel/HostelFeeStructures';
+import HostelReports       from './pages/hostel/HostelReports';
+
 // ── Communication Hub Pages ───────────────────────────────────────────────────
 import SupportInbox     from './pages/communication/SupportInbox';
 import TicketDetail     from './pages/communication/TicketDetail';
@@ -284,6 +286,11 @@ export default function App() {
             <Route path="/hostel/fee-structures" element={
               <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
                 <HostelFeeStructures />
+              </ProtectedRoute>
+            } />
+            <Route path="/hostel/reports" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
+                <HostelReports />
               </ProtectedRoute>
             } />
 
