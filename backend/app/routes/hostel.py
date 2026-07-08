@@ -1343,3 +1343,64 @@ def report_history():
 
     allocations = q.order_by(HostelBedAllocation.created_at.desc()).limit(500).all()
     return jsonify([a.to_dict() for a in allocations]), 200
+
+
+
+# NEW — append at end of file
+
+@hostel_bp.route('/admissions', methods=['GET'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def list_hostel_admissions():
+    """All completed hostel admissions with full context — for the Admission page table."""
+    sid = _school_id()
+    search = (request.args.get('search') or '').strip()
+
+    allocations = HostelBedAllocation.query.filter_by(school_id=sid, status='ACTIVE')\
+                    .order_by(HostelBedAllocation.created_at.desc()).all()
+
+    result = []
+    for a in allocations:
+        student = Student.query.get(a.student_id)
+        if not student:
+            continue
+        if search:
+            s_low = search.lower()
+            name = (student.user.name if student.user else '').lower()
+            if s_low not in name and s_low not in (student.admission_no or '').lower():
+                continue
+
+        cls  = Class.query.get(student.class_id) if student.class_id else None
+        room = HostelRoom.query.get(a.room_id)
+        floor    = HostelFloor.query.get(a.floor_id)
+        building = HostelBuilding.query.get(a.building_id)
+        bed  = HostelBed.query.get(a.bed_id)
+
+        fee_rec = FeeRecord.query.filter_by(
+            student_id=student.id, fee_type='HOSTEL', source='HOSTEL'
+        ).order_by(FeeRecord.created_at.desc()).first()
+
+        total_due  = fee_rec.amount_due if fee_rec else 0
+        total_paid = fee_rec.amount_paid if fee_rec else 0
+        f_status = fee_rec.status if fee_rec else ('NOT_GENERATED' if total_due == 0 else 'PENDING')
+
+        result.append({
+            'allocation_id':   a.id,
+            'student_id':      student.id,
+            'student_name':    student.user.name if student.user else '',
+            'admission_no':    student.admission_no or '',
+            'class_name':      f"{cls.name} - {cls.section}" if cls else '',
+            'room_number':     room.room_number if room else '',
+            'bed_number':      bed.bed_number if bed else '',
+            'building_name':   building.name if building else '',
+            'floor_name':      floor.name if floor else '',
+            'is_ac':           room.is_ac if room else False,
+            'guardian_name':   student.parent_name or '',
+            'guardian_phone':  student.parent_phone or '',
+            'admission_date':  str(a.admission_date) if a.admission_date else None,
+            'fee_status':      f_status,
+            'total_due':       total_due,
+            'total_paid':      total_paid,
+            'pending':         total_due - total_paid,
+        })
+
+    return jsonify(result), 200
