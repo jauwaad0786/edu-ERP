@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, Response
 from app import db
 from app.models.user import User, UserRole
 from app.models.academic import Student, Class
@@ -1198,3 +1198,148 @@ def room_detail(room_id):
         'floor_name':    floor.name  if floor    else '',
         'beds':          beds_out,
     }), 200
+
+
+
+# NEW — append at end of file
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  REPORTS
+# ═══════════════════════════════════════════════════════════════════════════
+
+@hostel_bp.route('/reports/occupancy', methods=['GET'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def report_occupancy():
+    """Hostel/Building-wise occupancy + room type / AC / gender distribution."""
+    sid = _school_id()
+    hostel_id = request.args.get('hostel_id')
+
+    q = Hostel.query.filter_by(school_id=sid)
+    if hostel_id:
+        q = q.filter_by(id=hostel_id)
+    hostels = q.all()
+
+    hostel_rows   = []
+    building_rows = []
+    room_type_dist = {}
+    ac_dist = {'AC': 0, 'Non-AC': 0}
+    gender_dist = {}
+
+    for h in hostels:
+        counts = h.counts()
+        hostel_rows.append({'id': h.id, 'name': h.name, 'gender': h.gender, **counts})
+        gender_dist[h.gender] = gender_dist.get(h.gender, 0) + counts['total_beds']
+
+        for b in h.buildings.all():
+            b_counts = b.counts()
+            building_rows.append({'id': b.id, 'hostel_name': h.name, 'name': b.name, **b_counts})
+
+    hostel_ids = [h.id for h in hostels]
+    if hostel_ids:
+        rooms = HostelRoom.query.join(HostelFloor).join(HostelBuilding)\
+                  .filter(HostelBuilding.hostel_id.in_(hostel_ids)).all()
+        for r in rooms:
+            room_type_dist[r.room_type] = room_type_dist.get(r.room_type, 0) + 1
+            ac_dist['AC' if r.is_ac else 'Non-AC'] += 1
+
+    return jsonify({
+        'hostel_breakdown':       hostel_rows,
+        'building_breakdown':     building_rows,
+        'room_type_distribution': room_type_dist,
+        'ac_distribution':        ac_dist,
+        'gender_distribution':    gender_dist,
+    }), 200
+
+
+@hostel_bp.route('/reports/fee-collection', methods=['GET'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def report_fee_collection():
+    """Hostel fee collection summary + record list. Query: from_date, to_date, status"""
+    sid = _school_id()
+    from_date = request.args.get('from_date')
+    to_date   = request.args.get('to_date')
+    status    = request.args.get('status')
+
+    q = FeeRecord.query.filter_by(school_id=sid, fee_type='HOSTEL', source='HOSTEL')
+    if status and status != 'ALL':
+        q = q.filter_by(status=status)
+    if from_date:
+        q = q.filter(FeeRecord.created_at >= datetime.fromisoformat(from_date))
+    if to_date:
+        q = q.filter(FeeRecord.created_at <= datetime.fromisoformat(to_date))
+
+    records = q.order_by(FeeRecord.created_at.desc()).all()
+
+    total_due  = sum(r.amount_due  or 0 for r in records)
+    total_paid = sum(r.amount_paid or 0 for r in records)
+
+    rows = []
+    for r in records:
+        student = Student.query.get(r.student_id)
+        rows.append({
+            'student_id':   r.student_id,
+            'student_name': student.user.name if student and student.user else '',
+            'admission_no': student.admission_no if student else '',
+            'month':        r.month,
+            'amount_due':   r.amount_due,
+            'amount_paid':  r.amount_paid,
+            'pending':      (r.amount_due or 0) - (r.amount_paid or 0),
+            'status':       r.status,
+            'paid_date':    str(r.paid_date) if r.paid_date else None,
+            'receipt_no':   r.receipt_no,
+        })
+
+    return jsonify({
+        'summary': {
+            'total_due':      total_due,
+            'total_paid':     total_paid,
+            'total_pending':  total_due - total_paid,
+            'collection_pct': round(total_paid / total_due * 100, 1) if total_due else 0,
+            'record_count':   len(records),
+        },
+        'records': rows,
+    }), 200
+
+
+@hostel_bp.route('/reports/fee-collection/export', methods=['GET'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def export_fee_collection_csv():
+    """CSV export of hostel fee collection records."""
+    import csv, io
+    sid = _school_id()
+    records = FeeRecord.query.filter_by(school_id=sid, fee_type='HOSTEL', source='HOSTEL')\
+                .order_by(FeeRecord.created_at.desc()).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Student Name', 'Admission No', 'Month', 'Amount Due', 'Amount Paid',
+                      'Pending', 'Status', 'Paid Date', 'Receipt No'])
+    for r in records:
+        student = Student.query.get(r.student_id)
+        writer.writerow([
+            student.user.name if student and student.user else '',
+            student.admission_no if student else '',
+            r.month, r.amount_due, r.amount_paid,
+            (r.amount_due or 0) - (r.amount_paid or 0),
+            r.status, str(r.paid_date) if r.paid_date else '', r.receipt_no or '',
+        ])
+
+    output.seek(0)
+    return Response(output.getvalue(), mimetype='text/csv', headers={
+        'Content-Disposition': 'attachment; filename=hostel_fee_collection.csv'
+    })
+
+
+@hostel_bp.route('/reports/history', methods=['GET'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def report_history():
+    """Admission/Transfer/Vacate history. Query: action = ACTIVE/TRANSFERRED/VACATED/ALL"""
+    sid    = _school_id()
+    action = request.args.get('action', 'ALL')
+
+    q = HostelBedAllocation.query.filter_by(school_id=sid)
+    if action != 'ALL':
+        q = q.filter_by(status=action)
+
+    allocations = q.order_by(HostelBedAllocation.created_at.desc()).limit(500).all()
+    return jsonify([a.to_dict() for a in allocations]), 200
