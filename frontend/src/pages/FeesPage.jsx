@@ -45,6 +45,10 @@ export default function FeesPage() {
   const [batches, setBatches] = useState([]);
   const [showBatches, setShowBatches] = useState(false);
   const [batchRecords, setBatchRecords] = useState(null);
+  const [editingRecId, setEditingRecId] = useState(null);
+  const [editAmt, setEditAmt] = useState('');
+  const [missingStudents, setMissingStudents] = useState([]);
+  const [addStudentId, setAddStudentId] = useState('');
 
   /* collect modal */
   const [modal,    setModal]    = useState(false);
@@ -159,6 +163,7 @@ export default function FeesPage() {
   async function openBatchReview(batchId) {
     const { data } = await api.get(`/principal/fees/batches/${batchId}/records`);
     setBatchRecords(data);
+    loadMissingStudents(batchId);
   }
   
   async function publishBatch(batchId) {
@@ -173,6 +178,42 @@ export default function FeesPage() {
       flash(e.response?.data?.error || '❌ Publish fail hua', 'error');
     }
   }
+  // NEW — openBatchReview ke paas, naye functions add karo
+
+async function loadMissingStudents(batchId) {
+  try {
+    const { data } = await api.get(`/principal/fees/batches/${batchId}/missing-students`);
+    setMissingStudents(data || []);
+  } catch { setMissingStudents([]); }
+}
+
+async function saveRecordAmount(recId) {
+  if (!editAmt || isNaN(editAmt) || Number(editAmt) <= 0) {
+    flash('❌ Sahi amount daalo', 'error'); return;
+  }
+  try {
+    await api.patch(`/principal/fees/records/${recId}`, { amount_due: parseFloat(editAmt) });
+    flash('✅ Amount updated');
+    setEditingRecId(null);
+    openBatchReview(batchRecords.batch.id);
+  } catch (e) {
+    flash(e.response?.data?.error || '❌ Update fail hua', 'error');
+  }
+}
+
+async function addStudentToBatch() {
+  if (!addStudentId) return;
+  try {
+    await api.post(`/principal/fees/batches/${batchRecords.batch.id}/add-student`, {
+      student_id: addStudentId,
+    });
+    flash('✅ Student add hua');
+    setAddStudentId('');
+    openBatchReview(batchRecords.batch.id);
+  } catch (e) {
+    flash(e.response?.data?.error || '❌ Add fail hua', 'error');
+  }
+}
   
   async function deleteBatch(batchId) {
     if (!window.confirm('Ye poori draft batch delete karni hai?')) return;
@@ -868,19 +909,60 @@ async function generateFees() {
               <h3>Review — {batchRecords.batch.fee_type} — {batchRecords.batch.month}</h3>
               <button className="modal-close" onClick={() => setBatchRecords(null)}>✕</button>
             </div>
+            // NEW
             <div className="modal-body">
               <table style={{ width: '100%', fontSize: 12 }}>
-                <thead><tr><th>Student</th><th>Amount Due</th><th>Due Date</th></tr></thead>
+                <thead><tr><th>Student</th><th>Amount Due</th><th>Due Date</th><th>Action</th></tr></thead>
                 <tbody>
                   {batchRecords.records.map(r => (
                     <tr key={r.id}>
                       <td>{r.student_name}</td>
-                      <td>₹{fmt(r.amount_due)}</td>
+                      <td>
+                        {editingRecId === r.id ? (
+                          <input type="number" value={editAmt} autoFocus
+                            onChange={e => setEditAmt(e.target.value)}
+                            style={{ width: 80, fontSize: 12, padding: '2px 6px' }} />
+                        ) : `₹${fmt(r.amount_due)}`}
+                      </td>
                       <td>{r.due_date}</td>
+                      <td>
+                        {editingRecId === r.id ? (
+                          <>
+                            <button onClick={() => saveRecordAmount(r.id)}
+                              style={{ fontSize: 10, marginRight: 4, background: '#eaf5ea', color: '#2e844a', border: 'none', borderRadius: 4, padding: '3px 8px', cursor: 'pointer' }}>✓ Save</button>
+                            <button onClick={() => setEditingRecId(null)}
+                              style={{ fontSize: 10, background: '#f1f1f1', border: 'none', borderRadius: 4, padding: '3px 8px', cursor: 'pointer' }}>✕</button>
+                          </>
+                        ) : (
+                          <button onClick={() => { setEditingRecId(r.id); setEditAmt(String(r.amount_due)); }}
+                            style={{ fontSize: 10, background: '#e8f4fd', color: '#0176d3', border: 'none', borderRadius: 4, padding: '3px 8px', cursor: 'pointer' }}>Edit</button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            
+              {missingStudents.length > 0 && (
+                <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px dashed #e2e8f0' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+                    + Missed Student Add Karo ({missingStudents.length} available)
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <select className="form-select" style={{ flex: 1, fontSize: 12 }}
+                      value={addStudentId} onChange={e => setAddStudentId(e.target.value)}>
+                      <option value="">Select student...</option>
+                      {missingStudents.map(s => (
+                        <option key={s.id} value={s.id}>{s.name} — Roll {s.roll_number}</option>
+                      ))}
+                    </select>
+                    <button onClick={addStudentToBatch} disabled={!addStudentId}
+                      style={{ fontSize: 12, background: '#0176d3', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', cursor: 'pointer' }}>
+                      + Add
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="modal-footer">
               <button className="btn btn-neutral" onClick={() => deleteBatch(batchRecords.batch.id)}>🗑️ Delete Batch</button>
