@@ -59,8 +59,13 @@ class FeeRecord(db.Model):
     # NEW — links a record to the batch that generated it (null for hostel/library/manual records)
     batch_id      = db.Column(db.Integer, db.ForeignKey('fee_generation_batches.id'), nullable=True, index=True)
 
-    discount     = db.Column(db.Float, default=0.0)
-    fine         = db.Column(db.Float, default=0.0)
+    # NEW
+    discount        = db.Column(db.Float, default=0.0)
+    fine            = db.Column(db.Float, default=0.0)
+    discount_reason = db.Column(db.String(200))
+    fine_reason     = db.Column(db.String(200))
+    adjusted_by     = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    adjusted_at     = db.Column(db.DateTime, nullable=True)
     status       = db.Column(db.String(20), default='PENDING')
     month        = db.Column(db.String(20))
     due_date     = db.Column(db.Date)
@@ -83,8 +88,13 @@ class FeeRecord(db.Model):
             'status':       self.status,
             'month':        self.month,
             'session':      self.session,
-            'discount':     self.discount or 0,
-            'fine':         self.fine or 0,
+            'discount':        self.discount or 0,
+            'fine':            self.fine or 0,
+            'discount_reason': self.discount_reason or '',
+            'fine_reason':     self.fine_reason or '',
+            'effective_due':   self.effective_due(),
+            'balance':         round(self.effective_due() - (self.amount_paid or 0), 2),
+            'adjusted_at':     self.adjusted_at.isoformat() if self.adjusted_at else None,
             'due_date':     str(self.due_date)  if self.due_date  else None,
             'paid_date':    str(self.paid_date) if self.paid_date else None,
             'receipt_no':   self.receipt_no,
@@ -95,6 +105,10 @@ class FeeRecord(db.Model):
             'source':         self.source or 'ACADEMIC',
             'source_ref_id':  self.source_ref_id,
         }
+# NEW — add this method inside FeeRecord class, right after to_dict()
+def effective_due(self):
+    """Actual payable amount after fine/discount adjustments."""
+    return round((self.amount_due or 0) + (self.fine or 0) - (self.discount or 0), 2)
 
 
 class ExamSchedule(db.Model):
