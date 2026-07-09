@@ -42,6 +42,9 @@ export default function FeesPage() {
   const [classSummary, setClassSummary] = useState([]);
   const [loading,  setLoading]  = useState(false);
   const [msg,      setMsg]      = useState({ text: '', type: '' });
+  const [batches, setBatches] = useState([]);
+  const [showBatches, setShowBatches] = useState(false);
+  const [batchRecords, setBatchRecords] = useState(null);
 
   /* collect modal */
   const [modal,    setModal]    = useState(false);
@@ -120,6 +123,7 @@ export default function FeesPage() {
     setRemarks('');
     setModal(true);
   }
+  
 
   /* ── submit payment ── */
   async function submitPayment() {
@@ -144,39 +148,75 @@ export default function FeesPage() {
     }
     setSaving(false);
   }
+  function loadBatches() {
+    api.get('/principal/fees/batches?status=DRAFT')
+      .then(r => setBatches(r.data || []))
+      .catch(() => {});
+  }
+  
+  useEffect(() => { loadBatches(); }, []);
+  
+  async function openBatchReview(batchId) {
+    const { data } = await api.get(`/principal/fees/batches/${batchId}/records`);
+    setBatchRecords(data);
+  }
+  
+  async function publishBatch(batchId) {
+    if (!window.confirm('Publish karne ke baad parents ko ye fees dikhengi. Confirm?')) return;
+    try {
+      await api.post(`/principal/fees/batches/${batchId}/publish`);
+      flash('✅ Batch published');
+      setBatchRecords(null);
+      loadBatches();
+      load();
+    } catch (e) {
+      flash(e.response?.data?.error || '❌ Publish fail hua', 'error');
+    }
+  }
+  
+  async function deleteBatch(batchId) {
+    if (!window.confirm('Ye poori draft batch delete karni hai?')) return;
+    try {
+      await api.delete(`/principal/fees/batches/${batchId}`);
+      flash('✅ Draft batch deleted');
+      setBatchRecords(null);
+      loadBatches();
+    } catch (e) {
+      flash(e.response?.data?.error || '❌ Delete fail hua', 'error');
+    }
+  }
+// NEW
 async function generateFees() {
-  if (!genClass || !genMonth || !genAmount) {
-    flash('❌ Sab fields bharo', 'error');
+  if (!genClass || !genMonth || !genFeeType) {
+    flash('❌ Class, Month aur Fee Type zaroori hai', 'error');
     return;
   }
 
   try {
+    // genMonth "YYYY-MM" format mein <input type="month"> se already aata hai
     const res = await api.post('/principal/fees/generate', {
       class_id: genClass,
       month: genMonth,
       fee_type: genFeeType,
-      amount: parseFloat(genAmount),
-      due_date: genDueDate,
     });
 
-    flash(`✅ ${res.data.created} fee records generate hue`);
+    flash(`✅ ${res.data.created} records DRAFT mein bane — Batches tab se review + publish karo`);
     setGenModal(false);
-
     setGenClass('');
     setGenMonth('');
-    setGenAmount('');
     setGenFeeType('TUITION');
-    setGenDueDate('');
-
     load();
 
   } catch (e) {
-    flash(
-      e.response?.data?.error || '❌ Fee generate nahi hua',
-      'error'
-    );
+    if (e.response?.data?.error === 'no_fee_structure') {
+      flash('❌ Is class/fee-type ke liye pehle Fee Structure banao', 'error');
+    } else if (e.response?.data?.error === 'already_generated') {
+      flash(`❌ ${e.response.data.message}`, 'error');
+    } else {
+      flash(e.response?.data?.error || '❌ Fee generate nahi hua', 'error');
+    }
   }
-}  
+} 
   
   
   
