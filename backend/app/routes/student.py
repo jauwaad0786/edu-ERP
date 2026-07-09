@@ -105,9 +105,11 @@ def my_fees():
     student = Student.query.filter_by(user_id=user.id).first()
     if not student:
         return jsonify({'error': 'Not found'}), 404
-    records  = FeeRecord.query.filter_by(student_id=student.id).all()
-    total_due   = sum(r.amount_due for r in records)
-    total_paid  = sum(r.amount_paid for r in records)
+    # NEW
+    records  = FeeRecord.query.filter_by(student_id=student.id)\
+                 .filter(FeeRecord.status != 'DRAFT').all()
+    total_due   = sum(r.amount_due for r in records if r.status != 'CANCELLED')
+    total_paid  = sum(r.amount_paid for r in records if r.status != 'CANCELLED')
     return jsonify({
         'total_due': total_due, 'total_paid': total_paid,
         'balance': total_due - total_paid,
