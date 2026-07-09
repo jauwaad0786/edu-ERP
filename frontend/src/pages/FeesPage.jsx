@@ -259,6 +259,21 @@ async function generateFees() {
           </button>
         </div>
 
+          {/* ── Draft batches pending banner ── */}
+          {batches.length > 0 && (
+            <div style={{
+              background: '#fef5e4', border: '1px solid #fbd38d', borderRadius: 8,
+              padding: '10px 16px', marginBottom: 16, display: 'flex',
+              justifyContent: 'space-between', alignItems: 'center', fontSize: 13,
+            }}>
+              <span>⚠️ {batches.length} fee batch(es) DRAFT mein pending hain — publish nahi hue, parents ko nahi dikh rahe</span>
+              <button onClick={() => setShowBatches(true)} style={{
+                background: '#dd7a01', color: '#fff', border: 'none', borderRadius: 6,
+                padding: '5px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              }}>Review Batches</button>
+            </div>
+          )}
+
           {/* alert */}
           {msg.text && (
             <div style={{
@@ -580,14 +595,14 @@ async function generateFees() {
                               )}
                               {r.receipt_no && (
                                 <button
-                                  onClick={() => setReceiptRec(r)}
+                                  onClick={() => window.open(`${api.defaults.baseURL}/principal/fees/receipt/${r.receipt_no}/pdf`, '_blank')}
                                   style={{
                                     background: '#e8f4fd', color: '#0176d3',
                                     border: 'none', borderRadius: 4,
                                     padding: '4px 10px', fontSize: 11,
                                     fontWeight: 700, cursor: 'pointer',
                                   }}>
-                                  🧾 Receipt
+                                  🧾 PDF Receipt
                                 </button>
                               )}
                             </div>
@@ -782,18 +797,6 @@ async function generateFees() {
         </div>
 
         <div className="form-group">
-          <label className="form-label">Amount *</label>
-
-          <input
-            type="number"
-            className="form-input"
-            placeholder="500"
-            value={genAmount}
-            onChange={e => setGenAmount(e.target.value)}
-          />
-        </div>
-
-        <div className="form-group">
           <label className="form-label">Due Date</label>
 
           <input
@@ -824,6 +827,69 @@ async function generateFees() {
     </div>
   </div>
 )}
+
+      {/* ══ DRAFT BATCHES LIST MODAL ══════════════════════════════════════ */}
+      {showBatches && (
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowBatches(false)}>
+          <div className="modal" style={{ width: 500 }}>
+            <div className="modal-header">
+              <h3>📋 Draft Batches</h3>
+              <button className="modal-close" onClick={() => setShowBatches(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              {batches.map(b => (
+                <div key={b.id} style={{
+                  border: '1px solid #e2e8f0', borderRadius: 8, padding: 12, marginBottom: 8,
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                }}>
+                  <div>
+                    <strong>{b.class_name}</strong> — {b.fee_type} — {b.month}
+                    <div style={{ fontSize: 11, color: '#64748b' }}>
+                      {b.generated_count} created, {b.skipped_count} skipped
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => openBatchReview(b.id)} style={{ background: '#e8f4fd', color: '#0176d3', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Review</button>
+                    <button onClick={() => deleteBatch(b.id)} style={{ background: '#fef2f2', color: '#dc2626', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Delete</button>
+                  </div>
+                </div>
+              ))}
+              {!batches.length && <p style={{ color: '#94a3b8', textAlign: 'center' }}>Koi draft batch nahi</p>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ BATCH RECORD REVIEW + PUBLISH MODAL ═══════════════════════════ */}
+      {batchRecords && (
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setBatchRecords(null)}>
+          <div className="modal" style={{ width: 600, maxHeight: '80vh', overflow: 'auto' }}>
+            <div className="modal-header">
+              <h3>Review — {batchRecords.batch.fee_type} — {batchRecords.batch.month}</h3>
+              <button className="modal-close" onClick={() => setBatchRecords(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <table style={{ width: '100%', fontSize: 12 }}>
+                <thead><tr><th>Student</th><th>Amount Due</th><th>Due Date</th></tr></thead>
+                <tbody>
+                  {batchRecords.records.map(r => (
+                    <tr key={r.id}>
+                      <td>{r.student_name}</td>
+                      <td>₹{fmt(r.amount_due)}</td>
+                      <td>{r.due_date}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-neutral" onClick={() => deleteBatch(batchRecords.batch.id)}>🗑️ Delete Batch</button>
+              <button className="btn btn-primary" onClick={() => publishBatch(batchRecords.batch.id)}>✅ Publish</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ══ RECEIPT MODAL ══════════════════════════════════════════════════ */}
       {receiptRec && (
         <div className="modal-backdrop"
