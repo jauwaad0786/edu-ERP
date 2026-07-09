@@ -16,6 +16,7 @@ import StudentsPage     from './pages/StudentsPage';
 import TeachersPage     from './pages/TeachersPage';
 import ClassesPage      from './pages/ClassesPage';
 import FeesPage         from './pages/FeesPage';
+import FeeStructures    from './pages/fees/FeeStructures';
 import ExamsPage        from './pages/ExamsPage';
 import SchoolDetailPage from './pages/SchoolDetailPage';
 import AttendancePage   from './pages/AttendancePage';
@@ -131,6 +132,11 @@ export default function App() {
             <Route path="/fees" element={
               <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'STUDENT', 'PARENT']}>
                 <FeesPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/fees/structures" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']}>
+                <FeeStructures />
               </ProtectedRoute>
             } />
             <Route path="/finance/expenses" element={
