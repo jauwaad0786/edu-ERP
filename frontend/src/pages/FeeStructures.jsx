@@ -1,8 +1,8 @@
 // NEW FILE — src/pages/fees/FeeStructures.jsx
 import React, { useState, useEffect, useCallback } from 'react';
-import Sidebar from '../../components/Sidebar';
-import Navbar  from '../../components/Navbar';
-import api     from '../../api/axios';
+import Sidebar from '../components/Sidebar';
+import Navbar  from '../components/Navbar';
+import api     from '../api/axios';
 import toast   from 'react-hot-toast';
 
 const FEE_TYPES = ['TUITION', 'EXAM', 'ADMISSION', 'SPORTS', 'UNIFORM', 'BOOKS', 'OTHER'];
