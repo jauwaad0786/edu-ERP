@@ -740,8 +740,11 @@ def create_student():
 @role_required('PRINCIPAL', 'TEACHER')
 def fees_summary():
     sid = _school_id()
-    total_due  = db.session.query(func.sum(FeeRecord.amount_due)).filter_by(school_id=sid).scalar() or 0
-    total_paid = db.session.query(func.sum(FeeRecord.amount_paid)).filter_by(school_id=sid).scalar() or 0
+    # NEW
+    total_due  = db.session.query(func.sum(FeeRecord.amount_due))\
+        .filter(FeeRecord.school_id == sid, FeeRecord.status.notin_(['DRAFT', 'CANCELLED'])).scalar() or 0
+    total_paid = db.session.query(func.sum(FeeRecord.amount_paid))\
+        .filter(FeeRecord.school_id == sid, FeeRecord.status.notin_(['DRAFT', 'CANCELLED'])).scalar() or 0
     pending    = db.session.query(func.count(FeeRecord.id)).filter_by(school_id=sid, status='PENDING').scalar() or 0
     overdue    = db.session.query(func.count(FeeRecord.id)).filter_by(school_id=sid, status='OVERDUE').scalar() or 0
 
@@ -803,10 +806,13 @@ def fee_records():
     month      = request.args.get('month')
     fee_type   = request.args.get('fee_type')
 
+    # NEW
     q = FeeRecord.query.filter_by(school_id=sid)
 
     if status:
         q = q.filter_by(status=status)
+    else:
+        q = q.filter(FeeRecord.status != 'DRAFT')
     if student_id:
         q = q.filter_by(student_id=student_id)
     if month:
