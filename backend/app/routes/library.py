@@ -6,7 +6,8 @@ from app.models.library import (
     BookReservation, FineTransaction, LibrarySettings, log_activity
 )
 
-from app.models.academic import Class
+# NEW
+from app.models.academic import Class, Student
 from app.models.user import User
 from datetime import datetime, date
 import random
@@ -56,7 +57,32 @@ def _gen_barcode():
         code = ''.join(random.choices(string.digits, k=13))
         if not BookCopy.query.filter_by(barcode=code).first():
             return code
+# NEW
 
+def _sync_fine_to_fee_record(fine, sid):
+    """
+    Library fine ko centralized Fees Management (FeeRecord) mein reflect karta hai —
+    source='LIBRARY', source_ref_id=FineTransaction.id. Sirf STUDENT members ke liye
+    (teacher fines abhi FeeRecord mein nahi jaati).
+    """
+    from app.models.financial import FeeRecord
+
+    member = LibraryMember.query.get(fine.member_id)
+    if not member or member.member_type != 'STUDENT':
+        return None
+    student = Student.query.filter_by(user_id=member.user_id, school_id=sid).first()
+    if not student:
+        return None
+
+    rec = FeeRecord(
+        school_id=sid, student_id=student.id, fee_type='LIBRARY',
+        amount_due=fine.amount, amount_paid=0, status='PENDING',
+        month=date.today().strftime('%Y-%m'), due_date=date.today(),
+        source='LIBRARY', source_ref_id=fine.id,
+        remarks=f'Library fine — {fine.reason}',
+    )
+    db.session.add(rec)
+    return rec
 
 # ─── Categories ───────────────────────────────────────────────────────────────
 
@@ -734,11 +760,22 @@ def return_book():
     db.session.flush()
 
     # ── Optional: collect fine immediately at return counter ──
+    # NEW
+    # ── Optional: collect fine immediately at return counter ──
     if fine_created and data.get('collect_fine_now'):
         fine_created.amount_paid = fine_created.amount
         fine_created.status      = 'PAID'
         fine_created.collected_by = get_current_user().id
         fine_created.collected_at = datetime.utcnow()
+
+    # ── Sync to centralized Fees Management ──
+    if fine_created:
+        db.session.flush()   # fine_created.id chahiye FeeRecord link karne ke liye
+        fee_rec = _sync_fine_to_fee_record(fine_created, sid)
+        if fee_rec and fine_created.status == 'PAID':
+            fee_rec.amount_paid = fee_rec.amount_due
+            fee_rec.status      = 'PAID'
+            fee_rec.paid_date   = date.today()
 
     # ── If book becomes available again, notify top reservation ──
     if copy.status == 'AVAILABLE':
@@ -832,8 +869,18 @@ def collect_fine(fine_id):
     else:
         fine.status = 'PARTIAL'
 
+     # NEW
     fine.collected_by = get_current_user().id
     fine.collected_at  = datetime.utcnow()
+
+    # ── Keep linked FeeRecord in sync ──
+    from app.models.financial import FeeRecord
+    linked_rec = FeeRecord.query.filter_by(source='LIBRARY', source_ref_id=fine.id).first()
+    if linked_rec:
+        linked_rec.amount_paid = fine.amount_paid
+        linked_rec.status      = fine.status  # PAID / PARTIAL
+        linked_rec.paid_date   = date.today()
+
     db.session.commit()
 
     log_activity(_school_id(), get_current_user().id, 'FINE_COLLECTED', f'₹{amount:.0f} (fine #{fine.id})')
@@ -850,10 +897,18 @@ def waive_fine(fine_id):
     if fine.status in ('PAID', 'WAIVED'):
         return jsonify({'error': f'Fine already {fine.status}'}), 400
 
+    # NEW
     data = request.get_json() or {}
     fine.status       = 'WAIVED'
     fine.waived_by    = get_current_user().id
     fine.waive_reason = (data.get('reason') or '').strip()
+
+    from app.models.financial import FeeRecord
+    linked_rec = FeeRecord.query.filter_by(source='LIBRARY', source_ref_id=fine.id).first()
+    if linked_rec and linked_rec.amount_paid == 0:
+        linked_rec.status  = 'CANCELLED'
+        linked_rec.remarks = (linked_rec.remarks or '') + f' [Waived: {fine.waive_reason}]'
+
     db.session.commit()
 
     log_activity(_school_id(), get_current_user().id, 'FINE_WAIVED',
