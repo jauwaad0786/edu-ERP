@@ -2,26 +2,40 @@ from app import db
 from datetime import datetime
 
 
+# NEW
 class FeeStructure(db.Model):
-    """Defines fee structure per class per school."""
+    """
+    Class-wise fee pricing config. Actual generation FeeRecord.status=DRAFT
+    banata hai isse — ye table sirf 'kitna amount' decide karti hai, kabhi
+    directly student ko bill nahi karti.
+    """
     __tablename__ = 'fee_structures'
 
     id           = db.Column(db.Integer, primary_key=True)
-    school_id    = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False)
-    class_id     = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=True)
+    school_id    = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    class_id     = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=True)  # null = all classes
     session      = db.Column(db.String(20), default='2024-25')
     fee_type     = db.Column(db.String(50))
     amount       = db.Column(db.Float, nullable=False)
     frequency    = db.Column(db.String(20), default='MONTHLY')
     due_date_day = db.Column(db.Integer, default=10)
 
+    # NEW fields
+    status       = db.Column(db.String(20), default='ACTIVE')   # ACTIVE / INACTIVE
+    created_by   = db.Column(db.Integer, db.ForeignKey('users.id'))
+    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
+
     def to_dict(self):
         return {
-            'id': self.id,
-            'class_id': self.class_id,
-            'fee_type': self.fee_type,
-            'amount': self.amount,
-            'frequency': self.frequency
+            'id':           self.id,
+            'class_id':     self.class_id,
+            'fee_type':     self.fee_type,
+            'amount':       self.amount,
+            'frequency':    self.frequency,
+            'due_date_day': self.due_date_day,
+            'session':      self.session,
+            'status':       self.status or 'ACTIVE',
+            'created_at':   self.created_at.isoformat() if self.created_at else None,
         }
 
 
@@ -38,8 +52,13 @@ class FeeRecord(db.Model):
 
     # ── Source tracking — same pattern as Expense.source/source_ref_id ──
     # 'ACADEMIC' (default, existing behaviour untouched) / 'HOSTEL' / 'TRANSPORT' / 'LIBRARY'
+    # NEW
     source        = db.Column(db.String(20), default='ACADEMIC', index=True)
-    source_ref_id = db.Column(db.Integer)   # e.g. HostelBedAllocation.id
+    source_ref_id = db.Column(db.Integer)   # e.g. HostelBedAllocation.id, FineTransaction.id
+
+    # NEW — links a record to the batch that generated it (null for hostel/library/manual records)
+    batch_id      = db.Column(db.Integer, db.ForeignKey('fee_generation_batches.id'), nullable=True, index=True)
+
     discount     = db.Column(db.Float, default=0.0)
     fine         = db.Column(db.Float, default=0.0)
     status       = db.Column(db.String(20), default='PENDING')
@@ -180,7 +199,7 @@ class FeeTransaction(db.Model):
     # "July 2026" — auto-set from transaction_date, isi se month-wise report chalega
     txn_month       = db.Column(db.String(20), index=True)
 
-    receipt_no      = db.Column(db.String(50), unique=True)   # per-transaction receipt
+    receipt_no      = db.Column(db.String(50), index=True)   # per-transaction receipt
     remarks         = db.Column(db.String(300), default='')
     collected_by    = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at      = db.Column(db.DateTime, default=datetime.utcnow)
@@ -327,4 +346,47 @@ class TimetablePeriod(db.Model):
             'room':         self.room or '',
             'is_break':     self.is_break,
             'break_label':  self.break_label or '',
+        }
+
+
+# NEW — add this new class anywhere in financial.py, after FeeRecord
+
+class FeeGenerationBatch(db.Model):
+    """
+    Ek 'Generate Fees' click = ek batch row. Isi se Draft → Review → Publish
+    workflow control hota hai — poori batch ek saath publish/delete ho sakti hai.
+    Bilkul ExamSchedule/Timetable jaisa hi draft/publish pattern.
+    """
+    __tablename__ = 'fee_generation_batches'
+
+    id              = db.Column(db.Integer, primary_key=True)
+    school_id       = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    class_id        = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=True)  # null = multi-class (hostel jaisa)
+    fee_type        = db.Column(db.String(50), nullable=False)
+    month           = db.Column(db.String(20), nullable=False)   # "2026-07"
+    session         = db.Column(db.String(20), default='2024-25')
+
+    status          = db.Column(db.String(20), default='DRAFT')  # DRAFT / PUBLISHED / CANCELLED
+    generated_count = db.Column(db.Integer, default=0)
+    skipped_count   = db.Column(db.Integer, default=0)
+
+    generated_by    = db.Column(db.Integer, db.ForeignKey('users.id'))
+    generated_at    = db.Column(db.DateTime, default=datetime.utcnow)
+    published_by    = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    published_at    = db.Column(db.DateTime, nullable=True)
+
+    records = db.relationship('FeeRecord', backref='batch', lazy='dynamic')
+
+    def to_dict(self):
+        return {
+            'id':               self.id,
+            'class_id':         self.class_id,
+            'fee_type':         self.fee_type,
+            'month':            self.month,
+            'session':          self.session,
+            'status':           self.status,
+            'generated_count':  self.generated_count or 0,
+            'skipped_count':    self.skipped_count or 0,
+            'generated_at':     self.generated_at.isoformat() if self.generated_at else None,
+            'published_at':     self.published_at.isoformat() if self.published_at else None,
         }
