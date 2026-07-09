@@ -895,7 +895,7 @@ def collect_fee():
     record.remarks      = data.get('remarks', '')
 
     # Auto status
-    if record.amount_paid >= record.amount_due:
+    if record.amount_paid >= record.effective_due():
         record.status = 'PAID'
     elif record.amount_paid > 0:
         record.status = 'PARTIAL'
@@ -997,7 +997,7 @@ def collect_fee_multiple():
         record.paid_date    = today
         record.collected_by = get_current_user().id
         record.remarks      = remarks
-        record.status       = 'PAID' if record.amount_paid >= record.amount_due else 'PARTIAL'
+        record.status       = 'PAID' if record.amount_paid >= record.effective_due() else 'PARTIAL'
         if not record.receipt_no:
             record.receipt_no = receipt_no
 
@@ -1151,7 +1151,76 @@ def list_batch_records(batch_id):
         d['roll_number']  = student.roll_number if student else ''
         result.append(d)
     return jsonify({'batch': batch.to_dict(), 'records': result}), 200
+# NEW — paste right after list_batch_records()
 
+@principal_bp.route('/fees/batches/<int:batch_id>/missing-students', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER')
+def batch_missing_students(batch_id):
+    """Class ke wo students jo abhi is batch mein include nahi hain (naya admission/transfer)."""
+    batch = FeeGenerationBatch.query.get_or_404(batch_id)
+    if batch.school_id != _school_id():
+        return jsonify({'error': 'Unauthorized'}), 403
+    if not batch.class_id:
+        return jsonify([]), 200
+
+    included_ids = {r.student_id for r in FeeRecord.query.filter_by(batch_id=batch.id).all()}
+    students = Student.query.filter_by(school_id=batch.school_id, class_id=batch.class_id).all()
+    missing  = [s for s in students if s.id not in included_ids]
+
+    return jsonify([{
+        'id': s.id, 'name': s.user.name if s.user else '',
+        'roll_number': s.roll_number or '',
+    } for s in missing]), 200
+
+
+@principal_bp.route('/fees/batches/<int:batch_id>/add-student', methods=['POST'])
+@role_required('PRINCIPAL', 'TEACHER')
+def batch_add_student(batch_id):
+    """Missed student ko draft batch mein add karo — FeeStructure se hi amount resolve hota hai."""
+    batch = FeeGenerationBatch.query.get_or_404(batch_id)
+    if batch.school_id != _school_id():
+        return jsonify({'error': 'Unauthorized'}), 403
+    if batch.status != 'DRAFT':
+        return jsonify({'error': 'Sirf DRAFT batch mein student add ho sakta hai'}), 400
+
+    data = request.get_json() or {}
+    student_id = data.get('student_id')
+    student = Student.query.get_or_404(student_id)
+    if student.school_id != batch.school_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    exists = FeeRecord.query.filter_by(
+        student_id=student.id, month=batch.month, fee_type=batch.fee_type
+    ).first()
+    if exists:
+        return jsonify({'error': 'Is student ka record already exist karta hai'}), 409
+
+    fs = FeeStructure.query.filter_by(
+        school_id=batch.school_id, class_id=batch.class_id,
+        fee_type=batch.fee_type, status='ACTIVE'
+    ).first()
+    if not fs:
+        return jsonify({'error': 'Fee structure nahi mili is class/fee-type ke liye'}), 400
+
+    try:
+        y, m = map(int, batch.month.split('-'))
+        due_date = date(y, m, min(fs.due_date_day or 10, 28))
+    except (ValueError, TypeError):
+        due_date = None
+
+    rec = FeeRecord(
+        school_id=batch.school_id, student_id=student.id, fee_type=batch.fee_type,
+        month=batch.month, amount_due=fs.amount, amount_paid=0, status='DRAFT',
+        due_date=due_date, session=batch.session, batch_id=batch.id,
+    )
+    db.session.add(rec)
+    batch.generated_count = (batch.generated_count or 0) + 1
+    db.session.commit()
+
+    d = rec.to_dict()
+    d['student_name'] = student.user.name if student.user else ''
+    d['roll_number']  = student.roll_number or ''
+    return jsonify(d), 201
 
 @principal_bp.route('/fees/batches/<int:batch_id>/publish', methods=['POST'])
 @role_required('PRINCIPAL')
@@ -1207,6 +1276,81 @@ def update_fee_record(record_id):
     db.session.commit()
     return jsonify(rec.to_dict()), 200
 
+# NEW — paste right after update_fee_record()
+
+@principal_bp.route('/fees/records/<int:record_id>/adjust', methods=['POST'])
+@role_required('PRINCIPAL')
+def adjust_fee_record(record_id):
+    """
+    Fine (extra charge) ya Discount/Waiver (maafi) lagao — reason ke saath.
+    DRAFT aur PUBLISHED (PENDING/PARTIAL/OVERDUE) dono pe kaam karta hai.
+    amount_due kabhi mutate nahi hota — original preserve rehta hai, sirf
+    fine/discount layer upar chadhti hai. Audit trail: adjusted_by/adjusted_at.
+
+    Body: { type: 'FINE' | 'DISCOUNT', amount, reason }
+    """
+    rec = FeeRecord.query.get_or_404(record_id)
+    if rec.school_id != _school_id():
+        return jsonify({'error': 'Unauthorized'}), 403
+    if rec.status in ('CANCELLED', 'REFUNDED'):
+        return jsonify({'error': f'{rec.status} record pe adjustment nahi lag sakta'}), 400
+
+    data = request.get_json() or {}
+    adj_type = (data.get('type') or '').strip().upper()
+    reason   = (data.get('reason') or '').strip()
+
+    if adj_type not in ('FINE', 'DISCOUNT'):
+        return jsonify({'error': "type 'FINE' ya 'DISCOUNT' hona chahiye"}), 400
+    if not reason:
+        return jsonify({'error': 'reason zaroori hai — audit trail ke liye'}), 400
+    try:
+        amount = float(data.get('amount'))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'amount number honi chahiye'}), 400
+    if amount <= 0:
+        return jsonify({'error': 'amount 0 se zyada honi chahiye'}), 400
+
+    if adj_type == 'FINE':
+        rec.fine   = (rec.fine or 0) + amount
+        rec.fine_reason = reason
+    else:  # DISCOUNT
+        rec.discount = (rec.discount or 0) + amount
+        rec.discount_reason = reason
+
+    rec.adjusted_by = get_current_user().id
+    rec.adjusted_at = datetime.utcnow()
+
+    # Status recompute — DRAFT record DRAFT hi rahega (publish se pehle),
+    # baaki records ka status effective_due ke against refresh ho
+    if rec.status != 'DRAFT':
+        if rec.amount_paid >= rec.effective_due():
+            rec.status = 'PAID'
+        elif rec.amount_paid > 0:
+            rec.status = 'PARTIAL'
+        elif rec.status == 'PAID':   # discount se ab underpaid ho gaya
+            rec.status = 'PENDING'
+
+    db.session.commit()
+    return jsonify(rec.to_dict()), 200
+
+
+@principal_bp.route('/fees/records/<int:record_id>/adjust/<string:field>', methods=['DELETE'])
+@role_required('PRINCIPAL')
+def remove_fee_adjustment(record_id, field):
+    """Fine ya discount galti se lag gaya ho toh remove karo. field = 'fine' | 'discount'"""
+    rec = FeeRecord.query.get_or_404(record_id)
+    if rec.school_id != _school_id():
+        return jsonify({'error': 'Unauthorized'}), 403
+    if field not in ('fine', 'discount'):
+        return jsonify({'error': "field 'fine' ya 'discount' hona chahiye"}), 400
+
+    setattr(rec, field, 0)
+    setattr(rec, f'{field}_reason', None)
+    rec.adjusted_by = get_current_user().id
+    rec.adjusted_at = datetime.utcnow()
+    db.session.commit()
+    return jsonify(rec.to_dict()), 200
+
 
 @principal_bp.route('/fees/records/<int:record_id>', methods=['DELETE'])
 @role_required('PRINCIPAL')
@@ -1224,7 +1368,68 @@ def delete_fee_record(record_id):
     db.session.delete(rec)
     db.session.commit()
     return jsonify({'message': 'Draft fee record deleted'}), 200
+# NEW — paste in Fees section, kahin bhi
 
+@principal_bp.route('/fees/student-search', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER')
+def fees_student_search():
+    """
+    Adjustment panel ka student picker — class + naam/roll se search.
+    Query: class_id (optional), q (search text, optional)
+    """
+    sid      = _school_id()
+    class_id = request.args.get('class_id')
+    q        = (request.args.get('q') or '').strip()
+
+    query = Student.query.filter_by(school_id=sid)
+    if class_id:
+        query = query.filter_by(class_id=class_id)
+    if q:
+        query = query.join(User, Student.user_id == User.id).filter(db.or_(
+            User.name.ilike(f'%{q}%'),
+            Student.roll_number.ilike(f'%{q}%'),
+            Student.admission_no.ilike(f'%{q}%'),
+        ))
+
+    students = query.limit(30).all()
+    result = []
+    for s in students:
+        cls = Class.query.get(s.class_id) if s.class_id else None
+        result.append({
+            'id':           s.id,
+            'name':         s.user.name if s.user else '',
+            'roll_number':  s.roll_number or '',
+            'admission_no': s.admission_no or '',
+            'class_name':   f"{cls.name} - {cls.section}" if cls else '',
+        })
+    return jsonify(result), 200
+
+
+@principal_bp.route('/fees/student-records/<int:student_id>', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER')
+def fees_student_records(student_id):
+    """
+    Student select hone ke baad uske saare fee records — DRAFT + PUBLISHED
+    dono, taaki adjustment (fine/waiver) kisi bhi record pe lag sake.
+    CANCELLED/REFUNDED bhi dikhte hain (read-only, history ke liye).
+    """
+    student = Student.query.get_or_404(student_id)
+    if student.school_id != _school_id():
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    cls = Class.query.get(student.class_id) if student.class_id else None
+    records = FeeRecord.query.filter_by(student_id=student_id)\
+                .order_by(FeeRecord.created_at.desc()).all()
+
+    return jsonify({
+        'student': {
+            'id':          student.id,
+            'name':        student.user.name if student.user else '',
+            'roll_number': student.roll_number or '',
+            'class_name':  f"{cls.name} - {cls.section}" if cls else '',
+        },
+        'records': [r.to_dict() for r in records],
+    }), 200
 
 @principal_bp.route('/fees/records/<int:record_id>/cancel', methods=['POST'])
 @role_required('PRINCIPAL')
