@@ -16,7 +16,7 @@ import StudentsPage     from './pages/StudentsPage';
 import TeachersPage     from './pages/TeachersPage';
 import ClassesPage      from './pages/ClassesPage';
 import FeesPage         from './pages/FeesPage';
-import FeeStructures    from './pages/fees/FeeStructures';
+import FeeStructures    from './pages/FeeStructures';
 import ExamsPage        from './pages/ExamsPage';
 import SchoolDetailPage from './pages/SchoolDetailPage';
 import AttendancePage   from './pages/AttendancePage';
