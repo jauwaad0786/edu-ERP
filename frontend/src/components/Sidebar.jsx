@@ -82,6 +82,7 @@ const ROLE_MENUS = {
             { icon: 'ti-clipboard-check', label: 'Attendance', path: '/attendance' },
             { icon: 'ti-calendar-time',   label: 'Timetable',  path: '/timetable' },
             { icon: 'ti-receipt',         label: 'Fees',       path: '/fees' },
+            { icon: 'ti-currency-rupee',  label: 'Fee Structures',  path: '/fees/structures' },
           ],
         },
       ],
