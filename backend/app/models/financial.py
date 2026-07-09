@@ -106,9 +106,9 @@ class FeeRecord(db.Model):
             'source_ref_id':  self.source_ref_id,
         }
 # NEW — add this method inside FeeRecord class, right after to_dict()
-def effective_due(self):
-    """Actual payable amount after fine/discount adjustments."""
-    return round((self.amount_due or 0) + (self.fine or 0) - (self.discount or 0), 2)
+    def effective_due(self):
+        """Actual payable amount after fine/discount adjustments."""
+        return round((self.amount_due or 0) + (self.fine or 0) - (self.discount or 0), 2)
 
 
 class ExamSchedule(db.Model):
