@@ -326,17 +326,26 @@ export default function FeesPage() {
   }
 
   /* ── bulk class notice ── */
-  function downloadBulkNotice() {
-    if (!bulkNoticeClass) {
-      flash('❌ Class select karo', 'error');
-      return;
-    }
+  async function downloadBulkNotice() {
+    if (!bulkNoticeClass) { flash('❌ Class select karo', 'error'); return; }
     const month = bulkNoticeMonth || new Date().toISOString().slice(0, 7);
-    window.open(
-      `${api.defaults.baseURL}/principal/fees/notices/bulk?class_id=${bulkNoticeClass}&month=${month}`,
-      '_blank'
-    );
-    setBulkNoticeModal(false);
+    try {
+      const res = await api.get(
+        `/principal/fees/notices/bulk?class_id=${bulkNoticeClass}&month=${month}`,
+        { responseType: 'blob' }   // ← axios ab token bhejega, blob PDF wapas aayega
+      );
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `FeeNotices_class${bulkNoticeClass}_${month}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      setBulkNoticeModal(false);
+    } catch (e) {
+      flash('❌ PDF download fail hua', 'error');
+    }
   }
 
   const collectionPct = summary
@@ -621,7 +630,7 @@ export default function FeesPage() {
                   </thead>
                   <tbody>
                     {filtered.map(r => {
-                      const balance = (r.amount_due || 0) - (r.amount_paid || 0);
+                      const balance = (r.effective_due ?? r.amount_due ?? 0) - (r.amount_paid || 0);
                       return (
                         <tr key={r.id}>
                           {/* select checkbox — DRAFT/PAID select nahi ho sakte */}
@@ -663,15 +672,14 @@ export default function FeesPage() {
 
                           <td style={{ fontSize: 12, color: 'var(--neutral-6)' }}>{r.month || '—'}</td>
 
-                          <td style={{ fontWeight: 600 }}>₹{fmt(r.amount_due)}</td>
-
+                          <td>
+                            <div style={{ fontWeight: 600 }}>₹{fmt(r.amount_due)}</div>
+                            {r.fine > 0 && <div style={{ fontSize: 10, color: '#ba0517' }}>+₹{fmt(r.fine)} fine</div>}
+                            {r.discount > 0 && <div style={{ fontSize: 10, color: '#2e844a' }}>-₹{fmt(r.discount)} discount</div>}
+                          </td>
                           <td style={{ fontWeight: 600, color: '#2e844a' }}>₹{fmt(r.amount_paid)}</td>
-
-                          <td style={{
-                            fontWeight: 700,
-                            color: balance > 0 ? '#ba0517' : '#2e844a',
-                          }}>
-                            {balance > 0 ? `₹${fmt(balance)}` : '✅ Clear'}
+                          <td style={{ fontWeight: 700, color: (r.effective_due - r.amount_paid) > 0 ? '#ba0517' : '#2e844a' }}>
+                            {(r.effective_due - r.amount_paid) > 0 ? `₹${fmt(r.effective_due - r.amount_paid)}` : '✅ Clear'}
                           </td>
 
                           <td>
