@@ -38,7 +38,7 @@ export default function FeesPage() {
   const [filterClass,   setFilterClass]   = useState('');
   const [filterMonth, setFilterMonth] = useState('');
   const [filterFeeType, setFilterFeeType] = useState('');
-  const [snapshotMonth, setSnapshotMonth] = useState(''); // Collection Snapshot + Class-wise Due — Fee Records se independent
+  const [snapshotMonth, setSnapshotMonth] = useState('');
   const [classSummary, setClassSummary] = useState([]);
   const [loading,  setLoading]  = useState(false);
   const [msg,      setMsg]      = useState({ text: '', type: '' });
@@ -50,22 +50,38 @@ export default function FeesPage() {
   const [missingStudents, setMissingStudents] = useState([]);
   const [addStudentId, setAddStudentId] = useState('');
 
-  /* collect modal */
+  /* collect modal (single record) */
   const [modal,    setModal]    = useState(false);
   const [selRec,   setSelRec]   = useState(null);
   const [payAmt,   setPayAmt]   = useState('');
   const [payMode,  setPayMode]  = useState('CASH');
   const [remarks,  setRemarks]  = useState('');
   const [saving,   setSaving]   = useState(false);
+
+  /* generate fees modal */
   const [genModal, setGenModal] = useState(false);
   const [genClass, setGenClass] = useState('');
   const [genMonth, setGenMonth] = useState('');
-  const [genAmount, setGenAmount] = useState('');
   const [genFeeType, setGenFeeType] = useState('TUITION');
-  const [genDueDate, setGenDueDate] = useState('');
+  const [genWindowStart, setGenWindowStart] = useState('');
+  const [genWindowEnd, setGenWindowEnd] = useState('');
 
-  /* receipt modal */
-  const [receiptRec, setReceiptRec] = useState(null);
+  /* receipts */
+  const [receiptRec, setReceiptRec] = useState(null);      // single collect
+  const [receiptGroup, setReceiptGroup] = useState(null);  // multi collect
+
+  /* multi-select combine/separate collection */
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [multiCollectModal, setMultiCollectModal] = useState(false);
+  const [collectMode, setCollectMode] = useState('COMBINED');
+  const [multiPayMode, setMultiPayMode] = useState('CASH');
+  const [multiRemarks, setMultiRemarks] = useState('');
+  const [multiSaving, setMultiSaving] = useState(false);
+
+  /* bulk class notice */
+  const [bulkNoticeModal, setBulkNoticeModal] = useState(false);
+  const [bulkNoticeClass, setBulkNoticeClass] = useState('');
+  const [bulkNoticeMonth, setBulkNoticeMonth] = useState('');
 
   /* ── load data ── */
   const load = useCallback(() => {
@@ -73,10 +89,7 @@ export default function FeesPage() {
     const params = new URLSearchParams();
     if (filterStatus) params.append('status',   filterStatus);
     if (filterClass)  params.append('class_id', filterClass);
-    if (filterMonth) {
-      // FeeRecord.month DB mein "YYYY-MM" format mein store hota hai (Generate Fees se seedha aata hai)
-      params.append('month', filterMonth);
-    }
+    if (filterMonth) params.append('month', filterMonth);
     if (filterFeeType) params.append('fee_type', filterFeeType);
 
     Promise.all([
@@ -87,28 +100,23 @@ export default function FeesPage() {
     ])
       .then(([s, r, c, cs]) => {
         setClassSummary(Array.isArray(cs.data) ? cs.data : []);
-  // records — array ya nested object dono handle karo
         const rawR = r.data;
         setRecords(
           Array.isArray(rawR)          ? rawR :
           Array.isArray(rawR?.records) ? rawR.records :
           Array.isArray(rawR?.data)    ? rawR.data : []
         );
-      
-        // classes — same pattern
         const rawC = c.data;
         setClasses(
           Array.isArray(rawC)          ? rawC :
           Array.isArray(rawC?.classes) ? rawC.classes :
           Array.isArray(rawC?.data)    ? rawC.data : []
         );
-      
-        // summary — object expected
         setSummary(s.data?.summary ?? s.data ?? null);
       })
       .catch(() => flash('❌ Data load karne mein error aaya', 'error'))
       .finally(() => setLoading(false));
-}, [filterStatus, filterClass, filterMonth, filterFeeType, snapshotMonth]);
+  }, [filterStatus, filterClass, filterMonth, filterFeeType, snapshotMonth]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -119,7 +127,7 @@ export default function FeesPage() {
     else toast.error(text.replace(/^❌\s*/, ''));
   }
 
-  /* ── open collect modal ── */
+  /* ── single collect ── */
   function openCollect(rec) {
     setSelRec(rec);
     setPayAmt(String(rec.amount_due - rec.amount_paid));
@@ -127,9 +135,7 @@ export default function FeesPage() {
     setRemarks('');
     setModal(true);
   }
-  
 
-  /* ── submit payment ── */
   async function submitPayment() {
     if (!payAmt || isNaN(payAmt) || Number(payAmt) <= 0) {
       flash('❌ Sahi amount daalo', 'error'); return;
@@ -145,27 +151,28 @@ export default function FeesPage() {
       setModal(false);
       flash(`✅ Receipt ${res.data.receipt_no} — ₹${fmt(payAmt)} collect hua`);
       load();
-      // Show receipt immediately
       setReceiptRec(res.data);
     } catch (e) {
       flash(e.response?.data?.error || '❌ Payment mein error', 'error');
     }
     setSaving(false);
   }
+
+  /* ── batches ── */
   function loadBatches() {
     api.get('/principal/fees/batches?status=DRAFT')
       .then(r => setBatches(r.data || []))
       .catch(() => {});
   }
-  
+
   useEffect(() => { loadBatches(); }, []);
-  
+
   async function openBatchReview(batchId) {
     const { data } = await api.get(`/principal/fees/batches/${batchId}/records`);
     setBatchRecords(data);
     loadMissingStudents(batchId);
   }
-  
+
   async function publishBatch(batchId) {
     if (!window.confirm('Publish karne ke baad parents ko ye fees dikhengi. Confirm?')) return;
     try {
@@ -178,43 +185,42 @@ export default function FeesPage() {
       flash(e.response?.data?.error || '❌ Publish fail hua', 'error');
     }
   }
-  // NEW — openBatchReview ke paas, naye functions add karo
 
-async function loadMissingStudents(batchId) {
-  try {
-    const { data } = await api.get(`/principal/fees/batches/${batchId}/missing-students`);
-    setMissingStudents(data || []);
-  } catch { setMissingStudents([]); }
-}
+  async function loadMissingStudents(batchId) {
+    try {
+      const { data } = await api.get(`/principal/fees/batches/${batchId}/missing-students`);
+      setMissingStudents(data || []);
+    } catch { setMissingStudents([]); }
+  }
 
-async function saveRecordAmount(recId) {
-  if (!editAmt || isNaN(editAmt) || Number(editAmt) <= 0) {
-    flash('❌ Sahi amount daalo', 'error'); return;
+  async function saveRecordAmount(recId) {
+    if (!editAmt || isNaN(editAmt) || Number(editAmt) <= 0) {
+      flash('❌ Sahi amount daalo', 'error'); return;
+    }
+    try {
+      await api.patch(`/principal/fees/records/${recId}`, { amount_due: parseFloat(editAmt) });
+      flash('✅ Amount updated');
+      setEditingRecId(null);
+      openBatchReview(batchRecords.batch.id);
+    } catch (e) {
+      flash(e.response?.data?.error || '❌ Update fail hua', 'error');
+    }
   }
-  try {
-    await api.patch(`/principal/fees/records/${recId}`, { amount_due: parseFloat(editAmt) });
-    flash('✅ Amount updated');
-    setEditingRecId(null);
-    openBatchReview(batchRecords.batch.id);
-  } catch (e) {
-    flash(e.response?.data?.error || '❌ Update fail hua', 'error');
-  }
-}
 
-async function addStudentToBatch() {
-  if (!addStudentId) return;
-  try {
-    await api.post(`/principal/fees/batches/${batchRecords.batch.id}/add-student`, {
-      student_id: addStudentId,
-    });
-    flash('✅ Student add hua');
-    setAddStudentId('');
-    openBatchReview(batchRecords.batch.id);
-  } catch (e) {
-    flash(e.response?.data?.error || '❌ Add fail hua', 'error');
+  async function addStudentToBatch() {
+    if (!addStudentId) return;
+    try {
+      await api.post(`/principal/fees/batches/${batchRecords.batch.id}/add-student`, {
+        student_id: addStudentId,
+      });
+      flash('✅ Student add hua');
+      setAddStudentId('');
+      openBatchReview(batchRecords.batch.id);
+    } catch (e) {
+      flash(e.response?.data?.error || '❌ Add fail hua', 'error');
+    }
   }
-}
-  
+
   async function deleteBatch(batchId) {
     if (!window.confirm('Ye poori draft batch delete karni hai?')) return;
     try {
@@ -226,42 +232,46 @@ async function addStudentToBatch() {
       flash(e.response?.data?.error || '❌ Delete fail hua', 'error');
     }
   }
-// NEW
-async function generateFees() {
-  if (!genClass || !genMonth || !genFeeType) {
-    flash('❌ Class, Month aur Fee Type zaroori hai', 'error');
-    return;
-  }
 
-  try {
-    // genMonth "YYYY-MM" format mein <input type="month"> se already aata hai
-    const res = await api.post('/principal/fees/generate', {
-      class_id: genClass,
-      month: genMonth,
-      fee_type: genFeeType,
-    });
-
-    flash(`✅ ${res.data.created} records DRAFT mein bane — Batches tab se review + publish karo`);
-    setGenModal(false);
-    setGenClass('');
-    setGenMonth('');
-    setGenFeeType('TUITION');
-    load();
-
-  } catch (e) {
-    if (e.response?.data?.error === 'no_fee_structure') {
-      flash('❌ Is class/fee-type ke liye pehle Fee Structure banao', 'error');
-    } else if (e.response?.data?.error === 'already_generated') {
-      flash(`❌ ${e.response.data.message}`, 'error');
-    } else {
-      flash(e.response?.data?.error || '❌ Fee generate nahi hua', 'error');
+  /* ── generate fees ── */
+  async function generateFees() {
+    if (!genClass || !genMonth || !genFeeType) {
+      flash('❌ Class, Month aur Fee Type zaroori hai', 'error');
+      return;
+    }
+    if (genWindowStart && genWindowEnd && genWindowStart > genWindowEnd) {
+      flash('❌ Collection start date, end date se pehle honi chahiye', 'error');
+      return;
+    }
+    try {
+      const res = await api.post('/principal/fees/generate', {
+        class_id: genClass,
+        month: genMonth,
+        fee_type: genFeeType,
+        window_start: genWindowStart || undefined,
+        window_end: genWindowEnd || undefined,
+      });
+      const dueMsg = res.data.window_end ? ` — Due Date: ${res.data.due_date}` : '';
+      flash(`✅ ${res.data.created} records DRAFT mein bane${dueMsg} — Batches tab se review + publish karo`);
+      setGenModal(false);
+      setGenClass('');
+      setGenMonth('');
+      setGenFeeType('TUITION');
+      setGenWindowStart('');
+      setGenWindowEnd('');
+      load();
+    } catch (e) {
+      if (e.response?.data?.error === 'no_fee_structure') {
+        flash('❌ Is class/fee-type ke liye pehle Fee Structure banao', 'error');
+      } else if (e.response?.data?.error === 'already_generated') {
+        flash(`❌ ${e.response.data.message}`, 'error');
+      } else {
+        flash(e.response?.data?.error || '❌ Fee generate nahi hua', 'error');
+      }
     }
   }
-} 
-  
-  
-  
-  /* ── filtered records ── */
+
+  /* ── filtered records (defined before multi-select helpers use it) ── */
   const filtered = records.filter(r => {
     const q = search.toLowerCase();
     return !q
@@ -271,6 +281,63 @@ async function generateFees() {
       || r.fee_type?.toLowerCase().includes(q)
       || r.class_name?.toLowerCase().includes(q);
   });
+
+  /* ── multi-select combine/separate collect ── */
+  function toggleSelect(id) {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }
+
+  function openMultiCollect() {
+    if (selectedIds.length < 2) {
+      flash('❌ Kam se kam 2 records select karo combine/separate collect ke liye', 'error');
+      return;
+    }
+    const recs = filtered.filter(r => selectedIds.includes(r.id));
+    const firstStudent = recs[0]?.student_id;
+    if (recs.some(r => r.student_id !== firstStudent)) {
+      flash('❌ Combined payment sirf ek student ke records ke liye ho sakti hai', 'error');
+      return;
+    }
+    setCollectMode('COMBINED');
+    setMultiPayMode('CASH');
+    setMultiRemarks('');
+    setMultiCollectModal(true);
+  }
+
+  async function submitMultiPayment() {
+    const recs = filtered.filter(r => selectedIds.includes(r.id));
+    setMultiSaving(true);
+    try {
+      const res = await api.post('/principal/fees/collect-multiple', {
+        payments: recs.map(r => ({ record_id: r.id, amount: r.amount_due - r.amount_paid })),
+        payment_mode: multiPayMode,
+        remarks: multiRemarks,
+        mode: collectMode,
+      });
+      setMultiCollectModal(false);
+      setSelectedIds([]);
+      flash(`✅ ${res.data.receipts.length} receipt(s) generate hui`);
+      setReceiptGroup(res.data);
+      load();
+    } catch (e) {
+      flash(e.response?.data?.error || '❌ Payment mein error', 'error');
+    }
+    setMultiSaving(false);
+  }
+
+  /* ── bulk class notice ── */
+  function downloadBulkNotice() {
+    if (!bulkNoticeClass) {
+      flash('❌ Class select karo', 'error');
+      return;
+    }
+    const month = bulkNoticeMonth || new Date().toISOString().slice(0, 7);
+    window.open(
+      `${api.defaults.baseURL}/principal/fees/notices/bulk?class_id=${bulkNoticeClass}&month=${month}`,
+      '_blank'
+    );
+    setBulkNoticeModal(false);
+  }
 
   const collectionPct = summary
     ? Math.round((summary.total_collected / (summary.total_due || 1)) * 100)
@@ -285,20 +352,21 @@ async function generateFees() {
         <div className="page-body">
 
           <div className="page-header">
-          <div>
-            <h2 className="page-title">Fee Management</h2>
-            <p className="page-subtitle">
-              Student-wise fees collect, track aur report karo
-            </p>
+            <div>
+              <h2 className="page-title">Fee Management</h2>
+              <p className="page-subtitle">
+                Student-wise fees collect, track aur report karo
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-neutral" onClick={() => setBulkNoticeModal(true)}>
+                📄 Class Notice PDF
+              </button>
+              <button className="btn btn-primary" onClick={() => setGenModal(true)}>
+                ➕ Generate Fees
+              </button>
+            </div>
           </div>
-        
-          <button
-            className="btn btn-primary"
-            onClick={() => setGenModal(true)}
-          >
-            ➕ Generate Fees
-          </button>
-        </div>
 
           {/* ── Draft batches pending banner ── */}
           {batches.length > 0 && (
@@ -343,7 +411,7 @@ async function generateFees() {
             ))}
           </div>
 
-          {/* ── month-wise collection cards (FeeTransaction based) ── */}
+          {/* ── month-wise collection cards ── */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
             <div>
               <h4 style={{ margin: 0 }}>🗓️ Collection Snapshot</h4>
@@ -386,8 +454,6 @@ async function generateFees() {
               </div>
             ))}
           </div>
-
-          
 
           {/* ── class-wise fee due ── */}
           {classSummary.length > 0 && (
@@ -458,6 +524,27 @@ async function generateFees() {
             </div>
           )}
 
+          {/* ── selected records bar (combine/separate collect) ── */}
+          {selectedIds.length > 0 && (
+            <div style={{
+              background: '#e8f4fd', border: '1px solid #bfdbfe', borderRadius: 8,
+              padding: '8px 14px', marginBottom: 10, display: 'flex',
+              justifyContent: 'space-between', alignItems: 'center', fontSize: 13,
+            }}>
+              <span>☑️ {selectedIds.length} record(s) select kiye</span>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={openMultiCollect}
+                  style={{ background: '#0176d3', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                  💸 Collect Selected (Combine/Separate)
+                </button>
+                <button onClick={() => setSelectedIds([])}
+                  style={{ background: '#f1f1f1', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, cursor: 'pointer' }}>
+                  ✕ Clear
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* ── filters + table ── */}
           <div className="card">
             <div className="card-header" style={{
@@ -466,7 +553,6 @@ async function generateFees() {
             }}>
               <h4>Fee Records ({filtered.length})</h4>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {/* search */}
                 <input
                   className="form-input"
                   placeholder="🔍 Student / Father / Receipt..."
@@ -474,26 +560,19 @@ async function generateFees() {
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                 />
-               {/* class filter */}
                 <select className="form-select" style={{ width: 150 }}
                   value={filterClass} onChange={e => setFilterClass(e.target.value)}>
                   <option value="">All Classes</option>
                   {classes.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} - {c.section}
-                    </option>
+                    <option key={c.id} value={c.id}>{c.name} - {c.section}</option>
                   ))}
                 </select>
-                
-                {/* status filter */}
                 <select className="form-select" style={{ width: 140 }}
                   value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
                   {STATUS_OPTS.map(s => (
                     <option key={s} value={s}>{s || 'All Status'}</option>
                   ))}
                 </select>
-                
-                {/* fee type filter */}
                 <select
                   className="form-select"
                   style={{ width: 150 }}
@@ -505,9 +584,8 @@ async function generateFees() {
                   <option value="EXAM">Exam</option>
                   <option value="TRANSPORT">Transport</option>
                   <option value="HOSTEL">Hostel</option>
+                  <option value="ADMISSION">Admission</option>
                 </select>
-                
-                 {/* month filter */}
                 <input
                   type="month"
                   className="form-input"
@@ -515,11 +593,8 @@ async function generateFees() {
                   value={filterMonth}
                   onChange={e => setFilterMonth(e.target.value)}
                 />
-
               </div>
             </div>
-
-           
 
             <div className="table-container">
               {loading ? (
@@ -530,6 +605,7 @@ async function generateFees() {
                 <table>
                   <thead>
                     <tr>
+                      <th style={{ width: 30 }}></th>
                       <th>Receipt No</th>
                       <th>Student</th>
                       <th>Father</th>
@@ -550,12 +626,19 @@ async function generateFees() {
                       const balance = (r.amount_due || 0) - (r.amount_paid || 0);
                       return (
                         <tr key={r.id}>
-                          {/* receipt */}
+                          {/* select checkbox — DRAFT/PAID select nahi ho sakte */}
+                          <td>
+                            {r.status !== 'PAID' && r.status !== 'DRAFT' && (
+                              <input type="checkbox"
+                                checked={selectedIds.includes(r.id)}
+                                onChange={() => toggleSelect(r.id)} />
+                            )}
+                          </td>
+
                           <td style={{ fontSize: 11, color: 'var(--neutral-6)', fontFamily: 'monospace' }}>
                             {r.receipt_no || <span style={{ color: '#ccc' }}>—</span>}
                           </td>
 
-                          {/* student */}
                           <td>
                             <div
                               style={{ fontWeight: 600, fontSize: 13, color: '#0176d3', cursor: r.student_id ? 'pointer' : 'default', textDecoration: r.student_id ? 'underline dashed' : 'none' }}
@@ -569,10 +652,8 @@ async function generateFees() {
                             </div>
                           </td>
 
-                          {/* father */}
                           <td style={{ fontSize: 13 }}>{r.father_name || '—'}</td>
 
-                          {/* class */}
                           <td>
                             <span style={{
                               background: 'var(--blue-10)', color: 'var(--blue-80)',
@@ -580,19 +661,14 @@ async function generateFees() {
                             }}>{r.class_name || '—'}</span>
                           </td>
 
-                          {/* fee type */}
                           <td style={{ fontWeight: 500, fontSize: 13 }}>{r.fee_type || '—'}</td>
 
-                          {/* month */}
                           <td style={{ fontSize: 12, color: 'var(--neutral-6)' }}>{r.month || '—'}</td>
 
-                          {/* due */}
                           <td style={{ fontWeight: 600 }}>₹{fmt(r.amount_due)}</td>
 
-                          {/* paid */}
                           <td style={{ fontWeight: 600, color: '#2e844a' }}>₹{fmt(r.amount_paid)}</td>
 
-                          {/* balance */}
                           <td style={{
                             fontWeight: 700,
                             color: balance > 0 ? '#ba0517' : '#2e844a',
@@ -600,7 +676,6 @@ async function generateFees() {
                             {balance > 0 ? `₹${fmt(balance)}` : '✅ Clear'}
                           </td>
 
-                          {/* payment mode */}
                           <td>
                             {r.payment_mode ? (
                               <span style={{
@@ -611,15 +686,12 @@ async function generateFees() {
                             ) : <span style={{ color: '#ccc' }}>—</span>}
                           </td>
 
-                          {/* due date */}
                           <td style={{ fontSize: 12, color: 'var(--neutral-6)' }}>
                             {r.due_date || '—'}
                           </td>
 
-                          {/* status */}
                           <td><Badge status={r.status} /></td>
 
-                          {/* actions */}
                           <td>
                             <div style={{ display: 'flex', gap: 6 }}>
                               {r.status !== 'PAID' && (
@@ -654,7 +726,7 @@ async function generateFees() {
 
                     {!filtered.length && !loading && (
                       <tr>
-                        <td colSpan={13}>
+                        <td colSpan={14}>
                           <div className="empty-state">
                             <div className="empty-state-icon">💰</div>
                             <p>Koi fee record nahi mila</p>
@@ -671,7 +743,7 @@ async function generateFees() {
         </div>
       </div>
 
-      {/* ══ COLLECT FEE MODAL ══════════════════════════════════════════════ */}
+      {/* ══ SINGLE COLLECT FEE MODAL ═══════════════════════════════════════ */}
       {modal && selRec && (
         <div className="modal-backdrop"
           onClick={e => e.target === e.currentTarget && setModal(false)}>
@@ -682,7 +754,6 @@ async function generateFees() {
             </div>
 
             <div className="modal-body">
-              {/* student info box */}
               <div style={{
                 background: '#f8faff', border: '1px solid #dde8f5',
                 borderRadius: 10, padding: '14px 16px', marginBottom: 20,
@@ -703,7 +774,6 @@ async function generateFees() {
                   ))}
                 </div>
 
-                {/* amount summary */}
                 <div style={{
                   display: 'flex', justifyContent: 'space-between',
                   marginTop: 14, paddingTop: 12,
@@ -717,7 +787,6 @@ async function generateFees() {
                 </div>
               </div>
 
-              {/* amount input */}
               <div className="form-group">
                 <label className="form-label">Amount to Collect (₹) *</label>
                 <input
@@ -731,7 +800,6 @@ async function generateFees() {
                 />
               </div>
 
-              {/* payment mode */}
               <div className="form-group">
                 <label className="form-label">Payment Mode *</label>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -752,7 +820,6 @@ async function generateFees() {
                 </div>
               </div>
 
-              {/* remarks */}
               <div className="form-group">
                 <label className="form-label">Remarks (optional)</label>
                 <input
@@ -775,99 +842,172 @@ async function generateFees() {
           </div>
         </div>
       )}
-{genModal && (
-  <div
-    className="modal-backdrop"
-    onClick={e => e.target === e.currentTarget && setGenModal(false)}
-  >
-    <div className="modal" style={{ width: 420 }}>
-      <div className="modal-header">
-        <h3>➕ Generate Monthly Fees</h3>
-        <button
-          className="modal-close"
-          onClick={() => setGenModal(false)}
-        >
-          ✕
-        </button>
-      </div>
 
-      <div className="modal-body">
+      {/* ══ MULTI-COLLECT (COMBINE/SEPARATE) MODAL ═══════════════════════════ */}
+      {multiCollectModal && (
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setMultiCollectModal(false)}>
+          <div className="modal" style={{ width: 460 }}>
+            <div className="modal-header">
+              <h3>💸 {selectedIds.length} Records Collect Karo</h3>
+              <button className="modal-close" onClick={() => setMultiCollectModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div style={{ background: '#f8faff', border: '1px solid #dde8f5', borderRadius: 8, padding: 12, marginBottom: 16 }}>
+                {filtered.filter(r => selectedIds.includes(r.id)).map(r => (
+                  <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                    <span>{r.fee_type} ({r.source || 'ACADEMIC'})</span>
+                    <strong>₹{fmt(r.amount_due - r.amount_paid)}</strong>
+                  </div>
+                ))}
+              </div>
 
-        <div className="form-group">
-          <label className="form-label">Class *</label>
+              <div className="form-group">
+                <label className="form-label">Kaise Collect Karein? *</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => setCollectMode('COMBINED')}
+                    style={{
+                      flex: 1, padding: '10px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                      border: collectMode === 'COMBINED' ? '2px solid #0176d3' : '1px solid #e2e8f0',
+                      background: collectMode === 'COMBINED' ? '#eff6ff' : '#fff',
+                      color: collectMode === 'COMBINED' ? '#0176d3' : '#64748b',
+                    }}>
+                    🧾 Ek Sath<br/><span style={{ fontWeight: 400, fontSize: 10 }}>Ek receipt, ek PDF</span>
+                  </button>
+                  <button onClick={() => setCollectMode('SEPARATE')}
+                    style={{
+                      flex: 1, padding: '10px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                      border: collectMode === 'SEPARATE' ? '2px solid #0176d3' : '1px solid #e2e8f0',
+                      background: collectMode === 'SEPARATE' ? '#eff6ff' : '#fff',
+                      color: collectMode === 'SEPARATE' ? '#0176d3' : '#64748b',
+                    }}>
+                    📑 Alag Alag<br/><span style={{ fontWeight: 400, fontSize: 10 }}>Source-wise alag PDF</span>
+                  </button>
+                </div>
+              </div>
 
-          <select
-            className="form-select"
-            value={genClass}
-            onChange={e => setGenClass(e.target.value)}
-          >
-            <option value="">Select Class</option>
+              <div className="form-group">
+                <label className="form-label">Payment Mode *</label>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {MODES.map(m => (
+                    <button key={m} onClick={() => setMultiPayMode(m)}
+                      style={{
+                        padding: '7px 16px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                        border: '2px solid', borderColor: multiPayMode === m ? '#0176d3' : '#e2e8f0',
+                        background: multiPayMode === m ? '#e8f4fd' : '#fff',
+                        color: multiPayMode === m ? '#0176d3' : '#64748b',
+                      }}>
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-            {classes.map(c => (
-              <option key={c.id} value={c.id}>
-                {c.name} - {c.section}
-              </option>
-            ))}
-          </select>
+              <div className="form-group">
+                <label className="form-label">Remarks (optional)</label>
+                <input className="form-input" value={multiRemarks} onChange={e => setMultiRemarks(e.target.value)} />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-neutral" onClick={() => setMultiCollectModal(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={submitMultiPayment} disabled={multiSaving}>
+                {multiSaving ? 'Processing...' : '✅ Confirm'}
+              </button>
+            </div>
+          </div>
         </div>
+      )}
 
-        <div className="form-group">
-          <label className="form-label">Month *</label>
+      {/* ══ GENERATE FEES MODAL ═══════════════════════════════════════════ */}
+      {genModal && (
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setGenModal(false)}>
+          <div className="modal" style={{ width: 420 }}>
+            <div className="modal-header">
+              <h3>➕ Generate Fees</h3>
+              <button className="modal-close" onClick={() => setGenModal(false)}>✕</button>
+            </div>
 
-          <input
-            type="month"
-            className="form-input"
-            value={genMonth}
-            onChange={e => setGenMonth(e.target.value)}
-          />
+            <div className="modal-body">
+              <div className="form-group">
+                <label className="form-label">Class *</label>
+                <select className="form-select" value={genClass} onChange={e => setGenClass(e.target.value)}>
+                  <option value="">Select Class</option>
+                  {classes.map(c => (
+                    <option key={c.id} value={c.id}>{c.name} - {c.section}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Month *</label>
+                <input type="month" className="form-input" value={genMonth} onChange={e => setGenMonth(e.target.value)} />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Fee Type *</label>
+                <select className="form-select" value={genFeeType} onChange={e => setGenFeeType(e.target.value)}>
+                  <option value="TUITION">Tuition</option>
+                  <option value="EXAM">Exam</option>
+                  <option value="TRANSPORT">Transport</option>
+                  <option value="HOSTEL">Hostel</option>
+                  <option value="ADMISSION">Admission</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Collection Start (optional)</label>
+                <input type="date" className="form-input" value={genWindowStart}
+                  onChange={e => setGenWindowStart(e.target.value)} />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Last Date to Pay (optional)</label>
+                <input type="date" className="form-input" value={genWindowEnd}
+                  onChange={e => setGenWindowEnd(e.target.value)} />
+                <span style={{ fontSize: 11, color: '#64748b' }}>
+                  Ye hi Due Date banegi. Khali chodo to Fee Structure ka default due-day use hoga.
+                </span>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button className="btn btn-neutral" onClick={() => setGenModal(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={generateFees}>✅ Generate</button>
+            </div>
+          </div>
         </div>
+      )}
 
-        <div className="form-group">
-          <label className="form-label">Fee Type *</label>
-
-          <select
-            className="form-select"
-            value={genFeeType}
-            onChange={e => setGenFeeType(e.target.value)}
-          >
-            <option value="TUITION">Tuition</option>
-            <option value="EXAM">Exam</option>
-            <option value="TRANSPORT">Transport</option>
-            <option value="HOSTEL">Hostel</option>
-          </select>
+      {/* ══ BULK CLASS NOTICE MODAL ═══════════════════════════════════════ */}
+      {bulkNoticeModal && (
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setBulkNoticeModal(false)}>
+          <div className="modal" style={{ width: 400 }}>
+            <div className="modal-header">
+              <h3>📄 Class Notice PDF (Bulk)</h3>
+              <button className="modal-close" onClick={() => setBulkNoticeModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>
+                Ek hi PDF mein poori class — roll-number order — har student ka page (tuition+hostel+library+sports+exam sab consolidated).
+              </p>
+              <div className="form-group">
+                <label className="form-label">Class *</label>
+                <select className="form-select" value={bulkNoticeClass} onChange={e => setBulkNoticeClass(e.target.value)}>
+                  <option value="">Select Class</option>
+                  {classes.map(c => <option key={c.id} value={c.id}>{c.name} - {c.section}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Month</label>
+                <input type="month" className="form-input" value={bulkNoticeMonth} onChange={e => setBulkNoticeMonth(e.target.value)} />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-neutral" onClick={() => setBulkNoticeModal(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={downloadBulkNotice}>⬇ Download PDF</button>
+            </div>
+          </div>
         </div>
-
-        <div className="form-group">
-          <label className="form-label">Due Date</label>
-
-          <input
-            type="date"
-            className="form-input"
-            value={genDueDate}
-            onChange={e => setGenDueDate(e.target.value)}
-          />
-        </div>
-
-      </div>
-
-      <div className="modal-footer">
-        <button
-          className="btn btn-neutral"
-          onClick={() => setGenModal(false)}
-        >
-          Cancel
-        </button>
-
-        <button
-          className="btn btn-primary"
-          onClick={generateFees}
-        >
-          ✅ Generate
-        </button>
-      </div>
-    </div>
-  </div>
-)}
+      )}
 
       {/* ══ DRAFT BATCHES LIST MODAL ══════════════════════════════════════ */}
       {showBatches && (
@@ -909,7 +1049,6 @@ async function generateFees() {
               <h3>Review — {batchRecords.batch.fee_type} — {batchRecords.batch.month}</h3>
               <button className="modal-close" onClick={() => setBatchRecords(null)}>✕</button>
             </div>
-            // NEW
             <div className="modal-body">
               <table style={{ width: '100%', fontSize: 12 }}>
                 <thead><tr><th>Student</th><th>Amount Due</th><th>Due Date</th><th>Action</th></tr></thead>
@@ -942,7 +1081,7 @@ async function generateFees() {
                   ))}
                 </tbody>
               </table>
-            
+
               {missingStudents.length > 0 && (
                 <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px dashed #e2e8f0' }}>
                   <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
@@ -972,7 +1111,7 @@ async function generateFees() {
         </div>
       )}
 
-      {/* ══ RECEIPT MODAL ══════════════════════════════════════════════════ */}
+      {/* ══ SINGLE RECEIPT MODAL ═══════════════════════════════════════════ */}
       {receiptRec && (
         <div className="modal-backdrop"
           onClick={e => e.target === e.currentTarget && setReceiptRec(null)}>
@@ -982,7 +1121,6 @@ async function generateFees() {
               <button className="modal-close" onClick={() => setReceiptRec(null)}>✕</button>
             </div>
             <div className="modal-body">
-              {/* receipt design */}
               <div id="receipt-print" style={{
                 border: '2px solid #0176d3', borderRadius: 12,
                 padding: 20, fontFamily: 'monospace',
@@ -1040,6 +1178,45 @@ async function generateFees() {
               <button className="btn btn-primary" onClick={() => window.print()}>
                 🖨️ Print Receipt
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ MULTI-RECEIPT MODAL (combine/separate collect ka result) ═══════ */}
+      {receiptGroup && (
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setReceiptGroup(null)}>
+          <div className="modal" style={{ width: 460 }}>
+            <div className="modal-header">
+              <h3>🧾 {receiptGroup.mode === 'SEPARATE' ? 'Multiple Receipts' : 'Receipt'} — {receiptGroup.student_name}</h3>
+              <button className="modal-close" onClick={() => setReceiptGroup(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              {receiptGroup.receipts.map(rcp => (
+                <div key={rcp.receipt_no} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 12, marginBottom: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <strong style={{ fontSize: 13 }}>{rcp.receipt_no}</strong>
+                    <span style={{ fontSize: 11, color: '#64748b' }}>{rcp.source_group}</span>
+                  </div>
+                  {rcp.items.map((it, i) => (
+                    <div key={i} style={{ fontSize: 12, color: '#475569', display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{it.fee_type}</span><span>₹{fmt(it.amount)}</span>
+                    </div>
+                  ))}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, paddingTop: 6, borderTop: '1px dashed #e2e8f0' }}>
+                    <strong style={{ fontSize: 12 }}>Total</strong>
+                    <strong style={{ fontSize: 12, color: '#2e844a' }}>₹{fmt(rcp.total)}</strong>
+                  </div>
+                  <button
+                    onClick={() => window.open(`${api.defaults.baseURL}/principal/fees/receipt/${rcp.receipt_no}/pdf`, '_blank')}
+                    style={{ marginTop: 8, width: '100%', background: '#e8f4fd', color: '#0176d3', border: 'none', borderRadius: 6, padding: '6px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                    🖨️ PDF Download
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-neutral" onClick={() => setReceiptGroup(null)}>Close</button>
             </div>
           </div>
         </div>
