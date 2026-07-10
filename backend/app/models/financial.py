@@ -3,39 +3,35 @@ from datetime import datetime
 
 
 # NEW
+# app/models/financial.py — FeeStructure class mein add karo
+
 class FeeStructure(db.Model):
-    """
-    Class-wise fee pricing config. Actual generation FeeRecord.status=DRAFT
-    banata hai isse — ye table sirf 'kitna amount' decide karti hai, kabhi
-    directly student ko bill nahi karti.
-    """
     __tablename__ = 'fee_structures'
 
     id           = db.Column(db.Integer, primary_key=True)
     school_id    = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
-    class_id     = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=True)  # null = all classes
+    class_id     = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=True)
     session      = db.Column(db.String(20), default='2024-25')
     fee_type     = db.Column(db.String(50))
     amount       = db.Column(db.Float, nullable=False)
-    frequency    = db.Column(db.String(20), default='MONTHLY')
+    frequency    = db.Column(db.String(20), default='MONTHLY')   # MONTHLY / QUARTERLY / YEARLY / ONE_TIME  ← NEW usage
     due_date_day = db.Column(db.Integer, default=10)
 
-    # NEW fields
-    status       = db.Column(db.String(20), default='ACTIVE')   # ACTIVE / INACTIVE
+    # NEW — source tag, taaki Fee Structures page pe Hostel/Library
+    # bhi list mein dikh sake bina duplicate create kiye
+    source       = db.Column(db.String(20), default='ACADEMIC', index=True)  # ACADEMIC/HOSTEL/LIBRARY/TRANSPORT
+
+    status       = db.Column(db.String(20), default='ACTIVE')
     created_by   = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at   = db.Column(db.DateTime, default=datetime.utcnow)
 
     def to_dict(self):
         return {
-            'id':           self.id,
-            'class_id':     self.class_id,
-            'fee_type':     self.fee_type,
-            'amount':       self.amount,
-            'frequency':    self.frequency,
-            'due_date_day': self.due_date_day,
-            'session':      self.session,
-            'status':       self.status or 'ACTIVE',
-            'created_at':   self.created_at.isoformat() if self.created_at else None,
+            'id': self.id, 'class_id': self.class_id, 'fee_type': self.fee_type,
+            'amount': self.amount, 'frequency': self.frequency,
+            'due_date_day': self.due_date_day, 'session': self.session,
+            'status': self.status or 'ACTIVE', 'source': self.source or 'ACADEMIC',
+            'created_at': self.created_at.isoformat() if self.created_at else None,
         }
 
 
@@ -234,7 +230,33 @@ class FeeTransaction(db.Model):
             'created_at':       self.created_at.isoformat() if self.created_at else None,
         }
 
+# NEW class — financial.py mein add karo, FeeTransaction ke baad
 
+class FeeReceiptGroup(db.Model):
+    """
+    Ek receipt_no ke against kaunse FeeTransaction combine hue — is table
+    ke bina hume PDF banate waqt pata nahi chalta ki accountant ne
+    'combine karo' bola tha ya 'separate karo'. FeeTransaction.receipt_no
+    already same rehta hai agar combine kiya, lekin ye table explicit
+    intent store karti hai — 'COMBINED' ya 'SEPARATE' — audit/UI ke liye.
+    """
+    __tablename__ = 'fee_receipt_groups'
+
+    id          = db.Column(db.Integer, primary_key=True)
+    receipt_no  = db.Column(db.String(50), nullable=False, index=True)
+    school_id   = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False)
+    student_id  = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
+    mode        = db.Column(db.String(20), default='COMBINED')   # COMBINED / SEPARATE
+    sources     = db.Column(db.String(200), default='')          # "ACADEMIC,HOSTEL" — comma list
+    created_by  = db.Column(db.Integer, db.ForeignKey('users.id'))
+    created_at  = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id, 'receipt_no': self.receipt_no, 'mode': self.mode,
+            'sources': self.sources.split(',') if self.sources else [],
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
 
 class SalaryRecord(db.Model):
     """Manual salary payment records per teacher."""
@@ -388,6 +410,8 @@ class FeeGenerationBatch(db.Model):
     generated_at    = db.Column(db.DateTime, default=datetime.utcnow)
     published_by    = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     published_at    = db.Column(db.DateTime, nullable=True)
+    window_start = db.Column(db.Date, nullable=True)   # e.g. 2026-06-25 — kab se collect shuru
+    window_end   = db.Column(db.Date, nullable=True)
 
     records = db.relationship('FeeRecord', backref='batch', lazy='dynamic')
 
