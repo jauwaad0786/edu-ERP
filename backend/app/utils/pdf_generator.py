@@ -621,6 +621,142 @@ def generate_student_notice_pdf(student, school, fee_records, attendance_summary
     buffer.seek(0)
     return buffer
 
+# ═══════════════════════════════════════════════════════════════════════════
+#  BULK CLASS NOTICE — ek hi PDF, har student ek page (roll-number order)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def generate_bulk_notice_pdf(students, school, month, FeeRecordModel, AttendanceModel):
+    """
+    students   : roll_number order mein Student list
+    month      : "2026-07"
+    FeeRecordModel / AttendanceModel : query ke liye pass kiye gaye models
+                 (circular import avoid karne ke liye function args se aate hain)
+    """
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4,
+                             rightMargin=1.5 * cm, leftMargin=1.5 * cm,
+                             topMargin=1.2 * cm, bottomMargin=2 * cm)
+
+    all_elements = []
+
+    for idx, student in enumerate(students):
+        fee_records = FeeRecordModel.query.filter_by(
+            student_id=student.id, month=month
+        ).filter(FeeRecordModel.status != 'DRAFT').all()
+
+        att_records  = AttendanceModel.query.filter_by(student_id=student.id).all()
+        present      = sum(1 for a in att_records if a.status == 'PRESENT')
+        total_marked = len(att_records)
+        attendance_summary = {
+            'present': present, 'total': total_marked,
+            'percentage': round(present / total_marked * 100, 1) if total_marked else 0,
+        }
+
+        # ── letterhead + student info (same layout as single notice) ──
+        page_elements = _letterhead(school, f'MONTHLY NOTICE — {_esc(month)}')
+
+        label_style = ParagraphStyle('l', fontSize=9, fontName='Helvetica-Bold', textColor=PRIMARY_DARK)
+        value_style = ParagraphStyle('v', fontSize=9.5, fontName='Helvetica')
+
+        cls = Class.query.get(student.class_id) if student.class_id else None
+        info_rows = [
+            [Paragraph('Student Name', label_style), Paragraph(_esc(student.user.name if student.user else ''), value_style),
+             Paragraph('Roll No', label_style), Paragraph(_esc(student.roll_number or ''), value_style)],
+            [Paragraph('Class', label_style), Paragraph(_esc(f"{cls.name} - {cls.section}" if cls else ''), value_style),
+             Paragraph('Parent Name', label_style), Paragraph(_esc(student.parent_name or ''), value_style)],
+        ]
+        info_table = Table(info_rows, colWidths=[3.2 * cm, 5.8 * cm, 3 * cm, 4 * cm])
+        info_table.setStyle(TableStyle([
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 7), ('TOPPADDING', (0, 0), (-1, -1), 5),
+            ('LINEBELOW', (0, 0), (-1, -1), 0.4, GREY_LINE),
+            ('BACKGROUND', (0, 0), (0, -1), PRIMARY_SOFT), ('BACKGROUND', (2, 0), (2, -1), PRIMARY_SOFT),
+            ('BOX', (0, 0), (-1, -1), 1, GREY_LINE),
+        ]))
+        page_elements.append(info_table)
+        page_elements.append(Spacer(1, 0.55 * cm))
+
+        # ── fee dues table (sab source: tuition+hostel+library+sports+exam) ──
+        page_elements.append(Paragraph('FEE DUES — ALL TYPES', ParagraphStyle(
+            'fd', fontSize=11, textColor=PRIMARY_DARK, fontName='Helvetica-Bold', spaceAfter=6)))
+
+        status_color = {
+            'PAID': (SUCCESS, SUCCESS_BG), 'PARTIAL': (WARNING, WARNING_BG),
+            'OVERDUE': (DANGER, DANGER_BG), 'PENDING': (PRIMARY, PRIMARY_SOFT),
+        }
+        fee_rows = [['Fee Type', 'Due (Rs.)', 'Paid (Rs.)', 'Balance (Rs.)', 'Status']]
+        total_due = total_paid = 0
+        for r in fee_records:
+            balance = (r.amount_due or 0) - (r.amount_paid or 0)
+            fee_rows.append([_esc(r.fee_type or ''), f'{r.amount_due:,.0f}', f'{r.amount_paid:,.0f}',
+                              f'{balance:,.0f}', r.status])
+            total_due += r.amount_due or 0
+            total_paid += r.amount_paid or 0
+        if not fee_records:
+            fee_rows.append(['No dues this month', '', '', '', ''])
+
+        fee_table = Table(fee_rows, colWidths=[5 * cm, 3 * cm, 3 * cm, 3 * cm, 3.7 * cm])
+        style_cmds = [
+            ('BACKGROUND', (0, 0), (-1, 0), PRIMARY_DARK),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, ZEBRA]),
+            ('GRID', (0, 0), (-1, -1), 0.5, GREY_LINE),
+            ('ALIGN', (1, 0), (-1, -1), 'CENTER'), ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 7), ('TOPPADDING', (0, 0), (-1, -1), 7),
+        ]
+        for idx2, row in enumerate(fee_rows[1:], start=1):
+            if row[-1] in status_color:
+                fg, bg = status_color[row[-1]]
+                style_cmds.append(('TEXTCOLOR', (4, idx2), (4, idx2), fg))
+                style_cmds.append(('FONTNAME', (4, idx2), (4, idx2), 'Helvetica-Bold'))
+        fee_table.setStyle(TableStyle(style_cmds))
+        page_elements.append(fee_table)
+        page_elements.append(Spacer(1, 0.4 * cm))
+
+        total_pending = total_due - total_paid
+        pend_color = DANGER if total_pending > 0 else SUCCESS
+        pend_bg = DANGER_BG if total_pending > 0 else SUCCESS_BG
+        pend_badge = Table([[Paragraph(f'Total Pending: Rs. {total_pending:,.2f}', ParagraphStyle(
+            'tot', fontSize=12, fontName='Helvetica-Bold', textColor=pend_color, alignment=TA_CENTER
+        ))]], colWidths=[17.7 * cm])
+        pend_badge.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), pend_bg), ('BOX', (0, 0), (-1, -1), 1, pend_color),
+            ('TOPPADDING', (0, 0), (-1, -1), 8), ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        page_elements.append(pend_badge)
+        page_elements.append(Spacer(1, 0.5 * cm))
+
+        att_pct = attendance_summary['percentage']
+        att_color = SUCCESS if att_pct >= 75 else (WARNING if att_pct >= 60 else DANGER)
+        att_bg = SUCCESS_BG if att_pct >= 75 else (WARNING_BG if att_pct >= 60 else DANGER_BG)
+        att_box = Table([[Paragraph(
+            f"Attendance — Present: {attendance_summary['present']} / {attendance_summary['total']} days  |  {att_pct}%",
+            ParagraphStyle('attv', fontSize=10, fontName='Helvetica-Bold', textColor=att_color)
+        )]], colWidths=[17.7 * cm])
+        att_box.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), att_bg), ('BOX', (0, 0), (-1, -1), 1, att_color),
+            ('LEFTPADDING', (0, 0), (-1, -1), 12),
+            ('TOPPADDING', (0, 0), (-1, -1), 8), ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        page_elements.append(att_box)
+        page_elements.append(Spacer(1, 0.7 * cm))
+        page_elements.append(Paragraph(
+            'Please clear pending dues before the due date to avoid late fine.',
+            ParagraphStyle('note', fontSize=9, fontName='Helvetica-Bold', textColor=DANGER, alignment=TA_CENTER)))
+
+        all_elements.extend(page_elements)
+
+        # ── next student naye page pe (last student ke baad PageBreak nahi chahiye) ──
+        if idx < len(students) - 1:
+            from reportlab.platypus import PageBreak
+            all_elements.append(PageBreak())
+
+    doc.build(all_elements, onFirstPage=_footer, onLaterPages=_footer)
+    buffer.seek(0)
+    return buffer
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 
