@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Sidebar from '../components/Sidebar';
 import Navbar  from '../components/Navbar';
-import api     from '../api/axios';
-import toast   from 'react-hot-toast';
+import api from '../api/axios';
+import toast from 'react-hot-toast';
 
 const FEE_TYPES = ['TUITION', 'EXAM', 'ADMISSION', 'SPORTS', 'UNIFORM', 'BOOKS', 'OTHER'];
+const FREQUENCIES = ['MONTHLY', 'QUARTERLY', 'YEARLY', 'ONE_TIME'];
 const EMPTY_FORM = { class_id: '', fee_type: 'TUITION', amount: '', frequency: 'MONTHLY', due_date_day: 10 };
 const fmt = n => Number(n ?? 0).toLocaleString('en-IN');
 
@@ -29,22 +30,25 @@ export default function FeeStructures() {
   const [activeTab, setActiveTab] = useState('rates'); // 'rates' | 'adjustments'
 
   /* ── Rate Card state ── */
+  const [source, setSource] = useState('ACADEMIC'); // NEW — ACADEMIC | HOSTEL | LIBRARY
   const [classes, setClasses]   = useState([]);
   const [classFilter, setClassFilter] = useState('');
   const [structures, setStructures] = useState([]);
+  const [editable, setEditable] = useState(true);       // NEW
+  const [manageUrl, setManageUrl] = useState(null);      // NEW
   const [loading, setLoading]   = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [form, setForm]         = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving]     = useState(false);
 
-  /* ── Adjustments state ── */
+  /* ── Adjustments state (unchanged) ── */
   const [adjClassFilter, setAdjClassFilter] = useState('');
   const [adjSearch, setAdjSearch] = useState('');
   const [adjStudents, setAdjStudents] = useState([]);
   const [selStudent, setSelStudent] = useState(null);
   const [studentRecords, setStudentRecords] = useState([]);
-  const [adjustModal, setAdjustModal] = useState(null); // { record, type: 'FINE'|'DISCOUNT' }
+  const [adjustModal, setAdjustModal] = useState(null);
   const [adjAmount, setAdjAmount] = useState('');
   const [adjReason, setAdjReason] = useState('');
   const [adjSaving, setAdjSaving] = useState(false);
@@ -57,12 +61,20 @@ export default function FeeStructures() {
 
   const load = useCallback(() => {
     setLoading(true);
-    const params = classFilter ? `?class_id=${classFilter}` : '';
-    api.get('/principal/fee-structures' + params)
-      .then(r => setStructures(r.data || []))
+    const params = new URLSearchParams();
+    params.append('source', source);
+    if (classFilter && source === 'ACADEMIC') params.append('class_id', classFilter);
+
+    api.get('/principal/fee-structures?' + params.toString())
+      .then(r => {
+        // NEW — response shape ab { editable, items, manage_url? } hai, plain array nahi
+        setStructures(r.data?.items || []);
+        setEditable(r.data?.editable !== false);
+        setManageUrl(r.data?.manage_url || null);
+      })
       .catch(() => toast.error('Fee structures load nahi hui'))
       .finally(() => setLoading(false));
-  }, [classFilter]);
+  }, [source, classFilter]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -81,18 +93,33 @@ export default function FeeStructures() {
     setShowModal(true);
   }
 
+  // NEW — Admission select karte hi frequency auto ONE_TIME ho jaye
+  function handleFeeTypeChange(val) {
+    setForm(f => ({
+      ...f,
+      fee_type: val,
+      frequency: val === 'ADMISSION' ? 'ONE_TIME' : (f.frequency === 'ONE_TIME' ? 'MONTHLY' : f.frequency),
+    }));
+  }
+
   async function handleSave() {
     if (!form.fee_type || !form.amount) {
       toast.error('Fee type aur amount zaroori hai');
       return;
     }
+    // NEW — ONE_TIME (jaise Admission) mein class optional hai — school-wide bhi ho sakta hai
+    if (form.frequency !== 'ONE_TIME' && !form.class_id) {
+      toast.error('Class select karo (ya One-Time frequency chuno school-wide ke liye)');
+      return;
+    }
     setSaving(true);
     try {
+      const payload = { ...form, class_id: form.class_id || null };
       if (editingId) {
-        await api.patch(`/principal/fee-structures/${editingId}`, form);
+        await api.patch(`/principal/fee-structures/${editingId}`, payload);
         toast.success('Fee structure updated');
       } else {
-        await api.post('/principal/fee-structures', form);
+        await api.post('/principal/fee-structures', payload);
         toast.success('Fee structure created');
       }
       setShowModal(false);
@@ -114,7 +141,7 @@ export default function FeeStructures() {
     }
   }
 
-  /* ── Adjustments logic ── */
+  /* ── Adjustments logic (unchanged) ── */
   const searchStudents = useCallback(() => {
     const params = new URLSearchParams();
     if (adjClassFilter) params.append('class_id', adjClassFilter);
@@ -193,16 +220,16 @@ export default function FeeStructures() {
               <h2 className="page-title">Fees — Structures &amp; Adjustments</h2>
               <p className="page-subtitle">
                 {activeTab === 'rates'
-                  ? 'Class-wise rate card — Generate Fees isi se amount uthata hai'
+                  ? 'Sabhi fee categories ek jagah — Academic, Hostel, Library'
                   : 'Fine lagao ya fees maaf karo — kisi bhi student ke kisi bhi record pe'}
               </p>
             </div>
-            {activeTab === 'rates' && (
+            {activeTab === 'rates' && editable && (
               <button className="btn btn-primary" onClick={openCreate}>+ Fee Structure</button>
             )}
           </div>
 
-          {/* ── Tabs ── */}
+          {/* ── Main Tabs ── */}
           <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid #e2e8f0' }}>
             <button
               onClick={() => setActiveTab('rates')}
@@ -231,15 +258,77 @@ export default function FeeStructures() {
           {/* ══════════════ RATE CARD TAB ══════════════ */}
           {activeTab === 'rates' && (
             <>
-              <select className="form-select" style={{ width: 220, marginBottom: 16 }}
-                value={classFilter} onChange={e => setClassFilter(e.target.value)}>
-                <option value="">All Classes</option>
-                {classes.map(c => <option key={c.id} value={c.id}>{c.name} - {c.section}</option>)}
-              </select>
+              {/* NEW — Source sub-tabs: Academic | Hostel | Library */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                {[
+                  { key: 'ACADEMIC', label: '🎓 Academic', desc: 'Tuition, Exam, Admission, Sports...' },
+                  { key: 'HOSTEL',   label: '🏠 Hostel',   desc: 'Room-wise fee (Hostel module se)' },
+                  { key: 'LIBRARY',  label: '📚 Library',  desc: 'Membership / fine (Library module se)' },
+                ].map(s => (
+                  <button key={s.key} onClick={() => setSource(s.key)}
+                    title={s.desc}
+                    style={{
+                      padding: '8px 16px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                      border: source === s.key ? '2px solid #0176d3' : '1px solid #e2e8f0',
+                      background: source === s.key ? '#eff6ff' : 'white',
+                      color: source === s.key ? '#0176d3' : '#64748b',
+                    }}>
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* NEW — Hostel/Library ke liye read-only banner */}
+              {!editable && (
+                <div style={{
+                  background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8,
+                  padding: '12px 16px', marginBottom: 16, display: 'flex',
+                  justifyContent: 'space-between', alignItems: 'center', fontSize: 13,
+                }}>
+                  <span>ℹ️ Ye {source === 'HOSTEL' ? 'Hostel' : 'Library'} module se manage hoti hai — yahan sirf overview hai.</span>
+                  {manageUrl && (
+                    <a href={manageUrl} style={{
+                      background: '#0176d3', color: '#fff', textDecoration: 'none',
+                      borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 700,
+                    }}>Manage in {source === 'HOSTEL' ? 'Hostel' : 'Library'} Module →</a>
+                  )}
+                </div>
+              )}
+
+              {source === 'ACADEMIC' && (
+                <select className="form-select" style={{ width: 220, marginBottom: 16 }}
+                  value={classFilter} onChange={e => setClassFilter(e.target.value)}>
+                  <option value="">All Classes</option>
+                  {classes.map(c => <option key={c.id} value={c.id}>{c.name} - {c.section}</option>)}
+                </select>
+              )}
 
               {loading ? (
                 <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Loading...</div>
+              ) : source === 'HOSTEL' ? (
+                /* NEW — Hostel cards, read-only, HostelFeeStructure shape */
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px,1fr))', gap: 12 }}>
+                  {structures.map(h => (
+                    <div key={h.id} className="card" style={{ padding: 14 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>{h.hostel_name}</div>
+                      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>
+                        {h.building_name} · {h.floor_name} · {h.is_ac ? 'AC' : 'Non-AC'} · {h.sharing_type}
+                      </div>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: '#0176d3' }}>₹{fmt(h.total_monthly)}/mo</div>
+                    </div>
+                  ))}
+                  {!structures.length && (
+                    <div style={{ gridColumn: '1/-1', textAlign: 'center', color: '#94a3b8', padding: 30 }}>
+                      Koi hostel fee structure nahi bani abhi
+                    </div>
+                  )}
+                </div>
+              ) : source === 'LIBRARY' ? (
+                <div style={{ textAlign: 'center', color: '#94a3b8', padding: 30 }}>
+                  Library fee structure abhi setup nahi hui.
+                </div>
               ) : (
+                /* Academic — existing editable table */
                 <div className="card">
                   <div className="table-container">
                     <table>
@@ -256,7 +345,7 @@ export default function FeeStructures() {
                             <td><strong>{fs.fee_type}</strong></td>
                             <td>₹{Number(fs.amount).toLocaleString('en-IN')}</td>
                             <td>{fs.frequency}</td>
-                            <td>{fs.due_date_day}</td>
+                            <td>{fs.frequency === 'ONE_TIME' ? '—' : fs.due_date_day}</td>
                             <td>
                               <span style={{
                                 fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
@@ -283,11 +372,9 @@ export default function FeeStructures() {
             </>
           )}
 
-          {/* ══════════════ ADJUSTMENTS TAB ══════════════ */}
+          {/* ══════════════ ADJUSTMENTS TAB (unchanged) ══════════════ */}
           {activeTab === 'adjustments' && (
             <div style={{ display: 'grid', gridTemplateColumns: selStudent ? '320px 1fr' : '1fr', gap: 16 }}>
-
-              {/* ── Left: search panel ── */}
               <div className="card">
                 <div className="card-body" style={{ padding: 16 }}>
                   <select className="form-select" style={{ width: '100%', marginBottom: 8 }}
@@ -326,7 +413,6 @@ export default function FeeStructures() {
                 </div>
               </div>
 
-              {/* ── Right: student's fee records ── */}
               {selStudent && (
                 <div className="card">
                   <div className="card-header">
@@ -346,7 +432,7 @@ export default function FeeStructures() {
                         {studentRecords.map(r => (
                           <tr key={r.id}>
                             <td style={{ fontWeight: 600 }}>{r.fee_type}</td>
-                            <td>{r.month}</td>
+                            <td>{r.month || <span style={{ color: '#94a3b8' }}>One-Time</span>}</td>
                             <td>₹{fmt(r.amount_due)}</td>
                             <td>
                               {r.fine > 0 ? (
@@ -413,26 +499,38 @@ export default function FeeStructures() {
               <button className="modal-close" onClick={() => setShowModal(false)}>✕</button>
             </div>
             <div className="modal-body">
-              <label style={labelStyle}>Class *</label>
-              <select style={inputStyle} value={form.class_id} disabled={!!editingId}
-                onChange={e => setForm({ ...form, class_id: e.target.value })}>
-                <option value="">Select Class</option>
-                {classes.map(c => <option key={c.id} value={c.id}>{c.name} - {c.section}</option>)}
-              </select>
-
               <label style={labelStyle}>Fee Type *</label>
               <select style={inputStyle} value={form.fee_type} disabled={!!editingId}
-                onChange={e => setForm({ ...form, fee_type: e.target.value })}>
+                onChange={e => handleFeeTypeChange(e.target.value)}>
                 {FEE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
 
-              <label style={labelStyle}>Monthly Amount (₹) *</label>
+              <label style={labelStyle}>Frequency *</label>
+              <select style={inputStyle} value={form.frequency} disabled={!!editingId}
+                onChange={e => setForm({ ...form, frequency: e.target.value })}>
+                {FREQUENCIES.map(f => <option key={f} value={f}>{f === 'ONE_TIME' ? 'One-Time (e.g. Admission)' : f}</option>)}
+              </select>
+
+              <label style={labelStyle}>
+                Class {form.frequency === 'ONE_TIME' ? '(optional — khali chodo to sab classes)' : '*'}
+              </label>
+              <select style={inputStyle} value={form.class_id} disabled={!!editingId}
+                onChange={e => setForm({ ...form, class_id: e.target.value })}>
+                <option value="">{form.frequency === 'ONE_TIME' ? 'All Classes (School-wide)' : 'Select Class'}</option>
+                {classes.map(c => <option key={c.id} value={c.id}>{c.name} - {c.section}</option>)}
+              </select>
+
+              <label style={labelStyle}>Amount (₹) *</label>
               <input type="number" style={inputStyle} value={form.amount}
                 onChange={e => setForm({ ...form, amount: e.target.value })} />
 
-              <label style={labelStyle}>Due Date Day (1-28)</label>
-              <input type="number" min="1" max="28" style={inputStyle} value={form.due_date_day}
-                onChange={e => setForm({ ...form, due_date_day: e.target.value })} />
+              {form.frequency !== 'ONE_TIME' && (
+                <>
+                  <label style={labelStyle}>Due Date Day (1-28)</label>
+                  <input type="number" min="1" max="28" style={inputStyle} value={form.due_date_day}
+                    onChange={e => setForm({ ...form, due_date_day: e.target.value })} />
+                </>
+              )}
             </div>
             <div className="modal-footer">
               <button className="btn btn-neutral" onClick={() => setShowModal(false)}>Cancel</button>
@@ -444,7 +542,7 @@ export default function FeeStructures() {
         </div>
       )}
 
-      {/* ══════════════ ADJUSTMENT (FINE/WAIVER) MODAL ══════════════ */}
+      {/* ══════════════ ADJUSTMENT MODAL (unchanged) ══════════════ */}
       {adjustModal && (
         <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setAdjustModal(null)}>
           <div className="modal" style={{ maxWidth: 400 }}>
@@ -454,7 +552,7 @@ export default function FeeStructures() {
             </div>
             <div className="modal-body">
               <div style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>
-                {adjustModal.record.fee_type} — {adjustModal.record.month} — Current Effective: ₹{fmt(adjustModal.record.effective_due)}
+                {adjustModal.record.fee_type} — {adjustModal.record.month || 'One-Time'} — Current Effective: ₹{fmt(adjustModal.record.effective_due)}
               </div>
               <label style={labelStyle}>
                 {adjustModal.type === 'FINE' ? 'Fine Amount (₹) *' : 'Waiver Amount (₹) *'}
