@@ -1433,7 +1433,41 @@ def adjust_fee_record(record_id):
     db.session.commit()
     return jsonify(rec.to_dict()), 200
 
+@principal_bp.route('/fees/adjustments', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER')
+def list_fee_adjustments():
+    """
+    Saare fine/discount lagaye records — ek jagah, filterable.
+    Query: class_id, month (YYYY-MM), type (FINE|DISCOUNT|ALL, default ALL)
+    """
+    sid      = _school_id()
+    class_id = request.args.get('class_id')
+    month    = request.args.get('month')
+    adj_type = request.args.get('type', 'ALL')
 
+    q = FeeRecord.query.filter_by(school_id=sid)
+    if adj_type == 'FINE':
+        q = q.filter(FeeRecord.fine > 0)
+    elif adj_type == 'DISCOUNT':
+        q = q.filter(FeeRecord.discount > 0)
+    else:
+        q = q.filter(db.or_(FeeRecord.fine > 0, FeeRecord.discount > 0))
+    if month:
+        q = q.filter(FeeRecord.month == month)
+    if class_id:
+        q = q.join(Student, FeeRecord.student_id == Student.id).filter(Student.class_id == class_id)
+
+    records = q.order_by(FeeRecord.adjusted_at.desc()).limit(300).all()
+    result = []
+    for r in records:
+        student = Student.query.get(r.student_id)
+        cls = Class.query.get(student.class_id) if student and student.class_id else None
+        d = r.to_dict()
+        d['student_name'] = student.user.name if student and student.user else ''
+        d['roll_number']  = student.roll_number if student else ''
+        d['class_name']   = f"{cls.name} - {cls.section}" if cls else ''
+        result.append(d)
+    return jsonify(result), 200
 @principal_bp.route('/fees/records/<int:record_id>/adjust/<string:field>', methods=['DELETE'])
 @role_required('PRINCIPAL')
 def remove_fee_adjustment(record_id, field):
