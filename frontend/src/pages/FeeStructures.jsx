@@ -52,6 +52,23 @@ export default function FeeStructures() {
   const [adjAmount, setAdjAmount] = useState('');
   const [adjReason, setAdjReason] = useState('');
   const [adjSaving, setAdjSaving] = useState(false);
+  // state add karo (adjSaving ke paas)
+  const [ledger, setLedger] = useState([]);
+  const [ledgerClass, setLedgerClass] = useState('');
+  const [ledgerMonth, setLedgerMonth] = useState('');
+  const [ledgerType, setLedgerType] = useState('ALL');
+  
+  const loadLedger = useCallback(() => {
+    const params = new URLSearchParams();
+    if (ledgerClass) params.append('class_id', ledgerClass);
+    if (ledgerMonth) params.append('month', ledgerMonth);
+    if (ledgerType !== 'ALL') params.append('type', ledgerType);
+    api.get('/principal/fees/adjustments?' + params.toString())
+      .then(r => setLedger(r.data || []))
+      .catch(() => setLedger([]));
+  }, [ledgerClass, ledgerMonth, ledgerType]);
+  
+  useEffect(() => { if (activeTab === 'adjustments') loadLedger(); }, [activeTab, loadLedger]);
 
   /* ── Rate Card effects ── */
   useEffect(() => {
@@ -188,6 +205,7 @@ export default function FeeStructures() {
       toast.success(adjustModal.type === 'FINE' ? 'Fine lag gaya' : 'Waiver apply ho gaya');
       setAdjustModal(null);
       selectStudent(selStudent);
+      loadLedger();   // ← NEW — ledger table turant refresh ho
     } catch (e) {
       toast.error(e.response?.data?.error || 'Save nahi hua');
     }
@@ -200,6 +218,7 @@ export default function FeeStructures() {
       await api.delete(`/principal/fees/records/${record.id}/adjust/${field}`);
       toast.success('Removed');
       selectStudent(selStudent);
+      loadLedger();   // ← NEW
     } catch (e) {
       toast.error(e.response?.data?.error || 'Remove fail hua');
     }
@@ -372,25 +391,75 @@ export default function FeeStructures() {
             </>
           )}
 
-          {/* ══════════════ ADJUSTMENTS TAB (unchanged) ══════════════ */}
+         {/* ══════════════ ADJUSTMENTS TAB — Ledger + Student Search ══════════════ */}
           {activeTab === 'adjustments' && (
-            <div style={{ display: 'grid', gridTemplateColumns: selStudent ? '320px 1fr' : '1fr', gap: 16 }}>
-              <div className="card">
-                <div className="card-body" style={{ padding: 16 }}>
-                  <select className="form-select" style={{ width: '100%', marginBottom: 8 }}
-                    value={adjClassFilter} onChange={e => setAdjClassFilter(e.target.value)}>
-                    <option value="">All Classes</option>
-                    {classes.map(c => <option key={c.id} value={c.id}>{c.name} - {c.section}</option>)}
-                  </select>
-                  <input className="form-input" style={{ width: '100%', marginBottom: 10, boxSizing: 'border-box' }}
-                    placeholder="🔍 Naam / Roll No / Admission No..."
-                    value={adjSearch}
-                    onChange={e => setAdjSearch(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && searchStudents()} />
-                  <button onClick={searchStudents}
-                    style={{ width: '100%', background: '#0176d3', color: '#fff', border: 'none', borderRadius: 6, padding: '8px', fontSize: 12, fontWeight: 700, cursor: 'pointer', marginBottom: 12 }}>
-                    Search
-                  </button>
+            <>
+              {/* NEW — Adjustment Ledger — poori list, filter ke saath */}
+              <div className="card mb-6">
+                <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                  <h4>📋 Adjustment Ledger — Kisko Discount/Fine Laga</h4>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <select className="form-select" style={{ width: 150 }} value={ledgerClass} onChange={e => setLedgerClass(e.target.value)}>
+                      <option value="">All Classes</option>
+                      {classes.map(c => <option key={c.id} value={c.id}>{c.name} - {c.section}</option>)}
+                    </select>
+                    <input type="month" className="form-input" style={{ width: 150 }} value={ledgerMonth} onChange={e => setLedgerMonth(e.target.value)} />
+                    <select className="form-select" style={{ width: 130 }} value={ledgerType} onChange={e => setLedgerType(e.target.value)}>
+                      <option value="ALL">Sab</option>
+                      <option value="FINE">Sirf Fine</option>
+                      <option value="DISCOUNT">Sirf Discount</option>
+                    </select>
+                    {(ledgerClass || ledgerMonth || ledgerType !== 'ALL') && (
+                      <button onClick={() => { setLedgerClass(''); setLedgerMonth(''); setLedgerType('ALL'); }}
+                        style={{ background: '#f1f1f1', border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>
+                        ✕ Clear
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="table-container">
+                  <table>
+                    <thead>
+                      <tr><th>Student</th><th>Class</th><th>Fee Type</th><th>Month</th><th>Fine</th><th>Discount</th><th>Reason</th></tr>
+                    </thead>
+                    <tbody>
+                      {ledger.map(r => (
+                        <tr key={r.id}>
+                          <td>{r.student_name} <span style={{ color: '#94a3b8', fontSize: 11 }}>(Roll {r.roll_number})</span></td>
+                          <td>{r.class_name}</td>
+                          <td>{r.fee_type}</td>
+                          <td>{r.month || 'One-Time'}</td>
+                          <td>{r.fine > 0 ? <span style={{ color: '#ba0517', fontWeight: 700 }}>+₹{fmt(r.fine)}</span> : '—'}</td>
+                          <td>{r.discount > 0 ? <span style={{ color: '#2e844a', fontWeight: 700 }}>-₹{fmt(r.discount)}</span> : '—'}</td>
+                          <td style={{ fontSize: 12, color: '#64748b' }}>{r.fine_reason || r.discount_reason || '—'}</td>
+                        </tr>
+                      ))}
+                      {!ledger.length && (
+                        <tr><td colSpan={7}><div className="empty-state"><p>Koi adjustment nahi mila is filter mein</p></div></td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+          
+              {/* Student search + individual adjust panel */}
+              <div style={{ display: 'grid', gridTemplateColumns: selStudent ? '320px 1fr' : '1fr', gap: 16 }}>
+                <div className="card">
+                  <div className="card-body" style={{ padding: 16 }}>
+                    <select className="form-select" style={{ width: '100%', marginBottom: 8 }}
+                      value={adjClassFilter} onChange={e => setAdjClassFilter(e.target.value)}>
+                      <option value="">All Classes</option>
+                      {classes.map(c => <option key={c.id} value={c.id}>{c.name} - {c.section}</option>)}
+                    </select>
+                    <input className="form-input" style={{ width: '100%', marginBottom: 10, boxSizing: 'border-box' }}
+                      placeholder="🔍 Naam / Roll No / Admission No..."
+                      value={adjSearch}
+                      onChange={e => setAdjSearch(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && searchStudents()} />
+                    <button onClick={searchStudents}
+                      style={{ width: '100%', background: '#0176d3', color: '#fff', border: 'none', borderRadius: 6, padding: '8px', fontSize: 12, fontWeight: 700, cursor: 'pointer', marginBottom: 12 }}>
+                      Search
+                    </button>
 
                   <div style={{ maxHeight: 420, overflowY: 'auto' }}>
                     {adjStudents.map(s => (
@@ -476,7 +545,7 @@ export default function FeeStructures() {
                             </td>
                           </tr>
                         ))}
-                        {!studentRecords.length && (
+                       {!studentRecords.length && (
                           <tr><td colSpan={9}><div className="empty-state"><p>Is student ka koi fee record nahi hai</p></div></td></tr>
                         )}
                       </tbody>
@@ -485,6 +554,7 @@ export default function FeeStructures() {
                 </div>
               )}
             </div>
+            </>
           )}
 
         </div>
