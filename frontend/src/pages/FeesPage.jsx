@@ -362,9 +362,7 @@ export default function FeesPage() {
               <button className="btn btn-neutral" onClick={() => setBulkNoticeModal(true)}>
                 📄 Class Notice PDF
               </button>
-              <button className="btn btn-primary" onClick={() => setGenModal(true)}>
-                ➕ Generate Fees
-              </button>
+              <button className="btn btn-primary" onClick={() => setGenModal(true)}>🧾 Generate This Month's Bills</button>
             </div>
           </div>
 
