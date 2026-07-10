@@ -8,7 +8,8 @@ from app.models.academic import (
 )
 from app.models.financial import (
     FeeRecord, FeeStructure, FeeTransaction, FeeGenerationBatch,
-    ExamSchedule, ExamTimetable, Holiday, Timetable, TimetablePeriod
+    ExamSchedule, ExamTimetable, Holiday, Timetable, TimetablePeriod,
+    FeeReceiptGroup,
 )
 from app.models.documents import IssuedDocument, StudentDocument
 
@@ -20,7 +21,7 @@ from app.utils.pdf_generator import generate_admit_card, generate_result_card
 from app.routes.admin import FEATURE_CATALOG, PLAN_PRESETS, PLAN_PRICING
 
 from sqlalchemy import func
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import random, string
 import cloudinary.uploader
 import os
@@ -727,20 +728,21 @@ def create_student():
         session=data.get('session', '2024-25')
     )
     db.session.add(student)
-    
+    db.session.flush()   # ← student.id ab available hai, commit se pehle
+
     admission_fs = FeeStructure.query.filter_by(
         school_id=sid, class_id=student.class_id, fee_type='ADMISSION',
         frequency='ONE_TIME', status='ACTIVE'
     ).first() or FeeStructure.query.filter_by(
         school_id=sid, class_id=None, fee_type='ADMISSION',
         frequency='ONE_TIME', status='ACTIVE'
-    ).first()   # class-specific na mile to school-wide fallback
+    ).first()
 
     if admission_fs:
         rec = FeeRecord(
             school_id=sid, student_id=student.id, fee_type='ADMISSION',
             amount_due=admission_fs.amount, amount_paid=0, status='PENDING',
-            due_date=date.today() + timedelta(days=7),   # 1 week ka grace
+            due_date=date.today() + timedelta(days=7),
             session=student.session, remarks='Admission Fee — auto-generated',
         )
         db.session.add(rec)
@@ -965,9 +967,7 @@ def collect_fee():
 
 # NEW — paste right after existing collect_fee() function
 
-@principal_bp.route('/fees/collect-multiple', methods=['POST'])
-@role_required('PRINCIPAL', 'TEACHER')
-# collect_fee_multiple() ko modify karo — 'mode' param add karo
+
 
 @principal_bp.route('/fees/collect-multiple', methods=['POST'])
 @role_required('PRINCIPAL', 'TEACHER')
