@@ -225,7 +225,7 @@ export default function FeeStructures() {
               </p>
             </div>
             {activeTab === 'rates' && editable && (
-              <button className="btn btn-primary" onClick={openCreate}>+ Fee Structure</button>
+              <button className="btn btn-primary" onClick={openCreate}>💲 Set Fee Rate (Price List)</button>
             )}
           </div>
 
