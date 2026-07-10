@@ -727,8 +727,27 @@ def create_student():
         session=data.get('session', '2024-25')
     )
     db.session.add(student)
+    
+    admission_fs = FeeStructure.query.filter_by(
+        school_id=sid, class_id=student.class_id, fee_type='ADMISSION',
+        frequency='ONE_TIME', status='ACTIVE'
+    ).first() or FeeStructure.query.filter_by(
+        school_id=sid, class_id=None, fee_type='ADMISSION',
+        frequency='ONE_TIME', status='ACTIVE'
+    ).first()   # class-specific na mile to school-wide fallback
+
+    if admission_fs:
+        rec = FeeRecord(
+            school_id=sid, student_id=student.id, fee_type='ADMISSION',
+            amount_due=admission_fs.amount, amount_paid=0, status='PENDING',
+            due_date=date.today() + timedelta(days=7),   # 1 week ka grace
+            session=student.session, remarks='Admission Fee — auto-generated',
+        )
+        db.session.add(rec)
+
     db.session.commit()
     return jsonify(student.to_dict()), 201
+    
 
 
 # ─── Fees ─────────────────────────────────────────────────────────────────────
@@ -948,14 +967,20 @@ def collect_fee():
 
 @principal_bp.route('/fees/collect-multiple', methods=['POST'])
 @role_required('PRINCIPAL', 'TEACHER')
+# collect_fee_multiple() ko modify karo — 'mode' param add karo
+
+@principal_bp.route('/fees/collect-multiple', methods=['POST'])
+@role_required('PRINCIPAL', 'TEACHER')
 def collect_fee_multiple():
     """
-    Body: { payments: [{record_id, amount}, ...], payment_mode, remarks }
-    Ek hi student ke Tuition+Hostel+Library records pe payment apply karke
-    ONE shared receipt_no banata hai — printed receipt combined dikhega.
+    Body: { payments: [{record_id, amount}], payment_mode, remarks, mode: 'COMBINED'|'SEPARATE' }
+    COMBINED → ek receipt_no, ek PDF sab records ke saath.
+    SEPARATE → source ke hisaab se group karke (ACADEMIC alag, HOSTEL alag)
+               har group ka apna receipt_no + apna PDF.
     """
     data     = request.get_json() or {}
     payments = data.get('payments') or []
+    mode     = (data.get('mode') or 'COMBINED').upper()
     if not payments:
         return jsonify({'error': 'payments list zaroori hai'}), 400
 
@@ -964,82 +989,131 @@ def collect_fee_multiple():
     remarks      = data.get('remarks', '')
     today        = date.today()
 
-    while True:
-        receipt_no = _gen_receipt()
-        if not FeeTransaction.query.filter_by(receipt_no=receipt_no).first():
-            break
-
-    results, student_id_check, total_collected = [], None, 0
-
+    # Records ko fetch karke source ke hisaab se group karo
+    recs_with_amt = []
+    student_id_check = None
     for p in payments:
         record = FeeRecord.query.get(p.get('record_id'))
         if not record or record.school_id != sid:
             continue
         if record.status == 'DRAFT':
-            return jsonify({'error': f'Fee record #{record.id} abhi DRAFT hai — pehle publish karo'}), 400
-        if record.status in ('CANCELLED', 'REFUNDED'):
-            continue
-
+            return jsonify({'error': f'Fee record #{record.id} abhi DRAFT hai'}), 400
         if student_id_check is None:
             student_id_check = record.student_id
         elif record.student_id != student_id_check:
-            return jsonify({'error': 'Combined payment sirf ek hi student ke records ke liye ho sakti hai'}), 400
-
+            return jsonify({'error': 'Combined payment sirf ek student ke liye'}), 400
         try:
             amount = float(p.get('amount'))
         except (TypeError, ValueError):
             continue
-        if amount <= 0:
-            continue
+        if amount > 0:
+            recs_with_amt.append((record, amount))
 
-        record.amount_paid  = (record.amount_paid or 0) + amount
-        record.payment_mode = payment_mode
-        record.paid_date    = today
-        record.collected_by = get_current_user().id
-        record.remarks      = remarks
-        record.status       = 'PAID' if record.amount_paid >= record.effective_due() else 'PARTIAL'
-        if not record.receipt_no:
-            record.receipt_no = receipt_no
-
-        db.session.add(FeeTransaction(
-            fee_record_id=record.id, student_id=record.student_id, school_id=sid,
-            amount=amount, payment_mode=payment_mode, transaction_date=today,
-            txn_month=today.strftime('%B %Y'), receipt_no=receipt_no,
-            remarks=remarks, collected_by=get_current_user().id,
-        ))
-        results.append(record)
-        total_collected += amount
-
-    if not results:
+    if not recs_with_amt:
         return jsonify({'error': 'Koi valid payment nahi mila'}), 400
 
-    db.session.commit()
+    # ── Grouping strategy ──
+    if mode == 'SEPARATE':
+        groups = {}
+        for record, amount in recs_with_amt:
+            groups.setdefault(record.source or 'ACADEMIC', []).append((record, amount))
+    else:
+        groups = {'COMBINED': recs_with_amt}
 
+    receipts = []
+    for source_key, items in groups.items():
+        while True:
+            receipt_no = _gen_receipt()
+            if not FeeTransaction.query.filter_by(receipt_no=receipt_no).first():
+                break
+
+        total = 0
+        for record, amount in items:
+            record.amount_paid  = (record.amount_paid or 0) + amount
+            record.payment_mode = payment_mode
+            record.paid_date    = today
+            record.collected_by = get_current_user().id
+            record.remarks      = remarks
+            record.status       = 'PAID' if record.amount_paid >= record.effective_due() else 'PARTIAL'
+            if not record.receipt_no:
+                record.receipt_no = receipt_no
+            db.session.add(FeeTransaction(
+                fee_record_id=record.id, student_id=record.student_id, school_id=sid,
+                amount=amount, payment_mode=payment_mode, transaction_date=today,
+                txn_month=today.strftime('%B %Y'), receipt_no=receipt_no,
+                remarks=remarks, collected_by=get_current_user().id,
+            ))
+            total += amount
+
+        db.session.add(FeeReceiptGroup(
+            receipt_no=receipt_no, school_id=sid, student_id=student_id_check,
+            mode=mode, sources=','.join({(r.source or 'ACADEMIC') for r, _ in items}),
+            created_by=get_current_user().id,
+        ))
+        receipts.append({
+            'receipt_no': receipt_no, 'source_group': source_key, 'total': total,
+            'items': [{'fee_type': r.fee_type, 'amount': a} for r, a in items],
+        })
+
+    db.session.commit()
     student = Student.query.get(student_id_check)
     return jsonify({
-        'receipt_no':       receipt_no,
-        'student_id':       student_id_check,
-        'student_name':     student.user.name if student and student.user else '',
-        'total_collected':  total_collected,
-        'payment_mode':     payment_mode,
-        'paid_date':        str(today),
-        'items': [
-            {'fee_type': r.fee_type, 'amount_due': r.amount_due,
-             'amount_paid': r.amount_paid, 'status': r.status}
-            for r in results
-        ],
+        'student_id': student_id_check,
+        'student_name': student.user.name if student and student.user else '',
+        'mode': mode, 'receipts': receipts,
     }), 200
+
+@principal_bp.route('/fees/notices/bulk', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER')
+def bulk_fee_notice_pdf():
+    """
+    GET /api/principal/fees/notices/bulk?class_id=1&month=2026-07
+    Ek hi PDF — class ke saare students, roll-number order mein,
+    har student ek page pe — consolidated dues (tuition+hostel+
+    library+sports+exam sab uss student ke liye ek page pe).
+    """
+    sid      = _school_id()
+    class_id = request.args.get('class_id')
+    month    = request.args.get('month') or date.today().strftime('%Y-%m')
+    if not class_id:
+        return jsonify({'error': 'class_id zaroori hai'}), 400
+
+    from app.models.school import School
+    school   = School.query.get(sid)
+    students = Student.query.filter_by(school_id=sid, class_id=class_id)\
+                 .order_by(Student.roll_number).all()
+    if not students:
+        return jsonify({'error': 'Class mein koi student nahi'}), 404
+
+    from app.utils.pdf_generator import generate_bulk_notice_pdf
+    # generate_bulk_notice_pdf internally har student ke liye
+    # FeeRecord.query.filter_by(student_id=s.id, month=month) sab
+    # sources sahit fetch karta hai aur ek page render karta hai
+    buf = generate_bulk_notice_pdf(students, school, month, FeeRecord, Attendance)
+
+    cls = Class.query.get(class_id)
+    label = f"{cls.name}-{cls.section}" if cls else class_id
+    return send_file(buf, mimetype='application/pdf', as_attachment=True,
+                      download_name=f'FeeNotices_{label}_{month}.pdf')
 
 # NEW
 @principal_bp.route('/fees/generate', methods=['POST'])
 @role_required('PRINCIPAL', 'TEACHER')
 def generate_fees():
     """
-    Body: { class_id, fee_type, month }   -- month format: "2026-07"
-
+    Body: {
+        class_id, fee_type, month,          -- month format: "2026-07"
+        window_start,                        -- OPTIONAL "2026-06-25" — kab se collection start
+        window_end                           -- OPTIONAL "2026-07-01" — kab tak due (parents ko yahi dikhega)
+    }
     Amount ab manual nahi — FeeStructure (class + fee_type) se resolve hota hai.
     Records DRAFT status mein bante hain — Principal review karke /fees/batches/<id>/publish
     karega tabhi parent portal / late-fine clock activate hoga.
+
+    Due date priority:
+      1. window_end diya hai   → wahi due_date banega (real-world: "1 July tak pay karo")
+      2. window_end nahi diya  → FeeStructure.due_date_day se fallback (purana behaviour)
+
     Same class+fee_type+month ke liye dobara generate karne pe 409 (already_generated).
     """
     data     = request.get_json() or {}
@@ -1047,6 +1121,8 @@ def generate_fees():
     class_id = data.get('class_id')
     fee_type = (data.get('fee_type') or '').strip().upper()
     month    = data.get('month')
+    window_start_raw = data.get('window_start')   # "2026-06-25"
+    window_end_raw   = data.get('window_end')     # "2026-07-01"
 
     if not class_id or not fee_type or not month:
         return jsonify({'error': 'class_id, fee_type, month zaroori hai'}), 400
@@ -1071,15 +1147,36 @@ def generate_fees():
             'batch_id': existing_batch.id,
         }), 409
 
-    try:
-        y, m = map(int, month.split('-'))
-        due_date = date(y, m, min(fs.due_date_day or 10, 28))
-    except (ValueError, TypeError):
-        return jsonify({'error': 'month format "YYYY-MM" jaisa hona chahiye'}), 400
+    # ── NEW: window_start / window_end parse + validate ──
+    window_start = window_end = None
+    if window_start_raw:
+        try:
+            window_start = date.fromisoformat(window_start_raw)
+        except (ValueError, TypeError):
+            return jsonify({'error': 'window_start format "YYYY-MM-DD" jaisa hona chahiye'}), 400
+    if window_end_raw:
+        try:
+            window_end = date.fromisoformat(window_end_raw)
+        except (ValueError, TypeError):
+            return jsonify({'error': 'window_end format "YYYY-MM-DD" jaisa hona chahiye'}), 400
+    if window_start and window_end and window_start > window_end:
+        return jsonify({'error': 'window_start, window_end se pehle honi chahiye'}), 400
+
+    # ── Due date: window_end mile to wahi due_date, warna structure ka default ──
+    if window_end:
+        due_date = window_end
+    else:
+        try:
+            y, m = map(int, month.split('-'))
+            due_date = date(y, m, min(fs.due_date_day or 10, 28))
+        except (ValueError, TypeError):
+            return jsonify({'error': 'month format "YYYY-MM" jaisa hona chahiye'}), 400
 
     batch = FeeGenerationBatch(
         school_id=sid, class_id=class_id, fee_type=fee_type, month=month,
         session=fs.session, status='DRAFT', generated_by=get_current_user().id,
+        window_start=window_start,   # NEW — batch pe store, notice PDF isse "collection kab se" dikhayega
+        window_end=window_end,       # NEW — batch pe store, notice PDF isse "last date" dikhayega
     )
     db.session.add(batch)
     db.session.flush()
@@ -1107,11 +1204,14 @@ def generate_fees():
     db.session.commit()
 
     return jsonify({
-        'message':   f'{created} fee records DRAFT mein generate hue — review karke publish karo',
-        'batch_id':  batch.id,
-        'created':   created,
-        'skipped':   skipped,
-        'status':    'DRAFT',
+        'message':      f'{created} fee records DRAFT mein generate hue — review karke publish karo',
+        'batch_id':     batch.id,
+        'created':      created,
+        'skipped':      skipped,
+        'status':       'DRAFT',
+        'due_date':     str(due_date),                                   # NEW — frontend confirm kar sake
+        'window_start': str(window_start) if window_start else None,     # NEW
+        'window_end':   str(window_end)   if window_end   else None,     # NEW
     }), 201
 
 # NEW
@@ -1509,21 +1609,47 @@ def fees_class_summary():
 
 # NEW — Class-wise Fee Structure CRUD (mirrors HostelFeeStructure pattern)
 
+# principal.py — list_fee_structures() ko replace karo isse
+
 @principal_bp.route('/fee-structures', methods=['GET'])
 @role_required('PRINCIPAL', 'TEACHER')
 def list_fee_structures():
+    """
+    Unified view — Academic (is table se, editable) + Hostel/Library
+    (unke apne module se, read-only reference) — sab ek jagah dikhte hain
+    taaki principal ko pata rahe 'total kitni fee categories active hain'.
+    """
     sid      = _school_id()
+    source   = request.args.get('source', 'ACADEMIC')  # ACADEMIC / HOSTEL / LIBRARY
     class_id = request.args.get('class_id')
-    q = FeeStructure.query.filter_by(school_id=sid)
+
+    if source == 'HOSTEL':
+        from app.models.hostel import HostelFeeStructure
+        q = HostelFeeStructure.query.filter_by(school_id=sid, status='ACTIVE')
+        return jsonify({
+            'editable': False,
+            'manage_url': '/hostel/fee-structures',
+            'items': [h.to_dict() for h in q.all()],
+        }), 200
+
+    if source == 'LIBRARY':
+        # Agar LibraryFeeStructure model hai to waisa hi pattern —
+        # abhi placeholder, jab library fines/membership fee model banega
+        return jsonify({'editable': False, 'manage_url': '/library/settings', 'items': []}), 200
+
+    # ── ACADEMIC (default) — editable, existing behaviour ──
+    q = FeeStructure.query.filter_by(school_id=sid, source='ACADEMIC')
     if class_id:
         q = q.filter_by(class_id=class_id)
     result = []
     for fs in q.order_by(FeeStructure.class_id).all():
         d = fs.to_dict()
         cls = Class.query.get(fs.class_id) if fs.class_id else None
-        d['class_name'] = f"{cls.name} - {cls.section}" if cls else 'All Classes'
+        d['class_name'] = f"{cls.name} - {cls.section}" if cls else (
+            'One-Time (All Classes)' if fs.frequency == 'ONE_TIME' else 'All Classes'
+        )
         result.append(d)
-    return jsonify(result), 200
+    return jsonify({'editable': True, 'items': result}), 200
 
 
 @principal_bp.route('/fee-structures', methods=['POST'])
@@ -1645,7 +1771,45 @@ def attendance_summary():
         'not_marked':     total_students - marked,
         'present_pct':    round(present / total_students * 100, 1) if total_students else 0,
     }), 200
+@principal_bp.route('/fees/batches/<int:batch_id>/bulk-adjust', methods=['POST'])
+@role_required('PRINCIPAL')
+def batch_bulk_adjust(batch_id):
+    """
+    Publish se PEHLE, poori batch (ya select student_ids) pe ek sath
+    discount/fine — 'sab scholarship students ko 20% off' jaisa case.
+    Body: { student_ids: [...] (empty = sab), type: FINE|DISCOUNT, amount, reason, is_percent }
+    """
+    batch = FeeGenerationBatch.query.get_or_404(batch_id)
+    if batch.school_id != _school_id():
+        return jsonify({'error': 'Unauthorized'}), 403
+    if batch.status != 'DRAFT':
+        return jsonify({'error': 'Sirf DRAFT batch pe bulk adjustment ho sakta hai'}), 400
 
+    data = request.get_json() or {}
+    adj_type    = (data.get('type') or '').upper()
+    reason      = (data.get('reason') or '').strip()
+    is_percent  = bool(data.get('is_percent'))
+    student_ids = data.get('student_ids') or []
+
+    if adj_type not in ('FINE', 'DISCOUNT') or not reason:
+        return jsonify({'error': "type aur reason zaroori hai"}), 400
+
+    q = FeeRecord.query.filter_by(batch_id=batch.id)
+    if student_ids:
+        q = q.filter(FeeRecord.student_id.in_(student_ids))
+
+    updated = 0
+    for rec in q.all():
+        amount = round(rec.amount_due * float(data['amount']) / 100, 2) if is_percent else float(data['amount'])
+        if adj_type == 'FINE':
+            rec.fine, rec.fine_reason = (rec.fine or 0) + amount, reason
+        else:
+            rec.discount, rec.discount_reason = (rec.discount or 0) + amount, reason
+        rec.adjusted_by, rec.adjusted_at = get_current_user().id, datetime.utcnow()
+        updated += 1
+
+    db.session.commit()
+    return jsonify({'message': f'{updated} records adjust hue', 'updated': updated}), 200
 
 @principal_bp.route('/attendance/class-summary', methods=['GET'])
 @role_required('PRINCIPAL', 'TEACHER')
