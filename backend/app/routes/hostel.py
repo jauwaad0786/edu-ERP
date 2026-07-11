@@ -1480,16 +1480,15 @@ def collect_hostel_fee():
                 record.receipt_no = rno
                 break
 
-    while True:
-        txn_receipt = _gen_rcpt()
-        if not FeeTransaction.query.filter_by(receipt_no=txn_receipt).first():
-            break
-
+    # NEW — txn ka receipt_no ab record.receipt_no ke SAME rakha jaata hai,
+    # taaki frontend jo record.receipt_no dikhata/download karta hai, wahi
+    # FeeTransaction row bhi match kare (principal.collect_fee() mein ye
+    # bug pehle fix ho chuka tha — collect_hostel_fee() mein reh gaya tha)
     db.session.add(FeeTransaction(
         fee_record_id=record.id, student_id=record.student_id, school_id=sid,
         amount=new_payment, payment_mode=record.payment_mode,
         transaction_date=date.today(), txn_month=date.today().strftime('%B %Y'),
-        receipt_no=txn_receipt, remarks=data.get('remarks', ''), collected_by=user.id,
+        receipt_no=record.receipt_no, remarks=data.get('remarks', ''), collected_by=user.id,
     ))
     log_hostel_activity(sid, user.id, 'FEE_COLLECTED',
                          f'₹{new_payment} collected — record #{record.id}')
