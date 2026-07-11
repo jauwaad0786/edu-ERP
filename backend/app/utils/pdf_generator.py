@@ -502,9 +502,25 @@ def generate_fee_receipt_pdf(student, school, transactions, receipt_no):
     elements.append(centered2)
     elements.append(Spacer(1, 0.4 * cm))
 
-    elements.append(Paragraph(
-        'This is a computer-generated receipt and does not require a physical signature.',
-        ParagraphStyle('foot', fontSize=8, fontName='Helvetica-Oblique', textColor=GREY_TEXT, alignment=TA_CENTER)))
+    # NEW — hostel-source payments ke liye warden signature line (physical sign ke liye),
+    # baaki fee types ke liye purani computer-generated note hi rahegi
+    is_hostel_payment = any(
+        getattr(txn.fee_record, 'source', None) == 'HOSTEL' for txn in transactions if txn.fee_record
+    )
+
+    if is_hostel_payment:
+        elements.append(Spacer(1, 1 * cm))
+        sig_table = Table([[Paragraph(
+            "_____________________<br/><b>Warden's Signature</b>",
+            ParagraphStyle('sig', fontSize=9, fontName='Helvetica', textColor=GREY_TEXT, alignment=TA_CENTER))]],
+            colWidths=[6 * cm])
+        wrap = Table([[sig_table]], colWidths=[17.7 * cm])
+        wrap.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'RIGHT')]))
+        elements.append(wrap)
+    else:
+        elements.append(Paragraph(
+            'This is a computer-generated receipt and does not require a physical signature.',
+            ParagraphStyle('foot', fontSize=8, fontName='Helvetica-Oblique', textColor=GREY_TEXT, alignment=TA_CENTER)))
 
     doc.build(elements, onFirstPage=_footer, onLaterPages=_footer)
     buffer.seek(0)
