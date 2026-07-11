@@ -685,6 +685,6 @@ def vendor_history(vendor_id):
 
 
 @finance_bp.route('/vendors/meta', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
 def vendors_meta():
     return jsonify({'categories': VENDOR_CATEGORIES}), 200
