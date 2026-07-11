@@ -130,7 +130,7 @@ export default function App() {
               </ProtectedRoute>
             } />
             <Route path="/fees" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'STUDENT', 'PARENT']}>
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'ACCOUNTANT']}>
                 <FeesPage />
               </ProtectedRoute>
             } />
@@ -140,22 +140,22 @@ export default function App() {
               </ProtectedRoute>
             } />
             <Route path="/finance/expenses" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']}>
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'ACCOUNTANT']}>
                 <ExpensesPage />
               </ProtectedRoute>
             } />
             <Route path="/finance/inventory" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']}>
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'ACCOUNTANT']}>
                 <InventoryPage />
               </ProtectedRoute>
             } />
             <Route path="/finance/payroll" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']}>
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT']}>
                 <PayrollPage />
               </ProtectedRoute>
             } />
             <Route path="/finance/vendors" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']}>
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'ACCOUNTANT']}>
                 <VendorsPage />
               </ProtectedRoute>
             } />
