@@ -474,3 +474,48 @@ class HostelFeeStructure(db.Model):
             'total_monthly':       self.total_monthly(),
             'status':              self.status,
         }
+# NEW — add at the very end of app/models/hostel.py
+
+FINE_REASONS = ['FURNITURE_DAMAGE', 'PROPERTY_LOSS', 'RULE_VIOLATION', 'ROOM_DAMAGE', 'OTHER']
+FINE_STATUSES = ['PENDING', 'PAID', 'WAIVED']
+
+
+class HostelFineRecord(db.Model):
+    """
+    Warden-raised fine/damage charge on a student. Mirrors FeeRecord.source_ref_id
+    pattern used by Library fines — a matching FeeRecord(source='HOSTEL_FINE')
+    is auto-created so it shows up in Fee Management too.
+    """
+    __tablename__ = 'hostel_fine_records'
+
+    id          = db.Column(db.Integer, primary_key=True)
+    school_id   = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    student_id  = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
+    hostel_id   = db.Column(db.Integer, db.ForeignKey('hostels.id'), nullable=False)
+
+    reason      = db.Column(db.String(30), nullable=False, default='OTHER')  # FURNITURE_DAMAGE / PROPERTY_LOSS / ...
+    description = db.Column(db.String(300), default='')
+    amount      = db.Column(db.Float, nullable=False, default=0)
+
+    status      = db.Column(db.String(20), default='PENDING')  # PENDING / PAID / WAIVED
+    raised_by   = db.Column(db.Integer, db.ForeignKey('users.id'))
+    raised_date = db.Column(db.Date, default=date.today)
+
+    fee_record_id = db.Column(db.Integer, db.ForeignKey('fee_records.id'), nullable=True)  # link to FeeRecord
+
+    def to_dict(self):
+        student = self.student
+        return {
+            'id':           self.id,
+            'student_id':   self.student_id,
+            'student_name': student.user.name if student and student.user else '',
+            'hostel_id':    self.hostel_id,
+            'reason':       self.reason,
+            'description':  self.description or '',
+            'amount':       self.amount,
+            'status':       self.status,
+            'raised_date':  str(self.raised_date) if self.raised_date else None,
+            'fee_record_id':self.fee_record_id,
+        }
+
+    student = db.relationship('Student', foreign_keys=[student_id])
