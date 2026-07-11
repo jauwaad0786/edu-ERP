@@ -347,11 +347,29 @@ export default function FeesPage() {
       flash('❌ PDF download fail hua', 'error');
     }
   }
+  // NEW — receipt PDF ko axios ke through fetch karo (blob), taaki auth token bhi jaye
+  async function downloadReceipt(receiptNo) {
+    if (!receiptNo) {
+      flash('❌ Receipt number missing hai', 'error');
+      return;
+    }
+    try {
+      const res = await api.get(`/principal/fees/receipt/${receiptNo}/pdf`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      window.open(url, '_blank');
+      // Optional cleanup after a delay so the new tab has time to load it
+      setTimeout(() => window.URL.revokeObjectURL(url), 10000);
+    } catch (e) {
+      flash(e.response?.status === 404 ? '❌ Receipt nahi mila' : '❌ PDF download fail hua', 'error');
+    }
+  }
 
   const collectionPct = summary
     ? Math.round((summary.total_collected / (summary.total_due || 1)) * 100)
     : 0;
-
+  
   /* ════════════════════════════════════════════════════════════════════════ */
   return (
     <div className="app-shell">
@@ -714,7 +732,7 @@ export default function FeesPage() {
                               )}
                               {r.receipt_no && (
                                 <button
-                                  onClick={() => window.open(`${api.defaults.baseURL}/principal/fees/receipt/${r.receipt_no}/pdf`, '_blank')}
+                                  onClick={() => downloadReceipt(r.receipt_no)}
                                   style={{
                                     background: '#e8f4fd', color: '#0176d3',
                                     border: 'none', borderRadius: 4,
@@ -1214,7 +1232,7 @@ export default function FeesPage() {
                     <strong style={{ fontSize: 12, color: '#2e844a' }}>₹{fmt(rcp.total)}</strong>
                   </div>
                   <button
-                    onClick={() => window.open(`${api.defaults.baseURL}/principal/fees/receipt/${rcp.receipt_no}/pdf`, '_blank')}
+                    onClick={() => downloadReceipt(rcp.receipt_no)}
                     style={{ marginTop: 8, width: '100%', background: '#e8f4fd', color: '#0176d3', border: 'none', borderRadius: 6, padding: '6px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                     🖨️ PDF Download
                   </button>
