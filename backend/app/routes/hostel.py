@@ -1404,3 +1404,80 @@ def list_hostel_admissions():
         })
 
     return jsonify(result), 200
+
+
+@hostel_bp.route('/fees/collect', methods=['POST'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def collect_hostel_fee():
+    """
+    Warden (ya Principal) yahi se hostel fee collect kare — same
+    FeeRecord/FeeTransaction table jo principal.collect_fee() use karta
+    hai, isliye Fee Management page pe automatically reflect hoga —
+    koi alag sync step nahi chahiye.
+    Body: { record_id, amount_paid, payment_mode, remarks }
+    """
+    from app.models.financial import FeeTransaction
+    import random, string
+
+    data = request.get_json() or {}
+    record_id = data.get('record_id')
+    if not record_id:
+        return jsonify({'error': 'record_id zaroori hai'}), 400
+
+    record = FeeRecord.query.get_or_404(record_id)
+    sid = _school_id()
+    if record.school_id != sid:
+        return jsonify({'error': 'Unauthorized'}), 403
+    if record.source != 'HOSTEL':
+        return jsonify({'error': 'Ye hostel fee record nahi hai'}), 400
+
+    user = get_current_user()
+    # Warden sirf apne assigned hostel ke student ki fee collect kar sake
+    if user.role.value == 'HOSTEL':
+        alloc = HostelBedAllocation.query.filter_by(
+            student_id=record.student_id, status='ACTIVE'
+        ).first()
+        hostel = Hostel.query.get(alloc.hostel_id) if alloc else None
+        if not hostel or hostel.warden_id != user.id:
+            return jsonify({'error': 'Ye student aapke assigned hostel mein nahi hai'}), 403
+
+    try:
+        new_payment = float(data.get('amount_paid'))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'amount_paid number honi chahiye'}), 400
+    if new_payment <= 0:
+        return jsonify({'error': 'amount_paid 0 se zyada honi chahiye'}), 400
+
+    record.amount_paid  = (record.amount_paid or 0) + new_payment
+    record.payment_mode = data.get('payment_mode', 'CASH')
+    record.paid_date    = date.today()
+    record.collected_by = user.id
+    record.remarks      = data.get('remarks', record.remarks or '')
+    record.status = 'PAID' if record.amount_paid >= record.effective_due() else 'PARTIAL'
+
+    def _gen_rcpt():
+        return 'RCP-' + date.today().strftime('%Y%m%d') + '-' + \
+            ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+
+    if not record.receipt_no:
+        while True:
+            rno = _gen_rcpt()
+            if not FeeRecord.query.filter_by(receipt_no=rno).first():
+                record.receipt_no = rno
+                break
+
+    while True:
+        txn_receipt = _gen_rcpt()
+        if not FeeTransaction.query.filter_by(receipt_no=txn_receipt).first():
+            break
+
+    db.session.add(FeeTransaction(
+        fee_record_id=record.id, student_id=record.student_id, school_id=sid,
+        amount=new_payment, payment_mode=record.payment_mode,
+        transaction_date=date.today(), txn_month=date.today().strftime('%B %Y'),
+        receipt_no=txn_receipt, remarks=data.get('remarks', ''), collected_by=user.id,
+    ))
+    log_hostel_activity(sid, user.id, 'FEE_COLLECTED',
+                         f'₹{new_payment} collected — record #{record.id}')
+    db.session.commit()
+    return jsonify(record.to_dict()), 200
