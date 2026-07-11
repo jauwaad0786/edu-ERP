@@ -243,6 +243,31 @@ const ROLE_MENUS = {
       ],
     },
   ],
+  // NEW — ACCOUNTANT role menu
+  ACCOUNTANT: [
+    {
+      group: 'Overview',
+      items: [{ icon: 'ti-layout-dashboard', label: 'Dashboard', path: '/finance/expenses' }],
+    },
+    {
+      group: 'Finance',
+      items: [
+        { icon: 'ti-receipt',        label: 'Fees',       path: '/fees' },
+        { icon: 'ti-receipt-2',      label: 'Expenses',   path: '/finance/expenses' },
+        { icon: 'ti-boxes',          label: 'Inventory',  path: '/finance/inventory' },
+        { icon: 'ti-cash',           label: 'Payroll',    path: '/finance/payroll' },
+        { icon: 'ti-building-store', label: 'Vendors',    path: '/finance/vendors' },
+      ],
+    },
+    {
+      group: 'Customer Service',
+      items: [
+        { icon: 'ti-ticket',      label: 'My Tickets', path: '/support/tickets' },
+        { icon: 'ti-message-2',   label: 'Messages',   path: '/support/chat' },
+        { icon: 'ti-help-circle', label: 'Help Center',path: '/support/help' },
+      ],
+    },
+  ],
 
   // NEW
   HOSTEL: [
@@ -324,7 +349,7 @@ const ROLE_MENUS = {
 const ROLE_LABELS = {
   SUPER_ADMIN: 'Super Admin', PRINCIPAL: 'Principal', VICE_PRINCIPAL: 'Vice Principal',
   TEACHER: 'Teacher', ACCOUNTANT: 'Accountant', RECEPTIONIST: 'Receptionist',
-  LIBRARIAN: 'Librarian', STUDENT: 'Student', PARENT: 'Parent',
+  LIBRARIAN: 'Librarian', HOSTEL: 'Warden', STUDENT: 'Student', PARENT: 'Parent',
 };
 
 function getSchoolColor(name = '') {
