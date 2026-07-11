@@ -1406,6 +1406,8 @@ def list_hostel_admissions():
     return jsonify(result), 200
 
 
+# NEW — append at end of app/routes/hostel.py
+
 @hostel_bp.route('/fees/collect', methods=['POST'])
 @role_required('PRINCIPAL', 'HOSTEL')
 def collect_hostel_fee():
