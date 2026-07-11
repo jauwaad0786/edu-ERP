@@ -930,15 +930,11 @@ def collect_fee():
                 break
 
     # ── FeeTransaction ledger entry ──
-    # Har payment ka apna receipt + date + mode — isi se ab month-wise /
-    # date-wise / mode-wise collection report accurately ban sakti hai,
-    # record.amount_paid (running total) pe depend kiye bina.
+    # NEW — txn ka receipt_no ab record.receipt_no ke SAME rakha jaata hai,
+    # taaki frontend jo record.receipt_no dikhata/download karta hai, wahi
+    # FeeTransaction row bhi match kare. Pehle dono alag-alag random number
+    # generate hote the isliye receipt PDF hamesha 404 deta tha.
     today = date.today()
-    while True:
-        txn_receipt = _gen_receipt()
-        if not FeeTransaction.query.filter_by(receipt_no=txn_receipt).first():
-            break
-
     txn = FeeTransaction(
         fee_record_id    = record.id,
         student_id       = record.student_id,
@@ -947,7 +943,7 @@ def collect_fee():
         payment_mode     = record.payment_mode,
         transaction_date = today,
         txn_month        = today.strftime('%B %Y'),
-        receipt_no       = txn_receipt,
+        receipt_no       = record.receipt_no,
         remarks          = data.get('remarks', ''),
         collected_by     = get_current_user().id,
     )
