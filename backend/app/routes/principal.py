@@ -243,7 +243,7 @@ def assign_class_teacher(class_id):
 # ─── Teachers ─────────────────────────────────────────────────────────────────
 
 @principal_bp.route('/teachers', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
 @feature_required('teacher_management')
 def list_teachers():
     teachers = Teacher.query.filter_by(school_id=_school_id()).all()
@@ -534,7 +534,7 @@ def add_salary_record(teacher_id):
     }), 201
 
 @principal_bp.route('/payroll/records', methods=['GET'])
-@role_required('PRINCIPAL', 'SUPER_ADMIN')
+@role_required('PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT')
 @feature_required('payroll_system')
 def list_payroll_records():
     """
