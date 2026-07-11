@@ -2,11 +2,13 @@ from flask import Blueprint, request, jsonify, Response
 from app import db
 from app.models.user import User, UserRole
 from app.models.academic import Student, Class
+
 # NEW
 from app.models.hostel import (
     Hostel, HostelBuilding, HostelFloor, HostelWing, HostelRoom, HostelBed,
     HostelBedAllocation, HostelActivityLog, HostelSettings, log_hostel_activity,
     HostelFeeStructure,
+    HostelFineRecord, FINE_REASONS,          # NEW
     HOSTEL_TYPES, HOSTEL_GENDERS, ROOM_TYPES, BED_STATUSES, TRANSFER_TYPES,
 )
 from app.models.financial import FeeRecord
@@ -1431,7 +1433,7 @@ def collect_hostel_fee():
     sid = _school_id()
     if record.school_id != sid:
         return jsonify({'error': 'Unauthorized'}), 403
-    if record.source != 'HOSTEL':
+    if record.source not in ('HOSTEL', 'HOSTEL_FINE'):
         return jsonify({'error': 'Ye hostel fee record nahi hai'}), 400
 
     user = get_current_user()
@@ -1442,7 +1444,16 @@ def collect_hostel_fee():
         ).first()
         hostel = Hostel.query.get(alloc.hostel_id) if alloc else None
         if not hostel or hostel.warden_id != user.id:
-            return jsonify({'error': 'Ye student aapke assigned hostel mein nahi hai'}), 403
+            # NEW — temporary debug info, isse hataa denge jab root cause confirm ho jaye
+            return jsonify({
+                'error': 'Ye student aapke assigned hostel mein nahi hai',
+                'debug_your_user_id':        user.id,
+                'debug_student_actual_hostel_id':   hostel.id if hostel else None,
+                'debug_student_actual_hostel_name': hostel.name if hostel else None,
+                'debug_student_hostel_warden_id':   hostel.warden_id if hostel else None,
+                'debug_allocation_found':    bool(alloc),
+                'debug_allocation_status':   alloc.status if alloc else None,
+            }), 403
 
     try:
         new_payment = float(data.get('amount_paid'))
@@ -1484,3 +1495,115 @@ def collect_hostel_fee():
                          f'₹{new_payment} collected — record #{record.id}')
     db.session.commit()
     return jsonify(record.to_dict()), 200
+
+
+# NEW — append at end of app/routes/hostel.py
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  FINE / DAMAGE ADJUSTMENT
+# ═══════════════════════════════════════════════════════════════════════════
+
+@hostel_bp.route('/fines', methods=['GET'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def list_hostel_fines():
+    """Query: student_id, hostel_id, status"""
+    sid = _school_id()
+    q = HostelFineRecord.query.filter_by(school_id=sid)
+
+    user = get_current_user()
+    if user.role.value == 'HOSTEL':
+        my_hostel_ids = [h.id for h in Hostel.query.filter_by(school_id=sid, warden_id=user.id).all()]
+        q = q.filter(HostelFineRecord.hostel_id.in_(my_hostel_ids))
+
+    if request.args.get('student_id'):
+        q = q.filter_by(student_id=request.args['student_id'])
+    if request.args.get('status'):
+        q = q.filter_by(status=request.args['status'])
+
+    return jsonify([f.to_dict() for f in q.order_by(HostelFineRecord.raised_date.desc()).all()]), 200
+
+
+@hostel_bp.route('/fines', methods=['POST'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def create_hostel_fine():
+    """
+    Body: { student_id, reason, description, amount }
+    Warden sirf apne assigned hostel ke student pe fine raise kar sake.
+    Automatically FeeRecord(source='HOSTEL_FINE') bhi bana deta hai —
+    Fee Management page pe turant dikhega.
+    """
+    sid  = _school_id()
+    data = request.get_json() or {}
+
+    student_id = data.get('student_id')
+    if not student_id:
+        return jsonify({'error': 'student_id zaroori hai'}), 400
+
+    try:
+        amount = float(data.get('amount'))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'amount number honi chahiye'}), 400
+    if amount <= 0:
+        return jsonify({'error': 'amount 0 se zyada honi chahiye'}), 400
+
+    alloc = HostelBedAllocation.query.filter_by(student_id=student_id, status='ACTIVE').first()
+    if not alloc:
+        return jsonify({'error': 'Ye student currently kisi hostel mein active nahi hai'}), 400
+
+    hostel = Hostel.query.get(alloc.hostel_id)
+    user = get_current_user()
+    if user.role.value == 'HOSTEL' and hostel.warden_id != user.id:
+        return jsonify({'error': 'Ye student aapke assigned hostel mein nahi hai'}), 403
+
+    reason = data.get('reason', 'OTHER')
+    if reason not in FINE_REASONS:
+        reason = 'OTHER'
+
+    fine = HostelFineRecord(
+        school_id=sid, student_id=student_id, hostel_id=hostel.id,
+        reason=reason, description=data.get('description', ''),
+        amount=amount, raised_by=user.id, raised_date=date.today(),
+    )
+    db.session.add(fine)
+    db.session.flush()
+
+    # ── matching FeeRecord banao (Fee Management page pe reflect hone ke liye) ──
+    fee_rec = FeeRecord(
+        school_id=sid, student_id=student_id,
+        fee_type='HOSTEL_FINE', source='HOSTEL_FINE', source_ref_id=fine.id,
+        amount_due=amount, amount_paid=0, status='PENDING',
+        month=date.today().strftime('%Y-%m'), due_date=date.today(),
+        remarks=f'{reason.replace("_", " ").title()} — {data.get("description", "")}',
+    )
+    db.session.add(fee_rec)
+    db.session.flush()
+    fine.fee_record_id = fee_rec.id
+
+    log_hostel_activity(sid, user.id, 'FINE_RAISED',
+                         f'₹{amount} fine on student #{student_id} — {reason}')
+    db.session.commit()
+    return jsonify(fine.to_dict()), 201
+
+
+@hostel_bp.route('/fines/<int:fine_id>/waive', methods=['POST'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def waive_hostel_fine(fine_id):
+    fine = HostelFineRecord.query.get_or_404(fine_id)
+    if fine.school_id != _school_id():
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    user = get_current_user()
+    if user.role.value == 'HOSTEL':
+        hostel = Hostel.query.get(fine.hostel_id)
+        if not hostel or hostel.warden_id != user.id:
+            return jsonify({'error': 'Ye fine aapke assigned hostel ka nahi hai'}), 403
+
+    fine.status = 'WAIVED'
+    if fine.fee_record_id:
+        fee_rec = FeeRecord.query.get(fine.fee_record_id)
+        if fee_rec:
+            fee_rec.status = 'WAIVED'
+
+    log_hostel_activity(_school_id(), user.id, 'FINE_WAIVED', f'Fine #{fine.id} waived')
+    db.session.commit()
+    return jsonify(fine.to_dict()), 200
