@@ -42,7 +42,7 @@ def _gen_receipt():
 # ─── Classes ──────────────────────────────────────────────────────────────────
 
 @principal_bp.route('/classes', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
 def list_classes():
     classes = Class.query.filter_by(school_id=_school_id()).all()
     result = []
@@ -758,7 +758,7 @@ def create_student():
 # ─── Fees ─────────────────────────────────────────────────────────────────────
 
 @principal_bp.route('/fees/summary', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
 def fees_summary():
     sid = _school_id()
     # NEW
@@ -818,7 +818,7 @@ def fees_summary():
 
 
 @principal_bp.route('/fees/records', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
 def fee_records():
     sid        = _school_id()
     class_id   = request.args.get('class_id')
@@ -885,7 +885,7 @@ def fee_records():
 
 
 @principal_bp.route('/fees/collect', methods=['POST'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
 def collect_fee():
     """
     Collect fee for a student.
@@ -970,7 +970,7 @@ def collect_fee():
 
 
 @principal_bp.route('/fees/collect-multiple', methods=['POST'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
 def collect_fee_multiple():
     """
     Body: { payments: [{record_id, amount}], payment_mode, remarks, mode: 'COMBINED'|'SEPARATE' }
@@ -1217,7 +1217,7 @@ def generate_fees():
 # NEW
 
 @principal_bp.route('/fees/batches', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
 def list_fee_batches():
     sid    = _school_id()
     status = request.args.get('status')  # DRAFT / PUBLISHED / CANCELLED
@@ -1608,7 +1608,7 @@ def fees_monthly_trend():
     return jsonify(result), 200
 
 @principal_bp.route('/fees/class-summary', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
 def fees_class_summary():
     sid     = _school_id()
     month   = request.args.get('month')  # optional — "YYYY-MM"
@@ -2291,7 +2291,7 @@ def result_card_pdf(student_id, exam_id):
 # NEW — paste near admit_card_pdf / result_card_pdf routes
 
 @principal_bp.route('/fees/receipt/<string:receipt_no>/pdf', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
 def fee_receipt_pdf(receipt_no):
     """Ek receipt_no ke saare linked transactions (single ya combined) ka ek PDF."""
     sid  = _school_id()
