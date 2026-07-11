@@ -22,6 +22,18 @@ export default function HostelFeeStructures() {
   const [structures, setStructures] = useState([]);
   const [loading, setLoading]   = useState(true);
 
+  // NEW — tab + student fee list
+  const [activeTab, setActiveTab] = useState('structures'); // 'structures' | 'students'
+  const [students, setStudents]   = useState([]);
+  const [studentsLoading, setStudentsLoading] = useState(false);
+  const [studentSearch, setStudentSearch]     = useState('');
+
+  // NEW — Collect Fee modal
+  const [collectModal, setCollectModal] = useState(null); // { fee_record_id, student_name, pending }
+  const [collectAmount, setCollectAmount] = useState('');
+  const [collectMode, setCollectMode]     = useState('CASH');
+  const [collecting, setCollecting]       = useState(false);
+
   const [buildings, setBuildings] = useState([]);
   const [floors, setFloors]       = useState([]);
 
@@ -49,6 +61,50 @@ export default function HostelFeeStructures() {
   }, [hostelFilter]);
 
   useEffect(() => { if (hostelFilter) loadStructures(); }, [hostelFilter, loadStructures]);
+  const loadStudents = useCallback(() => {
+    setStudentsLoading(true);
+    const params = studentSearch ? `?search=${encodeURIComponent(studentSearch)}` : '';
+    api.get('/hostel/admissions' + params)
+      .then(r => setStudents(r.data || []))
+      .catch(() => toast.error('Student list load nahi hui'))
+      .finally(() => setStudentsLoading(false));
+  }, [studentSearch]);
+
+  useEffect(() => {
+    if (activeTab === 'students') loadStudents();
+  }, [activeTab, loadStudents]);
+
+  function openCollect(s) {
+    if (!s.fee_record_id) {
+      toast.error('Is student ki abhi tak koi fee record generate nahi hui');
+      return;
+    }
+    setCollectModal(s);
+    setCollectAmount('');
+    setCollectMode('CASH');
+  }
+
+  async function handleCollect() {
+    const amt = parseFloat(collectAmount);
+    if (!amt || amt <= 0) {
+      toast.error('Sahi amount daalo');
+      return;
+    }
+    setCollecting(true);
+    try {
+      await api.post('/hostel/fees/collect', {
+        record_id: collectModal.fee_record_id,
+        amount_paid: amt,
+        payment_mode: collectMode,
+      });
+      toast.success('Fee collect ho gayi');
+      setCollectModal(null);
+      loadStudents();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Collect fail hua');
+    }
+    setCollecting(false);
+  }
 
   function openCreate() {
     setForm({ ...EMPTY_FORM, hostel_id: hostelFilter });
@@ -143,7 +199,21 @@ export default function HostelFeeStructures() {
         <Navbar title="Hostel Fee Structures" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
 
         <div style={{ padding: 24 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
+
+          {/* NEW — Tabs */}
+          <div style={{ display: 'flex', gap: 4, marginBottom: 18, borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+            {[['structures', '💰 Fee Structures'], ['students', '👥 Student Fees']].map(([key, label]) => (
+              <button key={key} onClick={() => setActiveTab(key)} style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                padding: '10px 18px', fontSize: 13, fontWeight: 600,
+                color: activeTab === key ? '#4f46e5' : '#94a3b8',
+                borderBottom: activeTab === key ? '2px solid #4f46e5' : '2px solid transparent',
+                marginBottom: -1,
+              }}>{label}</button>
+            ))}
+          </div>
+
+          <div style={{ display: activeTab === 'structures' ? 'flex' : 'none', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
             <select
               value={hostelFilter}
               onChange={e => setHostelFilter(e.target.value)}
@@ -173,7 +243,7 @@ export default function HostelFeeStructures() {
             </div>
           </div>
 
-          {loading ? (
+          {activeTab === 'structures' && (loading ? (
             <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>Loading...</div>
           ) : structures.length === 0 ? (
             <div style={{ ...cardStyle, textAlign: 'center', padding: 50, color: '#94a3b8' }}>
@@ -220,6 +290,75 @@ export default function HostelFeeStructures() {
                 </div>
               ))}
             </div>
+          ))}
+
+          {/* NEW — Student Fees tab */}
+          {activeTab === 'students' && (
+            <>
+              <div style={{ marginBottom: 14 }}>
+                <input
+                  placeholder="Search by name / admission no..."
+                  value={studentSearch}
+                  onChange={e => setStudentSearch(e.target.value)}
+                  style={{
+                    padding: '9px 14px', fontSize: 13, borderRadius: 8, width: 280,
+                    border: '1px solid #e2e8f0', background: darkMode ? '#1e293b' : '#fff',
+                    color: darkMode ? '#f1f5f9' : '#0f172a',
+                  }}
+                />
+              </div>
+
+              {studentsLoading ? (
+                <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>Loading...</div>
+              ) : students.length === 0 ? (
+                <div style={{ ...cardStyle, textAlign: 'center', padding: 50, color: '#94a3b8' }}>
+                  Koi student hostel mein allocated nahi hai
+                </div>
+              ) : (
+                <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ background: darkMode ? '#0f172a' : '#f8fafc', textAlign: 'left' }}>
+                        {['Student', 'Class', 'Building / Room', 'Due', 'Paid', 'Status', ''].map(h => (
+                          <th key={h} style={{ padding: '10px 14px', fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {students.map(s => (
+                        <tr key={s.allocation_id} style={{ borderTop: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}` }}>
+                          <td style={{ padding: '10px 14px' }}>
+                            <div style={{ fontWeight: 600, color: darkMode ? '#f1f5f9' : '#0f172a' }}>{s.student_name}</div>
+                            <div style={{ fontSize: 11, color: '#94a3b8' }}>{s.admission_no}</div>
+                          </td>
+                          <td style={{ padding: '10px 14px', color: '#64748b' }}>{s.class_name}</td>
+                          <td style={{ padding: '10px 14px', color: '#64748b' }}>
+                            {s.building_name} · {s.room_number}{s.bed_number ? `-${s.bed_number}` : ''}
+                          </td>
+                          <td style={{ padding: '10px 14px' }}>₹{s.total_due?.toLocaleString('en-IN')}</td>
+                          <td style={{ padding: '10px 14px' }}>₹{s.total_paid?.toLocaleString('en-IN')}</td>
+                          <td style={{ padding: '10px 14px' }}>
+                            <span style={{
+                              fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20,
+                              background: s.fee_status === 'PAID' ? '#f0fdf4' : s.fee_status === 'PARTIAL' ? '#fffbeb' : '#fef2f2',
+                              color:      s.fee_status === 'PAID' ? '#16a34a' : s.fee_status === 'PARTIAL' ? '#d97706' : '#dc2626',
+                            }}>{s.fee_status}</span>
+                          </td>
+                          <td style={{ padding: '10px 14px' }}>
+                            {s.pending > 0 && (
+                              <button onClick={() => openCollect(s)} style={{
+                                background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 6,
+                                padding: '6px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                              }}>Collect Fee</button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -322,6 +461,43 @@ export default function HostelFeeStructures() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* NEW — Collect Fee Modal */}
+      {collectModal && (
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setCollectModal(null)}>
+          <div className="modal" style={{ maxWidth: 380 }}>
+            <div className="modal-header">
+              <h3>Collect Fee — {collectModal.student_name}</h3>
+              <button className="modal-close" onClick={() => setCollectModal(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>
+                Pending: <strong>₹{collectModal.pending?.toLocaleString('en-IN')}</strong>
+              </p>
+              <label style={labelStyle}>Amount</label>
+              <input type="number" style={inputStyle} value={collectAmount}
+                onChange={e => setCollectAmount(e.target.value)} placeholder="Amount" />
+              <label style={labelStyle}>Payment Mode</label>
+              <select style={inputStyle} value={collectMode} onChange={e => setCollectMode(e.target.value)}>
+                <option value="CASH">Cash</option>
+                <option value="UPI">UPI</option>
+                <option value="ONLINE">Online</option>
+                <option value="CHEQUE">Cheque</option>
+              </select>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-neutral" onClick={() => setCollectModal(null)}>Cancel</button>
+              <button onClick={handleCollect} disabled={collecting} style={{
+                background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 6,
+                padding: '8px 20px', fontSize: 13, fontWeight: 700, cursor: collecting ? 'not-allowed' : 'pointer',
+              }}>
+                {collecting ? 'Collecting...' : 'Collect'}
+              </button>
+            </div>
+          </div>
+        </div>
+      
       )}
     </div>
   );
