@@ -4172,3 +4172,50 @@ def delete_student_document(doc_id):
     db.session.delete(doc)
     db.session.commit()
     return jsonify({'message': 'Document deleted'}), 200
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  DATA HEALTH — Receipt Reconciliation
+# ═══════════════════════════════════════════════════════════════════════════
+# Yeh permanent maintenance tool hai — production mein safe hai, idempotent hai
+# (dobara chalane se kuch nahi badalta agar already sahi ho). Purpose: kabhi
+# bhi agar kisi collect-fee flow (hostel/principal/future modules) mein
+# receipt_no generation ka bug aa jaye aur FeeRecord.receipt_no vs
+# FeeTransaction.receipt_no mismatch ho jaye, isse ek click mein fix ho jata hai.
+
+@principal_bp.route('/fees/reconcile-receipts', methods=['POST'])
+@role_required('PRINCIPAL')
+def reconcile_fee_receipts():
+    """
+    Har FeeRecord jiska receipt_no set hai, uske saare linked FeeTransaction
+    rows ka receipt_no usi se match karta hai (agar mismatch ho). Ye sirf
+    fix karta hai — data delete/create nahi karta, isliye production-safe hai.
+    """
+    sid = _school_id()
+
+    records = FeeRecord.query.filter(
+        FeeRecord.school_id == sid,
+        FeeRecord.receipt_no.isnot(None),
+    ).all()
+
+    fixed_records = 0
+    fixed_transactions = 0
+
+    for rec in records:
+        txns = FeeTransaction.query.filter_by(fee_record_id=rec.id).all()
+        record_touched = False
+        for txn in txns:
+            if txn.receipt_no != rec.receipt_no:
+                txn.receipt_no = rec.receipt_no
+                fixed_transactions += 1
+                record_touched = True
+        if record_touched:
+            fixed_records += 1
+
+    db.session.commit()
+
+    return jsonify({
+        'message': f'{fixed_transactions} transaction(s) reconciled across {fixed_records} fee record(s)',
+        'fixed_records': fixed_records,
+        'fixed_transactions': fixed_transactions,
+    }), 200
