@@ -35,7 +35,7 @@ def _month_bounds(month_str):
 # ─── Expenses — CRUD ────────────────────────────────────────────────────────
 
 @finance_bp.route('/expenses', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
 def list_expenses():
     sid      = _school_id()
     month    = request.args.get('month')       # "July 2026"
@@ -68,7 +68,7 @@ def list_expenses():
 
 
 @finance_bp.route('/expenses', methods=['POST'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
 def create_expense():
     """
     Body: { category, title, vendor_name, amount, invoice_number,
@@ -185,7 +185,7 @@ def upload_expense_bill(exp_id):
 # ─── Category-wise Summary (for pie chart) ──────────────────────────────────
 
 @finance_bp.route('/expenses/summary', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
 def expense_category_summary():
     sid   = _school_id()
     month = request.args.get('month')
@@ -220,7 +220,7 @@ def expense_category_summary():
 # ─── Profit & Loss — the core "iss month kitna profit hua" endpoint ─────────
 
 @finance_bp.route('/profit-summary', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
 def profit_summary():
     """
     Query param: month=July 2026 (default: current month)
@@ -274,7 +274,7 @@ def profit_summary():
 # ─── Monthly Trend (for line/bar charts — last N months) ────────────────────
 
 @finance_bp.route('/monthly-trend', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
 def monthly_trend():
     """Query param: months=6 (default 6) -> last N months revenue/expense/profit"""
     sid    = _school_id()
@@ -316,7 +316,7 @@ def monthly_trend():
     return jsonify(result), 200
 
 @finance_bp.route('/meta', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
 def finance_meta():
     """Frontend dropdowns ke liye category/payment-method list."""
     return jsonify({
@@ -351,7 +351,7 @@ def _make_purchase_expense(item, qty, unit_price, vendor_name, note=''):
 
 
 @finance_bp.route('/inventory', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
 def list_inventory():
     sid      = _school_id()
     category = request.args.get('category')
@@ -375,7 +375,7 @@ def list_inventory():
 
 
 @finance_bp.route('/inventory', methods=['POST'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
 def create_inventory_item():
     """
     Body: { name, category, sku, vendor_name, quantity, unit_price,
@@ -525,7 +525,7 @@ def delete_inventory_item(item_id):
 
 
 @finance_bp.route('/inventory/summary', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
 def inventory_summary():
     sid   = _school_id()
     items = InventoryItem.query.filter_by(school_id=sid, status='ACTIVE').all()
@@ -552,7 +552,7 @@ def inventory_summary():
 
 
 @finance_bp.route('/inventory/meta', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
 def inventory_meta():
     return jsonify({
         'categories':  INVENTORY_CATEGORIES,
@@ -564,7 +564,7 @@ def inventory_meta():
 # ─── Vendors ─────────────────────────────────────────────────────────────────
 
 @finance_bp.route('/vendors', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
 def list_vendors():
     sid      = _school_id()
     category = request.args.get('category')
