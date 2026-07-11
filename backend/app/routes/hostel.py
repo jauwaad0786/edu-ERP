@@ -1401,6 +1401,7 @@ def list_hostel_admissions():
             'total_due':       total_due,
             'total_paid':      total_paid,
             'pending':         total_due - total_paid,
+            'fee_record_id':   fee_rec.id if fee_rec else None,   # NEW — collect-fee call ke liye zaroori
         })
 
     return jsonify(result), 200
