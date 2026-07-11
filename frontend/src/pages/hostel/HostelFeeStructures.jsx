@@ -29,10 +29,27 @@ export default function HostelFeeStructures() {
   const [studentSearch, setStudentSearch]     = useState('');
 
   // NEW — Collect Fee modal
+  // NEW — Collect Fee modal
   const [collectModal, setCollectModal] = useState(null); // { fee_record_id, student_name, pending }
   const [collectAmount, setCollectAmount] = useState('');
   const [collectMode, setCollectMode]     = useState('CASH');
   const [collecting, setCollecting]       = useState(false);
+
+  // NEW — Fine (single ya bulk — selectedStudentIds ke through kisi ek ya sab students pe ek saath)
+  const [selectedStudentIds, setSelectedStudentIds] = useState([]);
+  const [fineModal, setFineModal]     = useState(null); // { mode: 'single'|'bulk', students: [...] }
+  const [fineReason, setFineReason]   = useState('RULE_VIOLATION');
+  const [fineDescription, setFineDescription] = useState('');
+  const [fineAmount, setFineAmount]   = useState('');
+  const [raisingFine, setRaisingFine] = useState(false);
+
+  const FINE_REASONS = [
+    ['FURNITURE_DAMAGE', 'Furniture Damage'],
+    ['PROPERTY_LOSS',    'Property Loss'],
+    ['ROOM_DAMAGE',      'Room Damage'],
+    ['RULE_VIOLATION',   'Rule Violation'],
+    ['OTHER',            'Other'],
+  ];
 
   const [buildings, setBuildings] = useState([]);
   const [floors, setFloors]       = useState([]);
@@ -104,6 +121,72 @@ export default function HostelFeeStructures() {
       toast.error(err.response?.data?.error || 'Collect fail hua');
     }
     setCollecting(false);
+  }
+  // NEW — checkbox toggle
+  function toggleStudentSelect(allocationId) {
+    setSelectedStudentIds(prev =>
+      prev.includes(allocationId) ? prev.filter(id => id !== allocationId) : [...prev, allocationId]
+    );
+  }
+
+  function toggleSelectAll() {
+    if (selectedStudentIds.length === students.length) {
+      setSelectedStudentIds([]);
+    } else {
+      setSelectedStudentIds(students.map(s => s.allocation_id));
+    }
+  }
+
+  // NEW — ek single student pe fine (row button se)
+  function openFineSingle(s) {
+    setFineModal({ mode: 'single', students: [s] });
+    setFineReason('RULE_VIOLATION');
+    setFineDescription('');
+    setFineAmount('');
+  }
+
+  // NEW — selected students pe bulk fine (toolbar button se)
+  function openFineBulk() {
+    if (selectedStudentIds.length === 0) {
+      toast.error('Pehle kam se kam ek student select karo');
+      return;
+    }
+    const selected = students.filter(s => selectedStudentIds.includes(s.allocation_id));
+    setFineModal({ mode: 'bulk', students: selected });
+    setFineReason('RULE_VIOLATION');
+    setFineDescription('');
+    setFineAmount('');
+  }
+
+  async function handleRaiseFine() {
+    const amt = parseFloat(fineAmount);
+    if (!amt || amt <= 0) {
+      toast.error('Sahi amount daalo');
+      return;
+    }
+    setRaisingFine(true);
+    try {
+      // Har selected student ke liye alag-alag fine record banta hai (same amount, same reason)
+      await Promise.all(fineModal.students.map(s =>
+        api.post('/hostel/fines', {
+          student_id: s.student_id,
+          reason: fineReason,
+          description: fineDescription,
+          amount: amt,
+        })
+      ));
+      toast.success(
+        fineModal.students.length > 1
+          ? `${fineModal.students.length} students pe fine lag gayi`
+          : 'Fine lag gayi'
+      );
+      setFineModal(null);
+      setSelectedStudentIds([]);
+      loadStudents();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Fine raise fail hua');
+    }
+    setRaisingFine(false);
   }
 
   function openCreate() {
@@ -295,7 +378,7 @@ export default function HostelFeeStructures() {
           {/* NEW — Student Fees tab */}
           {activeTab === 'students' && (
             <>
-              <div style={{ marginBottom: 14 }}>
+              <div style={{ marginBottom: 14, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
                 <input
                   placeholder="Search by name / admission no..."
                   value={studentSearch}
@@ -306,6 +389,15 @@ export default function HostelFeeStructures() {
                     color: darkMode ? '#f1f5f9' : '#0f172a',
                   }}
                 />
+                {/* NEW — bulk fine button, sirf tab dikhta hai jab koi student selected ho */}
+                {selectedStudentIds.length > 0 && (
+                  <button onClick={openFineBulk} style={{
+                    background: '#dc2626', color: '#fff', border: 'none', borderRadius: 8,
+                    padding: '9px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                  }}>
+                    ⚠ Raise Fine — {selectedStudentIds.length} Selected
+                  </button>
+                )}
               </div>
 
               {studentsLoading ? (
@@ -319,6 +411,11 @@ export default function HostelFeeStructures() {
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead>
                       <tr style={{ background: darkMode ? '#0f172a' : '#f8fafc', textAlign: 'left' }}>
+                        <th style={{ padding: '10px 14px', width: 30 }}>
+                          <input type="checkbox"
+                            checked={students.length > 0 && selectedStudentIds.length === students.length}
+                            onChange={toggleSelectAll} />
+                        </th>
                         {['Student', 'Class', 'Building / Room', 'Due', 'Paid', 'Status', ''].map(h => (
                           <th key={h} style={{ padding: '10px 14px', fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>{h}</th>
                         ))}
@@ -327,6 +424,11 @@ export default function HostelFeeStructures() {
                     <tbody>
                       {students.map(s => (
                         <tr key={s.allocation_id} style={{ borderTop: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}` }}>
+                          <td style={{ padding: '10px 14px' }}>
+                            <input type="checkbox"
+                              checked={selectedStudentIds.includes(s.allocation_id)}
+                              onChange={() => toggleStudentSelect(s.allocation_id)} />
+                          </td>
                           <td style={{ padding: '10px 14px' }}>
                             <div style={{ fontWeight: 600, color: darkMode ? '#f1f5f9' : '#0f172a' }}>{s.student_name}</div>
                             <div style={{ fontSize: 11, color: '#94a3b8' }}>{s.admission_no}</div>
@@ -344,13 +446,18 @@ export default function HostelFeeStructures() {
                               color:      s.fee_status === 'PAID' ? '#16a34a' : s.fee_status === 'PARTIAL' ? '#d97706' : '#dc2626',
                             }}>{s.fee_status}</span>
                           </td>
-                          <td style={{ padding: '10px 14px' }}>
+                          <td style={{ padding: '10px 14px', display: 'flex', gap: 6 }}>
                             {s.pending > 0 && (
                               <button onClick={() => openCollect(s)} style={{
                                 background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 6,
                                 padding: '6px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
                               }}>Collect Fee</button>
                             )}
+                            {/* NEW — sirf isi ek student pe fine */}
+                            <button onClick={() => openFineSingle(s)} style={{
+                              background: '#fef2f2', color: '#dc2626', border: 'none', borderRadius: 6,
+                              padding: '6px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                            }}>⚠ Fine</button>
                           </td>
                         </tr>
                       ))}
@@ -497,6 +604,59 @@ export default function HostelFeeStructures() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* NEW — Raise Fine Modal (single ya bulk dono ke liye same modal) */}
+      {fineModal && (
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setFineModal(null)}>
+          <div className="modal" style={{ maxWidth: 420 }}>
+            <div className="modal-header">
+              <h3>
+                {fineModal.mode === 'bulk'
+                  ? `Raise Fine — ${fineModal.students.length} Students`
+                  : `Raise Fine — ${fineModal.students[0].student_name}`}
+              </h3>
+              <button className="modal-close" onClick={() => setFineModal(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              {fineModal.mode === 'bulk' && (
+                <div style={{
+                  background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8,
+                  padding: '8px 12px', fontSize: 11.5, color: '#92400e', marginBottom: 12,
+                }}>
+                  Ye fine <strong>in sab {fineModal.students.length} students</strong> pe alag-alag (same amount) lagegi:
+                  <div style={{ marginTop: 4, color: '#64748b' }}>
+                    {fineModal.students.map(s => s.student_name).join(', ')}
+                  </div>
+                </div>
+              )}
+
+              <label style={labelStyle}>Reason</label>
+              <select style={inputStyle} value={fineReason} onChange={e => setFineReason(e.target.value)}>
+                {FINE_REASONS.map(([val, label]) => <option key={val} value={val}>{label}</option>)}
+              </select>
+
+              <label style={labelStyle}>Description (optional)</label>
+              <input style={inputStyle} value={fineDescription}
+                onChange={e => setFineDescription(e.target.value)}
+                placeholder="e.g. Chair broken in Room 102" />
+
+              <label style={labelStyle}>Amount (per student)</label>
+              <input type="number" style={inputStyle} value={fineAmount}
+                onChange={e => setFineAmount(e.target.value)} placeholder="Amount" />
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-neutral" onClick={() => setFineModal(null)}>Cancel</button>
+              <button onClick={handleRaiseFine} disabled={raisingFine} style={{
+                background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6,
+                padding: '8px 20px', fontSize: 13, fontWeight: 700, cursor: raisingFine ? 'not-allowed' : 'pointer',
+              }}>
+                {raisingFine ? 'Raising...' : 'Raise Fine'}
+              </button>
+            </div>
+          </div>
+        </div>
+      
       
       )}
     </div>
