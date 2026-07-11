@@ -16,6 +16,8 @@ export default function DashboardRouter() {
     case 'STUDENT':     return <StudentDashboard />;
     case 'PARENT':      return <StudentDashboard />;  // parent sees child view
     case 'LIBRARIAN':   return <Navigate to="/library" replace />;
+    case 'HOSTEL':      return <Navigate to="/hostel" replace />;
+    case 'ACCOUNTANT':  return <Navigate to="/finance/expenses" replace />;
     default:            return (
       <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh' }}>
         <p>Unknown role. Please contact admin.</p>
