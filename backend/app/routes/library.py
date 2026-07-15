@@ -920,6 +920,30 @@ def waive_fine(fine_id):
 # ═══════════════════════════════════════════════════════════════════════════
 #  Currently-Issued / Overdue lists (used by dashboard + return screen)
 # ═══════════════════════════════════════════════════════════════════════════
+# NEW
+def _enrich_issue_dict(issue, settings):
+    """
+    BookIssue.to_dict() mein class_name/roll_number nahi hota (wo Student
+    table mein hai, member ke through). Issue/Return screen ko dono chahiye
+    — isliye yahan enrich karte hain. estimated_fine bhi yahin nikalte hain
+    taaki frontend ko khud calculate na karna pade.
+    """
+    d = issue.to_dict()
+    member = issue.member
+    d['class_name']  = ''
+    d['roll_number'] = ''
+    if member and member.member_type == 'STUDENT':
+        student = Student.query.filter_by(user_id=member.user_id, school_id=issue.school_id).first()
+        if student:
+            cls = Class.query.get(student.class_id) if student.class_id else None
+            d['class_name']  = f"{cls.name} - {cls.section}" if cls else ''
+            d['roll_number'] = student.roll_number or ''
+    d['estimated_fine'] = (
+        min(d['overdue_days'] * settings.fine_per_day, settings.max_fine_cap)
+        if d['overdue_days'] > 0 else 0
+    )
+    return d
+
 
 @library_bp.route('/issues', methods=['GET'])
 @role_required(*LIBRARY_ROLES)
@@ -945,13 +969,14 @@ def list_issues():
     per_page = min(request.args.get('per_page', 50, type=int), 100)
     paginated = q.order_by(BookIssue.issue_date.desc()).paginate(page=page, per_page=per_page, error_out=False)
 
+    settings = _get_or_create_settings(sid)   # NEW — fine_per_day/max_fine_cap chahiye enrich ke liye
+
     return jsonify({
-        'data':  [i.to_dict() for i in paginated.items],
+        'data':  [_enrich_issue_dict(i, settings) for i in paginated.items],  # NEW
         'total': paginated.total,
         'page':  paginated.page,
         'pages': paginated.pages,
     }), 200
-
 
 
 
