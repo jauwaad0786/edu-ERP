@@ -42,8 +42,10 @@ export default function FeesPage() {
   const [classSummary, setClassSummary] = useState([]);
   const [loading,  setLoading]  = useState(false);
   const [msg,      setMsg]      = useState({ text: '', type: '' });
-  const [batches, setBatches] = useState([]);
+  const [batches, setBatches] = useState([]);         // DRAFT — pending review
+  const [publishedBatches, setPublishedBatches] = useState([]); // PUBLISHED — reviewed/passed
   const [showBatches, setShowBatches] = useState(false);
+  const [reviewTab, setReviewTab] = useState('PENDING');
   const [batchRecords, setBatchRecords] = useState(null);
   const [editingRecId, setEditingRecId] = useState(null);
   const [editAmt, setEditAmt] = useState('');
@@ -162,6 +164,10 @@ export default function FeesPage() {
   function loadBatches() {
     api.get('/principal/fees/batches?status=DRAFT')
       .then(r => setBatches(r.data || []))
+      .catch(() => {});
+    // NEW — reviewed/published count bhi laao, widget mein dono dikhane ke liye
+    api.get('/principal/fees/batches?status=PUBLISHED')
+      .then(r => setPublishedBatches(r.data || []))
       .catch(() => {});
   }
 
@@ -394,19 +400,7 @@ export default function FeesPage() {
           </div>
 
           {/* ── Draft batches pending banner ── */}
-          {batches.length > 0 && (
-            <div style={{
-              background: '#fef5e4', border: '1px solid #fbd38d', borderRadius: 8,
-              padding: '10px 16px', marginBottom: 16, display: 'flex',
-              justifyContent: 'space-between', alignItems: 'center', fontSize: 13,
-            }}>
-              <span>⚠️ {batches.length} fee batch(es) DRAFT mein pending hain — publish nahi hue, parents ko nahi dikh rahe</span>
-              <button onClick={() => setShowBatches(true)} style={{
-                background: '#dd7a01', color: '#fff', border: 'none', borderRadius: 6,
-                padding: '5px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-              }}>Review Batches</button>
-            </div>
-          )}
+          
 
           {/* alert */}
           {msg.text && (
@@ -767,6 +761,43 @@ export default function FeesPage() {
         </div>
       </div>
 
+      {/* ══ ALWAYS-VISIBLE REVIEW STATUS WIDGET — screen ke side pe fixed ══ */}
+      <div style={{
+        position: 'fixed', top: 100, right: 16, zIndex: 40,
+        width: 190, background: '#fff', borderRadius: 12,
+        boxShadow: '0 4px 16px rgba(0,0,0,0.12)', border: '1px solid #e2e8f0',
+        overflow: 'hidden',
+      }}>
+        <div style={{
+          padding: '8px 12px', background: '#0176d3', color: '#fff',
+          fontSize: 11, fontWeight: 700,
+        }}>
+          📋 Fee Batch Review
+        </div>
+        <button
+          onClick={() => { setReviewTab('PENDING'); setShowBatches(true); }}
+          style={{
+            width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '10px 12px', border: 'none', borderBottom: '1px solid #f1f5f9',
+            background: batches.length > 0 ? '#fffbeb' : '#fff', cursor: 'pointer',
+          }}>
+          <span style={{ fontSize: 12, color: '#64748b' }}>⏳ Pending Review</span>
+          <span style={{
+            fontSize: 13, fontWeight: 800,
+            color: batches.length > 0 ? '#dd7a01' : '#94a3b8',
+          }}>{batches.length}</span>
+        </button>
+        <button
+          onClick={() => { setReviewTab('REVIEWED'); setShowBatches(true); }}
+          style={{
+            width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '10px 12px', border: 'none', background: '#fff', cursor: 'pointer',
+          }}>
+          <span style={{ fontSize: 12, color: '#64748b' }}>✅ Reviewed / Passed</span>
+          <span style={{ fontSize: 13, fontWeight: 800, color: '#2e844a' }}>{publishedBatches.length}</span>
+        </button>
+      </div>
+
       {/* ══ SINGLE COLLECT FEE MODAL ═══════════════════════════════════════ */}
       {modal && selRec && (
         <div className="modal-backdrop"
@@ -1036,13 +1067,29 @@ export default function FeesPage() {
       {/* ══ DRAFT BATCHES LIST MODAL ══════════════════════════════════════ */}
       {showBatches && (
         <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowBatches(false)}>
-          <div className="modal" style={{ width: 500 }}>
+          <div className="modal" style={{ width: 520 }}>
             <div className="modal-header">
-              <h3>📋 Draft Batches</h3>
+              <h3>📋 Fee Batch Review</h3>
               <button className="modal-close" onClick={() => setShowBatches(false)}>✕</button>
             </div>
+
+            <div style={{ display: 'flex', gap: 4, padding: '0 16px', borderBottom: '1px solid #e2e8f0' }}>
+              <button onClick={() => setReviewTab('PENDING')}
+                style={{
+                  padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', border: 'none', background: 'none',
+                  color: reviewTab === 'PENDING' ? '#dd7a01' : '#64748b',
+                  borderBottom: reviewTab === 'PENDING' ? '2px solid #dd7a01' : '2px solid transparent',
+                }}>⏳ Pending ({batches.length})</button>
+              <button onClick={() => setReviewTab('REVIEWED')}
+                style={{
+                  padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', border: 'none', background: 'none',
+                  color: reviewTab === 'REVIEWED' ? '#2e844a' : '#64748b',
+                  borderBottom: reviewTab === 'REVIEWED' ? '2px solid #2e844a' : '2px solid transparent',
+                }}>✅ Reviewed ({publishedBatches.length})</button>
+            </div>
+
             <div className="modal-body">
-              {batches.map(b => (
+              {reviewTab === 'PENDING' && batches.map(b => (
                 <div key={b.id} style={{
                   border: '1px solid #e2e8f0', borderRadius: 8, padding: 12, marginBottom: 8,
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -1059,7 +1106,27 @@ export default function FeesPage() {
                   </div>
                 </div>
               ))}
-              {!batches.length && <p style={{ color: '#94a3b8', textAlign: 'center' }}>Koi draft batch nahi</p>}
+              {reviewTab === 'PENDING' && !batches.length && (
+                <p style={{ color: '#94a3b8', textAlign: 'center', padding: 20 }}>Sab review ho chuka hai ✅</p>
+              )}
+
+              {reviewTab === 'REVIEWED' && publishedBatches.map(b => (
+                <div key={b.id} style={{
+                  border: '1px solid #e2e8f0', borderRadius: 8, padding: 12, marginBottom: 8,
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fdf9',
+                }}>
+                  <div>
+                    <strong>{b.class_name}</strong> — {b.fee_type} — {b.month}
+                    <div style={{ fontSize: 11, color: '#64748b' }}>
+                      {b.generated_count} students · Published
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#2e844a' }}>✅ Confirmed</span>
+                </div>
+              ))}
+              {reviewTab === 'REVIEWED' && !publishedBatches.length && (
+                <p style={{ color: '#94a3b8', textAlign: 'center', padding: 20 }}>Abhi tak koi batch review/publish nahi hui</p>
+              )}
             </div>
           </div>
         </div>
