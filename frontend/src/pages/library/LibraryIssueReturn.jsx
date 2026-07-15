@@ -36,6 +36,21 @@ export default function LibraryIssueReturn() {
   const barcodeRef = useRef(null);
   const returnBarcodeRef = useRef(null);
 
+  // ── Library settings (issue duration due date preview ke liye) ──
+  const [librarySettings, setLibrarySettings] = useState(null);
+  useEffect(() => {
+    api.get('/library/settings').then(r => setLibrarySettings(r.data)).catch(() => {});
+  }, []);
+
+  function previewDueDate() {
+    const days = librarySettings?.issue_duration_days || 14;
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    return { days, dateStr: d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) };
+  }
+
+  // ── Currently issued books (niche list — dashboard-style) ──
+
   // ── Currently issued books (niche list — dashboard-style) ──
   const [currentlyIssued, setCurrentlyIssued] = useState([]);
   const [loadingIssued, setLoadingIssued] = useState(true);
@@ -373,8 +388,16 @@ export default function LibraryIssueReturn() {
                 )}
               </div>
 
+              
               {/* Confirm issue */}
-              <div style={{ ...cardStyle, gridColumn: 'span 2', display: 'flex', justifyContent: 'flex-end' }}>
+              <div style={{ ...cardStyle, gridColumn: 'span 2', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: 12, color: darkMode ? '#94a3b8' : '#64748b' }}>
+                  📅 Aaj issue hogi → <strong style={{ color: darkMode ? '#f1f5f9' : '#0f172a' }}>
+                    {previewDueDate().days} din
+                  </strong> ke liye, Return Due: <strong style={{ color: '#dc2626' }}>
+                    {previewDueDate().dateStr}
+                  </strong>
+                </div>
                 <button
                   onClick={handleIssue}
                   disabled={issuing || !selectedMember || (!scannedCopy && !selectedBookForIssue)}
@@ -387,14 +410,80 @@ export default function LibraryIssueReturn() {
                   {issuing ? 'Issuing...' : '✅ Confirm Issue'}
                 </button>
               </div>
-            </div>
-          )}
-
-          // NEW
+          
           {/* ── RETURN TAB ── */}
           {tab === 'RETURN' && (
             <div style={cardStyle}>
-              ... (poora return tab content jaisa ka waisa — koi change nahi) ...
+              <h4 style={{ margin: '0 0 12px', fontSize: 14, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
+                Scan Book to Return
+              </h4>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  ref={returnBarcodeRef}
+                  value={returnBarcode}
+                  onChange={e => setReturnBarcode(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleReturnLookup()}
+                  placeholder="Scan barcode or type manually..."
+                  style={inputStyle}
+                  autoFocus
+                />
+                <button onClick={() => handleReturnLookup()} style={{
+                  background: '#0176d3', color: '#fff', border: 'none', borderRadius: 8,
+                  padding: '0 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                }}>
+                  Find
+                </button>
+              </div>
+
+              {returnPreview && (
+                <div style={{ marginTop: 18 }}>
+                  <div style={{
+                    background: darkMode ? '#273349' : '#f8fafc', borderRadius: 8, padding: 14, marginBottom: 14,
+                  }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
+                      {returnPreview.book_title}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
+                      Issued to: <strong>{returnPreview.member_name}</strong> · Due: {returnPreview.due_date}
+                    </div>
+                    {returnPreview.overdue_days > 0 && (
+                      <div style={{
+                        marginTop: 8, display: 'inline-block', fontSize: 12, fontWeight: 700,
+                        color: '#dc2626', background: '#fef2f2', padding: '4px 10px', borderRadius: 20,
+                      }}>
+                        {returnPreview.overdue_days} days overdue — fine will apply
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 20, marginBottom: 14, fontSize: 13 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={markLost} onChange={e => setMarkLost(e.target.checked)} />
+                      Book Lost
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={markDamaged} onChange={e => setMarkDamaged(e.target.checked)}
+                        disabled={markLost} />
+                      Book Damaged
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={collectNow} onChange={e => setCollectNow(e.target.checked)} />
+                      Collect Fine Now
+                    </label>
+                  </div>
+
+                  <button
+                    onClick={handleConfirmReturn}
+                    disabled={returning}
+                    style={{
+                      background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8,
+                      padding: '11px 26px', fontSize: 14, fontWeight: 700,
+                      cursor: returning ? 'not-allowed' : 'pointer',
+                    }}>
+                    {returning ? 'Processing...' : '✅ Confirm Return'}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
