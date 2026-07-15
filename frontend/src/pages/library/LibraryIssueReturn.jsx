@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Sidebar from '../../components/Sidebar';
 import Navbar  from '../../components/Navbar';
 import api     from '../../api/axios';
@@ -20,19 +20,18 @@ export default function LibraryIssueReturn() {
 
   const [bookTitleSearch, setBookTitleSearch] = useState('');
   const [bookTitleResults, setBookTitleResults] = useState([]);
-  const [selectedBookForIssue, setSelectedBookForIssue] = useState(null); // { id, title, author, available_copies }
+  const [selectedBookForIssue, setSelectedBookForIssue] = useState(null);
 
   const [issuing, setIssuing]             = useState(false);
 
   // ── Return state ──
   const [returnBarcode, setReturnBarcode] = useState('');
-  const [returnPreview, setReturnPreview] = useState(null); // { issue, fine estimate }
+  const [returnPreview, setReturnPreview] = useState(null);
   const [markLost, setMarkLost]           = useState(false);
   const [markDamaged, setMarkDamaged]     = useState(false);
   const [collectNow, setCollectNow]       = useState(true);
   const [returning, setReturning]         = useState(false);
 
-  // NEW
   const barcodeRef = useRef(null);
   const returnBarcodeRef = useRef(null);
 
@@ -50,12 +49,10 @@ export default function LibraryIssueReturn() {
   }
 
   // ── Currently issued books (niche list — dashboard-style) ──
-
-  // ── Currently issued books (niche list — dashboard-style) ──
   const [currentlyIssued, setCurrentlyIssued] = useState([]);
   const [loadingIssued, setLoadingIssued] = useState(true);
 
-  const loadCurrentlyIssued = React.useCallback(() => {
+  const loadCurrentlyIssued = useCallback(() => {
     setLoadingIssued(true);
     api.get('/library/issues?status=ISSUED&per_page=100')
       .then(r => setCurrentlyIssued(r.data?.data || []))
@@ -76,7 +73,6 @@ export default function LibraryIssueReturn() {
     return () => clearTimeout(t);
   }, [memberSearch]);
 
-  // ── Barcode lookup (Issue tab) ──
   // ── Book title search (Issue tab — alternative jab barcode na ho) ──
   useEffect(() => {
     if (!bookTitleSearch.trim()) { setBookTitleResults([]); return; }
@@ -108,12 +104,11 @@ export default function LibraryIssueReturn() {
     if (searchMode === 'BARCODE' && scannedCopy) {
       payload.barcode = scannedCopy.barcode;
     } else if (selectedBookForIssue) {
-      payload.book_id = selectedBookForIssue.id; // backend khud ek AVAILABLE copy auto-pick karega
+      payload.book_id = selectedBookForIssue.id;
     }
 
     setIssuing(true);
     try {
-      // NEW
       const { data } = await api.post('/library/issue', payload);
       toast.success(`Issued: ${data.book_title} → ${data.member_name} (Due ${data.due_date})`);
       setScannedCopy(null);
@@ -121,17 +116,16 @@ export default function LibraryIssueReturn() {
       setSelectedBookForIssue(null);
       setBookTitleSearch('');
       barcodeRef.current?.focus();
-      loadCurrentlyIssued();   // NEW — niche wali list turant refresh
+      loadCurrentlyIssued();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Issue nahi ho paya');
     }
     setIssuing(false);
   }
 
-  
-  
+  // ── Return flow ──
   async function handleReturnLookup(barcodeOverride) {
-    const bc = (barcodeOverride ?? returnBarcode).trim();   
+    const bc = (barcodeOverride ?? returnBarcode).trim();
     if (!bc) return;
     try {
       const copy = await api.get('/library/copies/barcode/' + bc);
@@ -140,7 +134,6 @@ export default function LibraryIssueReturn() {
         setReturnPreview(null);
         return;
       }
-      // NEW
       const issuesRes = await api.get('/library/issues?status=ISSUED&per_page=100');
       const activeIssue = (issuesRes.data.data || []).find(i => i.barcode === bc);
       if (!activeIssue) {
@@ -169,13 +162,12 @@ export default function LibraryIssueReturn() {
       } else {
         toast.success('Book returned successfully — no fine');
       }
-      // NEW
       setReturnPreview(null);
       setReturnBarcode('');
       setMarkLost(false);
       setMarkDamaged(false);
       returnBarcodeRef.current?.focus();
-      loadCurrentlyIssued();   // NEW
+      loadCurrentlyIssued();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Return nahi ho paya');
     }
@@ -388,7 +380,6 @@ export default function LibraryIssueReturn() {
                 )}
               </div>
 
-              
               {/* Confirm issue */}
               <div style={{ ...cardStyle, gridColumn: 'span 2', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ fontSize: 12, color: darkMode ? '#94a3b8' : '#64748b' }}>
@@ -410,7 +401,9 @@ export default function LibraryIssueReturn() {
                   {issuing ? 'Issuing...' : '✅ Confirm Issue'}
                 </button>
               </div>
-          
+            </div>
+          )}
+
           {/* ── RETURN TAB ── */}
           {tab === 'RETURN' && (
             <div style={cardStyle}>
@@ -537,12 +530,11 @@ export default function LibraryIssueReturn() {
                         )}
                       </td>
                       <td style={{ padding: '8px 6px' }}>
-                        
                         <button
                           onClick={() => {
                             setTab('RETURN');
                             setReturnBarcode(i.barcode);
-                            handleReturnLookup(i.barcode);   // NEW — turant preview aa jayega, "Find" dabane ki zaroorat nahi
+                            handleReturnLookup(i.barcode);
                           }}
                           style={{
                             background: '#eff6ff', color: '#0176d3', border: 'none', borderRadius: 6,
