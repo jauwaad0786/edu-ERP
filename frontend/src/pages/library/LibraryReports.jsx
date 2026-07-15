@@ -15,11 +15,15 @@ export default function LibraryReports() {
   // Overdue
   const [overdue, setOverdue] = useState([]);
 
-  // Fines
+  
   const [fineFrom, setFineFrom] = useState('');
   const [fineTo, setFineTo]     = useState('');
   const [fines, setFines]       = useState([]);
   const [fineSummary, setFineSummary] = useState({ total_collected: 0, total_pending: 0, total_waived: 0 });
+
+  // Pending fines jo abhi collect/waive karni hain
+  const [pendingFines, setPendingFines] = useState([]);
+  const [actingFineId, setActingFineId] = useState(null);
 
   // Popular books
   const [popular, setPopular] = useState([]);
@@ -41,6 +45,7 @@ export default function LibraryReports() {
       .finally(() => setLoading(false));
   }, []);
 
+  // NEW
   const loadFines = useCallback(() => {
     setLoading(true);
     const params = new URLSearchParams();
@@ -49,15 +54,56 @@ export default function LibraryReports() {
     api.get('/library/reports/fine-collection?' + params.toString())
       .then(r => {
         setFines(r.data.data || []);
-        setFineSummary({
+        setFineSummary(prev => ({
+          ...prev,
           total_collected: r.data.total_collected || 0,
-          total_pending: 0,   // backend ye split nahi karta abhi — sirf PAID fines return karta hai
-          total_waived: 0,
-        });
+        }));
       })
       .catch(() => toast.error('Fine report load nahi ho payi'))
       .finally(() => setLoading(false));
   }, [fineFrom, fineTo]);
+
+  // PENDING + PARTIAL fines fetch karo, action lene ke liye
+  const loadPendingFines = useCallback(() => {
+    Promise.all([
+      api.get('/library/fines?status=PENDING'),
+      api.get('/library/fines?status=PARTIAL'),
+    ])
+      .then(([p, pa]) => {
+        const combined = [...(p.data || []), ...(pa.data || [])];
+        setPendingFines(combined);
+        const totalPending = combined.reduce((s, f) => s + (f.amount - f.amount_paid), 0);
+        setFineSummary(prev => ({ ...prev, total_pending: totalPending }));
+      })
+      .catch(() => setPendingFines([]));
+  }, []);
+
+  async function collectPendingFine(fine) {
+    setActingFineId(fine.id);
+    try {
+      await api.post(`/library/fines/${fine.id}/collect`, { amount: fine.amount - fine.amount_paid });
+      toast.success(`₹${fine.amount - fine.amount_paid} collect ho gaya — Fees Management mein bhi update ho gaya`);
+      loadPendingFines();
+      loadFines();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Collect nahi ho paya');
+    }
+    setActingFineId(null);
+  }
+
+  async function waivePendingFine(fine) {
+    const reason = window.prompt('Waive karne ka reason likho:');
+    if (!reason) return;
+    setActingFineId(fine.id);
+    try {
+      await api.post(`/library/fines/${fine.id}/waive`, { reason });
+      toast.success('Fine waived');
+      loadPendingFines();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Waive nahi ho paya');
+    }
+    setActingFineId(null);
+  }
 
   const loadPopular = useCallback(() => {
     setLoading(true);
@@ -75,12 +121,13 @@ export default function LibraryReports() {
       .finally(() => setLoading(false));
   }, []);
 
+  // NEW
   useEffect(() => {
     if (tab === 'OVERDUE')  loadOverdue();
-    if (tab === 'FINES')    loadFines();
+    if (tab === 'FINES')    { loadFines(); loadPendingFines(); }
     if (tab === 'POPULAR')  loadPopular();
     if (tab === 'ACTIVITY') loadActivity();
-  }, [tab, loadOverdue, loadFines, loadPopular, loadActivity]);
+  }, [tab, loadOverdue, loadFines, loadPendingFines, loadPopular, loadActivity]);
 
   async function sendReminder(issueId) {
     try {
@@ -221,6 +268,7 @@ export default function LibraryReports() {
                 )}
               </div>
 
+              // NEW
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 16 }}>
                 {[
                   { label: 'Collected', value: fineSummary.total_collected, color: '#16a34a', bg: '#f0fdf4' },
@@ -232,6 +280,57 @@ export default function LibraryReports() {
                     <div style={{ fontSize: 22, fontWeight: 800, color: s.color, marginTop: 4 }}>₹{fmt(s.value)}</div>
                   </div>
                 ))}
+              </div>
+
+              {/* Pending Fines — collect/waive karne pe Fees Management mein bhi sync ho jayega */}
+              <div style={{ ...cardStyle, marginBottom: 16 }}>
+                <h4 style={{ margin: '0 0 12px', fontSize: 14, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
+                  ⏳ Pending Fines — Action Needed ({pendingFines.length})
+                </h4>
+                <p style={{ fontSize: 11, color: '#94a3b8', margin: '0 0 12px' }}>
+                  Collect/Waive karne pe Fees Management (student ke fee records) mein bhi turant update ho jayega.
+                </p>
+                {pendingFines.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 20, color: '#94a3b8', fontSize: 13 }}>
+                    Koi pending fine nahi hai 🎉
+                  </div>
+                ) : (
+                  pendingFines.map(f => (
+                    <div key={f.id} style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      padding: '10px 0', borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}`,
+                    }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
+                          {f.member_name} — {f.reason}
+                        </div>
+                        <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                          Balance: ₹{fmt(f.amount - f.amount_paid)} · Status: {f.status}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          disabled={actingFineId === f.id}
+                          onClick={() => collectPendingFine(f)}
+                          style={{
+                            background: '#f0fdf4', color: '#16a34a', border: 'none', borderRadius: 6,
+                            padding: '5px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                          }}>
+                          💰 Collect
+                        </button>
+                        <button
+                          disabled={actingFineId === f.id}
+                          onClick={() => waivePendingFine(f)}
+                          style={{
+                            background: '#f1f5f9', color: '#64748b', border: 'none', borderRadius: 6,
+                            padding: '5px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                          }}>
+                          ✕ Waive
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
 
               <div style={cardStyle}>
