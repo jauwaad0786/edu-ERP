@@ -378,6 +378,11 @@ def update_copy_status(copy_id):
     db.session.commit()
     return jsonify(copy.to_dict()), 200
 
+@library_bp.route('/classes', methods=['GET'])
+@role_required(*LIBRARY_ROLES)
+def library_list_classes():
+    classes = Class.query.filter_by(school_id=_school_id()).order_by(Class.name).all()
+    return jsonify([{'id': c.id, 'name': c.name, 'section': c.section} for c in classes]), 200
 
 # ─── Barcode / QR lookup (used by Issue & Return scanner) ────────────────────
 
@@ -834,9 +839,16 @@ def renew_issue(issue_id):
 #  Fine Management
 # ═══════════════════════════════════════════════════════════════════════════
 
+# NEW
 @library_bp.route('/fines', methods=['GET'])
 @role_required(*LIBRARY_ROLES)
 def list_fines():
+    """
+    Query: status, member_id
+    Enriched with book_title/book_mrp/class_name/roll_number/overdue_days —
+    Fine Center page ko ye context chahiye taaki manually amount decide karna
+    aasaan ho (book kitne ki thi, kitne din late hui).
+    """
     sid    = _school_id()
     status = request.args.get('status')
     member_id = request.args.get('member_id')
@@ -848,7 +860,142 @@ def list_fines():
         q = q.filter_by(member_id=member_id)
 
     fines = q.order_by(FineTransaction.created_at.desc()).limit(500).all()
-    return jsonify([f.to_dict() for f in fines]), 200
+
+    result = []
+    for f in fines:
+        d = f.to_dict()
+        issue = BookIssue.query.get(f.issue_id) if f.issue_id else None
+        if issue:
+            d['book_title']    = issue.book.title if issue.book else ''
+            d['book_mrp']      = issue.book.mrp if issue.book else 0
+            d['due_date']      = str(issue.due_date)
+            d['return_date']   = str(issue.return_date) if issue.return_date else None
+            d['overdue_days']  = issue.to_dict()['overdue_days']
+            d['issue_status']  = issue.status   # ISSUED / RETURNED / LOST
+        else:
+            d['book_title'] = d['book_mrp'] = d['due_date'] = d['return_date'] = d['overdue_days'] = None
+            d['issue_status'] = None
+
+        member = LibraryMember.query.get(f.member_id)
+        if member and member.member_type == 'STUDENT':
+            student = Student.query.filter_by(user_id=member.user_id, school_id=sid).first()
+            if student:
+                cls = Class.query.get(student.class_id) if student.class_id else None
+                d['class_name']  = f"{cls.name} - {cls.section}" if cls else ''
+                d['roll_number'] = student.roll_number or ''
+        else:
+            d['class_name'] = d['roll_number'] = ''
+        result.append(d)
+
+    return jsonify(result), 200
+
+
+@library_bp.route('/fines/manual', methods=['POST'])
+@role_required(*LIBRARY_ADMIN_ROLES)
+def create_manual_fine():
+    """
+    Librarian/Principal seedha kisi member pe fine lagaye — bina overdue/lost/
+    damaged trigger ke. Issue optional link kiya ja sakta hai (context ke liye).
+    Body: { member_id, issue_id (optional), reason, amount, remarks }
+    """
+    data      = request.get_json() or {}
+    member_id = data.get('member_id')
+    amount    = data.get('amount')
+    reason    = (data.get('reason') or 'MANUAL').strip().upper()[:30]
+
+    if not member_id or amount is None:
+        return jsonify({'error': 'member_id aur amount zaroori hai'}), 400
+    try:
+        amount = float(amount)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'amount number honi chahiye'}), 400
+    if amount <= 0:
+        return jsonify({'error': 'amount 0 se zyada honi chahiye'}), 400
+
+    sid    = _school_id()
+    member = LibraryMember.query.get_or_404(member_id)
+    if member.school_id != sid:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    issue_id = data.get('issue_id') or None
+    if issue_id:
+        issue = BookIssue.query.get(issue_id)
+        if not issue or issue.school_id != sid:
+            return jsonify({'error': 'Invalid issue_id'}), 400
+
+    fine = FineTransaction(
+        school_id=sid, issue_id=issue_id, member_id=member_id,
+        reason=reason, amount=amount, status='PENDING',
+        collected_by=None,
+    )
+    db.session.add(fine)
+    db.session.flush()
+
+    fee_rec = _sync_fine_to_fee_record(fine, sid)
+
+    db.session.commit()
+    log_activity(sid, get_current_user().id, 'FINE_MANUAL_ADDED',
+                 f'{member.user.name if member.user else ""} — ₹{amount:.0f} ({reason})')
+    db.session.commit()
+
+    d = fine.to_dict()
+    d['fee_record_created'] = bool(fee_rec)
+    return jsonify(d), 201
+
+
+@library_bp.route('/fines/<int:fine_id>/resolve-replacement', methods=['POST'])
+@role_required(*LIBRARY_ADMIN_ROLES)
+def resolve_fine_with_replacement(fine_id):
+    """
+    Student ne khoyi hui book ki jagah cash ki bajaye ek naya physical copy
+    la kar de diya. Fine WAIVED ho jaati hai, aur (agar chaha to) library
+    stock mein ek naya AVAILABLE copy add ho jaata hai.
+    Body: { add_replacement_copy: bool (default true), remarks }
+    """
+    fine = FineTransaction.query.get_or_404(fine_id)
+    sid  = _school_id()
+    if fine.school_id != sid:
+        return jsonify({'error': 'Unauthorized'}), 403
+    if fine.status in ('PAID', 'WAIVED'):
+        return jsonify({'error': f'Fine already {fine.status}'}), 400
+    if fine.reason != 'LOST':
+        return jsonify({'error': 'Ye option sirf LOST book fines ke liye hai'}), 400
+
+    data     = request.get_json() or {}
+    add_copy = data.get('add_replacement_copy', True)
+    remarks  = (data.get('remarks') or 'Replaced with new physical copy').strip()
+
+    fine.status       = 'WAIVED'
+    fine.waived_by    = get_current_user().id
+    fine.waive_reason = remarks
+
+    from app.models.financial import FeeRecord
+    linked_rec = FeeRecord.query.filter_by(source='LIBRARY', source_ref_id=fine.id).first()
+    if linked_rec and linked_rec.amount_paid == 0:
+        linked_rec.status  = 'CANCELLED'
+        linked_rec.remarks = (linked_rec.remarks or '') + f' [Replaced with book: {remarks}]'
+
+    new_copy = None
+    if add_copy and fine.issue_id:
+        issue = BookIssue.query.get(fine.issue_id)
+        if issue:
+            new_copy = BookCopy(
+                book_id=issue.book_id, school_id=sid,
+                copy_accession_no=_gen_accession_no(sid),
+                barcode=_gen_barcode(), status='AVAILABLE',
+                condition_note='Replacement copy — original marked LOST',
+            )
+            db.session.add(new_copy)
+
+    db.session.commit()
+    log_activity(sid, get_current_user().id, 'FINE_RESOLVED_REPLACEMENT',
+                 f'Fine #{fine.id} — {remarks}')
+    db.session.commit()
+
+    result = fine.to_dict()
+    if new_copy:
+        result['new_copy'] = new_copy.to_dict()
+    return jsonify(result), 200
 
 
 @library_bp.route('/fines/<int:fine_id>/collect', methods=['POST'])
@@ -945,17 +1092,20 @@ def _enrich_issue_dict(issue, settings):
     return d
 
 
+# NEW
 @library_bp.route('/issues', methods=['GET'])
 @role_required(*LIBRARY_ROLES)
 def list_issues():
     """
-    Query: status (ISSUED/RETURNED/LOST), overdue_only=1, member_id, page, per_page
+    History page ke liye. Query:
+      status (ISSUED/RETURNED/LOST/ALL — ALL ya empty = sab), overdue_only=1,
+      member_id, class_id, month (YYYY-MM), page, per_page
     """
     sid = _school_id()
     q = BookIssue.query.filter_by(school_id=sid)
 
     status = request.args.get('status')
-    if status:
+    if status and status != 'ALL':
         q = q.filter_by(status=status)
 
     member_id = request.args.get('member_id')
@@ -965,14 +1115,36 @@ def list_issues():
     if request.args.get('overdue_only') == '1':
         q = q.filter(BookIssue.status == 'ISSUED', BookIssue.due_date < date.today())
 
+    # NEW — month filter (issue_date usi mahine ke andar ho)
+    month = request.args.get('month')
+    if month:
+        try:
+            y, m = map(int, month.split('-'))
+            from calendar import monthrange
+            start = date(y, m, 1)
+            end   = date(y, m, monthrange(y, m)[1])
+            q = q.filter(BookIssue.issue_date >= start, BookIssue.issue_date <= end)
+        except (ValueError, TypeError):
+            pass
+
+    # NEW — class filter (Student → LibraryMember → BookIssue.member_id)
+    class_id = request.args.get('class_id')
+    if class_id:
+        students   = Student.query.filter_by(school_id=sid, class_id=class_id).all()
+        user_ids   = [s.user_id for s in students]
+        member_ids = [m.id for m in LibraryMember.query.filter(
+            LibraryMember.school_id == sid, LibraryMember.user_id.in_(user_ids)
+        ).all()] if user_ids else []
+        q = q.filter(BookIssue.member_id.in_(member_ids)) if member_ids else q.filter(db.false())
+
     page     = request.args.get('page', 1, type=int)
-    per_page = min(request.args.get('per_page', 50, type=int), 100)
+    per_page = min(request.args.get('per_page', 50, type=int), 200)
     paginated = q.order_by(BookIssue.issue_date.desc()).paginate(page=page, per_page=per_page, error_out=False)
 
-    settings = _get_or_create_settings(sid)   # NEW — fine_per_day/max_fine_cap chahiye enrich ke liye
+    settings = _get_or_create_settings(sid)
 
     return jsonify({
-        'data':  [_enrich_issue_dict(i, settings) for i in paginated.items],  # NEW
+        'data':  [_enrich_issue_dict(i, settings) for i in paginated.items],
         'total': paginated.total,
         'page':  paginated.page,
         'pages': paginated.pages,
