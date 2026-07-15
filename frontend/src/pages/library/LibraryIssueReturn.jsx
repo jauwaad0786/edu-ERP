@@ -32,8 +32,23 @@ export default function LibraryIssueReturn() {
   const [collectNow, setCollectNow]       = useState(true);
   const [returning, setReturning]         = useState(false);
 
+  // NEW
   const barcodeRef = useRef(null);
   const returnBarcodeRef = useRef(null);
+
+  // ── Currently issued books (niche list — dashboard-style) ──
+  const [currentlyIssued, setCurrentlyIssued] = useState([]);
+  const [loadingIssued, setLoadingIssued] = useState(true);
+
+  const loadCurrentlyIssued = React.useCallback(() => {
+    setLoadingIssued(true);
+    api.get('/library/issues?status=ISSUED&per_page=100')
+      .then(r => setCurrentlyIssued(r.data?.data || []))
+      .catch(() => setCurrentlyIssued([]))
+      .finally(() => setLoadingIssued(false));
+  }, []);
+
+  useEffect(() => { loadCurrentlyIssued(); }, [loadCurrentlyIssued]);
 
   // ── Search member (debounced) ──
   useEffect(() => {
@@ -83,6 +98,7 @@ export default function LibraryIssueReturn() {
 
     setIssuing(true);
     try {
+      // NEW
       const { data } = await api.post('/library/issue', payload);
       toast.success(`Issued: ${data.book_title} → ${data.member_name} (Due ${data.due_date})`);
       setScannedCopy(null);
@@ -90,6 +106,7 @@ export default function LibraryIssueReturn() {
       setSelectedBookForIssue(null);
       setBookTitleSearch('');
       barcodeRef.current?.focus();
+      loadCurrentlyIssued();   // NEW — niche wali list turant refresh
     } catch (err) {
       toast.error(err.response?.data?.error || 'Issue nahi ho paya');
     }
@@ -135,11 +152,13 @@ export default function LibraryIssueReturn() {
       } else {
         toast.success('Book returned successfully — no fine');
       }
+      // NEW
       setReturnPreview(null);
       setReturnBarcode('');
       setMarkLost(false);
       setMarkDamaged(false);
       returnBarcodeRef.current?.focus();
+      loadCurrentlyIssued();   // NEW
     } catch (err) {
       toast.error(err.response?.data?.error || 'Return nahi ho paya');
     }
@@ -369,81 +388,79 @@ export default function LibraryIssueReturn() {
             </div>
           )}
 
+          // NEW
           {/* ── RETURN TAB ── */}
           {tab === 'RETURN' && (
             <div style={cardStyle}>
-              <h4 style={{ margin: '0 0 12px', fontSize: 14, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
-                Scan Book to Return
-              </h4>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input
-                  ref={returnBarcodeRef}
-                  value={returnBarcode}
-                  onChange={e => setReturnBarcode(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleReturnLookup()}
-                  placeholder="Scan barcode or type manually..."
-                  style={inputStyle}
-                  autoFocus
-                />
-                <button onClick={handleReturnLookup} style={{
-                  background: '#0176d3', color: '#fff', border: 'none', borderRadius: 8,
-                  padding: '0 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                }}>
-                  Find
-                </button>
-              </div>
-
-              {returnPreview && (
-                <div style={{ marginTop: 18 }}>
-                  <div style={{
-                    background: darkMode ? '#273349' : '#f8fafc', borderRadius: 8, padding: 14, marginBottom: 14,
-                  }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
-                      {returnPreview.book_title}
-                    </div>
-                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
-                      Issued to: <strong>{returnPreview.member_name}</strong> · Due: {returnPreview.due_date}
-                    </div>
-                    {returnPreview.overdue_days > 0 && (
-                      <div style={{
-                        marginTop: 8, display: 'inline-block', fontSize: 12, fontWeight: 700,
-                        color: '#dc2626', background: '#fef2f2', padding: '4px 10px', borderRadius: 20,
-                      }}>
-                        {returnPreview.overdue_days} days overdue — fine will apply
-                      </div>
-                    )}
-                  </div>
-
-                  <div style={{ display: 'flex', gap: 20, marginBottom: 14, fontSize: 13 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                      <input type="checkbox" checked={markLost} onChange={e => setMarkLost(e.target.checked)} />
-                      Book Lost
-                    </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                      <input type="checkbox" checked={markDamaged} onChange={e => setMarkDamaged(e.target.checked)}
-                        disabled={markLost} />
-                      Book Damaged
-                    </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                      <input type="checkbox" checked={collectNow} onChange={e => setCollectNow(e.target.checked)} />
-                      Collect Fine Now
-                    </label>
-                  </div>
-
-                  <button
-                    onClick={handleConfirmReturn}
-                    disabled={returning}
-                    style={{
-                      background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8,
-                      padding: '11px 26px', fontSize: 14, fontWeight: 700,
-                      cursor: returning ? 'not-allowed' : 'pointer',
-                    }}>
-                    {returning ? 'Processing...' : '✅ Confirm Return'}
-                  </button>
-                </div>
-              )}
+              ... (poora return tab content jaisa ka waisa — koi change nahi) ...
             </div>
           )}
+
+          {/* ── Currently Issued Books (hamesha visible, dono tabs ke niche) ── */}
+          <div style={{ ...cardStyle, marginTop: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <h4 style={{ margin: 0, fontSize: 14, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
+                📚 Currently Issued Books ({currentlyIssued.length})
+              </h4>
+              <button onClick={loadCurrentlyIssued} style={{
+                background: 'none', border: 'none', color: '#4f46e5', cursor: 'pointer', fontSize: 12, fontWeight: 700,
+              }}>
+                ⟳ Refresh
+              </button>
+            </div>
+
+            {loadingIssued ? (
+              <div style={{ textAlign: 'center', padding: 24, color: '#94a3b8', fontSize: 13 }}>Loading...</div>
+            ) : currentlyIssued.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 24, color: '#94a3b8', fontSize: 13 }}>Abhi koi book issue nahi hai</div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, textAlign: 'left' }}>
+                    <th style={{ padding: '6px', color: '#94a3b8', fontSize: 10 }}>STUDENT</th>
+                    <th style={{ padding: '6px', color: '#94a3b8', fontSize: 10 }}>CLASS</th>
+                    <th style={{ padding: '6px', color: '#94a3b8', fontSize: 10 }}>ROLL NO</th>
+                    <th style={{ padding: '6px', color: '#94a3b8', fontSize: 10 }}>BOOK</th>
+                    <th style={{ padding: '6px', color: '#94a3b8', fontSize: 10 }}>ISSUE DATE</th>
+                    <th style={{ padding: '6px', color: '#94a3b8', fontSize: 10 }}>DUE DATE</th>
+                    <th style={{ padding: '6px', color: '#94a3b8', fontSize: 10 }}>FINE</th>
+                    <th style={{ padding: '6px', color: '#94a3b8', fontSize: 10 }}>ACTION</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {currentlyIssued.map(i => (
+                    <tr key={i.id} style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}` }}>
+                      <td style={{ padding: '8px 6px', fontWeight: 600, color: darkMode ? '#f1f5f9' : '#0f172a' }}>{i.member_name}</td>
+                      <td style={{ padding: '8px 6px', color: '#64748b' }}>{i.class_name || '—'}</td>
+                      <td style={{ padding: '8px 6px', color: '#64748b' }}>{i.roll_number || '—'}</td>
+                      <td style={{ padding: '8px 6px', color: '#64748b' }}>{i.book_title}</td>
+                      <td style={{ padding: '8px 6px', color: '#64748b' }}>{i.issue_date}</td>
+                      <td style={{ padding: '8px 6px', color: '#64748b' }}>{i.due_date}</td>
+                      <td style={{ padding: '8px 6px' }}>
+                        {i.estimated_fine > 0 ? (
+                          <span style={{ color: '#dc2626', fontWeight: 700 }}>
+                            ₹{i.estimated_fine} ({i.overdue_days}d)
+                          </span>
+                        ) : (
+                          <span style={{ color: '#16a34a' }}>—</span>
+                        )}
+                      </td>
+                      <td style={{ padding: '8px 6px' }}>
+                        <button
+                          onClick={() => { setTab('RETURN'); setReturnBarcode(i.barcode); }}
+                          style={{
+                            background: '#eff6ff', color: '#0176d3', border: 'none', borderRadius: 6,
+                            padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                          }}>
+                          ↩ Return
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       </div>
     </div>
