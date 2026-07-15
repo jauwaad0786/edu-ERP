@@ -276,6 +276,7 @@ class BookReservation(db.Model):
         }
 
 
+
 class FineTransaction(db.Model):
     __tablename__ = 'library_fine_transactions'
 
@@ -296,6 +297,8 @@ class FineTransaction(db.Model):
     collected_at= db.Column(db.DateTime, nullable=True)
 
     created_at  = db.Column(db.DateTime, default=datetime.utcnow)
+
+    member = db.relationship('LibraryMember')   # NEW — to_dict() mein self.member.user.name chahiye, relationship missing thi
 
     def to_dict(self):
         return {
