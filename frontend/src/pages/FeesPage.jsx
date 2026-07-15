@@ -604,6 +604,7 @@ export default function FeesPage() {
                   <option value="TRANSPORT">Transport</option>
                   <option value="HOSTEL">Hostel</option>
                   <option value="ADMISSION">Admission</option>
+                  <option value="LIBRARY">Library</option>
                 </select>
                 <input
                   type="month"
@@ -1005,6 +1006,7 @@ export default function FeesPage() {
                   <option value="TRANSPORT">Transport</option>
                   <option value="HOSTEL">Hostel</option>
                   <option value="ADMISSION">Admission</option>
+                  <option value="LIBRARY">Library</option>
                 </select>
               </div>
 
