@@ -113,19 +113,21 @@ export default function LibraryIssueReturn() {
     setIssuing(false);
   }
 
-  // ── Return flow ──
-  async function handleReturnLookup() {
-    if (!returnBarcode.trim()) return;
+  
+  
+  async function handleReturnLookup(barcodeOverride) {
+    const bc = (barcodeOverride ?? returnBarcode).trim();   
+    if (!bc) return;
     try {
-      const copy = await api.get('/library/copies/barcode/' + returnBarcode.trim());
+      const copy = await api.get('/library/copies/barcode/' + bc);
       if (copy.data.status !== 'ISSUED') {
         toast.error('Ye copy currently issued nahi hai');
         setReturnPreview(null);
         return;
       }
-      // Find the active issue for this copy via issues list
+      // NEW
       const issuesRes = await api.get('/library/issues?status=ISSUED&per_page=100');
-      const activeIssue = (issuesRes.data.data || []).find(i => i.barcode === returnBarcode.trim());
+      const activeIssue = (issuesRes.data.data || []).find(i => i.barcode === bc);
       if (!activeIssue) {
         toast.error('Active issue record nahi mila');
         return;
@@ -446,8 +448,13 @@ export default function LibraryIssueReturn() {
                         )}
                       </td>
                       <td style={{ padding: '8px 6px' }}>
+                        
                         <button
-                          onClick={() => { setTab('RETURN'); setReturnBarcode(i.barcode); }}
+                          onClick={() => {
+                            setTab('RETURN');
+                            setReturnBarcode(i.barcode);
+                            handleReturnLookup(i.barcode);   // NEW — turant preview aa jayega, "Find" dabane ki zaroorat nahi
+                          }}
                           style={{
                             background: '#eff6ff', color: '#0176d3', border: 'none', borderRadius: 6,
                             padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
