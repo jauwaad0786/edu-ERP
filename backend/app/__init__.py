@@ -118,11 +118,18 @@ def create_app(config_name='default'):
         _ensure_fee_record_columns()
         db.create_all()
         _seed_super_admin()
+
         try:
             from app.models.platform import seed_default_products
             seed_default_products()
         except Exception as e:
             app.logger.warning(f'Product seed skipped: {e}')
+
+        try:
+            from app.models.rbac import seed_default_roles
+            seed_default_roles()
+        except Exception as e:
+            app.logger.warning(f'Role seed skipped: {e}')
 
     return app
 
