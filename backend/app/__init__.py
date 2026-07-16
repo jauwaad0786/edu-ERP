@@ -57,7 +57,8 @@ def create_app(config_name='default'):
     from app.routes.student import student_bp
     from app.routes.marks import marks_bp
     from app.models import communication
-    
+    from app.middleware.audit_middleware import register_audit_middleware
+    register_audit_middleware(app)
     from app.routes.communication.tickets       import tickets_bp
     from app.routes.communication.notifications import notifications_bp
     from app.routes.communication.meetings      import meetings_bp
