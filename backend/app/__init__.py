@@ -118,8 +118,15 @@ def create_app(config_name='default'):
         _ensure_fee_record_columns()
         db.create_all()
         _seed_super_admin()
+        try:
+            from app.models.platform import seed_default_products
+            seed_default_products()
+        except Exception as e:
+            app.logger.warning(f'Product seed skipped: {e}')
 
     return app
+
+    
 
 def _ensure_communication_columns():
     """New tables ke liye — pehli deploy pe auto-create."""
@@ -287,3 +294,6 @@ def _seed_super_admin():
     db.session.add(admin)
     db.session.commit()
     print('✅ Super Admin seeded')
+
+
+
