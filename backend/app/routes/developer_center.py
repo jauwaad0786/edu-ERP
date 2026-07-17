@@ -1,0 +1,355 @@
+# backend/app/routes/developer_center.py
+"""
+Developer Error Center APIs — company-side only (Backend/Frontend/QA/DevOps
+team, Super Admin, CEO). No school-side actor, no matter their permission
+overrides, reaches this file: same reasoning as CompanyActivityLog in
+audit.py — this data is internal ops, not tenant data, and mixing the two
+concerns (school RBAC permission catalog vs internal error triage) would
+force every future product (Inventory/HRM/Hospital) to register a fake
+school-permission just to let its own dev team see its own bugs. So
+authorization here is a direct scope check (`actor.school_id is None`),
+not `permission_required(...)` — this file is deliberately NOT wired into
+the platform permission catalog.
+
+Endpoints:
+  GET    /api/developer/errors                 -> list + filter + paginate
+  GET    /api/developer/errors/<id>             -> full detail (stack trace, payload, headers)
+  POST   /api/developer/errors/<id>/assign       -> create IssueAssignment row, status -> ASSIGNED
+  PATCH  /api/developer/errors/<id>/status       -> move along ERROR_STATUSES lifecycle
+  POST   /api/developer/errors/<id>/resolve      -> shortcut: resolution note + status -> RESOLVED
+  GET    /api/developer/errors/summary           -> dashboard cards (open/critical/resolved-today counts)
+
+NOT built here (schema doesn't exist yet — see models/developer_center.py):
+  SystemHealth / real-time monitoring cards. Blocked on Redis per project
+  context doc. Not adding an endpoint that reads a table that isn't there.
+"""
+
+from datetime import datetime, timedelta
+
+from flask import Blueprint, request, jsonify
+
+from app import db
+from app.models.developer_center import (
+    ErrorLog, IssueAssignment, ERROR_STATUSES, ASSIGNMENT_TEAMS, PRIORITY_LEVELS,
+)
+from app.models.audit import log_company_action
+from app.utils.decorators import get_current_user
+
+developer_center_bp = Blueprint('developer_center', __name__)
+
+
+# ── Authorization ────────────────────────────────────────────────────────
+
+def _require_company_actor():
+    """
+    Error board sirf company-side actors ke liye — school_id set hote hi
+    403, chahe woh Principal ho ya kitni bhi platform permission rakhta ho.
+    """
+    actor = get_current_user()
+    if not actor:
+        return None, (jsonify({'error': 'Authentication required'}), 401)
+    if getattr(actor, 'school_id', None) is not None:
+        return None, (jsonify({'error': 'Developer Error Center is company-side only'}), 403)
+    return actor, None
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────
+
+def _error_detail_dict(row):
+    """to_dict() list-safe hai (heavy fields skip karta hai) — detail view
+    ke liye stack_trace/payload/headers/ip/browser/os yahin add karte hain,
+    model ko touch kiye bina."""
+    data = row.to_dict()
+    data.update({
+        'payload': row.payload,
+        'headers': row.headers,
+        'stack_trace': row.stack_trace,
+        'ip_address': row.ip_address,
+        'browser': row.browser,
+        'os': row.os,
+    })
+    latest = (IssueAssignment.query
+              .filter_by(error_id=row.id)
+              .order_by(IssueAssignment.created_at.desc())
+              .first())
+    data['assignment'] = latest.to_dict() if latest else None
+    return data
+
+
+def _paginate_args():
+    try:
+        page = max(int(request.args.get('page', 1)), 1)
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        per_page = min(max(int(request.args.get('per_page', 25)), 1), 100)
+    except (TypeError, ValueError):
+        per_page = 25
+    return page, per_page
+
+
+# ── List + filter ────────────────────────────────────────────────────────
+
+@developer_center_bp.route('/errors', methods=['GET'])
+def list_errors():
+    actor, error = _require_company_actor()
+    if error:
+        return error
+
+    query = ErrorLog.query
+
+    status = request.args.get('status')
+    if status:
+        query = query.filter(ErrorLog.status == status)
+
+    severity = request.args.get('severity')
+    if severity:
+        query = query.filter(ErrorLog.severity == severity)
+
+    error_type = request.args.get('error_type')
+    if error_type:
+        query = query.filter(ErrorLog.error_type == error_type)
+
+    product_id = request.args.get('product_id')
+    if product_id:
+        query = query.filter(ErrorLog.product_id == product_id)
+
+    school_id = request.args.get('school_id')
+    if school_id:
+        query = query.filter(ErrorLog.school_id == school_id)
+
+    module = request.args.get('module')
+    if module:
+        query = query.filter(ErrorLog.module == module)
+
+    search = request.args.get('q')
+    if search:
+        like = f'%{search}%'
+        query = query.filter(db.or_(
+            ErrorLog.exception_message.ilike(like),
+            ErrorLog.api_endpoint.ilike(like),
+            ErrorLog.exception_type.ilike(like),
+        ))
+
+    since_days = request.args.get('since_days')
+    if since_days:
+        try:
+            cutoff = datetime.utcnow() - timedelta(days=int(since_days))
+            query = query.filter(ErrorLog.last_seen_at >= cutoff)
+        except ValueError:
+            pass
+
+    query = query.order_by(ErrorLog.last_seen_at.desc())
+
+    page, per_page = _paginate_args()
+    total = query.count()
+    rows = query.offset((page - 1) * per_page).limit(per_page).all()
+
+    return jsonify({
+        'errors': [r.to_dict() for r in rows],
+        'page': page,
+        'per_page': per_page,
+        'total': total,
+    }), 200
+
+
+# ── Detail ───────────────────────────────────────────────────────────────
+
+@developer_center_bp.route('/errors/<int:error_id>', methods=['GET'])
+def get_error(error_id):
+    actor, error = _require_company_actor()
+    if error:
+        return error
+
+    row = ErrorLog.query.get(error_id)
+    if not row:
+        return jsonify({'error': 'Error not found'}), 404
+
+    return jsonify(_error_detail_dict(row)), 200
+
+
+# ── Assign ───────────────────────────────────────────────────────────────
+
+@developer_center_bp.route('/errors/<int:error_id>/assign', methods=['POST'])
+def assign_error(error_id):
+    """Body: {"assigned_team": "BACKEND", "assigned_to_user_id": null,
+              "priority": "P1_HIGH", "deadline": "2026-07-20T00:00:00"}"""
+    actor, error = _require_company_actor()
+    if error:
+        return error
+
+    row = ErrorLog.query.get(error_id)
+    if not row:
+        return jsonify({'error': 'Error not found'}), 404
+
+    data = request.get_json() or {}
+    assigned_team = data.get('assigned_team')
+    priority = data.get('priority', 'P2_MEDIUM')
+
+    if assigned_team and assigned_team not in ASSIGNMENT_TEAMS:
+        return jsonify({'error': f'Invalid assigned_team, must be one of {ASSIGNMENT_TEAMS}'}), 400
+    if priority not in PRIORITY_LEVELS:
+        return jsonify({'error': f'Invalid priority, must be one of {PRIORITY_LEVELS}'}), 400
+
+    deadline = None
+    if data.get('deadline'):
+        try:
+            deadline = datetime.fromisoformat(data['deadline'])
+        except ValueError:
+            return jsonify({'error': 'deadline must be ISO-8601'}), 400
+
+    old_status = row.status
+
+    assignment = IssueAssignment(
+        error_id=row.id,
+        assigned_team=assigned_team,
+        assigned_to_user_id=data.get('assigned_to_user_id'),
+        assigned_by_user_id=actor.id,
+        priority=priority,
+        deadline=deadline,
+    )
+    db.session.add(assignment)
+
+    if row.status == 'NEW':
+        row.status = 'ASSIGNED'
+
+    db.session.commit()
+
+    log_company_action(
+        actor_user=actor, module='developer_center', action='ERROR_ASSIGNED',
+        old_value={'status': old_status},
+        new_value={'status': row.status, 'assigned_team': assigned_team, 'priority': priority},
+        affected_school_id=row.school_id,
+        remarks=f'Error #{row.id} assigned to {assigned_team or "unassigned"}',
+    )
+    db.session.commit()
+
+    return jsonify({
+        'message': 'Assignment saved',
+        'assignment': assignment.to_dict(),
+        'error_status': row.status,
+    }), 200
+
+
+# ── Status lifecycle ─────────────────────────────────────────────────────
+
+@developer_center_bp.route('/errors/<int:error_id>/status', methods=['PATCH'])
+def update_error_status(error_id):
+    """Body: {"status": "IN_PROGRESS"}"""
+    actor, error = _require_company_actor()
+    if error:
+        return error
+
+    row = ErrorLog.query.get(error_id)
+    if not row:
+        return jsonify({'error': 'Error not found'}), 404
+
+    data = request.get_json() or {}
+    new_status = data.get('status')
+    if new_status not in ERROR_STATUSES:
+        return jsonify({'error': f'Invalid status, must be one of {ERROR_STATUSES}'}), 400
+
+    old_status = row.status
+    row.status = new_status
+    if new_status == 'RESOLVED' and not row.resolved_at:
+        row.resolved_at = datetime.utcnow()
+    if new_status == 'REOPENED':
+        row.resolved_at = None
+
+    db.session.commit()
+
+    log_company_action(
+        actor_user=actor, module='developer_center', action='ERROR_STATUS_CHANGE',
+        old_value={'status': old_status}, new_value={'status': new_status},
+        affected_school_id=row.school_id,
+        remarks=f'Error #{row.id} status: {old_status} -> {new_status}',
+    )
+    db.session.commit()
+
+    return jsonify({'message': 'Status updated', 'status': row.status}), 200
+
+
+# ── Resolve shortcut ─────────────────────────────────────────────────────
+
+@developer_center_bp.route('/errors/<int:error_id>/resolve', methods=['POST'])
+def resolve_error(error_id):
+    """Body: {"resolution_note": "Fixed null-check in fee split"}"""
+    actor, error = _require_company_actor()
+    if error:
+        return error
+
+    row = ErrorLog.query.get(error_id)
+    if not row:
+        return jsonify({'error': 'Error not found'}), 404
+
+    data = request.get_json() or {}
+    note = data.get('resolution_note')
+    if not note:
+        return jsonify({'error': 'resolution_note is required'}), 400
+
+    old_status = row.status
+    row.status = 'RESOLVED'
+    row.resolved_at = datetime.utcnow()
+
+    latest = (IssueAssignment.query
+              .filter_by(error_id=row.id)
+              .order_by(IssueAssignment.created_at.desc())
+              .first())
+    if latest:
+        latest.resolution_note = note
+        latest.resolved_by_user_id = actor.id
+        latest.resolved_at = row.resolved_at
+
+    db.session.commit()
+
+    log_company_action(
+        actor_user=actor, module='developer_center', action='ERROR_RESOLVED',
+        old_value={'status': old_status},
+        new_value={'status': 'RESOLVED', 'resolution_note': note},
+        affected_school_id=row.school_id,
+        remarks=f'Error #{row.id} resolved',
+    )
+    db.session.commit()
+
+    return jsonify({'message': 'Error marked resolved'}), 200
+
+
+# ── Dashboard summary ────────────────────────────────────────────────────
+
+@developer_center_bp.route('/errors/summary', methods=['GET'])
+def error_summary():
+    actor, error = _require_company_actor()
+    if error:
+        return error
+
+    open_statuses = ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'TESTING', 'REOPENED']
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    open_count = ErrorLog.query.filter(ErrorLog.status.in_(open_statuses)).count()
+    critical_open = ErrorLog.query.filter(
+        ErrorLog.status.in_(open_statuses), ErrorLog.severity == 'CRITICAL'
+    ).count()
+    resolved_today = ErrorLog.query.filter(
+        ErrorLog.status == 'RESOLVED', ErrorLog.resolved_at >= today_start
+    ).count()
+    new_today = ErrorLog.query.filter(ErrorLog.first_seen_at >= today_start).count()
+
+    by_severity = dict(
+        db.session.query(ErrorLog.severity, db.func.count(ErrorLog.id))
+        .filter(ErrorLog.status.in_(open_statuses))
+        .group_by(ErrorLog.severity).all()
+    )
+    by_error_type = dict(
+        db.session.query(ErrorLog.error_type, db.func.count(ErrorLog.id))
+        .filter(ErrorLog.status.in_(open_statuses))
+        .group_by(ErrorLog.error_type).all()
+    )
+
+    return jsonify({
+        'open_count': open_count,
+        'critical_open': critical_open,
+        'resolved_today': resolved_today,
+        'new_today': new_today,
+        'by_severity': by_severity,
+        'by_error_type': by_error_type,
+    }), 200
