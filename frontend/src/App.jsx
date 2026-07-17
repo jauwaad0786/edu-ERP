@@ -68,6 +68,10 @@ import Announcements    from './pages/communication/Announcements';
 import ChatWindow       from './pages/communication/ChatWindow';
 import KnowledgeBase    from './pages/communication/KnowledgeBase';
 import SupportDashboard from './pages/developer/SupportDashboard';
+// ── RBAC Pages ──────────────────────────────────────────────────────────────
+import RoleManagement     from './pages/rbac/RoleManagement';
+import PermissionMatrix   from './pages/rbac/PermissionMatrix';
+import DelegationPage     from './pages/rbac/DelegationPage';
 
 export default function App() {
   return (
@@ -366,6 +370,22 @@ export default function App() {
             <Route path="/developer/support" element={
               <ProtectedRoute roles={['SUPER_ADMIN']}>
                 <SupportDashboard />
+              </ProtectedRoute>
+            } />
+            {/* ── RBAC (Role-Based Access Control) ── */}
+            <Route path="/rbac/roles" element={
+              <ProtectedRoute roles={['SUPER_ADMIN', 'PRINCIPAL']}>
+                <RoleManagement />
+              </ProtectedRoute>
+            } />
+            <Route path="/rbac/permissions" element={
+              <ProtectedRoute roles={['SUPER_ADMIN', 'PRINCIPAL']}>
+                <PermissionMatrix />
+              </ProtectedRoute>
+            } />
+            <Route path="/rbac/delegations" element={
+              <ProtectedRoute roles={['SUPER_ADMIN', 'PRINCIPAL']}>
+                <DelegationPage />
               </ProtectedRoute>
             } />
 
