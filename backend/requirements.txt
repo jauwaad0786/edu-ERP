@@ -16,3 +16,4 @@ flask-limiter==3.5.0
 qrcode[pil]
 cryptography
 requests
+APScheduler==3.10.4
