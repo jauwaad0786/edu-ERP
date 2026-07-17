@@ -78,6 +78,9 @@ def create_app(config_name='default'):
     from app.routes.hostel import hostel_bp
     app.register_blueprint(hostel_bp, url_prefix='/api/hostel')
 
+    from app.routes.rbac import rbac_bp
+    app.register_blueprint(rbac_bp, url_prefix='/api/rbac')
+
     # ── RBAC: seed default role-permissions for all schools on boot ──
     # Idempotent — only inserts missing (role, permission_key) rows, never
     # overwrites a Principal's manual customization. Safe to run every deploy.
