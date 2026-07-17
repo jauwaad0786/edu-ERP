@@ -338,4 +338,32 @@ export default function ErrorDashboard({ darkMode }) {
                     whiteSpace: 'pre-wrap',
                     wordBreak: 'break-all',
                   }}>
-                    {selected
+                    {selectedError.stack_trace}
+                  </pre>
+                </div>
+                {selectedError.payload && (
+                  <div>
+                    <strong>Payload:</strong>
+                    <pre style={{
+                      background: darkMode ? '#0f172a' : '#f1f5f9',
+                      padding: 12,
+                      borderRadius: 6,
+                      fontSize: 11,
+                      maxHeight: 200,
+                      overflow: 'auto',
+                    }}>
+                      {selectedError.payload}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-neutral" onClick={() => setShowDetail(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
