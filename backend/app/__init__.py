@@ -134,6 +134,14 @@ def create_app(config_name='default'):
         except Exception as e:
             app.logger.warning(f'Role seed skipped: {e}')
 
+        try:
+            from app.services.permission_resolver import sync_legacy_role_assignments
+            sync_result = sync_legacy_role_assignments()
+            if sync_result['unmapped']:
+                app.logger.warning(f"Role backfill: {len(sync_result['unmapped'])} user(s) unmapped: {sync_result['unmapped']}")
+        except Exception as e:
+            app.logger.warning(f'Role backfill skipped: {e}')
+
     return app
 
     
