@@ -28,14 +28,12 @@ export default function RoleSwitchDropdown({ darkMode }) {
     setLoading(true);
     try {
       const res = await api.post('/rbac/switch-role', { role_id: roleId });
-      // Update user context with new active role
       setUser(prev => ({
         ...prev,
         active_role: res.data.active_role,
         permissions: res.data.permissions,
       }));
       setShowDropdown(false);
-      // Reload page to reflect new permissions
       window.location.reload();
     } catch (err) {
       alert(err.response?.data?.error || 'Failed to switch role');
@@ -61,13 +59,16 @@ export default function RoleSwitchDropdown({ darkMode }) {
           padding: '6px 12px',
           background: darkMode ? '#1e293b' : undefined,
           color: darkMode ? '#e2e8f0' : undefined,
+          border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+          borderRadius: 8,
+          cursor: 'pointer',
+          fontSize: 12,
+          fontWeight: 600,
         }}
         disabled={loading}
       >
-        <i className="ti ti-switch-horizontal" />
-        <span style={{ fontWeight: 600, fontSize: 12 }}>
-          {activeRole?.name || 'Switch Role'}
-        </span>
+        <i className="ti ti-switch-horizontal" style={{ fontSize: 14 }} />
+        <span>{activeRole?.name || 'Switch Role'}</span>
         <i className="ti ti-chevron-down" style={{ fontSize: 12 }} />
       </button>
 
@@ -111,7 +112,7 @@ export default function RoleSwitchDropdown({ darkMode }) {
                   padding: '8px 16px',
                   textAlign: 'left',
                   border: 'none',
-                  background: role.is_active 
+                  background: role.is_active
                     ? (darkMode ? 'rgba(79,70,229,0.2)' : '#f5f3ff')
                     : 'transparent',
                   color: darkMode ? '#e2e8f0' : '#0f172a',
@@ -125,4 +126,34 @@ export default function RoleSwitchDropdown({ darkMode }) {
                 }}
                 onMouseEnter={(e) => {
                   if (!role.is_active) {
-                    e
+                    e.currentTarget.style.background = darkMode ? '#1e293b' : '#f1f5f9';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!role.is_active) {
+                    e.currentTarget.style.background = 'transparent';
+                  }
+                }}
+              >
+                {role.is_active && (
+                  <i className="ti ti-check" style={{ color: '#4f46e5', fontSize: 14 }} />
+                )}
+                <span>{role.name}</span>
+                {role.is_active && (
+                  <span style={{
+                    fontSize: 10,
+                    color: '#4f46e5',
+                    fontWeight: 600,
+                    marginLeft: 'auto',
+                  }}>
+                    Active
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
