@@ -127,6 +127,10 @@ DEFAULT_SCHOOL_ROLE_PERMISSIONS = {
     ],
     'TEACHER': [
         'marks.entry', 'students.profile.view',
+        # fees.collect deliberately NOT default — only PRINCIPAL (is_super
+        # bypass) and ACCOUNTANT get it by default. A Principal can grant
+        # fees.collect to one specific teacher via UserPermissionOverride
+        # (see routes/rbac.py) without opening it up for every teacher.
     ],
     'CLASS_TEACHER': [
         'marks.entry', 'students.profile.view', 'students.profile.edit', 'documents.view',
