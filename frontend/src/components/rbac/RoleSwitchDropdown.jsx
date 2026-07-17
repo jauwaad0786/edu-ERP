@@ -21,6 +21,7 @@ export default function RoleSwitchDropdown({ darkMode }) {
       setAvailableRoles(res.data || []);
     } catch (err) {
       console.error('Failed to fetch roles:', err);
+      // ✅ Silent fail — dropdown just won't show
     }
   };
 
@@ -42,7 +43,7 @@ export default function RoleSwitchDropdown({ darkMode }) {
     }
   };
 
-  // Show only if user has multiple roles
+  // ✅ Only show if user has multiple roles AND API succeeded
   if (!user || availableRoles.length < 2) return null;
 
   const activeRole = availableRoles.find(r => r.is_active) || availableRoles[0];
@@ -50,15 +51,14 @@ export default function RoleSwitchDropdown({ darkMode }) {
   return (
     <div style={{ position: 'relative' }}>
       <button
-        className="btn btn-neutral btn-sm"
         onClick={() => setShowDropdown(!showDropdown)}
         style={{
           display: 'flex',
           alignItems: 'center',
           gap: 6,
           padding: '6px 12px',
-          background: darkMode ? '#1e293b' : undefined,
-          color: darkMode ? '#e2e8f0' : undefined,
+          background: darkMode ? '#1e293b' : '#f8fafc',
+          color: darkMode ? '#e2e8f0' : '#0f172a',
           border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
           borderRadius: 8,
           cursor: 'pointer',
