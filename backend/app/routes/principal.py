@@ -3687,6 +3687,7 @@ import re   as _re
 import string as _string
 import random  as _random
 from app.models.user import PRINCIPAL_ALLOWED_ROLES
+from app.models.rbac import get_user_roles, can_manage_role
 
 
 def _norm(s):
@@ -3716,7 +3717,22 @@ def _gen_username_p(name: str, role: str) -> str:
 
     return base + '.' + ''.join(_random.choices(_string.digits, k=6))
 
-
+def _actor_can_manage_target(actor, target):
+    """
+    True if actor may delete/deactivate/edit target, using the same
+    platform_roles hierarchy as admin.py's delete_user(). Falls back to
+    the old hardcoded block (nobody may touch SUPER_ADMIN/PRINCIPAL) if
+    either side has no UserRoleAssignment yet -- fail-safe, not fail-open,
+    since a legacy account without a platform role link can't have its
+    hierarchy verified.
+    """
+    if target.role == UserRole.SUPER_ADMIN:
+        return False
+    target_roles = get_user_roles(target)
+    actor_roles = get_user_roles(actor)
+    if not target_roles or not actor_roles:
+        return target.role not in (UserRole.SUPER_ADMIN, UserRole.PRINCIPAL)
+    return can_manage_role(actor_roles, target_roles)
 # ── List users of own school ───────────────────────────────────────────────────
 @principal_bp.route('/users', methods=['GET'])
 @role_required('PRINCIPAL')
@@ -3856,20 +3872,19 @@ def principal_create_user():
 
 
 # ── Reset password (own school only) ──────────────────────────────────────────
+# NEW
 @principal_bp.route('/users/<int:user_id>/reset-password', methods=['PUT'])
 @role_required('PRINCIPAL')
 def principal_reset_password(user_id):
     from app.models.user import User, UserRole
-    sid  = _school_id()
-    user = User.query.get_or_404(user_id)
+    sid   = _school_id()
+    actor = get_current_user()
+    user  = User.query.get_or_404(user_id)
 
-    # Must belong to same school
     if user.school_id != sid:
         return jsonify({'error': 'Unauthorized: user belongs to a different school'}), 403
-
-    # Cannot reset SUPER_ADMIN or another PRINCIPAL (optional safety guard)
-    if user.role in (UserRole.SUPER_ADMIN, UserRole.PRINCIPAL):
-        return jsonify({'error': 'Cannot reset password for this role'}), 403
+    if not _actor_can_manage_target(actor, user):
+        return jsonify({'error': 'You do not have sufficient hierarchy to reset this user\'s password'}), 403
 
     data     = request.get_json() or {}
     plain_pw = (data.get('password') or '').strip() or 'EduErp@123'
@@ -3885,18 +3900,19 @@ def principal_reset_password(user_id):
     }), 200
 
 
-# ── Toggle active/inactive (own school only) ───────────────────────────────────
+# NEW
 @principal_bp.route('/users/<int:user_id>/toggle', methods=['PUT'])
 @role_required('PRINCIPAL')
 def principal_toggle_user(user_id):
     from app.models.user import User, UserRole
-    sid  = _school_id()
-    user = User.query.get_or_404(user_id)
+    sid    = _school_id()
+    actor  = get_current_user()
+    user   = User.query.get_or_404(user_id)
 
     if user.school_id != sid:
         return jsonify({'error': 'Unauthorized'}), 403
-    if user.role in (UserRole.SUPER_ADMIN, UserRole.PRINCIPAL):
-        return jsonify({'error': 'Cannot deactivate this role'}), 403
+    if not _actor_can_manage_target(actor, user):
+        return jsonify({'error': 'You do not have sufficient hierarchy to deactivate this user'}), 403
 
     user.is_active = not user.is_active
     db.session.commit()
@@ -3922,24 +3938,53 @@ def principal_user_profile(user_id):
 
 
 # ── Update user profile fields (own school only) ────────────────────────────
+# NEW
 @principal_bp.route('/users/<int:user_id>', methods=['PATCH'])
 @role_required('PRINCIPAL')
 @feature_required('role_based_access')
 def principal_update_user(user_id):
     from app.models.user import User, UserRole
-    sid  = _school_id()
-    user = User.query.get_or_404(user_id)
+    sid   = _school_id()
+    actor = get_current_user()
+    user  = User.query.get_or_404(user_id)
     if user.school_id != sid:
         return jsonify({'error': 'Unauthorized'}), 403
-    if user.role in (UserRole.SUPER_ADMIN, UserRole.PRINCIPAL):
-        return jsonify({'error': 'Cannot edit this role'}), 403
+    if not _actor_can_manage_target(actor, user):
+        return jsonify({'error': 'You do not have sufficient hierarchy to edit this user'}), 403
 
     data = request.get_json() or {}
     for field in ['name', 'phone', 'department', 'designation']:
         if field in data:
             setattr(user, field, (data[field] or '').strip() or None)
 
+    db.session.commit()
+    return jsonify(user.to_dict_with_credentials()), 200
 
+@principal_bp.route('/users/<int:user_id>', methods=['DELETE'])
+@role_required('PRINCIPAL')
+def principal_delete_user(user_id):
+    """
+    Deletes a staff account from the Principal's own school. Hierarchy-
+    gated via can_manage_role() -- once VICE_PRINCIPAL gains access to
+    this route (decorator-level fix, next step), a VP can delete any
+    staff member except another PRINCIPAL/DIRECTOR, enforced by rbac.py's
+    hierarchy comparison, not a hardcoded role-name check here.
+    """
+    from app.models.user import User
+    sid   = _school_id()
+    actor = get_current_user()
+    user  = User.query.get_or_404(user_id)
+
+    if user.school_id != sid:
+        return jsonify({'error': 'Unauthorized'}), 403
+    if user.id == actor.id:
+        return jsonify({'error': 'Cannot delete your own account'}), 403
+    if not _actor_can_manage_target(actor, user):
+        return jsonify({'error': 'You do not have sufficient hierarchy to delete this user'}), 403
+
+    db.session.delete(user)
+    db.session.commit()
+    return jsonify({'message': 'User deleted'}), 200
 @principal_bp.route('/students/<int:student_id>', methods=['DELETE'])
 @role_required('PRINCIPAL')
 def delete_student(student_id):
