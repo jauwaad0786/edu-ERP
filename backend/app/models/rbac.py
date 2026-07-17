@@ -382,7 +382,7 @@ class TemporaryRoleDelegation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     delegator_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     delegatee_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    role_id = db.Column(db.Integer, db.ForeignKey('roles.id'), nullable=False)
+    role_id = db.Column(db.Integer, db.ForeignKey('platform_roles.id'), nullable=False)  # ✅ CORRECT
     
     start_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     end_date = db.Column(db.DateTime, nullable=False)  # mandatory expiry
