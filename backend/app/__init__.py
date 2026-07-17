@@ -150,13 +150,36 @@ def create_app(config_name='default'):
         except Exception as e:
             app.logger.warning(f'Permission catalog seed skipped: {e}')
 
-        try:
+                try:
             from app.services.permission_resolver import sync_legacy_role_assignments
             sync_result = sync_legacy_role_assignments()
             if sync_result['unmapped']:
                 app.logger.warning(f"Role backfill: {len(sync_result['unmapped'])} user(s) unmapped: {sync_result['unmapped']}")
         except Exception as e:
             app.logger.warning(f'Role backfill skipped: {e}')
+
+        # ── START DELEGATION AUTO-EXPIRY SCHEDULER ──
+        try:
+            from apscheduler.schedulers.background import BackgroundScheduler
+            from app.services.delegation_service import auto_expire_delegations
+
+            scheduler = BackgroundScheduler()
+            scheduler.add_job(
+                func=auto_expire_delegations,
+                trigger='interval',
+                minutes=5,
+                id='delegation_expiry',
+                replace_existing=True
+            )
+            scheduler.start()
+            app.logger.info('✅ Delegation auto-expiry scheduler started (runs every 5 min)')
+
+            # Shutdown scheduler when app context tears down
+            import atexit
+            atexit.register(lambda: scheduler.shutdown())
+        except Exception as e:
+            app.logger.warning(f'Delegation scheduler skipped: {e}')
+        # ── END DELEGATION AUTO-EXPIRY SCHEDULER ──
 
     return app
 
