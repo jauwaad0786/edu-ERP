@@ -150,7 +150,7 @@ def create_app(config_name='default'):
         except Exception as e:
             app.logger.warning(f'Permission catalog seed skipped: {e}')
 
-                try:
+        try:
             from app.services.permission_resolver import sync_legacy_role_assignments
             sync_result = sync_legacy_role_assignments()
             if sync_result['unmapped']:
