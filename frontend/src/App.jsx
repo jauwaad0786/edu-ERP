@@ -68,6 +68,7 @@ import Announcements    from './pages/communication/Announcements';
 import ChatWindow       from './pages/communication/ChatWindow';
 import KnowledgeBase    from './pages/communication/KnowledgeBase';
 import SupportDashboard from './pages/developer/SupportDashboard';
+
 // ── RBAC Pages ──────────────────────────────────────────────────────────────
 import RoleManagement     from './pages/rbac/RoleManagement';
 import PermissionMatrix   from './pages/rbac/PermissionMatrix';
@@ -372,6 +373,7 @@ export default function App() {
                 <SupportDashboard />
               </ProtectedRoute>
             } />
+
             {/* ── RBAC (Role-Based Access Control) ── */}
             <Route path="/rbac/roles" element={
               <ProtectedRoute roles={['SUPER_ADMIN', 'PRINCIPAL']}>
