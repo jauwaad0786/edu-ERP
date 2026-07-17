@@ -80,6 +80,8 @@ def create_app(config_name='default'):
 
     from app.routes.rbac import rbac_bp
     app.register_blueprint(rbac_bp, url_prefix='/api/rbac')
+    from app.routes.developer_center import developer_center_bp
+    app.register_blueprint(developer_center_bp, url_prefix='/api/developer')
 
     # ── RBAC: seed default role-permissions for all schools on boot ──
     # Idempotent — only inserts missing (role, permission_key) rows, never
