@@ -103,7 +103,7 @@ DEFAULT_SCHOOL_ROLE_PERMISSIONS = {
         'finance.expense.manage', 'finance.inventory.manage', 'finance.pnl.view',
         'documents.issue', 'documents.view',
         'communication.announcement.post', 'communication.ticket.manage',
-        'admin.school.settings', 'admin.user.manage', 'admin.whatsapp.settings',
+        'admin.school.settings', 'admin.user.manage', 'admin.whatsapp.settings','audit.logs.view',
         # 'students.delete' and 'staff.payroll.manage' intentionally NOT default —
         # destructive/financial-sign-off actions stay Principal/Director-only by design.
     ],
