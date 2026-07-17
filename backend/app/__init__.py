@@ -40,11 +40,14 @@ def create_app(config_name='default'):
     CORS(app,
         resources={r"/api/*": {"origins": [
             "http://localhost:3000",
-            "https://edu-erp-frontend.onrender.com"
+            "https://edu-erp-frontend.onrender.com",
+            "https://edu-erp-backend-xoas.onrender.com"  # ✅ ADD THIS
         ]}},
         supports_credentials=True,
-        allow_headers=["Content-Type", "Authorization"],
-        methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+        allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        expose_headers=["Content-Type", "Authorization"],
+        max_age=3600,
     )
 
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
