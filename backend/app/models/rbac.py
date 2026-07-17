@@ -374,3 +374,30 @@ def seed_default_roles():
     if created:
         db.session.commit()
     return created
+
+
+class TemporaryRoleDelegation(db.Model):
+    __tablename__ = 'temporary_role_delegations'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    delegator_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    delegatee_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    role_id = db.Column(db.Integer, db.ForeignKey('roles.id'), nullable=False)
+    
+    start_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    end_date = db.Column(db.DateTime, nullable=False)  # mandatory expiry
+    reason = db.Column(db.String(500))
+    status = db.Column(db.Enum('ACTIVE', 'EXPIRED', 'REVOKED', name='delegation_status'), default='ACTIVE')
+    
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    delegator = db.relationship('User', foreign_keys=[delegator_user_id])
+    delegatee = db.relationship('User', foreign_keys=[delegatee_user_id])
+    role = db.relationship('Role')
+    
+    __table_args__ = (
+        db.Index('idx_delegation_delegatee_status', 'delegatee_user_id', 'status'),
+        db.Index('idx_delegation_end_date', 'end_date'),
+    )
