@@ -20,13 +20,25 @@ implicitly fall out of the permission check. Company-side actors
 """
 
 from flask import Blueprint, request, jsonify
+from datetime import datetime
 
 from app import db
 from app.services.permission_resolver import permission_required
 from app.services.audit_service import log_action
 from app.models.audit import log_company_action
 from app.utils.decorators import get_current_user
-from app.models.rbac import Permission, UserPermissionOverride, resolve_platform_permissions
+from app.models.rbac import (
+    Permission, 
+    UserPermissionOverride, 
+    resolve_platform_permissions,
+    TemporaryRoleDelegation
+)
+from app.services.delegation_service import (
+    create_delegation,
+    revoke_delegation,
+    extend_delegation,
+    get_active_delegations
+)
 
 rbac_bp = Blueprint('rbac', __name__)
 
@@ -178,8 +190,7 @@ def revoke_user_permission_override(user_id, permission_key):
     return jsonify({'message': 'Override removed, user reverted to role default'}), 200
 
 
-
-# ── DELEGATION ENDPOINTS ── (add to existing rbac_bp)
+# ── DELEGATION ENDPOINTS ──
 
 @rbac_bp.route('/delegations', methods=['POST'])
 @permission_required('admin.user.manage')
@@ -254,6 +265,7 @@ def list_delegations():
     # Tenant isolation (school-scoped actors only see their school's users)
     actor_school_id = getattr(actor, 'school_id', None)
     if actor_school_id is not None:
+        from app.models.user import User
         query = query.join(User, User.id == TemporaryRoleDelegation.delegatee_user_id)
         query = query.filter(User.school_id == actor_school_id)
 
