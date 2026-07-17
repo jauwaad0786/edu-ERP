@@ -176,3 +176,139 @@ def revoke_user_permission_override(user_id, permission_key):
     )
 
     return jsonify({'message': 'Override removed, user reverted to role default'}), 200
+
+
+
+# ── DELEGATION ENDPOINTS ── (add to existing rbac_bp)
+
+@rbac_bp.route('/delegations', methods=['POST'])
+@permission_required('admin.user.manage')
+def create_delegation_route():
+    """
+    Body: {
+        "delegatee_user_id": 123,
+        "role_key": "ACCOUNTANT",
+        "end_date": "2026-08-01T23:59:59",
+        "reason": "Accountant on leave for 1 day"
+    }
+    """
+    actor = get_current_user()
+    data = request.get_json() or {}
+
+    delegatee_user_id = data.get('delegatee_user_id')
+    role_key = data.get('role_key')
+    end_date_str = data.get('end_date')
+    reason = data.get('reason')
+
+    if not all([delegatee_user_id, role_key, end_date_str]):
+        return jsonify({'error': 'delegatee_user_id, role_key, and end_date are required'}), 400
+
+    try:
+        end_date = datetime.fromisoformat(end_date_str.replace('Z', '+00:00'))
+    except ValueError:
+        return jsonify({'error': 'Invalid end_date format. Use ISO-8601 (e.g., 2026-08-01T23:59:59)'}), 400
+
+    delegation, error = create_delegation(
+        delegator=actor,
+        delegatee_user_id=delegatee_user_id,
+        role_key=role_key,
+        end_date=end_date,
+        reason=reason
+    )
+
+    if error:
+        return jsonify({'error': error}), 400
+
+    return jsonify({
+        'message': 'Delegation created successfully',
+        'delegation': {
+            'id': delegation.id,
+            'role_key': delegation.role.key,
+            'delegatee_user_id': delegation.delegatee_user_id,
+            'start_date': delegation.start_date.isoformat(),
+            'end_date': delegation.end_date.isoformat(),
+            'status': delegation.status,
+            'reason': delegation.reason,
+        }
+    }), 201
+
+
+@rbac_bp.route('/delegations', methods=['GET'])
+@permission_required('admin.user.manage')
+def list_delegations():
+    """Query params: user_id (delegatee), status, delegator_id"""
+    actor = get_current_user()
+    user_id = request.args.get('user_id')
+    status = request.args.get('status')
+    delegator_id = request.args.get('delegator_id')
+
+    query = TemporaryRoleDelegation.query
+
+    if user_id:
+        query = query.filter_by(delegatee_user_id=user_id)
+    if status:
+        query = query.filter_by(status=status)
+    if delegator_id:
+        query = query.filter_by(delegator_user_id=delegator_id)
+
+    # Tenant isolation (school-scoped actors only see their school's users)
+    actor_school_id = getattr(actor, 'school_id', None)
+    if actor_school_id is not None:
+        query = query.join(User, User.id == TemporaryRoleDelegation.delegatee_user_id)
+        query = query.filter(User.school_id == actor_school_id)
+
+    delegations = query.order_by(TemporaryRoleDelegation.created_at.desc()).all()
+
+    return jsonify({
+        'delegations': [
+            {
+                'id': d.id,
+                'role_key': d.role.key,
+                'role_name': d.role.name,
+                'delegator_user_id': d.delegator_user_id,
+                'delegatee_user_id': d.delegatee_user_id,
+                'start_date': d.start_date.isoformat(),
+                'end_date': d.end_date.isoformat(),
+                'status': d.status,
+                'reason': d.reason,
+                'created_at': d.created_at.isoformat(),
+            }
+            for d in delegations
+        ]
+    }), 200
+
+
+@rbac_bp.route('/delegations/<int:delegation_id>', methods=['DELETE'])
+@permission_required('admin.user.manage')
+def revoke_delegation_route(delegation_id):
+    actor = get_current_user()
+    success, error = revoke_delegation(delegation_id, actor)
+
+    if error:
+        return jsonify({'error': error}), 400
+
+    return jsonify({'message': 'Delegation revoked successfully'}), 200
+
+
+@rbac_bp.route('/delegations/<int:delegation_id>/extend', methods=['PUT'])
+@permission_required('admin.user.manage')
+def extend_delegation_route(delegation_id):
+    """Body: {"new_end_date": "2026-08-01T23:59:59"}"""
+    actor = get_current_user()
+    data = request.get_json() or {}
+    new_end_date_str = data.get('new_end_date')
+
+    if not new_end_date_str:
+        return jsonify({'error': 'new_end_date is required'}), 400
+
+    try:
+        new_end_date = datetime.fromisoformat(new_end_date_str.replace('Z', '+00:00'))
+    except ValueError:
+        return jsonify({'error': 'Invalid end_date format. Use ISO-8601'}), 400
+
+    success, error = extend_delegation(delegation_id, new_end_date, actor)
+
+    if error:
+        return jsonify({'error': error}), 400
+
+    return jsonify({'message': 'Delegation extended successfully'}), 200
