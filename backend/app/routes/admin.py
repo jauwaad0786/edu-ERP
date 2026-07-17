@@ -10,7 +10,10 @@ from app.models.school import School
 from app.models.academic import Class
 from app.models.financial import FeeRecord
 from app.models.service_charge import ServiceCharge
-from app.utils.decorators import role_required
+from app.utils.decorators import role_required, get_current_user
+from app.models.rbac import (
+    Role, UserRoleAssignment, get_user_roles, can_manage_role,
+)
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -315,20 +318,14 @@ def _gen_username(name: str, role: str, school_id=None) -> str:
     return base + '.' + ''.join(_random.choices(_string.digits, k=6))
 
 
-def _validate_create_payload(data: dict):
-    """Returns (error_str | None)"""
+def _validate_create_payload_loose(data: dict):
     if not (data.get('name') or '').strip():
         return 'name is required'
     if not (data.get('email') or '').strip():
         return 'email is required'
     if not (data.get('role') or '').strip():
         return 'role is required'
-    try:
-        UserRole(data['role'])
-    except ValueError:
-        return f"Invalid role: {data['role']}"
     return None
-
 
 # ─── Users ────────────────────────────────────────────────────────────────────
 
@@ -388,15 +385,50 @@ def list_users():
     }), 200
 
 
+# NEW
+def _resolve_creation_role(role_str, school_id):
+    """
+    Returns (legacy_enum_value, platform_role_or_None, error_or_None).
+
+    Two paths:
+      - role_str matches the legacy UserRole enum (school-side staff, or
+        old-style SUPER_ADMIN) -> use it directly, no platform role.
+      - role_str matches a COMPANY-scope Role.key in platform_roles
+        (CEO, SUB_ADMIN, MANAGER, SOFTWARE_ENGINEER, DEVELOPER, QA,
+        CALL_CENTER, ...) -> legacy enum falls back to SUPER_ADMIN as a
+        generic "company account" marker; the real identity is the
+        platform Role, linked via UserRoleAssignment after the User row
+        is created.
+    """
+    try:
+        return UserRole(role_str), None, None
+    except ValueError:
+        pass
+
+    platform_role = Role.query.filter_by(scope='COMPANY', key=role_str).first()
+    if not platform_role:
+        return None, None, f"Invalid role: {role_str}"
+    if school_id:
+        return None, None, "Company-scope roles cannot have a school_id"
+    return UserRole.SUPER_ADMIN, platform_role, None
+
+
 @admin_bp.route('/users', methods=['POST'])
 @role_required('SUPER_ADMIN')
 def create_user():
     """
     Create any user. Returns credentials including plain password.
+
+    role can be either a legacy UserRole enum value (school staff) OR a
+    COMPANY-scope platform Role key (CEO/SUB_ADMIN/DEVELOPER/...) -- see
+    _resolve_creation_role(). Company roles never touch the Postgres enum;
+    they're tracked purely via UserRoleAssignment, so adding a new company
+    role (e.g. a new department) never needs a DB migration.
     """
+    actor = get_current_user()
     data = request.get_json() or {}
 
-    err = _validate_create_payload(data)
+    err = _validate_create_payload_loose(data)
     if err:
         return jsonify({'error': err}), 400
 
@@ -404,12 +436,27 @@ def create_user():
     if User.query.filter(sqlfunc.lower(User.email) == email).first():
         return jsonify({'error': 'Email already exists'}), 409
 
-    plain_pw  = data.get('password') or 'EduErp@123'
     role_str  = data['role'].strip()
     school_id = data.get('school_id') or None
 
-    # If username provided, check uniqueness; else auto-generate
-    username  = (data.get('username') or '').strip().lower() or None
+    legacy_role, platform_role, err = _resolve_creation_role(role_str, school_id)
+    if err:
+        return jsonify({'error': err}), 400
+
+    # Hierarchy check: only enforced for COMPANY-scope creations. School-side
+    # role creation keeps existing behaviour (SUPER_ADMIN can create any
+    # school role — Principal-side creation has its own separate hierarchy
+    # check in principal.py's PRINCIPAL_ALLOWED_ROLES).
+    if platform_role:
+        actor_roles = get_user_roles(actor)
+        if not can_manage_role(actor_roles, [platform_role]):
+            return jsonify({
+                'error': f"You do not have sufficient hierarchy to create a '{role_str}' user"
+            }), 403
+
+    plain_pw = data.get('password') or 'EduErp@123'
+
+    username = (data.get('username') or '').strip().lower() or None
     if username:
         if User.query.filter_by(username=username).first():
             return jsonify({'error': 'Username already taken'}), 409
@@ -420,7 +467,7 @@ def create_user():
         name        = data['name'].strip(),
         email       = email,
         username    = username,
-        role        = UserRole(role_str),
+        role        = legacy_role,
         school_id   = int(school_id) if school_id else None,
         phone       = (data.get('phone') or '').strip() or None,
         department  = (data.get('department') or '').strip() or None,
@@ -428,11 +475,21 @@ def create_user():
         is_active   = data.get('is_active', True),
     )
     user.set_password(plain_pw, store_plain=True)
-
     db.session.add(user)
+    db.session.flush()   # need user.id before linking the role assignment
+
+    if platform_role:
+        db.session.add(UserRoleAssignment(
+            user_id=user.id, role_id=platform_role.id,
+            is_active=True, assigned_by=actor.id,
+        ))
+
     db.session.commit()
 
-    return jsonify(user.to_dict_with_credentials()), 201
+    result = user.to_dict_with_credentials()
+    if platform_role:
+        result['platform_role'] = platform_role.to_dict()
+    return jsonify(result), 201
 
 
 @admin_bp.route('/users/<int:user_id>', methods=['GET'])
@@ -493,12 +550,41 @@ def update_user(user_id):
     return jsonify(user.to_dict_with_credentials()), 200
 
 
+# NEW
 @admin_bp.route('/users/<int:user_id>', methods=['DELETE'])
 @role_required('SUPER_ADMIN')
 def delete_user(user_id):
+    """
+    Hierarchy-gated delete. A company-side target (school_id is None) is
+    checked via can_manage_role() using their UserRoleAssignment roles --
+    this is what makes CEO undeletable-by-anyone-except-CEO and lets a
+    Sub Admin delete a Developer but never a CEO, without any hardcoded
+    role-name check here.
+
+    School-side targets keep the simpler legacy guard (unchanged) since
+    Principal-side deletion has its own dedicated flow in principal.py.
+    """
+    actor = get_current_user()
     user = User.query.get_or_404(user_id)
-    if user.role == UserRole.SUPER_ADMIN:
-        return jsonify({'error': 'Cannot delete Super Admin'}), 403
+
+    if user.id == actor.id:
+        return jsonify({'error': 'Cannot delete your own account'}), 403
+
+    if user.school_id is None:
+        target_roles = get_user_roles(user)
+        if not target_roles:
+            # No platform role assigned yet — fall back to the old rule
+            # rather than allowing an unchecked delete.
+            if user.role == UserRole.SUPER_ADMIN:
+                return jsonify({'error': 'Cannot delete this account — no role assignment found to verify hierarchy'}), 403
+        else:
+            actor_roles = get_user_roles(actor)
+            if not can_manage_role(actor_roles, target_roles):
+                return jsonify({'error': 'You do not have sufficient hierarchy to delete this user'}), 403
+    else:
+        if user.role == UserRole.SUPER_ADMIN:
+            return jsonify({'error': 'Cannot delete Super Admin'}), 403
+
     db.session.delete(user)
     db.session.commit()
     return jsonify({'message': 'User deleted'}), 200
