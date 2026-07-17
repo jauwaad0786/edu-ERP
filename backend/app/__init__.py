@@ -135,6 +135,15 @@ def create_app(config_name='default'):
             app.logger.warning(f'Role seed skipped: {e}')
 
         try:
+            from app.models.permission_catalog import seed_permission_catalog, seed_role_permission_templates
+            seed_permission_catalog()
+            template_result = seed_role_permission_templates()
+            if template_result['unmapped_roles'] or template_result['unmapped_permissions']:
+                app.logger.warning(f'Permission template seed had gaps: {template_result}')
+        except Exception as e:
+            app.logger.warning(f'Permission catalog seed skipped: {e}')
+
+        try:
             from app.services.permission_resolver import sync_legacy_role_assignments
             sync_result = sync_legacy_role_assignments()
             if sync_result['unmapped']:
@@ -312,6 +321,3 @@ def _seed_super_admin():
     db.session.add(admin)
     db.session.commit()
     print('✅ Super Admin seeded')
-
-
-
