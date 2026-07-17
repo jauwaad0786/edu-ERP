@@ -3,6 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import NotificationBell from '../components/communication/NotificationBell';
+import RoleSwitchDropdown from '../components/rbac/RoleSwitchDropdown';  // ✅ ADD THIS IMPORT
+
 const BREADCRUMB_MAP = {
   '/dashboard':             'Dashboard',
   '/students':              'Students',
@@ -32,6 +34,10 @@ const BREADCRUMB_MAP = {
   '/support/help':          'Help Center',
   '/support/kb':            'Knowledge Base',
   '/developer/support':     'Support Dashboard',
+  // ── RBAC Routes ──
+  '/rbac/roles':            'Role Management',
+  '/rbac/permissions':      'Permission Matrix',
+  '/rbac/delegations':      'Delegations',
 };
 
 function navIconBtn(bg, border, color) {
@@ -284,8 +290,6 @@ export default function Navbar({ title, darkMode, onToggleDark }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
 
           {/* Date */}
-
-          {/* Date */}
           <span style={{ fontSize: 12, color: textMuted, fontWeight: 400, padding: '4px 10px' }}>
             {today}
           </span>
@@ -297,6 +301,9 @@ export default function Navbar({ title, darkMode, onToggleDark }) {
             fontSize: 11, fontWeight: 600, padding: '3px 10px',
             borderRadius: 20, letterSpacing: '0.01em',
           }}>2024-25</span>
+
+          {/* ── Role Switch Dropdown ── */}
+          <RoleSwitchDropdown darkMode={darkMode} />
 
           {/* Fullscreen */}
           <button
@@ -321,9 +328,7 @@ export default function Navbar({ title, darkMode, onToggleDark }) {
           {/* ── Notification + Chat + Support bell ── */}
           <NotificationBell darkMode={darkMode} />
 
-          
-
-          {/* ── Attendance bell — PRINCIPAL only (existing, unchanged) ── */}
+          {/* ── Attendance bell — PRINCIPAL only ── */}
           {user?.role === 'PRINCIPAL' && (
             <div style={{ position: 'relative' }}>
               <button
