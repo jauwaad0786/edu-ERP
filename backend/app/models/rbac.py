@@ -395,7 +395,7 @@ class TemporaryRoleDelegation(db.Model):
     # Relationships
     delegator = db.relationship('User', foreign_keys=[delegator_user_id])
     delegatee = db.relationship('User', foreign_keys=[delegatee_user_id])
-    role = db.relationship('Role')
+    role = db.relationship('Role', foreign_keys=[role_id]) 
     
     __table_args__ = (
         db.Index('idx_delegation_delegatee_status', 'delegatee_user_id', 'status'),
