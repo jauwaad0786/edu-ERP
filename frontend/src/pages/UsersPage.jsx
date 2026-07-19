@@ -5,7 +5,52 @@ import Sidebar from '../components/Sidebar';
 import Navbar  from '../components/Navbar';
 import api     from '../api/axios';
 
-const ROLES = ['PRINCIPAL', 'VICE_PRINCIPAL', 'TEACHER', 'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN', 'HOSTEL', 'TRANSPORT', 'HR', 'STUDENT', 'PARENT'];
+// School-side hierarchy — legacy User.role enum values (unchanged flow:
+// role_str goes straight onto the user row, school_id is required).
+const SCHOOL_ROLES = [
+  { value: 'DIRECTOR',             label: 'Director' },
+  { value: 'PRINCIPAL',            label: 'Principal' },
+  { value: 'VICE_PRINCIPAL',       label: 'Vice Principal' },
+  { value: 'ACADEMIC_COORDINATOR', label: 'Academic Coordinator' },
+  { value: 'EXAM_CONTROLLER',      label: 'Exam Controller' },
+  { value: 'TEACHER',              label: 'Teacher' },
+  { value: 'CLASS_TEACHER',        label: 'Class Teacher' },
+  { value: 'ASSISTANT_TEACHER',    label: 'Assistant Teacher' },
+  { value: 'ACCOUNTANT',           label: 'Accountant' },
+  { value: 'RECEPTIONIST',         label: 'Receptionist' },
+  { value: 'LIBRARIAN',            label: 'Librarian' },
+  { value: 'HOSTEL',               label: 'Hostel Warden' },
+  { value: 'TRANSPORT',            label: 'Transport Manager' },
+  { value: 'HR',                   label: 'HR' },
+  { value: 'STUDENT',              label: 'Student' },
+  { value: 'PARENT',               label: 'Parent' },
+];
+
+// Company-side hierarchy — these are NOT legacy enum values. The backend
+// (_resolve_creation_role in admin.py) looks them up as COMPANY-scope
+// platform_roles and links them via UserRoleAssignment instead — so
+// creating one of these must NOT also carry a school_id.
+const COMPANY_ROLES = [
+  { value: 'CEO',                label: 'CEO' },
+  { value: 'SUB_ADMIN',          label: 'Sub Admin' },
+  { value: 'MANAGER',            label: 'Manager' },
+  { value: 'TEAM_LEAD',          label: 'Team Lead' },
+  { value: 'SOFTWARE_ENGINEER',  label: 'Software Engineer' },
+  { value: 'BACKEND_DEVELOPER',  label: 'Backend Developer' },
+  { value: 'FRONTEND_DEVELOPER', label: 'Frontend Developer' },
+  { value: 'QA',                 label: 'QA' },
+  { value: 'CUSTOMER_SUPPORT',   label: 'Customer Support' },
+  { value: 'CALL_CENTER',        label: 'Call Center' },
+  { value: 'SALES',              label: 'Sales' },
+  { value: 'ACCOUNTS',           label: 'Accounts' },
+  { value: 'COMPANY_HR',         label: 'HR (Company)' },
+  { value: 'MARKETING',          label: 'Marketing' },
+  { value: 'INTERN',             label: 'Intern' },
+];
+
+const ROLES = SCHOOL_ROLES.map(r => r.value);
+const ALL_ROLE_OPTIONS = [...SCHOOL_ROLES, ...COMPANY_ROLES];
+const roleLabel = value => ALL_ROLE_OPTIONS.find(r => r.value === value)?.label || value;
 
 export default function UsersPage() {
   const [users,   setUsers]   = useState([]);
