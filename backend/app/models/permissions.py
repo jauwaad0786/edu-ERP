@@ -94,7 +94,7 @@ def resolve_permissions(user):
     so Principal access can never accidentally be revoked via bad data.
     """
     from app.models.user import UserRole
-    if user.role == UserRole.PRINCIPAL:
+    if user.role in (UserRole.PRINCIPAL, UserRole.DIRECTOR, UserRole.VICE_PRINCIPAL):
         return set(PERMISSION_KEYS)
 
     role_defaults = {
@@ -116,7 +116,7 @@ def resolve_permissions(user):
 
 def has_permission(user, permission_key):
     from app.models.user import UserRole
-    if user.role == UserRole.PRINCIPAL:
+    if user.role in (UserRole.PRINCIPAL, UserRole.DIRECTOR, UserRole.VICE_PRINCIPAL):
         return True
     return permission_key in resolve_permissions(user)
 
