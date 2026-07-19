@@ -31,7 +31,8 @@ from app.models.rbac import (
     Permission, 
     UserPermissionOverride, 
     resolve_platform_permissions,
-    TemporaryRoleDelegation
+    TemporaryRoleDelegation,
+    Role,
 )
 from app.services.delegation_service import (
     create_delegation,
@@ -324,3 +325,167 @@ def extend_delegation_route(delegation_id):
         return jsonify({'error': error}), 400
 
     return jsonify({'message': 'Delegation extended successfully'}), 200
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  ROLE CRUD  (RoleManagement.jsx's Role Hierarchy screen)
+# ═══════════════════════════════════════════════════════════════════════════
+# The seeded roles (CEO..Intern, Director..Parent — rbac.seed_default_roles)
+# are the platform defaults and cannot be edited/deleted here (is_protected,
+# or plain "system role" guard below) — this endpoint is for a Super Admin
+# adding a genuinely NEW role the seed list doesn't cover (e.g. a school
+# wants a "Sports Coordinator" role), not for tampering with the hierarchy
+# spec's fixed roles.
+
+def _school_scope_actor_school_id(actor):
+    """A school-scoped actor (Principal/Director/VP) may only create/edit
+    TENANT-scope roles; scope is otherwise unrestricted for company actors."""
+    return getattr(actor, 'school_id', None)
+
+
+@rbac_bp.route('/roles', methods=['GET'])
+@permission_required('admin.user.manage')
+def list_roles():
+    """
+    School-scoped actor -> only TENANT-scope roles (their own product's
+    roles; Role has no school_id, roles are shared per-product templates).
+    Company-scoped actor -> everything, both scopes.
+    """
+    actor = get_current_user()
+    q = Role.query
+    if _school_scope_actor_school_id(actor) is not None:
+        q = q.filter(Role.scope == 'TENANT')
+    roles = q.order_by(Role.scope, Role.hierarchy_level).all()
+    return jsonify([r.to_dict() for r in roles]), 200
+
+
+@rbac_bp.route('/roles', methods=['POST'])
+@permission_required('admin.user.manage')
+def create_role():
+    actor = get_current_user()
+    data = request.get_json() or {}
+
+    key   = (data.get('key') or '').strip().upper().replace(' ', '_')
+    name  = (data.get('name') or '').strip()
+    scope = (data.get('scope') or 'TENANT').strip().upper()
+
+    if not key or not name:
+        return jsonify({'error': 'key and name are required'}), 400
+    if scope not in ('COMPANY', 'TENANT'):
+        return jsonify({'error': "scope must be 'COMPANY' or 'TENANT'"}), 400
+
+    # School-scoped actors can only add roles to their own product's TENANT
+    # catalog — never a COMPANY-scope (internal company hierarchy) role.
+    if _school_scope_actor_school_id(actor) is not None and scope != 'TENANT':
+        return jsonify({'error': 'Only a company-side admin can create COMPANY-scope roles'}), 403
+
+    product_id = None
+    if scope == 'TENANT':
+        from app.models.platform import Product
+        school_product = Product.query.filter_by(key='SCHOOL_ERP').first()
+        product_id = school_product.id if school_product else None
+
+    existing = Role.query.filter_by(scope=scope, product_id=product_id, key=key).first()
+    if existing:
+        return jsonify({'error': f"Role '{key}' already exists in this scope"}), 409
+
+    role = Role(
+        product_id=product_id,
+        scope=scope,
+        key=key,
+        name=name,
+        hierarchy_level=int(data.get('hierarchy_level', 10)),
+        is_super=bool(data.get('is_super', False)),
+        # A newly created custom role is never auto-protected — only the
+        # platform seed defaults (CEO, Director, Principal) get that flag.
+        is_protected=False,
+    )
+    db.session.add(role)
+    db.session.commit()
+
+    log_company_action(
+        actor_user=actor if _school_scope_actor_school_id(actor) is None else None,
+        module='rbac', action='CREATE',
+        new_value=role.to_dict(), remarks=f'Created role {key}',
+    ) if _school_scope_actor_school_id(actor) is None else log_action(
+        module='rbac', submodule='role', action='CREATE', user=actor,
+        new_value=role.to_dict(), remarks=f'Created role {key}',
+    )
+    db.session.commit()
+
+    return jsonify(role.to_dict()), 201
+
+
+@rbac_bp.route('/roles/<int:role_id>', methods=['PUT'])
+@permission_required('admin.user.manage')
+def update_role(role_id):
+    actor = get_current_user()
+    role = Role.query.get(role_id)
+    if not role:
+        return jsonify({'error': 'Role not found'}), 404
+    if role.is_protected:
+        return jsonify({'error': 'This is a protected system role and cannot be edited'}), 403
+    if _school_scope_actor_school_id(actor) is not None and role.scope != 'TENANT':
+        return jsonify({'error': 'Cannot edit a COMPANY-scope role'}), 403
+
+    data = request.get_json() or {}
+    old_value = role.to_dict()
+
+    if 'name' in data and data['name'].strip():
+        role.name = data['name'].strip()
+    if 'hierarchy_level' in data:
+        role.hierarchy_level = int(data['hierarchy_level'])
+    if 'is_super' in data:
+        role.is_super = bool(data['is_super'])
+    # key/scope/is_protected intentionally not editable after creation —
+    # changing key would orphan existing UserRoleAssignment/RolePermission
+    # rows, and is_protected is only ever set by the seed script.
+
+    db.session.commit()
+
+    log_fn_kwargs = dict(module='rbac', action='UPDATE', old_value=old_value,
+                          new_value=role.to_dict(), remarks=f'Updated role {role.key}')
+    if _school_scope_actor_school_id(actor) is None:
+        log_company_action(actor_user=actor, **log_fn_kwargs)
+    else:
+        log_action(submodule='role', user=actor, **log_fn_kwargs)
+    db.session.commit()
+
+    return jsonify(role.to_dict()), 200
+
+
+@rbac_bp.route('/roles/<int:role_id>', methods=['DELETE'])
+@permission_required('admin.user.manage')
+def delete_role(role_id):
+    actor = get_current_user()
+    role = Role.query.get(role_id)
+    if not role:
+        return jsonify({'error': 'Role not found'}), 404
+    if role.is_protected:
+        return jsonify({'error': 'This is a protected system role and cannot be deleted'}), 403
+    if _school_scope_actor_school_id(actor) is not None and role.scope != 'TENANT':
+        return jsonify({'error': 'Cannot delete a COMPANY-scope role'}), 403
+
+    in_use = UserRoleAssignmentCount(role.id)
+    if in_use:
+        return jsonify({
+            'error': f'{in_use} user(s) currently hold this role — reassign them before deleting it'
+        }), 409
+
+    old_value = role.to_dict()
+    db.session.delete(role)
+
+    log_fn_kwargs = dict(module='rbac', action='DELETE', old_value=old_value,
+                          remarks=f'Deleted role {role.key}')
+    if _school_scope_actor_school_id(actor) is None:
+        log_company_action(actor_user=actor, **log_fn_kwargs)
+    else:
+        log_action(submodule='role', user=actor, **log_fn_kwargs)
+
+    db.session.commit()
+    return jsonify({'message': 'Role deleted'}), 200
+
+
+def UserRoleAssignmentCount(role_id):
+    from app.models.rbac import UserRoleAssignment
+    return UserRoleAssignment.query.filter_by(role_id=role_id).count()
