@@ -6,14 +6,22 @@ import api from '../api/axios';
 import toast from 'react-hot-toast';
 
 const STAFF_ROLES = [
-  { value: 'LIBRARIAN',      label: 'Librarian' },
-  { value: 'ACCOUNTANT',     label: 'Accountant' },
-  { value: 'RECEPTIONIST',   label: 'Receptionist' },
-  { value: 'HOSTEL',         label: 'Hostel Staff' },
-  { value: 'TRANSPORT',      label: 'Transport Staff' },
-  { value: 'HR',             label: 'HR' },
-  { value: 'VICE_PRINCIPAL', label: 'Vice Principal' },
+  { value: 'VICE_PRINCIPAL',       label: 'Vice Principal' },
+  { value: 'ACADEMIC_COORDINATOR', label: 'Academic Coordinator' },
+  { value: 'EXAM_CONTROLLER',      label: 'Exam Controller' },
+  { value: 'LIBRARIAN',            label: 'Librarian' },
+  { value: 'ACCOUNTANT',           label: 'Accountant' },
+  { value: 'RECEPTIONIST',         label: 'Receptionist' },
+  { value: 'HOSTEL',               label: 'Hostel Warden' },
+  { value: 'TRANSPORT',            label: 'Transport Manager' },
+  { value: 'HR',                   label: 'HR' },
 ];
+
+// Roles whose dashboard access is equivalent to Principal — shown with a
+// distinct badge so it's obvious in the list who else has broad access.
+// (Vice Principal can manage everyone below Principal/Director but not
+// delete a Principal/Director — enforced server-side, not just here.)
+const ELEVATED_ROLES = new Set(['VICE_PRINCIPAL']);
 
 export default function StaffPage() {
   const navigate = useNavigate();
@@ -30,6 +38,8 @@ export default function StaffPage() {
   const [resetPw,       setResetPw]      = useState('');
   const [resetting,     setResetting]    = useState(false);
   const [toggling,      setToggling]     = useState(null);
+  const [deleteTarget,  setDeleteTarget] = useState(null); // user obj pending delete confirm
+  const [deleting,      setDeleting]     = useState(false);
 
   const load = () => {
     api.get('/principal/users', { params: { per_page: 200 } })
@@ -75,6 +85,22 @@ export default function StaffPage() {
       toast.error('Action failed');
     }
     setToggling(null);
+  };
+
+  const deleteStaff = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/principal/users/${deleteTarget.id}`);
+      toast.success(`${deleteTarget.name} removed`);
+      setDeleteTarget(null);
+      load();
+    } catch (err) {
+      // Backend enforces hierarchy (e.g. a Vice Principal can't delete a
+      // Principal/Director) — surface that reason instead of a generic error.
+      toast.error(err.response?.data?.error || 'Could not delete this staff member');
+    }
+    setDeleting(false);
   };
 
   const submitReset = async e => {
@@ -175,7 +201,9 @@ export default function StaffPage() {
                         </div>
                       </td>
                       <td>
-                        <span className="badge badge-info">
+                        <span className={`badge ${ELEVATED_ROLES.has(u.role) ? 'badge-warning' : 'badge-info'}`}
+                          title={ELEVATED_ROLES.has(u.role) ? 'Has the same dashboard access as Principal' : ''}>
+                          {ELEVATED_ROLES.has(u.role) ? '⭐ ' : ''}
                           {STAFF_ROLES.find(r => r.value === u.role)?.label || u.role}
                         </span>
                       </td>
@@ -201,6 +229,15 @@ export default function StaffPage() {
                             disabled={toggling === u.id}
                             onClick={() => toggleStaff(u)}>
                             {toggling === u.id ? '...' : (u.is_active ? 'Deactivate' : 'Activate')}
+                          </button>
+                          <button className="btn btn-sm" style={{
+                            background: '#fef1ee', color: 'var(--error)',
+                            border: 'none', cursor: 'pointer', borderRadius: 4,
+                            padding: '4px 10px', fontSize: 11, fontWeight: 700,
+                          }}
+                            title="Permanently remove this staff member"
+                            onClick={() => setDeleteTarget(u)}>
+                            🗑️ Delete
                           </button>
                         </div>
                       </td>
@@ -330,6 +367,38 @@ export default function StaffPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete Confirm Modal ── */}
+      {deleteTarget && (
+        <div className="modal-backdrop"
+          onClick={e => e.target === e.currentTarget && !deleting && setDeleteTarget(null)}>
+          <div className="modal" style={{ maxWidth: 380 }}>
+            <div className="modal-header">
+              <h3>🗑️ Remove Staff Member</h3>
+              <button className="modal-close" onClick={() => setDeleteTarget(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: 14, marginBottom: 8 }}>
+                Are you sure you want to permanently remove <strong>{deleteTarget.name}</strong>
+                {' '}({STAFF_ROLES.find(r => r.value === deleteTarget.role)?.label || deleteTarget.role})?
+              </p>
+              <p style={{ fontSize: 12, color: 'var(--neutral-6)' }}>
+                This cannot be undone. If you don't have sufficient hierarchy to remove this person
+                (e.g. trying to delete a Principal/Director), the server will block it.
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-neutral"
+                onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancel</button>
+              <button type="button" className="btn"
+                style={{ background: 'var(--error)', color: '#fff', border: 'none' }}
+                disabled={deleting} onClick={deleteStaff}>
+                {deleting ? 'Removing...' : '🗑️ Yes, Remove'}
+              </button>
+            </div>
           </div>
         </div>
       )}
