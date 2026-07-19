@@ -112,7 +112,10 @@ class CompanyActivityLog(db.Model):
 
     id                  = db.Column(db.Integer, primary_key=True)
 
-    actor_user_id       = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    # Nullable — a system-initiated action (e.g. delegation auto-expiry,
+    # see delegation_service.py) has no human actor, but must still be
+    # logged for auditability.
+    actor_user_id       = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
     role_snapshot        = db.Column(db.String(50), nullable=True)
 
     module              = db.Column(db.String(50), nullable=False, index=True)
@@ -259,8 +262,10 @@ def log_company_action(actor_user, module='', action='UPDATE', old_value=None, n
     import json
     meta = request_meta or {}
     row = CompanyActivityLog(
-        actor_user_id=actor_user.id,
-        role_snapshot=actor_user.role.value if getattr(actor_user, 'role', None) else None,
+        # actor_user is None for system-initiated actions (e.g. scheduler-driven
+        # delegation auto-expiry) — see TemporaryRoleDelegation.expire_delegation().
+        actor_user_id=actor_user.id if actor_user else None,
+        role_snapshot=actor_user.role.value if actor_user and getattr(actor_user, 'role', None) else 'SYSTEM',
         module=module, action=action,
         old_value=json.dumps(old_value) if old_value is not None else None,
         new_value=json.dumps(new_value) if new_value is not None else None,
