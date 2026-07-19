@@ -3700,6 +3700,8 @@ def _gen_username_p(name: str, role: str) -> str:
         'VICE_PRINCIPAL': 'vp', 'TEACHER': 'tchr', 'ACCOUNTANT': 'acct',
         'RECEPTIONIST': 'rcpt', 'LIBRARIAN': 'lib', 'HOSTEL': 'hstl',
         'TRANSPORT': 'trns', 'HR': 'hr', 'STUDENT': 'stu', 'PARENT': 'prnt',
+        'ACADEMIC_COORDINATOR': 'acoord', 'CLASS_TEACHER': 'ctchr',
+        'ASSISTANT_TEACHER': 'atchr', 'EXAM_CONTROLLER': 'exam',
     }.get(role, 'usr')
 
     from app.models.user import User
@@ -3731,7 +3733,7 @@ def _actor_can_manage_target(actor, target):
     target_roles = get_user_roles(target)
     actor_roles = get_user_roles(actor)
     if not target_roles or not actor_roles:
-        return target.role not in (UserRole.SUPER_ADMIN, UserRole.PRINCIPAL)
+        return target.role not in (UserRole.SUPER_ADMIN, UserRole.PRINCIPAL, UserRole.DIRECTOR)
     return can_manage_role(actor_roles, target_roles)
 # ── List users of own school ───────────────────────────────────────────────────
 @principal_bp.route('/users', methods=['GET'])
