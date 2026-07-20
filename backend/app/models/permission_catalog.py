@@ -73,11 +73,12 @@ PERMISSION_CATALOG = [
     {'key': 'communication.announcement.post', 'label': 'Post Announcements',       'module': 'communication'},
     {'key': 'communication.ticket.manage',     'label': 'Manage Support Tickets',   'module': 'communication'},
 
-    # ── Admin (school-level settings, not company-level) ──
-    {'key': 'admin.school.settings',    'label': 'Edit School Settings',            'module': 'admin'},
-    {'key': 'admin.user.manage',        'label': 'Create/Edit/Deactivate Staff Users', 'module': 'admin'},
-    {'key': 'admin.whatsapp.settings',  'label': 'Manage WhatsApp Integration',     'module': 'admin'},
-]
+    # ── Audit ── (moved up, keys were used by decorators but never declared)
+    {'key': 'audit.logs.view',   'label': 'View Audit Logs',      'module': 'audit'},
+    {'key': 'audit.logs.delete', 'label': 'Purge Old Audit Logs', 'module': 'audit'},
+ ]
+
+Kya fix hua, exactly:
 
 PERMISSION_KEYS = {p['key'] for p in PERMISSION_CATALOG}
 
