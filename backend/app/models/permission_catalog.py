@@ -76,6 +76,14 @@ PERMISSION_CATALOG = [
     # ── Audit ── (moved up, keys were used by decorators but never declared)
     {'key': 'audit.logs.view',   'label': 'View Audit Logs',      'module': 'audit'},
     {'key': 'audit.logs.delete', 'label': 'Purge Old Audit Logs', 'module': 'audit'},
+
+    # ── Admin ── (used by every @permission_required('admin.user.manage')
+    # decorator in routes/rbac.py -- Role CRUD, Permission Matrix, Delegations
+    # -- but never declared here, so no Permission row existed for it and
+    # EVERY rbac.py route fail-closed for EVERY role, including SUPER_ADMIN.)
+    {'key': 'admin.user.manage',       'label': 'Manage Roles, Permissions & Delegations', 'module': 'admin'},
+    {'key': 'admin.school.settings',   'label': 'Manage School Settings',                  'module': 'admin'},
+    {'key': 'admin.whatsapp.settings', 'label': 'Manage WhatsApp Integration Settings',     'module': 'admin'},
  ]
 
 PERMISSION_KEYS = {p['key'] for p in PERMISSION_CATALOG}
