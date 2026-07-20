@@ -78,8 +78,6 @@ PERMISSION_CATALOG = [
     {'key': 'audit.logs.delete', 'label': 'Purge Old Audit Logs', 'module': 'audit'},
  ]
 
-Kya fix hua, exactly:
-
 PERMISSION_KEYS = {p['key'] for p in PERMISSION_CATALOG}
 
 
