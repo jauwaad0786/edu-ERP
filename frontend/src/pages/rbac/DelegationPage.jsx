@@ -271,11 +271,13 @@ export default function DelegationPage() {
                     required
                   >
                     <option value="">Select user...</option>
-                    {users.map(u => (
-                      <option key={u.id} value={u.id}>
-                        {u.name} ({u.email}) — {u.role}
-                      </option>
-                    ))}
+                    {users
+                      .filter(u => u.role !== 'STUDENT')
+                      .map(u => (
+                        <option key={u.id} value={u.id}>
+                          {u.name} ({u.email}) — {u.role}
+                        </option>
+                      ))}
                   </select>
                 </div>
 
