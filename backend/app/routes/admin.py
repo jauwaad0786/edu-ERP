@@ -335,12 +335,17 @@ def list_users():
     """
     GET /api/admin/users
     Query params:
-      school_id   filter by school
+      school_id   filter by school (explicit only — see default-scope note)
       role        filter by role
       status      active | inactive
       search      searches name, email, username, phone
       page        default 1
       per_page    default 50 (max 200)
+
+    Default scope: company-side users ONLY (school_id IS NULL). This is the
+    Super Admin / developer panel — it must never show a school's students,
+    teachers, or parents by default. Pass an explicit school_id if you need
+    to look up a specific school's users (e.g. for support/debugging).
     """
     q          = User.query
     school_id  = request.args.get('school_id')
@@ -352,6 +357,8 @@ def list_users():
 
     if school_id:
         q = q.filter(User.school_id == int(school_id))
+    else:
+        q = q.filter(User.school_id.is_(None))
     if role_f:
         try:
             q = q.filter(User.role == UserRole(role_f))
@@ -377,12 +384,25 @@ def list_users():
                .offset((page - 1) * per_page).limit(per_page).all()
 
     return jsonify({
-        'users':    [u.to_dict_with_credentials() for u in users],
+        'users':    [_serialize_user_with_platform_role(u) for u in users],
         'total':    total,
         'page':     page,
         'per_page': per_page,
         'pages':    (total + per_page - 1) // per_page,
     }), 200
+
+
+def _serialize_user_with_platform_role(user):
+    """
+    to_dict_with_credentials() only exposes the legacy `role` enum, which is
+    always 'SUPER_ADMIN' for every company employee (CEO, Sales, Intern,
+    Developer, ...) — the real distinction lives in platform_roles via
+    UserRoleAssignment. Attach it so the panel can tell company employees
+    apart instead of badging all of them "SUPER_ADMIN".
+    """
+    d = user.to_dict_with_credentials()
+    d['platform_roles'] = [{'key': r.key, 'name': r.name} for r in get_user_roles(user)]
+    return d
 
 
 # NEW
