@@ -1,9 +1,14 @@
 // frontend/src/pages/rbac/RoleManagement.jsx
 import React, { useState, useEffect } from 'react';
+import Sidebar from '../../components/Sidebar';
+import Navbar  from '../../components/Navbar';
 import api from '../../api/axios';
 import { usePermission } from '../../hooks/usePermission';
 
-export default function RoleManagement({ darkMode }) {
+export default function RoleManagement() {
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
+  useEffect(() => { localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
+
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -100,10 +105,26 @@ export default function RoleManagement({ darkMode }) {
     return labels[level] || `Level ${level}`;
   };
 
-  if (loading) return <div className="loading-spinner">Loading roles...</div>;
+  if (loading) {
+    return (
+      <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
+        <Sidebar darkMode={darkMode} />
+        <div className="main-content">
+          <Navbar title="Role Management" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
+          <div className="page-body">
+            <div className="loading-spinner">Loading roles...</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="page-container">
+    <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
+      <Sidebar darkMode={darkMode} />
+      <div className="main-content">
+        <Navbar title="Role Management" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
+        <div className="page-body">
       <div className="page-header">
         <div>
           <h2 className="page-title">Role Management</h2>
@@ -296,6 +317,8 @@ export default function RoleManagement({ darkMode }) {
           </div>
         </div>
       )}
+        </div>
+      </div>
     </div>
   );
 }
