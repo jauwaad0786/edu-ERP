@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { resolveMenuRole } from '../utils/roleEquivalence';
 
 const ROLE_MENUS = {
   SUPER_ADMIN: [
@@ -317,7 +318,7 @@ const ROLE_MENUS = {
 };
 
 const ROLE_LABELS = {
-  SUPER_ADMIN: 'Super Admin', PRINCIPAL: 'Principal', VICE_PRINCIPAL: 'Vice Principal',
+  SUPER_ADMIN: 'Super Admin', PRINCIPAL: 'Principal', DIRECTOR: 'Director', VICE_PRINCIPAL: 'Vice Principal',
   TEACHER: 'Teacher', ACCOUNTANT: 'Accountant', RECEPTIONIST: 'Receptionist',
   LIBRARIAN: 'Librarian', HOSTEL: 'Warden', STUDENT: 'Student', PARENT: 'Parent',
 };
@@ -350,7 +351,7 @@ const NAV = {
 export default function Sidebar({ darkMode }) {
   const { user }   = useAuth();
   const location   = useLocation();
-  const groups     = ROLE_MENUS[user?.role] || [];
+  const groups     = ROLE_MENUS[resolveMenuRole(user?.role, ROLE_MENUS)] || [];
   const [search,   setSearch]   = useState('');
   const [expanded, setExpanded] = useState({});
 
