@@ -1,9 +1,14 @@
 // frontend/src/pages/rbac/DelegationPage.jsx
 import React, { useState, useEffect } from 'react';
+import Sidebar from '../../components/Sidebar';
+import Navbar  from '../../components/Navbar';
 import api from '../../api/axios';
 import { usePermission } from '../../hooks/usePermission';
 
-export default function DelegationPage({ darkMode }) {
+export default function DelegationPage() {
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
+  useEffect(() => { localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
+
   const [delegations, setDelegations] = useState([]);
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
@@ -96,10 +101,26 @@ export default function DelegationPage({ darkMode }) {
     return colors[status] || '#64748b';
   };
 
-  if (loading) return <div className="loading-spinner">Loading delegations...</div>;
+  if (loading) {
+    return (
+      <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
+        <Sidebar darkMode={darkMode} />
+        <div className="main-content">
+          <Navbar title="Role Delegation" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
+          <div className="page-body">
+            <div className="loading-spinner">Loading delegations...</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="page-container">
+    <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
+      <Sidebar darkMode={darkMode} />
+      <div className="main-content">
+        <Navbar title="Role Delegation" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
+        <div className="page-body">
       <div className="page-header">
         <div>
           <h2 className="page-title">Temporary Role Delegation</h2>
@@ -303,6 +324,8 @@ export default function DelegationPage({ darkMode }) {
           </div>
         </div>
       )}
+        </div>
+      </div>
     </div>
   );
 }
