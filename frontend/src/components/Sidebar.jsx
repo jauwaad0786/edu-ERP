@@ -28,6 +28,7 @@ const ROLE_MENUS = {
             { icon: 'ti-switch-horizontal', label: 'Delegations', path: '/rbac/delegations' },
           ],
         },
+        { icon: 'ti-history', label: 'Audit Logs', path: '/audit/company/logs' },
       ],
     },
     {
@@ -155,6 +156,7 @@ const ROLE_MENUS = {
         { icon: 'ti-users', label: 'Roles & Hierarchy',  path: '/rbac/roles' },
         { icon: 'ti-grid',  label: 'Permission Matrix',  path: '/rbac/permissions' },
         { icon: 'ti-switch-horizontal', label: 'Delegations', path: '/rbac/delegations' },
+        { icon: 'ti-history', label: 'Audit Logs', path: '/audit/school/logs' },
       ],
     },
   ],
