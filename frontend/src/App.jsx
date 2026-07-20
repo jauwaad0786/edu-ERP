@@ -74,6 +74,10 @@ import RoleManagement     from './pages/rbac/RoleManagement';
 import PermissionMatrix   from './pages/rbac/PermissionMatrix';
 import DelegationPage     from './pages/rbac/DelegationPage';
 
+// ── Audit Logs ──────────────────────────────────────────────────────────────
+import SchoolAuditLogs    from './pages/audit/SchoolAuditLogs';
+import CompanyAuditLogs   from './pages/audit/CompanyAuditLogs';
+
 export default function App() {
   return (
     <AuthProvider>
@@ -388,6 +392,24 @@ export default function App() {
             <Route path="/rbac/delegations" element={
               <ProtectedRoute roles={['SUPER_ADMIN', 'PRINCIPAL']}>
                 <DelegationPage />
+              </ProtectedRoute>
+            } />
+
+            {/* ── Audit Logs ── */}
+            {/* VICE_PRINCIPAL included here on purpose: it's the one role that
+                permission_catalog.py's DEFAULT_SCHOOL_ROLE_PERMISSIONS actually
+                grants 'audit.logs.view' to by default (see permission_catalog.py
+                fix) -- without it in this roles list, that grant would be
+                unreachable since ProtectedRoute gates by role before the page's
+                own permission check ever runs. */}
+            <Route path="/audit/school/logs" element={
+              <ProtectedRoute roles={['SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL']}>
+                <SchoolAuditLogs />
+              </ProtectedRoute>
+            } />
+            <Route path="/audit/company/logs" element={
+              <ProtectedRoute roles={['SUPER_ADMIN']}>
+                <CompanyAuditLogs />
               </ProtectedRoute>
             } />
 
