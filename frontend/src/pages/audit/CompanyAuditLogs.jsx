@@ -1,8 +1,13 @@
 // frontend/src/pages/audit/CompanyAuditLogs.jsx
 import React, { useState, useEffect } from 'react';
+import Sidebar from '../../components/Sidebar';
+import Navbar  from '../../components/Navbar';
 import api from '../../api/axios';
 
-export default function CompanyAuditLogs({ darkMode }) {
+export default function CompanyAuditLogs() {
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
+  useEffect(() => { localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
+
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -75,7 +80,11 @@ export default function CompanyAuditLogs({ darkMode }) {
   const totalPages = Math.ceil(total / perPage);
 
   return (
-    <div className="page-container">
+    <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
+      <Sidebar darkMode={darkMode} />
+      <div className="main-content">
+        <Navbar title="Company Audit Logs" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
+        <div className="page-body">
       <div className="page-header">
         <div>
           <h2 className="page-title">Company Audit Logs</h2>
@@ -219,6 +228,8 @@ export default function CompanyAuditLogs({ darkMode }) {
             </div>
           </div>
         )}
+      </div>
+        </div>
       </div>
     </div>
   );
