@@ -1,9 +1,14 @@
 // frontend/src/pages/rbac/PermissionMatrix.jsx
 import React, { useState, useEffect } from 'react';
+import Sidebar from '../../components/Sidebar';
+import Navbar  from '../../components/Navbar';
 import api from '../../api/axios';
 import { usePermission } from '../../hooks/usePermission';
 
-export default function PermissionMatrix({ darkMode }) {
+export default function PermissionMatrix() {
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
+  useEffect(() => { localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
+
   const [roles, setRoles] = useState([]);
   const [permissions, setPermissions] = useState([]);
   const [rolePermissions, setRolePermissions] = useState({});
@@ -69,10 +74,26 @@ export default function PermissionMatrix({ darkMode }) {
     return '#64748b';
   };
 
-  if (loading) return <div className="loading-spinner">Loading permission matrix...</div>;
+  if (loading) {
+    return (
+      <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
+        <Sidebar darkMode={darkMode} />
+        <div className="main-content">
+          <Navbar title="Permission Matrix" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
+          <div className="page-body">
+            <div className="loading-spinner">Loading permission matrix...</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="page-container">
+    <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
+      <Sidebar darkMode={darkMode} />
+      <div className="main-content">
+        <Navbar title="Permission Matrix" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
+        <div className="page-body">
       <div className="page-header">
         <div>
           <h2 className="page-title">Permission Matrix</h2>
@@ -208,6 +229,8 @@ export default function PermissionMatrix({ darkMode }) {
           <span>
             ★ = Super role (all permissions) · ✓ = Enabled · − = Disabled
           </span>
+        </div>
+      </div>
         </div>
       </div>
     </div>
