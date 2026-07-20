@@ -20,7 +20,7 @@ implicitly fall out of the permission check. Company-side actors
 """
 
 from flask import Blueprint, request, jsonify
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app import db
 from app.services.permission_resolver import permission_required
@@ -220,6 +220,8 @@ def create_delegation_route():
 
     try:
         end_date = datetime.fromisoformat(end_date_str.replace('Z', '+00:00'))
+        if end_date.tzinfo is not None:
+            end_date = end_date.astimezone(timezone.utc).replace(tzinfo=None)
     except ValueError:
         return jsonify({'error': 'Invalid end_date format. Use ISO-8601 (e.g., 2026-08-01T23:59:59)'}), 400
 
@@ -319,6 +321,8 @@ def extend_delegation_route(delegation_id):
 
     try:
         new_end_date = datetime.fromisoformat(new_end_date_str.replace('Z', '+00:00'))
+        if new_end_date.tzinfo is not None:
+            new_end_date = new_end_date.astimezone(timezone.utc).replace(tzinfo=None)
     except ValueError:
         return jsonify({'error': 'Invalid end_date format. Use ISO-8601'}), 400
 
