@@ -31,7 +31,18 @@ def _expand(role_key):
 
 def role_required(*roles):
     """Decorator: restrict endpoint to given roles (dashboard-equivalent
-    roles from ROLE_EQUIVALENCE are always included automatically)."""
+    roles from ROLE_EQUIVALENCE are always included automatically).
+
+    Checks user.role (legacy single-role field) FIRST -- the fast, common
+    path, no extra query. Falls back to the full set of roles the user
+    currently HOLDS via the new engine (app.models.rbac.get_user_roles),
+    which is what makes Temporary Role Delegation (spec section 3) actually
+    work for modules that haven't migrated to permission_required(...) yet
+    -- Hostel, Library, Marks, most of principal.py. Without this fallback,
+    delegating e.g. 'HOSTEL' to a Teacher created a UserRoleAssignment row
+    that every @role_required('HOSTEL') route silently ignored, because it
+    only ever checked the one legacy user.role value.
+    """
     allowed_keys = set()
     for r in roles:
         allowed_keys |= _expand(r)
@@ -49,10 +60,18 @@ def role_required(*roles):
                 try:
                     allowed_enum.add(UserRole(k))
                 except ValueError:
-                    pass   # role key not in legacy enum yet — skip, don't crash the whole check
-            if user.role not in allowed_enum:
-                return jsonify({'error': f'Role {user.role} not authorized'}), 403
-            return fn(*args, **kwargs)
+                    pass
+            if user.role in allowed_enum:
+                return fn(*args, **kwargs)
+
+            # Fallback: any role held via the new engine -- permanent
+            # multi-role assignment OR an active temporary delegation.
+            from app.models.rbac import get_user_roles
+            held_keys = {r.key for r in get_user_roles(user)}
+            if held_keys & allowed_keys:
+                return fn(*args, **kwargs)
+
+            return jsonify({'error': f'Role {user.role} not authorized'}), 403
         return wrapper
     return decorator
 
