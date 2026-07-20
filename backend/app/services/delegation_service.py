@@ -23,7 +23,7 @@ from app.models.rbac import (
     Role, UserRoleAssignment, TemporaryRoleDelegation,
     get_user_roles, can_manage_role
 )
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.services.audit_service import log_action
 from app.models.audit import log_company_action
 
@@ -54,9 +54,16 @@ def create_delegation(delegator, delegatee_user_id, role_key, end_date, reason=N
         - Delegatee doesn't already have this role permanently or temporarily
     """
     # 1. Validate delegatee
+    # 1. Validate delegatee
     delegatee = User.query.get(delegatee_user_id)
     if not delegatee:
         return None, "Delegatee user not found"
+
+    # 1b. Students can never receive a delegated role. Delegation exists to
+    # cover a staff member's duties temporarily (e.g. teacher standing in
+    # for the accountant) -- it is never meant to hand access to a student.
+    if delegatee.role == UserRole.STUDENT:
+        return None, "Cannot delegate a role to a student"
 
     # 2. Validate role
     role = Role.query.filter_by(key=role_key).first()
