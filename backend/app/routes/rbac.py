@@ -33,6 +33,7 @@ from app.models.rbac import (
     resolve_platform_permissions,
     TemporaryRoleDelegation,
     Role,
+    RolePermission,
 )
 from app.services.delegation_service import (
     create_delegation,
@@ -489,3 +490,121 @@ def delete_role(role_id):
 def UserRoleAssignmentCount(role_id):
     from app.models.rbac import UserRoleAssignment
     return UserRoleAssignment.query.filter_by(role_id=role_id).count()
+
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  PERMISSION MATRIX — frontend/src/pages/rbac/PermissionMatrix.jsx
+# ═══════════════════════════════════════════════════════════════════════════
+# These 3 endpoints were called by the frontend from day one but never
+# existed here (the module docstring even flagged this as "separate future
+# work") -- the matrix page was 404-ing on load. Adding them now.
+
+@rbac_bp.route('/permissions', methods=['GET'])
+@permission_required('admin.user.manage')
+def list_permissions():
+    """
+    Full permission catalog for the matrix's column headers.
+    School-scoped actor -> only their own product's (SCHOOL_ERP) catalog.
+    Company-scoped actor -> everything, same as list_roles().
+    """
+    actor = get_current_user()
+    q = Permission.query
+    if _school_scope_actor_school_id(actor) is not None:
+        from app.models.platform import Product
+        school_product = Product.query.filter_by(key='SCHOOL_ERP').first()
+        if school_product:
+            q = q.filter(Permission.product_id == school_product.id)
+    permissions = q.order_by(Permission.module, Permission.key).all()
+    return jsonify([p.to_dict() for p in permissions]), 200
+
+
+@rbac_bp.route('/role-permissions', methods=['GET'])
+@permission_required('admin.user.manage')
+def get_role_permissions():
+    """
+    Matrix payload: { role_id: { permission_id: is_enabled } }.
+
+    Same precedence as resolve_platform_permissions() -- global (school_id
+    NULL) template first, then the actor's own school-specific override
+    rows layered on top -- so what a Principal sees here matches what's
+    actually enforced for their school. Company-scoped actor sees only the
+    global template (there's no single "their school" to merge).
+    """
+    actor = get_current_user()
+    actor_school_id = _school_scope_actor_school_id(actor)
+
+    matrix = {}
+    for row in RolePermission.query.filter(RolePermission.school_id.is_(None)).all():
+        matrix.setdefault(row.role_id, {})[row.permission_id] = row.is_enabled
+
+    if actor_school_id is not None:
+        for row in RolePermission.query.filter_by(school_id=actor_school_id).all():
+            matrix.setdefault(row.role_id, {})[row.permission_id] = row.is_enabled
+
+    return jsonify(matrix), 200
+
+
+@rbac_bp.route('/roles/<int:role_id>/permissions/<int:permission_id>', methods=['POST'])
+@permission_required('admin.user.manage')
+def toggle_role_permission(role_id, permission_id):
+    """
+    Grant/revoke one permission for one role.
+
+    IMPORTANT (multi-tenant safety): a school-scoped actor's toggle is
+    written to a row scoped to THEIR OWN school_id only -- it never touches
+    the global (school_id=NULL) template. Writing to the global row here
+    would mean one Principal customizing their school's matrix silently
+    changes the default for every other school on the platform. Only a
+    company-scoped actor (no school_id) edits the global template.
+    """
+    actor = get_current_user()
+    role = Role.query.get(role_id)
+    if not role:
+        return jsonify({'error': 'Role not found'}), 404
+    permission = Permission.query.get(permission_id)
+    if not permission:
+        return jsonify({'error': 'Permission not found'}), 404
+    if role.is_super:
+        return jsonify({'error': 'Super roles already have every permission — nothing to toggle'}), 400
+
+    actor_school_id = _school_scope_actor_school_id(actor)
+    if actor_school_id is not None and role.scope != 'TENANT':
+        return jsonify({'error': 'Cannot edit permissions for a COMPANY-scope role'}), 403
+
+    data = request.get_json() or {}
+    is_enabled = bool(data.get('is_enabled', True))
+
+    row = RolePermission.query.filter_by(
+        role_id=role_id, permission_id=permission_id, school_id=actor_school_id,
+    ).first()
+    old_value = {'is_enabled': row.is_enabled} if row else None
+
+    if row:
+        row.is_enabled = is_enabled
+    else:
+        row = RolePermission(
+            role_id=role_id, permission_id=permission_id,
+            school_id=actor_school_id, is_enabled=is_enabled,
+        )
+        db.session.add(row)
+
+    db.session.commit()
+
+    log_fn_kwargs = dict(
+        module='rbac', action='PERMISSION_CHANGE',
+        old_value=old_value, new_value={'is_enabled': is_enabled},
+        remarks=f'{"Granted" if is_enabled else "Revoked"} {permission.key} for role {role.key}',
+    )
+    if actor_school_id is None:
+        log_company_action(actor_user=actor, **log_fn_kwargs)
+    else:
+        log_action(submodule='role_permission', user=actor, **log_fn_kwargs)
+    db.session.commit()
+
+    return jsonify({
+        'role_id': row.role_id,
+        'permission_id': row.permission_id,
+        'school_id': row.school_id,
+        'is_enabled': row.is_enabled,
+    }), 200
