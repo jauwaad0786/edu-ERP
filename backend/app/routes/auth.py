@@ -10,9 +10,18 @@ from sqlalchemy import func as sqlfunc
 from app import db
 from app.models.user import User, UserRole
 from app.models.academic import Student
+from app.models.rbac import resolve_platform_permissions, get_user_roles
 import re
 
 auth_bp = Blueprint('auth', __name__)
+
+
+def _serialize_user(user):
+    data = user.to_dict()
+    roles = get_user_roles(user)
+    data['is_super']    = any(r.is_super for r in roles)
+    data['permissions'] = sorted(resolve_platform_permissions(user, school_id=user.school_id))
+    return data
 
 
 def _normalise(s):
@@ -63,7 +72,8 @@ def login():
     return jsonify({
         'access_token':  access_token,
         'refresh_token': refresh_token,
-        'user':          user.to_dict(),
+        
+        'user':          _serialize_user(user),
     }), 200
 
 
@@ -170,7 +180,7 @@ def me():
     user    = User.query.get(user_id)
     if not user:
         return jsonify({'error': 'User not found'}), 404
-    return jsonify(user.to_dict()), 200
+    return jsonify(_serialize_user(user)), 200
 
 
 # ── Refresh ───────────────────────────────────────────────────────────────────
