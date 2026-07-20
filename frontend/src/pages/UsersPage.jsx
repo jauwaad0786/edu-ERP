@@ -71,10 +71,17 @@ export default function UsersPage() {
   const [createdCreds, setCreatedCreds] = useState(null);
   const [copied,       setCopied]       = useState(false);
 
+  // Default (no school selected) now returns company-side employees ONLY —
+  // backend scopes /admin/users to school_id IS NULL unless school_id is
+  // explicitly passed. Picking a school in the filter below re-fetches
+  // that school's users specifically.
   const load = () => {
     setLoading(true);
+    const params = filterSchool
+      ? { per_page: 200, school_id: filterSchool }
+      : { per_page: 200 };
     Promise.all([
-      api.get('/admin/users?per_page=200'),
+      api.get('/admin/users', { params }),
       api.get('/admin/schools'),
     ]).then(([u, s]) => {
       setUsers(u.data.users || []);
@@ -82,7 +89,7 @@ export default function UsersPage() {
     }).catch(() => {})
       .finally(() => setLoading(false));
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [filterSchool]);
 
   const toggleUser = async id => {
     await api.put(`/admin/users/${id}/toggle`);
@@ -320,7 +327,11 @@ export default function UsersPage() {
                           ) : <span style={{ color: '#94a3b8', fontSize: 12 }}>changed</span>}
                         </td>
                         <td>
-                          <span className={`badge ${roleBadge(u.role)}`}>{u.role}</span>
+                          <span className={`badge ${roleBadge(u.role)}`}>
+                            {u.platform_roles?.length
+                              ? u.platform_roles.map(r => r.name).join(', ')
+                              : u.role}
+                          </span>
                         </td>
                         <td style={{ color: 'var(--neutral-6)', fontSize: 12 }}>
                           {schools.find(s => s.id === u.school_id)?.name || '—'}
