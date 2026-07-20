@@ -34,6 +34,8 @@ from app.models.rbac import (
     TemporaryRoleDelegation,
     Role,
     RolePermission,
+    UserRoleAssignment,
+    get_user_roles,
 )
 from app.services.delegation_service import (
     create_delegation,
@@ -607,4 +609,92 @@ def toggle_role_permission(role_id, permission_id):
         'permission_id': row.permission_id,
         'school_id': row.school_id,
         'is_enabled': row.is_enabled,
+    }), 200
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  ROLE SWITCH  (spec section 5 — dropdown to switch active role, no logout)
+# ═══════════════════════════════════════════════════════════════════════════
+# Not gated by permission_required('admin.user.manage') like the routes
+# above -- a user must always be able to see and switch between their OWN
+# held roles regardless of what they're otherwise permitted to manage.
+# This is what RoleSwitchDropdown.jsx calls; neither endpoint existed
+# before, which is why that component's fetch always failed silently.
+
+@rbac_bp.route('/user-roles', methods=['GET'])
+def list_my_roles():
+    """GET /api/rbac/user-roles -- every role assignment the CALLER holds."""
+    from flask_jwt_extended import verify_jwt_in_request
+    verify_jwt_in_request()
+    actor = get_current_user()
+    if not actor:
+        return jsonify({'error': 'Authentication required'}), 401
+
+    assignments = UserRoleAssignment.query.filter_by(user_id=actor.id).all()
+    roles_by_id = {
+        r.id: r for r in Role.query.filter(
+            Role.id.in_([a.role_id for a in assignments])
+        ).all()
+    }
+
+    return jsonify([
+        {
+            'id':        a.role_id,
+            'key':       roles_by_id[a.role_id].key,
+            'name':      roles_by_id[a.role_id].name,
+            'is_active': a.is_active,
+        }
+        for a in assignments if a.role_id in roles_by_id
+    ]), 200
+
+
+@rbac_bp.route('/switch-role', methods=['POST'])
+def switch_active_role():
+    """
+    POST /api/rbac/switch-role  { role_id }
+    Only changes which of the caller's OWN already-held roles is "active"
+    (dashboard context) -- does not grant a new role and never touches
+    another user. Permission resolution (resolve_platform_permissions)
+    already unions every held role regardless of is_active, so this can
+    only change which dashboard renders, never widen or shrink access.
+    """
+    from flask_jwt_extended import verify_jwt_in_request
+    verify_jwt_in_request()
+    actor = get_current_user()
+    if not actor:
+        return jsonify({'error': 'Authentication required'}), 401
+
+    data = request.get_json() or {}
+    role_id = data.get('role_id')
+    if not role_id:
+        return jsonify({'error': 'role_id is required'}), 400
+
+    target_assignment = UserRoleAssignment.query.filter_by(
+        user_id=actor.id, role_id=role_id
+    ).first()
+    if not target_assignment:
+        return jsonify({'error': 'You do not hold this role'}), 403
+
+    role = Role.query.get(role_id)
+
+    # Flip is_active across only the CALLER's own rows.
+    UserRoleAssignment.query.filter_by(user_id=actor.id).update({'is_active': False})
+    target_assignment.is_active = True
+
+    # Best-effort mirror onto the legacy single-role field: DashboardRouter.jsx
+    # and every @role_required(...) route still read user.role directly, so
+    # switching only the new-engine assignment would be cosmetic without
+    # this. Skipped (not crashed) if the key has no legacy enum value yet --
+    # e.g. company-side roles, or DIRECTOR until its migration lands.
+    from app.models.user import UserRole
+    try:
+        actor.role = UserRole(role.key)
+    except ValueError:
+        pass
+
+    db.session.commit()
+
+    return jsonify({
+        'active_role': {'id': role.id, 'key': role.key, 'name': role.name},
+        'permissions': sorted(resolve_platform_permissions(actor, school_id=actor.school_id)),
     }), 200
