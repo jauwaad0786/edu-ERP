@@ -5,6 +5,22 @@ import Navbar  from '../../components/Navbar';
 import api from '../../api/axios';
 import { usePermission } from '../../hooks/usePermission';
 
+// old_value/new_value from the backend can be a plain string OR a parsed
+// JSON object (audit.py's to_dict() runs json.loads() on them) -- e.g.
+// delegation logs store {status, end_date, role_key, ...}. Rendering an
+// object directly as a JSX child crashes with React error #31, so this
+// flattens it into a readable "key: value, key: value" string first.
+function formatAuditValue(val) {
+  if (val === null || val === undefined || val === '') return null;
+  if (typeof val === 'object') {
+    return Object.entries(val)
+      .filter(([, v]) => v !== null && v !== undefined && v !== '')
+      .map(([k, v]) => `${k}: ${v}`)
+      .join(', ');
+  }
+  return String(val);
+}
+
 export default function SchoolAuditLogs() {
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
   useEffect(() => { localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
@@ -245,8 +261,12 @@ export default function SchoolAuditLogs() {
                       </span>
                     </td>
                     <td style={{ fontSize: 12, maxWidth: 200 }}>
-                      {log.old_value && <span style={{ color: '#64748b' }}>Old: {log.old_value}</span>}
-                      {log.new_value && <span style={{ color: '#16a34a' }}> New: {log.new_value}</span>}
+                      {formatAuditValue(log.old_value) && (
+                        <span style={{ color: '#64748b' }}>Old: {formatAuditValue(log.old_value)}</span>
+                      )}
+                      {formatAuditValue(log.new_value) && (
+                        <span style={{ color: '#16a34a' }}> New: {formatAuditValue(log.new_value)}</span>
+                      )}
                       {log.remarks && <div style={{ color: '#64748b', fontSize: 11 }}>{log.remarks}</div>}
                     </td>
                     <td style={{ fontSize: 12 }}>
