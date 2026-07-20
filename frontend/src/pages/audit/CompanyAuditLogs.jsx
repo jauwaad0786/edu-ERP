@@ -4,6 +4,20 @@ import Sidebar from '../../components/Sidebar';
 import Navbar  from '../../components/Navbar';
 import api from '../../api/axios';
 
+// Same reason as SchoolAuditLogs.jsx: old_value/new_value can be an object
+// (e.g. delegation, fees, RBAC logs) -- flatten before rendering to avoid
+// React error #31.
+function formatAuditValue(val) {
+  if (val === null || val === undefined || val === '') return null;
+  if (typeof val === 'object') {
+    return Object.entries(val)
+      .filter(([, v]) => v !== null && v !== undefined && v !== '')
+      .map(([k, v]) => `${k}: ${v}`)
+      .join(', ');
+  }
+  return String(val);
+}
+
 export default function CompanyAuditLogs() {
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
   useEffect(() => { localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
@@ -207,8 +221,12 @@ export default function CompanyAuditLogs() {
                       </span>
                     </td>
                     <td style={{ fontSize: 12, maxWidth: 200 }}>
-                      {log.old_value && <span style={{ color: '#64748b' }}>Old: {log.old_value}</span>}
-                      {log.new_value && <span style={{ color: '#16a34a' }}> New: {log.new_value}</span>}
+                      {formatAuditValue(log.old_value) && (
+                        <span style={{ color: '#64748b' }}>Old: {formatAuditValue(log.old_value)}</span>
+                      )}
+                      {formatAuditValue(log.new_value) && (
+                        <span style={{ color: '#16a34a' }}> New: {formatAuditValue(log.new_value)}</span>
+                      )}
                       {log.remarks && <div style={{ color: '#64748b', fontSize: 11 }}>{log.remarks}</div>}
                     </td>
                     <td style={{ fontSize: 12 }}>{log.affected_school_id || 'N/A'}</td>
