@@ -4,10 +4,13 @@ import Sidebar from '../../components/Sidebar';
 import Navbar  from '../../components/Navbar';
 import api from '../../api/axios';
 import { usePermission } from '../../hooks/usePermission';
+import { useAuth } from '../../context/AuthContext';
 
 export default function DelegationPage() {
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
   useEffect(() => { localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
+
+  const { user } = useAuth();
 
   const [delegations, setDelegations] = useState([]);
   const [users, setUsers] = useState([]);
@@ -30,13 +33,20 @@ export default function DelegationPage() {
 
   const fetchData = async () => {
     try {
+      // SUPER_ADMIN is company-scoped -> /admin/users (all schools).
+      // Everyone else delegating is school-scoped -> /principal/users
+      // (own school only; PRINCIPAL/DIRECTOR/VICE_PRINCIPAL all resolve
+      // here via the backend's ROLE_EQUIVALENCE expansion). Both endpoints
+      // return the same { users, total, page, ... } shape, not a bare array.
+      const usersEndpoint = user?.role === 'SUPER_ADMIN' ? '/admin/users' : '/principal/users';
+
       const [delRes, usersRes, rolesRes] = await Promise.all([
         api.get('/rbac/delegations', { params: { status: filter } }),
-        api.get('/admin/users'), // Adjust endpoint as needed
+        api.get(usersEndpoint, { params: { per_page: 200 } }),
         api.get('/rbac/roles'),
       ]);
       setDelegations(delRes.data?.delegations || []);
-      setUsers(usersRes.data || []);
+      setUsers(usersRes.data?.users || []);
       setRoles(rolesRes.data || []);
     } catch (err) {
       console.error('Failed to fetch data:', err);
