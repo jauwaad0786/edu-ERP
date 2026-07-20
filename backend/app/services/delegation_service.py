@@ -115,6 +115,17 @@ def create_delegation(delegator, delegatee_user_id, role_key, end_date, reason=N
     )
     db.session.add(temp_assignment)
 
+    # Flush (not commit) BEFORE touching delegation.role / delegation.id below.
+    # A pending (added-but-not-flushed) ORM object's many-to-one relationship
+    # does not lazy-load from the FK column -- it resolves to None instead of
+    # querying, since the row doesn't exist in the DB yet for SQLAlchemy to
+    # join against. _log_delegation_audit() reads delegation.role.key and
+    # delegation.id, so without this flush it crashes with
+    # "AttributeError: 'NoneType' object has no attribute 'key'" -> 500,
+    # every single time a delegation is created. Reproduced and confirmed
+    # locally before this fix.
+    db.session.flush()
+
     # 10. Audit logging
     _log_delegation_audit(
         actor=delegator,
