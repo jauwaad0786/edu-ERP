@@ -1,8 +1,15 @@
 // frontend/src/pages/developer/SystemHealthDashboard.jsx
 import React, { useState, useEffect } from 'react';
+import Sidebar from '../../components/Sidebar';
+import Navbar  from '../../components/Navbar';
 import api from '../../api/axios';
 
-export default function SystemHealthDashboard({ darkMode }) {
+export default function SystemHealthDashboard() {
+  // Self-managed darkMode + Sidebar/Navbar — same fix as ErrorDashboard.jsx
+  // and IssueBoard.jsx. This was the third page missing a layout entirely.
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
+  useEffect(() => { localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
+
   const [health, setHealth] = useState(null);
   const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -43,9 +50,26 @@ export default function SystemHealthDashboard({ darkMode }) {
     return 'ti-circle';
   };
 
-  if (loading) return <div className="loading-spinner">Loading system health...</div>;
+  if (loading) {
+    return (
+      <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
+        <Sidebar darkMode={darkMode} />
+        <div className="main-content">
+          <Navbar title="System Health" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
+          <div className="page-body">
+            <div className="loading-spinner">Loading system health...</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
+    <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
+      <Sidebar darkMode={darkMode} />
+      <div className="main-content">
+        <Navbar title="System Health" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
+        <div className="page-body">
     <div className="page-container">
       <div className="page-header">
         <div>
@@ -262,6 +286,10 @@ export default function SystemHealthDashboard({ darkMode }) {
                 ))}
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
           </div>
         </div>
       </div>
