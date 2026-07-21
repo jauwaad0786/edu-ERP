@@ -6,7 +6,6 @@ import Sidebar from '../../components/Sidebar';
 import Navbar  from '../../components/Navbar';
 import api     from '../../api/axios';
 
-const ROLES   = ['PRINCIPAL', 'TEACHER', 'STUDENT', 'PARENT'];
 const MONTHS  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const CUR_YR  = new Date().getFullYear();
 const YEARS   = [CUR_YR, CUR_YR - 1, CUR_YR - 2];
@@ -25,8 +24,17 @@ export default function AdminDashboard() {
 
   // Modals
   // Modals
-  const [showSchoolModal,   setShowSchoolModal]   = useState(false);
-  const [showUserModal,     setShowUserModal]     = useState(false);
+  // Modals
+  const [showSchoolModal,       setShowSchoolModal]       = useState(false);
+  // Two separate, purpose-built creation flows instead of one combined
+  // "role + optional school" form — Company Staff never carries a
+  // school_id, School Head always does. Mixing them in one dropdown was
+  // the actual source of the confusion (and of 'Principal' showing up
+  // next to 'Developer' earlier).
+  const [showCompanyStaffModal, setShowCompanyStaffModal] = useState(false);
+  const [showSchoolHeadModal,   setShowSchoolHeadModal]   = useState(false);
+  const [companyRoles,          setCompanyRoles]          = useState([]);
+  const [headRoles,             setHeadRoles]             = useState([]);
   const [showEditModal,     setShowEditModal]     = useState(false);
   const [editSchool,        setEditSchool]        = useState(null);
   const [showFeaturesModal, setShowFeaturesModal] = useState(false);
@@ -45,12 +53,13 @@ export default function AdminDashboard() {
 
   // ── Load all data
   // ── Load all data
+  // ── Load all data
   const load = () => {
     api.get('/admin/stats').then(r => setStats(r.data)).catch(() => {});
     api.get('/admin/schools').then(r => setSchools(r.data)).catch(() => {});
     // /admin/users returns a paginated object ({ users, total, page, ... }),
     // never a bare array — setUsers(r.data) was storing the whole object,
-    // which made users.length/.map crash the moment this tab rendered.
+    // which crashed users.length/.map the moment this tab rendered.
     api.get('/admin/users').then(r => setUsers(r.data.users || [])).catch(() => {});
   };
   useEffect(() => {
@@ -59,6 +68,16 @@ export default function AdminDashboard() {
       setFeatureCatalog(r.data.catalog);
       setPlanPresets(r.data.presets);
     }).catch(() => {});
+    // Company Staff dropdown: every COMPANY-scope role (CEO..Intern).
+    api.get('/rbac/roles', { params: { scope: 'COMPANY' } })
+      .then(r => setCompanyRoles(r.data || [])).catch(() => {});
+    // School Head dropdown: only "head of school" roles (Director,
+    // Principal — is_super=True in the seed data), not the full TENANT
+    // list. Regular staff go through that school's own "Staff & Principal"
+    // tab (SchoolDetailPage.jsx), where the school context is already fixed.
+    api.get('/rbac/roles', { params: { scope: 'TENANT' } })
+      .then(r => setHeadRoles((r.data || []).filter(role => role.is_super)))
+      .catch(() => {});
   }, []);
 
   // ── Toggle school active/inactive
@@ -131,16 +150,22 @@ export default function AdminDashboard() {
   
 
   // ── Create user
+  // ── Create user — shared by both Company Staff and School Head forms
+  // (same /admin/users endpoint); each form just populates `form`
+  // differently (Company Staff never sets school_id).
   const createUser = async e => {
     e.preventDefault(); setSaving(true); setMsg('');
     try {
-      await api.post('/admin/users', form);
-      setShowUserModal(false);
+      const r = await api.post('/admin/users', form);
+      setShowCompanyStaffModal(false);
+      setShowSchoolHeadModal(false);
+      const roleName = [...companyRoles, ...headRoles].find(rl => rl.key === form.role)?.name || form.role;
       setCreatedCreds({
-        name:     form.name,
-        email:    form.email,
-        password: form.password || 'EduErp@123',
-        role:     form.role,
+        name:     r.data.name,
+        username: r.data.username,
+        email:    r.data.email,
+        password: r.data.plain_password_temp || form.password || 'EduErp@123',
+        role:     roleName,
         school:   schools.find(s => String(s.id) === String(form.school_id))?.name || '—',
       });
       setForm({}); load();
@@ -216,8 +241,12 @@ export default function AdminDashboard() {
               </select>
 
               <button className="btn btn-neutral btn-sm"
-                onClick={() => { setForm({}); setShowUserModal(true); }}>
-                + Create User
+                onClick={() => { setForm({}); setShowCompanyStaffModal(true); }}>
+                🧑‍💼 Company Staff
+              </button>
+              <button className="btn btn-neutral btn-sm"
+                onClick={() => { setForm({}); setShowSchoolHeadModal(true); }}>
+                🏫 Assign School Head
               </button>
               <button className="btn btn-primary btn-sm"
                 onClick={() => { setForm({}); setShowSchoolModal(true); }}>
@@ -709,14 +738,71 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* ── Add User Modal ── */}
-      {showUserModal && (
+      {/* ── Company Staff Modal — COMPANY-scope roles only, no school field ── */}
+      {showCompanyStaffModal && (
         <div className="modal-backdrop"
-          onClick={e => e.target === e.currentTarget && setShowUserModal(false)}>
+          onClick={e => e.target === e.currentTarget && setShowCompanyStaffModal(false)}>
           <div className="modal">
             <div className="modal-header">
-              <h3>👤 Create New User</h3>
-              <button className="modal-close" onClick={() => setShowUserModal(false)}>✕</button>
+              <h3>🧑‍💼 Add Company Staff</h3>
+              <button className="modal-close" onClick={() => setShowCompanyStaffModal(false)}>✕</button>
+            </div>
+            <form onSubmit={createUser}>
+              <div className="modal-body">
+                <div className="form-group">
+                  <label className="form-label">Full Name *</label>
+                  <input className="form-input" placeholder="John Doe" required
+                    onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Email *</label>
+                  <input className="form-input" type="email" placeholder="john@oneplatform360.com" required
+                    onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Role *</label>
+                  <select className="form-select" required
+                    onChange={e => setForm(f => ({ ...f, role: e.target.value, school_id: null }))}>
+                    <option value="">Select role</option>
+                    {companyRoles.map(r => (
+                      <option key={r.key} value={r.key}>{r.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Password</label>
+                  <input className="form-input" type="password"
+                    placeholder="Leave blank for default: EduErp@123"
+                    onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Phone</label>
+                  <input className="form-input" placeholder="+91-XXXXX-XXXXX"
+                    onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-neutral"
+                  onClick={() => setShowCompanyStaffModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={saving}>
+                  {saving ? 'Creating...' : '🧑‍💼 Create Staff'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Assign School Head Modal — pick a school, then Director/Principal
+           only. Other school staff are created from that school's own
+           "Staff & Principal" tab, not here. ── */}
+      {showSchoolHeadModal && (
+        <div className="modal-backdrop"
+          onClick={e => e.target === e.currentTarget && setShowSchoolHeadModal(false)}>
+          <div className="modal">
+            <div className="modal-header">
+              <h3>🏫 Assign School Head</h3>
+              <button className="modal-close" onClick={() => setShowSchoolHeadModal(false)}>✕</button>
             </div>
             <form onSubmit={createUser}>
               <div className="modal-body">
@@ -732,20 +818,22 @@ export default function AdminDashboard() {
                 </div>
                 <div className="grid-2">
                   <div className="form-group">
+                    <label className="form-label">School *</label>
+                    <select className="form-select" required
+                      onChange={e => setForm(f => ({ ...f, school_id: e.target.value }))}>
+                      <option value="">Select school</option>
+                      {schools.map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
                     <label className="form-label">Role *</label>
                     <select className="form-select" required
                       onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
                       <option value="">Select role</option>
-                      {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Assign School</label>
-                    <select className="form-select"
-                      onChange={e => setForm(f => ({ ...f, school_id: e.target.value || null }))}>
-                      <option value="">None (Super Admin)</option>
-                      {schools.map(s => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
+                      {headRoles.map(r => (
+                        <option key={r.key} value={r.key}>{r.name}</option>
                       ))}
                     </select>
                   </div>
@@ -764,9 +852,9 @@ export default function AdminDashboard() {
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-neutral"
-                  onClick={() => setShowUserModal(false)}>Cancel</button>
+                  onClick={() => setShowSchoolHeadModal(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={saving}>
-                  {saving ? 'Creating...' : '👤 Create User'}
+                  {saving ? 'Assigning...' : '🏫 Assign Head'}
                 </button>
               </div>
             </form>
