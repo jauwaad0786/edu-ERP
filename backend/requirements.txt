@@ -17,3 +17,4 @@ qrcode[pil]
 cryptography
 requests
 APScheduler==3.10.4
+psutil==6.1.0
