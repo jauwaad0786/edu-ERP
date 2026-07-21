@@ -47,6 +47,14 @@ const ROLE_MENUS = {
         },
       ],
     },
+    {
+      group: 'Developer Tools',
+      items: [
+        { icon: 'ti-bug',              label: 'Error Center',   path: '/developer/errors' },
+        { icon: 'ti-list-check',       label: 'Issue Board',    path: '/developer/issues' },
+        { icon: 'ti-activity-heartbeat', label: 'System Health', path: '/developer/system-health' },
+      ],
+    },
   ],
 
   PRINCIPAL: [
