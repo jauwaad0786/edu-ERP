@@ -37,6 +37,7 @@ from flask import Blueprint, request, jsonify
 from app import db
 from app.models.developer_center import (
     ErrorLog, IssueAssignment, ERROR_STATUSES, ASSIGNMENT_TEAMS, PRIORITY_LEVELS,
+    ERROR_TYPES, make_fingerprint, log_error,
 )
 from app.models.school import School
 from app.models.user import User
@@ -446,3 +447,75 @@ def update_issue_status(error_id):
     db.session.commit()
 
     return jsonify({'message': 'Status updated', 'status': row.status}), 200
+
+
+# ── Client-side crash capture ────────────────────────────────────────────
+# Backend 500s already auto-capture via error_middleware.py -- this is the
+# missing counterpart for a pure frontend crash (e.g. the React error #31
+# seen on the audit button, which never touches the backend at all, so
+# error_middleware.py never sees it). Deliberately NOT gated by
+# _require_company_actor(): a crash can happen to ANY logged-in user
+# (Teacher, Student, Parent...), not just company-side staff -- this file's
+# module docstring restricts the *viewing/triage* endpoints to company
+# actors, not error *reporting*, which has to accept from everyone.
+# Also deliberately tolerant of a missing/expired session (get_current_user()
+# returning None) -- a crash is exactly the moment auth state might itself
+# be broken, and refusing to log it because of that would lose the report.
+
+@developer_center_bp.route('/errors/report', methods=['POST'])
+def report_client_error():
+    """Body: {"error_type": "UNKNOWN", "exception_type": "TypeError",
+              "exception_message": "...", "stack_trace": "...",
+              "module": "audit", "page": "/audit/school/logs",
+              "button_clicked": "View Details"}"""
+    actor = get_current_user()
+
+    data = request.get_json(silent=True) or {}
+
+    error_type = data.get('error_type') or 'UNKNOWN'
+    if error_type not in ERROR_TYPES:
+        error_type = 'UNKNOWN'
+
+    exception_type = (data.get('exception_type') or 'UnknownError')[:120]
+    exception_message = data.get('exception_message')
+    stack_trace = data.get('stack_trace')
+    module = (data.get('module') or None)
+    page = (data.get('page') or None)
+    button_clicked = (data.get('button_clicked') or None)
+
+    stack_top_line = ''
+    if stack_trace:
+        stack_top_line = stack_trace.strip().split('\n')[0][:200]
+
+    fingerprint = make_fingerprint(
+        error_type=error_type,
+        api_endpoint=page or 'FRONTEND',
+        exception_type=exception_type,
+        stack_top_line=stack_top_line,
+    )
+
+    from app.models.platform import Product
+    school_product = Product.query.filter_by(key='SCHOOL_ERP').first()
+
+    defaults = {
+        'product_id': school_product.id if school_product else None,
+        'school_id': getattr(actor, 'school_id', None) if actor else None,
+        'user_id': actor.id if actor else None,
+        'role_snapshot': (actor.role.value if actor and actor.role else None),
+        'module': module,
+        'page': page,
+        'button_clicked': button_clicked,
+        'exception_type': exception_type,
+        'exception_message': exception_message,
+        'stack_trace': stack_trace,
+        'error_type': error_type,
+        'severity': 'MEDIUM',
+        'status': 'NEW',
+        'ip_address': request.remote_addr,
+        'browser': request.headers.get('User-Agent', '')[:100],
+    }
+
+    row = log_error(fingerprint, defaults)
+    db.session.commit()
+
+    return jsonify({'message': 'Error reported', 'error_id': row.id}), 201
