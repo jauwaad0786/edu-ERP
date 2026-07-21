@@ -18,6 +18,12 @@ Endpoints:
   PATCH  /api/developer/errors/<id>/status       -> move along ERROR_STATUSES lifecycle
   POST   /api/developer/errors/<id>/resolve      -> shortcut: resolution note + status -> RESOLVED
   GET    /api/developer/errors/summary           -> dashboard cards (open/critical/resolved-today counts)
+  GET    /api/developer/issues                   -> same ErrorLog rows, reshaped for IssueBoard.jsx's
+                                                      Jira-style kanban (was 404ing -- frontend page was
+                                                      already written against a shape that never existed
+                                                      as an endpoint)
+  PUT    /api/developer/issues/<id>/status       -> same lifecycle move as PATCH errors/<id>/status,
+                                                      just the verb/path IssueBoard.jsx already calls
 
 NOT built here (schema doesn't exist yet — see models/developer_center.py):
   SystemHealth / real-time monitoring cards. Blocked on Redis per project
@@ -32,6 +38,8 @@ from app import db
 from app.models.developer_center import (
     ErrorLog, IssueAssignment, ERROR_STATUSES, ASSIGNMENT_TEAMS, PRIORITY_LEVELS,
 )
+from app.models.school import School
+from app.models.user import User
 from app.models.audit import log_company_action
 from app.utils.decorators import get_current_user
 
@@ -353,3 +361,88 @@ def error_summary():
         'by_severity': by_severity,
         'by_error_type': by_error_type,
     }), 200
+
+
+# ── Issue Board (Jira-style) — same ErrorLog data, different shape ────────
+# IssueBoard.jsx was already written against fields ErrorLog.to_dict()
+# doesn't expose as-is: 'created_at' (model only has first_seen_at/
+# last_seen_at), and 'assigned_to'/'resolution_note' (those live on the
+# separate IssueAssignment row, one-to-many per error, not on ErrorLog
+# itself). Reshaping server-side here instead of touching the frontend,
+# since /errors' own shape is already relied on by ErrorDashboard.jsx and
+# changing it would break that page instead.
+
+def _issue_dict(row, school_names, user_names):
+    data = row.to_dict()
+    data['created_at'] = row.first_seen_at.isoformat() if row.first_seen_at else None
+    latest = (IssueAssignment.query
+              .filter_by(error_id=row.id)
+              .order_by(IssueAssignment.created_at.desc())
+              .first())
+    data['assigned_to'] = latest.assigned_team if latest else None
+    data['resolution_note'] = latest.resolution_note if latest else None
+    # Same soft-degrade ErrorDashboard.jsx already relies on when a name
+    # isn't available -- it falls back to `School ${school_id}` itself,
+    # so leaving these None on a miss is a safe, already-handled case.
+    data['school_name'] = school_names.get(row.school_id)
+    data['user_name'] = user_names.get(row.user_id)
+    return data
+
+
+@developer_center_bp.route('/issues', methods=['GET'])
+def list_issues():
+    actor, error = _require_company_actor()
+    if error:
+        return error
+
+    rows = ErrorLog.query.order_by(ErrorLog.last_seen_at.desc()).limit(300).all()
+
+    # Batch-fetch names instead of querying School/User per row.
+    school_ids = {r.school_id for r in rows if r.school_id}
+    user_ids   = {r.user_id for r in rows if r.user_id}
+    school_names = dict(
+        db.session.query(School.id, School.name).filter(School.id.in_(school_ids)).all()
+    ) if school_ids else {}
+    user_names = dict(
+        db.session.query(User.id, User.name).filter(User.id.in_(user_ids)).all()
+    ) if user_ids else {}
+
+    return jsonify([_issue_dict(r, school_names, user_names) for r in rows]), 200
+
+
+@developer_center_bp.route('/issues/<int:error_id>/status', methods=['PUT'])
+def update_issue_status(error_id):
+    """Same body/lifecycle as PATCH /errors/<id>/status -- IssueBoard.jsx's
+    drag/move buttons call PUT on this path, so this just mirrors that
+    endpoint's logic under the path the frontend already uses."""
+    actor, error = _require_company_actor()
+    if error:
+        return error
+
+    row = ErrorLog.query.get(error_id)
+    if not row:
+        return jsonify({'error': 'Error not found'}), 404
+
+    data = request.get_json() or {}
+    new_status = data.get('status')
+    if new_status not in ERROR_STATUSES:
+        return jsonify({'error': f'Invalid status, must be one of {ERROR_STATUSES}'}), 400
+
+    old_status = row.status
+    row.status = new_status
+    if new_status == 'RESOLVED' and not row.resolved_at:
+        row.resolved_at = datetime.utcnow()
+    if new_status == 'REOPENED':
+        row.resolved_at = None
+
+    db.session.commit()
+
+    log_company_action(
+        actor_user=actor, module='developer_center', action='ISSUE_STATUS_CHANGE',
+        old_value={'status': old_status}, new_value={'status': new_status},
+        affected_school_id=row.school_id,
+        remarks=f'Issue #{row.id} status: {old_status} -> {new_status}',
+    )
+    db.session.commit()
+
+    return jsonify({'message': 'Status updated', 'status': row.status}), 200
