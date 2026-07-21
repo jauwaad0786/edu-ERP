@@ -28,6 +28,36 @@ from app.services.audit_service import log_action
 from app.models.audit import log_company_action
 
 
+def _get_user_roles_with_legacy_fallback(user):
+    """
+    get_user_roles() only reads the new user_role_assignments table --
+    a user created via the legacy-enum path in admin.py's
+    _resolve_creation_role() (most existing school staff: Principal,
+    Teacher, etc. matched directly against the UserRole Python enum)
+    never gets one of those rows, so it returns []. can_manage_role()
+    treats an empty actor_roles OR target_roles list as "cannot manage"
+    (`if not actor_roles or not target_roles: return False`), which
+    silently rejected every revoke/extend where the DELEGATOR (whose
+    roles get checked, not just the revoker) is a legacy-enum-only user
+    -- i.e. most real accounts. Confirmed root cause of delegation #2's
+    DELETE 400.
+
+    Fallback: if the new engine has nothing for this user, look up the
+    Role row matching their legacy enum value by key -- same key
+    convention rbac.py's DEFAULT_COMPANY_ROLES/DEFAULT_SCHOOL_ROLES
+    already document (key reuses the enum string exactly, e.g.
+    'PRINCIPAL', 'TEACHER') -- so hierarchy comparisons still resolve
+    for them instead of always coming back empty.
+    """
+    roles = get_user_roles(user)
+    if roles or not user or not user.role:
+        return roles
+    return Role.query.filter_by(key=user.role.value).all()
+
+
+# ── Core Delegation Operations ────────────────────────────────────────────
+
+
 # ── Core Delegation Operations ────────────────────────────────────────────
 
 def create_delegation(delegator, delegatee_user_id, role_key, end_date, reason=None):
@@ -170,10 +200,11 @@ def revoke_delegation(delegation_id, revoker):
         return False, f"Delegation is already {delegation.status}"
 
     # Check if revoker is authorized: delegator OR higher hierarchy
+    # Check if revoker is authorized: delegator OR higher hierarchy
     if revoker.id != delegation.delegator_user_id:
-        revoker_roles = get_user_roles(revoker)
+        revoker_roles = _get_user_roles_with_legacy_fallback(revoker)
         delegator = User.query.get(delegation.delegator_user_id)
-        delegator_roles = get_user_roles(delegator)
+        delegator_roles = _get_user_roles_with_legacy_fallback(delegator)
         if not can_manage_role(revoker_roles, delegator_roles):
             return False, "Only the delegator or a higher authority can revoke this delegation"
 
@@ -217,10 +248,11 @@ def extend_delegation(delegation_id, new_end_date, updater):
         return False, f"Can only extend ACTIVE delegations (current: {delegation.status})"
 
     # Check authorization: delegator OR higher hierarchy
+    # Check authorization: delegator OR higher hierarchy
     if updater.id != delegation.delegator_user_id:
-        revoker_roles = get_user_roles(updater)
+        revoker_roles = _get_user_roles_with_legacy_fallback(updater)
         delegator = User.query.get(delegation.delegator_user_id)
-        delegator_roles = get_user_roles(delegator)
+        delegator_roles = _get_user_roles_with_legacy_fallback(delegator)
         if not can_manage_role(revoker_roles, delegator_roles):
             return False, "Only the delegator or a higher authority can extend this delegation"
 
