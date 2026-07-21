@@ -1,63 +1,26 @@
-// frontend/src/pages/UsersPage.jsx — NEW FILE
+// frontend/src/pages/UsersPage.jsx
 
 import React, { useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
 import Navbar  from '../components/Navbar';
 import api     from '../api/axios';
 
-// School-side hierarchy — legacy User.role enum values (unchanged flow:
-// role_str goes straight onto the user row, school_id is required).
-const SCHOOL_ROLES = [
-  { value: 'DIRECTOR',             label: 'Director' },
-  { value: 'PRINCIPAL',            label: 'Principal' },
-  { value: 'VICE_PRINCIPAL',       label: 'Vice Principal' },
-  { value: 'ACADEMIC_COORDINATOR', label: 'Academic Coordinator' },
-  { value: 'EXAM_CONTROLLER',      label: 'Exam Controller' },
-  { value: 'TEACHER',              label: 'Teacher' },
-  { value: 'CLASS_TEACHER',        label: 'Class Teacher' },
-  { value: 'ASSISTANT_TEACHER',    label: 'Assistant Teacher' },
-  { value: 'ACCOUNTANT',           label: 'Accountant' },
-  { value: 'RECEPTIONIST',         label: 'Receptionist' },
-  { value: 'LIBRARIAN',            label: 'Librarian' },
-  { value: 'HOSTEL',               label: 'Hostel Warden' },
-  { value: 'TRANSPORT',            label: 'Transport Manager' },
-  { value: 'HR',                   label: 'HR' },
-  { value: 'STUDENT',              label: 'Student' },
-  { value: 'PARENT',               label: 'Parent' },
-];
-
-// Company-side hierarchy — these are NOT legacy enum values. The backend
-// (_resolve_creation_role in admin.py) looks them up as COMPANY-scope
-// platform_roles and links them via UserRoleAssignment instead — so
-// creating one of these must NOT also carry a school_id.
-const COMPANY_ROLES = [
-  { value: 'CEO',                label: 'CEO' },
-  { value: 'SUB_ADMIN',          label: 'Sub Admin' },
-  { value: 'MANAGER',            label: 'Manager' },
-  { value: 'TEAM_LEAD',          label: 'Team Lead' },
-  { value: 'SOFTWARE_ENGINEER',  label: 'Software Engineer' },
-  { value: 'BACKEND_DEVELOPER',  label: 'Backend Developer' },
-  { value: 'FRONTEND_DEVELOPER', label: 'Frontend Developer' },
-  { value: 'QA',                 label: 'QA' },
-  { value: 'CUSTOMER_SUPPORT',   label: 'Customer Support' },
-  { value: 'CALL_CENTER',        label: 'Call Center' },
-  { value: 'SALES',              label: 'Sales' },
-  { value: 'ACCOUNTS',           label: 'Accounts' },
-  { value: 'COMPANY_HR',         label: 'HR (Company)' },
-  { value: 'MARKETING',          label: 'Marketing' },
-  { value: 'INTERN',             label: 'Intern' },
-];
-
-const ROLES = SCHOOL_ROLES.map(r => r.value);
-const ALL_ROLE_OPTIONS = [...SCHOOL_ROLES, ...COMPANY_ROLES];
-const roleLabel = value => ALL_ROLE_OPTIONS.find(r => r.value === value)?.label || value;
-
+// Role options now come live from GET /rbac/roles (platform_roles table) —
+// no more hardcoded SCHOOL_ROLES/COMPANY_ROLES arrays. This was the actual
+// bug: this page never talked to the dynamic RBAC engine, so a role
+// created/edited in RoleManagement.jsx never showed up here, and both
+// scopes (Company + School) were mixed into one static list (e.g.
+// "Principal" sitting in the Super Admin panel's own role filter).
 export default function UsersPage() {
   const [users,   setUsers]   = useState([]);
   const [schools, setSchools] = useState([]);
   const [loading, setLoading] = useState(true);
   const [msg,     setMsg]     = useState('');
   const [showPw,  setShowPw]  = useState({});
+
+  // Dynamic role catalog — fetched once from /rbac/roles, split by scope.
+  const [companyRoles, setCompanyRoles] = useState([]);  // scope=COMPANY
+  const [schoolRoles,  setSchoolRoles]  = useState([]);  // scope=TENANT
 
   // Filters
   const [filterRole,   setFilterRole]   = useState('');
@@ -70,6 +33,22 @@ export default function UsersPage() {
   const [saving,     setSaving]     = useState(false);
   const [createdCreds, setCreatedCreds] = useState(null);
   const [copied,       setCopied]       = useState(false);
+
+  // Role catalog loads once — it doesn't depend on which school filter is
+  // selected, and RoleManagement.jsx changes (create/edit/delete a role)
+  // are picked up on next visit to this page.
+  useEffect(() => {
+    Promise.all([
+      api.get('/rbac/roles', { params: { scope: 'COMPANY' } }),
+      api.get('/rbac/roles', { params: { scope: 'TENANT' } }),
+    ]).then(([c, s]) => {
+      setCompanyRoles(c.data || []);
+      setSchoolRoles(s.data || []);
+    }).catch(() => {});
+  }, []);
+
+  const roleLabel = value =>
+    [...companyRoles, ...schoolRoles].find(r => r.key === value)?.name || value;
 
   // Default (no school selected) now returns company-side employees ONLY —
   // backend scopes /admin/users to school_id IS NULL unless school_id is
@@ -215,7 +194,8 @@ export default function UsersPage() {
               }}
             />
 
-            {/* Role filter */}
+            {/* Role filter — grouped by scope so Company vs School roles
+                are visibly separate, instead of one flat mixed list. */}
             <select
               value={filterRole}
               onChange={e => setFilterRole(e.target.value)}
@@ -225,9 +205,16 @@ export default function UsersPage() {
                 background: '#fff', cursor: 'pointer',
               }}>
               <option value="">All Roles</option>
-              {['SUPER_ADMIN', ...ROLES].map(r => (
-                <option key={r} value={r}>{r}</option>
-              ))}
+              <optgroup label="Company">
+                {companyRoles.map(r => (
+                  <option key={r.key} value={r.key}>{r.name}</option>
+                ))}
+              </optgroup>
+              <optgroup label="School">
+                {schoolRoles.map(r => (
+                  <option key={r.key} value={r.key}>{r.name}</option>
+                ))}
+              </optgroup>
             </select>
 
             {/* School filter */}
@@ -400,15 +387,36 @@ export default function UsersPage() {
                 <div className="grid-2">
                   <div className="form-group">
                     <label className="form-label">Role *</label>
-                    <select className="form-select" required
-                      onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
+                    <select className="form-select" required value={form.role || ''}
+                      onChange={e => {
+                        const value = e.target.value;
+                        const isCompanyRole = companyRoles.some(r => r.key === value);
+                        // Backend rejects a COMPANY-scope role with a school_id
+                        // attached ("Company-scope roles cannot have a school_id")
+                        // — clear it here so the form can't submit that combo.
+                        setForm(f => ({
+                          ...f, role: value,
+                          school_id: isCompanyRole ? null : f.school_id,
+                        }));
+                      }}>
                       <option value="">Select role</option>
-                      {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                      <optgroup label="Company">
+                        {companyRoles.map(r => (
+                          <option key={r.key} value={r.key}>{r.name}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="School">
+                        {schoolRoles.map(r => (
+                          <option key={r.key} value={r.key}>{r.name}</option>
+                        ))}
+                      </optgroup>
                     </select>
                   </div>
                   <div className="form-group">
                     <label className="form-label">Assign School</label>
                     <select className="form-select"
+                      value={form.school_id || ''}
+                      disabled={companyRoles.some(r => r.key === form.role)}
                       onChange={e => setForm(f => ({ ...f, school_id: e.target.value || null }))}>
                       <option value="">None</option>
                       {schools.map(s => (
