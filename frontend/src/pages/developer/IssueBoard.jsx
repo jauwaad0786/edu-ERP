@@ -334,6 +334,5 @@ export default function IssueBoard() {
           </div>
         </div>
       </div>
-    </div>
   );
 }
