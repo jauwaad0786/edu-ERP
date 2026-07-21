@@ -48,7 +48,10 @@ export default function AdminDashboard() {
   const load = () => {
     api.get('/admin/stats').then(r => setStats(r.data)).catch(() => {});
     api.get('/admin/schools').then(r => setSchools(r.data)).catch(() => {});
-    api.get('/admin/users').then(r => setUsers(r.data)).catch(() => {});
+    // /admin/users returns a paginated object ({ users, total, page, ... }),
+    // never a bare array — setUsers(r.data) was storing the whole object,
+    // which made users.length/.map crash the moment this tab rendered.
+    api.get('/admin/users').then(r => setUsers(r.data.users || [])).catch(() => {});
   };
   useEffect(() => {
     load();
