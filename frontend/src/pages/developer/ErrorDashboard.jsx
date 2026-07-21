@@ -411,6 +411,5 @@ export default function ErrorDashboard() {
           </div>
         </div>
       </div>
-    </div>
   );
 }
