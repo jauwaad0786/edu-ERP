@@ -1,7 +1,13 @@
 // frontend/src/pages/developer/ErrorDashboard.jsx
+// frontend/src/pages/developer/ErrorDashboard.jsx
 import React, { useState, useEffect } from 'react';
 import api from '../../api/axios';
 import { usePermission } from '../../hooks/usePermission';
+
+// Mirrors backend/app/models/developer_center.py exactly — assign_error()
+// 400s if these don't match (case-sensitive).
+const ASSIGNMENT_TEAMS = ['BACKEND', 'FRONTEND', 'QA', 'DEVOPS'];
+const PRIORITY_LEVELS  = ['P0_CRITICAL', 'P1_HIGH', 'P2_MEDIUM', 'P3_LOW'];
 
 export default function ErrorDashboard({ darkMode }) {
   const [errors, setErrors] = useState([]);
@@ -29,7 +35,9 @@ export default function ErrorDashboard({ darkMode }) {
 
   const fetchStats = async () => {
     try {
-      const res = await api.get('/developer/errors/stats');
+      // Backend route is /errors/summary, not /errors/stats — this 404'd
+      // every time, which is why the stat cards always showed blank.
+      const res = await api.get('/developer/errors/summary');
       setStats(res.data);
     } catch (err) {
       console.error('Failed to fetch stats:', err);
@@ -54,15 +62,37 @@ export default function ErrorDashboard({ darkMode }) {
     }
   };
 
-  const handleAssign = async (errorId, assignTo) => {
+  const handleAssign = async errorId => {
+    const team = prompt(`Assign to team (${ASSIGNMENT_TEAMS.join(' / ')}):`, 'BACKEND');
+    if (!team) return;
+    const normalizedTeam = team.trim().toUpperCase();
+    if (!ASSIGNMENT_TEAMS.includes(normalizedTeam)) {
+      alert(`Invalid team — must be one of: ${ASSIGNMENT_TEAMS.join(', ')}`);
+      return;
+    }
+
+    const priority = prompt(`Priority (${PRIORITY_LEVELS.join(' / ')}):`, 'P2_MEDIUM');
+    if (!priority) return;
+    const normalizedPriority = priority.trim().toUpperCase();
+    if (!PRIORITY_LEVELS.includes(normalizedPriority)) {
+      alert(`Invalid priority — must be one of: ${PRIORITY_LEVELS.join(', ')}`);
+      return;
+    }
+
     setAssigning(true);
     try {
-      await api.post(`/developer/errors/${errorId}/assign`, { assigned_to: assignTo });
+      // Field names must match assign_error()'s body exactly — this was
+      // previously sending { assigned_to: 'backend' }, which the backend
+      // silently ignored (unknown key), so nothing ever actually saved.
+      await api.post(`/developer/errors/${errorId}/assign`, {
+        assigned_team: normalizedTeam,
+        priority: normalizedPriority,
+      });
       fetchErrors();
       fetchStats();
       alert('Error assigned successfully');
     } catch (err) {
-      alert('Failed to assign error');
+      alert(err.response?.data?.error || 'Failed to assign error');
     } finally {
       setAssigning(false);
     }
@@ -273,7 +303,7 @@ export default function ErrorDashboard({ darkMode }) {
                           <>
                             <button
                               className="btn btn-neutral btn-sm"
-                              onClick={() => handleAssign(error.id, 'backend')}
+                              onClick={() => handleAssign(error.id)}
                               disabled={assigning}
                             >
                               <i className="ti ti-user-check" /> Assign
