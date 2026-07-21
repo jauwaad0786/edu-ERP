@@ -410,7 +410,7 @@ def _resolve_creation_role(role_str, school_id):
     """
     Returns (legacy_enum_value, platform_role_or_None, error_or_None).
 
-    Two paths:
+    Three paths:
       - role_str matches the legacy UserRole enum (school-side staff, or
         old-style SUPER_ADMIN) -> use it directly, no platform role.
       - role_str matches a COMPANY-scope Role.key in platform_roles
@@ -419,18 +419,37 @@ def _resolve_creation_role(role_str, school_id):
         generic "company account" marker; the real identity is the
         platform Role, linked via UserRoleAssignment after the User row
         is created.
+      - role_str matches a TENANT-scope Role.key that has NO legacy enum
+        counterpart (currently only 'DIRECTOR' -- seeded in rbac.py but
+        never added to the UserRole enum, so the old
+        `UserRole(role_str)` lookup above always raised and this whole
+        branch was unreachable, making "Assign School Head -> Director"
+        fail with "Invalid role: DIRECTOR" every time). Spec section 1
+        says "Director & Principal have same dashboard", and
+        roleEquivalence.js/resolveMenuRole() already treat them as
+        dashboard-equivalent on the frontend -- so PRINCIPAL is the
+        correct legacy mirror here, not SUPER_ADMIN. Real identity is
+        still the platform Role via UserRoleAssignment, same as the
+        COMPANY branch.
     """
     try:
         return UserRole(role_str), None, None
     except ValueError:
         pass
 
-    platform_role = Role.query.filter_by(scope='COMPANY', key=role_str).first()
+    platform_role = Role.query.filter_by(key=role_str).first()
     if not platform_role:
         return None, None, f"Invalid role: {role_str}"
-    if school_id:
-        return None, None, "Company-scope roles cannot have a school_id"
-    return UserRole.SUPER_ADMIN, platform_role, None
+
+    if platform_role.scope == 'COMPANY':
+        if school_id:
+            return None, None, "Company-scope roles cannot have a school_id"
+        return UserRole.SUPER_ADMIN, platform_role, None
+
+    # TENANT-scope role with no legacy enum entry (e.g. DIRECTOR)
+    if not school_id:
+        return None, None, f"'{role_str}' requires a school_id"
+    return UserRole.PRINCIPAL, platform_role, None
 
 
 @admin_bp.route('/users', methods=['POST'])
