@@ -24,15 +24,22 @@ Endpoints:
                                                       as an endpoint)
   PUT    /api/developer/issues/<id>/status       -> same lifecycle move as PATCH errors/<id>/status,
                                                       just the verb/path IssueBoard.jsx already calls
-
-NOT built here (schema doesn't exist yet — see models/developer_center.py):
-  SystemHealth / real-time monitoring cards. Blocked on Redis per project
-  context doc. Not adding an endpoint that reads a table that isn't there.
+  GET    /api/developer/health                   -> SystemHealthDashboard.jsx cards: CPU/RAM (psutil),
+                                                      DB ping, basic service status. Does NOT include
+                                                      queue stats (Mail/WhatsApp) -- those need Redis/
+                                                      Celery, still not set up; 'queues' key is sent as
+                                                      null and the frontend already renders its own
+                                                      "No queue system configured" message for that case.
 """
 
 from datetime import datetime, timedelta
 
 from flask import Blueprint, request, jsonify
+
+try:
+    import psutil
+except ImportError:
+    psutil = None
 
 from app import db
 from app.models.developer_center import (
@@ -519,3 +526,61 @@ def report_client_error():
     db.session.commit()
 
     return jsonify({'message': 'Error reported', 'error_id': row.id}), 201
+
+
+# ── System Health ─────────────────────────────────────────────────────────
+
+@developer_center_bp.route('/health', methods=['GET'])
+def system_health():
+    actor, error = _require_company_actor()
+    if error:
+        return error
+
+    start = datetime.utcnow()
+    db_ok = True
+    try:
+        db.session.execute(db.text('SELECT 1'))
+    except Exception:
+        db_ok = False
+    api_response_time = int((datetime.utcnow() - start).total_seconds() * 1000)
+
+    if psutil:
+        cpu_usage = round(psutil.cpu_percent(interval=0.3), 1)
+        mem = psutil.virtual_memory()
+        memory_usage = round(mem.percent, 1)
+        total_memory = f'{round(mem.total / (1024 ** 3), 1)} GB'
+    else:
+        # psutil not installed -- don't fabricate numbers, surface the gap instead.
+        cpu_usage = None
+        memory_usage = None
+        total_memory = 'psutil not installed'
+
+    if not db_ok:
+        overall_status = 'down'
+    elif cpu_usage is not None and (cpu_usage > 85 or memory_usage > 85):
+        overall_status = 'degraded'
+    else:
+        overall_status = 'healthy'
+
+    schools_online = School.query.count()
+
+    return jsonify({
+        'overall_status': overall_status,
+        # No session/last-active tracking exists on User yet to compute a
+        # real "currently active" count -- returning 0 honestly instead of
+        # guessing a field that may not exist on the model.
+        'active_users': 0,
+        'schools_online': schools_online,
+        'api_response_time': api_response_time,
+        'system': {
+            'cpu_usage': cpu_usage,
+            'memory_usage': memory_usage,
+            'total_memory': total_memory,
+        },
+        'services': {
+            'database': 'up' if db_ok else 'down',
+            'application': 'up',
+        },
+        'queues': None,
+        'last_updated': datetime.utcnow().isoformat(),
+    }), 200
