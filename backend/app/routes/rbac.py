@@ -354,14 +354,30 @@ def _school_scope_actor_school_id(actor):
 @permission_required('admin.user.manage')
 def list_roles():
     """
-    School-scoped actor -> only TENANT-scope roles (their own product's
-    roles; Role has no school_id, roles are shared per-product templates).
-    Company-scoped actor -> everything, both scopes.
+    Query params:
+      scope   optional explicit filter: 'COMPANY' or 'TENANT'. UsersPage.jsx's
+              role dropdown passes this so a company-side create-user form
+              only offers COMPANY roles and a school-side create only offers
+              TENANT roles. Without this, a CEO/Super Admin got both scopes
+              mixed into one list (e.g. 'Principal' sitting next to
+              'Developer') because no filter was applied for company actors.
+
+    School-scoped actor -> ALWAYS forced to TENANT-scope roles only,
+    regardless of what `scope` is passed (a Principal can never pull the
+    COMPANY hierarchy, even by guessing the query param).
+    Company-scoped actor -> honors `scope` if given; if omitted, returns
+    everything unchanged (e.g. RoleManagement.jsx's full hierarchy view
+    still needs both scopes together).
     """
     actor = get_current_user()
     q = Role.query
+    requested_scope = (request.args.get('scope') or '').strip().upper()
+
     if _school_scope_actor_school_id(actor) is not None:
         q = q.filter(Role.scope == 'TENANT')
+    elif requested_scope in ('COMPANY', 'TENANT'):
+        q = q.filter(Role.scope == requested_scope)
+
     roles = q.order_by(Role.scope, Role.hierarchy_level).all()
     return jsonify([r.to_dict() for r in roles]), 200
 
