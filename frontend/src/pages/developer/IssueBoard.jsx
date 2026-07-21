@@ -1,11 +1,22 @@
 // frontend/src/pages/developer/IssueBoard.jsx
 import React, { useState, useEffect } from 'react';
+import Sidebar from '../../components/Sidebar';
+import Navbar  from '../../components/Navbar';
 import api from '../../api/axios';
 import { usePermission } from '../../hooks/usePermission';
 
 const STATUSES = ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'TESTING', 'RESOLVED', 'CLOSED'];
 
-export default function IssueBoard({ darkMode }) {
+export default function IssueBoard() {
+  // Self-managed, like every other page (DelegationPage.jsx, etc.) --
+  // the darkMode prop App.jsx was passing only read localStorage once at
+  // route-mount and never reacted to the theme toggle. This also fixes
+  // the real bug: this page never rendered Sidebar/Navbar at all, which
+  // is why the sidebar disappeared on this route -- there's no shared
+  // layout in this app, every page renders its own.
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
+  useEffect(() => { localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
+
   const [issues, setIssues] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedIssue, setSelectedIssue] = useState(null);
@@ -68,9 +79,26 @@ export default function IssueBoard({ darkMode }) {
     return colors[severity] || '#64748b';
   };
 
-  if (loading) return <div className="loading-spinner">Loading issue board...</div>;
+  if (loading) {
+    return (
+      <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
+        <Sidebar darkMode={darkMode} />
+        <div className="main-content">
+          <Navbar title="Issue Board" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
+          <div className="page-body">
+            <div className="loading-spinner">Loading issue board...</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
+    <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
+      <Sidebar darkMode={darkMode} />
+      <div className="main-content">
+        <Navbar title="Issue Board" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
+        <div className="page-body">
     <div className="page-container">
       <div className="page-header">
         <div>
@@ -203,13 +231,12 @@ export default function IssueBoard({ darkMode }) {
         ))}
       </div>
 
-      {/* Issue Detail Modal */}
       {showModal && selectedIssue && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-backdrop" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 600, background: darkMode ? '#141b2d' : undefined }}>
             <div className="modal-header">
               <h3>Issue Details</h3>
-              <button className="btn-close" onClick={() => setShowModal(false)}>×</button>
+              <button className="modal-close" onClick={() => setShowModal(false)}>×</button>
             </div>
             <div className="modal-body" style={{ maxHeight: 500, overflowY: 'auto' }}>
               <div style={{ display: 'grid', gap: 12 }}>
@@ -303,6 +330,10 @@ export default function IssueBoard({ darkMode }) {
           </div>
         </div>
       )}
+    </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
