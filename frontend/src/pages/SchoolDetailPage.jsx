@@ -20,9 +20,21 @@ export default function SchoolDetail() {
   const [saving,   setSaving]   = useState(false);
 
   // Service charge modal
+  // Service charge modal
   const [showCharge, setShowCharge] = useState(false);
   const [chargeForm, setChargeForm] = useState({ amount: '', label: 'Monthly Service Charge', charge_date: '', note: '', is_paid: false });
   const [savingCharge, setSavingCharge] = useState(false);
+
+  // Staff / Principal tab — the missing link: school create karne ke baad
+  // usi school ke Principal/staff ko yahin se assign karo, alag "Users"
+  // page pe jaake school dhoondhne ki zaroorat nahi. Roles /rbac/roles se
+  // aate hain (dynamic, RoleManagement.jsx jo bhi banaye wahi yahan dikhega).
+  const [staffUsers,      setStaffUsers]      = useState([]);
+  const [tenantRoles,     setTenantRoles]     = useState([]);
+  const [showCreateStaff, setShowCreateStaff] = useState(false);
+  const [staffForm,       setStaffForm]       = useState({});
+  const [savingStaff,     setSavingStaff]     = useState(false);
+  const [staffCreds,      setStaffCreds]      = useState(null);
 
   const [msg, setMsg] = useState('');
 
@@ -34,7 +46,19 @@ export default function SchoolDetail() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, [id]);
+  const loadStaff = () => {
+    api.get('/admin/users', { params: { school_id: id, per_page: 200 } })
+      .then(r => setStaffUsers(r.data.users || []))
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    load();
+    loadStaff();
+    api.get('/rbac/roles', { params: { scope: 'TENANT' } })
+      .then(r => setTenantRoles(r.data || []))
+      .catch(() => {});
+  }, [id]);
 
   // ── Toggle activate/deactivate
   const toggleSchool = async () => {
@@ -65,9 +89,29 @@ export default function SchoolDetail() {
   };
 
   // ── Toggle charge paid
+  // ── Toggle charge paid
   const toggleChargePaid = async chargeId => {
     await api.put(`/admin/service-charges/${chargeId}/toggle-paid`);
     load();
+  };
+
+  // ── Create staff/Principal for THIS school — school_id fixed to the
+  // school being viewed, so there's no separate "pick a school" step.
+  const createStaff = async e => {
+    e.preventDefault(); setSavingStaff(true); setMsg('');
+    try {
+      const r = await api.post('/admin/users', { ...staffForm, school_id: id });
+      setShowCreateStaff(false);
+      setStaffCreds({
+        name: r.data.name, username: r.data.username, email: r.data.email,
+        password: r.data.plain_password_temp || staffForm.password || 'EduErp@123',
+        role: tenantRoles.find(rl => rl.key === staffForm.role)?.name || staffForm.role,
+      });
+      setStaffForm({}); loadStaff();
+    } catch (err) {
+      setMsg('❌ ' + (err.response?.data?.error || 'Error creating staff'));
+    }
+    setSavingStaff(false);
   };
 
   const fmt  = n => Number(n || 0).toLocaleString('en-IN');
@@ -238,6 +282,7 @@ export default function SchoolDetail() {
           <div style={{ display: 'flex', borderBottom: '2px solid #e2e8f0', marginBottom: 20 }}>
             {[
               ['overview',  '📋 Overview'],
+              ['staff',     '👤 Staff & Principal'],
               ['charges',   '💳 Service Charges'],
               ['info',      'ℹ️ Info'],
             ].map(([k, l]) => (
@@ -321,8 +366,64 @@ export default function SchoolDetail() {
             </div>
           )}
 
+          {/* ── Tab: Staff & Principal ── */}
+          {tab === 'staff' && (
+            <div style={{ background: '#fff', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
+              <div style={{ padding: '16px 24px', borderBottom: '1px solid #f1f5f9',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>School Staff</h4>
+                  <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b' }}>
+                    Assign this school's Principal, teachers, and other staff directly.
+                  </p>
+                </div>
+                <button onClick={() => { setStaffForm({}); setShowCreateStaff(true); }}
+                  className="btn btn-primary btn-sm">
+                  + Create Staff
+                </button>
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc' }}>
+                    {['Name', 'Role', 'Email', 'Status'].map(h => (
+                      <th key={h} style={{ padding: '11px 16px', textAlign: 'left',
+                        fontSize: 11, fontWeight: 700, color: '#64748b',
+                        textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {staffUsers.length === 0 ? (
+                    <tr><td colSpan={4} style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>
+                      No staff assigned yet — create this school's Principal to get started.
+                    </td></tr>
+                  ) : staffUsers.map((u, i) => (
+                    <tr key={u.id} style={{ borderTop: '1px solid #f1f5f9',
+                      background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                      <td style={{ padding: '13px 16px', fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{u.name}</td>
+                      <td style={{ padding: '13px 16px', fontSize: 13, color: '#475569' }}>
+                        {tenantRoles.find(r => r.key === u.role)?.name || u.role}
+                      </td>
+                      <td style={{ padding: '13px 16px', fontSize: 13, color: '#475569' }}>{u.email}</td>
+                      <td style={{ padding: '13px 16px' }}>
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
+                          background: u.is_active ? '#dcfce7' : '#fee2e2',
+                          color: u.is_active ? '#16a34a' : '#dc2626',
+                        }}>
+                          {u.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           {/* ── Tab: Service Charges ── */}
           {tab === 'charges' && (
+          
             <div style={{ background: '#fff', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
               <div style={{ padding: '16px 24px', borderBottom: '1px solid #f1f5f9',
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -524,6 +625,96 @@ export default function SchoolDetail() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* ── Create Staff Modal ── */}
+      {showCreateStaff && (
+        <div className="modal-backdrop"
+          onClick={e => e.target === e.currentTarget && setShowCreateStaff(false)}>
+          <div className="modal">
+            <div className="modal-header">
+              <h3>👤 Create Staff for {school?.name}</h3>
+              <button className="modal-close" onClick={() => setShowCreateStaff(false)}>✕</button>
+            </div>
+            <form onSubmit={createStaff}>
+              <div className="modal-body">
+                <div className="form-group">
+                  <label className="form-label">Full Name *</label>
+                  <input className="form-input" required value={staffForm.name || ''}
+                    onChange={e => setStaffForm(f => ({ ...f, name: e.target.value }))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Email *</label>
+                  <input className="form-input" type="email" required value={staffForm.email || ''}
+                    onChange={e => setStaffForm(f => ({ ...f, email: e.target.value }))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Role *</label>
+                  <select className="form-select" required value={staffForm.role || ''}
+                    onChange={e => setStaffForm(f => ({ ...f, role: e.target.value }))}>
+                    <option value="">Select role</option>
+                    {tenantRoles.map(r => (
+                      <option key={r.key} value={r.key}>{r.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Password</label>
+                  <input className="form-input" type="password"
+                    placeholder="Leave blank for default: EduErp@123"
+                    onChange={e => setStaffForm(f => ({ ...f, password: e.target.value }))} />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-neutral"
+                  onClick={() => setShowCreateStaff(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={savingStaff}>
+                  {savingStaff ? 'Creating...' : '👤 Create Staff'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Staff Credentials Modal ── */}
+      {staffCreds && (
+        <div className="modal-backdrop">
+          <div className="modal" style={{ maxWidth: 420 }}>
+            <div className="modal-header">
+              <h3>✅ Staff Created!</h3>
+              <button className="modal-close" onClick={() => setStaffCreds(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div style={{
+                background: '#f0fdf4', border: '1px solid #bbf7d0',
+                borderRadius: 10, padding: '16px 20px', marginBottom: 16,
+              }}>
+                {[
+                  ['👤 Name',     staffCreds.name],
+                  ['🔖 Username', staffCreds.username],
+                  ['📧 Email',    staffCreds.email],
+                  ['🔑 Password', staffCreds.password],
+                  ['🎭 Role',     staffCreds.role],
+                ].map(([label, value]) => (
+                  <div key={label} style={{
+                    display: 'flex', justifyContent: 'space-between',
+                    alignItems: 'center', fontSize: 13,
+                    padding: '8px 0', borderBottom: '1px solid #dcfce7',
+                  }}>
+                    <span style={{ color: '#64748b' }}>{label}</span>
+                    <strong style={{
+                      color: '#0f172a',
+                      fontFamily: label.includes('Password') ? 'monospace' : 'inherit',
+                    }}>{value}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-primary" onClick={() => setStaffCreds(null)}>Done</button>
+            </div>
           </div>
         </div>
       )}
