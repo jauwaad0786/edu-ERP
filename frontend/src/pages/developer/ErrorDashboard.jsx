@@ -1,6 +1,9 @@
 // frontend/src/pages/developer/ErrorDashboard.jsx
 // frontend/src/pages/developer/ErrorDashboard.jsx
+// frontend/src/pages/developer/ErrorDashboard.jsx
 import React, { useState, useEffect } from 'react';
+import Sidebar from '../../components/Sidebar';
+import Navbar  from '../../components/Navbar';
 import api from '../../api/axios';
 import { usePermission } from '../../hooks/usePermission';
 
@@ -9,7 +12,13 @@ import { usePermission } from '../../hooks/usePermission';
 const ASSIGNMENT_TEAMS = ['BACKEND', 'FRONTEND', 'QA', 'DEVOPS'];
 const PRIORITY_LEVELS  = ['P0_CRITICAL', 'P1_HIGH', 'P2_MEDIUM', 'P3_LOW'];
 
-export default function ErrorDashboard({ darkMode }) {
+export default function ErrorDashboard() {
+  // Self-managed darkMode + Sidebar/Navbar, same fix as IssueBoard.jsx --
+  // this page never rendered a layout at all, which is why the sidebar
+  // disappeared on this route.
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
+  useEffect(() => { localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
+
   const [errors, setErrors] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -136,6 +145,11 @@ export default function ErrorDashboard({ darkMode }) {
   const totalPages = Math.ceil(total / perPage);
 
   return (
+    <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
+      <Sidebar darkMode={darkMode} />
+      <div className="main-content">
+        <Navbar title="Error Dashboard" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
+        <div className="page-body">
     <div className="page-container">
       <div className="page-header">
         <div>
@@ -336,13 +350,12 @@ export default function ErrorDashboard({ darkMode }) {
         )}
       </div>
 
-      {/* Error Detail Modal */}
       {showDetail && selectedError && (
-        <div className="modal-overlay" onClick={() => setShowDetail(false)}>
+        <div className="modal-backdrop" onClick={() => setShowDetail(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 600, background: darkMode ? '#141b2d' : undefined }}>
             <div className="modal-header">
               <h3>Error Details</h3>
-              <button className="btn-close" onClick={() => setShowDetail(false)}>×</button>
+              <button className="modal-close" onClick={() => setShowDetail(false)}>×</button>
             </div>
             <div className="modal-body" style={{ maxHeight: 500, overflowY: 'auto' }}>
               <div style={{ display: 'grid', gap: 12 }}>
@@ -394,6 +407,10 @@ export default function ErrorDashboard({ darkMode }) {
           </div>
         </div>
       )}
+    </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
