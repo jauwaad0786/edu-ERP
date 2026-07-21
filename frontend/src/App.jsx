@@ -388,17 +388,17 @@ export default function App() {
                 site-wide dark/light toggle instead of always rendering light. */}
             <Route path="/developer/errors" element={
               <ProtectedRoute roles={['SUPER_ADMIN']}>
-                <ErrorDashboard darkMode={localStorage.getItem('ederp_theme') === 'dark'} />
+                <ErrorDashboard />
               </ProtectedRoute>
             } />
             <Route path="/developer/issues" element={
               <ProtectedRoute roles={['SUPER_ADMIN']}>
-                <IssueBoard darkMode={localStorage.getItem('ederp_theme') === 'dark'} />
+                <IssueBoard />
               </ProtectedRoute>
             } />
             <Route path="/developer/system-health" element={
               <ProtectedRoute roles={['SUPER_ADMIN']}>
-                <SystemHealthDashboard darkMode={localStorage.getItem('ederp_theme') === 'dark'} />
+                <SystemHealthDashboard />
               </ProtectedRoute>
             } />
 
