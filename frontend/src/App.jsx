@@ -68,6 +68,9 @@ import Announcements    from './pages/communication/Announcements';
 import ChatWindow       from './pages/communication/ChatWindow';
 import KnowledgeBase    from './pages/communication/KnowledgeBase';
 import SupportDashboard from './pages/developer/SupportDashboard';
+import ErrorDashboard   from './pages/developer/ErrorDashboard';
+import IssueBoard       from './pages/developer/IssueBoard';
+import SystemHealthDashboard from './pages/developer/SystemHealthDashboard';
 
 // ── RBAC Pages ──────────────────────────────────────────────────────────────
 import RoleManagement     from './pages/rbac/RoleManagement';
@@ -375,6 +378,27 @@ export default function App() {
             <Route path="/developer/support" element={
               <ProtectedRoute roles={['SUPER_ADMIN']}>
                 <SupportDashboard />
+              </ProtectedRoute>
+            } />
+            {/* ErrorDashboard/IssueBoard/SystemHealthDashboard were built but
+                never routed anywhere -- not reachable even by typing the URL.
+                They read darkMode as a prop (unlike SupportDashboard, which
+                keeps its own local state), so it's passed here from the same
+                'ederp_theme' key every other page reads, to match the
+                site-wide dark/light toggle instead of always rendering light. */}
+            <Route path="/developer/errors" element={
+              <ProtectedRoute roles={['SUPER_ADMIN']}>
+                <ErrorDashboard darkMode={localStorage.getItem('ederp_theme') === 'dark'} />
+              </ProtectedRoute>
+            } />
+            <Route path="/developer/issues" element={
+              <ProtectedRoute roles={['SUPER_ADMIN']}>
+                <IssueBoard darkMode={localStorage.getItem('ederp_theme') === 'dark'} />
+              </ProtectedRoute>
+            } />
+            <Route path="/developer/system-health" element={
+              <ProtectedRoute roles={['SUPER_ADMIN']}>
+                <SystemHealthDashboard darkMode={localStorage.getItem('ederp_theme') === 'dark'} />
               </ProtectedRoute>
             } />
 
