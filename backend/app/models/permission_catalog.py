@@ -138,6 +138,15 @@ DEFAULT_SCHOOL_ROLE_PERMISSIONS = {
         # bypass) and ACCOUNTANT get it by default. A Principal can grant
         # fees.collect to one specific teacher via UserPermissionOverride
         # (see routes/rbac.py) without opening it up for every teacher.
+        # fees.receipt.view / fees.structure.manage ADDED — principal.py's
+        # Fees section was migrated from role_required('PRINCIPAL',
+        # 'TEACHER', ...) to permission_required(...); without these two
+        # keys here, a Teacher would lose access (fee_records,
+        # bulk_fee_notice_pdf, generate_fees, list_fee_structures, etc.)
+        # that the old role-name check previously granted them. This is
+        # NOT new access being handed out — it's preserving what TEACHER
+        # already had before the migration.
+        'fees.receipt.view', 'fees.structure.manage',
     ],
     'CLASS_TEACHER': [
         'marks.entry', 'students.profile.view', 'students.profile.edit', 'documents.view',
