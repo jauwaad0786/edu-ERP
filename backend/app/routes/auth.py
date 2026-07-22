@@ -11,12 +11,20 @@ from app import db
 from app.models.user import User, UserRole
 from app.models.academic import Student
 from app.models.rbac import resolve_platform_permissions, get_user_roles
+from app.services.permission_resolver import ensure_role_assignment_for_user
+from datetime import datetime
 import re
 
 auth_bp = Blueprint('auth', __name__)
 
 
 def _serialize_user(user):
+    # Heal any user still missing a UserRoleAssignment (e.g. staff created
+    # before this fix, or created via a flow that doesn't wire it yet) —
+    # idempotent, cheap (one query, only writes if actually missing).
+    if ensure_role_assignment_for_user(user):
+        db.session.commit()
+
     data = user.to_dict()
     roles = get_user_roles(user)
     data['is_super']    = any(r.is_super for r in roles)
@@ -190,6 +198,74 @@ def refresh():
     user_id      = get_jwt_identity()
     access_token = create_access_token(identity=str(user_id))
     return jsonify({'access_token': access_token}), 200
+
+
+# ── My salary records (Teacher OR any non-teaching staff) ─────────────────────
+# NEW — "Payment ke baad ek button jo staff/teacher 'yes, received' bol sake."
+# Role-agnostic on purpose: a Teacher has a Teacher profile (SalaryRecord),
+# everyone else (Accountant, Hostel Warden, etc.) is a plain User row
+# (StaffSalaryRecord). Ownership is checked by matching to the JWT-identified
+# user, never by trusting an id the client sends without a match.
+@auth_bp.route('/me/salary-records', methods=['GET'])
+@jwt_required()
+def my_salary_records():
+    from app.models.academic import Teacher
+    from app.models.financial import SalaryRecord
+    from app.models.finance import StaffSalaryRecord
+
+    user_id = get_jwt_identity()
+    user    = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    out = []
+    teacher = Teacher.query.filter_by(user_id=user.id).first()
+    if teacher:
+        for r in SalaryRecord.query.filter_by(teacher_id=teacher.id) \
+                 .order_by(SalaryRecord.payment_date.desc()).all():
+            d = r.to_dict()
+            d['type'] = 'TEACHER'
+            out.append(d)
+    else:
+        for r in StaffSalaryRecord.query.filter_by(user_id=user.id) \
+                 .order_by(StaffSalaryRecord.payment_date.desc()).all():
+            d = r.to_dict()
+            d['type'] = 'STAFF'
+            out.append(d)
+
+    return jsonify(out), 200
+
+
+@auth_bp.route('/me/salary-records/<record_type>/<int:record_id>/acknowledge', methods=['POST'])
+@jwt_required()
+def acknowledge_salary_record(record_type, record_id):
+    """record_type: 'teacher' or 'staff' — matches which table to check."""
+    from app.models.academic import Teacher
+    from app.models.financial import SalaryRecord
+    from app.models.finance import StaffSalaryRecord
+
+    user_id = get_jwt_identity()
+    user    = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    if record_type.upper() == 'TEACHER':
+        teacher = Teacher.query.filter_by(user_id=user.id).first()
+        rec = SalaryRecord.query.get(record_id) if teacher else None
+        if not rec or not teacher or rec.teacher_id != teacher.id:
+            return jsonify({'error': 'Record not found or does not belong to you'}), 404
+    elif record_type.upper() == 'STAFF':
+        rec = StaffSalaryRecord.query.get(record_id)
+        if not rec or rec.user_id != user.id:
+            return jsonify({'error': 'Record not found or does not belong to you'}), 404
+    else:
+        return jsonify({'error': 'Invalid record_type'}), 400
+
+    rec.is_acknowledged = True
+    rec.acknowledged_at = datetime.utcnow()
+    db.session.commit()
+
+    return jsonify(rec.to_dict()), 200
 
 
 # ── Change own password ───────────────────────────────────────────────────────
