@@ -63,8 +63,11 @@ export default function PayrollPage() {
 
   useEffect(() => {
     api.get('/principal/teachers').then(r => setTeachers(r.data || [])).catch(() => {});
-    api.get('/principal/users', { params: { per_page: 200 } })
-      .then(r => setStaff((r.data.users || []).filter(u => STAFF_ROLE_KEYS.includes(u.role))))
+    // staff-list is NOT gated behind the role_based_access feature (unlike
+    // /principal/users), so Payroll works even on plans without RBAC —
+    // only 'payroll_system' is required.
+    api.get('/principal/staff-list')
+      .then(r => setStaff((r.data || []).filter(u => STAFF_ROLE_KEYS.includes(u.role) && u.is_active !== false)))
       .catch(() => {});
   }, []);
 
@@ -265,14 +268,14 @@ export default function PayrollPage() {
                 <table>
                   <thead>
                     <tr>
-                      <th>Person</th><th>Type</th><th>Month</th><th>Amount</th><th>Status</th><th>Date</th><th>Note</th>
+                      <th>Person</th><th>Type</th><th>Month</th><th>Amount</th><th>Status</th><th>Received?</th><th>Date</th><th>Note</th>
                     </tr>
                   </thead>
                   <tbody>
                     {loading ? (
-                      <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24, color: 'var(--neutral-4)' }}>Loading...</td></tr>
+                      <tr><td colSpan={8} style={{ textAlign: 'center', padding: 24, color: 'var(--neutral-4)' }}>Loading...</td></tr>
                     ) : filteredRecords.length === 0 ? (
-                      <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24, color: 'var(--neutral-4)' }}>Koi payment record nahi</td></tr>
+                      <tr><td colSpan={8} style={{ textAlign: 'center', padding: 24, color: 'var(--neutral-4)' }}>Koi payment record nahi</td></tr>
                     ) : filteredRecords.map(r => (
                       <tr key={`${r.type}-${r.id}`}>
                         <td>
@@ -296,6 +299,16 @@ export default function PayrollPage() {
                             background: r.status === 'PAID' ? '#dcfce7' : '#fef3c7',
                             color:      r.status === 'PAID' ? '#16a34a' : '#d97706',
                           }}>{r.status}</span>
+                        </td>
+                        <td>
+                          {r.is_acknowledged ? (
+                            <span title={r.acknowledged_at ? new Date(r.acknowledged_at).toLocaleString('en-IN') : ''}
+                              style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <i className="ti ti-circle-check" aria-hidden="true" /> Confirmed
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 11, color: 'var(--neutral-5)' }}>Awaiting</span>
+                          )}
                         </td>
                         <td style={{ fontSize: 12, color: 'var(--neutral-6)' }}>{r.payment_date || '—'}</td>
                         <td style={{ fontSize: 12, color: 'var(--neutral-6)' }}>{r.note || '—'}</td>
