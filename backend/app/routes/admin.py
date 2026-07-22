@@ -542,6 +542,7 @@ def get_user(user_id):
 @role_required('SUPER_ADMIN')
 def update_user(user_id):
     """Edit name, email, username, phone, department, designation, role, school, status."""
+    actor = get_current_user()
     user = User.query.get_or_404(user_id)
     data = request.get_json() or {}
 
@@ -583,46 +584,80 @@ def update_user(user_id):
         user.school_id = int(data['school_id']) if data['school_id'] else None
 
     if 'is_active' in data:
-        user.is_active = bool(data['is_active'])
+        new_is_active = bool(data['is_active'])
+        if new_is_active != user.is_active:
+            # Only run the guard when the status is actually changing --
+            # re-saving the form with the same value shouldn't 403 just
+            # because the actor can't manage this target's status.
+            blocked = _hierarchy_guard(actor, user, action='activate/deactivate')
+            if blocked:
+                return blocked
+        user.is_active = new_is_active
 
     db.session.commit()
     return jsonify(user.to_dict_with_credentials()), 200
 
 
 # NEW
-@admin_bp.route('/users/<int:user_id>', methods=['DELETE'])
-@role_required('SUPER_ADMIN')
-def delete_user(user_id):
+def _hierarchy_guard(actor, user, action='modify'):
     """
-    Hierarchy-gated delete. A company-side target (school_id is None) is
-    checked via can_manage_role() using their UserRoleAssignment roles --
-    this is what makes CEO undeletable-by-anyone-except-CEO and lets a
-    Sub Admin delete a Developer but never a CEO, without any hardcoded
-    role-name check here.
+    Shared hierarchy + protected-role guard for ANY action that changes a
+    user's standing (delete, activate/deactivate, ...). Returns None if the
+    action is allowed, or a (response, status) tuple to return immediately
+    if it's blocked.
+
+    BUGFIX (2026-07): this used to live only inside delete_user() -- toggle_user
+    and update_user's is_active branch had *no* check at all beyond the route's
+    @role_required('SUPER_ADMIN'), which only proves the actor holds the
+    SUPER_ADMIN key -- including via a TEMPORARY DELEGATION. A Team Lead
+    delegated SUPER_ADMIN for one task could therefore activate/deactivate
+    a CEO or the real Super Admin, because nothing compared actual
+    hierarchy_level or checked is_protected on the target. Centralizing the
+    check here and calling it from all three places closes that gap
+    everywhere at once, instead of three separate copies drifting apart.
+
+    Company-side target (school_id is None): checked via can_manage_role()
+    using their UserRoleAssignment roles -- this is what makes CEO
+    un-modifiable-by-anyone-except-CEO and lets a Sub Admin manage a
+    Developer but never a CEO, without any hardcoded role-name check here.
+    can_manage_role() compares real hierarchy_level and blocks is_protected
+    targets outright, so a temporarily-delegated SUPER_ADMIN still can't
+    out-rank an actual CEO/Super Admin the way a bare role-name check would.
 
     School-side targets keep the simpler legacy guard (unchanged) since
-    Principal-side deletion has its own dedicated flow in principal.py.
+    Principal-side management has its own dedicated flow in principal.py.
     """
-    actor = get_current_user()
-    user = User.query.get_or_404(user_id)
-
     if user.id == actor.id:
-        return jsonify({'error': 'Cannot delete your own account'}), 403
+        return jsonify({'error': f'Cannot {action} your own account'}), 403
 
     if user.school_id is None:
         target_roles = get_user_roles(user)
         if not target_roles:
             # No platform role assigned yet — fall back to the old rule
-            # rather than allowing an unchecked delete.
+            # rather than allowing an unchecked action.
             if user.role == UserRole.SUPER_ADMIN:
-                return jsonify({'error': 'Cannot delete this account — no role assignment found to verify hierarchy'}), 403
+                return jsonify({'error': f'Cannot {action} this account — no role assignment found to verify hierarchy'}), 403
         else:
             actor_roles = get_user_roles(actor)
             if not can_manage_role(actor_roles, target_roles):
-                return jsonify({'error': 'You do not have sufficient hierarchy to delete this user'}), 403
+                return jsonify({'error': f'You do not have sufficient hierarchy to {action} this user'}), 403
     else:
         if user.role == UserRole.SUPER_ADMIN:
-            return jsonify({'error': 'Cannot delete Super Admin'}), 403
+            return jsonify({'error': f'Cannot {action} Super Admin'}), 403
+
+    return None
+
+
+@admin_bp.route('/users/<int:user_id>', methods=['DELETE'])
+@role_required('SUPER_ADMIN')
+def delete_user(user_id):
+    """Hierarchy-gated delete -- see _hierarchy_guard() docstring above."""
+    actor = get_current_user()
+    user = User.query.get_or_404(user_id)
+
+    blocked = _hierarchy_guard(actor, user, action='delete')
+    if blocked:
+        return blocked
 
     db.session.delete(user)
     db.session.commit()
@@ -632,7 +667,14 @@ def delete_user(user_id):
 @admin_bp.route('/users/<int:user_id>/toggle', methods=['PUT'])
 @role_required('SUPER_ADMIN')
 def toggle_user(user_id):
+    """Hierarchy-gated activate/deactivate -- see _hierarchy_guard() docstring above."""
+    actor = get_current_user()
     user = User.query.get_or_404(user_id)
+
+    blocked = _hierarchy_guard(actor, user, action='activate/deactivate')
+    if blocked:
+        return blocked
+
     user.is_active = not user.is_active
     db.session.commit()
     return jsonify({
