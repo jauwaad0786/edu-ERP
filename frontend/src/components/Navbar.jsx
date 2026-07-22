@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import NotificationBell from '../components/communication/NotificationBell';
+import SalaryAckBell from '../components/SalaryAckBell';
 import RoleSwitchDropdown from '../components/rbac/RoleSwitchDropdown';  // ✅ ADD THIS IMPORT
 
 const BREADCRUMB_MAP = {
@@ -327,6 +328,12 @@ export default function Navbar({ title, darkMode, onToggleDark }) {
 
           {/* ── Notification + Chat + Support bell ── */}
           <NotificationBell darkMode={darkMode} />
+
+          {/* ── Salary acknowledgement bell — Teacher + non-teaching staff only ── */}
+          {['TEACHER', 'ACCOUNTANT', 'LIBRARIAN', 'RECEPTIONIST', 'HOSTEL', 'TRANSPORT', 'HR',
+            'VICE_PRINCIPAL', 'ACADEMIC_COORDINATOR', 'EXAM_CONTROLLER'].includes(user?.role) && (
+            <SalaryAckBell darkMode={darkMode} />
+          )}
 
           {/* ── Attendance bell — PRINCIPAL only ── */}
           {user?.role === 'PRINCIPAL' && (
