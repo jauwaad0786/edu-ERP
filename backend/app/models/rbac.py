@@ -222,10 +222,8 @@ def resolve_platform_permissions(user, school_id=None):
     Any role with is_super=True short-circuits to full access.
     """
     roles = get_user_roles(user, school_id=school_id)
-    if not roles:
-        return set()
 
-    if any(r.is_super for r in roles):
+    if roles and any(r.is_super for r in roles):
         # CEO-style bypass -- full catalog, scoped to products these roles cover.
         product_ids = {r.product_id for r in roles if r.product_id is not None}
         q = Permission.query
@@ -233,29 +231,35 @@ def resolve_platform_permissions(user, school_id=None):
             q = q.filter(db.or_(Permission.product_id.in_(product_ids), Permission.product_id.is_(None)))
         return {p.key for p in q.all()}
 
-    role_ids = [r.id for r in roles]
-
-    # Global templates first
-    global_rows = RolePermission.query.filter(
-        RolePermission.role_id.in_(role_ids), RolePermission.school_id.is_(None)
-    ).all()
     effective = {}
-    for row in global_rows:
-        perm = Permission.query.get(row.permission_id)
-        if perm:
-            effective[perm.key] = row.is_enabled
 
-    # School-specific overrides of the template win
-    if school_id is not None:
-        scoped_rows = RolePermission.query.filter(
-            RolePermission.role_id.in_(role_ids), RolePermission.school_id == school_id
+    if roles:
+        role_ids = [r.id for r in roles]
+
+        # Global templates first
+        global_rows = RolePermission.query.filter(
+            RolePermission.role_id.in_(role_ids), RolePermission.school_id.is_(None)
         ).all()
-        for row in scoped_rows:
+        for row in global_rows:
             perm = Permission.query.get(row.permission_id)
             if perm:
                 effective[perm.key] = row.is_enabled
 
-    # Per-user overrides win over everything above
+        # School-specific overrides of the template win
+        if school_id is not None:
+            scoped_rows = RolePermission.query.filter(
+                RolePermission.role_id.in_(role_ids), RolePermission.school_id == school_id
+            ).all()
+            for row in scoped_rows:
+                perm = Permission.query.get(row.permission_id)
+                if perm:
+                    effective[perm.key] = row.is_enabled
+
+    # Per-user overrides win over everything above. NOTE: intentionally runs
+    # even when `roles` is empty (e.g. a freshly created staff user whose
+    # UserRoleAssignment row hasn't synced yet) -- a Principal granting one
+    # specific permission via the Staff Access page must take effect
+    # regardless of whether the role-default layer resolved anything.
     overrides = UserPermissionOverride.query.filter_by(user_id=user.id).all()
     for row in overrides:
         perm = Permission.query.get(row.permission_id)
