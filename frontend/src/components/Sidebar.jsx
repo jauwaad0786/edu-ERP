@@ -26,6 +26,7 @@ const ROLE_MENUS = {
           children: [
             { icon: 'ti-users', label: 'Roles & Hierarchy', path: '/rbac/roles' },
             { icon: 'ti-grid',  label: 'Permission Matrix', path: '/rbac/permissions' },
+            { icon: 'ti-user-check', label: 'Staff Permissions', path: '/rbac/staff-access' },
             { icon: 'ti-switch-horizontal', label: 'Delegations', path: '/rbac/delegations' },
           ],
         },
