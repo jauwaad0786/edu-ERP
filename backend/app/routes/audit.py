@@ -45,6 +45,7 @@ from flask import Blueprint, request, jsonify, Response
 
 from app import db
 from app.models.audit import AuditLog, CompanyActivityLog, purge_school_logs
+from app.models.user import User
 from app.services.audit_service import log_action
 from app.services.permission_resolver import permission_required
 from app.utils.decorators import get_current_user
@@ -114,6 +115,39 @@ def _parse_date_arg(name):
         return None
 
 
+# NEW — BUGFIX (2026-07): AuditLog.to_dict()/CompanyActivityLog.to_dict()
+# only ever expose the raw *_id integer, never a name. The frontend
+# (SchoolAuditLogs.jsx / CompanyAuditLogs.jsx) already expects
+# `user_name` / `actor_name` respectively and falls back to showing
+# "User {id}" — which is what always rendered, for every row, because
+# that field never actually got sent. Fixed here at the route layer
+# (not inside to_dict()) with ONE batched query per page instead of a
+# query per row, so listing 25/100 log rows doesn't turn into 25/100
+# extra SELECTs.
+def _attach_actor_names(rows, dicts, id_field, name_key):
+    """
+    rows:  the ORM objects for this page (AuditLog or CompanyActivityLog)
+    dicts: the matching list of to_dict() results, same order as rows
+    id_field: 'user_id' or 'actor_user_id' — the FK column on the row
+    name_key: 'user_name' or 'actor_name' — the key the frontend reads
+
+    Mutates `dicts` in place and returns them for convenience.
+    """
+    ids = {getattr(r, id_field) for r in rows if getattr(r, id_field) is not None}
+    names_by_id = {}
+    if ids:
+        names_by_id = dict(
+            db.session.query(User.id, User.name).filter(User.id.in_(ids)).all()
+        )
+    for row, d in zip(rows, dicts):
+        uid = getattr(row, id_field)
+        # System-initiated rows (e.g. delegation auto-expiry) have no
+        # human actor at all — label them instead of leaving a blank
+        # that would render as "User None" on the frontend fallback.
+        d[name_key] = names_by_id.get(uid) if uid is not None else 'System'
+    return dicts
+
+
 def _csv_response(rows, fieldnames, filename):
     buffer = io.StringIO()
     writer = csv.DictWriter(buffer, fieldnames=fieldnames, extrasaction='ignore')
@@ -128,14 +162,14 @@ def _csv_response(rows, fieldnames, filename):
 
 
 AUDIT_CSV_FIELDS = [
-    'id', 'created_at', 'user_id', 'role_snapshot', 'department',
+    'id', 'created_at', 'user_id', 'user_name', 'role_snapshot', 'department',
     'module', 'submodule', 'action', 'old_value', 'new_value',
     'api_endpoint', 'http_method', 'status_code', 'execution_time_ms',
     'ip_address', 'remarks',
 ]
 
 COMPANY_CSV_FIELDS = [
-    'id', 'created_at', 'actor_user_id', 'role_snapshot', 'module', 'action',
+    'id', 'created_at', 'actor_user_id', 'actor_name', 'role_snapshot', 'module', 'action',
     'old_value', 'new_value', 'affected_school_id', 'ip_address',
 ]
 
@@ -200,9 +234,10 @@ def list_school_logs():
     page, per_page = _paginate_args()
     total = query.count()
     rows = query.offset((page - 1) * per_page).limit(per_page).all()
+    logs = _attach_actor_names(rows, [r.to_dict() for r in rows], 'user_id', 'user_name')
 
     return jsonify({
-        'logs': [r.to_dict() for r in rows],
+        'logs': logs,
         'page': page,
         'per_page': per_page,
         'total': total,
@@ -220,7 +255,8 @@ def export_school_logs():
     # narrower date range for a bigger pull is safer than one endpoint
     # trying to stream an unbounded table.
     rows = _build_school_query(actor).limit(5000).all()
-    csv_rows = [_flatten_for_csv(r.to_dict()) for r in rows]
+    logs = _attach_actor_names(rows, [r.to_dict() for r in rows], 'user_id', 'user_name')
+    csv_rows = [_flatten_for_csv(d) for d in logs]
     filename = f'audit_log_school_{actor.school_id}_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.csv'
     return _csv_response(csv_rows, AUDIT_CSV_FIELDS, filename)
 
@@ -308,9 +344,10 @@ def list_company_logs():
     page, per_page = _paginate_args()
     total = query.count()
     rows = query.offset((page - 1) * per_page).limit(per_page).all()
+    logs = _attach_actor_names(rows, [r.to_dict() for r in rows], 'actor_user_id', 'actor_name')
 
     return jsonify({
-        'logs': [r.to_dict() for r in rows],
+        'logs': logs,
         'page': page,
         'per_page': per_page,
         'total': total,
@@ -324,6 +361,7 @@ def export_company_logs():
         return error
 
     rows = _build_company_query().limit(5000).all()
-    csv_rows = [_flatten_for_csv(r.to_dict()) for r in rows]
+    logs = _attach_actor_names(rows, [r.to_dict() for r in rows], 'actor_user_id', 'actor_name')
+    csv_rows = [_flatten_for_csv(d) for d in logs]
     filename = f'company_activity_log_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.csv'
     return _csv_response(csv_rows, COMPANY_CSV_FIELDS, filename)
