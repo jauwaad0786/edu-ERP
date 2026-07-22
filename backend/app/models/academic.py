@@ -80,6 +80,7 @@ class Teacher(db.Model):
     def to_dict(self):
         return {
             'id':          self.id,
+            'user_id':     self.user_id,
             'employee_id': self.employee_id,
             'department':  self.department,
             'designation': self.designation,
