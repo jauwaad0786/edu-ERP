@@ -14,6 +14,15 @@ class UserRole(str, enum.Enum):
     HOSTEL       = 'HOSTEL'
     TRANSPORT    = 'TRANSPORT'
     HR           = 'HR'
+    # NEW — these two already existed as platform Role rows (rbac.py's
+    # DEFAULT_SCHOOL_ROLES) and the Postgres enum column already accepted
+    # them (_ensure_userrole_enum in app/__init__.py), but this Python enum
+    # never had them — so StaffPage.jsx offered "Academic Coordinator" /
+    # "Exam Controller" in the Add Staff dropdown, and creating either one
+    # always failed with "Invalid role" (UserRole(role_str) raised before
+    # ever reaching the platform-role lookup).
+    ACADEMIC_COORDINATOR = 'ACADEMIC_COORDINATOR'
+    EXAM_CONTROLLER      = 'EXAM_CONTROLLER'
     STUDENT      = 'STUDENT'
     PARENT       = 'PARENT'
 
@@ -28,6 +37,8 @@ PRINCIPAL_ALLOWED_ROLES = {
     UserRole.HOSTEL,
     UserRole.TRANSPORT,
     UserRole.HR,
+    UserRole.ACADEMIC_COORDINATOR,
+    UserRole.EXAM_CONTROLLER,
     UserRole.STUDENT,
     UserRole.PARENT,
 }
