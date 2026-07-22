@@ -149,6 +149,40 @@ DEFAULT_SCHOOL_ROLE_PERMISSIONS = {
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+#  DEFAULT ROLE → PERMISSION TEMPLATE  (company-side roles)
+# ═══════════════════════════════════════════════════════════════════════════
+# Gap found during Role Management/Permission Matrix audit: every
+# @permission_required('admin.user.manage') route in routes/rbac.py --
+# including create_role, toggle_role_permission, list_roles -- fail-closed
+# for EVERY company-scope role except CEO (is_super=True bypasses the
+# check entirely). SUPER_ADMIN is NOT is_super in the new engine
+# (rbac.py's DEFAULT_COMPANY_ROLES has it as False, only is_protected),
+# so without an explicit RolePermission row here, a Super Admin creating
+# a new role like 'CTO' hits a 403 on the very endpoint meant to grant
+# permissions -- a chicken-and-egg lockout with no row in any table to
+# break it. This mirrors DEFAULT_SCHOOL_ROLE_PERMISSIONS below, just for
+# COMPANY scope instead of TENANT.
+#
+# Only SUPER_ADMIN gets a row here on purpose -- it's the platform's
+# "company admin" seat, same role CEO already covers via is_super. Other
+# company roles (SUB_ADMIN, MANAGER, DEVELOPER, QA, ...) start with zero
+# permissions, same as before -- a CEO/Super Admin grants them access
+# explicitly through the Matrix once this fix lands, rather than this
+# catalog silently deciding what a Sales/HR/Developer role can do.
+DEFAULT_COMPANY_ROLE_PERMISSIONS = {
+    'SUPER_ADMIN': [
+        'admin.user.manage', 'admin.school.settings', 'admin.whatsapp.settings',
+        'audit.logs.view', 'audit.logs.delete',
+    ],
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  SEED FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 #  SEED FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════
 
