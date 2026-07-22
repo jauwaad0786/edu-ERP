@@ -74,16 +74,23 @@ class StaffSalaryRecord(db.Model):
     created_by    = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at    = db.Column(db.DateTime, default=datetime.utcnow)
 
+    # NEW — lets the staff member confirm "yes, I received this payment"
+    # from their own dashboard. Same pattern as SalaryRecord (teachers).
+    is_acknowledged = db.Column(db.Boolean, default=False)
+    acknowledged_at = db.Column(db.DateTime, nullable=True)
+
     def to_dict(self):
         return {
-            'id':           self.id,
-            'user_id':      self.user_id,
-            'month':        self.month,
-            'amount':       self.amount,
-            'status':       self.status,
-            'payment_date': str(self.payment_date) if self.payment_date else None,
-            'note':         self.note or '',
-            'created_at':   self.created_at.isoformat() if self.created_at else None,
+            'id':               self.id,
+            'user_id':          self.user_id,
+            'month':            self.month,
+            'amount':           self.amount,
+            'status':           self.status,
+            'payment_date':     str(self.payment_date) if self.payment_date else None,
+            'note':             self.note or '',
+            'created_at':       self.created_at.isoformat() if self.created_at else None,
+            'is_acknowledged':  self.is_acknowledged,
+            'acknowledged_at':  self.acknowledged_at.isoformat() if self.acknowledged_at else None,
         }
 
 
