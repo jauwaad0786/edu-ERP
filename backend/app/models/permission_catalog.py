@@ -216,7 +216,8 @@ def seed_permission_catalog():
 
 def seed_role_permission_templates():
     """
-    Idempotent. Links each role in DEFAULT_SCHOOL_ROLE_PERMISSIONS to its
+    Idempotent. Links each role in DEFAULT_SCHOOL_ROLE_PERMISSIONS (TENANT
+    scope) AND DEFAULT_COMPANY_ROLE_PERMISSIONS (COMPANY scope) to its
     Permission rows via a global (school_id=None) RolePermission template
     row. Returns a summary so unmapped roles/permissions are visible
     instead of silently skipped.
@@ -225,15 +226,22 @@ def seed_role_permission_templates():
     from app.models.platform import Product
 
     school_product = Product.query.filter_by(key='SCHOOL_ERP').first()
-    if not school_product:
-        return {'created': 0, 'unmapped_roles': [], 'unmapped_permissions': []}
 
-    roles_by_key = {
-        r.key: r for r in Role.query.filter_by(scope='TENANT', product_id=school_product.id).all()
+    school_roles_by_key = (
+        {r.key: r for r in Role.query.filter_by(scope='TENANT', product_id=school_product.id).all()}
+        if school_product else {}
+    )
+    company_roles_by_key = {
+        r.key: r for r in Role.query.filter_by(scope='COMPANY', product_id=None).all()
     }
-    perms_by_key = {
-        p.key: p for p in Permission.query.filter_by(product_id=school_product.id).all()
-    }
+
+    # Permissions here are all seeded under SCHOOL_ERP's product_id (see
+    # seed_permission_catalog) -- admin.user.manage etc. are reused as-is
+    # for COMPANY-scope roles too, same permission rows, not a separate set.
+    perms_by_key = (
+        {p.key: p for p in Permission.query.filter_by(product_id=school_product.id).all()}
+        if school_product else {}
+    )
 
     existing = {
         (rp.role_id, rp.permission_id) for rp in RolePermission.query.filter_by(school_id=None).all()
@@ -242,25 +250,29 @@ def seed_role_permission_templates():
     created = 0
     unmapped_roles, unmapped_permissions = [], []
 
-    for role_key, permission_keys in DEFAULT_SCHOOL_ROLE_PERMISSIONS.items():
-        role = roles_by_key.get(role_key)
-        if not role:
-            unmapped_roles.append(role_key)
-            continue
-
-        for perm_key in permission_keys:
-            perm = perms_by_key.get(perm_key)
-            if not perm:
-                unmapped_permissions.append(perm_key)
+    for scope_dict, roles_by_key in (
+        (DEFAULT_SCHOOL_ROLE_PERMISSIONS, school_roles_by_key),
+        (DEFAULT_COMPANY_ROLE_PERMISSIONS, company_roles_by_key),
+    ):
+        for role_key, permission_keys in scope_dict.items():
+            role = roles_by_key.get(role_key)
+            if not role:
+                unmapped_roles.append(role_key)
                 continue
 
-            if (role.id, perm.id) in existing:
-                continue
+            for perm_key in permission_keys:
+                perm = perms_by_key.get(perm_key)
+                if not perm:
+                    unmapped_permissions.append(perm_key)
+                    continue
 
-            db.session.add(RolePermission(
-                role_id=role.id, permission_id=perm.id, school_id=None, is_enabled=True,
-            ))
-            created += 1
+                if (role.id, perm.id) in existing:
+                    continue
+
+                db.session.add(RolePermission(
+                    role_id=role.id, permission_id=perm.id, school_id=None, is_enabled=True,
+                ))
+                created += 1
 
     if created:
         db.session.commit()
