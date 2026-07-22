@@ -709,13 +709,49 @@ def reset_user_password(user_id):
 @admin_bp.route('/users/<int:user_id>/assign-role', methods=['PUT'])
 @role_required('SUPER_ADMIN')
 def assign_role(user_id):
-    """Quick role change without full edit."""
+    """
+    Quick role change without full edit.
+
+    BUGFIX (2026-07): previously had ZERO checks beyond @role_required
+    ('SUPER_ADMIN') -- same class of gap as toggle_user/update_user before
+    they were fixed. Role reassignment is actually the MOST sensitive of
+    the three (it can hand someone SUPER_ADMIN outright), so it needs both:
+      1. _hierarchy_guard() -- actor must outrank the TARGET's current
+         standing (blocks touching a senior/protected user, and self-change).
+      2. An escalation check -- actor must also outrank the NEW role being
+         assigned, otherwise a borderline actor could "promote" someone
+         into a role senior to themselves even without being able to touch
+         their current role.
+    """
+    actor = get_current_user()
     user = User.query.get_or_404(user_id)
     data = request.get_json() or {}
+
     try:
-        user.role = UserRole(data['role'])
+        new_role = UserRole(data['role'])
     except (ValueError, KeyError):
         return jsonify({'error': 'Invalid role'}), 400
+
+    blocked = _hierarchy_guard(actor, user, action='change the role of')
+    if blocked:
+        return blocked
+
+    # Escalation check: can the actor manage the role being ASSIGNED, not
+    # just the user's current role? Only meaningful for roles that exist
+    # in the new platform_roles table (company-scope roles, e.g.
+    # SUPER_ADMIN/CEO/... via _resolve_creation_role's key convention) --
+    # legacy school-side enum values with no platform Role row (most
+    # TEACHER/STUDENT/etc. assignments) fall through unchecked, same as
+    # before this fix, since they were never part of the hierarchy engine.
+    target_platform_role = Role.query.filter_by(key=new_role.value).first()
+    if target_platform_role:
+        actor_roles = get_user_roles(actor)
+        if not can_manage_role(actor_roles, [target_platform_role]):
+            return jsonify({
+                'error': f"You do not have sufficient hierarchy to assign the '{new_role.value}' role"
+            }), 403
+
+    user.role = new_role
 
     # SUPER_ADMIN has no school
     if user.role == UserRole.SUPER_ADMIN:
@@ -723,6 +759,7 @@ def assign_role(user_id):
 
     db.session.commit()
     return jsonify(user.to_dict()), 200
+
 
 
 # ─── Stats ────────────────────────────────────────────────────────────────────
