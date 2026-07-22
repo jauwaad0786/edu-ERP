@@ -116,6 +116,57 @@ def permission_required(*permission_keys):
 #  BACKFILL — legacy User.role  →  UserRoleAssignment
 # ═══════════════════════════════════════════════════════════════════════════
 
+def ensure_role_assignment_for_user(user):
+    """
+    Single-user version of sync_legacy_role_assignments(), for use right
+    after a new staff/teacher User row is created (principal.py), and
+    lazily at login (auth.py's _serialize_user) to heal any existing user
+    who is still missing one.
+
+    WHY THIS MATTERS: creating a User row only sets the legacy `User.role`
+    enum column. Permission resolution (resolve_platform_permissions) reads
+    `UserRoleAssignment`, not `User.role` directly. Before this function was
+    called at creation time, a brand-new "Hostel Warden" or "Accountant" had
+    ZERO UserRoleAssignment rows until the next server restart ran the boot
+    backfill -- meaning no role-default permissions AND (until the
+    overrides-without-roles fix above) no per-user override either. From
+    the Principal's side this looked like "Staff Access page permission
+    grant kiya lekin kuch change nahi hota".
+
+    Idempotent -- safe to call on every login and every user creation.
+    Returns the linked Role row, or None if this legacy role has no
+    matching platform Role yet (see sync_legacy_role_assignments' KNOWN GAP
+    note).
+    """
+    from app.models.platform import Product
+
+    legacy_role = getattr(user, 'role', None)
+    if not legacy_role:
+        return None
+    role_key = legacy_role.value if hasattr(legacy_role, 'value') else str(legacy_role)
+
+    existing = UserRoleAssignment.query.filter_by(user_id=user.id).first()
+    if existing:
+        return Role.query.get(existing.role_id)
+
+    if role_key in LEGACY_COMPANY_SCOPE_KEYS:
+        target_role = Role.query.filter_by(key=role_key, scope='COMPANY').first()
+    else:
+        school_product = Product.query.filter_by(key='SCHOOL_ERP').first()
+        target_role = (
+            Role.query.filter_by(key=role_key, scope='TENANT', product_id=school_product.id).first()
+            if school_product else None
+        )
+
+    if not target_role:
+        return None
+
+    db.session.add(UserRoleAssignment(
+        user_id=user.id, role_id=target_role.id, is_active=True,
+    ))
+    return target_role
+
+
 def sync_legacy_role_assignments():
     """
     Idempotent. For every User with a legacy `role` set, ensures a matching
