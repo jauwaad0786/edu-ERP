@@ -129,6 +129,7 @@ def create_app(config_name='default'):
         _ensure_user_columns()   # ← must be BEFORE db.create_all()
         _ensure_communication_columns()
         _ensure_fee_record_columns()
+        _ensure_salary_acknowledgement_columns()
         db.create_all()
         _seed_super_admin()
 
@@ -224,6 +225,34 @@ def _ensure_fee_record_columns():
                     print(f'✅ Added column fee_records.{col}')
                 except Exception as e:
                     print(f'⚠️  fee_records.{col}: {e}')
+def _ensure_salary_acknowledgement_columns():
+    """
+    salary_records (teachers) aur staff_salary_records (non-teaching staff)
+    dono mein is_acknowledged / acknowledged_at add karo — Payroll
+    "acknowledge payment" feature ke liye. Existing rows automatically
+    is_acknowledged=False fallback lete hain (unread/unconfirmed).
+    """
+    from sqlalchemy import text, inspect
+    inspector = inspect(db.engine)
+    for table in ('salary_records', 'staff_salary_records'):
+        if table not in inspector.get_table_names():
+            continue
+        existing = {c['name'] for c in inspector.get_columns(table)}
+        to_add = {
+            'is_acknowledged': 'BOOLEAN DEFAULT FALSE',
+            'acknowledged_at': 'TIMESTAMP',
+        }
+        with db.engine.connect() as conn:
+            for col, defn in to_add.items():
+                if col not in existing:
+                    try:
+                        conn.execute(text(f'ALTER TABLE {table} ADD COLUMN {col} {defn}'))
+                        conn.commit()
+                        print(f'✅ Added column {table}.{col}')
+                    except Exception as e:
+                        print(f'⚠️  {table}.{col}: {e}')
+
+
 # ── School columns ────────────────────────────────────────────────────────────
 
 def _ensure_school_columns():
