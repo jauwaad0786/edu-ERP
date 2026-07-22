@@ -1,13 +1,22 @@
-// frontend/src/pages/rbac/RoleManagement.jsx
 import React, { useState, useEffect } from 'react';
 import Sidebar from '../../components/Sidebar';
 import Navbar  from '../../components/Navbar';
 import api from '../../api/axios';
 import { usePermission } from '../../hooks/usePermission';
+import { useAuth } from '../../context/AuthContext';
 
 export default function RoleManagement() {
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
   useEffect(() => { localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
+
+  const { user } = useAuth();
+  // A school-scoped actor (has school_id) only ever gets TENANT roles back
+  // from the backend regardless of what scope is requested (rbac.py's
+  // list_roles() forces this server-side) -- so for them the tab switcher
+  // is pointless and hidden. A company-scoped actor (Super Admin/CEO/...)
+  // sees both tabs, since only they can ever hold COMPANY-scope roles.
+  const isCompanyActor = !user?.school_id;
+  const [activeScope, setActiveScope] = useState(isCompanyActor ? 'COMPANY' : 'TENANT');
 
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -16,7 +25,7 @@ export default function RoleManagement() {
   const [formData, setFormData] = useState({
     key: '',
     name: '',
-    scope: 'TENANT',
+    scope: activeScope,
     hierarchy_level: 10,
     is_super: false,
     is_protected: false,
@@ -27,11 +36,14 @@ export default function RoleManagement() {
 
   useEffect(() => {
     fetchRoles();
-  }, []);
+  }, [activeScope]);
 
   const fetchRoles = async () => {
+    setLoading(true);
     try {
-      const res = await api.get('/rbac/roles');
+      // Explicit scope param -- this was missing before, which is why
+      // Company and School roles showed up mixed in one flat list.
+      const res = await api.get('/rbac/roles', { params: { scope: activeScope } });
       setRoles(res.data || []);
     } catch (err) {
       console.error('Failed to fetch roles:', err);
@@ -71,7 +83,7 @@ export default function RoleManagement() {
     setFormData({
       key: '',
       name: '',
-      scope: 'TENANT',
+      scope: activeScope,
       hierarchy_level: 10,
       is_super: false,
       is_protected: false,
@@ -128,7 +140,11 @@ export default function RoleManagement() {
       <div className="page-header">
         <div>
           <h2 className="page-title">Role Management</h2>
-          <p className="page-subtitle">Manage roles and hierarchy across the platform</p>
+          <p className="page-subtitle">
+            {activeScope === 'COMPANY'
+              ? 'Manage internal company roles (CEO, CTO, HR, Developer, ...)'
+              : 'Manage school-side roles (Principal, Teacher, Accountant, ...)'}
+          </p>
         </div>
         {canManage && (
           <button
@@ -143,10 +159,32 @@ export default function RoleManagement() {
         )}
       </div>
 
-      {/* Hierarchy Tree View */}
+      {isCompanyActor && (
+        <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '2px solid var(--neutral-2)' }}>
+          {[['COMPANY', '🏢 Company Roles'], ['TENANT', '🏫 School Roles']].map(([scope, label]) => (
+            <button
+              key={scope}
+              onClick={() => setActiveScope(scope)}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                padding: '10px 20px', fontSize: 13, fontWeight: 600,
+                color: activeScope === scope ? 'var(--blue-60)' : 'var(--neutral-6)',
+                borderBottom: activeScope === scope ? '2px solid var(--blue-60)' : '2px solid transparent',
+                marginBottom: -2,
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Hierarchy Tree View -- only roles in the active scope, never both mixed */}
       <div className="card" style={{ marginBottom: 24, background: darkMode ? '#141b2d' : undefined }}>
         <div className="card-header">
-          <h4 style={{ margin: 0 }}>Role Hierarchy</h4>
+          <h4 style={{ margin: 0 }}>
+            {activeScope === 'COMPANY' ? 'Company Role Hierarchy' : 'School Role Hierarchy'}
+          </h4>
           <span style={{ fontSize: 12, color: '#64748b' }}>Lower number = higher authority</span>
         </div>
         <div className="card-body" style={{ padding: 0 }}>
@@ -232,11 +270,52 @@ export default function RoleManagement() {
 
       {/* Role Form Modal */}
       {showModal && (
-        <div className="modal-overlay" onClick={() => { setShowModal(false); resetForm(); }}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 500, background: darkMode ? '#141b2d' : undefined }}>
-            <div className="modal-header">
-              <h3>{editingRole ? 'Edit Role' : 'Create New Role'}</h3>
-              <button className="btn-close" onClick={() => { setShowModal(false); resetForm(); }}>×</button>
+        <div
+          className="modal-overlay"
+          onClick={() => { setShowModal(false); resetForm(); }}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(15,23,42,0.55)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div
+            className="modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: 500, width: '100%',
+              maxHeight: '90vh', overflowY: 'auto',
+              background: darkMode ? '#141b2d' : '#fff',
+              borderRadius: 12,
+              boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+              position: 'relative',
+            }}
+          >
+            <div
+              className="modal-header"
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1c3452' : '#e2e8f0'}`,
+              }}
+            >
+              <h3 style={{ margin: 0, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
+                {editingRole ? 'Edit Role' : 'Create New Role'}
+              </h3>
+              <button
+                className="btn-close"
+                onClick={() => { setShowModal(false); resetForm(); }}
+                style={{
+                  width: 28, height: 28, borderRadius: 6, border: 'none',
+                  background: darkMode ? '#1e293b' : '#f1f5f9',
+                  color: darkMode ? '#94a3b8' : '#64748b',
+                  fontSize: 18, lineHeight: 1, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                ×
+              </button>
             </div>
             <form onSubmit={handleSubmit}>
               <div className="modal-body">
@@ -268,11 +347,17 @@ export default function RoleManagement() {
                   <select
                     className="form-select"
                     value={formData.scope}
+                    disabled={!isCompanyActor}
                     onChange={(e) => setFormData({ ...formData, scope: e.target.value })}
                   >
                     <option value="TENANT">School / Tenant</option>
                     <option value="COMPANY">Company (Platform)</option>
                   </select>
+                  {!isCompanyActor && (
+                    <small style={{ color: '#64748b' }}>
+                      School accounts can only create School-scope roles.
+                    </small>
+                  )}
                 </div>
                 <div className="form-group">
                   <label>Hierarchy Level (0 = highest authority)</label>
