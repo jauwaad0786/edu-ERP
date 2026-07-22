@@ -76,6 +76,7 @@ import SystemHealthDashboard from './pages/developer/SystemHealthDashboard';
 import RoleManagement     from './pages/rbac/RoleManagement';
 import PermissionMatrix   from './pages/rbac/PermissionMatrix';
 import DelegationPage     from './pages/rbac/DelegationPage';
+import StaffAccessPage    from './pages/rbac/StaffAccessPage';
 
 // ── Audit Logs ──────────────────────────────────────────────────────────────
 import SchoolAuditLogs    from './pages/audit/SchoolAuditLogs';
@@ -418,6 +419,11 @@ export default function App() {
                 <DelegationPage />
               </ProtectedRoute>
             } />
+            <Route path="/rbac/staff-access" element={
+               <ProtectedRoute roles={['PRINCIPAL']}>
+                 <StaffAccessPage />
+               </ProtectedRoute>
+           } />
 
             {/* ── Audit Logs ── */}
             {/* VICE_PRINCIPAL included here on purpose: it's the one role that
