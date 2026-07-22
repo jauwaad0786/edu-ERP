@@ -562,32 +562,36 @@ def list_payroll_records():
     for r in teacher_records:
         t = Teacher.query.get(r.teacher_id)
         out.append({
-            'id':            r.id,
-            'type':          'TEACHER',
-            'person_id':     r.teacher_id,
-            'person_name':   t.user.name if (t and t.user) else 'Unknown',
-            'employee_id':   t.employee_id if t else '',
-            'role_label':    'Teacher',
-            'month':         r.month,
-            'amount':        r.amount,
-            'status':        r.status,
-            'payment_date':  str(r.payment_date) if r.payment_date else None,
-            'note':          r.note or '',
+            'id':               r.id,
+            'type':             'TEACHER',
+            'person_id':        r.teacher_id,
+            'person_name':      t.user.name if (t and t.user) else 'Unknown',
+            'employee_id':      t.employee_id if t else '',
+            'role_label':       'Teacher',
+            'month':            r.month,
+            'amount':           r.amount,
+            'status':           r.status,
+            'payment_date':     str(r.payment_date) if r.payment_date else None,
+            'note':             r.note or '',
+            'is_acknowledged':  r.is_acknowledged,
+            'acknowledged_at':  r.acknowledged_at.isoformat() if r.acknowledged_at else None,
         })
     for r in staff_records:
         u = User.query.get(r.user_id)
         out.append({
-            'id':            r.id,
-            'type':          'STAFF',
-            'person_id':     r.user_id,
-            'person_name':   u.name if u else 'Unknown',
-            'employee_id':   '',
-            'role_label':    u.role.value if u else '',
-            'month':         r.month,
-            'amount':        r.amount,
-            'status':        r.status,
-            'payment_date':  str(r.payment_date) if r.payment_date else None,
-            'note':          r.note or '',
+            'id':               r.id,
+            'type':             'STAFF',
+            'person_id':        r.user_id,
+            'person_name':      u.name if u else 'Unknown',
+            'employee_id':      '',
+            'role_label':       u.role.value if u else '',
+            'month':            r.month,
+            'amount':           r.amount,
+            'status':           r.status,
+            'payment_date':     str(r.payment_date) if r.payment_date else None,
+            'note':             r.note or '',
+            'is_acknowledged':  r.is_acknowledged,
+            'acknowledged_at':  r.acknowledged_at.isoformat() if r.acknowledged_at else None,
         })
 
     out.sort(key=lambda x: x['payment_date'] or '', reverse=True)
@@ -3431,7 +3435,17 @@ def update_student(student_id):
 @principal_bp.route('/staff-list', methods=['GET'])
 @role_required('PRINCIPAL', 'TEACHER')
 def staff_list_for_id_cards():
-    """Non-teacher staff (Librarian, Accountant, etc.) for ID card module."""
+    """
+    Non-teacher staff (Librarian, Accountant, etc.) — used by ID card module,
+    Staff Access (RBAC) page, AND now Payroll page.
+
+    Deliberately NOT behind @feature_required('role_based_access') — this is
+    a plain staff directory, not an RBAC feature. Payroll previously fetched
+    staff via /principal/users, which IS gated by role_based_access; on any
+    school where that feature isn't enabled the call 403'd silently and
+    staff (Accountant, Hostel Warden, Transport/driver, etc.) vanished from
+    the Payroll dropdown — only Teachers (fetched separately) showed up.
+    """
     from app.models.user import User, UserRole
     staff_roles = [UserRole.LIBRARIAN, UserRole.ACCOUNTANT, UserRole.RECEPTIONIST,
                    UserRole.HOSTEL, UserRole.TRANSPORT, UserRole.HR, UserRole.VICE_PRINCIPAL]
@@ -3448,6 +3462,11 @@ def staff_list_for_id_cards():
         'phone':        u.phone,
         'photo_url':    None,
         'joining_date': u.created_at.date().isoformat() if u.created_at else None,
+        # Added for Payroll: base salary (pre-fills amount), role (grouping),
+        # is_active (Payroll shouldn't offer inactive staff as payees).
+        'role':         u.role.value,
+        'salary':       u.salary,
+        'is_active':    u.is_active,
     } for u in users]), 200
 
 
@@ -3869,6 +3888,14 @@ def principal_create_user():
     user.set_password(plain_pw, store_plain=True)
 
     db.session.add(user)
+    db.session.commit()
+
+    # Link the new legacy role to its matching platform Role right away —
+    # without this, the user has zero UserRoleAssignment rows until the
+    # next server boot's backfill, meaning no default permissions AND any
+    # override granted via the Staff Access page is a no-op until then.
+    from app.services.permission_resolver import ensure_role_assignment_for_user
+    ensure_role_assignment_for_user(user)
     db.session.commit()
 
     return jsonify(user.to_dict_with_credentials()), 201
