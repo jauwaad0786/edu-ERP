@@ -273,18 +273,27 @@ class SalaryRecord(db.Model):
     created_by   = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at   = db.Column(db.DateTime, default=datetime.utcnow)
 
+    # NEW — lets the teacher confirm "yes, I received this payment" from
+    # their own dashboard. Separate from `status` (which is the Principal's
+    # PAID/PENDING marking) -- a record can be PAID but not yet
+    # acknowledged by the teacher.
+    is_acknowledged   = db.Column(db.Boolean, default=False)
+    acknowledged_at   = db.Column(db.DateTime, nullable=True)
+
     teacher = db.relationship('Teacher', backref='salary_records')
 
     def to_dict(self):
         return {
-            'id':           self.id,
-            'teacher_id':   self.teacher_id,
-            'month':        self.month,
-            'amount':       self.amount,
-            'status':       self.status,
-            'payment_date': str(self.payment_date) if self.payment_date else None,
-            'note':         self.note,
-            'created_at':   self.created_at.isoformat(),
+            'id':               self.id,
+            'teacher_id':       self.teacher_id,
+            'month':            self.month,
+            'amount':           self.amount,
+            'status':           self.status,
+            'payment_date':     str(self.payment_date) if self.payment_date else None,
+            'note':             self.note,
+            'created_at':       self.created_at.isoformat(),
+            'is_acknowledged':  self.is_acknowledged,
+            'acknowledged_at':  self.acknowledged_at.isoformat() if self.acknowledged_at else None,
         }
 class Holiday(db.Model):
     """School holidays — visible to teachers and students."""
