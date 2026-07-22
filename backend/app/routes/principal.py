@@ -16,6 +16,7 @@ from app.models.documents import IssuedDocument, StudentDocument
 STUDENT_DOC_TYPES = ['AADHAR', 'RATION_CARD', 'BIRTH_CERTIFICATE', 'CASTE_CERTIFICATE', 'OTHER']
 ISSUED_DOC_TYPES  = ['BONAFIDE', 'TC', 'CHARACTER_CERTIFICATE', 'FEE_RECEIPT', 'OTHER']
 from app.utils.decorators import role_required, get_current_user
+from app.services.permission_resolver import permission_required
 from app.utils.feature_gate import feature_required
 from app.utils.pdf_generator import generate_admit_card, generate_result_card
 from app.routes.admin import FEATURE_CATALOG, PLAN_PRESETS, PLAN_PRICING
@@ -758,7 +759,7 @@ def create_student():
 # ─── Fees ─────────────────────────────────────────────────────────────────────
 
 @principal_bp.route('/fees/summary', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
+@permission_required('fees.reports.view')
 def fees_summary():
     sid = _school_id()
     # NEW
@@ -818,7 +819,7 @@ def fees_summary():
 
 
 @principal_bp.route('/fees/records', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
+@permission_required('fees.receipt.view')
 def fee_records():
     sid        = _school_id()
     class_id   = request.args.get('class_id')
@@ -885,7 +886,7 @@ def fee_records():
 
 
 @principal_bp.route('/fees/collect', methods=['POST'])
-@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
+@permission_required('fees.collect')
 def collect_fee():
     """
     Collect fee for a student.
@@ -966,7 +967,7 @@ def collect_fee():
 
 
 @principal_bp.route('/fees/collect-multiple', methods=['POST'])
-@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
+@permission_required('fees.collect')
 def collect_fee_multiple():
     """
     Body: { payments: [{record_id, amount}], payment_mode, remarks, mode: 'COMBINED'|'SEPARATE' }
@@ -1060,7 +1061,7 @@ def collect_fee_multiple():
     }), 200
 
 @principal_bp.route('/fees/notices/bulk', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@permission_required('fees.receipt.view')
 def bulk_fee_notice_pdf():
     """
     GET /api/principal/fees/notices/bulk?class_id=1&month=2026-07
@@ -1094,7 +1095,7 @@ def bulk_fee_notice_pdf():
 
 # NEW
 @principal_bp.route('/fees/generate', methods=['POST'])
-@role_required('PRINCIPAL', 'TEACHER')
+@permission_required('fees.structure.manage')
 def generate_fees():
     """
     Body: {
@@ -1213,7 +1214,7 @@ def generate_fees():
 # NEW
 
 @principal_bp.route('/fees/batches', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
+@permission_required('fees.reports.view')
 def list_fee_batches():
     sid    = _school_id()
     status = request.args.get('status')  # DRAFT / PUBLISHED / CANCELLED
@@ -1231,7 +1232,7 @@ def list_fee_batches():
 
 
 @principal_bp.route('/fees/batches/<int:batch_id>/records', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@permission_required('fees.structure.manage')
 def list_batch_records(batch_id):
     """Review screen — publish se pehle admin sab records dekh/edit kare."""
     batch = FeeGenerationBatch.query.get_or_404(batch_id)
@@ -1250,7 +1251,7 @@ def list_batch_records(batch_id):
 # NEW — paste right after list_batch_records()
 
 @principal_bp.route('/fees/batches/<int:batch_id>/missing-students', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@permission_required('fees.structure.manage')
 def batch_missing_students(batch_id):
     """Class ke wo students jo abhi is batch mein include nahi hain (naya admission/transfer)."""
     batch = FeeGenerationBatch.query.get_or_404(batch_id)
@@ -1270,7 +1271,7 @@ def batch_missing_students(batch_id):
 
 
 @principal_bp.route('/fees/batches/<int:batch_id>/add-student', methods=['POST'])
-@role_required('PRINCIPAL', 'TEACHER')
+@permission_required('fees.structure.manage')
 def batch_add_student(batch_id):
     """Missed student ko draft batch mein add karo — FeeStructure se hi amount resolve hota hai."""
     batch = FeeGenerationBatch.query.get_or_404(batch_id)
@@ -1319,7 +1320,7 @@ def batch_add_student(batch_id):
     return jsonify(d), 201
 
 @principal_bp.route('/fees/batches/<int:batch_id>/publish', methods=['POST'])
-@role_required('PRINCIPAL')
+@permission_required('fees.structure.manage')
 def publish_fee_batch(batch_id):
     batch = FeeGenerationBatch.query.get_or_404(batch_id)
     if batch.school_id != _school_id():
@@ -1338,7 +1339,7 @@ def publish_fee_batch(batch_id):
 
 
 @principal_bp.route('/fees/batches/<int:batch_id>', methods=['DELETE'])
-@role_required('PRINCIPAL')
+@permission_required('fees.structure.manage')
 def delete_fee_batch(batch_id):
     """Sirf DRAFT batch delete ho sakti hai — Published records audit trail ke liye protected hain."""
     batch = FeeGenerationBatch.query.get_or_404(batch_id)
@@ -1354,7 +1355,7 @@ def delete_fee_batch(batch_id):
 
 
 @principal_bp.route('/fees/records/<int:record_id>', methods=['PATCH'])
-@role_required('PRINCIPAL', 'TEACHER')
+@permission_required('fees.structure.manage')
 def update_fee_record(record_id):
     """DRAFT record ka amount/due_date edit karo — publish ke baad edit yahan se allowed nahi."""
     rec = FeeRecord.query.get_or_404(record_id)
@@ -1375,7 +1376,7 @@ def update_fee_record(record_id):
 # NEW — paste right after update_fee_record()
 
 @principal_bp.route('/fees/records/<int:record_id>/adjust', methods=['POST'])
-@role_required('PRINCIPAL')
+@permission_required('fees.discount.apply')
 def adjust_fee_record(record_id):
     """
     Fine (extra charge) ya Discount/Waiver (maafi) lagao — reason ke saath.
@@ -1430,7 +1431,7 @@ def adjust_fee_record(record_id):
     return jsonify(rec.to_dict()), 200
 
 @principal_bp.route('/fees/adjustments', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@permission_required('fees.reports.view')
 def list_fee_adjustments():
     """
     Saare fine/discount lagaye records — ek jagah, filterable.
@@ -1465,7 +1466,7 @@ def list_fee_adjustments():
         result.append(d)
     return jsonify(result), 200
 @principal_bp.route('/fees/records/<int:record_id>/adjust/<string:field>', methods=['DELETE'])
-@role_required('PRINCIPAL')
+@permission_required('fees.discount.apply')
 def remove_fee_adjustment(record_id, field):
     """Fine ya discount galti se lag gaya ho toh remove karo. field = 'fine' | 'discount'"""
     rec = FeeRecord.query.get_or_404(record_id)
@@ -1483,7 +1484,7 @@ def remove_fee_adjustment(record_id, field):
 
 
 @principal_bp.route('/fees/records/<int:record_id>', methods=['DELETE'])
-@role_required('PRINCIPAL')
+@permission_required('fees.structure.manage')
 def delete_fee_record(record_id):
     """Sirf DRAFT record individually delete ho sakta hai."""
     rec = FeeRecord.query.get_or_404(record_id)
@@ -1501,7 +1502,7 @@ def delete_fee_record(record_id):
 # NEW — paste in Fees section, kahin bhi
 
 @principal_bp.route('/fees/student-search', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@permission_required('fees.receipt.view')
 def fees_student_search():
     """
     Adjustment panel ka student picker — class + naam/roll se search.
@@ -1536,7 +1537,7 @@ def fees_student_search():
 
 
 @principal_bp.route('/fees/student-records/<int:student_id>', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@permission_required('fees.receipt.view')
 def fees_student_records(student_id):
     """
     Student select hone ke baad uske saare fee records — DRAFT + PUBLISHED
@@ -1562,7 +1563,7 @@ def fees_student_records(student_id):
     }), 200
 
 @principal_bp.route('/fees/records/<int:record_id>/cancel', methods=['POST'])
-@role_required('PRINCIPAL')
+@permission_required('fees.structure.manage')
 def cancel_fee_record(record_id):
     """Published record cancel karo (delete nahi — audit trail preserve rehta hai)."""
     rec = FeeRecord.query.get_or_404(record_id)
@@ -1575,7 +1576,7 @@ def cancel_fee_record(record_id):
     return jsonify(rec.to_dict()), 200
 
 @principal_bp.route('/fees/monthly-trend', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@permission_required('fees.reports.view')
 def fees_monthly_trend():
     """
     Month-wise Expected vs Collected vs Pending — FeeRecord.month based
@@ -1604,7 +1605,7 @@ def fees_monthly_trend():
     return jsonify(result), 200
 
 @principal_bp.route('/fees/class-summary', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
+@permission_required('fees.reports.view')
 def fees_class_summary():
     sid     = _school_id()
     month   = request.args.get('month')  # optional — "YYYY-MM"
@@ -1642,7 +1643,7 @@ def fees_class_summary():
 # principal.py — list_fee_structures() ko replace karo isse
 
 @principal_bp.route('/fee-structures', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@permission_required('fees.structure.manage')
 def list_fee_structures():
     """
     Unified view — Academic (is table se, editable) + Hostel/Library
@@ -1683,7 +1684,7 @@ def list_fee_structures():
 
 
 @principal_bp.route('/fee-structures', methods=['POST'])
-@role_required('PRINCIPAL')
+@permission_required('fees.structure.manage')
 def create_fee_structure():
     data     = request.get_json() or {}
     sid      = _school_id()
@@ -1718,7 +1719,7 @@ def create_fee_structure():
 
 
 @principal_bp.route('/fee-structures/<int:fs_id>', methods=['PATCH'])
-@role_required('PRINCIPAL')
+@permission_required('fees.structure.manage')
 def update_fee_structure(fs_id):
     fs = FeeStructure.query.get_or_404(fs_id)
     if fs.school_id != _school_id():
@@ -1737,7 +1738,7 @@ def update_fee_structure(fs_id):
 
 
 @principal_bp.route('/fee-structures/<int:fs_id>', methods=['DELETE'])
-@role_required('PRINCIPAL')
+@permission_required('fees.structure.manage')
 def delete_fee_structure(fs_id):
     fs = FeeStructure.query.get_or_404(fs_id)
     if fs.school_id != _school_id():
@@ -1802,7 +1803,7 @@ def attendance_summary():
         'present_pct':    round(present / total_students * 100, 1) if total_students else 0,
     }), 200
 @principal_bp.route('/fees/batches/<int:batch_id>/bulk-adjust', methods=['POST'])
-@role_required('PRINCIPAL')
+@permission_required('fees.discount.apply')
 def batch_bulk_adjust(batch_id):
     """
     Publish se PEHLE, poori batch (ya select student_ids) pe ek sath
@@ -2287,7 +2288,7 @@ def result_card_pdf(student_id, exam_id):
 # NEW — paste near admit_card_pdf / result_card_pdf routes
 
 @principal_bp.route('/fees/receipt/<string:receipt_no>/pdf', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
+@permission_required('fees.receipt.view')
 def fee_receipt_pdf(receipt_no):
     """Ek receipt_no ke saare linked transactions (single ya combined) ka ek PDF."""
     sid  = _school_id()
@@ -4231,7 +4232,7 @@ def delete_student_document(doc_id):
 # FeeTransaction.receipt_no mismatch ho jaye, isse ek click mein fix ho jata hai.
 
 @principal_bp.route('/fees/reconcile-receipts', methods=['POST'])
-@role_required('PRINCIPAL')
+@permission_required('fees.structure.manage')
 def reconcile_fee_receipts():
     """
     Har FeeRecord jiska receipt_no set hai, uske saare linked FeeTransaction
