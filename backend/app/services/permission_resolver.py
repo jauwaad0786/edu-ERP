@@ -112,6 +112,72 @@ def permission_required(*permission_keys):
     return decorator
 
 
+def role_or_permission_required(roles=(), permissions=()):
+    """
+    Bridge decorator for routes that were @role_required(...) and still
+    need to stay that way for their default roles, but ALSO need to open
+    up for whoever a Principal grants an extra permission to via the Staff
+    Access page.
+
+    Root cause this fixes: after Sidebar + ProtectedRoute were made
+    permission-aware, a Teacher granted e.g. 'staff.payroll.view' could
+    reach /staff and /finance/payroll in the browser -- but the actual data
+    endpoints behind those pages (GET /principal/users, GET
+    /principal/payroll/records) were still plain @role_required('PRINCIPAL',
+    ...) with no permission escape hatch at all. Result: page loads, fetch
+    call gets a silent 403 (both pages `.catch(() => {})` / `.catch(() =>
+    setRecords([]))` it), and the user sees an empty list -- no staff
+    names, no payment history -- with no visible error.
+
+    Checks, in order: (1) same role-equivalence + held-role logic as
+    role_required, (2) if that fails, whether the user holds ANY of
+    `permissions` via resolve_platform_permissions(). Passes if either
+    check passes; 403 only if both fail.
+    """
+    from app.utils.decorators import _expand
+    from app.models.user import User, UserRole
+
+    allowed_keys = set()
+    for r in roles:
+        allowed_keys |= _expand(r)
+
+    def decorator(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            from app.utils.decorators import get_current_user
+            user = get_current_user()
+            if not user or not getattr(user, 'is_active', True):
+                return jsonify({'error': 'Access denied'}), 403
+
+            allowed_enum = set()
+            for k in allowed_keys:
+                try:
+                    allowed_enum.add(UserRole(k))
+                except ValueError:
+                    pass
+            if user.role in allowed_enum:
+                return fn(*args, **kwargs)
+
+            from app.models.rbac import get_user_roles
+            held_keys = {r.key for r in get_user_roles(user)}
+            if held_keys & allowed_keys:
+                return fn(*args, **kwargs)
+
+            school_id = getattr(user, 'school_id', None)
+            if permissions and any(
+                has_platform_permission_cached(user, key, school_id=school_id)
+                for key in permissions
+            ):
+                return fn(*args, **kwargs)
+
+            return jsonify({
+                'error': f'Role {user.role} not authorized',
+                'required_any_of_permissions': list(permissions),
+            }), 403
+        return wrapper
+    return decorator
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 #  BACKFILL — legacy User.role  →  UserRoleAssignment
 # ═══════════════════════════════════════════════════════════════════════════
