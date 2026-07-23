@@ -326,6 +326,33 @@ const ROLE_MENUS = {
       ],
     },
   ],
+
+  // Base menu for a real (non-admin) COMPANY-side employee -- Manager,
+  // Software Engineer, QA, Sales, HR, Intern, etc. Previously these users
+  // had NO entry here at all, so Sidebar fell back to ROLE_MENUS.SUPER_ADMIN
+  // for every one of them (see the legacy-role bug this fixes below) --
+  // every employee got the CEO's full Schools/Users/RBAC/Audit sidebar.
+  // "My Assigned Issues" is always here (any company employee can have an
+  // error assigned to them); "Developer Tools" only appears once
+  // 'developer.manage' is actually granted (buildDynamicGroups below).
+  EMPLOYEE: [
+    {
+      group: 'Overview',
+      items: [{ icon: 'ti-layout-dashboard', label: 'Dashboard', path: '/dashboard' }],
+    },
+    {
+      group: 'My Work',
+      items: [{ icon: 'ti-bug', label: 'My Assigned Issues', path: '/developer/errors' }],
+    },
+    {
+      group: 'Customer Service',
+      items: [
+        { icon: 'ti-ticket',       label: 'My Tickets',    path: '/support/tickets' },
+        { icon: 'ti-message-2',    label: 'Messages',      path: '/support/chat' },
+        { icon: 'ti-help-circle',  label: 'Help Center',   path: '/support/help' },
+      ],
+    },
+  ],
 };
 
 const ROLE_LABELS = {
@@ -423,25 +450,40 @@ const NAV = {
 export default function Sidebar({ darkMode }) {
   const { user }   = useAuth();
   const location   = useLocation();
-  const baseGroups = ROLE_MENUS[resolveMenuRole(user?.role, ROLE_MENUS)] || [];
+
+  // COMPANY-side account = school_id null (see backend's own
+  // _require_company_actor() split -- same discriminator, reused here).
+  // Legacy user.role is USELESS for telling these apart: every company
+  // employee (CEO, Manager, Intern, Sales, Developer, ...) shares the
+  // exact same legacy value 'SUPER_ADMIN' (see admin.py's
+  // _resolve_creation_role). Real identity is user.active_role (from
+  // platform_roles via UserRoleAssignment, see auth.py _serialize_user).
+  const isCompanyActor = user && user.school_id == null;
+  const isTrueAdmin = !!(user?.is_super || ['CEO', 'SUPER_ADMIN'].includes(user?.active_role?.key));
+
+  const baseGroups = (isCompanyActor && !isTrueAdmin)
+    ? ROLE_MENUS.EMPLOYEE
+    : (ROLE_MENUS[resolveMenuRole(user?.role, ROLE_MENUS)] || []);
+
   // Static role bucket + jo bhi extra permission is user ko diya gaya hai
-  // (Staff Access page se) — ab dono merge hote hain, sirf role se nahi.
+  // (Staff Access page / Permission Matrix se) — ab dono merge hote hain,
+  // sirf role se nahi.
   //
-  // EXCEPTION: is_super roles (abhi sirf SUPER_ADMIN) is merge se bahar
-  // rakhe gaye hain. backend resolve_platform_permissions() (rbac.py) super
-  // role ke liye poora permission catalog return karta hai — 'fees.collect',
-  // 'students.profile.view', sab kuch — ye ek CEO-style full bypass hai, na
-  // ki Principal dwara diya gaya ek genuine per-item grant. Agar dynamic
-  // merge yaha bhi chalta to har school-level item (Fees, Students, Marks,
-  // Documents, ...) SUPER_ADMIN ke sidebar me bhi dikhne lagta, jo galat
-  // hai — company CEO ka dashboard tenant-level RBAC grants se drive nahi
-  // hona chahiye.
-  const NO_DYNAMIC_MENU_ROLES = new Set(['SUPER_ADMIN']);
+  // EXCEPTION: a true admin (CEO, or the real platform SUPER_ADMIN role)
+  // is kept OUT of this merge. backend resolve_platform_permissions()
+  // (rbac.py) super role ke liye poora permission catalog return karta hai
+  // — 'fees.collect', 'students.profile.view', sab kuch — ye ek CEO-style
+  // full bypass hai, na ki genuine per-item grant. Agar dynamic merge yaha
+  // bhi chalta to har school-level item (Fees, Students, Marks, ...)
+  // admin ke sidebar me bhi dikhne lagta. A real (non-admin) company
+  // employee, on the other hand, SHOULD go through the dynamic merge —
+  // that's the whole point of the EMPLOYEE base menu above: it starts
+  // lean and grows only with whatever's actually been granted to them.
   const groups     = useMemo(
-    () => (NO_DYNAMIC_MENU_ROLES.has(user?.role)
+    () => (isCompanyActor && isTrueAdmin
       ? baseGroups
       : buildDynamicGroups(baseGroups, user?.permissions)),
-    [baseGroups, user?.permissions, user?.role]
+    [baseGroups, user?.permissions, isCompanyActor, isTrueAdmin]
   );
   const [search,   setSearch]   = useState('');
   const [expanded, setExpanded] = useState({});
@@ -536,7 +578,7 @@ export default function Sidebar({ darkMode }) {
               color: NAV.groupLabel, fontSize: 10, fontWeight: 500, marginTop: 3,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
-              {[schoolCode, schoolCity].filter(Boolean).join(' | ') || ROLE_LABELS[user?.role] || ''}
+              {[schoolCode, schoolCity].filter(Boolean).join(' | ') || (isCompanyActor && user?.active_role?.name) || ROLE_LABELS[user?.role] || ''}
             </div>
             <div style={{
               color: NAV.accent, fontSize: 9, fontWeight: 600,
@@ -686,7 +728,7 @@ export default function Sidebar({ darkMode }) {
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>{user?.name}</div>
             <div style={{ fontSize: 10, color: NAV.groupLabel, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              {ROLE_LABELS[user?.role] || user?.role}
+              {(isCompanyActor && user?.active_role?.name) || ROLE_LABELS[user?.role] || user?.role}
             </div>
           </div>
           <span style={{
