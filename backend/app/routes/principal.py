@@ -4261,6 +4261,106 @@ def delete_student_document(doc_id):
 # receipt_no generation ka bug aa jaye aur FeeRecord.receipt_no vs
 # FeeTransaction.receipt_no mismatch ho jaye, isse ek click mein fix ho jata hai.
 
+# ═══════════════════════════════════════════════════════════════════════════
+#  NEW — Dashboard Widget Counts (Tasks & Approvals sidebar cards)
+# ═══════════════════════════════════════════════════════════════════════════
+
+@principal_bp.route('/fees/concessions/pending-count', methods=['GET'])
+@permission_required('fees.reports.view')
+def fee_concessions_pending_count():
+    """
+    Dashboard tile — 'Fee Concessions'.
+    Definition (koi naya column/migration nahi chahiye): FeeRecord jinpe
+    discount lag chuka hai (discount > 0), record abhi bhi unpaid/partial
+    hai, aur discount ISI calendar month mein apply hua hai — matlab
+    'recently granted, payment abhi settle nahi hua' cases.
+
+    Agar tumhe ek REAL approval-workflow chahiye (jahan Teacher/Accountant
+    discount REQUEST kare aur Principal Approve/Reject kare), to FeeRecord
+    mein naya column chahiye hoga: concession_status
+    ENUM('REQUESTED','APPROVED','REJECTED') — bata dena, migration bhi
+    bana dunga.
+    """
+    sid = _school_id()
+    today = date.today()
+    month_start = date(today.year, today.month, 1)
+
+    count = FeeRecord.query.filter(
+        FeeRecord.school_id == sid,
+        FeeRecord.discount > 0,
+        FeeRecord.status.in_(['PENDING', 'PARTIAL']),
+        FeeRecord.adjusted_at.isnot(None),
+        FeeRecord.adjusted_at >= month_start,
+    ).count()
+
+    return jsonify({'count': count}), 200
+
+
+@principal_bp.route('/admissions/recent-count', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER')
+def admissions_recent_count():
+    """
+    Dashboard tile — 'New Admissions'.
+    Definition: is school mein last N din (default 7) mein banaye gaye
+    students ki count — User.created_at use karke (Student ka apna
+    created_at field nahi hai, User se aata hai).
+    Query param ?days=14 se window badal sakte ho.
+    """
+    sid  = _school_id()
+    days = request.args.get('days', 7, type=int)
+    since = datetime.utcnow() - timedelta(days=days)
+
+    count = Student.query.join(User, Student.user_id == User.id) \
+        .filter(Student.school_id == sid, User.created_at >= since) \
+        .count()
+
+    return jsonify({'count': count, 'days': days}), 200
+
+
+@principal_bp.route('/documents/requests/pending-count', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER')
+def document_requests_pending_count():
+    """
+    Dashboard tile — 'Document Requests'.
+    Definition (koi naya schema nahi chahiye): un students ki count jinke
+    paas MANDATORY KYC documents (Aadhar, Birth Certificate) StudentDocument
+    table mein abhi tak upload nahi hue — 'follow-up needed' count hai,
+    ek TRUE request-approval count nahi.
+
+    Agar tumhe actual 'student/parent ne document ke liye REQUEST daali,
+    Principal approve kare' wala feature chahiye (jaise TC/Bonafide),
+    wo ek NAYA feature hai — DocumentRequest model (student_id, doc_type,
+    status, requested_at) + create/list/approve routes chahiye honge.
+    Bol do, wo bhi bana dunga.
+    """
+    sid = _school_id()
+    MANDATORY_DOC_TYPES = ['AADHAR', 'BIRTH_CERTIFICATE']
+
+    students = Student.query.filter_by(school_id=sid).all()
+    if not students:
+        return jsonify({'count': 0}), 200
+
+    student_ids = [s.id for s in students]
+    have_docs = db.session.query(
+        StudentDocument.student_id, StudentDocument.doc_type
+    ).filter(
+        StudentDocument.school_id == sid,
+        StudentDocument.student_id.in_(student_ids),
+        StudentDocument.doc_type.in_(MANDATORY_DOC_TYPES),
+    ).all()
+
+    submitted_map = {}
+    for sid_, dtype in have_docs:
+        submitted_map.setdefault(sid_, set()).add(dtype)
+
+    missing_count = sum(
+        1 for s in students
+        if len(submitted_map.get(s.id, set())) < len(MANDATORY_DOC_TYPES)
+    )
+
+    return jsonify({'count': missing_count}), 200
+
+
 @principal_bp.route('/fees/reconcile-receipts', methods=['POST'])
 @permission_required('fees.structure.manage')
 def reconcile_fee_receipts():
