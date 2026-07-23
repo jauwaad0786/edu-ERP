@@ -426,9 +426,22 @@ export default function Sidebar({ darkMode }) {
   const baseGroups = ROLE_MENUS[resolveMenuRole(user?.role, ROLE_MENUS)] || [];
   // Static role bucket + jo bhi extra permission is user ko diya gaya hai
   // (Staff Access page se) — ab dono merge hote hain, sirf role se nahi.
+  //
+  // EXCEPTION: is_super roles (abhi sirf SUPER_ADMIN) is merge se bahar
+  // rakhe gaye hain. backend resolve_platform_permissions() (rbac.py) super
+  // role ke liye poora permission catalog return karta hai — 'fees.collect',
+  // 'students.profile.view', sab kuch — ye ek CEO-style full bypass hai, na
+  // ki Principal dwara diya gaya ek genuine per-item grant. Agar dynamic
+  // merge yaha bhi chalta to har school-level item (Fees, Students, Marks,
+  // Documents, ...) SUPER_ADMIN ke sidebar me bhi dikhne lagta, jo galat
+  // hai — company CEO ka dashboard tenant-level RBAC grants se drive nahi
+  // hona chahiye.
+  const NO_DYNAMIC_MENU_ROLES = new Set(['SUPER_ADMIN']);
   const groups     = useMemo(
-    () => buildDynamicGroups(baseGroups, user?.permissions),
-    [baseGroups, user?.permissions]
+    () => (NO_DYNAMIC_MENU_ROLES.has(user?.role)
+      ? baseGroups
+      : buildDynamicGroups(baseGroups, user?.permissions)),
+    [baseGroups, user?.permissions, user?.role]
   );
   const [search,   setSearch]   = useState('');
   const [expanded, setExpanded] = useState({});
