@@ -34,6 +34,61 @@ function roleMeta(role) {
   return { label, tagline: 'Great leadership builds great institutions.' };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  Inline SVG illustration for the Welcome Banner — deliberately NOT an icon
+//  font glyph (those depend on an icon set being loaded/matching a valid
+//  class name; if the class doesn't exist you get nothing rendered, no
+//  console error, no broken-image icon — just blank space). Plain SVG always
+//  renders, no external asset or font dependency.
+// ═══════════════════════════════════════════════════════════════════════════
+function SchoolIllustration({ darkMode }) {
+  const wall   = darkMode ? '#3b2f78' : '#efe7ff';
+  const roof   = '#7c3aed';
+  const door   = darkMode ? '#241a56' : '#c9b8f7';
+  const glass  = darkMode ? '#4c3d99' : '#ffffff';
+  const flag   = '#f59e0b';
+  const tree   = '#22c55e';
+  const trunk  = '#92400e';
+
+  return (
+    <svg width="180" height="144" viewBox="0 0 188 150" aria-hidden="true" focusable="false">
+      {/* birds */}
+      <path d="M20 22 q4 -6 8 0 q4 -6 8 0" stroke="#7c3aed" strokeWidth="2" fill="none" opacity="0.5" />
+      <path d="M150 36 q4 -6 8 0 q4 -6 8 0" stroke="#7c3aed" strokeWidth="2" fill="none" opacity="0.4" />
+
+      {/* trees */}
+      <rect x="14" y="96" width="6" height="26" fill={trunk} rx="1" />
+      <circle cx="17" cy="88" r="16" fill={tree} opacity="0.85" />
+      <rect x="164" y="100" width="6" height="22" fill={trunk} rx="1" />
+      <circle cx="167" cy="92" r="14" fill={tree} opacity="0.85" />
+
+      {/* building */}
+      <rect x="44" y="60" width="100" height="62" rx="4" fill={wall} />
+      <polygon points="94,32 40,60 148,60" fill={roof} />
+
+      {/* flag */}
+      <rect x="92" y="14" width="3" height="20" fill={roof} />
+      <polygon points="95,14 112,20 95,26" fill={flag} />
+
+      {/* clock */}
+      <circle cx="94" cy="70" r="9" fill={glass} stroke={roof} strokeWidth="2" />
+      <line x1="94" y1="70" x2="94" y2="64" stroke={roof} strokeWidth="1.5" />
+      <line x1="94" y1="70" x2="98" y2="70" stroke={roof} strokeWidth="1.5" />
+
+      {/* windows */}
+      <rect x="54" y="86" width="14" height="16" rx="2" fill={glass} />
+      <rect x="120" y="86" width="14" height="16" rx="2" fill={glass} />
+
+      {/* door */}
+      <rect x="84" y="94" width="20" height="28" rx="2" fill={door} />
+      <circle cx="100" cy="108" r="1.4" fill={roof} />
+
+      {/* ground shadow */}
+      <rect x="30" y="122" width="128" height="4" rx="2" fill={roof} opacity="0.22" />
+    </svg>
+  );
+}
+
 function StatCard({ icon, label, value, sub, color = '#4f46e5', tint, darkMode }) {
   return (
     <div className="stat-card" style={{
@@ -137,13 +192,13 @@ function WelcomeBanner({ user, darkMode, navigate }) {
               border: `1px solid ${darkMode ? '#3a3170' : '#ddd4f7'}`, borderRadius: 9, padding: '9px 18px',
               fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
             }}>
-              <i className="ti ti-building-bank" style={{ fontSize: 14 }} aria-hidden="true" /> View School Profile
+              <i className="ti ti-building-school" style={{ fontSize: 14 }} aria-hidden="true" /> View School Profile
             </button>
           </div>
         </div>
 
-        <div style={{ fontSize: 78, lineHeight: 1, opacity: 0.92, flexShrink: 0 }} aria-hidden="true">
-          <i className="ti ti-building-castle" style={{ color: '#7c3aed' }} />
+        <div style={{ flexShrink: 0 }}>
+          <SchoolIllustration darkMode={darkMode} />
         </div>
       </div>
     </div>
@@ -259,8 +314,8 @@ function UpcomingEventsCard({ events, darkMode, navigate }) {
 function TasksApprovalsCard({ leaveCount, feeConcessions, admissions, docRequests, darkMode, onLeaveClick, navigate }) {
   const cardBg = { background: darkMode ? '#141b2d' : undefined, borderColor: darkMode ? '#1e293b' : undefined };
   const tiles = [
-    { label: 'Leave Applications', value: leaveCount,      icon: 'ti-calendar-off', color: '#7c3aed', onClick: onLeaveClick },
-    { label: 'Fee Concessions',    value: feeConcessions,  icon: 'ti-discount-2',   color: '#16a34a', onClick: () => navigate('/fees') },
+    { label: 'Leave Applications', value: leaveCount,      icon: 'ti-calendar-time', color: '#7c3aed', onClick: onLeaveClick },
+    { label: 'Fee Concessions',    value: feeConcessions,  icon: 'ti-receipt-2',     color: '#16a34a', onClick: () => navigate('/fees') },
     { label: 'New Admissions',     value: admissions,      icon: 'ti-user-plus',    color: '#2563eb', onClick: () => navigate('/admission') },
     { label: 'Document Requests',  value: docRequests,     icon: 'ti-file-text',    color: '#d97706', onClick: () => navigate('/documents') },
   ];
