@@ -5,6 +5,7 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider }          from './context/AuthContext';
 import { NotificationProvider }  from './context/NotificationContext';
 import ProtectedRoute            from './components/ProtectedRoute';
+import { ROUTE_PERMISSIONS }     from './utils/permissionMenuMap';
 import DocumentsPage             from './pages/DocumentsPage';
 import SchoolSettings            from './pages/SchoolSettings';
 
@@ -103,12 +104,12 @@ export default function App() {
 
             {/* ── Principal / Teacher / Admin ── */}
             <Route path="/students" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']}>
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']} permissions={ROUTE_PERMISSIONS['/students']}>
                 <StudentsPage />
               </ProtectedRoute>
             } />
             <Route path="/students/:id" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']}>
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']} permissions={ROUTE_PERMISSIONS['/students']}>
                 <StudentProfile />
               </ProtectedRoute>
             } />
@@ -133,37 +134,37 @@ export default function App() {
               </ProtectedRoute>
             } />
             <Route path="/staff" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']}>
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/staff']}>
                 <StaffPage />
               </ProtectedRoute>
             } />
             <Route path="/staff/:id" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']}>
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/staff']}>
                 <StaffProfile />
               </ProtectedRoute>
             } />
             <Route path="/fees" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'ACCOUNTANT']}>
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'ACCOUNTANT']} permissions={ROUTE_PERMISSIONS['/fees']}>
                 <FeesPage />
               </ProtectedRoute>
             } />
             <Route path="/fees/structures" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']}>
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/fees/structures']}>
                 <FeeStructures />
               </ProtectedRoute>
             } />
             <Route path="/finance/expenses" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'ACCOUNTANT']}>
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'ACCOUNTANT']} permissions={ROUTE_PERMISSIONS['/finance/expenses']}>
                 <ExpensesPage />
               </ProtectedRoute>
             } />
             <Route path="/finance/inventory" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'ACCOUNTANT']}>
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'ACCOUNTANT']} permissions={ROUTE_PERMISSIONS['/finance/inventory']}>
                 <InventoryPage />
               </ProtectedRoute>
             } />
             <Route path="/finance/payroll" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT']}>
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT']} permissions={ROUTE_PERMISSIONS['/finance/payroll']}>
                 <PayrollPage />
               </ProtectedRoute>
             } />
@@ -173,7 +174,7 @@ export default function App() {
               </ProtectedRoute>
             } />
             <Route path="/admission" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']}>
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/admission']}>
                 <NewAdmissionPage />
               </ProtectedRoute>
             } />
@@ -183,7 +184,7 @@ export default function App() {
               </ProtectedRoute>
             } />
             <Route path="/marks" element={
-              <ProtectedRoute roles={['TEACHER', 'PRINCIPAL']}>
+              <ProtectedRoute roles={['TEACHER', 'PRINCIPAL']} permissions={ROUTE_PERMISSIONS['/marks']}>
                 <MarksPage />
               </ProtectedRoute>
             } />
@@ -198,12 +199,12 @@ export default function App() {
               </ProtectedRoute>
             } />
             <Route path="/documents" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']}>
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']} permissions={ROUTE_PERMISSIONS['/documents']}>
                 <DocumentsPage />
               </ProtectedRoute>
             } />
             <Route path="/exams" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']}>
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/exams']}>
                 <ExamsPage />
               </ProtectedRoute>
             } />
@@ -219,12 +220,12 @@ export default function App() {
             } />
             <Route path="/id-cards" element={<Navigate to="/id-cards/students" replace />} />
             <Route path="/school-settings" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']}>
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/school-settings']}>
                 <SchoolSettings />
               </ProtectedRoute>
             } />
             <Route path="/settings/whatsapp" element={
-              <ProtectedRoute roles={['PRINCIPAL']}>
+              <ProtectedRoute roles={['PRINCIPAL']} permissions={ROUTE_PERMISSIONS['/settings/whatsapp']}>
                 <WhatsAppSettings />
               </ProtectedRoute>
             } />
@@ -340,7 +341,7 @@ export default function App() {
               </ProtectedRoute>
             } />
             <Route path="/support/announcements" element={
-              <ProtectedRoute>
+              <ProtectedRoute permissions={ROUTE_PERMISSIONS['/support/announcements']}>
                 <Announcements />
               </ProtectedRoute>
             } />
@@ -405,22 +406,22 @@ export default function App() {
 
             {/* ── RBAC (Role-Based Access Control) ── */}
             <Route path="/rbac/roles" element={
-              <ProtectedRoute roles={['SUPER_ADMIN', 'PRINCIPAL']}>
+              <ProtectedRoute roles={['SUPER_ADMIN', 'PRINCIPAL']} permissions={ROUTE_PERMISSIONS['/rbac/roles']}>
                 <RoleManagement />
               </ProtectedRoute>
             } />
             <Route path="/rbac/permissions" element={
-              <ProtectedRoute roles={['SUPER_ADMIN', 'PRINCIPAL']}>
+              <ProtectedRoute roles={['SUPER_ADMIN', 'PRINCIPAL']} permissions={ROUTE_PERMISSIONS['/rbac/permissions']}>
                 <PermissionMatrix />
               </ProtectedRoute>
             } />
             <Route path="/rbac/delegations" element={
-              <ProtectedRoute roles={['SUPER_ADMIN', 'PRINCIPAL']}>
+              <ProtectedRoute roles={['SUPER_ADMIN', 'PRINCIPAL']} permissions={ROUTE_PERMISSIONS['/rbac/delegations']}>
                 <DelegationPage />
               </ProtectedRoute>
             } />
             <Route path="/rbac/staff-access" element={
-               <ProtectedRoute roles={['PRINCIPAL']}>
+               <ProtectedRoute roles={['PRINCIPAL']} permissions={ROUTE_PERMISSIONS['/rbac/staff-access']}>
                  <StaffAccessPage />
                </ProtectedRoute>
            } />
@@ -433,7 +434,7 @@ export default function App() {
                 unreachable since ProtectedRoute gates by role before the page's
                 own permission check ever runs. */}
             <Route path="/audit/school/logs" element={
-              <ProtectedRoute roles={['SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL']}>
+              <ProtectedRoute roles={['SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL']} permissions={ROUTE_PERMISSIONS['/audit/school/logs']}>
                 <SchoolAuditLogs />
               </ProtectedRoute>
             } />
