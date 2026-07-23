@@ -49,6 +49,7 @@ from app.models.developer_center import (
 from app.models.school import School
 from app.models.user import User
 from app.models.audit import log_company_action
+from app.models.rbac import resolve_platform_permissions, get_user_roles
 from app.utils.decorators import get_current_user
 
 developer_center_bp = Blueprint('developer_center', __name__)
@@ -67,6 +68,43 @@ def _require_company_actor():
     if getattr(actor, 'school_id', None) is not None:
         return None, (jsonify({'error': 'Developer Error Center is company-side only'}), 403)
     return actor, None
+
+
+def _can_triage(user):
+    """
+    True triage access = 'developer.manage' in the user's resolved platform
+    permissions. resolve_platform_permissions() already short-circuits to
+    True for a real is_super role (CEO) and otherwise unions role-default +
+    per-user-override permissions -- same engine every other module uses.
+    Company employees (Manager, Software Engineer, Intern, ...) start with
+    ZERO permissions here by default (see permission_catalog.py) until a
+    Super Admin/CEO explicitly grants 'developer.manage' via the Permission
+    Matrix. Without it, an employee can only ever act on errors specifically
+    assigned to them (see _assigned_to below) -- never the whole board.
+    """
+    return 'developer.manage' in resolve_platform_permissions(user)
+
+
+def _assigned_to(user, error_row):
+    """True if the latest assignment on this error points at this user --
+    lets the assignee themself move status / resolve their own assigned
+    item even without the broader 'developer.manage' permission."""
+    latest = (IssueAssignment.query
+              .filter_by(error_id=error_row.id)
+              .order_by(IssueAssignment.created_at.desc())
+              .first())
+    return bool(latest and latest.assigned_to_user_id == user.id)
+
+
+def _scope_to_own_assignments(query, actor):
+    """For an actor without 'developer.manage': restrict any ErrorLog query
+    to only rows ever assigned to them. Applied in list_errors/list_issues/
+    error_summary so a random employee's board isn't the whole company's,
+    just their own queue -- exactly what an assignment is supposed to mean."""
+    assigned_ids = db.session.query(IssueAssignment.error_id).filter(
+        IssueAssignment.assigned_to_user_id == actor.id
+    ).subquery()
+    return query.filter(ErrorLog.id.in_(assigned_ids))
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────
@@ -113,6 +151,8 @@ def list_errors():
         return error
 
     query = ErrorLog.query
+    if not _can_triage(actor):
+        query = _scope_to_own_assignments(query, actor)
 
     status = request.args.get('status')
     if status:
@@ -181,6 +221,9 @@ def get_error(error_id):
     if not row:
         return jsonify({'error': 'Error not found'}), 404
 
+    if not _can_triage(actor) and not _assigned_to(actor, row):
+        return jsonify({'error': 'This error is not assigned to you.'}), 403
+
     return jsonify(_error_detail_dict(row)), 200
 
 
@@ -188,11 +231,17 @@ def get_error(error_id):
 
 @developer_center_bp.route('/errors/<int:error_id>/assign', methods=['POST'])
 def assign_error(error_id):
-    """Body: {"assigned_team": "BACKEND", "assigned_to_user_id": null,
+    """Body: {"assigned_team": "BACKEND", "assigned_to_user_id": 42,
               "priority": "P1_HIGH", "deadline": "2026-07-20T00:00:00"}"""
     actor, error = _require_company_actor()
     if error:
         return error
+
+    if not _can_triage(actor):
+        return jsonify({
+            'error': "You need the 'developer.manage' permission to assign errors. "
+                     "Ask a Super Admin/CEO to grant it via Permission Matrix (Company Roles)."
+        }), 403
 
     row = ErrorLog.query.get(error_id)
     if not row:
@@ -200,12 +249,31 @@ def assign_error(error_id):
 
     data = request.get_json() or {}
     assigned_team = data.get('assigned_team')
+    assigned_to_user_id = data.get('assigned_to_user_id')
     priority = data.get('priority', 'P2_MEDIUM')
+
+    if not assigned_team and not assigned_to_user_id:
+        return jsonify({'error': 'Provide assigned_team and/or assigned_to_user_id'}), 400
 
     if assigned_team and assigned_team not in ASSIGNMENT_TEAMS:
         return jsonify({'error': f'Invalid assigned_team, must be one of {ASSIGNMENT_TEAMS}'}), 400
     if priority not in PRIORITY_LEVELS:
         return jsonify({'error': f'Invalid priority, must be one of {PRIORITY_LEVELS}'}), 400
+
+    # Real-user assignment -- this is the actual fix. Previously this field
+    # was accepted from the body but never validated (silently written even
+    # if garbage), and the frontend never sent it at all (only assigned_team
+    # via a prompt()). Now it must point at a real, active, COMPANY-side
+    # user -- assigning to a school account here would be meaningless
+    # (they can't even reach this blueprint, see _require_company_actor).
+    if assigned_to_user_id:
+        assignee = User.query.get(assigned_to_user_id)
+        if not assignee:
+            return jsonify({'error': 'assigned_to_user_id not found'}), 404
+        if assignee.school_id is not None:
+            return jsonify({'error': 'Can only assign to a company-side (internal) user, not a school account'}), 400
+        if not assignee.is_active:
+            return jsonify({'error': 'Cannot assign to a deactivated user'}), 400
 
     deadline = None
     if data.get('deadline'):
@@ -219,7 +287,7 @@ def assign_error(error_id):
     assignment = IssueAssignment(
         error_id=row.id,
         assigned_team=assigned_team,
-        assigned_to_user_id=data.get('assigned_to_user_id'),
+        assigned_to_user_id=assigned_to_user_id or None,
         assigned_by_user_id=actor.id,
         priority=priority,
         deadline=deadline,
@@ -234,9 +302,13 @@ def assign_error(error_id):
     log_company_action(
         actor_user=actor, module='developer_center', action='ERROR_ASSIGNED',
         old_value={'status': old_status},
-        new_value={'status': row.status, 'assigned_team': assigned_team, 'priority': priority},
+        new_value={
+            'status': row.status, 'assigned_team': assigned_team,
+            'assigned_to_user_id': assigned_to_user_id, 'priority': priority,
+        },
         affected_school_id=row.school_id,
-        remarks=f'Error #{row.id} assigned to {assigned_team or "unassigned"}',
+        remarks=f'Error #{row.id} assigned to '
+                f'{assignee.name if assigned_to_user_id else (assigned_team or "unassigned")}',
     )
     db.session.commit()
 
@@ -259,6 +331,9 @@ def update_error_status(error_id):
     row = ErrorLog.query.get(error_id)
     if not row:
         return jsonify({'error': 'Error not found'}), 404
+
+    if not _can_triage(actor) and not _assigned_to(actor, row):
+        return jsonify({'error': 'This error is not assigned to you.'}), 403
 
     data = request.get_json() or {}
     new_status = data.get('status')
@@ -297,6 +372,9 @@ def resolve_error(error_id):
     row = ErrorLog.query.get(error_id)
     if not row:
         return jsonify({'error': 'Error not found'}), 404
+
+    if not _can_triage(actor) and not _assigned_to(actor, row):
+        return jsonify({'error': 'This error is not assigned to you.'}), 403
 
     data = request.get_json() or {}
     note = data.get('resolution_note')
@@ -341,24 +419,40 @@ def error_summary():
     open_statuses = ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'TESTING', 'REOPENED']
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
 
-    open_count = ErrorLog.query.filter(ErrorLog.status.in_(open_statuses)).count()
-    critical_open = ErrorLog.query.filter(
+    can_triage = _can_triage(actor)
+    base_query = ErrorLog.query
+    if not can_triage:
+        # Same reasoning as list_errors -- without 'developer.manage' these
+        # cards should describe *this employee's* queue, not the whole
+        # company's board.
+        base_query = _scope_to_own_assignments(base_query, actor)
+
+    open_count = base_query.filter(ErrorLog.status.in_(open_statuses)).count()
+    critical_open = base_query.filter(
         ErrorLog.status.in_(open_statuses), ErrorLog.severity == 'CRITICAL'
     ).count()
-    resolved_today = ErrorLog.query.filter(
+    resolved_today = base_query.filter(
         ErrorLog.status == 'RESOLVED', ErrorLog.resolved_at >= today_start
     ).count()
-    new_today = ErrorLog.query.filter(ErrorLog.first_seen_at >= today_start).count()
+    new_today = base_query.filter(ErrorLog.first_seen_at >= today_start).count()
 
     by_severity = dict(
         db.session.query(ErrorLog.severity, db.func.count(ErrorLog.id))
-        .filter(ErrorLog.status.in_(open_statuses))
+        .filter(ErrorLog.id.in_(base_query.with_entities(ErrorLog.id)), ErrorLog.status.in_(open_statuses))
         .group_by(ErrorLog.severity).all()
     )
     by_error_type = dict(
         db.session.query(ErrorLog.error_type, db.func.count(ErrorLog.id))
-        .filter(ErrorLog.status.in_(open_statuses))
+        .filter(ErrorLog.id.in_(base_query.with_entities(ErrorLog.id)), ErrorLog.status.in_(open_statuses))
         .group_by(ErrorLog.error_type).all()
+    )
+
+    # Always available regardless of triage rights -- "how much is on my
+    # plate right now", the number that actually matters to an assignee.
+    assigned_to_me_open = (
+        ErrorLog.query.join(IssueAssignment, IssueAssignment.error_id == ErrorLog.id)
+        .filter(IssueAssignment.assigned_to_user_id == actor.id, ErrorLog.status.in_(open_statuses))
+        .distinct().count()
     )
 
     return jsonify({
@@ -368,7 +462,44 @@ def error_summary():
         'new_today': new_today,
         'by_severity': by_severity,
         'by_error_type': by_error_type,
+        'assigned_to_me': assigned_to_me_open,
+        'can_triage': can_triage,
     }), 200
+
+
+# ── Team members (for the Assign dropdown) ───────────────────────────────
+
+@developer_center_bp.route('/team-members', methods=['GET'])
+def list_team_members():
+    """
+    Real company-side users an error/issue can actually be assigned to.
+    Powers the Assign modal in ErrorDashboard.jsx -- replaces the old
+    prompt()-based team-name-only flow, which never reached a real person.
+
+    Gated behind 'developer.manage' itself (same as assign_error) so a
+    random employee without triage rights can't use this to enumerate the
+    whole company roster.
+    """
+    actor, error = _require_company_actor()
+    if error:
+        return error
+
+    if not _can_triage(actor):
+        return jsonify({'error': "You need the 'developer.manage' permission to view team members."}), 403
+
+    users = User.query.filter(User.school_id.is_(None), User.is_active == True).order_by(User.name).all()
+
+    result = []
+    for u in users:
+        roles = get_user_roles(u)
+        result.append({
+            'id': u.id,
+            'name': u.name,
+            'email': u.email,
+            'role_names': [r.name for r in roles],
+            'can_triage': 'developer.manage' in resolve_platform_permissions(u),
+        })
+    return jsonify(result), 200
 
 
 # ── Issue Board (Jira-style) — same ErrorLog data, different shape ────────
@@ -380,7 +511,7 @@ def error_summary():
 # since /errors' own shape is already relied on by ErrorDashboard.jsx and
 # changing it would break that page instead.
 
-def _issue_dict(row, school_names, user_names):
+def _issue_dict(row, school_names, user_names, assignee_names):
     data = row.to_dict()
     data['created_at'] = row.first_seen_at.isoformat() if row.first_seen_at else None
     latest = (IssueAssignment.query
@@ -388,6 +519,10 @@ def _issue_dict(row, school_names, user_names):
               .order_by(IssueAssignment.created_at.desc())
               .first())
     data['assigned_to'] = latest.assigned_team if latest else None
+    data['assigned_to_user_id'] = latest.assigned_to_user_id if latest else None
+    data['assigned_to_user_name'] = (
+        assignee_names.get(latest.assigned_to_user_id) if latest and latest.assigned_to_user_id else None
+    )
     data['resolution_note'] = latest.resolution_note if latest else None
     # Same soft-degrade ErrorDashboard.jsx already relies on when a name
     # isn't available -- it falls back to `School ${school_id}` itself,
@@ -403,7 +538,11 @@ def list_issues():
     if error:
         return error
 
-    rows = ErrorLog.query.order_by(ErrorLog.last_seen_at.desc()).limit(300).all()
+    query = ErrorLog.query
+    if not _can_triage(actor):
+        query = _scope_to_own_assignments(query, actor)
+
+    rows = query.order_by(ErrorLog.last_seen_at.desc()).limit(300).all()
 
     # Batch-fetch names instead of querying School/User per row.
     school_ids = {r.school_id for r in rows if r.school_id}
@@ -415,7 +554,16 @@ def list_issues():
         db.session.query(User.id, User.name).filter(User.id.in_(user_ids)).all()
     ) if user_ids else {}
 
-    return jsonify([_issue_dict(r, school_names, user_names) for r in rows]), 200
+    assignments = IssueAssignment.query.filter(
+        IssueAssignment.error_id.in_([r.id for r in rows]),
+        IssueAssignment.assigned_to_user_id.isnot(None),
+    ).all()
+    assignee_ids = {a.assigned_to_user_id for a in assignments}
+    assignee_names = dict(
+        db.session.query(User.id, User.name).filter(User.id.in_(assignee_ids)).all()
+    ) if assignee_ids else {}
+
+    return jsonify([_issue_dict(r, school_names, user_names, assignee_names) for r in rows]), 200
 
 
 @developer_center_bp.route('/issues/<int:error_id>/status', methods=['PUT'])
@@ -430,6 +578,9 @@ def update_issue_status(error_id):
     row = ErrorLog.query.get(error_id)
     if not row:
         return jsonify({'error': 'Error not found'}), 404
+
+    if not _can_triage(actor) and not _assigned_to(actor, row):
+        return jsonify({'error': 'This issue is not assigned to you.'}), 403
 
     data = request.get_json() or {}
     new_status = data.get('status')
