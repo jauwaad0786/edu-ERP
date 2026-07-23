@@ -16,7 +16,7 @@ from app.models.documents import IssuedDocument, StudentDocument
 STUDENT_DOC_TYPES = ['AADHAR', 'RATION_CARD', 'BIRTH_CERTIFICATE', 'CASTE_CERTIFICATE', 'OTHER']
 ISSUED_DOC_TYPES  = ['BONAFIDE', 'TC', 'CHARACTER_CERTIFICATE', 'FEE_RECEIPT', 'OTHER']
 from app.utils.decorators import role_required, get_current_user
-from app.services.permission_resolver import permission_required
+from app.services.permission_resolver import permission_required, role_or_permission_required
 from app.utils.feature_gate import feature_required
 from app.utils.pdf_generator import generate_admit_card, generate_result_card
 from app.routes.admin import FEATURE_CATALOG, PLAN_PRESETS, PLAN_PRICING
@@ -535,7 +535,10 @@ def add_salary_record(teacher_id):
     }), 201
 
 @principal_bp.route('/payroll/records', methods=['GET'])
-@role_required('PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT')
+@role_or_permission_required(
+    roles=['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT'],
+    permissions=['staff.payroll.view', 'staff.payroll.manage'],
+)
 @feature_required('payroll_system')
 def list_payroll_records():
     """
@@ -3757,7 +3760,7 @@ def _actor_can_manage_target(actor, target):
     return can_manage_role(actor_roles, target_roles)
 # ── List users of own school ───────────────────────────────────────────────────
 @principal_bp.route('/users', methods=['GET'])
-@role_required('PRINCIPAL')
+@role_or_permission_required(roles=['PRINCIPAL'], permissions=['staff.profile.manage'])
 @feature_required('role_based_access')
 def principal_list_users():
     """
