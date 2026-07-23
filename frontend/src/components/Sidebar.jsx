@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { resolveMenuRole } from '../utils/roleEquivalence';
+import { PERMISSION_MENU_ITEMS } from '../utils/permissionMenuMap';
 
 const ROLE_MENUS = {
   SUPER_ADMIN: [
@@ -344,57 +345,13 @@ const ROLE_LABELS = {
 // fresh aata hai, see auth.py _serialize_user) ko kabhi use hi nahi kiya
 // ja raha tha.
 //
-// Fix: har permission_catalog.py key ka ek "iske grant hone par sidebar
-// me kaunsa item/group add ho" mapping. Login/refresh ke baad jo bhi extra
-// permission user ke paas ho (role-default + per-user override, dono
-// resolve_platform_permissions() se already merged), uska sidebar item
-// khud-ba-khud jud jaata hai -- role bucket ko haath lagaye bina, aur agar
-// item pehle se (role-default se) visible hai to path se dedupe ho jaata
-// hai, duplicate nahi banta.
-const PERMISSION_MENU_ITEMS = {
-  'students.admission.manage': { group: 'Academics', item: { icon: 'ti-user-plus',    label: 'Admissions', path: '/admission' } },
-  'students.profile.view':     { group: 'Academics', item: { icon: 'ti-address-book', label: 'Students',   path: '/students' } },
-  'students.profile.edit':     { group: 'Academics', item: { icon: 'ti-address-book', label: 'Students',   path: '/students' } },
-  'students.delete':           { group: 'Academics', item: { icon: 'ti-address-book', label: 'Students',   path: '/students' } },
-
-  'staff.profile.manage':      { group: 'Staff Management', item: { icon: 'ti-briefcase', label: 'Staff List', path: '/staff' } },
-
-  'fees.structure.manage':     { group: 'Operations', item: { icon: 'ti-currency-rupee', label: 'Fee Structures', path: '/fees/structures' } },
-  'fees.collect':              { group: 'Operations', item: { icon: 'ti-receipt',        label: 'Fees',           path: '/fees' } },
-  'fees.discount.apply':       { group: 'Operations', item: { icon: 'ti-receipt',        label: 'Fees',           path: '/fees' } },
-  'fees.receipt.view':         { group: 'Operations', item: { icon: 'ti-receipt',        label: 'Fees',           path: '/fees' } },
-  'fees.reports.view':         { group: 'Operations', item: { icon: 'ti-receipt',        label: 'Fees',           path: '/fees' } },
-
-  'exams.schedule.manage':     { group: 'Examinations', item: { icon: 'ti-pencil',    label: 'Exam Schedule', path: '/exams' } },
-  'exams.timetable.manage':    { group: 'Examinations', item: { icon: 'ti-pencil',    label: 'Exam Schedule', path: '/exams' } },
-  'exams.results.publish':     { group: 'Examinations', item: { icon: 'ti-pencil',    label: 'Exam Schedule', path: '/exams' } },
-  'exams.admitcard.generate':  { group: 'Examinations', item: { icon: 'ti-ticket',    label: 'Admit Cards',   path: '/admit-card' } },
-  'marks.entry':                { group: 'Examinations', item: { icon: 'ti-chart-bar', label: 'Marks', path: '/marks' } },
-  'marks.bulk_save':            { group: 'Examinations', item: { icon: 'ti-chart-bar', label: 'Marks', path: '/marks' } },
-  'marks.analytics.view':       { group: 'Examinations', item: { icon: 'ti-chart-bar', label: 'Marks', path: '/marks' } },
-
-  'finance.expense.manage':    { group: 'Finance', item: { icon: 'ti-receipt-2', label: 'Expenses',  path: '/finance/expenses' } },
-  'finance.inventory.manage':  { group: 'Finance', item: { icon: 'ti-boxes',     label: 'Inventory',  path: '/finance/inventory' } },
-  'staff.payroll.view':        { group: 'Finance', item: { icon: 'ti-cash',      label: 'Payroll',    path: '/finance/payroll' } },
-  'staff.payroll.manage':      { group: 'Finance', item: { icon: 'ti-cash',      label: 'Payroll',    path: '/finance/payroll' } },
-
-  'documents.issue':           { group: 'Resources', item: { icon: 'ti-file-text', label: 'Documents', path: '/documents' } },
-  'documents.view':            { group: 'Resources', item: { icon: 'ti-file-text', label: 'Documents', path: '/documents' } },
-
-  'communication.announcement.post': { group: 'Customer Service', item: { icon: 'ti-speakerphone', label: 'Announcements', path: '/support/announcements' } },
-
-  'audit.logs.view':           { group: 'Access Control', item: { icon: 'ti-history', label: 'Audit Logs', path: '/audit/school/logs' } },
-
-  // ek permission -> kai items (Access Control ka poora RBAC sub-menu)
-  'admin.user.manage': [
-    { group: 'Access Control', item: { icon: 'ti-users',             label: 'Roles & Hierarchy', path: '/rbac/roles' } },
-    { group: 'Access Control', item: { icon: 'ti-grid',              label: 'Permission Matrix',  path: '/rbac/permissions' } },
-    { group: 'Access Control', item: { icon: 'ti-switch-horizontal', label: 'Delegations',        path: '/rbac/delegations' } },
-    { group: 'Access Control', item: { icon: 'ti-user-check',        label: 'Staff Permissions',  path: '/rbac/staff-access' } },
-  ],
-  'admin.school.settings':   { group: 'Settings', item: { icon: 'ti-settings',       label: 'School Settings',      path: '/school-settings' } },
-  'admin.whatsapp.settings': { group: 'Settings', item: { icon: 'ti-brand-whatsapp', label: 'WhatsApp Integration', path: '/settings/whatsapp' } },
-};
+// PERMISSION_MENU_ITEMS ab yaha define nahi hota -- utils/permissionMenuMap.js
+// se import hota hai. Wahi file ROUTE_PERMISSIONS bhi export karti hai jo
+// ProtectedRoute (App.jsx) use karta hai, taaki "sidebar me item dikhna"
+// aur "us route par actually jaane dena" hamesha ek hi mapping se decide
+// ho -- dono kabhi ek-dusre se out-of-sync na ho paayein (yahi wo bug tha
+// jahan permission grant karne par item dikhta tha par click karne par
+// /dashboard par wapas redirect ho jaata tha).
 
 /**
  * Role ke static base menu ko user ke ACTUAL resolved permissions
