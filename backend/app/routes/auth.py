@@ -10,7 +10,7 @@ from sqlalchemy import func as sqlfunc
 from app import db
 from app.models.user import User, UserRole
 from app.models.academic import Student
-from app.models.rbac import resolve_platform_permissions, get_user_roles
+from app.models.rbac import resolve_platform_permissions, get_user_roles, get_active_role
 from app.services.permission_resolver import ensure_role_assignment_for_user
 from datetime import datetime
 import re
@@ -29,6 +29,18 @@ def _serialize_user(user):
     roles = get_user_roles(user)
     data['is_super']    = any(r.is_super for r in roles)
     data['permissions'] = sorted(resolve_platform_permissions(user, school_id=user.school_id))
+
+    # user.role (legacy enum) is ALWAYS 'SUPER_ADMIN' for every company
+    # employee -- CEO, Intern, Sales, Developer, all of them (see admin.py's
+    # _resolve_creation_role, which uses it as a generic "company account"
+    # marker). Frontend code that switched on user.role to decide dashboard/
+    # sidebar/permission-bypass was therefore treating every company
+    # employee as a Super Admin. active_role is the real identity, from
+    # platform_roles via UserRoleAssignment -- this is what DashboardRouter,
+    # Sidebar, and usePermission should key off for company-side users.
+    active_role = get_active_role(user)
+    data['active_role'] = active_role.to_dict() if active_role else None
+
     return data
 
 
