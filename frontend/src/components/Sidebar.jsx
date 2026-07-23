@@ -333,6 +333,111 @@ const ROLE_LABELS = {
   LIBRARIAN: 'Librarian', HOSTEL: 'Warden', STUDENT: 'Student', PARENT: 'Parent',
 };
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  DYNAMIC PERMISSION-DRIVEN MENU ITEMS  (the actual bug fix)
+// ═══════════════════════════════════════════════════════════════════════════
+// Purani problem: ROLE_MENUS[user.role] hamesha ek FIXED, hardcoded list
+// tha. Principal ne Staff Access page se kisi Teacher/Warden ko baad me
+// extra permission (UserPermissionOverride, e.g. 'fees.collect') diya bhi
+// to sidebar kabhi nahi badalta tha, kyunki neeche wala `groups` sirf
+// `user.role` string dekh raha tha -- `user.permissions` (jo /auth/me se
+// fresh aata hai, see auth.py _serialize_user) ko kabhi use hi nahi kiya
+// ja raha tha.
+//
+// Fix: har permission_catalog.py key ka ek "iske grant hone par sidebar
+// me kaunsa item/group add ho" mapping. Login/refresh ke baad jo bhi extra
+// permission user ke paas ho (role-default + per-user override, dono
+// resolve_platform_permissions() se already merged), uska sidebar item
+// khud-ba-khud jud jaata hai -- role bucket ko haath lagaye bina, aur agar
+// item pehle se (role-default se) visible hai to path se dedupe ho jaata
+// hai, duplicate nahi banta.
+const PERMISSION_MENU_ITEMS = {
+  'students.admission.manage': { group: 'Academics', item: { icon: 'ti-user-plus',    label: 'Admissions', path: '/admission' } },
+  'students.profile.view':     { group: 'Academics', item: { icon: 'ti-address-book', label: 'Students',   path: '/students' } },
+  'students.profile.edit':     { group: 'Academics', item: { icon: 'ti-address-book', label: 'Students',   path: '/students' } },
+  'students.delete':           { group: 'Academics', item: { icon: 'ti-address-book', label: 'Students',   path: '/students' } },
+
+  'staff.profile.manage':      { group: 'Staff Management', item: { icon: 'ti-briefcase', label: 'Staff List', path: '/staff' } },
+
+  'fees.structure.manage':     { group: 'Operations', item: { icon: 'ti-currency-rupee', label: 'Fee Structures', path: '/fees/structures' } },
+  'fees.collect':              { group: 'Operations', item: { icon: 'ti-receipt',        label: 'Fees',           path: '/fees' } },
+  'fees.discount.apply':       { group: 'Operations', item: { icon: 'ti-receipt',        label: 'Fees',           path: '/fees' } },
+  'fees.receipt.view':         { group: 'Operations', item: { icon: 'ti-receipt',        label: 'Fees',           path: '/fees' } },
+  'fees.reports.view':         { group: 'Operations', item: { icon: 'ti-receipt',        label: 'Fees',           path: '/fees' } },
+
+  'exams.schedule.manage':     { group: 'Examinations', item: { icon: 'ti-pencil',    label: 'Exam Schedule', path: '/exams' } },
+  'exams.timetable.manage':    { group: 'Examinations', item: { icon: 'ti-pencil',    label: 'Exam Schedule', path: '/exams' } },
+  'exams.results.publish':     { group: 'Examinations', item: { icon: 'ti-pencil',    label: 'Exam Schedule', path: '/exams' } },
+  'exams.admitcard.generate':  { group: 'Examinations', item: { icon: 'ti-ticket',    label: 'Admit Cards',   path: '/admit-card' } },
+  'marks.entry':                { group: 'Examinations', item: { icon: 'ti-chart-bar', label: 'Marks', path: '/marks' } },
+  'marks.bulk_save':            { group: 'Examinations', item: { icon: 'ti-chart-bar', label: 'Marks', path: '/marks' } },
+  'marks.analytics.view':       { group: 'Examinations', item: { icon: 'ti-chart-bar', label: 'Marks', path: '/marks' } },
+
+  'finance.expense.manage':    { group: 'Finance', item: { icon: 'ti-receipt-2', label: 'Expenses',  path: '/finance/expenses' } },
+  'finance.inventory.manage':  { group: 'Finance', item: { icon: 'ti-boxes',     label: 'Inventory',  path: '/finance/inventory' } },
+  'staff.payroll.view':        { group: 'Finance', item: { icon: 'ti-cash',      label: 'Payroll',    path: '/finance/payroll' } },
+  'staff.payroll.manage':      { group: 'Finance', item: { icon: 'ti-cash',      label: 'Payroll',    path: '/finance/payroll' } },
+
+  'documents.issue':           { group: 'Resources', item: { icon: 'ti-file-text', label: 'Documents', path: '/documents' } },
+  'documents.view':            { group: 'Resources', item: { icon: 'ti-file-text', label: 'Documents', path: '/documents' } },
+
+  'communication.announcement.post': { group: 'Customer Service', item: { icon: 'ti-speakerphone', label: 'Announcements', path: '/support/announcements' } },
+
+  'audit.logs.view':           { group: 'Access Control', item: { icon: 'ti-history', label: 'Audit Logs', path: '/audit/school/logs' } },
+
+  // ek permission -> kai items (Access Control ka poora RBAC sub-menu)
+  'admin.user.manage': [
+    { group: 'Access Control', item: { icon: 'ti-users',             label: 'Roles & Hierarchy', path: '/rbac/roles' } },
+    { group: 'Access Control', item: { icon: 'ti-grid',              label: 'Permission Matrix',  path: '/rbac/permissions' } },
+    { group: 'Access Control', item: { icon: 'ti-switch-horizontal', label: 'Delegations',        path: '/rbac/delegations' } },
+    { group: 'Access Control', item: { icon: 'ti-user-check',        label: 'Staff Permissions',  path: '/rbac/staff-access' } },
+  ],
+  'admin.school.settings':   { group: 'Settings', item: { icon: 'ti-settings',       label: 'School Settings',      path: '/school-settings' } },
+  'admin.whatsapp.settings': { group: 'Settings', item: { icon: 'ti-brand-whatsapp', label: 'WhatsApp Integration', path: '/settings/whatsapp' } },
+};
+
+/**
+ * Role ke static base menu ko user ke ACTUAL resolved permissions
+ * (role-default + per-user override, dono already merged in user.permissions
+ * by resolve_platform_permissions()) ke saath merge karta hai. Path-level
+ * dedupe hai isliye already-visible item dobara nahi judta, aur naya group
+ * chahiye ho to end me apne aap ban jaata hai.
+ */
+function buildDynamicGroups(baseGroups, permissions) {
+  if (!permissions || !permissions.length) return baseGroups;
+
+  const existingPaths = new Set();
+  baseGroups.forEach(g => g.items.forEach(it => {
+    existingPaths.add(it.path);
+    (it.children || []).forEach(c => existingPaths.add(c.path));
+  }));
+
+  const extraByGroup = {};
+  const addEntry = (entry) => {
+    if (!entry || existingPaths.has(entry.item.path)) return;
+    existingPaths.add(entry.item.path);
+    (extraByGroup[entry.group] ||= []).push(entry.item);
+  };
+
+  permissions.forEach(key => {
+    const mapped = PERMISSION_MENU_ITEMS[key];
+    if (!mapped) return;
+    (Array.isArray(mapped) ? mapped : [mapped]).forEach(addEntry);
+  });
+
+  if (Object.keys(extraByGroup).length === 0) return baseGroups;
+
+  const merged = baseGroups.map(g => (
+    extraByGroup[g.group] ? { ...g, items: [...g.items, ...extraByGroup[g.group]] } : g
+  ));
+  Object.keys(extraByGroup).forEach(groupName => {
+    if (!merged.some(g => g.group === groupName)) {
+      merged.push({ group: groupName, items: extraByGroup[groupName] });
+    }
+  });
+  return merged;
+}
+
 function getSchoolColor(name = '') {
   const colors = ['#f97316', '#8b5cf6', '#0ea5e9', '#10b981', '#f43f5e', '#f59e0b'];
   let hash = 0;
@@ -361,7 +466,13 @@ const NAV = {
 export default function Sidebar({ darkMode }) {
   const { user }   = useAuth();
   const location   = useLocation();
-  const groups     = ROLE_MENUS[resolveMenuRole(user?.role, ROLE_MENUS)] || [];
+  const baseGroups = ROLE_MENUS[resolveMenuRole(user?.role, ROLE_MENUS)] || [];
+  // Static role bucket + jo bhi extra permission is user ko diya gaya hai
+  // (Staff Access page se) — ab dono merge hote hain, sirf role se nahi.
+  const groups     = useMemo(
+    () => buildDynamicGroups(baseGroups, user?.permissions),
+    [baseGroups, user?.permissions]
+  );
   const [search,   setSearch]   = useState('');
   const [expanded, setExpanded] = useState({});
 
