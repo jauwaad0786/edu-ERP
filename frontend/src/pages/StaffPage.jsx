@@ -48,7 +48,11 @@ export default function StaffPage() {
         const staffRoleKeys = STAFF_ROLES.map(r => r.value);
         setStaff((r.data.users || []).filter(u => staffRoleKeys.includes(u.role)));
       })
-      .catch(() => {});
+      .catch(err => {
+        if (err?.response?.status === 403) {
+          toast.error('Staff list dekhne ki permission nahi hai');
+        }
+      });
   };
   useEffect(() => { load(); }, []);
 
