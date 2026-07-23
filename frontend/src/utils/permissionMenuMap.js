@@ -57,6 +57,15 @@ export const PERMISSION_MENU_ITEMS = {
   ],
   'admin.school.settings':   { group: 'Settings', item: { icon: 'ti-settings',       label: 'School Settings',      path: '/school-settings' } },
   'admin.whatsapp.settings': { group: 'Settings', item: { icon: 'ti-brand-whatsapp', label: 'WhatsApp Integration', path: '/settings/whatsapp' } },
+
+  // COMPANY-side only (see routes/developer_center.py). A company employee
+  // granted this via PermissionMatrix (Company Roles tab) now sees the
+  // full triage tools in their sidebar instead of just the base "My
+  // Assigned Issues" link every company employee already gets.
+  'developer.manage': [
+    { group: 'Developer Tools', item: { icon: 'ti-bug',        label: 'Error Center', path: '/developer/errors' } },
+    { group: 'Developer Tools', item: { icon: 'ti-list-check', label: 'Issue Board',  path: '/developer/issues' } },
+  ],
 };
 
 /**
