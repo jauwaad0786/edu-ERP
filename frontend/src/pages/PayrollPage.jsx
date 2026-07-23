@@ -77,7 +77,12 @@ export default function PayrollPage() {
     if (monthFilter) params.month = monthFilter;
     api.get('/principal/payroll/records', { params })
       .then(r => setRecords(r.data || []))
-      .catch(() => setRecords([]))
+      .catch(err => {
+        setRecords([]);
+        if (err?.response?.status === 403) {
+          toast.error('Payroll history dekhne ki permission nahi hai');
+        }
+      })
       .finally(() => setLoading(false));
   };
 
