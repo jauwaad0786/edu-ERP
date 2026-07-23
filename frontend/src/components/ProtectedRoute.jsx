@@ -3,7 +3,19 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { roleIsAllowed } from '../utils/roleEquivalence';
 
-export default function ProtectedRoute({ children, roles }) {
+// `roles`: static allow-list, same as before (role-default access).
+// `permissions`: OPTIONAL array of permission_catalog.py keys -- pass
+// ROUTE_PERMISSIONS['/some/path'] from utils/permissionMenuMap.js here.
+// If the user's role isn't in `roles` but they hold ANY of these
+// permissions (granted via Staff Access page / UserPermissionOverride),
+// the route still opens.
+//
+// Bug this fixes: earlier this component only ever checked `roles`, a
+// hardcoded per-route array. So even after Principal granted a Teacher an
+// extra permission (e.g. 'fees.structure.manage') and the sidebar item
+// correctly appeared, clicking it still bounced back to /dashboard --
+// this gate had no idea permissions existed at all.
+export default function ProtectedRoute({ children, roles, permissions }) {
   const { user, loading } = useAuth();
 
   if (loading) return (
@@ -20,6 +32,11 @@ export default function ProtectedRoute({ children, roles }) {
   );
 
   if (!user) return <Navigate to="/login" replace />;
-  if (!roleIsAllowed(user.role, roles)) return <Navigate to="/dashboard" replace />;
+
+  const roleOk = roleIsAllowed(user.role, roles);
+  const permissionOk = !!permissions?.length &&
+    (user.permissions || []).some(p => permissions.includes(p));
+
+  if (!roleOk && !permissionOk) return <Navigate to="/dashboard" replace />;
   return children;
 }
