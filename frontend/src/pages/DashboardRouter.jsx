@@ -1,6 +1,7 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import AdminDashboard     from './dashboard/AdminDashboard';
+import EmployeeDashboard  from './dashboard/EmployeeDashboard';
 import PrincipalDashboard from './dashboard/PrincipalDashboard';
 import TeacherDashboard   from './dashboard/TeacherDashboard';
 import StudentDashboard   from './dashboard/StudentDashboard';
@@ -9,8 +10,17 @@ import { Navigate }       from 'react-router-dom';
 export default function DashboardRouter() {
   const { user } = useAuth();
 
+  // Legacy user.role is 'SUPER_ADMIN' for EVERY company employee (CEO,
+  // Manager, Intern, Sales, Developer, ...) -- see admin.py's
+  // _resolve_creation_role, which uses it as a generic "company account"
+  // marker, not a real identity. Real identity is user.active_role (from
+  // platform_roles via UserRoleAssignment). Without this split, every
+  // company employee landed on the CEO's AdminDashboard.
+  const isCompanyActor = user && user.school_id == null;
+  const isTrueAdmin = !!(user?.is_super || ['CEO', 'SUPER_ADMIN'].includes(user?.active_role?.key));
+
   switch (user?.role) {
-    case 'SUPER_ADMIN': return <AdminDashboard />;
+    case 'SUPER_ADMIN': return (isCompanyActor && !isTrueAdmin) ? <EmployeeDashboard /> : <AdminDashboard />;
     case 'PRINCIPAL':   return <PrincipalDashboard />;
     case 'TEACHER':     return <TeacherDashboard />;
     case 'STUDENT':     return <StudentDashboard />;
