@@ -431,11 +431,12 @@ export default function PrincipalDashboard() {
     }).catch(() => setUpcomingEvents([]));
   }, []);
 
-  // ── NEW: Announcements — adjust the path if your Communication Hub uses a
-  // different one; everything else in the card keeps working unchanged. ─────
+  // ── Announcements — uses the backend's dedicated dashboard-widget
+  // endpoint (pinned-first, top 5), same blueprint the full Announcements
+  // page (pages/communication/Announcements.jsx) already uses. ────────────
   useEffect(() => {
-    api.get('/communication/announcements', { params: { limit: 4 } })
-      .then(r => setAnnouncements(r.data?.data || r.data || []))
+    api.get('/support/announcements/latest')
+      .then(r => setAnnouncements(r.data || []))
       .catch(() => setAnnouncements([]));
   }, []);
 
