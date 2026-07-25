@@ -21,11 +21,18 @@ export default function Announcements() {
   const [darkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
   const { user } = useAuth();
   const canCreate = expandRole(user?.role).some(r => CAN_CREATE_ROLES.includes(r));
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
   const [list,     setList]     = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ title: '', body: '', audience: 'ALL', priority: 'MEDIUM', is_pinned: false });
+  const [schools,  setSchools]  = useState([]);
+  const [form, setForm] = useState({ title: '', body: '', audience: 'ALL', priority: 'MEDIUM', is_pinned: false, target_school_id: 'ALL' });
+
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    api.get('/admin/schools').then(r => setSchools(r.data || [])).catch(() => setSchools([]));
+  }, [isSuperAdmin]);
 
   const fetchList = useCallback(() => {
     setLoading(true);
@@ -40,10 +47,16 @@ export default function Announcements() {
   const submit = async (e) => {
     e.preventDefault();
     if (!form.title.trim() || !form.body.trim()) return;
+    const payload = { ...form };
+    if (isSuperAdmin) {
+      payload.target_school_id = form.target_school_id === 'ALL' ? null : form.target_school_id;
+    } else {
+      delete payload.target_school_id;
+    }
     try {
-      await api.post('/support/announcements', form);
+      await api.post('/support/announcements', payload);
       setShowForm(false);
-      setForm({ title: '', body: '', audience: 'ALL', priority: 'MEDIUM', is_pinned: false });
+      setForm({ title: '', body: '', audience: 'ALL', priority: 'MEDIUM', is_pinned: false, target_school_id: 'ALL' });
       fetchList();
     } catch (err) {
       alert(err.response?.data?.error || 'Announcement create nahi hua');
@@ -93,6 +106,13 @@ export default function Announcements() {
           {showForm && (
             <div className="card" style={{ marginBottom: 20, maxWidth: 640, ...cardBg }}>
               <form onSubmit={submit} style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {isSuperAdmin && (
+                  <select className="form-select" style={inputStyle} value={form.target_school_id}
+                    onChange={e => setForm(f => ({ ...f, target_school_id: e.target.value }))}>
+                    <option value="ALL">🌐 All Schools (platform-wide)</option>
+                    {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                )}
                 <input style={inputStyle} placeholder="Title" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
                 <textarea style={{ ...inputStyle, minHeight: 90, fontFamily: 'inherit', resize: 'vertical' }}
                   placeholder="Message likho..." value={form.body} onChange={e => setForm(f => ({ ...f, body: e.target.value }))} />
@@ -130,10 +150,24 @@ export default function Announcements() {
                       {a.is_pinned && <i className="ti ti-pin-filled" style={{ fontSize: 13, color: '#d97706' }} aria-hidden="true" />}
                       <span style={{ fontSize: 14, fontWeight: 700, color: darkMode ? '#f1f5f9' : '#0f172a' }}>{a.title}</span>
                     </div>
-                    <span style={{
-                      fontSize: 10, fontWeight: 700, padding: '1px 8px', borderRadius: 20,
-                      background: darkMode ? '#1e293b' : '#f1f5f9', color: darkMode ? '#94a3b8' : '#64748b',
-                    }}>{AUDIENCE_LABEL[a.audience] || a.audience}</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {a.is_platform && (
+                        <span style={{
+                          fontSize: 10, fontWeight: 700, padding: '1px 8px', borderRadius: 20,
+                          background: '#ede9fe', color: '#6d28d9',
+                        }}>🌐 Platform</span>
+                      )}
+                      {isSuperAdmin && !a.is_platform && a.school_name && (
+                        <span style={{
+                          fontSize: 10, fontWeight: 700, padding: '1px 8px', borderRadius: 20,
+                          background: darkMode ? '#1e293b' : '#f1f5f9', color: darkMode ? '#94a3b8' : '#64748b',
+                        }}>{a.school_name}</span>
+                      )}
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, padding: '1px 8px', borderRadius: 20,
+                        background: darkMode ? '#1e293b' : '#f1f5f9', color: darkMode ? '#94a3b8' : '#64748b',
+                      }}>{AUDIENCE_LABEL[a.audience] || a.audience}</span>
+                    </span>
                   </div>
                   <p style={{ fontSize: 13, color: darkMode ? '#cbd5e1' : '#334155', margin: '8px 0', lineHeight: 1.5 }}>{a.body}</p>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
