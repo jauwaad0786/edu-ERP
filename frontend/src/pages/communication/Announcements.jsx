@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Sidebar from '../../components/Sidebar';
 import Navbar  from '../../components/Navbar';
 import api from '../../api/axios';
+import { useAuth } from '../../context/AuthContext';
+import { expandRole } from '../../utils/roleEquivalence';
 
 const AUDIENCE_LABEL = { ALL: 'Everyone', TEACHERS: 'Teachers', STUDENTS: 'Students', PARENTS: 'Parents', STAFF: 'Staff' };
 const CAN_CREATE_ROLES = ['SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL'];
@@ -17,8 +19,8 @@ function timeAgo(dateStr) {
 
 export default function Announcements() {
   const [darkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
-  const role     = localStorage.getItem('user_role') || '';
-  const canCreate = CAN_CREATE_ROLES.includes(role);
+  const { user } = useAuth();
+  const canCreate = expandRole(user?.role).some(r => CAN_CREATE_ROLES.includes(r));
 
   const [list,     setList]     = useState([]);
   const [loading,  setLoading]  = useState(true);
