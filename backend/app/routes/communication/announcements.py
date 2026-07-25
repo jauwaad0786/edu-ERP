@@ -33,15 +33,29 @@ def create_announcement():
     POST /api/support/announcements
     Body: {
         title, body, audience, priority,
-        is_pinned, scheduled_at, expires_at, product_type
+        is_pinned, scheduled_at, expires_at, product_type,
+        target_school_id   # SUPER_ADMIN only. Omit / null / 'ALL' = platform-wide
+                            # (ALL_SCHOOLS). A school id = that one school only.
+                            # Ignored for PRINCIPAL/VICE_PRINCIPAL — unke liye
+                            # school_id hamesha unke apne account se aata hai,
+                            # request body se kabhi trust nahi hota.
     }
     audience: ALL | TEACHERS | STUDENTS | PARENTS | STAFF
     scheduled_at: ISO datetime string — NULL means publish now
     expires_at:   ISO datetime string — NULL means never expire
     """
-    user      = get_current_user()
-    school_id = user.school_id
-    data      = request.get_json() or {}
+    user = get_current_user()
+    data = request.get_json() or {}
+
+    if user.role == UserRole.SUPER_ADMIN:
+        raw = data.get('target_school_id')
+        school_id = int(raw) if raw not in (None, '', 'ALL') else None
+        if school_id is not None:
+            from app.models.school import School
+            if not School.query.get(school_id):
+                return jsonify({'error': 'School nahi mila'}), 400
+    else:
+        school_id = user.school_id
 
     title = (data.get('title') or '').strip()
     body  = (data.get('body')  or '').strip()
@@ -84,7 +98,7 @@ def create_announcement():
     db.session.flush()
 
     # ── Notify users if publishing NOW (no schedule) ──────────────────────────
-    if not scheduled_at and school_id:
+    if not scheduled_at:
         _broadcast_notification(ann, school_id)
 
     db.session.commit()
@@ -94,6 +108,8 @@ def create_announcement():
 def _broadcast_notification(ann, school_id):
     """
     Announcement audience ke hisaab se sab relevant users ko notify karo.
+    school_id = None → platform-wide (Super Admin → ALL_SCHOOLS) → har active
+    school ke matching-audience users ko notify karo, apne-apne school_id ke saath.
     """
     audience = ann.audience  # ALL / TEACHERS / STUDENTS / PARENTS / STAFF
 
@@ -107,8 +123,9 @@ def _broadcast_notification(ann, school_id):
     }
 
     target_roles = role_map.get(audience)
-    q = User.query.filter_by(school_id=school_id, is_active=True)
-
+    q = User.query.filter(User.is_active == True, User.school_id.isnot(None))
+    if school_id is not None:
+        q = q.filter(User.school_id == school_id)
     if target_roles:
         q = q.filter(User.role.in_(target_roles))
 
@@ -118,7 +135,7 @@ def _broadcast_notification(ann, school_id):
             user_id   = u.id,
             title     = f'📢 {ann.title}',
             message   = ann.body[:200] + ('...' if len(ann.body) > 200 else ''),
-            school_id = school_id,
+            school_id = u.school_id,
         )
 
 
@@ -143,14 +160,24 @@ def list_announcements():
 
     q = Announcement.query.filter_by(is_active=True)
 
-    # SUPER_ADMIN sab schools dekh sakta hai
+    # SUPER_ADMIN — default view = sirf platform-wide (ALL_SCHOOLS) announcements.
+    # Kisi ek school ka apna internal announcement yahan kabhi leak nahi hona
+    # chahiye. Explicit ?school_id=<id> se hi ek school specifically inspect
+    # kiya ja sakta hai (support/debug ke liye).
     if user.role == UserRole.SUPER_ADMIN:
         if request.args.get('school_id'):
             q = q.filter_by(school_id=request.args.get('school_id', type=int))
+        else:
+            q = q.filter(Announcement.school_id.is_(None))
         if request.args.get('product_type'):
             q = q.filter_by(product_type=request.args.get('product_type'))
     else:
-        q = q.filter_by(school_id=school_id)
+        # School ka apna announcement (school_id match) + platform-wide
+        # (Super Admin → ALL_SCHOOLS, school_id NULL) — dono dikhne chahiye.
+        q = q.filter(db.or_(
+            Announcement.school_id == school_id,
+            Announcement.school_id.is_(None),
+        ))
 
         # Audience filter — TEACHER sirf ALL+TEACHERS dekhega etc.
         role_audience_map = {
@@ -349,9 +376,9 @@ def latest_announcements():
     school_id = user.school_id
     now       = datetime.utcnow()
 
-    q = Announcement.query.filter_by(
-        school_id=school_id,
-        is_active=True
+    q = Announcement.query.filter(
+        db.or_(Announcement.school_id == school_id, Announcement.school_id.is_(None)),
+        Announcement.is_active == True,
     ).filter(
         db.or_(Announcement.scheduled_at == None, Announcement.scheduled_at <= now),
         db.or_(Announcement.expires_at   == None, Announcement.expires_at   >  now),
