@@ -301,7 +301,11 @@ class Announcement(db.Model):
     __tablename__ = 'announcements'
 
     id           = db.Column(db.Integer, primary_key=True)
-    school_id    = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False)
+    school_id    = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=True)
+    # NULL = platform-wide (Developer/Super Admin → ALL_SCHOOLS). Set = either a
+    # school's own announcement OR a Super Admin announcement targeted at ONE
+    # specific school. Never trust this from the frontend for school users —
+    # see create_announcement() in routes/communication/announcements.py.
     product_type = db.Column(db.String(30), default='EduERP')
     created_by   = db.Column(db.Integer, db.ForeignKey('users.id'),   nullable=False)
     creator_name = db.Column(db.String(120), default='')
@@ -326,9 +330,16 @@ class Announcement(db.Model):
     updated_at   = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def to_dict(self):
+        school_name = None
+        if self.school_id:
+            from app.models.school import School
+            s = School.query.get(self.school_id)
+            school_name = s.name if s else None
         return {
             'id':           self.id,
             'school_id':    self.school_id,
+            'school_name':  school_name,
+            'is_platform':  self.school_id is None,
             'product_type': self.product_type,
             'created_by':   self.created_by,
             'creator_name': self.creator_name,
@@ -343,6 +354,7 @@ class Announcement(db.Model):
             'expires_at':   self.expires_at.isoformat()   if self.expires_at   else None,
             'created_at':   self.created_at.isoformat()   if self.created_at   else None,
         }
+
 
 
 # ─── 7. Support Plan ──────────────────────────────────────────────────────────
