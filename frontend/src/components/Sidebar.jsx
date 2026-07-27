@@ -61,114 +61,124 @@ const ROLE_MENUS = {
 
   PRINCIPAL: [
     {
-      group: 'Overview',
+      group: '',
       items: [
         { icon: 'ti-layout-dashboard', label: 'Dashboard', path: '/dashboard' },
-      ],
-    },
-    {
-      group: 'Academics',
-      items: [
-        { icon: 'ti-list',           label: 'Classes & Sections',    path: '/classes' },
-        { icon: 'ti-user-plus',      label: 'Admissions',            path: '/admission' },
-        { icon: 'ti-address-book',   label: 'Students',              path: '/students' },
-        { icon: 'ti-edit',           label: 'Students Bulk Edit',    path: '/students/bulk-edit' },
-        { icon: 'ti-arrows-shuffle', label: 'Section Shuffle',       path: '/students/section-shuffle' },
-        { icon: 'ti-id-badge',       label: 'ID Cards',              path: '/id-cards' },
-        { icon: 'ti-certificate',    label: 'Transfer Certificates', path: '/students/transfer-cert' },
-      ],
-    },
-    {
-      group: 'Staff Management',
-      items: [
-        { icon: 'ti-chalkboard', label: 'Teachers',  path: '/teachers' },
-        { icon: 'ti-briefcase',  label: 'Staff List', path: '/staff' },
-      ],
-    },
-    {
-      group: 'Operations',
-      items: [
-        { icon: 'ti-clipboard-check', label: 'Attendance',    path: '/attendance' },
-        { icon: 'ti-calendar-time',   label: 'Timetable',     path: '/timetable' },
-        { icon: 'ti-receipt',         label: 'Fees',          path: '/fees' },
-        { icon: 'ti-currency-rupee',  label: 'Fee Structures', path: '/fees/structures' },
-      ],
-    },
-    {
-      group: 'Finance',
-      items: [
-        { icon: 'ti-receipt-2',      label: 'Expenses',  path: '/finance/expenses' },
-        { icon: 'ti-boxes',          label: 'Inventory', path: '/finance/inventory' },
-        { icon: 'ti-cash',           label: 'Payroll',   path: '/finance/payroll' },
-        { icon: 'ti-building-store', label: 'Vendors',   path: '/finance/vendors' },
-      ],
-    },
-    {
-      group: 'Examinations',
-      items: [
-        { icon: 'ti-pencil',    label: 'Exam Schedule',      path: '/exams' },
-        { icon: 'ti-chart-bar', label: 'Marks',              path: '/marks' },
-        { icon: 'ti-ticket',    label: 'Admit Cards',        path: '/admit-card' },
-        { icon: 'ti-books',     label: 'Subject Management', path: '/subjects' },
-      ],
-    },
-    {
-      group: 'Library Management',
-      items: [
-        { icon: 'ti-layout-dashboard', label: 'Dashboard',     path: '/library' },
-        { icon: 'ti-books',            label: 'Book Master',   path: '/library/books' },
-        { icon: 'ti-arrows-exchange',  label: 'Issue / Return',path: '/library/issue-return' },
-        { icon: 'ti-clock',            label: 'Reservations',  path: '/library/reservations' },
-        { icon: 'ti-users',            label: 'Members',       path: '/library/members' },
-        { icon: 'ti-report',           label: 'Reports',       path: '/library/reports' },
-      ],
-    },
-    {
-      group: 'Hostel Management',
-      items: [
-        { icon: 'ti-layout-dashboard', label: 'Dashboard',       path: '/hostel' },
-        { icon: 'ti-settings',         label: 'Hostel Setup',    path: '/hostel/setup' },
-        { icon: 'ti-layout-grid',      label: 'Room Map',        path: '/hostel/room-map' },
-        { icon: 'ti-currency-rupee',   label: 'Fee Structures',  path: '/hostel/fee-structures' },
-        { icon: 'ti-user-plus',        label: 'Admission',       path: '/hostel/admission' },
-        { icon: 'ti-arrows-exchange',  label: 'Transfer / Vacate', path: '/hostel/transfers' },
-        { icon: 'ti-report',           label: 'Reports',         path: '/hostel/reports' },
-      ],
-    },
-    {
-      group: 'Resources',
-      items: [
-        { icon: 'ti-file-text', label: 'Documents', path: '/documents' },
-        { icon: 'ti-notes',     label: 'Notes',     path: '/notes' },
-      ],
-    },
-    {
-      group: 'Customer Service',
-      items: [
-        { icon: 'ti-ticket',       label: 'My Tickets',    path: '/support/tickets' },
-        { icon: 'ti-plus',         label: 'New Ticket',    path: '/support/tickets/new' },
-        { icon: 'ti-video',        label: 'Book Meeting',  path: '/support/meetings' },
-        { icon: 'ti-speakerphone', label: 'Announcements', path: '/support/announcements' },
-        { icon: 'ti-message-2',    label: 'Messages',      path: '/support/chat' },
-        { icon: 'ti-help-circle',  label: 'Help Center',   path: '/support/help' },
-      ],
-    },
-    {
-      group: 'Settings',
-      items: [
-        { icon: 'ti-bolt',     label: 'My Plan & Services', path: '/my-services' },
-        { icon: 'ti-settings', label: 'School Settings',    path: '/school-settings' },
-        { icon: 'ti-brand-whatsapp', label: 'WhatsApp Integration', path: '/settings/whatsapp' },
-      ],
-    },
-    {
-      group: 'Access Control',
-      items: [
-        { icon: 'ti-users', label: 'Roles & Hierarchy',  path: '/rbac/roles' },
-        { icon: 'ti-grid',  label: 'Permission Matrix',  path: '/rbac/permissions' },
-        { icon: 'ti-switch-horizontal', label: 'Delegations', path: '/rbac/delegations' },
-        { icon: 'ti-user-check', label: 'Staff Permissions', path: '/rbac/staff-access' },
-        { icon: 'ti-history', label: 'Audit Logs', path: '/audit/school/logs' },
+
+        {
+          icon: 'ti-address-book', label: 'Student Management', path: '/students',
+          children: [
+            { icon: 'ti-list',           label: 'Classes & Sections',    path: '/classes' },
+            { icon: 'ti-user-plus',      label: 'Admissions',            path: '/admission' },
+            { icon: 'ti-address-book',   label: 'Students',              path: '/students' },
+            { icon: 'ti-edit',           label: 'Students Bulk Edit',    path: '/students/bulk-edit' },
+            { icon: 'ti-arrows-shuffle', label: 'Section Shuffle',       path: '/students/section-shuffle' },
+            { icon: 'ti-id-badge',       label: 'ID Cards',              path: '/id-cards' },
+            { icon: 'ti-certificate',    label: 'Transfer Certificates', path: '/students/transfer-cert' },
+          ],
+        },
+
+        { icon: 'ti-clipboard-check', label: 'Attendance', path: '/attendance' },
+
+        { icon: 'ti-books', label: 'Academics', path: '/subjects' },
+
+        {
+          icon: 'ti-pencil', label: 'Examinations', path: '/exams',
+          children: [
+            { icon: 'ti-pencil',    label: 'Exam Schedule', path: '/exams' },
+            { icon: 'ti-chart-bar', label: 'Marks',         path: '/marks' },
+            { icon: 'ti-ticket',    label: 'Admit Cards',   path: '/admit-card' },
+          ],
+        },
+
+        { icon: 'ti-calendar-time', label: 'Timetable', path: '/timetable' },
+
+        {
+          icon: 'ti-receipt', label: 'Fees Management', path: '/fees',
+          children: [
+            { icon: 'ti-receipt',        label: 'Fees',           path: '/fees' },
+            { icon: 'ti-currency-rupee', label: 'Fee Structures', path: '/fees/structures' },
+            { icon: 'ti-receipt-2',      label: 'Expenses',       path: '/finance/expenses' },
+            { icon: 'ti-boxes',          label: 'Inventory',      path: '/finance/inventory' },
+            { icon: 'ti-cash',           label: 'Payroll',        path: '/finance/payroll' },
+            { icon: 'ti-building-store', label: 'Vendors',        path: '/finance/vendors' },
+          ],
+        },
+
+        {
+          icon: 'ti-briefcase', label: 'Staff Management', path: '/staff',
+          children: [
+            { icon: 'ti-chalkboard', label: 'Teachers',   path: '/teachers' },
+            { icon: 'ti-briefcase',  label: 'Staff List', path: '/staff' },
+          ],
+        },
+
+        {
+          icon: 'ti-books', label: 'Library', path: '/library',
+          children: [
+            { icon: 'ti-layout-dashboard', label: 'Dashboard',      path: '/library' },
+            { icon: 'ti-books',            label: 'Book Master',    path: '/library/books' },
+            { icon: 'ti-arrows-exchange',  label: 'Issue / Return', path: '/library/issue-return' },
+            { icon: 'ti-clock',            label: 'Reservations',   path: '/library/reservations' },
+            { icon: 'ti-users',            label: 'Members',        path: '/library/members' },
+            { icon: 'ti-report',           label: 'Reports',        path: '/library/reports' },
+          ],
+        },
+
+        {
+          icon: 'ti-bed', label: 'Hostel', path: '/hostel',
+          children: [
+            { icon: 'ti-layout-dashboard', label: 'Dashboard',         path: '/hostel' },
+            { icon: 'ti-settings',         label: 'Hostel Setup',      path: '/hostel/setup' },
+            { icon: 'ti-layout-grid',      label: 'Room Map',          path: '/hostel/room-map' },
+            { icon: 'ti-currency-rupee',   label: 'Fee Structures',    path: '/hostel/fee-structures' },
+            { icon: 'ti-user-plus',        label: 'Admission',         path: '/hostel/admission' },
+            { icon: 'ti-arrows-exchange',  label: 'Transfer / Vacate', path: '/hostel/transfers' },
+            { icon: 'ti-report',           label: 'Reports',           path: '/hostel/reports' },
+          ],
+        },
+
+        {
+          icon: 'ti-headset', label: 'Communication', path: '/support/tickets',
+          children: [
+            { icon: 'ti-ticket',      label: 'My Tickets',   path: '/support/tickets' },
+            { icon: 'ti-plus',        label: 'New Ticket',   path: '/support/tickets/new' },
+            { icon: 'ti-video',       label: 'Book Meeting', path: '/support/meetings' },
+            { icon: 'ti-message-2',   label: 'Messages',     path: '/support/chat' },
+            { icon: 'ti-help-circle', label: 'Help Center',  path: '/support/help' },
+          ],
+        },
+
+        {
+          icon: 'ti-speakerphone', label: 'Circulars & Notices', path: '/support/announcements',
+          children: [
+            { icon: 'ti-speakerphone', label: 'Announcements', path: '/support/announcements' },
+            { icon: 'ti-file-text',    label: 'Documents',     path: '/documents' },
+            { icon: 'ti-notes',        label: 'Notes',         path: '/notes' },
+          ],
+        },
+
+        {
+          icon: 'ti-chart-bar', label: 'Reports & Analytics', path: '/library/reports',
+          children: [
+            { icon: 'ti-report', label: 'Library Reports', path: '/library/reports' },
+            { icon: 'ti-report', label: 'Hostel Reports',  path: '/hostel/reports' },
+          ],
+        },
+
+        {
+          icon: 'ti-settings', label: 'Settings', path: '/school-settings',
+          children: [
+            { icon: 'ti-bolt',              label: 'My Plan & Services',   path: '/my-services' },
+            { icon: 'ti-settings',          label: 'School Settings',      path: '/school-settings' },
+            { icon: 'ti-brand-whatsapp',    label: 'WhatsApp Integration', path: '/settings/whatsapp' },
+            { icon: 'ti-users',             label: 'Roles & Hierarchy',    path: '/rbac/roles' },
+            { icon: 'ti-grid',              label: 'Permission Matrix',    path: '/rbac/permissions' },
+            { icon: 'ti-switch-horizontal', label: 'Delegations',          path: '/rbac/delegations' },
+            { icon: 'ti-user-check',        label: 'Staff Permissions',    path: '/rbac/staff-access' },
+            { icon: 'ti-history',           label: 'Audit Logs',           path: '/audit/school/logs' },
+          ],
+        },
       ],
     },
   ],
