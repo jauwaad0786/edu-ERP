@@ -31,6 +31,7 @@ import SubjectsPage     from './pages/SubjectsPage';
 import TimetablePage    from './pages/TimetablePage';
 import IDCardPage       from './pages/IDCardPage';
 import MarksPage        from './pages/MarksPage';
+import ResultManagement from './pages/ResultManagement';
 import MyServices       from './pages/MyServices';
 import UsersPage        from './pages/UsersPage';
 import StaffPage        from './pages/StaffPage';
@@ -186,6 +187,17 @@ export default function App() {
             <Route path="/marks" element={
               <ProtectedRoute roles={['TEACHER', 'PRINCIPAL']} permissions={ROUTE_PERMISSIONS['/marks']}>
                 <MarksPage />
+              </ProtectedRoute>
+            } />
+            {/* NEW — Result Management System (Draft → Submit → Review → Approve → Publish) */}
+            <Route path="/mark-entry" element={
+              <ProtectedRoute roles={['TEACHER', 'PRINCIPAL']} permissions={ROUTE_PERMISSIONS['/mark-entry']}>
+                <ResultManagement />
+              </ProtectedRoute>
+            } />
+            <Route path="/result-management" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/result-management']}>
+                <ResultManagement />
               </ProtectedRoute>
             } />
             <Route path="/holidays" element={
