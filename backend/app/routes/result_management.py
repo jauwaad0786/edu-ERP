@@ -625,12 +625,20 @@ def principal_dashboard():
     if cls.school_id != sid or exam.school_id != sid:
         return jsonify({'error': 'Unauthorized'}), 403
 
+    total_students = Student.query.filter_by(class_id=class_id, school_id=sid).count()
+
     subjects = Subject.query.filter_by(class_id=class_id).all()
     rows = []
     counts = {'submitted': 0, 'pending': 0, 'returned': 0, 'approved': 0}
+    total_marks_entered = 0
     for s in subjects:
         row = _get_or_create_status(sid, exam_id, class_id, s.id)
-        rows.append(row.to_dict())
+        d = row.to_dict()
+        entered = Marks.query.filter_by(exam_id=exam_id, class_id=class_id, subject_id=s.id).count()
+        d['total_students'] = total_students
+        d['marks_entered']  = entered
+        total_marks_entered += entered
+        rows.append(d)
         if row.status in ('DRAFT',):
             counts['pending'] += 1
         elif row.status in ('SUBMITTED', 'RESUBMITTED'):
@@ -647,6 +655,9 @@ def principal_dashboard():
         'class': cls.to_dict(), 'exam': exam.to_dict(),
         'subjects': rows,
         'total_subjects': len(subjects),
+        'total_students': total_students,
+        'total_marks_entered': total_marks_entered,
+        'total_marks_expected': total_students * len(subjects),
         'counts': counts,
         'publication': pub.to_dict() if pub else {'status': 'NOT_PUBLISHED'},
         'can_publish': len(subjects) > 0 and all(r['status'] in ('APPROVED', 'PUBLISHED') for r in rows),
