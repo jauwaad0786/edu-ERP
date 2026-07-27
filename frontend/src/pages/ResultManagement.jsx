@@ -634,7 +634,14 @@ function PrincipalResultManagement({ user }) {
                   {exams.map(e => <option key={e.id} value={e.id}>{e.exam_name}</option>)}
                 </select>
               </div>
-              <div><StatusBadge status={pubStatus} /></div>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                <StatusBadge status={pubStatus} />
+                {dash && (
+                  <span style={{ fontSize: 11, color: 'var(--neutral-6)', fontWeight: 600 }}>
+                    👥 {dash.total_students} Students · {dash.total_marks_entered}/{dash.total_marks_expected} Marks Entered
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -676,6 +683,7 @@ function PrincipalResultManagement({ user }) {
                           <th style={{ padding: '10px 12px' }}>Subject</th>
                           <th style={{ padding: '10px 12px' }}>Teacher</th>
                           <th style={{ padding: '10px 12px' }}>Status</th>
+                          <th style={{ padding: '10px 12px' }}>Marks Entered</th>
                           <th style={{ padding: '10px 12px' }}>Submitted On</th>
                           <th style={{ padding: '10px 12px' }}>Action</th>
                         </tr></thead>
@@ -686,6 +694,14 @@ function PrincipalResultManagement({ user }) {
                               <td style={{ padding: '8px 12px', fontWeight: 600 }}>{s.subject_name}</td>
                               <td style={{ padding: '8px 12px' }}>{s.teacher_name}</td>
                               <td style={{ padding: '8px 12px' }}><StatusBadge status={s.status} /></td>
+                              <td style={{ padding: '8px 12px' }}>
+                                <span style={{
+                                  fontWeight: 700,
+                                  color: s.marks_entered >= s.total_students ? '#2e844a' : '#dd7a01',
+                                }}>
+                                  {s.marks_entered}/{s.total_students}
+                                </span>
+                              </td>
                               <td style={{ padding: '8px 12px' }}>{fmtDate(s.submitted_at)}</td>
                               <td style={{ padding: '8px 12px' }}>
                                 <button className="btn btn-neutral btn-sm" onClick={() => openReview(s.subject_id)}>
