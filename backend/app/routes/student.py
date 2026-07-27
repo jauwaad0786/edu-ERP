@@ -37,6 +37,24 @@ def my_attendance():
     }), 200
 
 
+def _class_result_is_published(exam_id, class_id):
+    """
+    RMS visibility gate (Result Management spec section 12/13): a
+    student/parent may only see marks once the Principal has published
+    that class's result for that exam.
+    ClassResultPublication (app.routes.result_management) is the source of
+    truth. If no row exists yet for an exam (e.g. marks entered the old way,
+    before this table existed), we fall back to ExamSchedule.is_published so
+    nothing that was already visible before this fix silently disappears.
+    """
+    from app.routes.result_management import ClassResultPublication
+    pub = ClassResultPublication.query.filter_by(exam_id=exam_id, class_id=class_id).first()
+    if pub:
+        return pub.status == 'PUBLISHED'
+    exam = ExamSchedule.query.get(exam_id)
+    return bool(exam and exam.is_published)
+
+
 @student_bp.route('/marks', methods=['GET'])
 @role_required('STUDENT')
 def my_marks():
@@ -50,6 +68,8 @@ def my_marks():
 
     # ── Detailed report-card view for one exam ──
     if exam_id:
+        if not _class_result_is_published(exam_id, student.class_id):
+            return jsonify({'error': 'Result is not published yet', 'published': False}), 403
         marks = Marks.query.filter_by(student_id=student.id, exam_id=exam_id).all()
         total_obtained = sum(m.marks_obtained for m in marks if not m.is_absent)
         total_max      = sum(m.max_marks for m in marks if not m.is_absent)
@@ -66,11 +86,13 @@ def my_marks():
         }), 200
 
     # ── Legacy: flat list filtered by exam_type string (old frontend calls) ──
+    # NOTE: these rows predate the exam_id/publish-workflow link, so there is
+    # no per-class publication row to check — kept as-is for back-compat.
     if exam_type:
         q = Marks.query.filter_by(student_id=student.id, exam_type=exam_type)
         return jsonify([m.to_dict() for m in q.all()]), 200
 
-    # ── Default: summary across every exam this student has marks for ──
+    # ── Default: summary across every PUBLISHED exam this student has marks for ──
     rows = db.session.query(
         Marks.exam_id,
         func.sum(Marks.marks_obtained),
@@ -83,6 +105,8 @@ def my_marks():
 
     exams_summary = []
     for ex_id, total_obtained, total_max in rows:
+        if not _class_result_is_published(ex_id, student.class_id):
+            continue
         exam = ExamSchedule.query.get(ex_id)
         pct  = round(total_obtained / total_max * 100, 2) if total_max else 0
         exams_summary.append({
