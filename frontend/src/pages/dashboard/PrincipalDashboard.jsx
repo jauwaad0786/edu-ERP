@@ -2,11 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../../components/Sidebar';
 import Navbar  from '../../components/Navbar';
+import AnnouncementTicker from '../../components/AnnouncementTicker';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
 import {
-  BarChart, Bar, ComposedChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer
+  BarChart, Bar, ComposedChart, LineChart, Line, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -494,6 +495,8 @@ export default function PrincipalDashboard() {
         <Navbar title="School Dashboard" darkMode={darkMode} onToggleDark={toggleDark} />
         <div className="page-body">
 
+          <AnnouncementTicker />
+
           {/* Page Header */}
           <div className="page-header flex justify-between items-center">
             <div>
@@ -547,9 +550,12 @@ export default function PrincipalDashboard() {
             <div style={{ minWidth: 0 }}>
 
               {/* Top Stat Cards */}
-              <div className="grid-4 mb-6">
+              <div className="grid-4 mb-6" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
                 <StatCard icon="ti-user-graduate" label="Total Students" value={fmt(stats?.total_students)}
                   sub={`${classes.length} classes active`} color="#4f46e5" darkMode={darkMode} />
+                <StatCard icon="ti-circle-check" label="Present Today" value={fmt(stats?.students_present)}
+                  sub={stats?.students_marked ? `${Math.round(stats.students_present / stats.students_marked * 100)}% attendance` : 'Not marked yet'}
+                  color="#16a34a" darkMode={darkMode} />
                 <StatCard icon="ti-chalkboard" label="Total Teachers" value={fmt(stats?.total_teachers)}
                   sub="Active staff" color="#7c3aed" darkMode={darkMode} />
                 <StatCard icon="ti-receipt" label="Fee Collected" value={fmtK(feeTotals.total_collected)}
@@ -640,7 +646,108 @@ export default function PrincipalDashboard() {
                 </div>
               </div>
 
-              {/* Today's Attendance + Teacher Sidebar */}
+              {/* NEW — Attendance Trend (7 din) + Fee Collection Trend (6 hafte) */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24 }}>
+                <div className="card" style={{ margin: 0, ...cardBg }}>
+                  <div className="card-header">
+                    <h4 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <i className="ti ti-chart-line" style={{ color: '#4f46e5', fontSize: 17 }} aria-hidden="true" /> Attendance Overview — Last 7 Days
+                    </h4>
+                  </div>
+                  <div style={{ padding: '12px 16px 16px' }}>
+                    <ResponsiveContainer width="100%" height={220}>
+                      <LineChart data={stats?.attendance_trend || []} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#1e293b' : '#f1f5f9'} />
+                        <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                        <YAxis tick={{ fontSize: 11 }} domain={[0, 100]} unit="%" />
+                        <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} formatter={v => `${v}%`} />
+                        <Line type="monotone" dataKey="percent" name="Present %" stroke="#4f46e5" strokeWidth={2.5} dot={{ r: 4 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                <div className="card" style={{ margin: 0, ...cardBg }}>
+                  <div className="card-header">
+                    <h4 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <i className="ti ti-report-money" style={{ color: '#16a34a', fontSize: 17 }} aria-hidden="true" /> Fee Collection Trend — Last 6 Weeks
+                    </h4>
+                  </div>
+                  <div style={{ padding: '12px 16px 16px' }}>
+                    <ResponsiveContainer width="100%" height={220}>
+                      <BarChart data={stats?.fee_trend || []} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#1e293b' : '#f1f5f9'} />
+                        <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                        <YAxis tick={{ fontSize: 11 }} />
+                        <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} formatter={v => `₹${fmt(v)}`} />
+                        <Bar dataKey="amount" name="Collected" fill="#16a34a" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+
+              {/* NEW — Students by Class (donut) + quick module stats */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24 }}>
+                <div className="card" style={{ margin: 0, ...cardBg }}>
+                  <div className="card-header">
+                    <h4 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <i className="ti ti-chart-pie" style={{ color: '#db2777', fontSize: 17 }} aria-hidden="true" /> Students by Class
+                    </h4>
+                  </div>
+                  {(stats?.class_distribution || []).length === 0 ? (
+                    <div style={{ padding: '30px 16px', textAlign: 'center', fontSize: 12, color: '#94a3b8' }}>Koi class data nahi mila</div>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 16px 16px' }}>
+                      <ResponsiveContainer width="55%" height={200}>
+                        <PieChart>
+                          <Pie data={stats.class_distribution} dataKey="count" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={2}>
+                            {stats.class_distribution.map((_, i) => (
+                              <Cell key={i} fill={['#4f46e5', '#7c3aed', '#0891b2', '#16a34a', '#d97706', '#db2777', '#dc2626', '#0ea5e9'][i % 8]} />
+                            ))}
+                          </Pie>
+                          <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                      <div style={{ flex: 1, maxHeight: 200, overflowY: 'auto' }}>
+                        {stats.class_distribution.map((c, i) => (
+                          <div key={c.name} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, marginBottom: 6 }}>
+                            <span style={{ width: 9, height: 9, borderRadius: '50%', background: ['#4f46e5', '#7c3aed', '#0891b2', '#16a34a', '#d97706', '#db2777', '#dc2626', '#0ea5e9'][i % 8], flexShrink: 0 }} />
+                            <span style={{ flex: 1, color: darkMode ? '#cbd5e1' : '#334155' }}>{c.name}</span>
+                            <span style={{ fontWeight: 700, color: darkMode ? '#e2e8f0' : '#0f172a' }}>{c.count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="card" style={{ margin: 0, ...cardBg }}>
+                  <div className="card-header">
+                    <h4 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <i className="ti ti-apps" style={{ color: '#0891b2', fontSize: 17 }} aria-hidden="true" /> Quick Module Stats
+                    </h4>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, padding: '14px 16px' }}>
+                    {[
+                      { icon: 'ti-books',          label: 'Library Books Issued', value: stats?.library_issued,  color: '#4f46e5', path: '/library/issue-return' },
+                      { icon: 'ti-bed',            label: 'Hostel Occupancy',     value: `${fmt(stats?.hostel_occupied)}/${fmt(stats?.hostel_total)}`, color: '#7c3aed', path: '/hostel' },
+                      { icon: 'ti-speakerphone',   label: 'Active Circulars',     value: stats?.active_circulars, color: '#d97706', path: '/support/announcements' },
+                    ].map(t => (
+                      <div key={t.label} onClick={() => navigate(t.path)} style={{
+                        border: `1px solid ${darkMode ? '#1e293b' : '#e2e8f0'}`, borderRadius: 10, padding: '12px 10px',
+                        textAlign: 'center', cursor: 'pointer', background: darkMode ? '#0f172a' : '#fafafa',
+                      }}>
+                        <i className={`ti ${t.icon}`} style={{ fontSize: 18, color: t.color }} aria-hidden="true" />
+                        <div style={{ fontSize: 18, fontWeight: 800, color: darkMode ? '#e2e8f0' : '#0f172a', marginTop: 6 }}>{t.value ?? '—'}</div>
+                        <div style={{ fontSize: 10.5, color: darkMode ? '#94a3b8' : '#64748b', marginTop: 2 }}>{t.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 20, marginBottom: 24 }}>
 
                 <div className="card" style={{ margin: 0, ...cardBg }}>
