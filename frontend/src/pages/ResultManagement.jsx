@@ -444,6 +444,8 @@ function PrincipalResultManagement({ user }) {
   const [preview, setPreview] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
+  const [forcePublish, setForcePublish] = useState(false);
+  const [forceReason, setForceReason] = useState('');
   const [showReopen, setShowReopen] = useState(false);
   const [reopenReason, setReopenReason] = useState('');
   const [publishing, setPublishing] = useState(false);
@@ -527,6 +529,20 @@ function PrincipalResultManagement({ user }) {
     }
   }
 
+  async function handleDeleteMark(row) {
+     const reason = window.prompt(`Delete ${row.name}'s marks — reason:`);
+     if (!reason || !reason.trim()) return;
+     try {
+       await api.post('/results/principal/delete-mark', {
+         student_id: row.student_id, subject_id: reviewSubjectId, exam_id: examId, reason,
+       });
+       toast.success('Mark entry deleted');
+       loadReview();
+     } catch (err) {
+       toast.error(err?.response?.data?.error || 'Delete nahi hua');
+     }
+   }
+
   async function handleReturn() {
     if (!returnReason.trim()) { toast.error('Reason is mandatory'); return; }
     try {
@@ -550,9 +566,10 @@ function PrincipalResultManagement({ user }) {
   }
 
   async function handlePublish() {
-    setPublishing(true);
-    try {
-      await api.post('/results/publish', { class_id: classId, exam_id: examId });
+     if (forcePublish && !forceReason.trim()) { toast.error('Reason is mandatory for force publish'); return; }
+     setPublishing(true);
+     try {
+       await api.post('/results/publish', { class_id: classId, exam_id: examId, force: forcePublish, reason: forceReason });
       toast.success('🎉 Result published!');
       setShowPublishConfirm(false); setShowPreview(false);
       loadDashboard();
@@ -726,7 +743,7 @@ function PrincipalResultManagement({ user }) {
                             <tbody>
                               {roster.roster.map(row => {
                                 const c = cells[row.student_id] || {};
-                                const editable = ['SUBMITTED', 'RESUBMITTED'].includes(roster.status.status);
+                                const editable = !!roster.can_edit;
                                 return (
                                   <tr key={row.student_id} style={{ borderBottom: '1px solid var(--neutral-2)' }}>
                                     <td style={{ padding: '8px 12px', fontWeight: 600 }}>{row.roll_number}</td>
@@ -750,6 +767,10 @@ function PrincipalResultManagement({ user }) {
                                     ) : (row.remarks || '—')}</td>
                                     <td style={{ padding: '8px 12px', textAlign: 'center' }}>
                                       <button className="btn btn-neutral btn-sm" onClick={() => setHistoryFor(row)}>🕘</button>
+                                      {row.marks_record_id && (
+                                        <button className="btn btn-destructive btn-sm" style={{ marginLeft: 4 }}
+                                          onClick={() => handleDeleteMark(row)}>🗑️</button>
+                                      )}
                                     </td>
                                   </tr>
                                 );
@@ -798,15 +819,18 @@ function PrincipalResultManagement({ user }) {
                           </div>
                         </div>
                       ) : (
-                        <div>
-                          <div style={{ background: '#fdecea', color: '#7f1d1d', padding: 12, borderRadius: 8, marginBottom: 10, fontWeight: 700 }}>
-                            Cannot Publish Result
-                          </div>
-                          <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: '#7f1d1d' }}>
-                            {(precheck?.blockers || []).map((b, i) => <li key={i} style={{ marginBottom: 4 }}>{b}</li>)}
-                          </ul>
-                        </div>
-                      )}
+                       <div>
+                         <div style={{ background: '#fdecea', color: '#7f1d1d', padding: 12, borderRadius: 8, marginBottom: 10, fontWeight: 700 }}>
+                           Cannot Publish Result
+                         </div>
+                         <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: '#7f1d1d', marginBottom: 14 }}>
+                           {(precheck?.blockers || []).map((b, i) => <li key={i} style={{ marginBottom: 4 }}>{b}</li>)}
+                         </ul>
+                         <button className="btn btn-destructive btn-sm" onClick={() => { setForcePublish(true); setShowPublishConfirm(true); }}>
+                           ⚠️ Force Publish Anyway (Override)
+                         </button>
+                       </div>
+                     )}
                     </div>
                   </div>
                 )}
@@ -962,12 +986,24 @@ function PrincipalResultManagement({ user }) {
       )}
 
       {showPublishConfirm && (
-        <Modal title="Confirm Publish" onClose={() => setShowPublishConfirm(false)}>
+        <Modal title={forcePublish ? 'Force Publish — Override' : 'Confirm Publish'} onClose={() => { setShowPublishConfirm(false); setForcePublish(false); setForceReason(''); }}>
           <p>You are about to publish results for <strong>{dash?.class?.name} - {dash?.class?.section}</strong>, <strong>{dash?.exam?.exam_name}</strong>.</p>
           <p style={{ color: 'var(--neutral-6)', fontSize: 13 }}>After publishing, results will become visible to students and parents.</p>
+          {forcePublish && (
+            <>
+              <div style={{ background: '#fef3c7', color: '#92600a', padding: 10, borderRadius: 8, margin: '10px 0', fontSize: 13 }}>
+                ⚠️ Some subjects are not yet approved. They will be auto-approved and published as-is.
+              </div>
+              <label className="form-label">Reason (mandatory)</label>
+              <textarea className="form-textarea" rows={2} value={forceReason} onChange={e => setForceReason(e.target.value)}
+                placeholder="e.g. Publishing before all subjects reviewed — board deadline." />
+            </>
+          )}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
-            <button className="btn btn-neutral btn-sm" onClick={() => setShowPublishConfirm(false)}>Cancel</button>
-            <button className="btn btn-primary btn-sm" disabled={publishing} onClick={handlePublish}>{publishing ? 'Publishing…' : 'Publish Result'}</button>
+            <button className="btn btn-neutral btn-sm" onClick={() => { setShowPublishConfirm(false); setForcePublish(false); setForceReason(''); }}>Cancel</button>
+            <button className={forcePublish ? 'btn btn-destructive btn-sm' : 'btn btn-primary btn-sm'} disabled={publishing} onClick={handlePublish}>
+              {publishing ? 'Publishing…' : forcePublish ? '⚠️ Force Publish' : 'Publish Result'}
+            </button>
           </div>
         </Modal>
       )}
