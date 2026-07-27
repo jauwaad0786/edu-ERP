@@ -59,6 +59,7 @@ def create_app(config_name='default'):
     from app.routes.teacher import teacher_bp
     from app.routes.student import student_bp
     from app.routes.marks import marks_bp
+    from app.routes.result_management import result_bp
     from app.models import communication
     from app.middleware.audit_middleware import register_audit_middleware
     register_audit_middleware(app)
@@ -110,6 +111,7 @@ def create_app(config_name='default'):
     app.register_blueprint(chat_bp,          url_prefix='/api/support/chat')
     
     app.register_blueprint(marks_bp,        url_prefix='/api/marks')
+    app.register_blueprint(result_bp,       url_prefix='/api/results')
     app.register_blueprint(auth_bp,         url_prefix='/api/auth')
     app.register_blueprint(admin_bp,        url_prefix='/api/admin')
     app.register_blueprint(principal_bp,    url_prefix='/api/principal')
@@ -130,6 +132,7 @@ def create_app(config_name='default'):
         _ensure_communication_columns()
         _ensure_fee_record_columns()
         _ensure_salary_acknowledgement_columns()
+        _ensure_marks_columns()   # ← NEW: Result Management System (version, student_status)
         db.create_all()
         _seed_super_admin()
 
@@ -225,6 +228,38 @@ def _ensure_fee_record_columns():
                     print(f'✅ Added column fee_records.{col}')
                 except Exception as e:
                     print(f'⚠️  fee_records.{col}: {e}')
+def _ensure_marks_columns():
+    """
+    NEW — Result Management System.
+    marks table mein 'version' (optimistic locking) aur 'student_status'
+    (Pass/Fail/Absent/Medical Leave/Not Evaluated override) add karo.
+    Existing rows: version=0, student_status=NULL (derived on read).
+    The 4 brand-new RMS tables (result_subject_status, result_return_items,
+    marks_audit_logs, class_result_publication) need no ALTER at all —
+    they don't exist yet anywhere, so db.create_all() right after this
+    builds them from scratch on first boot.
+    """
+    from sqlalchemy import text, inspect
+    inspector = inspect(db.engine)
+    if 'marks' not in inspector.get_table_names():
+        return  # brand-new DB — create_all() handles it fully
+
+    existing = {c['name'] for c in inspector.get_columns('marks')}
+    to_add = {
+        'version':        'INTEGER DEFAULT 0',
+        'student_status': 'VARCHAR(20)',
+    }
+    with db.engine.connect() as conn:
+        for col, defn in to_add.items():
+            if col not in existing:
+                try:
+                    conn.execute(text(f'ALTER TABLE marks ADD COLUMN {col} {defn}'))
+                    conn.commit()
+                    print(f'✅ Added column marks.{col}')
+                except Exception as e:
+                    print(f'⚠️  marks.{col}: {e}')
+
+
 def _ensure_salary_acknowledgement_columns():
     """
     salary_records (teachers) aur staff_salary_records (non-teaching staff)
