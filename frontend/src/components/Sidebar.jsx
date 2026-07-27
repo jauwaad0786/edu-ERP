@@ -85,9 +85,11 @@ const ROLE_MENUS = {
         {
           icon: 'ti-pencil', label: 'Examinations', path: '/exams',
           children: [
-            { icon: 'ti-pencil',    label: 'Exam Schedule', path: '/exams' },
-            { icon: 'ti-chart-bar', label: 'Marks',         path: '/marks' },
-            { icon: 'ti-ticket',    label: 'Admit Cards',   path: '/admit-card' },
+            { icon: 'ti-pencil',           label: 'Exam Schedule',      path: '/exams' },
+            { icon: 'ti-chart-bar',        label: 'Marks',              path: '/marks' },
+            { icon: 'ti-checklist',        label: 'Mark Entry',         path: '/mark-entry' },
+            { icon: 'ti-clipboard-check',  label: 'Result Management',  path: '/result-management' },
+            { icon: 'ti-ticket',           label: 'Admit Cards',        path: '/admit-card' },
           ],
         },
 
@@ -195,10 +197,11 @@ const ROLE_MENUS = {
     {
       group: 'My Work',
       items: [
-        { icon: 'ti-clipboard-check', label: 'Attendance',   path: '/attendance' },
-        { icon: 'ti-pencil',          label: 'Marks Entry',  path: '/marks' },
-        { icon: 'ti-upload',          label: 'Upload Notes', path: '/notes' },
-        { icon: 'ti-user-graduate',   label: 'My Students',  path: '/students' },
+        { icon: 'ti-clipboard-check', label: 'Attendance',        path: '/attendance' },
+        { icon: 'ti-pencil',          label: 'Marks Entry',       path: '/marks' },
+        { icon: 'ti-checklist',       label: 'Result Submission', path: '/mark-entry' },
+        { icon: 'ti-upload',          label: 'Upload Notes',      path: '/notes' },
+        { icon: 'ti-user-graduate',   label: 'My Students',       path: '/students' },
       ],
     },
     {
