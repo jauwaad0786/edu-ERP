@@ -181,6 +181,19 @@ class Marks(db.Model):
     is_absent      = db.Column(db.Boolean, default=False)
     is_locked      = db.Column(db.Boolean, default=False)
 
+    # NEW — Result Management System (RMS):
+    # explicit status override for the mark-entry table's "Status" column —
+    # PASS / FAIL / ABSENT / MEDICAL_LEAVE / NOT_EVALUATED. Kept separate from
+    # is_absent (back-compat) because "Medical Leave" is not the same as a
+    # plain absence for reporting purposes. Null = derive from marks (legacy rows).
+    student_status = db.Column(db.String(20), nullable=True)
+
+    # NEW — RMS optimistic locking: incremented on every save. save-draft
+    # calls pass the version they last read; a mismatch means someone else
+    # (teacher + principal editing at once) saved in between → 409 conflict
+    # instead of one silently overwriting the other's change.
+    version        = db.Column(db.Integer, default=0)
+
     remarks        = db.Column(db.String(200))
     entered_by     = db.Column(db.Integer, db.ForeignKey('users.id'))
     entered_at     = db.Column(db.DateTime, default=datetime.utcnow)
@@ -206,6 +219,8 @@ class Marks(db.Model):
             'percentage':     pct,
             'grade':          self.grade,
             'is_absent':      self.is_absent,
+            'student_status': self.student_status,   # NEW
+            'version':        self.version or 0,       # NEW
             'remarks':        self.remarks or '',
         }
 
