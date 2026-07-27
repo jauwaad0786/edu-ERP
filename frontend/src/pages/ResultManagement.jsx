@@ -4,7 +4,7 @@ import Navbar  from '../components/Navbar';
 import api     from '../api/axios';
 import toast   from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
 
 /* ═══════════════════════════════════════════════════════════════════════
    SHARED HELPERS + SMALL COMPONENTS
@@ -135,7 +135,310 @@ export default function ResultManagement() {
   const { user } = useAuth();
   if (!user) return null;
   const isTeacher = user.role === 'TEACHER';
-  return isTeacher ? <TeacherMarkEntry user={user} /> : <PrincipalResultManagement user={user} />;
+  return isTeacher ? <TeacherMarkEntry user={user} /> : <PrincipalHub user={user} />;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PRINCIPAL HUB — Exam Analytics (landing) + Result Workflow, one page
+   ═══════════════════════════════════════════════════════════════════════ */
+
+function PrincipalHub({ user }) {
+  const [section, setSection] = useState('analytics'); // analytics | workflow
+  return (
+    <div className="app-shell">
+      <Sidebar />
+      <div className="main-content">
+        <Navbar title="Result Management" />
+        <div className="page-body">
+          <div style={{ display: 'flex', gap: 4, marginBottom: 18, background: '#f1f5f9', padding: 4, borderRadius: 10, width: 'fit-content' }}>
+            {[
+              { key: 'analytics', label: '📊 Exam Analytics' },
+              { key: 'workflow',  label: '📋 Result Workflow' },
+            ].map(s => (
+              <button key={s.key} onClick={() => setSection(s.key)}
+                style={{
+                  padding: '8px 18px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                  fontWeight: 700, fontSize: 13,
+                  background: section === s.key ? '#fff' : 'transparent',
+                  color: section === s.key ? '#0176d3' : '#64748b',
+                  boxShadow: section === s.key ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                }}>{s.label}</button>
+            ))}
+          </div>
+          {section === 'analytics'
+            ? <ExamAnalyticsView user={user} />
+            : <PrincipalResultManagement user={user} embedded />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   EXAM ANALYTICS — school-wide, Year / Session / Exam-Type wise
+   ═══════════════════════════════════════════════════════════════════════ */
+
+const BUCKET_COLORS = { '90+': '#8b5cf6', '80-89': '#10b981', '70-79': '#3b82f6', '60-69': '#f59e0b', '<60': '#ef4444' };
+
+function ExamAnalyticsView() {
+  const [filterOpts, setFilterOpts] = useState({ exam_types: [], sessions: [], years: [] });
+  const [examType, setExamType] = useState('');
+  const [year, setYear]         = useState('');
+  const [session, setSession]   = useState('');
+  const [data, setData]         = useState(null);
+  const [loading, setLoading]   = useState(false);
+  const [drill, setDrill]       = useState(null); // { class_id, exam_id, bucket, label }
+  const [drillData, setDrillData] = useState(null);
+
+  useEffect(() => {
+    api.get('/results/analytics/filters').then(r => setFilterOpts(r.data)).catch(() => {});
+  }, []);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (examType) params.set('exam_type', examType);
+    if (year)     params.set('year', year);
+    if (session)  params.set('session', session);
+    api.get(`/results/analytics/overview?${params.toString()}`)
+      .then(r => setData(r.data))
+      .catch(() => toast.error('Analytics load nahi hui'))
+      .finally(() => setLoading(false));
+  }, [examType, year, session]);
+
+  useEffect(() => { load(); }, [load]);
+
+  function openDrill(row, bucket, label) {
+    if (!row.published) { toast.error('Is class ka result abhi publish nahi hua'); return; }
+    setDrill({ class_id: row.class_id, exam_id: row.exam_id, bucket, label: `${row.class_name} - ${row.section} · ${label}` });
+    setDrillData(null);
+    api.get(`/results/analytics/class-students?class_id=${row.class_id}&exam_id=${row.exam_id}&bucket=${bucket}`)
+      .then(r => setDrillData(r.data))
+      .catch(err => toast.error(err?.response?.data?.error || 'List load nahi hui'));
+  }
+
+  const s = data?.summary;
+  const barData = (data?.class_wise || []).map(c => ({
+    name: `${c.class_name}${c.section ? ' ' + c.section : ''}`,
+    Appeared: c.appeared, Passed: c.passed, '80+': c.marks_80plus,
+  }));
+  const distData = (data?.distribution || []).filter(d => d.count > 0)
+    .map(d => ({ name: d.label, value: d.count, color: BUCKET_COLORS[d.label] }));
+
+  return (
+    <div>
+      <div style={{ marginBottom: 18 }}>
+        <h2 style={{ margin: 0 }}>Exam Analytics & Result Management</h2>
+        <p style={{ margin: '4px 0 0' }}>View exam performance, class-wise statistics and manage results across years and sessions.</p>
+      </div>
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card-body" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 14, alignItems: 'end' }}>
+          <div>
+            <label className="form-label">Exam Type</label>
+            <select className="form-select" value={examType} onChange={e => setExamType(e.target.value)}>
+              <option value="">All Types</option>
+              {filterOpts.exam_types.map(t => <option key={t} value={t}>{t.replaceAll('_', ' ')}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="form-label">Year</label>
+            <select className="form-select" value={year} onChange={e => setYear(e.target.value)}>
+              <option value="">All Years</option>
+              {filterOpts.years.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="form-label">Session</label>
+            <select className="form-select" value={session} onChange={e => setSession(e.target.value)}>
+              <option value="">All Sessions</option>
+              {filterOpts.sessions.map(sn => <option key={sn} value={sn}>{sn}</option>)}
+            </select>
+          </div>
+          <button className="btn btn-neutral btn-sm" onClick={() => { setExamType(''); setYear(''); setSession(''); }}>Reset</button>
+        </div>
+      </div>
+
+      {loading || !data ? (
+        <div className="card"><div className="card-body">Loading…</div></div>
+      ) : s.total_appeared === 0 && data.exams.length === 0 ? (
+        <div className="card"><div className="card-body" style={{ textAlign: 'center', color: 'var(--neutral-6)', padding: 40 }}>
+          Koi exam nahi mila in filters ke saath.
+        </div></div>
+      ) : (
+        <>
+          {/* summary cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, marginBottom: 16 }}>
+            {[
+              { label: 'Total Appeared', value: s.total_appeared, color: '#0176d3' },
+              { label: 'Total Passed',   value: s.total_passed,   color: '#2e844a', sub: s.total_appeared ? `${Math.round(s.total_passed/s.total_appeared*1000)/10}% Pass Rate` : '' },
+              { label: 'Total Failed',   value: s.total_failed,   color: '#ba0517' },
+              { label: '80+ Marks',      value: s.plus80,         color: '#8b5cf6' },
+              { label: '90+ Marks',      value: s.plus90,         color: '#dd7a01' },
+              { label: 'Avg %',          value: `${s.avg_pct}%`,  color: '#0176d3' },
+            ].map(card => (
+              <div key={card.label} className="card"><div className="card-body" style={{ padding: 14 }}>
+                <div style={{ fontSize: 11, color: 'var(--neutral-6)', fontWeight: 600 }}>{card.label}</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: card.color, marginTop: 2 }}>{card.value}</div>
+                {card.sub && <div style={{ fontSize: 10.5, color: 'var(--neutral-6)' }}>{card.sub}</div>}
+              </div></div>
+            ))}
+          </div>
+
+          {/* charts */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 16, marginBottom: 16 }}>
+            <div className="card">
+              <div className="card-header"><strong>Performance Overview</strong></div>
+              <div className="card-body" style={{ height: 260 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={barData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="name" fontSize={11} />
+                    <YAxis fontSize={11} />
+                    <Tooltip />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Bar dataKey="Appeared" fill="#0176d3" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="Passed"   fill="#2e844a" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="80+"      fill="#8b5cf6" radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+            <div className="card">
+              <div className="card-header"><strong>Marks Distribution</strong></div>
+              <div className="card-body" style={{ height: 260, position: 'relative' }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={distData.length ? distData : [{ name: 'None', value: 1, color: '#e5e5e5' }]}
+                         dataKey="value" innerRadius={55} outerRadius={80} paddingAngle={2}>
+                      {(distData.length ? distData : [{ color: '#e5e5e5' }]).map((d, i) => <Cell key={i} fill={d.color} />)}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div style={{ position: 'absolute', top: '48%', left: '50%', transform: 'translate(-50%,-50%)', textAlign: 'center' }}>
+                  <div style={{ fontSize: 20, fontWeight: 800 }}>{s.total_appeared}</div>
+                  <div style={{ fontSize: 10.5, color: 'var(--neutral-6)' }}>Students</div>
+                </div>
+                <div style={{ fontSize: 11.5, marginTop: 4 }}>
+                  {distData.map(d => (
+                    <div key={d.name} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 4px' }}>
+                      <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: d.color, marginRight: 6 }} />{d.name}</span>
+                      <strong>{d.count}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* class-wise table */}
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card-header"><strong>Class Wise Analysis</strong></div>
+            <div className="table-container" style={{ border: 'none', borderRadius: 0 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead><tr>
+                  <th style={{ padding: '10px 12px' }}>Class</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'center' }}>Total</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'center' }}>Appeared</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'center' }}>Passed</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'center' }}>Failed</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'center' }}>80+ Marks</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'center' }}>Pass %</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'center' }}>Status</th>
+                </tr></thead>
+                <tbody>
+                  {(data.class_wise || []).map(c => (
+                    <tr key={c.class_id} style={{ borderBottom: '1px solid var(--neutral-2)' }}>
+                      <td style={{ padding: '8px 12px', fontWeight: 600 }}>{c.class_name} {c.section}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'center' }}>{c.total_students}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'center' }}>{c.appeared}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'center' }}>{c.passed}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'center', color: c.failed > 0 ? '#ba0517' : 'inherit' }}>{c.failed}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                        {c.published ? (
+                          <button className="btn-link" style={{ color: '#0176d3', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer' }}
+                            onClick={() => openDrill(c, '80plus', '80+ Marks')}>
+                            {c.marks_80plus} ({c.plus80_pct}%)
+                          </button>
+                        ) : '—'}
+                      </td>
+                      <td style={{ padding: '8px 12px', textAlign: 'center' }}>{c.pass_pct}%</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                        <StatusBadge status={c.published ? 'PUBLISHED' : 'NOT_PUBLISHED'} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* year/session wise exams list */}
+          <div className="card">
+            <div className="card-header"><strong>All Exams (Year &amp; Session Wise)</strong></div>
+            <div className="table-container" style={{ border: 'none', borderRadius: 0 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead><tr>
+                  <th style={{ padding: '10px 12px' }}>Year</th>
+                  <th style={{ padding: '10px 12px' }}>Session</th>
+                  <th style={{ padding: '10px 12px' }}>Exam</th>
+                  <th style={{ padding: '10px 12px' }}>Dates</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'center' }}>Total Students</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'center' }}>Appeared</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'center' }}>Pass %</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'center' }}>80+ Marks</th>
+                </tr></thead>
+                <tbody>
+                  {(data.exams || []).map(e => (
+                    <tr key={e.exam_id} style={{ borderBottom: '1px solid var(--neutral-2)' }}>
+                      <td style={{ padding: '8px 12px' }}>{e.year}</td>
+                      <td style={{ padding: '8px 12px' }}>{e.session}</td>
+                      <td style={{ padding: '8px 12px', fontWeight: 600 }}>{e.exam_name}</td>
+                      <td style={{ padding: '8px 12px' }}>{fmtDate(e.start_date)} – {fmtDate(e.end_date)}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'center' }}>{e.total_students}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'center' }}>{e.appeared}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'center' }}>{e.pass_pct}%</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'center' }}>{e.plus80} ({e.plus80_pct}%)</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {drill && (
+        <Modal title={drill.label} onClose={() => { setDrill(null); setDrillData(null); }} width={520}>
+          {!drillData ? (
+            <div style={{ fontSize: 13, color: 'var(--neutral-6)' }}>Loading…</div>
+          ) : drillData.students.length === 0 ? (
+            <div style={{ fontSize: 13, color: 'var(--neutral-6)', textAlign: 'center', padding: '20px 0' }}>Koi student nahi mila.</div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+              <thead><tr style={{ color: 'var(--neutral-6)', textAlign: 'left' }}>
+                <th style={{ padding: '6px 8px' }}>#</th><th style={{ padding: '6px 8px' }}>Roll</th>
+                <th style={{ padding: '6px 8px' }}>Name</th><th style={{ padding: '6px 8px', textAlign: 'right' }}>Marks</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right' }}>%</th>
+              </tr></thead>
+              <tbody>
+                {drillData.students.map((st, i) => (
+                  <tr key={st.student_id} style={{ borderTop: '1px solid var(--neutral-2)' }}>
+                    <td style={{ padding: '6px 8px' }}>{i + 1}</td>
+                    <td style={{ padding: '6px 8px' }}>{st.roll_number}</td>
+                    <td style={{ padding: '6px 8px' }}>{st.name}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right' }}>{st.total_obtained}/{st.total_max}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700 }}>{st.percentage}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Modal>
+      )}
+    </div>
+  );
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -444,8 +747,6 @@ function PrincipalResultManagement({ user }) {
   const [preview, setPreview] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
-  const [forcePublish, setForcePublish] = useState(false);
-  const [forceReason, setForceReason] = useState('');
   const [showReopen, setShowReopen] = useState(false);
   const [reopenReason, setReopenReason] = useState('');
   const [publishing, setPublishing] = useState(false);
@@ -529,20 +830,6 @@ function PrincipalResultManagement({ user }) {
     }
   }
 
-  async function handleDeleteMark(row) {
-     const reason = window.prompt(`Delete ${row.name}'s marks — reason:`);
-     if (!reason || !reason.trim()) return;
-     try {
-       await api.post('/results/principal/delete-mark', {
-         student_id: row.student_id, subject_id: reviewSubjectId, exam_id: examId, reason,
-       });
-       toast.success('Mark entry deleted');
-       loadReview();
-     } catch (err) {
-       toast.error(err?.response?.data?.error || 'Delete nahi hua');
-     }
-   }
-
   async function handleReturn() {
     if (!returnReason.trim()) { toast.error('Reason is mandatory'); return; }
     try {
@@ -566,10 +853,9 @@ function PrincipalResultManagement({ user }) {
   }
 
   async function handlePublish() {
-     if (forcePublish && !forceReason.trim()) { toast.error('Reason is mandatory for force publish'); return; }
-     setPublishing(true);
-     try {
-       await api.post('/results/publish', { class_id: classId, exam_id: examId, force: forcePublish, reason: forceReason });
+    setPublishing(true);
+    try {
+      await api.post('/results/publish', { class_id: classId, exam_id: examId });
       toast.success('🎉 Result published!');
       setShowPublishConfirm(false); setShowPreview(false);
       loadDashboard();
@@ -634,14 +920,7 @@ function PrincipalResultManagement({ user }) {
                   {exams.map(e => <option key={e.id} value={e.id}>{e.exam_name}</option>)}
                 </select>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                <StatusBadge status={pubStatus} />
-                {dash && (
-                  <span style={{ fontSize: 11, color: 'var(--neutral-6)', fontWeight: 600 }}>
-                    👥 {dash.total_students} Students · {dash.total_marks_entered}/{dash.total_marks_expected} Marks Entered
-                  </span>
-                )}
-              </div>
+              <div><StatusBadge status={pubStatus} /></div>
             </div>
           </div>
 
@@ -683,7 +962,6 @@ function PrincipalResultManagement({ user }) {
                           <th style={{ padding: '10px 12px' }}>Subject</th>
                           <th style={{ padding: '10px 12px' }}>Teacher</th>
                           <th style={{ padding: '10px 12px' }}>Status</th>
-                          <th style={{ padding: '10px 12px' }}>Marks Entered</th>
                           <th style={{ padding: '10px 12px' }}>Submitted On</th>
                           <th style={{ padding: '10px 12px' }}>Action</th>
                         </tr></thead>
@@ -694,14 +972,6 @@ function PrincipalResultManagement({ user }) {
                               <td style={{ padding: '8px 12px', fontWeight: 600 }}>{s.subject_name}</td>
                               <td style={{ padding: '8px 12px' }}>{s.teacher_name}</td>
                               <td style={{ padding: '8px 12px' }}><StatusBadge status={s.status} /></td>
-                              <td style={{ padding: '8px 12px' }}>
-                                <span style={{
-                                  fontWeight: 700,
-                                  color: s.marks_entered >= s.total_students ? '#2e844a' : '#dd7a01',
-                                }}>
-                                  {s.marks_entered}/{s.total_students}
-                                </span>
-                              </td>
                               <td style={{ padding: '8px 12px' }}>{fmtDate(s.submitted_at)}</td>
                               <td style={{ padding: '8px 12px' }}>
                                 <button className="btn btn-neutral btn-sm" onClick={() => openReview(s.subject_id)}>
@@ -759,7 +1029,7 @@ function PrincipalResultManagement({ user }) {
                             <tbody>
                               {roster.roster.map(row => {
                                 const c = cells[row.student_id] || {};
-                                const editable = !!roster.can_edit;
+                                const editable = ['SUBMITTED', 'RESUBMITTED'].includes(roster.status.status);
                                 return (
                                   <tr key={row.student_id} style={{ borderBottom: '1px solid var(--neutral-2)' }}>
                                     <td style={{ padding: '8px 12px', fontWeight: 600 }}>{row.roll_number}</td>
@@ -783,10 +1053,6 @@ function PrincipalResultManagement({ user }) {
                                     ) : (row.remarks || '—')}</td>
                                     <td style={{ padding: '8px 12px', textAlign: 'center' }}>
                                       <button className="btn btn-neutral btn-sm" onClick={() => setHistoryFor(row)}>🕘</button>
-                                      {row.marks_record_id && (
-                                        <button className="btn btn-destructive btn-sm" style={{ marginLeft: 4 }}
-                                          onClick={() => handleDeleteMark(row)}>🗑️</button>
-                                      )}
                                     </td>
                                   </tr>
                                 );
@@ -835,18 +1101,15 @@ function PrincipalResultManagement({ user }) {
                           </div>
                         </div>
                       ) : (
-                       <div>
-                         <div style={{ background: '#fdecea', color: '#7f1d1d', padding: 12, borderRadius: 8, marginBottom: 10, fontWeight: 700 }}>
-                           Cannot Publish Result
-                         </div>
-                         <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: '#7f1d1d', marginBottom: 14 }}>
-                           {(precheck?.blockers || []).map((b, i) => <li key={i} style={{ marginBottom: 4 }}>{b}</li>)}
-                         </ul>
-                         <button className="btn btn-destructive btn-sm" onClick={() => { setForcePublish(true); setShowPublishConfirm(true); }}>
-                           ⚠️ Force Publish Anyway (Override)
-                         </button>
-                       </div>
-                     )}
+                        <div>
+                          <div style={{ background: '#fdecea', color: '#7f1d1d', padding: 12, borderRadius: 8, marginBottom: 10, fontWeight: 700 }}>
+                            Cannot Publish Result
+                          </div>
+                          <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: '#7f1d1d' }}>
+                            {(precheck?.blockers || []).map((b, i) => <li key={i} style={{ marginBottom: 4 }}>{b}</li>)}
+                          </ul>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1002,24 +1265,12 @@ function PrincipalResultManagement({ user }) {
       )}
 
       {showPublishConfirm && (
-        <Modal title={forcePublish ? 'Force Publish — Override' : 'Confirm Publish'} onClose={() => { setShowPublishConfirm(false); setForcePublish(false); setForceReason(''); }}>
+        <Modal title="Confirm Publish" onClose={() => setShowPublishConfirm(false)}>
           <p>You are about to publish results for <strong>{dash?.class?.name} - {dash?.class?.section}</strong>, <strong>{dash?.exam?.exam_name}</strong>.</p>
           <p style={{ color: 'var(--neutral-6)', fontSize: 13 }}>After publishing, results will become visible to students and parents.</p>
-          {forcePublish && (
-            <>
-              <div style={{ background: '#fef3c7', color: '#92600a', padding: 10, borderRadius: 8, margin: '10px 0', fontSize: 13 }}>
-                ⚠️ Some subjects are not yet approved. They will be auto-approved and published as-is.
-              </div>
-              <label className="form-label">Reason (mandatory)</label>
-              <textarea className="form-textarea" rows={2} value={forceReason} onChange={e => setForceReason(e.target.value)}
-                placeholder="e.g. Publishing before all subjects reviewed — board deadline." />
-            </>
-          )}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
-            <button className="btn btn-neutral btn-sm" onClick={() => { setShowPublishConfirm(false); setForcePublish(false); setForceReason(''); }}>Cancel</button>
-            <button className={forcePublish ? 'btn btn-destructive btn-sm' : 'btn btn-primary btn-sm'} disabled={publishing} onClick={handlePublish}>
-              {publishing ? 'Publishing…' : forcePublish ? '⚠️ Force Publish' : 'Publish Result'}
-            </button>
+            <button className="btn btn-neutral btn-sm" onClick={() => setShowPublishConfirm(false)}>Cancel</button>
+            <button className="btn btn-primary btn-sm" disabled={publishing} onClick={handlePublish}>{publishing ? 'Publishing…' : 'Publish Result'}</button>
           </div>
         </Modal>
       )}
