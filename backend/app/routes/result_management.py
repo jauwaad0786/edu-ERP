@@ -389,11 +389,14 @@ def get_roster():
     }
 
     # editability rules (spec section 6 + 9)
-    is_teacher = not _is_principal(user)
+     is_teacher = not _is_principal(user)
     if is_teacher:
         can_edit = status_row.status in ('DRAFT', 'RETURNED_FOR_CORRECTION')
     else:
-        can_edit = status_row.status in ('SUBMITTED', 'RESUBMITTED', 'DRAFT')
+        # Principal — DRAFT se APPROVED tak har stage pe edit access.
+        # PUBLISHED locked rehta hai — wahan pehle Reopen Result use karna
+        # padega (wahi "unpublish karke edit karo" wala flow, already bana hua hai).
+        can_edit = status_row.status in ('DRAFT', 'SUBMITTED', 'RESUBMITTED', 'APPROVED')
 
     roster = []
     for s in students:
@@ -460,10 +463,10 @@ def save_draft():
 
     if is_teacher and status_row.status not in ('DRAFT', 'RETURNED_FOR_CORRECTION'):
         return jsonify({'error': f'Marks are {status_row.status} — cannot edit. Ask Principal to return them for correction.'}), 409
-    if not is_teacher and status_row.status not in ('DRAFT', 'SUBMITTED', 'RESUBMITTED'):
+    if not is_teacher and status_row.status not in ('DRAFT', 'SUBMITTED', 'RESUBMITTED', 'APPROVED'):
         return jsonify({'error': f'Marks are {status_row.status}. Use Reopen Result to edit a published result.'}), 409
 
-    editing_after_submit = status_row.status in ('SUBMITTED', 'RESUBMITTED')
+    editing_after_submit = status_row.status in ('SUBMITTED', 'RESUBMITTED', 'APPROVED')
     if editing_after_submit and not reason:
         return jsonify({'error': 'A reason is required when correcting already-submitted marks'}), 400
 
@@ -813,14 +816,28 @@ def publish_result():
     sid  = _school_id()
     data = request.get_json() or {}
     class_id, exam_id = data.get('class_id'), data.get('exam_id')
+    force  = bool(data.get('force'))
+    reason = (data.get('reason') or '').strip()
     cls, exam = Class.query.get_or_404(class_id), ExamSchedule.query.get_or_404(exam_id)
     if cls.school_id != sid or exam.school_id != sid:
         return jsonify({'error': 'Unauthorized'}), 403
 
     subjects = Subject.query.filter_by(class_id=class_id).all()
     rows = [_get_or_create_status(sid, exam_id, class_id, s.id) for s in subjects]
-    if not rows or any(r.status not in ('APPROVED', 'PUBLISHED') for r in rows):
+    if not rows:
+        return jsonify({'error': 'No subjects configured for this class.'}), 400
+
+    blocked = [r for r in rows if r.status not in ('APPROVED', 'PUBLISHED')]
+    if blocked and not force:
         return jsonify({'error': 'Cannot publish — one or more subjects are not yet approved. Check the Publish tab for details.'}), 400
+    if blocked and force:
+        if not reason:
+            return jsonify({'error': 'A reason is required to force-publish with pending subjects'}), 400
+        for r in blocked:
+            old = r.status
+            r.status, r.approved_at, r.approved_by = 'APPROVED', datetime.utcnow(), user.id
+            _log_audit(user, None, Subject.query.get(r.subject_id), exam, cls, action_type='APPROVED',
+                       old_status=old, new_status='APPROVED', reason=f'FORCE-APPROVED at publish: {reason}')
 
     pub = ClassResultPublication.query.filter_by(exam_id=exam_id, class_id=class_id).first()
     if not pub:
@@ -960,3 +977,72 @@ def recent_activity():
         q = q.filter_by(exam_id=exam_id)
     logs = q.order_by(MarksAuditLog.created_at.desc()).limit(limit).all()
     return jsonify([l.to_dict() for l in logs]), 200
+
+
+@result_bp.route('/principal/delete-mark', methods=['POST'])
+@role_required('PRINCIPAL')
+def delete_mark():
+    """Permanently remove one student's mark entry. Published/locked
+    records must be Reopened first — same rule as editing."""
+    user = get_current_user()
+    sid  = _school_id()
+    data = request.get_json() or {}
+    student_id, subject_id, exam_id = data.get('student_id'), data.get('subject_id'), data.get('exam_id')
+    reason = (data.get('reason') or '').strip()
+    if not all([student_id, subject_id, exam_id]):
+        return jsonify({'error': 'student_id, subject_id, exam_id required'}), 400
+    if not reason:
+        return jsonify({'error': 'A reason is required to delete a mark entry'}), 400
+
+    student = Student.query.get_or_404(student_id)
+    subject = Subject.query.get_or_404(subject_id)
+    exam    = ExamSchedule.query.get_or_404(exam_id)
+    if student.school_id != sid or (subject.school_id and subject.school_id != sid) or exam.school_id != sid:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    record = Marks.query.filter_by(student_id=student_id, subject_id=subject_id, exam_id=exam_id).first()
+    if not record:
+        return jsonify({'error': 'No mark entry found'}), 404
+    if record.is_locked:
+        return jsonify({'error': 'Marks are published/locked. Reopen the result before deleting.'}), 409
+
+    cls = Class.query.get(student.class_id)
+    _log_audit(user, student, subject, exam, cls, marks_record_id=record.id,
+               old_marks=record.marks_obtained, new_marks=None,
+               old_status=_derive_student_status(record), new_status='NOT_EVALUATED',
+               old_remarks=record.remarks, new_remarks=None,
+               action_type='MARK_UPDATED', reason=f'DELETED: {reason}')
+
+    db.session.delete(record)
+    db.session.commit()
+    return jsonify({'message': 'Mark entry deleted'}), 200
+
+
+@result_bp.route('/principal/reset-status', methods=['POST'])
+@role_required('PRINCIPAL')
+def reset_status():
+    """Force a subject's workflow back to DRAFT from any state (except
+    PUBLISHED — reopen it first). Full undo, use sparingly."""
+    user = get_current_user()
+    sid  = _school_id()
+    data = request.get_json() or {}
+    class_id, exam_id, subject_id = data.get('class_id'), data.get('exam_id'), data.get('subject_id')
+    reason = (data.get('reason') or '').strip()
+    if not reason:
+        return jsonify({'error': 'A reason is required to reset a subject to Draft'}), 400
+
+    cls, exam, subject = Class.query.get_or_404(class_id), ExamSchedule.query.get_or_404(exam_id), Subject.query.get_or_404(subject_id)
+    if cls.school_id != sid or exam.school_id != sid:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    row = _get_or_create_status(sid, exam_id, class_id, subject_id)
+    if row.status == 'PUBLISHED':
+        return jsonify({'error': 'Subject is published — reopen the result first'}), 409
+
+    old_status = row.status
+    row.status = 'DRAFT'
+    row.version = (row.version or 0) + 1
+    _log_audit(user, None, subject, exam, cls, action_type='STATUS_CHANGED',
+               old_status=old_status, new_status='DRAFT', reason=reason)
+    db.session.commit()
+    return jsonify({'message': 'Subject reset to Draft', 'status': row.to_dict()}), 200
