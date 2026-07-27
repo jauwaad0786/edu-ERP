@@ -30,9 +30,19 @@ export const PERMISSION_MENU_ITEMS = {
 
   'exams.schedule.manage':     { group: 'Examinations', item: { icon: 'ti-pencil',    label: 'Exam Schedule', path: '/exams' } },
   'exams.timetable.manage':    { group: 'Examinations', item: { icon: 'ti-pencil',    label: 'Exam Schedule', path: '/exams' } },
-  'exams.results.publish':     { group: 'Examinations', item: { icon: 'ti-pencil',    label: 'Exam Schedule', path: '/exams' } },
+  // CHANGED — used to duplicate the Exam Schedule link (path: '/exams').
+  // Now points at the new Draft→Submit→Review→Publish workflow dashboard
+  // (Principal/VP/Academic Coordinator/Exam Controller hold this key by
+  // default — see permission_catalog.py DEFAULT_SCHOOL_ROLE_PERMISSIONS).
+  'exams.results.publish':     { group: 'Examinations', item: { icon: 'ti-clipboard-check', label: 'Result Management', path: '/result-management' } },
   'exams.admitcard.generate':  { group: 'Examinations', item: { icon: 'ti-ticket',    label: 'Admit Cards',   path: '/admit-card' } },
-  'marks.entry':                { group: 'Examinations', item: { icon: 'ti-chart-bar', label: 'Marks', path: '/marks' } },
+  // CHANGED — was a single item; now an array so Teachers keep the existing
+  // quick-entry Marks grid (path: '/marks', untouched) AND get the new
+  // Draft/Submit/History workflow screen (path: '/mark-entry').
+  'marks.entry': [
+    { group: 'Examinations', item: { icon: 'ti-chart-bar',   label: 'Marks',      path: '/marks' } },
+    { group: 'Examinations', item: { icon: 'ti-checklist',   label: 'Mark Entry', path: '/mark-entry' } },
+  ],
   'marks.bulk_save':            { group: 'Examinations', item: { icon: 'ti-chart-bar', label: 'Marks', path: '/marks' } },
   'marks.analytics.view':       { group: 'Examinations', item: { icon: 'ti-chart-bar', label: 'Marks', path: '/marks' } },
 
