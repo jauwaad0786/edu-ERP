@@ -389,7 +389,7 @@ def get_roster():
     }
 
     # editability rules (spec section 6 + 9)
-     is_teacher = not _is_principal(user)
+    is_teacher = not _is_principal(user)
     if is_teacher:
         can_edit = status_row.status in ('DRAFT', 'RETURNED_FOR_CORRECTION')
     else:
@@ -416,7 +416,7 @@ def get_roster():
             'remarks':        m.remarks if m else '',
             'version':        (m.version or 0) if m else 0,
             'marks_record_id': m.id if m else None,
-            'was_modified':   history_count > 1,   # more than the initial creation entry
+            'was_modified':   history_count > 1,
             'history_count':  history_count,
             'flagged_for_correction': s.id in returned_ids,
         })
@@ -430,7 +430,6 @@ def get_roster():
         'is_principal': _is_principal(user),
         'roster':       roster,
     }), 200
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  3. SAVE DRAFT (teacher or principal, only while editable)
