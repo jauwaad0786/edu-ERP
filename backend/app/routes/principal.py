@@ -2680,14 +2680,79 @@ def dashboard():
     t_present = sum(1 for a in t_att_today if a.status == 'PRESENT')
     t_absent  = sum(1 for a in t_att_today if a.status == 'ABSENT')
 
+    # ── Attendance trend — last 7 calendar days, % present of marked ──────────
+    attendance_trend = []
+    for i in range(6, -1, -1):
+        d   = today - timedelta(days=i)
+        day = Attendance.query.join(
+                  Student, Attendance.student_id == Student.id
+              ).filter(Student.school_id == sid, Attendance.date == d).all()
+        marked  = len(day)
+        present = sum(1 for a in day if a.status == 'PRESENT')
+        attendance_trend.append({
+            'date':    d.isoformat(),
+            'label':   d.strftime('%a'),
+            'percent': round(present / marked * 100, 1) if marked else 0,
+        })
+
+    # ── Fee collection trend — last 6 weeks (Mon–Sun), amount actually paid ──
+    fee_trend = []
+    week_start = today - timedelta(days=today.weekday())  # is week ka Monday
+    for i in range(5, -1, -1):
+        w_start = week_start - timedelta(weeks=i)
+        w_end   = w_start + timedelta(days=6)
+        total   = db.session.query(func.sum(FeeRecord.amount_paid)).filter(
+                      FeeRecord.school_id  == sid,
+                      FeeRecord.paid_date  >= w_start,
+                      FeeRecord.paid_date  <= w_end,
+                  ).scalar() or 0
+        fee_trend.append({
+            'label':  f'{w_start.strftime("%d %b")}',
+            'amount': round(total, 2),
+        })
+
+    # ── Students by class — real class + section names ───────────────────────
+    class_rows = db.session.query(
+                     Class.name, Class.section, func.count(Student.id)
+                 ).outerjoin(
+                     Student, Student.class_id == Class.id
+                 ).filter(Class.school_id == sid).group_by(Class.id).all()
+    class_distribution = [
+        {
+            'name':  f'{name}' + (f' - {section}' if section else ''),
+            'count': count,
+        }
+        for name, section, count in class_rows
+    ]
+
+    # ── Quick stats — Library / Hostel / Circulars (only real, wired modules) ─
+    from app.models.library import BookIssue
+    from app.models.hostel import HostelBed
+    from app.models.communication import Announcement
+
+    library_issued  = BookIssue.query.filter_by(school_id=sid, status='ISSUED').count()
+    hostel_occupied = HostelBed.query.filter_by(school_id=sid, status='OCCUPIED').count()
+    hostel_total    = HostelBed.query.filter_by(school_id=sid).count()
+    active_circulars = Announcement.query.filter(
+                            db.or_(Announcement.school_id == sid, Announcement.school_id.is_(None)),
+                            Announcement.is_active == True,
+                        ).count()
+
     return jsonify({
-        'total_students':    total_students,
-        'total_teachers':    total_teachers,
-        'total_classes':     Class.query.filter_by(school_id=sid).count(),
-        'fee_collected':     db.session.query(func.sum(FeeRecord.amount_paid)).filter_by(school_id=sid).scalar() or 0,
-        'fee_pending':       db.session.query(
-                                 func.sum(FeeRecord.amount_due - FeeRecord.amount_paid)
-                             ).filter_by(school_id=sid).scalar() or 0,
+        'total_students':      total_students,
+        'total_teachers':      total_teachers,
+        'total_classes':       Class.query.filter_by(school_id=sid).count(),
+        'fee_collected':       db.session.query(func.sum(FeeRecord.amount_paid)).filter_by(school_id=sid).scalar() or 0,
+        'fee_pending':         db.session.query(
+                                   func.sum(FeeRecord.amount_due - FeeRecord.amount_paid)
+                               ).filter_by(school_id=sid).scalar() or 0,
+        'attendance_trend':    attendance_trend,
+        'fee_trend':           fee_trend,
+        'class_distribution':  class_distribution,
+        'library_issued':      library_issued,
+        'hostel_occupied':     hostel_occupied,
+        'hostel_total':        hostel_total,
+        'active_circulars':    active_circulars,
         # attendance today
         'students_present':  s_present,
         'students_absent':   s_absent,
