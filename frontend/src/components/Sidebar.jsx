@@ -110,8 +110,9 @@ const ROLE_MENUS = {
         {
           icon: 'ti-briefcase', label: 'Staff Management', path: '/staff',
           children: [
-            { icon: 'ti-chalkboard', label: 'Teachers',   path: '/teachers' },
-            { icon: 'ti-briefcase',  label: 'Staff List', path: '/staff' },
+            { icon: 'ti-chalkboard',      label: 'Teachers',           path: '/teachers' },
+            { icon: 'ti-briefcase',       label: 'Staff List',         path: '/staff' },
+            { icon: 'ti-clipboard-check', label: 'Staff Attendance',   path: '/staff/attendance' },
           ],
         },
 
