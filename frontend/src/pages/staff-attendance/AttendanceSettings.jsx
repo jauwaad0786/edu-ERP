@@ -8,6 +8,76 @@ import toast   from 'react-hot-toast';
 const RADIUS_OPTIONS = [50, 100, 150, 200, 300];
 const WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+// ── Lightweight Leaflet map picker (loaded from CDN, no npm install needed) ──
+function MapPicker({ lat, lng, onPick, darkMode }) {
+  const mapRef = React.useRef(null);
+  const leafletMapObj = React.useRef(null);
+  const markerRef = React.useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const ensureLeafletLoaded = () =>
+      new Promise((resolve) => {
+        if (window.L) { resolve(); return; }
+        const css = document.createElement('link');
+        css.rel = 'stylesheet';
+        css.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+        document.head.appendChild(css);
+
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+        script.onload = () => resolve();
+        document.body.appendChild(script);
+      });
+
+    ensureLeafletLoaded().then(() => {
+      if (cancelled || !mapRef.current || leafletMapObj.current) return;
+      const L = window.L;
+      const startLat = lat || 28.6139;
+      const startLng = lng || 77.2090;
+
+      const map = L.map(mapRef.current).setView([startLat, startLng], lat ? 16 : 5);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+      }).addTo(map);
+
+      const marker = L.marker([startLat, startLng], { draggable: true }).addTo(map);
+      marker.on('dragend', () => {
+        const { lat: newLat, lng: newLng } = marker.getLatLng();
+        onPick(newLat, newLng);
+      });
+      map.on('click', (e) => {
+        marker.setLatLng(e.latlng);
+        onPick(e.latlng.lat, e.latlng.lng);
+      });
+
+      leafletMapObj.current = map;
+      markerRef.current = marker;
+    });
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (markerRef.current && lat != null && lng != null) {
+      markerRef.current.setLatLng([lat, lng]);
+      leafletMapObj.current?.setView([lat, lng], 16);
+    }
+  }, [lat, lng]);
+
+  return (
+    <div
+      ref={mapRef}
+      style={{
+        width: '100%', height: 260, borderRadius: 10,
+        border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+      }}
+    />
+  );
+}
+
 export default function AttendanceSettings() {
   const [darkMode, setDarkMode] = useState(localStorage.getItem('ederp_theme') === 'dark');
   const [settings, setSettings] = useState(null);
@@ -142,6 +212,17 @@ export default function AttendanceSettings() {
                 }}>📌 Use Current Location</button>
               </div>
             </div>
+
+            <div style={{ marginTop: 14 }}>
+              <label style={label}>Or pick on map (click anywhere to set the pin)</label>
+              <MapPicker
+                lat={settings.latitude}
+                lng={settings.longitude}
+                onPick={(lat, lng) => { set('latitude', lat); set('longitude', lng); }}
+                darkMode={darkMode}
+              />
+            </div>
+
             <div style={{ marginTop: 14 }}>
               <label style={label}>Attendance Radius (meters)</label>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
