@@ -17,10 +17,16 @@ export default function TeacherDashboard() {
   var [saving,        setSaving]        = useState(false);
   var [msg,           setMsg]           = useState('');
   var [alreadyMarked, setAlreadyMarked] = useState(false);
-  var [selfAtt,       setSelfAtt]       = useState({ status:'PRESENT', check_in:'', check_out:'', remarks:'' });
-  var [selfAttSaved,  setSelfAttSaved]  = useState(null);
-  var [selfAttSaving, setSelfAttSaving] = useState(false);
   var [holidays,      setHolidays]      = useState([]);
+
+  // GPS-based Staff Attendance (replaces old manual time-entry self-attendance)
+  var [myStatus,       setMyStatus]       = useState(null);   // today's StaffAttendance record, ya null
+  var [gpsLoading,     setGpsLoading]     = useState(true);
+  var [checkingIn,     setCheckingIn]     = useState(false);
+  var [checkingOut,    setCheckingOut]    = useState(false);
+  var [showRegularize, setShowRegularize] = useState(false);
+  var [regForm,        setRegForm]        = useState({ reason_type:'FORGOT_CHECKOUT', reason_text:'', requested_check_in:'', requested_check_out:'' });
+  var [regSaving,      setRegSaving]      = useState(false);
 
   var today = new Date().toISOString().split('T')[0];
 
@@ -41,9 +47,7 @@ export default function TeacherDashboard() {
       })
       .catch(function() {});
 
-    api.get('/teacher/self-attendance?date=' + today)
-      .then(function(r) { if (r.data) setSelfAttSaved(r.data); })
-      .catch(function() {});
+    loadMyStatus();
 
     api.get('/principal/holidays?applies_to=TEACHER')
       .then(function(r) { setHolidays(r.data || []); })
@@ -153,25 +157,86 @@ export default function TeacherDashboard() {
   var absentCount  = Object.values(attendance).filter(function(s) { return s === 'ABSENT'; }).length;
   var lateCount    = Object.values(attendance).filter(function(s) { return s === 'LATE'; }).length;
 
-  async function saveSelfAttendance() {
-    setSelfAttSaving(true);
+  function getGpsLocation() {
+    return new Promise(function(resolve, reject) {
+      if (!navigator.geolocation) {
+        reject(new Error('Is browser me GPS support nahi hai'));
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        function(pos) {
+          resolve({
+            latitude:  pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracy:  pos.coords.accuracy,
+          });
+        },
+        function() { reject(new Error('Location permission denied ya GPS off hai')); },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    });
+  }
+
+  function loadMyStatus() {
+    setGpsLoading(true);
+    api.get('/staff-attendance/my-status')
+      .then(function(r) { setMyStatus(r.data); })
+      .catch(function() {})
+      .finally(function() { setGpsLoading(false); });
+  }
+
+  async function doCheckIn() {
+    setCheckingIn(true);
     try {
-      var r = await api.post('/teacher/self-attendance', {
-        date:      today,
-        status:    selfAtt.status,
-        check_in:  selfAtt.check_in,
-        check_out: selfAtt.check_out,
-        remarks:   selfAtt.remarks,
+      var loc = await getGpsLocation();
+      var r = await api.post('/staff-attendance/check-in', {
+        latitude:  loc.latitude,
+        longitude: loc.longitude,
+        accuracy:  loc.accuracy,
+        device:    navigator.userAgent,
       });
-      setSelfAttSaved(r.data);
-      toast.success('Attendance request submitted!');
-      setMsg('Attendance request submitted');
+      setMyStatus(r.data);
+      toast.success('Check-in ho gaya!');
     } catch(e) {
-      toast.error('Error submitting attendance');
-      setMsg('Error submitting attendance');
+      toast.error((e.response && e.response.data && e.response.data.error) || e.message || 'Check-in fail ho gaya');
     }
-    setSelfAttSaving(false);
-    setTimeout(function() { setMsg(''); }, 4000);
+    setCheckingIn(false);
+  }
+
+  async function doCheckOut() {
+    setCheckingOut(true);
+    try {
+      var loc = await getGpsLocation();
+      var r = await api.post('/staff-attendance/check-out', {
+        latitude:  loc.latitude,
+        longitude: loc.longitude,
+      });
+      setMyStatus(r.data);
+      toast.success('Check-out ho gaya!');
+    } catch(e) {
+      toast.error((e.response && e.response.data && e.response.data.error) || e.message || 'Check-out fail ho gaya');
+    }
+    setCheckingOut(false);
+  }
+
+  async function submitRegularization() {
+    setRegSaving(true);
+    try {
+      var payload = {
+        date: today,
+        reason_type: regForm.reason_type,
+        reason_text: regForm.reason_text,
+      };
+      if (regForm.requested_check_in)  payload.requested_check_in  = today + 'T' + regForm.requested_check_in + ':00';
+      if (regForm.requested_check_out) payload.requested_check_out = today + 'T' + regForm.requested_check_out + ':00';
+      await api.post('/staff-attendance/regularization', payload);
+      toast.success('Regularization request bhej di gayi');
+      setShowRegularize(false);
+      setRegForm({ reason_type:'FORGOT_CHECKOUT', reason_text:'', requested_check_in:'', requested_check_out:'' });
+    } catch(e) {
+      toast.error((e.response && e.response.data && e.response.data.error) || 'Request fail ho gaya');
+    }
+    setRegSaving(false);
   }
 
   var TABS = [
@@ -533,96 +598,155 @@ export default function TeacherDashboard() {
             <div style={{ maxWidth: 520 }}>
               <div className="card">
                 <div className="card-header">
-                  <h4 style={{ margin:0 }}>Mark My Attendance</h4>
+                  <h4 style={{ margin:0 }}>My Attendance</h4>
                 </div>
                 <div style={{ padding:'20px' }}>
-                  {selfAttSaved && (
-                    <div style={{
-                      background: selfAttSaved.approval === 'APPROVED' ? '#f0fdf4' : selfAttSaved.approval === 'DENIED' ? '#fef2f2' : '#fffbeb',
-                      borderRadius:10, padding:'12px 16px', marginBottom:16,
-                      display:'flex', alignItems:'center', gap:10,
-                    }}>
-                      <div>
-                        <div style={{ fontWeight:700, fontSize:13 }}>
-                          {selfAttSaved.approval === 'APPROVED' ? 'Attendance Approved!'
-                            : selfAttSaved.approval === 'DENIED' ? 'Attendance Denied'
-                            : 'Approval Pending'}
+                  {gpsLoading ? (
+                    <div style={{ textAlign:'center', color:'#94a3b8', padding:'20px 0' }}>Loading...</div>
+                  ) : (
+                    <>
+                      {myStatus && (
+                        <div style={{
+                          background: myStatus.approval_status === 'APPROVED' ? '#f0fdf4'
+                            : myStatus.approval_status === 'REJECTED' ? '#fef2f2' : '#fffbeb',
+                          borderRadius:10, padding:'12px 16px', marginBottom:16,
+                        }}>
+                          <div style={{ fontWeight:700, fontSize:13 }}>
+                            {myStatus.approval_status === 'APPROVED' ? 'Attendance Approved'
+                              : myStatus.approval_status === 'REJECTED' ? 'Attendance Rejected'
+                              : myStatus.approval_status === 'NOT_REQUIRED' ? 'Attendance Marked'
+                              : 'Approval Pending'}
+                          </div>
+                          <div style={{ fontSize:11, color:'#64748b', marginTop:2 }}>
+                            Status: {myStatus.status}
+                            {myStatus.gps_status ? ' · ' + myStatus.gps_status.replace('_',' ') : ''}
+                          </div>
+                          {myStatus.approval_status === 'REJECTED' && myStatus.rejection_reason && (
+                            <div style={{ fontSize:11, color:'#dc2626', marginTop:4 }}>
+                              Reason: {myStatus.rejection_reason}
+                            </div>
+                          )}
                         </div>
-                        <div style={{ fontSize:11, color:'#64748b', marginTop:2 }}>
-                          Status: {selfAttSaved.status}
+                      )}
+
+                      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16 }}>
+                        <div style={{ background:'#f8fafc', borderRadius:8, padding:'10px 12px' }}>
+                          <div style={{ fontSize:11, color:'#94a3b8', marginBottom:4 }}>Check In</div>
+                          <div style={{ fontSize:14, fontWeight:700 }}>
+                            {myStatus && myStatus.check_in_time
+                              ? new Date(myStatus.check_in_time).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })
+                              : '—'}
+                          </div>
+                        </div>
+                        <div style={{ background:'#f8fafc', borderRadius:8, padding:'10px 12px' }}>
+                          <div style={{ fontSize:11, color:'#94a3b8', marginBottom:4 }}>Check Out</div>
+                          <div style={{ fontSize:14, fontWeight:700 }}>
+                            {myStatus && myStatus.check_out_time
+                              ? new Date(myStatus.check_out_time).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })
+                              : '—'}
+                          </div>
                         </div>
                       </div>
-                    </div>
+
+                      {!myStatus || !myStatus.check_in_time ? (
+                        <button
+                          onClick={doCheckIn}
+                          disabled={checkingIn}
+                          style={{
+                            width:'100%', padding:'12px', borderRadius:8, border:'none',
+                            background: checkingIn ? '#94a3b8' : '#16a34a',
+                            color:'#fff', cursor: checkingIn ? 'default' : 'pointer',
+                            fontSize:14, fontWeight:700,
+                          }}>
+                          {checkingIn ? 'GPS le rahe hain...' : '📍 Check In'}
+                        </button>
+                      ) : !myStatus.check_out_time ? (
+                        <button
+                          onClick={doCheckOut}
+                          disabled={checkingOut}
+                          style={{
+                            width:'100%', padding:'12px', borderRadius:8, border:'none',
+                            background: checkingOut ? '#94a3b8' : '#dc2626',
+                            color:'#fff', cursor: checkingOut ? 'default' : 'pointer',
+                            fontSize:14, fontWeight:700,
+                          }}>
+                          {checkingOut ? 'GPS le rahe hain...' : '📍 Check Out'}
+                        </button>
+                      ) : (
+                        <div style={{ textAlign:'center', fontSize:12, color:'#16a34a', fontWeight:700 }}>
+                          ✅ Aaj ki attendance complete ho chuki hai
+                        </div>
+                      )}
+
+                      {myStatus && (myStatus.status === 'MISSING_CHECKOUT' || myStatus.approval_status === 'REJECTED') && !showRegularize && (
+                        <button
+                          onClick={function() { setShowRegularize(true); }}
+                          style={{
+                            width:'100%', padding:'10px', borderRadius:8, marginTop:12,
+                            border:'1px solid #cbd5e1', background:'#fff',
+                            color:'#334155', cursor:'pointer', fontSize:13, fontWeight:600,
+                          }}>
+                          Regularize This
+                        </button>
+                      )}
+
+                      {showRegularize && (
+                        <div style={{ marginTop:16, paddingTop:16, borderTop:'1px solid #e2e8f0' }}>
+                          <div style={{ fontSize:12, fontWeight:700, marginBottom:8 }}>Regularization Request</div>
+                          <select
+                            className="form-select"
+                            style={{ marginBottom:10, width:'100%' }}
+                            value={regForm.reason_type}
+                            onChange={function(e) { setRegForm(function(f) { return Object.assign({}, f, { reason_type: e.target.value }); }); }}>
+                            <option value="FORGOT_CHECKOUT">Forgot Checkout</option>
+                            <option value="LATE_CHECK_IN">Late Check In</option>
+                            <option value="WRONG_ATTENDANCE">Wrong Attendance</option>
+                            <option value="MEDICAL">Medical Reason</option>
+                            <option value="NETWORK_ISSUE">Network Issue</option>
+                            <option value="GPS_ISSUE">GPS Issue</option>
+                            <option value="OTHER">Other</option>
+                          </select>
+                          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
+                            <div>
+                              <label style={{ fontSize:11, color:'#94a3b8', display:'block', marginBottom:4 }}>Requested Check In</label>
+                              <input type="time" className="form-input" value={regForm.requested_check_in}
+                                onChange={function(e) { setRegForm(function(f) { return Object.assign({}, f, { requested_check_in: e.target.value }); }); }} />
+                            </div>
+                            <div>
+                              <label style={{ fontSize:11, color:'#94a3b8', display:'block', marginBottom:4 }}>Requested Check Out</label>
+                              <input type="time" className="form-input" value={regForm.requested_check_out}
+                                onChange={function(e) { setRegForm(function(f) { return Object.assign({}, f, { requested_check_out: e.target.value }); }); }} />
+                            </div>
+                          </div>
+                          <textarea className="form-textarea" rows={2}
+                            placeholder="Reason likhein..."
+                            style={{ width:'100%', marginBottom:10 }}
+                            value={regForm.reason_text}
+                            onChange={function(e) { setRegForm(function(f) { return Object.assign({}, f, { reason_text: e.target.value }); }); }} />
+                          <div style={{ display:'flex', gap:8 }}>
+                            <button
+                              onClick={submitRegularization}
+                              disabled={regSaving}
+                              style={{
+                                flex:1, padding:'9px', borderRadius:8, border:'none',
+                                background: regSaving ? '#94a3b8' : '#0176d3',
+                                color:'#fff', cursor: regSaving ? 'default' : 'pointer', fontSize:13, fontWeight:700,
+                              }}>
+                              {regSaving ? 'Submitting...' : 'Submit Request'}
+                            </button>
+                            <button
+                              onClick={function() { setShowRegularize(false); }}
+                              style={{
+                                padding:'9px 16px', borderRadius:8, border:'1px solid #cbd5e1',
+                                background:'#fff', color:'#334155', cursor:'pointer', fontSize:13, fontWeight:600,
+                              }}>
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
-
-                  <div style={{ marginBottom:16 }}>
-                    <label style={{ fontSize:12, fontWeight:600, color:'var(--neutral-6)', display:'block', marginBottom:8 }}>
-                      Attendance Status
-                    </label>
-                    <div style={{ display:'flex', gap:8 }}>
-                      {[
-                        { val:'PRESENT',  label:'Present'  },
-                        { val:'ABSENT',   label:'Absent'   },
-                        { val:'HALF_DAY', label:'Half Day' },
-                        { val:'ON_LEAVE', label:'On Leave' },
-                      ].map(function(s) {
-                        return (
-                          <button
-                            key={s.val}
-                            type="button"
-                            onClick={function() { setSelfAtt(function(a) { return Object.assign({}, a, { status: s.val }); }); }}
-                            style={{
-                              flex:1, padding:'8px 4px', borderRadius:8, fontSize:11,
-                              fontWeight:700, cursor:'pointer', border:'2px solid',
-                              borderColor: selfAtt.status === s.val ? '#0176d3' : 'transparent',
-                              background: selfAtt.status === s.val ? '#e8f4fd' : '#f8fafc',
-                              color: selfAtt.status === s.val ? '#0176d3' : '#94a3b8',
-                            }}>
-                            {s.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:14 }}>
-                    <div>
-                      <label style={{ fontSize:12, fontWeight:600, color:'var(--neutral-6)', display:'block', marginBottom:4 }}>
-                        Check In Time
-                      </label>
-                      <input type="time" className="form-input" value={selfAtt.check_in}
-                        onChange={function(e) { setSelfAtt(function(a) { return Object.assign({}, a, { check_in: e.target.value }); }); }} />
-                    </div>
-                    <div>
-                      <label style={{ fontSize:12, fontWeight:600, color:'var(--neutral-6)', display:'block', marginBottom:4 }}>
-                        Check Out Time
-                      </label>
-                      <input type="time" className="form-input" value={selfAtt.check_out}
-                        onChange={function(e) { setSelfAtt(function(a) { return Object.assign({}, a, { check_out: e.target.value }); }); }} />
-                    </div>
-                  </div>
-
-                  <div style={{ marginBottom:16 }}>
-                    <label style={{ fontSize:12, fontWeight:600, color:'var(--neutral-6)', display:'block', marginBottom:4 }}>
-                      Remarks (optional)
-                    </label>
-                    <textarea className="form-textarea" rows={2}
-                      placeholder="e.g. Late due to traffic..."
-                      value={selfAtt.remarks}
-                      onChange={function(e) { setSelfAtt(function(a) { return Object.assign({}, a, { remarks: e.target.value }); }); }} />
-                  </div>
-
-                  <button
-                    onClick={saveSelfAttendance}
-                    disabled={selfAttSaving}
-                    style={{
-                      width:'100%', padding:'10px', borderRadius:8, border:'none',
-                      background: selfAttSaving ? '#94a3b8' : '#0176d3',
-                      color:'#fff', cursor: selfAttSaving ? 'default' : 'pointer',
-                      fontSize:13, fontWeight:700,
-                    }}>
-                    {selfAttSaving ? 'Submitting...' : selfAttSaved ? 'Re-submit Request' : 'Submit for Approval'}
-                  </button>
                 </div>
               </div>
             </div>
