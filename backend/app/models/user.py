@@ -52,7 +52,14 @@ class User(db.Model):
 
     # username: unique login identifier (auto-generated if not provided)
     # nullable=True so existing rows don't break on migration
+    # username: unique login identifier (auto-generated if not provided)
+    # nullable=True so existing rows don't break on migration
     username    = db.Column(db.String(80), unique=True, nullable=True)
+
+    # Employee ID for Staff Attendance module — EMP-0001 style, auto-generated,
+    # nullable=True so existing rows don't break, backfilled on first read
+    # (see routes/staff_attendance.py -> list_employees()).
+    employee_id = db.Column(db.String(30), unique=True, nullable=True)
 
     email       = db.Column(db.String(120), unique=True, nullable=False)
     password    = db.Column(db.String(256), nullable=False)
@@ -110,6 +117,7 @@ class User(db.Model):
             'id':          self.id,
             'name':        self.name,
             'username':    self.username,
+            'employee_id': self.employee_id,
             'email':       self.email,
             'role':        self.role.value,
             'school_id':   self.school_id,
