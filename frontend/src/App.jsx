@@ -60,6 +60,7 @@ import HostelRoomDetail  from './pages/hostel/HostelRoomDetail';
 import HostelTransfers   from './pages/hostel/HostelTransfers';
 import HostelFeeStructures from './pages/hostel/HostelFeeStructures';
 import HostelReports       from './pages/hostel/HostelReports';
+import StaffAttendanceDashboard from './pages/staff-attendance/StaffAttendanceDashboard';
 
 // ── Communication Hub Pages ───────────────────────────────────────────────────
 import SupportInbox     from './pages/communication/SupportInbox';
@@ -281,6 +282,12 @@ export default function App() {
             <Route path="/library/reports" element={
               <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN']}>
                 <LibraryReports />
+              </ProtectedRoute>
+            } />
+            {/* ── Staff Attendance Management ── */}
+            <Route path="/staff/attendance" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HR', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <StaffAttendanceDashboard />
               </ProtectedRoute>
             } />
 
