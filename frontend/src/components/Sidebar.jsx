@@ -110,9 +110,11 @@ const ROLE_MENUS = {
         {
           icon: 'ti-briefcase', label: 'Staff Management', path: '/staff',
           children: [
-            { icon: 'ti-chalkboard',      label: 'Teachers',           path: '/teachers' },
-            { icon: 'ti-briefcase',       label: 'Staff List',         path: '/staff' },
-            { icon: 'ti-clipboard-check', label: 'Staff Attendance',   path: '/staff/attendance' },
+            { icon: 'ti-chalkboard',      label: 'Teachers',              path: '/teachers' },
+            { icon: 'ti-briefcase',       label: 'Staff List',            path: '/staff' },
+            { icon: 'ti-clipboard-check', label: 'Staff Attendance',      path: '/staff/attendance' },
+            { icon: 'ti-chart-bar',       label: 'Attendance Analytics',  path: '/staff/attendance/analytics' },
+            { icon: 'ti-settings',        label: 'Attendance Settings',   path: '/staff/attendance/settings' },
           ],
         },
 
