@@ -7,11 +7,17 @@ from app.models.developer_center import ErrorLog, IssueAssignment
 
 from app.models.financial import FeeStructure, FeeRecord, ExamSchedule, ExamTimetable
 from app.models.academic import Class, Teacher, Student, Subject, Marks, Attendance, Note, TeacherAttendance
+from app.models.staff_attendance import (
+    StaffAttendanceSettings, StaffAttendance, StaffAttendanceRegularization,
+    StaffAttendanceAuditLog, StaffMonthlyAttendanceSummary,
+)
 
 __all__ = [
     'User', 'UserRole', 'School', 'Product',
     'Role', 'Permission', 'RolePermission', 'UserRoleAssignment', 'UserPermissionOverride',
     'AuditLog', 'CompanyActivityLog', 'LoginHistory', 'SessionHistory', 'DeletedLogsArchive','ErrorLog', 'IssueAssignment',
     'Class', 'Subject', 'Teacher', 'Student', 'Attendance', 'Marks', 'Note',
-    'FeeStructure', 'FeeRecord', 'ExamSchedule', 'ExamTimetable'
+    'FeeStructure', 'FeeRecord', 'ExamSchedule', 'ExamTimetable',
+    'StaffAttendanceSettings', 'StaffAttendance', 'StaffAttendanceRegularization',
+    'StaffAttendanceAuditLog', 'StaffMonthlyAttendanceSummary',
 ]
