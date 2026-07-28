@@ -61,6 +61,9 @@ import HostelTransfers   from './pages/hostel/HostelTransfers';
 import HostelFeeStructures from './pages/hostel/HostelFeeStructures';
 import HostelReports       from './pages/hostel/HostelReports';
 import StaffAttendanceDashboard from './pages/staff-attendance/StaffAttendanceDashboard';
+import AttendanceSettings   from './pages/staff-attendance/AttendanceSettings';
+import EmployeeProfile      from './pages/staff-attendance/EmployeeProfile';
+import AttendanceAnalytics  from './pages/staff-attendance/AttendanceAnalytics';
 
 // ── Communication Hub Pages ───────────────────────────────────────────────────
 import SupportInbox     from './pages/communication/SupportInbox';
@@ -288,6 +291,21 @@ export default function App() {
             <Route path="/staff/attendance" element={
               <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HR', 'DIRECTOR', 'VICE_PRINCIPAL']}>
                 <StaffAttendanceDashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/staff/attendance/settings" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'DIRECTOR']}>
+                <AttendanceSettings />
+              </ProtectedRoute>
+            } />
+            <Route path="/staff/attendance/analytics" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HR', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <AttendanceAnalytics />
+              </ProtectedRoute>
+            } />
+            <Route path="/staff/attendance/employee/:userId" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HR', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <EmployeeProfile />
               </ProtectedRoute>
             } />
 
