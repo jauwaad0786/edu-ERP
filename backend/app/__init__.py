@@ -89,6 +89,9 @@ def create_app(config_name='default'):
     from app.routes.audit import audit_bp
     app.register_blueprint(audit_bp, url_prefix='/api/audit')
 
+    from app.routes.staff_attendance import staff_attendance_bp
+    app.register_blueprint(staff_attendance_bp, url_prefix='/api/staff-attendance')
+
     # ── RBAC: seed default role-permissions for all schools on boot ──
     # Idempotent — only inserts missing (role, permission_key) rows, never
     # overwrites a Principal's manual customization. Safe to run every deploy.
@@ -335,6 +338,7 @@ def _ensure_user_columns():
         'department':          'VARCHAR(100)',
         'designation':         'VARCHAR(100)',
         'plain_password_temp': 'VARCHAR(256)',
+        'employee_id':         'VARCHAR(30)',
     }
 
     with db.engine.connect() as conn:
@@ -348,15 +352,18 @@ def _ensure_user_columns():
                     print(f'⚠️  users.{col}: {e}')
 
         # PostgreSQL: add UNIQUE constraint on username if not present
-        if db.engine.dialect.name == 'postgresql' and 'username' not in existing:
+        
+
+        # PostgreSQL: add UNIQUE constraint on employee_id if not present
+        if db.engine.dialect.name == 'postgresql' and 'employee_id' not in existing:
             try:
                 conn.execute(text(
-                    'ALTER TABLE users ADD CONSTRAINT uq_users_username UNIQUE (username)'
+                    'ALTER TABLE users ADD CONSTRAINT uq_users_employee_id UNIQUE (employee_id)'
                 ))
                 conn.commit()
-                print('✅ Added UNIQUE constraint on users.username')
+                print('✅ Added UNIQUE constraint on users.employee_id')
             except Exception as e:
-                print(f'⚠️  UNIQUE constraint: {e}')
+                print(f'⚠️  UNIQUE constraint (employee_id): {e}')
 
     # PostgreSQL only: add new enum values to userrole type
     _ensure_userrole_enum()
