@@ -119,9 +119,9 @@ export default function StaffAttendanceDashboard() {
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: bg }}>
-      <Sidebar />
-      <div style={{ flex: 1 }}>
-        <Navbar />
+      <Sidebar darkMode={darkMode} />
+      <div style={{ marginLeft: 232, flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <Navbar title="Staff Attendance" darkMode={darkMode} />
         <div style={{ padding: 24 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
             <h2 style={{ color: text, margin: 0 }}>Staff Attendance</h2>
