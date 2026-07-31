@@ -1,0 +1,82 @@
+{
+  "short_name": "OP360",
+  "name": "EduERP — Powered by OnePlatform360",
+  "description": "AI Powered School ERP by OnePlatform360 — One Platform. Infinite Possibilities.",
+  "start_url": "/?source=pwa",
+  "id": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "theme_color": "#0176D3",
+  "background_color": "#FFFFFF",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["education", "productivity", "business"],
+  "icons": [
+    {
+      "src": "/icons/favicon-16x16.png",
+      "sizes": "16x16",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/favicon-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Attendance",
+      "short_name": "Attendance",
+      "description": "Mark or view attendance",
+      "url": "/attendance?source=pwa_shortcut",
+      "icons": [{ "src": "/icons/shortcut-attendance.png", "sizes": "96x96", "type": "image/png" }]
+    },
+    {
+      "name": "Fees",
+      "short_name": "Fees",
+      "description": "Fee collection and receipts",
+      "url": "/fees?source=pwa_shortcut",
+      "icons": [{ "src": "/icons/shortcut-fees.png", "sizes": "96x96", "type": "image/png" }]
+    },
+    {
+      "name": "Announcements",
+      "short_name": "Announcements",
+      "description": "School announcements and notices",
+      "url": "/support/announcements?source=pwa_shortcut",
+      "icons": [{ "src": "/icons/shortcut-comms.png", "sizes": "96x96", "type": "image/png" }]
+    }
+  ],
+  "prefer_related_applications": false
+}
