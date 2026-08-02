@@ -8,6 +8,8 @@ import ProtectedRoute            from './components/ProtectedRoute';
 import { ROUTE_PERMISSIONS }     from './utils/permissionMenuMap';
 import DocumentsPage             from './pages/DocumentsPage';
 import SchoolSettings            from './pages/SchoolSettings';
+import InstallPrompt             from './components/pwa/InstallPrompt';
+import OfflineBanner             from './components/pwa/OfflineBanner';
 
 // ── Core Pages ────────────────────────────────────────────────────────────────
 import Landing          from './pages/Landing';
@@ -93,6 +95,8 @@ export default function App() {
     <AuthProvider>
       <NotificationProvider>
         <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
+        <OfflineBanner />
+        <InstallPrompt />
         <Router>
           <Routes>
 
