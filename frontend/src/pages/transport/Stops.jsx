@@ -3,7 +3,21 @@ import Sidebar from '../../components/Sidebar';
 import Navbar  from '../../components/Navbar';
 import api     from '../../api/axios';
 import toast   from 'react-hot-toast';
+import L       from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
 const EMPTY_FORM = { name: '', latitude: '', longitude: '', radius: '200', description: '' };
+
+// India-wide default view (used when no coordinates are set yet)
+const INDIA_CENTER = [22.9734, 78.6569];
+const INDIA_ZOOM   = 5;
+
+const markerIcon = L.icon({
+  iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41],
+});
 
 export default function Stops() {
   const [darkMode, setDarkMode] = useState(localStorage.getItem('ederp_theme') === 'dark');
@@ -23,6 +37,71 @@ export default function Stops() {
   const [searchingLoc, setSearchingLoc] = useState(false);
   const debounceRef = useRef(null);
 
+  // ── Map (Leaflet) ──
+  const mapDivRef      = useRef(null);   // the <div> the map mounts into
+  const mapInstanceRef = useRef(null);   // Leaflet Map instance
+  const markerRef      = useRef(null);   // Leaflet Marker instance
+
+  function placeOrMoveMarker(lat, lon) {
+    if (!mapInstanceRef.current) return;
+    if (markerRef.current) {
+      markerRef.current.setLatLng([lat, lon]);
+    } else {
+      markerRef.current = L.marker([lat, lon], { icon: markerIcon, draggable: true })
+        .addTo(mapInstanceRef.current);
+      markerRef.current.on('dragend', () => {
+        const pos = markerRef.current.getLatLng();
+        setForm(f => ({ ...f, latitude: pos.lat.toFixed(6), longitude: pos.lng.toFixed(6) }));
+      });
+    }
+  }
+
+  // Initialise the map once, when the Add/Edit modal opens
+  useEffect(() => {
+    if (!showForm || !mapDivRef.current) return;
+
+    const hasCoords = form.latitude !== '' && form.longitude !== '';
+    const startLat  = hasCoords ? Number(form.latitude)  : INDIA_CENTER[0];
+    const startLon  = hasCoords ? Number(form.longitude) : INDIA_CENTER[1];
+    const startZoom = hasCoords ? 16 : INDIA_ZOOM;
+
+    const map = L.map(mapDivRef.current).setView([startLat, startLon], startZoom);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+      maxZoom: 19,
+    }).addTo(map);
+
+    mapInstanceRef.current = map;
+
+    if (hasCoords) placeOrMoveMarker(startLat, startLon);
+
+    // Click anywhere on the map -> drop/move pin, fill lat/lng, try to name the stop
+    map.on('click', (e) => {
+      const { lat, lng } = e.latlng;
+      placeOrMoveMarker(lat, lng);
+      setForm(f => ({ ...f, latitude: lat.toFixed(6), longitude: lng.toFixed(6) }));
+
+      fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=16`)
+        .then(r => r.json())
+        .then(data => {
+          if (data && data.display_name) {
+            const shortName = data.display_name.split(',').slice(0, 2).join(',').trim();
+            setForm(f => (f.name ? f : { ...f, name: shortName }));
+          }
+        })
+        .catch(() => {});
+    });
+
+    // Fix Leaflet's map-in-a-modal sizing glitch (container has 0 size on first paint)
+    setTimeout(() => map.invalidateSize(), 150);
+
+    return () => {
+      map.remove();
+      mapInstanceRef.current = null;
+      markerRef.current = null;
+    };
+  }, [showForm]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   function handleNameChange(value) {
     setForm(f => ({ ...f, name: value }));
     setShowSuggestions(true);
@@ -33,7 +112,10 @@ export default function Stops() {
     debounceRef.current = setTimeout(async () => {
       setSearchingLoc(true);
       try {
-        const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=in&q=${encodeURIComponent(value)}`;
+        // addressdetails + a generous limit surfaces villages/localities/wards
+        // inside whatever town, pincode or district the user typed, not just
+        // the top-level place — that's what makes small places findable.
+        const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=8&countrycodes=in&q=${encodeURIComponent(value)}`;
         const res = await fetch(url);
         const data = await res.json();
         setLocSuggestions(data || []);
@@ -45,14 +127,34 @@ export default function Stops() {
   }
 
   function pickSuggestion(place) {
+    const lat = Number(place.lat), lon = Number(place.lon);
     setForm(f => ({
       ...f,
       name: place.display_name.split(',').slice(0, 2).join(',').trim(),
-      latitude: Number(place.lat).toFixed(6),
-      longitude: Number(place.lon).toFixed(6),
+      latitude: lat.toFixed(6),
+      longitude: lon.toFixed(6),
     }));
     setLocSuggestions([]);
     setShowSuggestions(false);
+
+    if (mapInstanceRef.current) {
+      // zoom in close enough that nearby villages/chowks become visible &
+      // clickable on the map, matching a town/pincode-level search
+      mapInstanceRef.current.setView([lat, lon], 15);
+      placeOrMoveMarker(lat, lon);
+    }
+  }
+
+  function updateLatLng(field, value) {
+    setForm(f => {
+      const next = { ...f, [field]: value };
+      const lat = Number(next.latitude), lon = Number(next.longitude);
+      if (next.latitude !== '' && next.longitude !== '' && !isNaN(lat) && !isNaN(lon) && mapInstanceRef.current) {
+        placeOrMoveMarker(lat, lon);
+        mapInstanceRef.current.setView([lat, lon], mapInstanceRef.current.getZoom());
+      }
+      return next;
+    });
   }
 
   const load = useCallback(() => {
@@ -85,6 +187,7 @@ export default function Stops() {
     setShowSuggestions(false);
     setShowForm(true);
   }
+
   async function handleSave(e) {
     e.preventDefault();
     if (!form.name.trim()) { toast.error('Stop name required hai'); return; }
@@ -206,7 +309,7 @@ export default function Stops() {
       {/* ── Add/Edit Modal ── */}
       {showForm && (
         <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowForm(false)}>
-          <div className="modal" style={{ maxWidth: 480 }}>
+          <div className="modal" style={{ maxWidth: 560 }}>
             <div className="modal-header">
               <h3>{editingId ? 'Edit Stop' : 'Add Stop'}</h3>
               <button className="modal-close" onClick={() => setShowForm(false)}>✕</button>
@@ -218,7 +321,8 @@ export default function Stops() {
                   onChange={e => handleNameChange(e.target.value)}
                   onFocus={() => setShowSuggestions(true)}
                   onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                  placeholder="e.g. Chhabi Chowk, Muzaffarpur" required />
+                  placeholder="Town, pincode ya village likho..." required
+                  style={{ padding: '12px 14px', fontSize: 14, minHeight: 44 }} />
                 {searchingLoc && (
                   <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Searching...</div>
                 )}
@@ -246,7 +350,18 @@ export default function Stops() {
                   </div>
                 )}
                 <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
-                  Type karo aur list se pick karo — latitude/longitude apne aap fill ho jayenge
+                  Town/pincode/village likho aur list se pick karo, ya neeche map pe seedha click karo
+                </div>
+              </div>
+
+              {/* ── Interactive map — click anywhere to drop the pin ── */}
+              <div style={{ marginTop: 12 }}>
+                <div ref={mapDivRef} style={{
+                  width: '100%', height: 260, borderRadius: 8,
+                  border: '1px solid #e2e8f0', overflow: 'hidden',
+                }} />
+                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+                  Map zoom/pan karke exact chowk/gali pe click karo — pin us jagah drag bhi ho sakta hai
                 </div>
               </div>
 
@@ -254,12 +369,12 @@ export default function Stops() {
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 600 }}>Latitude</label>
                   <input type="number" step="any" className="form-input" value={form.latitude}
-                    onChange={e => setForm(f => ({ ...f, latitude: e.target.value }))} />
+                    onChange={e => updateLatLng('latitude', e.target.value)} />
                 </div>
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 600 }}>Longitude</label>
                   <input type="number" step="any" className="form-input" value={form.longitude}
-                    onChange={e => setForm(f => ({ ...f, longitude: e.target.value }))} />
+                    onChange={e => updateLatLng('longitude', e.target.value)} />
                 </div>
               </div>
 
