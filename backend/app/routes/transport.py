@@ -74,7 +74,7 @@ def get_vehicle(vehicle_id):
 
 @transport_bp.route('/vehicles', methods=['POST'])
 @jwt_required()
-@role_required(['ADMIN', 'PRINCIPAL', 'TRANSPORT'])
+@role_required('ADMIN', 'PRINCIPAL', 'TRANSPORT')
 def create_vehicle():
     school_id = get_current_school_id()
     data = request.get_json() or {}
@@ -111,7 +111,7 @@ def create_vehicle():
 
 @transport_bp.route('/vehicles/<int:vehicle_id>', methods=['PUT'])
 @jwt_required()
-@role_required(['ADMIN', 'PRINCIPAL', 'TRANSPORT'])
+@role_required('ADMIN', 'PRINCIPAL', 'TRANSPORT')
 def update_vehicle(vehicle_id):
     school_id = get_current_school_id()
     v = Vehicle.query.filter_by(id=vehicle_id, school_id=school_id).first()
@@ -151,7 +151,7 @@ def update_vehicle(vehicle_id):
 
 @transport_bp.route('/vehicles/<int:vehicle_id>', methods=['DELETE'])
 @jwt_required()
-@role_required(['ADMIN', 'PRINCIPAL'])
+@role_required('ADMIN', 'PRINCIPAL')
 def delete_vehicle(vehicle_id):
     school_id = get_current_school_id()
     v = Vehicle.query.filter_by(id=vehicle_id, school_id=school_id).first()
@@ -204,7 +204,7 @@ def get_driver(driver_id):
 
 @transport_bp.route('/drivers', methods=['POST'])
 @jwt_required()
-@role_required(['ADMIN', 'PRINCIPAL', 'TRANSPORT'])
+@role_required('ADMIN', 'PRINCIPAL', 'TRANSPORT')
 def create_driver():
     school_id = get_current_school_id()
     data = request.get_json() or {}
@@ -247,7 +247,7 @@ def create_driver():
 
 @transport_bp.route('/drivers/<int:driver_id>', methods=['PUT'])
 @jwt_required()
-@role_required(['ADMIN', 'PRINCIPAL', 'TRANSPORT'])
+@role_required('ADMIN', 'PRINCIPAL', 'TRANSPORT')
 def update_driver(driver_id):
     school_id = get_current_school_id()
     d = Driver.query.filter_by(id=driver_id, school_id=school_id).first()
@@ -279,7 +279,7 @@ def update_driver(driver_id):
 
 @transport_bp.route('/drivers/<int:driver_id>', methods=['DELETE'])
 @jwt_required()
-@role_required(['ADMIN', 'PRINCIPAL'])
+@role_required('ADMIN', 'PRINCIPAL')
 def delete_driver(driver_id):
     school_id = get_current_school_id()
     d = Driver.query.filter_by(id=driver_id, school_id=school_id).first()
@@ -323,7 +323,7 @@ def list_conductors():
 
 @transport_bp.route('/conductors', methods=['POST'])
 @jwt_required()
-@role_required(['ADMIN', 'PRINCIPAL', 'TRANSPORT'])
+@role_required('ADMIN', 'PRINCIPAL', 'TRANSPORT')
 def create_conductor():
     school_id = get_current_school_id()
     data = request.get_json() or {}
@@ -351,7 +351,7 @@ def create_conductor():
 
 @transport_bp.route('/conductors/<int:conductor_id>', methods=['PUT'])
 @jwt_required()
-@role_required(['ADMIN', 'PRINCIPAL', 'TRANSPORT'])
+@role_required('ADMIN', 'PRINCIPAL', 'TRANSPORT')
 def update_conductor(conductor_id):
     school_id = get_current_school_id()
     c = Conductor.query.filter_by(id=conductor_id, school_id=school_id).first()
@@ -371,7 +371,7 @@ def update_conductor(conductor_id):
 
 @transport_bp.route('/conductors/<int:conductor_id>', methods=['DELETE'])
 @jwt_required()
-@role_required(['ADMIN', 'PRINCIPAL'])
+@role_required('ADMIN', 'PRINCIPAL')
 def delete_conductor(conductor_id):
     school_id = get_current_school_id()
     c = Conductor.query.filter_by(id=conductor_id, school_id=school_id).first()
@@ -409,7 +409,7 @@ def list_stops():
 
 @transport_bp.route('/stops', methods=['POST'])
 @jwt_required()
-@role_required(['ADMIN', 'PRINCIPAL', 'TRANSPORT'])
+@role_required('ADMIN', 'PRINCIPAL', 'TRANSPORT')
 def create_stop():
     school_id = get_current_school_id()
     data = request.get_json() or {}
@@ -437,7 +437,7 @@ def create_stop():
 
 @transport_bp.route('/stops/<int:stop_id>', methods=['PUT'])
 @jwt_required()
-@role_required(['ADMIN', 'PRINCIPAL', 'TRANSPORT'])
+@role_required('ADMIN', 'PRINCIPAL', 'TRANSPORT')
 def update_stop(stop_id):
     school_id = get_current_school_id()
     s = Stop.query.filter_by(id=stop_id, school_id=school_id).first()
@@ -455,7 +455,7 @@ def update_stop(stop_id):
 
 @transport_bp.route('/stops/<int:stop_id>', methods=['DELETE'])
 @jwt_required()
-@role_required(['ADMIN', 'PRINCIPAL'])
+@role_required('ADMIN', 'PRINCIPAL')
 def delete_stop(stop_id):
     school_id = get_current_school_id()
     s = Stop.query.filter_by(id=stop_id, school_id=school_id).first()
@@ -504,7 +504,7 @@ def get_route(route_id):
 
 @transport_bp.route('/routes', methods=['POST'])
 @jwt_required()
-@role_required(['ADMIN', 'PRINCIPAL', 'TRANSPORT'])
+@role_required('ADMIN', 'PRINCIPAL', 'TRANSPORT')
 def create_route():
     """
     Body: { name, code, vehicle_id, stops: [{stop_id, estimated_time}, ...] }
@@ -551,7 +551,7 @@ def create_route():
 
 @transport_bp.route('/routes/<int:route_id>', methods=['PUT'])
 @jwt_required()
-@role_required(['ADMIN', 'PRINCIPAL', 'TRANSPORT'])
+@role_required('ADMIN', 'PRINCIPAL', 'TRANSPORT')
 def update_route(route_id):
     """Updates route meta fields. Use /routes/<id>/stops for stop reorder/add/remove."""
     school_id = get_current_school_id()
@@ -581,7 +581,7 @@ def update_route(route_id):
 
 @transport_bp.route('/routes/<int:route_id>/stops', methods=['PUT'])
 @jwt_required()
-@role_required(['ADMIN', 'PRINCIPAL', 'TRANSPORT'])
+@role_required('ADMIN', 'PRINCIPAL', 'TRANSPORT')
 def replace_route_stops(route_id):
     """
     Full replace of a route's stop list — matches the drag-drop builder's
@@ -616,7 +616,7 @@ def replace_route_stops(route_id):
 
 @transport_bp.route('/routes/<int:route_id>', methods=['DELETE'])
 @jwt_required()
-@role_required(['ADMIN', 'PRINCIPAL'])
+@role_required('ADMIN', 'PRINCIPAL')
 def delete_route(route_id):
     school_id = get_current_school_id()
     r = Route.query.filter_by(id=route_id, school_id=school_id).first()
@@ -658,7 +658,7 @@ def list_maintenance():
 
 @transport_bp.route('/maintenance', methods=['POST'])
 @jwt_required()
-@role_required(['ADMIN', 'PRINCIPAL', 'TRANSPORT'])
+@role_required('ADMIN', 'PRINCIPAL', 'TRANSPORT')
 def create_maintenance():
     school_id = get_current_school_id()
     data = request.get_json() or {}
@@ -694,7 +694,7 @@ def create_maintenance():
 
 @transport_bp.route('/maintenance/<int:record_id>', methods=['PUT'])
 @jwt_required()
-@role_required(['ADMIN', 'PRINCIPAL', 'TRANSPORT'])
+@role_required('ADMIN', 'PRINCIPAL', 'TRANSPORT')
 def update_maintenance(record_id):
     school_id = get_current_school_id()
     m = VehicleMaintenance.query.filter_by(id=record_id, school_id=school_id).first()
@@ -733,7 +733,7 @@ def update_maintenance(record_id):
 
 @transport_bp.route('/maintenance/<int:record_id>', methods=['DELETE'])
 @jwt_required()
-@role_required(['ADMIN', 'PRINCIPAL'])
+@role_required('ADMIN', 'PRINCIPAL')
 def delete_maintenance(record_id):
     school_id = get_current_school_id()
     m = VehicleMaintenance.query.filter_by(id=record_id, school_id=school_id).first()
