@@ -328,21 +328,24 @@ def list_trips():
 #  PARENT VIEW — own child only
 # ═══════════════════════════════════════════════════════════════════════════
 
-def _parent_student_ids():
-    """See note at top of file re: assumption on parent-student link."""
+def _own_student_ids():
+    """Both STUDENT and PARENT logins resolve to Student.user_id == user.id
+    (single login flow, see auth.py /student-login) — so both roles use the
+    same resolution: user.student_profile."""
     user = get_current_user()
-    return [user.student_id] if getattr(user, 'student_id', None) else []
+    student = getattr(user, 'student_profile', None)
+    return [student.id] if student else []
 
 
 @transport_gps_bp.route('/parent/child/<int:student_id>/trip', methods=['GET'])
-@role_required('PARENT')
+@role_required('PARENT', 'STUDENT')
 def parent_child_trip(student_id):
     """
-    Returns only what a parent should see: live location, speed, next stop,
-    ETA, trip status, driver name/phone. No other students on the vehicle
-    are ever included in this response.
+    Returns only what a parent/student should see: live location, speed,
+    next stop, ETA, trip status, driver name/phone. No other students on
+    the vehicle are ever included in this response.
     """
-    if student_id not in _parent_student_ids():
+    if student_id not in _own_student_ids():
         return jsonify({'success': False, 'message': 'Not authorized for this student'}), 403
 
     sid = _school_id()
