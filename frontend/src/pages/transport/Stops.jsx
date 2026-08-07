@@ -57,9 +57,11 @@ export default function Stops() {
   const [pincode, setPincode] = useState('');
 
   // ── Location name search (OpenStreetMap Nominatim — free, no API key) ──
+  // ── Location name search (OpenStreetMap Nominatim — free, no API key) ──
   const [locSuggestions, setLocSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [searchingLoc, setSearchingLoc] = useState(false);
+  const [noLocResults, setNoLocResults] = useState(false);
   const debounceRef = useRef(null);
 
   // ── Map (Leaflet) ──
@@ -166,6 +168,7 @@ export default function Stops() {
   function handleNameChange(value) {
     setForm(f => ({ ...f, name: value }));
     setShowSuggestions(true);
+    setNoLocResults(false);
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (value.trim().length < 3) { setLocSuggestions([]); return; }
@@ -199,8 +202,10 @@ export default function Stops() {
         }
 
         setLocSuggestions(data || []);
+        setNoLocResults(!data || data.length === 0);
       } catch {
         setLocSuggestions([]);
+        setNoLocResults(true);
       }
       setSearchingLoc(false);
     }, 500);
@@ -489,6 +494,13 @@ export default function Stops() {
                         📍 {place.display_name}
                       </div>
                     ))}
+                  </div>
+                )}
+               {noLocResults && !searchingLoc && (
+                  <div style={{ fontSize: 12, color: '#dc2626', marginTop: 4, fontWeight: 600 }}>
+                    ⚠️ "{form.name}" OpenStreetMap database me nahi mila (chhote schools/buildings
+                    aksar mapped nahi hote). Neeche map ko zoom karke us jagah pe seedha click karo —
+                    address auto-fill ho jayega.
                   </div>
                 )}
                 <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
