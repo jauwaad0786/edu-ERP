@@ -21,7 +21,7 @@ const INDIAN_STATES = [
   'Dadra and Nagar Haveli and Daman and Diu','Delhi','Jammu and Kashmir',
   'Ladakh','Lakshadweep','Puducherry',
 ];
-
+const GOOGLE_PLACES_KEY = process.env.REACT_APP_GOOGLE_PLACES_API_KEY;
 const markerIcon = L.icon({
   iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -58,11 +58,13 @@ export default function Stops() {
 
   // ── Location name search (OpenStreetMap Nominatim — free, no API key) ──
   // ── Location name search (OpenStreetMap Nominatim — free, no API key) ──
+  // ── Location name search (Google Places if key set, else OSM Nominatim) ──
   const [locSuggestions, setLocSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [searchingLoc, setSearchingLoc] = useState(false);
   const [noLocResults, setNoLocResults] = useState(false);
   const debounceRef = useRef(null);
+  const sessionTokenRef = useRef(null); // Google billing session — resets after each pick
 
   // ── Map (Leaflet) ──
   const mapDivRef      = useRef(null);   // the <div> the map mounts into
@@ -165,6 +167,51 @@ export default function Stops() {
     };
   }, [showForm]);   // eslint-disable-line react-hooks/exhaustive-deps
 
+  async function searchOSM(value) {
+    const context = [district, schoolState].filter(Boolean).join(', ');
+    const q = context ? `${value}, ${context}, India` : `${value}, India`;
+
+    let url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=8&countrycodes=in&q=${encodeURIComponent(q)}`;
+    if (districtBBox) {
+      const [south, north, west, east] = districtBBox;
+      url += `&viewbox=${west},${north},${east},${south}`;
+    }
+    let res = await fetch(url);
+    let data = await res.json();
+
+    if (!data || data.length === 0) {
+      const plainUrl = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=8&countrycodes=in&q=${encodeURIComponent(value)}`;
+      res = await fetch(plainUrl);
+      data = await res.json();
+    }
+    return (data || []).map(d => ({ source: 'osm', display_name: d.display_name, lat: d.lat, lon: d.lon }));
+  }
+
+  async function searchGooglePlaces(value) {
+    if (!sessionTokenRef.current) sessionTokenRef.current = crypto.randomUUID();
+
+    const body = { input: value, sessionToken: sessionTokenRef.current, includedRegionCodes: ['in'] };
+    if (districtBBox) {
+      const [south, north, west, east] = districtBBox;
+      body.locationBias = {
+        rectangle: {
+          low:  { latitude: Number(south), longitude: Number(west) },
+          high: { latitude: Number(north), longitude: Number(east) },
+        },
+      };
+    }
+
+    const res = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': GOOGLE_PLACES_KEY },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    return (data.suggestions || [])
+      .filter(s => s.placePrediction)
+      .map(s => ({ source: 'google', display_name: s.placePrediction.text.text, placeId: s.placePrediction.placeId }));
+  }
+
   function handleNameChange(value) {
     setForm(f => ({ ...f, name: value }));
     setShowSuggestions(true);
@@ -176,33 +223,15 @@ export default function Stops() {
     debounceRef.current = setTimeout(async () => {
       setSearchingLoc(true);
       try {
-        // Naam ke saath district/state context jodna hi sabse zyada asar
-        // karta hai — chhote gaanv/chowk aksar sirf tabhi milte hain jab
-        // query me unka district/state bhi likha ho, sirf bounding box se
-        // nahi milte (kyunki pincode/PIN wala data area me sparse hota hai).
-        const context = [district, schoolState].filter(Boolean).join(', ');
-        const q = context ? `${value}, ${context}, India` : `${value}, India`;
-
-        let url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=8&countrycodes=in&q=${encodeURIComponent(q)}`;
-        if (districtBBox) {
-          const [south, north, west, east] = districtBBox;
-          // viewbox = soft bias (bina bounded=1 ke) — district ke paas ke
-          // result upar aate hain, lekin bilkul bahar ke bhi nahi katte
-          url += `&viewbox=${west},${north},${east},${south}`;
+        let results = [];
+        if (GOOGLE_PLACES_KEY) {
+          try { results = await searchGooglePlaces(value); } catch { results = []; }
+          if (results.length === 0) results = await searchOSM(value); // key fail/empty -> OSM fallback
+        } else {
+          results = await searchOSM(value);
         }
-        let res = await fetch(url);
-        let data = await res.json();
-
-        // Kuch na mile toh context ke bina, sirf plain naam se dobara try —
-        // (ho sakta hai naam OSM me thoda alag spelling me ho)
-        if (!data || data.length === 0) {
-          const plainUrl = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=8&countrycodes=in&q=${encodeURIComponent(value)}`;
-          res = await fetch(plainUrl);
-          data = await res.json();
-        }
-
-        setLocSuggestions(data || []);
-        setNoLocResults(!data || data.length === 0);
+        setLocSuggestions(results);
+        setNoLocResults(results.length === 0);
       } catch {
         setLocSuggestions([]);
         setNoLocResults(true);
@@ -211,20 +240,40 @@ export default function Stops() {
     }, 500);
   }
 
-  function pickSuggestion(place) {
-    const lat = Number(place.lat), lon = Number(place.lon);
-    setForm(f => ({
-      ...f,
-      name: place.display_name.split(',').slice(0, 2).join(',').trim(),
-      latitude: lat.toFixed(6),
-      longitude: lon.toFixed(6),
-    }));
+  async function pickSuggestion(place) {
     setLocSuggestions([]);
     setShowSuggestions(false);
 
+    let lat, lon, name;
+
+    if (place.source === 'google') {
+      try {
+        const res = await fetch(`https://places.googleapis.com/v1/places/${place.placeId}`, {
+          headers: {
+            'X-Goog-Api-Key': GOOGLE_PLACES_KEY,
+            'X-Goog-FieldMask': 'displayName,location',
+          },
+        });
+        const data = await res.json();
+        lat = data.location?.latitude;
+        lon = data.location?.longitude;
+        name = data.displayName?.text || place.display_name;
+      } catch {
+        toast.error('Place details nahi mile');
+        return;
+      }
+      sessionTokenRef.current = null; // session close — agli search par naya token banega (billing ke liye zaroori)
+    } else {
+      lat = Number(place.lat);
+      lon = Number(place.lon);
+      name = place.display_name.split(',').slice(0, 2).join(',').trim();
+    }
+
+    if (lat == null || lon == null) { toast.error('Coordinates nahi mile'); return; }
+
+    setForm(f => ({ ...f, name, latitude: Number(lat).toFixed(6), longitude: Number(lon).toFixed(6) }));
+
     if (mapInstanceRef.current) {
-      // zoom in close enough that nearby villages/chowks become visible &
-      // clickable on the map, matching a town/pincode-level search
       mapInstanceRef.current.setView([lat, lon], 15);
       placeOrMoveMarker(lat, lon);
     }
@@ -264,6 +313,7 @@ export default function Stops() {
     setPincode('');
     setLocSuggestions([]);
     setShowSuggestions(false);
+    sessionTokenRef.current = null;
     setShowForm(true);
   }
 
@@ -280,6 +330,7 @@ export default function Stops() {
     setPincode('');
     setLocSuggestions([]);
     setShowSuggestions(false);
+    sessionTokenRef.current = null;
     setShowForm(true);
   }
 
@@ -501,6 +552,11 @@ export default function Stops() {
                     ⚠️ "{form.name}" OpenStreetMap database me nahi mila (chhote schools/buildings
                     aksar mapped nahi hote). Neeche map ko zoom karke us jagah pe seedha click karo —
                     address auto-fill ho jayega.
+                  </div>
+                )}
+                {noLocResults && !searchingLoc && (
+                  <div style={{ fontSize: 12, color: '#dc2626', marginTop: 4, fontWeight: 600 }}>
+                    ⚠️ "{form.name}" nahi mila. Neeche map ko zoom karke us jagah pe seedha click karo.
                   </div>
                 )}
                 <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
