@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Sidebar from '../../components/Sidebar';
 import Navbar  from '../../components/Navbar';
 import api     from '../../api/axios';
 import toast   from 'react-hot-toast';
-
 const EMPTY_FORM = { name: '', latitude: '', longitude: '', radius: '200', description: '' };
 
 export default function Stops() {
@@ -17,6 +16,44 @@ export default function Stops() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+
+  // ── Location search (OpenStreetMap Nominatim — free, no API key) ──
+  const [locSuggestions, setLocSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [searchingLoc, setSearchingLoc] = useState(false);
+  const debounceRef = useRef(null);
+
+  function handleNameChange(value) {
+    setForm(f => ({ ...f, name: value }));
+    setShowSuggestions(true);
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (value.trim().length < 3) { setLocSuggestions([]); return; }
+
+    debounceRef.current = setTimeout(async () => {
+      setSearchingLoc(true);
+      try {
+        const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=in&q=${encodeURIComponent(value)}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        setLocSuggestions(data || []);
+      } catch {
+        setLocSuggestions([]);
+      }
+      setSearchingLoc(false);
+    }, 500);
+  }
+
+  function pickSuggestion(place) {
+    setForm(f => ({
+      ...f,
+      name: place.display_name.split(',').slice(0, 2).join(',').trim(),
+      latitude: Number(place.lat).toFixed(6),
+      longitude: Number(place.lon).toFixed(6),
+    }));
+    setLocSuggestions([]);
+    setShowSuggestions(false);
+  }
 
   const load = useCallback(() => {
     setLoading(true);
@@ -33,6 +70,8 @@ export default function Stops() {
   function openAdd() {
     setEditingId(null);
     setForm(EMPTY_FORM);
+    setLocSuggestions([]);
+    setShowSuggestions(false);
     setShowForm(true);
   }
 
@@ -42,9 +81,10 @@ export default function Stops() {
       name: s.name || '', latitude: s.latitude ?? '', longitude: s.longitude ?? '',
       radius: s.radius ?? '200', description: s.description || '',
     });
+    setLocSuggestions([]);
+    setShowSuggestions(false);
     setShowForm(true);
   }
-
   async function handleSave(e) {
     e.preventDefault();
     if (!form.name.trim()) { toast.error('Stop name required hai'); return; }
@@ -172,10 +212,42 @@ export default function Stops() {
               <button className="modal-close" onClick={() => setShowForm(false)}>✕</button>
             </div>
             <form onSubmit={handleSave} className="modal-body">
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 600 }}>Stop Name *</label>
-                <input className="form-input" value={form.name}
-                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required />
+              <div style={{ position: 'relative' }}>
+                <label style={{ fontSize: 12, fontWeight: 600 }}>Stop Name / Location *</label>
+                <input className="form-input" value={form.name} autoComplete="off"
+                  onChange={e => handleNameChange(e.target.value)}
+                  onFocus={() => setShowSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                  placeholder="e.g. Chhabi Chowk, Muzaffarpur" required />
+                {searchingLoc && (
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Searching...</div>
+                )}
+                {showSuggestions && locSuggestions.length > 0 && (
+                  <div style={{
+                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20,
+                    background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8,
+                    marginTop: 4, maxHeight: 220, overflowY: 'auto',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                  }}>
+                    {locSuggestions.map((place, i) => (
+                      <div key={i}
+                        onMouseDown={() => pickSuggestion(place)}
+                        style={{
+                          padding: '8px 12px', fontSize: 12, cursor: 'pointer',
+                          borderBottom: i < locSuggestions.length - 1 ? '1px solid #f1f5f9' : 'none',
+                          color: '#334155',
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                        onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+                      >
+                        📍 {place.display_name}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+                  Type karo aur list se pick karo — latitude/longitude apne aap fill ho jayenge
+                </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
