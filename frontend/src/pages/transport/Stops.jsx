@@ -204,6 +204,7 @@ export default function Stops() {
       }
       setSearchingLoc(false);
     }, 500);
+  }
 
   function pickSuggestion(place) {
     const lat = Number(place.lat), lon = Number(place.lon);
