@@ -144,6 +144,20 @@ const ROLE_MENUS = {
         },
 
         {
+          icon: 'ti-bus', label: 'Transport', path: '/transport',
+          children: [
+            { icon: 'ti-layout-dashboard', label: 'Dashboard',         path: '/transport' },
+            { icon: 'ti-bus',              label: 'Vehicles',          path: '/transport/vehicles' },
+            { icon: 'ti-steering-wheel',   label: 'Drivers',           path: '/transport/drivers' },
+            { icon: 'ti-user-check',       label: 'Conductors',        path: '/transport/conductors' },
+            { icon: 'ti-route',            label: 'Routes',            path: '/transport/routes' },
+            { icon: 'ti-map-pin',          label: 'Stops',              path: '/transport/stops' },
+            { icon: 'ti-users',            label: 'Student Transport', path: '/transport/students' },
+            // Fees, Maintenance, Driver App, Parent View, Reports — pending files ban jaane ke baad add honge
+          ],
+        },
+
+        {
           icon: 'ti-headset', label: 'Communication', path: '/support/tickets',
           children: [
             { icon: 'ti-ticket',      label: 'My Tickets',   path: '/support/tickets' },
