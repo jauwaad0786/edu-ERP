@@ -62,6 +62,18 @@ import HostelRoomDetail  from './pages/hostel/HostelRoomDetail';
 import HostelTransfers   from './pages/hostel/HostelTransfers';
 import HostelFeeStructures from './pages/hostel/HostelFeeStructures';
 import HostelReports       from './pages/hostel/HostelReports';
+
+// ── Transport Management ──────────────────────────────────────────────────
+import TransportDashboard    from './pages/transport/TransportDashboard';
+import TransportVehicles     from './pages/transport/Vehicles';
+import TransportDrivers      from './pages/transport/Drivers';
+import TransportConductors   from './pages/transport/Conductors';
+import TransportRouteBuilder from './pages/transport/RouteBuilder';
+import TransportStops        from './pages/transport/Stops';
+import StudentTransport      from './pages/transport/StudentTransport';
+// NOTE: TransportFees, VehicleMaintenance, DriverMobileApp, ParentTransportView,
+// TransportReports abhi banni baaki hain — unke import/route baad me add honge.
+
 import StaffAttendanceDashboard from './pages/staff-attendance/StaffAttendanceDashboard';
 import AttendanceSettings   from './pages/staff-attendance/AttendanceSettings';
 import EmployeeProfile      from './pages/staff-attendance/EmployeeProfile';
@@ -355,7 +367,43 @@ export default function App() {
               </ProtectedRoute>
             } />
 
-            {/* ── Communication Hub — all logged-in roles ── */}
+            {/* ── Transport Management ── */}
+            <Route path="/transport" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
+                <TransportDashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/transport/vehicles" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
+                <TransportVehicles />
+              </ProtectedRoute>
+            } />
+            <Route path="/transport/drivers" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
+                <TransportDrivers />
+              </ProtectedRoute>
+            } />
+            <Route path="/transport/conductors" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
+                <TransportConductors />
+              </ProtectedRoute>
+            } />
+            <Route path="/transport/routes" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
+                <TransportRouteBuilder />
+              </ProtectedRoute>
+            } />
+            <Route path="/transport/stops" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
+                <TransportStops />
+              </ProtectedRoute>
+            } />
+            <Route path="/transport/students" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
+                <StudentTransport />
+              </ProtectedRoute>
+            } />
+            
             <Route path="/support/tickets" element={
               <ProtectedRoute>
                 <SupportInbox />
