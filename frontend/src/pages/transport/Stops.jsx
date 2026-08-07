@@ -8,7 +8,6 @@ import 'leaflet/dist/leaflet.css';
 
 const EMPTY_FORM = { name: '', latitude: '', longitude: '', radius: '200', description: '' };
 
-// India-wide default view (used when no coordinates are set yet)
 const INDIA_CENTER = [22.9734, 78.6569];
 const INDIA_ZOOM   = 5;
 
@@ -21,7 +20,9 @@ const INDIAN_STATES = [
   'Dadra and Nagar Haveli and Daman and Diu','Delhi','Jammu and Kashmir',
   'Ladakh','Lakshadweep','Puducherry',
 ];
+
 const GOOGLE_PLACES_KEY = process.env.REACT_APP_GOOGLE_PLACES_API_KEY;
+
 const markerIcon = L.icon({
   iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -41,35 +42,29 @@ export default function Stops() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
 
-  // ── Pincode (locks the area — name search below stays inside this) ──
-  // ── State + District (locks the area — this is far more reliable in
-  // Nominatim's India data than pincode-level bounding boxes, which are
-  // often missing or wrong) ──
+  // ── State + District lock ──
   const [schoolState, setSchoolState] = useState('');
   const [district, setDistrict] = useState('');
-  const [districtBBox, setDistrictBBox] = useState(null); // [south, north, west, east]
+  const [districtBBox, setDistrictBBox] = useState(null);
   const [districtSuggestions, setDistrictSuggestions] = useState([]);
   const [showDistrictSuggestions, setShowDistrictSuggestions] = useState(false);
   const [searchingDistrict, setSearchingDistrict] = useState(false);
   const districtDebounceRef = useRef(null);
 
-  // Pincode — optional, just extra text to help matching; not used to lock area
   const [pincode, setPincode] = useState('');
 
-  // ── Location name search (OpenStreetMap Nominatim — free, no API key) ──
-  // ── Location name search (OpenStreetMap Nominatim — free, no API key) ──
-  // ── Location name search (Google Places if key set, else OSM Nominatim) ──
+  // ── Location name search ──
   const [locSuggestions, setLocSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [searchingLoc, setSearchingLoc] = useState(false);
-  const [noLocResults, setNoLocResults] = useState(false);
+  const [locError, setLocError] = useState('');   // visible diagnostic message
   const debounceRef = useRef(null);
-  const sessionTokenRef = useRef(null); // Google billing session — resets after each pick
+  const sessionTokenRef = useRef(null);
 
   // ── Map (Leaflet) ──
-  const mapDivRef      = useRef(null);   // the <div> the map mounts into
-  const mapInstanceRef = useRef(null);   // Leaflet Map instance
-  const markerRef      = useRef(null);   // Leaflet Marker instance
+  const mapDivRef      = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const markerRef      = useRef(null);
 
   function placeOrMoveMarker(lat, lon) {
     if (!mapInstanceRef.current) return;
@@ -84,6 +79,7 @@ export default function Stops() {
       });
     }
   }
+
   function handleDistrictChange(value) {
     setDistrict(value);
     setDistrictBBox(null);
@@ -94,14 +90,13 @@ export default function Stops() {
     districtDebounceRef.current = setTimeout(async () => {
       setSearchingDistrict(true);
       try {
-        // State ke context ke saath district/city search — districts OSM me
-        // pincode se kahin zyada reliably mapped hain (proper boundary + bbox).
         const q = schoolState ? `${value}, ${schoolState}, India` : `${value}, India`;
         const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&countrycodes=in&q=${encodeURIComponent(q)}`;
         const res = await fetch(url);
         const data = await res.json();
         setDistrictSuggestions(data || []);
-      } catch {
+      } catch (err) {
+        console.error('District search failed:', err);
         setDistrictSuggestions([]);
       }
       setSearchingDistrict(false);
@@ -112,16 +107,15 @@ export default function Stops() {
     const label = place.address?.state_district || place.address?.county
       || place.display_name.split(',')[0].trim();
     setDistrict(label);
-    setDistrictBBox(place.boundingbox); // [south, north, west, east]
+    setDistrictBBox(place.boundingbox);
     setDistrictSuggestions([]);
     setShowDistrictSuggestions(false);
 
     const lat = Number(place.lat), lon = Number(place.lon);
     if (mapInstanceRef.current) mapInstanceRef.current.setView([lat, lon], 11);
-    toast.success(`${label} lock ho gaya — ab isi ke andar naam se dhundo`);
+    toast.success(`${label} lock ho gaya`);
   }
 
-  // Initialise the map once, when the Add/Edit modal opens
   useEffect(() => {
     if (!showForm || !mapDivRef.current) return;
 
@@ -137,10 +131,8 @@ export default function Stops() {
     }).addTo(map);
 
     mapInstanceRef.current = map;
-
     if (hasCoords) placeOrMoveMarker(startLat, startLon);
 
-    // Click anywhere on the map -> drop/move pin, fill lat/lng, try to name the stop
     map.on('click', (e) => {
       const { lat, lng } = e.latlng;
       placeOrMoveMarker(lat, lng);
@@ -154,10 +146,9 @@ export default function Stops() {
             setForm(f => (f.name ? f : { ...f, name: shortName }));
           }
         })
-        .catch(() => {});
+        .catch(err => console.error('Reverse geocode failed:', err));
     });
 
-    // Fix Leaflet's map-in-a-modal sizing glitch (container has 0 size on first paint)
     setTimeout(() => map.invalidateSize(), 150);
 
     return () => {
@@ -165,8 +156,9 @@ export default function Stops() {
       mapInstanceRef.current = null;
       markerRef.current = null;
     };
-  }, [showForm]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [showForm]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Search: Google Places (New) if key present, else OSM Nominatim ──
   async function searchOSM(value) {
     const context = [district, schoolState].filter(Boolean).join(', ');
     const q = context ? `${value}, ${context}, India` : `${value}, India`;
@@ -176,13 +168,15 @@ export default function Stops() {
       const [south, north, west, east] = districtBBox;
       url += `&viewbox=${west},${north},${east},${south}`;
     }
-    let res = await fetch(url);
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`OSM HTTP ${res.status}`);
     let data = await res.json();
 
     if (!data || data.length === 0) {
       const plainUrl = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=8&countrycodes=in&q=${encodeURIComponent(value)}`;
-      res = await fetch(plainUrl);
-      data = await res.json();
+      const res2 = await fetch(plainUrl);
+      if (!res2.ok) throw new Error(`OSM HTTP ${res2.status}`);
+      data = await res2.json();
     }
     return (data || []).map(d => ({ source: 'osm', display_name: d.display_name, lat: d.lat, lon: d.lon }));
   }
@@ -206,6 +200,12 @@ export default function Stops() {
       headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': GOOGLE_PLACES_KEY },
       body: JSON.stringify(body),
     });
+
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '');
+      throw new Error(`Google HTTP ${res.status} — ${errBody.slice(0, 200)}`);
+    }
+
     const data = await res.json();
     return (data.suggestions || [])
       .filter(s => s.placePrediction)
@@ -215,26 +215,37 @@ export default function Stops() {
   function handleNameChange(value) {
     setForm(f => ({ ...f, name: value }));
     setShowSuggestions(true);
-    setNoLocResults(false);
+    setLocError('');
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (value.trim().length < 3) { setLocSuggestions([]); return; }
 
     debounceRef.current = setTimeout(async () => {
       setSearchingLoc(true);
-      try {
-        let results = [];
-        if (GOOGLE_PLACES_KEY) {
-          try { results = await searchGooglePlaces(value); } catch { results = []; }
-          if (results.length === 0) results = await searchOSM(value); // key fail/empty -> OSM fallback
-        } else {
-          results = await searchOSM(value);
+      let results = [];
+      let lastErr = null;
+
+      if (GOOGLE_PLACES_KEY) {
+        try {
+          results = await searchGooglePlaces(value);
+        } catch (err) {
+          console.error('Google Places search failed:', err);
+          lastErr = err;
         }
-        setLocSuggestions(results);
-        setNoLocResults(results.length === 0);
-      } catch {
-        setLocSuggestions([]);
-        setNoLocResults(true);
+      }
+
+      if (results.length === 0) {
+        try {
+          results = await searchOSM(value);
+        } catch (err) {
+          console.error('OSM search failed:', err);
+          lastErr = lastErr || err;
+        }
+      }
+
+      setLocSuggestions(results);
+      if (results.length === 0) {
+        setLocError(lastErr ? `Search error: ${lastErr.message}` : 'Koi result nahi mila');
       }
       setSearchingLoc(false);
     }, 500);
@@ -254,15 +265,17 @@ export default function Stops() {
             'X-Goog-FieldMask': 'displayName,location',
           },
         });
+        if (!res.ok) throw new Error(`Place Details HTTP ${res.status}`);
         const data = await res.json();
         lat = data.location?.latitude;
         lon = data.location?.longitude;
         name = data.displayName?.text || place.display_name;
-      } catch {
-        toast.error('Place details nahi mile');
+      } catch (err) {
+        console.error('Place details failed:', err);
+        toast.error('Place details fetch nahi hue: ' + err.message);
         return;
       }
-      sessionTokenRef.current = null; // session close — agli search par naya token banega (billing ke liye zaroori)
+      sessionTokenRef.current = null;
     } else {
       lat = Number(place.lat);
       lon = Number(place.lon);
@@ -303,9 +316,7 @@ export default function Stops() {
 
   useEffect(() => { load(); }, [load]);
 
-  function openAdd() {
-    setEditingId(null);
-    setForm(EMPTY_FORM);
+  function resetLocationState() {
     setSchoolState('');
     setDistrict('');
     setDistrictBBox(null);
@@ -313,7 +324,14 @@ export default function Stops() {
     setPincode('');
     setLocSuggestions([]);
     setShowSuggestions(false);
+    setLocError('');
     sessionTokenRef.current = null;
+  }
+
+  function openAdd() {
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    resetLocationState();
     setShowForm(true);
   }
 
@@ -323,14 +341,7 @@ export default function Stops() {
       name: s.name || '', latitude: s.latitude ?? '', longitude: s.longitude ?? '',
       radius: s.radius ?? '200', description: s.description || '',
     });
-    setSchoolState('');
-    setDistrict('');
-    setDistrictBBox(null);
-    setDistrictSuggestions([]);
-    setPincode('');
-    setLocSuggestions([]);
-    setShowSuggestions(false);
-    sessionTokenRef.current = null;
+    resetLocationState();
     setShowForm(true);
   }
 
@@ -390,7 +401,6 @@ export default function Stops() {
         <Navbar title="Stops" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
 
         <div style={{ padding: 24 }}>
-          {/* Toolbar */}
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
             <input value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Search stop name..." style={{ ...inputStyle, width: 260 }} />
@@ -402,15 +412,12 @@ export default function Stops() {
             </button>
           </div>
 
-          {/* Grid of stop cards */}
           {loading ? (
             <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Loading...</div>
           ) : stops.length === 0 ? (
             <div style={{ ...cardStyle, textAlign: 'center', padding: 40, color: '#94a3b8' }}>Koi stop nahi mila</div>
           ) : (
-            <div style={{
-              display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14,
-            }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14 }}>
               {stops.map(s => (
                 <div key={s.id} style={cardStyle}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -452,7 +459,6 @@ export default function Stops() {
         </div>
       </div>
 
-      {/* ── Add/Edit Modal ── */}
       {showForm && (
         <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowForm(false)}>
           <div className="modal" style={{ maxWidth: 560 }}>
@@ -461,6 +467,15 @@ export default function Stops() {
               <button className="modal-close" onClick={() => setShowForm(false)}>✕</button>
             </div>
             <form onSubmit={handleSave} className="modal-body">
+              {!GOOGLE_PLACES_KEY && (
+                <div style={{
+                  fontSize: 11, color: '#92400e', background: '#fffbeb',
+                  border: '1px solid #fde68a', borderRadius: 6, padding: '6px 10px', marginBottom: 10,
+                }}>
+                  ⚠️ Google Places key set nahi hai — sirf OSM (basic) search chal rahi hai.
+                </div>
+              )}
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 600 }}>State</label>
@@ -509,7 +524,7 @@ export default function Stops() {
                 </div>
               </div>
               {districtBBox && (
-                <div style={{ fontSize: 11, color: '#16a34a', marginTop: 4 }}>✓ {district} lock ho gaya — niche search isi ke aas-paas prioritize hogi</div>
+                <div style={{ fontSize: 11, color: '#16a34a', marginTop: 4 }}>✓ {district} lock ho gaya</div>
               )}
 
               <div style={{ position: 'relative', marginTop: 14 }}>
@@ -537,26 +552,22 @@ export default function Stops() {
                         style={{
                           padding: '8px 12px', fontSize: 12, cursor: 'pointer',
                           borderBottom: i < locSuggestions.length - 1 ? '1px solid #f1f5f9' : 'none',
-                          color: '#334155',
+                          color: '#334155', display: 'flex', justifyContent: 'space-between', gap: 8,
                         }}
                         onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
                         onMouseLeave={e => e.currentTarget.style.background = '#fff'}
                       >
-                        📍 {place.display_name}
+                        <span>📍 {place.display_name}</span>
+                        <span style={{ fontSize: 9, color: '#94a3b8', flexShrink: 0 }}>
+                          {place.source === 'google' ? 'Google' : 'OSM'}
+                        </span>
                       </div>
                     ))}
                   </div>
                 )}
-               {noLocResults && !searchingLoc && (
+                {locError && !searchingLoc && (
                   <div style={{ fontSize: 12, color: '#dc2626', marginTop: 4, fontWeight: 600 }}>
-                    ⚠️ "{form.name}" OpenStreetMap database me nahi mila (chhote schools/buildings
-                    aksar mapped nahi hote). Neeche map ko zoom karke us jagah pe seedha click karo —
-                    address auto-fill ho jayega.
-                  </div>
-                )}
-                {noLocResults && !searchingLoc && (
-                  <div style={{ fontSize: 12, color: '#dc2626', marginTop: 4, fontWeight: 600 }}>
-                    ⚠️ "{form.name}" nahi mila. Neeche map ko zoom karke us jagah pe seedha click karo.
+                    ⚠️ {locError} — neeche map pe seedha click karke pin lagao.
                   </div>
                 )}
                 <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
@@ -564,7 +575,6 @@ export default function Stops() {
                 </div>
               </div>
 
-              {/* ── Interactive map — click anywhere to drop the pin ── */}
               <div style={{ marginTop: 12 }}>
                 <div ref={mapDivRef} style={{
                   width: '100%', height: 260, borderRadius: 8,
