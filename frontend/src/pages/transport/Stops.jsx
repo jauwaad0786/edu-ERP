@@ -31,6 +31,12 @@ export default function Stops() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
 
+  // ── Pincode (locks the area — name search below stays inside this) ──
+  const [pincode, setPincode] = useState('');
+  const [pincodeBBox, setPincodeBBox] = useState(null); // [south, north, west, east]
+  const [searchingPincode, setSearchingPincode] = useState(false);
+  const pincodeDebounceRef = useRef(null);
+
   // ── Location search (OpenStreetMap Nominatim — free, no API key) ──
   const [locSuggestions, setLocSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -54,6 +60,35 @@ export default function Stops() {
         setForm(f => ({ ...f, latitude: pos.lat.toFixed(6), longitude: pos.lng.toFixed(6) }));
       });
     }
+  }
+  function handlePincodeChange(value) {
+    setPincode(value);
+    setPincodeBBox(null);
+    if (pincodeDebounceRef.current) clearTimeout(pincodeDebounceRef.current);
+    if (!/^\d{6}$/.test(value.trim())) return;
+
+    pincodeDebounceRef.current = setTimeout(async () => {
+      setSearchingPincode(true);
+      try {
+        const url = `https://nominatim.openstreetmap.org/search?format=json&postalcode=${value.trim()}&country=India&addressdetails=1&limit=1`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data && data[0]) {
+          const place = data[0];
+          setPincodeBBox(place.boundingbox); // [south, north, west, east]
+          const lat = Number(place.lat), lon = Number(place.lon);
+          if (mapInstanceRef.current) {
+            mapInstanceRef.current.setView([lat, lon], 13);
+          }
+          toast.success(`Pincode ${value.trim()} mil gaya — ab isi area ke andar dhundo`);
+        } else {
+          toast.error('Pincode nahi mila');
+        }
+      } catch {
+        toast.error('Pincode search fail hua');
+      }
+      setSearchingPincode(false);
+    }, 600);
   }
 
   // Initialise the map once, when the Add/Edit modal opens
@@ -112,10 +147,14 @@ export default function Stops() {
     debounceRef.current = setTimeout(async () => {
       setSearchingLoc(true);
       try {
-        // addressdetails + a generous limit surfaces villages/localities/wards
-        // inside whatever town, pincode or district the user typed, not just
-        // the top-level place — that's what makes small places findable.
-        const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=8&countrycodes=in&q=${encodeURIComponent(value)}`;
+        // addressdetails + a generous limit surfaces villages/localities/wards.
+        // Agar pincode lock hai to viewbox+bounded=1 se search sirf usi area
+        // ke andar hoti hai — isse chhote chowk/village aur aasani se milte hain.
+        let url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=8&countrycodes=in&q=${encodeURIComponent(value)}`;
+        if (pincodeBBox) {
+          const [south, north, west, east] = pincodeBBox;
+          url += `&viewbox=${west},${north},${east},${south}&bounded=1`;
+        }
         const res = await fetch(url);
         const data = await res.json();
         setLocSuggestions(data || []);
@@ -172,6 +211,8 @@ export default function Stops() {
   function openAdd() {
     setEditingId(null);
     setForm(EMPTY_FORM);
+    setPincode('');
+    setPincodeBBox(null);
     setLocSuggestions([]);
     setShowSuggestions(false);
     setShowForm(true);
@@ -183,6 +224,8 @@ export default function Stops() {
       name: s.name || '', latitude: s.latitude ?? '', longitude: s.longitude ?? '',
       radius: s.radius ?? '200', description: s.description || '',
     });
+    setPincode('');
+    setPincodeBBox(null);
     setLocSuggestions([]);
     setShowSuggestions(false);
     setShowForm(true);
@@ -315,13 +358,29 @@ export default function Stops() {
               <button className="modal-close" onClick={() => setShowForm(false)}>✕</button>
             </div>
             <form onSubmit={handleSave} className="modal-body">
-              <div style={{ position: 'relative' }}>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600 }}>Pincode</label>
+                <input className="form-input" value={pincode} autoComplete="off"
+                  maxLength={6} inputMode="numeric"
+                  onChange={e => handlePincodeChange(e.target.value.replace(/\D/g, ''))}
+                  placeholder="Area ka 6-digit pincode likho"
+                  style={{ padding: '12px 14px', fontSize: 14, minHeight: 44 }} />
+                {searchingPincode && (
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Pincode dhoondh rahe hain...</div>
+                )}
+                {pincodeBBox && !searchingPincode && (
+                  <div style={{ fontSize: 11, color: '#16a34a', marginTop: 4 }}>✓ Area lock ho gaya — niche search isi ke andar hogi</div>
+                )}
+              </div>
+
+              <div style={{ position: 'relative', marginTop: 12 }}>
                 <label style={{ fontSize: 12, fontWeight: 600 }}>Stop Name / Location *</label>
                 <input className="form-input" value={form.name} autoComplete="off"
                   onChange={e => handleNameChange(e.target.value)}
                   onFocus={() => setShowSuggestions(true)}
                   onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                  placeholder="Town, pincode ya village likho..." required
+                  placeholder={pincodeBBox ? 'Village, chowk ya area ka naam likho...' : 'Pehle pincode daalo, ya seedha town/village likho...'}
+                  required
                   style={{ padding: '12px 14px', fontSize: 14, minHeight: 44 }} />
                 {searchingLoc && (
                   <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Searching...</div>
