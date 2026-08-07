@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
 from app import db
-from app.utils.auth import role_required, get_current_school_id
+from app.utils.decorators import role_required, get_current_user
 from app.models.transport import (
     Vehicle, Driver, Conductor, Stop, Route, RouteStop, VehicleMaintenance,
     VEHICLE_TYPES, VEHICLE_STATUSES, MAINTENANCE_STATUSES
@@ -12,6 +12,10 @@ transport_bp = Blueprint('transport', __name__, url_prefix='/api/transport')
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
+
+def get_current_school_id():
+    return get_current_user().school_id
+
 
 def paginate(query, default_per_page=25):
     page = request.args.get('page', 1, type=int)
