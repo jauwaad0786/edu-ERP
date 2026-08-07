@@ -82,6 +82,15 @@ def create_app(config_name='default'):
     from app.routes.hostel import hostel_bp
     app.register_blueprint(hostel_bp, url_prefix='/api/hostel')
 
+    from app.routes.transport import transport_bp
+    app.register_blueprint(transport_bp)   # url_prefix already baked in ('/api/transport')
+    from app.routes.transport_student import transport_student_bp
+    app.register_blueprint(transport_student_bp, url_prefix='/api/transport')
+    from app.routes.transport_gps import transport_gps_bp
+    app.register_blueprint(transport_gps_bp, url_prefix='/api/transport')
+    from app.routes.transport_reports import transport_reports_bp
+    app.register_blueprint(transport_reports_bp, url_prefix='/api/transport')
+
     from app.routes.rbac import rbac_bp
     app.register_blueprint(rbac_bp, url_prefix='/api/rbac')
     from app.routes.developer_center import developer_center_bp
