@@ -224,7 +224,7 @@ export default function Stops() {
       lon: p.location?.longitude,
     }));
   }
-  }
+  
 
   function handleNameChange(value) {
     setForm(f => ({ ...f, name: value }));
