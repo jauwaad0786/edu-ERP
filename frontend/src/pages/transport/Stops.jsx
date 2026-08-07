@@ -115,6 +115,11 @@ export default function Stops() {
     if (mapInstanceRef.current) mapInstanceRef.current.setView([lat, lon], 11);
     toast.success(`${label} lock ho gaya`);
   }
+  function handleDistrictKeyDown(e) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    if (districtSuggestions.length > 0) pickDistrict(districtSuggestions[0]);
+  }
 
   useEffect(() => {
     if (!showForm || !mapDivRef.current) return;
@@ -182,9 +187,10 @@ export default function Stops() {
   }
 
   async function searchGooglePlaces(value) {
-    if (!sessionTokenRef.current) sessionTokenRef.current = crypto.randomUUID();
-
-    const body = { input: value, sessionToken: sessionTokenRef.current, includedRegionCodes: ['in'] };
+    // Text Search (New) — Autocomplete se zyada reliable specific POIs
+    // (schools, named buildings) ke liye, aur ek hi call me lat/lng bhi
+    // de deta hai (Place Details ki alag call nahi karni padti).
+    const body = { textQuery: value, regionCode: 'IN' };
     if (districtBBox) {
       const [south, north, west, east] = districtBBox;
       body.locationBias = {
@@ -195,9 +201,13 @@ export default function Stops() {
       };
     }
 
-    const res = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
+    const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': GOOGLE_PLACES_KEY },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': GOOGLE_PLACES_KEY,
+        'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.location',
+      },
       body: JSON.stringify(body),
     });
 
@@ -207,9 +217,13 @@ export default function Stops() {
     }
 
     const data = await res.json();
-    return (data.suggestions || [])
-      .filter(s => s.placePrediction)
-      .map(s => ({ source: 'google', display_name: s.placePrediction.text.text, placeId: s.placePrediction.placeId }));
+    return (data.places || []).map(p => ({
+      source: 'google',
+      display_name: `${p.displayName?.text || ''}${p.formattedAddress ? ', ' + p.formattedAddress : ''}`,
+      lat: p.location?.latitude,
+      lon: p.location?.longitude,
+    }));
+  }
   }
 
   function handleNameChange(value) {
@@ -258,24 +272,9 @@ export default function Stops() {
     let lat, lon, name;
 
     if (place.source === 'google') {
-      try {
-        const res = await fetch(`https://places.googleapis.com/v1/places/${place.placeId}`, {
-          headers: {
-            'X-Goog-Api-Key': GOOGLE_PLACES_KEY,
-            'X-Goog-FieldMask': 'displayName,location',
-          },
-        });
-        if (!res.ok) throw new Error(`Place Details HTTP ${res.status}`);
-        const data = await res.json();
-        lat = data.location?.latitude;
-        lon = data.location?.longitude;
-        name = data.displayName?.text || place.display_name;
-      } catch (err) {
-        console.error('Place details failed:', err);
-        toast.error('Place details fetch nahi hue: ' + err.message);
-        return;
-      }
-      sessionTokenRef.current = null;
+      lat = place.lat;
+      lon = place.lon;
+      name = place.display_name.split(',').slice(0, 2).join(',').trim();
     } else {
       lat = Number(place.lat);
       lon = Number(place.lon);
@@ -290,6 +289,16 @@ export default function Stops() {
       mapInstanceRef.current.setView([lat, lon], 15);
       placeOrMoveMarker(lat, lon);
     }
+  }
+  function handleNameKeyDown(e) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault(); // form submit kabhi mat hone do is field se
+
+    if (locSuggestions.length > 0) {
+      pickSuggestion(locSuggestions[0]); // top suggestion select ho jaye
+    }
+    // agar suggestions nahi hain (abhi search chal rahi hai ya kuch nahi mila),
+    // kuch mat karo — user ko map click karna padega ya wait karna padega
   }
 
   function updateLatLng(field, value) {
@@ -492,12 +501,15 @@ export default function Stops() {
                   <input className="form-input" value={district} autoComplete="off"
                     disabled={!schoolState}
                     onChange={e => handleDistrictChange(e.target.value)}
+                    onKeyDown={handleDistrictKeyDown}
                     onFocus={() => setShowDistrictSuggestions(true)}
                     onBlur={() => setTimeout(() => setShowDistrictSuggestions(false), 200)}
                     placeholder={schoolState ? 'District type karo...' : 'Pehle state choose karo'}
                     style={{ padding: '12px 14px', fontSize: 14, minHeight: 44 }} />
-                  {searchingDistrict && (
-                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Searching...</div>
+                  {searchingLoc && (
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+                      Searching... {GOOGLE_PLACES_KEY ? '(Google + OSM)' : '(OSM only — Google key set nahi)'}
+                    </div>
                   )}
                   {showDistrictSuggestions && districtSuggestions.length > 0 && (
                     <div style={{
@@ -531,6 +543,7 @@ export default function Stops() {
                 <label style={{ fontSize: 12, fontWeight: 600 }}>Stop Name / Location *</label>
                 <input className="form-input" value={form.name} autoComplete="off"
                   onChange={e => handleNameChange(e.target.value)}
+                  onKeyDown={handleNameKeyDown}
                   onFocus={() => setShowSuggestions(true)}
                   onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                   placeholder="Village, chowk, town ya area ka naam likho..."
