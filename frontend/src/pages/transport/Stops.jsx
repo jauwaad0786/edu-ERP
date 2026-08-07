@@ -12,6 +12,16 @@ const EMPTY_FORM = { name: '', latitude: '', longitude: '', radius: '200', descr
 const INDIA_CENTER = [22.9734, 78.6569];
 const INDIA_ZOOM   = 5;
 
+const INDIAN_STATES = [
+  'Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Goa','Gujarat',
+  'Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh',
+  'Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Punjab',
+  'Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh',
+  'Uttarakhand','West Bengal','Andaman and Nicobar Islands','Chandigarh',
+  'Dadra and Nagar Haveli and Daman and Diu','Delhi','Jammu and Kashmir',
+  'Ladakh','Lakshadweep','Puducherry',
+];
+
 const markerIcon = L.icon({
   iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -32,12 +42,21 @@ export default function Stops() {
   const [saving, setSaving] = useState(false);
 
   // ── Pincode (locks the area — name search below stays inside this) ──
-  const [pincode, setPincode] = useState('');
-  const [pincodeBBox, setPincodeBBox] = useState(null); // [south, north, west, east]
-  const [searchingPincode, setSearchingPincode] = useState(false);
-  const pincodeDebounceRef = useRef(null);
+  // ── State + District (locks the area — this is far more reliable in
+  // Nominatim's India data than pincode-level bounding boxes, which are
+  // often missing or wrong) ──
+  const [schoolState, setSchoolState] = useState('');
+  const [district, setDistrict] = useState('');
+  const [districtBBox, setDistrictBBox] = useState(null); // [south, north, west, east]
+  const [districtSuggestions, setDistrictSuggestions] = useState([]);
+  const [showDistrictSuggestions, setShowDistrictSuggestions] = useState(false);
+  const [searchingDistrict, setSearchingDistrict] = useState(false);
+  const districtDebounceRef = useRef(null);
 
-  // ── Location search (OpenStreetMap Nominatim — free, no API key) ──
+  // Pincode — optional, just extra text to help matching; not used to lock area
+  const [pincode, setPincode] = useState('');
+
+  // ── Location name search (OpenStreetMap Nominatim — free, no API key) ──
   const [locSuggestions, setLocSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [searchingLoc, setSearchingLoc] = useState(false);
@@ -61,34 +80,41 @@ export default function Stops() {
       });
     }
   }
-  function handlePincodeChange(value) {
-    setPincode(value);
-    setPincodeBBox(null);
-    if (pincodeDebounceRef.current) clearTimeout(pincodeDebounceRef.current);
-    if (!/^\d{6}$/.test(value.trim())) return;
+  function handleDistrictChange(value) {
+    setDistrict(value);
+    setDistrictBBox(null);
+    setShowDistrictSuggestions(true);
+    if (districtDebounceRef.current) clearTimeout(districtDebounceRef.current);
+    if (value.trim().length < 3) { setDistrictSuggestions([]); return; }
 
-    pincodeDebounceRef.current = setTimeout(async () => {
-      setSearchingPincode(true);
+    districtDebounceRef.current = setTimeout(async () => {
+      setSearchingDistrict(true);
       try {
-        const url = `https://nominatim.openstreetmap.org/search?format=json&postalcode=${value.trim()}&country=India&addressdetails=1&limit=1`;
+        // State ke context ke saath district/city search — districts OSM me
+        // pincode se kahin zyada reliably mapped hain (proper boundary + bbox).
+        const q = schoolState ? `${value}, ${schoolState}, India` : `${value}, India`;
+        const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&countrycodes=in&q=${encodeURIComponent(q)}`;
         const res = await fetch(url);
         const data = await res.json();
-        if (data && data[0]) {
-          const place = data[0];
-          setPincodeBBox(place.boundingbox); // [south, north, west, east]
-          const lat = Number(place.lat), lon = Number(place.lon);
-          if (mapInstanceRef.current) {
-            mapInstanceRef.current.setView([lat, lon], 13);
-          }
-          toast.success(`Pincode ${value.trim()} mil gaya — ab isi area ke andar dhundo`);
-        } else {
-          toast.error('Pincode nahi mila');
-        }
+        setDistrictSuggestions(data || []);
       } catch {
-        toast.error('Pincode search fail hua');
+        setDistrictSuggestions([]);
       }
-      setSearchingPincode(false);
-    }, 600);
+      setSearchingDistrict(false);
+    }, 500);
+  }
+
+  function pickDistrict(place) {
+    const label = place.address?.state_district || place.address?.county
+      || place.display_name.split(',')[0].trim();
+    setDistrict(label);
+    setDistrictBBox(place.boundingbox); // [south, north, west, east]
+    setDistrictSuggestions([]);
+    setShowDistrictSuggestions(false);
+
+    const lat = Number(place.lat), lon = Number(place.lon);
+    if (mapInstanceRef.current) mapInstanceRef.current.setView([lat, lon], 11);
+    toast.success(`${label} lock ho gaya — ab isi ke andar naam se dhundo`);
   }
 
   // Initialise the map once, when the Add/Edit modal opens
@@ -147,23 +173,37 @@ export default function Stops() {
     debounceRef.current = setTimeout(async () => {
       setSearchingLoc(true);
       try {
-        // addressdetails + a generous limit surfaces villages/localities/wards.
-        // Agar pincode lock hai to viewbox+bounded=1 se search sirf usi area
-        // ke andar hoti hai — isse chhote chowk/village aur aasani se milte hain.
-        let url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=8&countrycodes=in&q=${encodeURIComponent(value)}`;
-        if (pincodeBBox) {
-          const [south, north, west, east] = pincodeBBox;
-          url += `&viewbox=${west},${north},${east},${south}&bounded=1`;
+        // Naam ke saath district/state context jodna hi sabse zyada asar
+        // karta hai — chhote gaanv/chowk aksar sirf tabhi milte hain jab
+        // query me unka district/state bhi likha ho, sirf bounding box se
+        // nahi milte (kyunki pincode/PIN wala data area me sparse hota hai).
+        const context = [district, schoolState].filter(Boolean).join(', ');
+        const q = context ? `${value}, ${context}, India` : `${value}, India`;
+
+        let url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=8&countrycodes=in&q=${encodeURIComponent(q)}`;
+        if (districtBBox) {
+          const [south, north, west, east] = districtBBox;
+          // viewbox = soft bias (bina bounded=1 ke) — district ke paas ke
+          // result upar aate hain, lekin bilkul bahar ke bhi nahi katte
+          url += `&viewbox=${west},${north},${east},${south}`;
         }
-        const res = await fetch(url);
-        const data = await res.json();
+        let res = await fetch(url);
+        let data = await res.json();
+
+        // Kuch na mile toh context ke bina, sirf plain naam se dobara try —
+        // (ho sakta hai naam OSM me thoda alag spelling me ho)
+        if (!data || data.length === 0) {
+          const plainUrl = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=8&countrycodes=in&q=${encodeURIComponent(value)}`;
+          res = await fetch(plainUrl);
+          data = await res.json();
+        }
+
         setLocSuggestions(data || []);
       } catch {
         setLocSuggestions([]);
       }
       setSearchingLoc(false);
     }, 500);
-  }
 
   function pickSuggestion(place) {
     const lat = Number(place.lat), lon = Number(place.lon);
@@ -211,8 +251,11 @@ export default function Stops() {
   function openAdd() {
     setEditingId(null);
     setForm(EMPTY_FORM);
+    setSchoolState('');
+    setDistrict('');
+    setDistrictBBox(null);
+    setDistrictSuggestions([]);
     setPincode('');
-    setPincodeBBox(null);
     setLocSuggestions([]);
     setShowSuggestions(false);
     setShowForm(true);
@@ -224,8 +267,11 @@ export default function Stops() {
       name: s.name || '', latitude: s.latitude ?? '', longitude: s.longitude ?? '',
       radius: s.radius ?? '200', description: s.description || '',
     });
+    setSchoolState('');
+    setDistrict('');
+    setDistrictBBox(null);
+    setDistrictSuggestions([]);
     setPincode('');
-    setPincodeBBox(null);
     setLocSuggestions([]);
     setShowSuggestions(false);
     setShowForm(true);
@@ -358,28 +404,64 @@ export default function Stops() {
               <button className="modal-close" onClick={() => setShowForm(false)}>✕</button>
             </div>
             <form onSubmit={handleSave} className="modal-body">
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 600 }}>Pincode</label>
-                <input className="form-input" value={pincode} autoComplete="off"
-                  maxLength={6} inputMode="numeric"
-                  onChange={e => handlePincodeChange(e.target.value.replace(/\D/g, ''))}
-                  placeholder="Area ka 6-digit pincode likho"
-                  style={{ padding: '12px 14px', fontSize: 14, minHeight: 44 }} />
-                {searchingPincode && (
-                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Pincode dhoondh rahe hain...</div>
-                )}
-                {pincodeBBox && !searchingPincode && (
-                  <div style={{ fontSize: 11, color: '#16a34a', marginTop: 4 }}>✓ Area lock ho gaya — niche search isi ke andar hogi</div>
-                )}
-              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600 }}>State</label>
+                  <select className="form-input" value={schoolState}
+                    onChange={e => { setSchoolState(e.target.value); setDistrict(''); setDistrictBBox(null); }}
+                    style={{ padding: '12px 14px', fontSize: 14, minHeight: 44 }}>
+                    <option value="">-- Select State --</option>
+                    {INDIAN_STATES.map(st => <option key={st} value={st}>{st}</option>)}
+                  </select>
+                </div>
 
-              <div style={{ position: 'relative', marginTop: 12 }}>
+                <div style={{ position: 'relative' }}>
+                  <label style={{ fontSize: 12, fontWeight: 600 }}>District</label>
+                  <input className="form-input" value={district} autoComplete="off"
+                    disabled={!schoolState}
+                    onChange={e => handleDistrictChange(e.target.value)}
+                    onFocus={() => setShowDistrictSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowDistrictSuggestions(false), 200)}
+                    placeholder={schoolState ? 'District type karo...' : 'Pehle state choose karo'}
+                    style={{ padding: '12px 14px', fontSize: 14, minHeight: 44 }} />
+                  {searchingDistrict && (
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Searching...</div>
+                  )}
+                  {showDistrictSuggestions && districtSuggestions.length > 0 && (
+                    <div style={{
+                      position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 21,
+                      background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8,
+                      marginTop: 4, maxHeight: 200, overflowY: 'auto',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                    }}>
+                      {districtSuggestions.map((place, i) => (
+                        <div key={i} onMouseDown={() => pickDistrict(place)}
+                          style={{
+                            padding: '8px 12px', fontSize: 12, cursor: 'pointer',
+                            borderBottom: i < districtSuggestions.length - 1 ? '1px solid #f1f5f9' : 'none',
+                            color: '#334155',
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                          onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+                        >
+                          📍 {place.display_name}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              {districtBBox && (
+                <div style={{ fontSize: 11, color: '#16a34a', marginTop: 4 }}>✓ {district} lock ho gaya — niche search isi ke aas-paas prioritize hogi</div>
+              )}
+
+              <div style={{ position: 'relative', marginTop: 14 }}>
                 <label style={{ fontSize: 12, fontWeight: 600 }}>Stop Name / Location *</label>
                 <input className="form-input" value={form.name} autoComplete="off"
                   onChange={e => handleNameChange(e.target.value)}
                   onFocus={() => setShowSuggestions(true)}
                   onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                  placeholder={pincodeBBox ? 'Village, chowk ya area ka naam likho...' : 'Pehle pincode daalo, ya seedha town/village likho...'}
+                  placeholder="Village, chowk, town ya area ka naam likho..."
                   required
                   style={{ padding: '12px 14px', fontSize: 14, minHeight: 44 }} />
                 {searchingLoc && (
