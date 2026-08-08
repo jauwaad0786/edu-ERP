@@ -128,17 +128,23 @@ export default function StudentTransport() {
     e.preventDefault();
     setTransferring(true);
     try {
-      await api.post(`/transport/students/${transferStudent.student_id}/transfer`, {
+      // /students/assign endpoint dono cases handle karta hai — naya student
+      // (koi active assignment nahi) to ADD karega, already-assigned student
+      // ko UPDATE/transfer karega. /students/{id}/transfer sirf already-
+      // assigned ke liye hai — usko yahan call karna 404 deta tha jab
+      // student pehli baar assign ho raha ho.
+      await api.post('/transport/students/assign', {
+        student_ids: [transferStudent.student_id],
         vehicle_id: transferForm.vehicle_id || null,
         route_id: transferForm.route_id || null,
         stop_id: transferForm.stop_id || null,
         remarks: transferForm.remarks,
       });
-      toast.success('Transport transferred');
+      toast.success(transferStudent.has_transport ? 'Transport transferred' : 'Assigned successfully');
       setTransferStudent(null);
       load();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Transfer nahi hua');
+      toast.error(err.response?.data?.message || (transferStudent.has_transport ? 'Transfer nahi hua' : 'Assign nahi hua'));
     }
     setTransferring(false);
   }
