@@ -307,6 +307,47 @@ const ROLE_MENUS = {
     },
   ],
 
+  TRANSPORT: [
+    {
+      group: 'Overview',
+      items: [{ icon: 'ti-layout-dashboard', label: 'Dashboard', path: '/transport' }],
+    },
+    {
+      group: 'Transport Management',
+      items: [
+        { icon: 'ti-bus',              label: 'Vehicles',    path: '/transport/vehicles' },
+        { icon: 'ti-steering-wheel',   label: 'Drivers',     path: '/transport/drivers' },
+        { icon: 'ti-users',            label: 'Conductors',  path: '/transport/conductors' },
+        { icon: 'ti-route',            label: 'Routes',      path: '/transport/routes' },
+        { icon: 'ti-map-pin',          label: 'Stops',       path: '/transport/stops' },
+        { icon: 'ti-user-check',       label: 'Students',    path: '/transport/students' },
+      ],
+    },
+    {
+      group: 'Customer Service',
+      items: [
+        { icon: 'ti-ticket',       label: 'My Tickets',    path: '/support/tickets' },
+        { icon: 'ti-message-2',    label: 'Messages',      path: '/support/chat' },
+        { icon: 'ti-help-circle',  label: 'Help Center',   path: '/support/help' },
+      ],
+    },
+  ],
+
+  DRIVER: [
+    {
+      group: 'Overview',
+      items: [{ icon: 'ti-truck', label: 'My Trip', path: '/driver/app' }],
+    },
+    {
+      group: 'Customer Service',
+      items: [
+        { icon: 'ti-ticket',       label: 'My Tickets',    path: '/support/tickets' },
+        { icon: 'ti-message-2',    label: 'Messages',      path: '/support/chat' },
+        { icon: 'ti-help-circle',  label: 'Help Center',   path: '/support/help' },
+      ],
+    },
+  ],
+
   STUDENT: [
     {
       group: 'Overview',
@@ -389,6 +430,7 @@ const ROLE_LABELS = {
   SUPER_ADMIN: 'Super Admin', PRINCIPAL: 'Principal', DIRECTOR: 'Director', VICE_PRINCIPAL: 'Vice Principal',
   TEACHER: 'Teacher', ACCOUNTANT: 'Accountant', RECEPTIONIST: 'Receptionist',
   LIBRARIAN: 'Librarian', HOSTEL: 'Warden', STUDENT: 'Student', PARENT: 'Parent',
+  TRANSPORT: 'Transport Head', DRIVER: 'Driver',
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
