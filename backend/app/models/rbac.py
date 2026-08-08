@@ -333,6 +333,7 @@ DEFAULT_SCHOOL_ROLES = [
     # NEW — was only 'COMPANY_HR' before; school-side legacy HR users had
     # no matching Role row and stayed "unmapped" in sync_legacy_role_assignments().
     ('HR',                   'HR',                   8, False, False),
+    ('DRIVER',               'Driver',               13, False, False),
     ('TEACHER',              'Teacher',              9, False, False),
     ('CLASS_TEACHER',        'Class Teacher',        9, False, False),
     ('ASSISTANT_TEACHER',    'Assistant Teacher',    10, False, False),
