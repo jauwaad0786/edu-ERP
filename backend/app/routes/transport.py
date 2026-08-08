@@ -7,6 +7,9 @@ from app.models.transport import (
     Vehicle, Driver, Conductor, Stop, Route, RouteStop, VehicleMaintenance,
     VEHICLE_TYPES, VEHICLE_STATUSES, MAINTENANCE_STATUSES
 )
+import re as _re, string as _string, random as _random
+from app.models.user import User, UserRole
+from app.services.permission_resolver import ensure_role_assignment_for_user
 
 transport_bp = Blueprint('transport', __name__, url_prefix='/api/transport')
 
@@ -26,6 +29,22 @@ def paginate(query, default_per_page=25):
 
 def bad_request(msg):
     return jsonify({'success': False, 'message': msg}), 400
+
+
+def _gen_driver_username(name: str) -> str:
+    """Driver Mobile App login username — same pattern as principal.py's
+    _gen_username_p, kept local to avoid circular import."""
+    clean = _re.sub(r'[^a-z0-9 ]', '', (name or '').lower().strip())
+    parts = clean.split()[:2]
+    base  = ('.'.join(parts) if parts else 'driver') + '.drv'
+
+    if not User.query.filter_by(username=base).first():
+        return base
+    for _ in range(20):
+        candidate = base + '.' + ''.join(_random.choices(_string.digits, k=3))
+        if not User.query.filter_by(username=candidate).first():
+            return candidate
+    return base + '.' + ''.join(_random.choices(_string.digits, k=6))
 
 
 def not_found(msg='Not found'):
@@ -216,8 +235,34 @@ def create_driver():
 
     has_license = bool(data.get('has_license', False))
 
+    # ── Driver Mobile App login account ─────────────────────────────────
+    # Driver form email nahi collect karta, isliye synthetic-but-unique
+    # email banate hain (username khud unique-checked hai, so ye bhi
+    # unique rahega). Principal/Transport head ko ye credentials response
+    # mein wapas milte hain (ek hi baar, jaise staff creation mein hota hai).
+    username = (data.get('username') or '').strip().lower() or _gen_driver_username(name)
+    email = (data.get('email') or '').strip().lower() or f'{username}@driver.eduerp.local'
+    plain_pw = (data.get('password') or '').strip() or 'Driver@123'
+
+    if User.query.filter(db.func.lower(User.email) == email).first():
+        return bad_request('Email already exists')
+    if User.query.filter_by(username=username).first():
+        return bad_request('Username already taken')
+
+    user = User(
+        name=name, email=email, username=username,
+        role=UserRole.DRIVER, school_id=school_id,
+        phone=mobile, is_active=True,
+    )
+    user.set_password(plain_pw, store_plain=True)
+    db.session.add(user)
+    db.session.flush()   # user.id chahiye Driver row link karne ke liye
+
+    ensure_role_assignment_for_user(user)
+
     d = Driver(
         school_id=school_id,
+        user_id=user.id,
         name=name,
         mobile_number=mobile,
         address=data.get('address', ''),
@@ -242,7 +287,11 @@ def create_driver():
             v.driver_id = d.id
             db.session.commit()
 
-    return jsonify({'success': True, 'data': d.to_dict()}), 201
+    return jsonify({
+        'success': True,
+        'data': d.to_dict(),
+        'login': {'username': username, 'email': email, 'password': plain_pw},
+    }), 201
 
 
 @transport_bp.route('/drivers/<int:driver_id>', methods=['PUT'])
@@ -290,7 +339,10 @@ def delete_driver(driver_id):
     if assigned:
         return bad_request(f'Driver is assigned to vehicle {assigned.vehicle_number}. Unassign first.')
 
+    linked_user = User.query.get(d.user_id) if d.user_id else None
     db.session.delete(d)
+    if linked_user:
+        db.session.delete(linked_user)   # orphan login account na reh jaye
     db.session.commit()
     return jsonify({'success': True, 'message': 'Driver deleted'})
 
