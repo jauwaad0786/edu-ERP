@@ -386,9 +386,10 @@ def _ensure_userrole_enum():
     new_values = [
         'VICE_PRINCIPAL', 'ACCOUNTANT', 'RECEPTIONIST',
         'LIBRARIAN', 'HOSTEL', 'TRANSPORT', 'HR',
-        # NEW — full school hierarchy from the Enterprise User Management spec
         'DIRECTOR', 'ACADEMIC_COORDINATOR', 'CLASS_TEACHER',
         'ASSISTANT_TEACHER', 'EXAM_CONTROLLER',
+        # NEW — Transport Driver login (Driver Mobile App)
+        'DRIVER',
     ]
     from sqlalchemy import text
     with db.engine.connect() as conn:
