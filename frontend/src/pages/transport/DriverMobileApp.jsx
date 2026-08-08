@@ -1,17 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import transportApi from '../../api/transportApi';
 import toast from 'react-hot-toast';
+import Sidebar from '../../components/Sidebar';
+import Navbar  from '../../components/Navbar';
 
-/**
- * Driver Mobile App — designed for drivers who may not be highly educated.
- * Rules followed: large buttons, large text, very few options, Hindi/English
- * labels, minimal clicks, no nested menus. No Sidebar/Navbar — full screen,
- * single-purpose UI (opened directly after driver login, no dashboard chrome).
- */
+
 
 const GPS_PING_INTERVAL_MS = 8000; // ping every 8 seconds while RUNNING
 
 export default function DriverMobileApp() {
+  const [darkMode, setDarkMode] = useState(localStorage.getItem('ederp_theme') === 'dark');
   const [loading, setLoading] = useState(true);
   const [home, setHome] = useState(null);       // /driver/today response
   const [trip, setTrip] = useState(null);        // current trip (RUNNING/PAUSED/SOS/BREAKDOWN)
@@ -218,18 +216,28 @@ export default function DriverMobileApp() {
   });
   const statCard = { background: '#1e293b', borderRadius: 16, padding: '16px 20px', textAlign: 'center' };
 
+  const Shell = ({ children }) => (
+    <div style={{ display: 'flex', minHeight: '100vh', background: darkMode ? '#0f172a' : '#f8fafc' }}>
+      <Sidebar darkMode={darkMode} />
+      <div style={{ marginLeft: 232, flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <Navbar title="My Trip" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>{children}</div>
+      </div>
+    </div>
+  );
+
   if (loading) {
-    return <div style={{ ...page, alignItems: 'center', justifyContent: 'center' }}>
+    return <Shell><div style={{ ...page, minHeight: 'auto', flex: 1, alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ fontSize: 22, fontWeight: 700 }}>Loading... / लोड हो रहा है...</div>
-    </div>;
+    </div></Shell>;
   }
 
   if (!home?.has_vehicle) {
-    return <div style={{ ...page, alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center' }}>
+    return <Shell><div style={{ ...page, minHeight: 'auto', flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center' }}>
       <div style={{ fontSize: 60, marginBottom: 16 }}>🚌</div>
       <div style={{ fontSize: 22, fontWeight: 700 }}>Koi vehicle assign nahi hai</div>
       <div style={{ fontSize: 16, color: '#94a3b8', marginTop: 8 }}>No vehicle assigned. Admin se contact karo.</div>
-    </div>;
+    </div></Shell>;
   }
 
   const isRunning = trip?.status === 'RUNNING';
@@ -239,7 +247,8 @@ export default function DriverMobileApp() {
   const tripActive = trip && ['RUNNING', 'PAUSED', 'SOS', 'BREAKDOWN'].includes(trip.status);
 
   return (
-    <div style={page}>
+    <Shell>
+    <div style={{ ...page, minHeight: 'auto', flex: 1 }}>
       {/* ── Header ── */}
       <div style={{ padding: '20px 20px 10px', textAlign: 'center' }}>
         <div style={{ fontSize: 28, fontWeight: 900 }}>🚌 {home.vehicle_number}</div>
@@ -352,7 +361,8 @@ export default function DriverMobileApp() {
             </div>
           </div>
         </div>
-      )}
+       )}
     </div>
+    </Shell>
   );
 }
