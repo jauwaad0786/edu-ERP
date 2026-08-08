@@ -13,9 +13,14 @@ const STAFF_ROLES = [
   { value: 'ACCOUNTANT',           label: 'Accountant' },
   { value: 'RECEPTIONIST',         label: 'Receptionist' },
   { value: 'HOSTEL',               label: 'Hostel Warden' },
-  { value: 'TRANSPORT',            label: 'Transport Manager' },
+  { value: 'TRANSPORT',            label: 'Transport Head (Manager)' },
+  { value: 'DRIVER',               label: 'Driver (Transport)' },
   { value: 'HR',                   label: 'HR' },
 ];
+
+// Driver POST /principal/users se nahi jaata — dedicated /transport/drivers
+// endpoint se, jo Driver profile row bhi banata hai (login ke liye zaroori).
+const DRIVER_ROLE = 'DRIVER';
 
 // Roles whose dashboard access is equivalent to Principal — shown with a
 // distinct badge so it's obvious in the list who else has broad access.
@@ -56,19 +61,39 @@ export default function StaffPage() {
   };
   useEffect(() => { load(); }, []);
 
-  const createStaff = async e => {
+   const createStaff = async e => {
     e.preventDefault(); setSaving(true); setMsg('');
     try {
-      const res = await api.post('/principal/users', form);
+      let creds;
+      if (form.role === DRIVER_ROLE) {
+        if (!(form.mobile_number || '').trim()) {
+          toast.error('Driver ka mobile number required hai');
+          setSaving(false); return;
+        }
+        const res = await api.post('/transport/drivers', {
+          name: form.name, mobile_number: form.mobile_number,
+          address: form.department || '', password: form.password || undefined,
+        });
+        creds = {
+          name:     res.data.data.name,
+          email:    res.data.login.email,
+          username: res.data.login.username,
+          password: res.data.login.password,
+          role:     'Driver (Transport)',
+        };
+      } else {
+        const res = await api.post('/principal/users', form);
+        creds = {
+          name:     res.data.name,
+          email:    res.data.email,
+          username: res.data.username,
+          password: res.data.plain_password_temp || form.password || 'EduErp@123',
+          role:     STAFF_ROLES.find(r => r.value === res.data.role)?.label || res.data.role,
+        };
+      }
       toast.success('Staff member added!');
       setShowModal(false);
-      setCreatedCreds({
-        name:     res.data.name,
-        email:    res.data.email,
-        username: res.data.username,
-        password: res.data.plain_password_temp || form.password || 'EduErp@123',
-        role:     STAFF_ROLES.find(r => r.value === res.data.role)?.label || res.data.role,
-      });
+      setCreatedCreds(creds);
       setForm({ role: 'LIBRARIAN' });
       load();
     } catch (err) {
@@ -292,13 +317,23 @@ export default function StaffPage() {
                       value={form.name || ''}
                       onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
                   </div>
-                  <div className="form-group">
-                    <label className="form-label">Email *</label>
-                    <input className="form-input" type="email" required
-                      placeholder="staff@school.edu"
-                      value={form.email || ''}
-                      onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
-                  </div>
+                  {form.role === DRIVER_ROLE ? (
+                    <div className="form-group">
+                      <label className="form-label">Mobile Number *</label>
+                      <input className="form-input" required
+                        placeholder="+91-XXXXX-XXXXX"
+                        value={form.mobile_number || ''}
+                        onChange={e => setForm(f => ({ ...f, mobile_number: e.target.value }))} />
+                    </div>
+                  ) : (
+                    <div className="form-group">
+                      <label className="form-label">Email *</label>
+                      <input className="form-input" type="email" required
+                        placeholder="staff@school.edu"
+                        value={form.email || ''}
+                        onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+                    </div>
+                  )}
                   <div className="form-group">
                     <label className="form-label">Phone</label>
                     <input className="form-input" placeholder="+91-XXXXX-XXXXX"
