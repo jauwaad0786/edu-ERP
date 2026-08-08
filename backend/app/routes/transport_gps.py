@@ -184,7 +184,7 @@ def resume_trip(trip_id):
 @transport_gps_bp.route('/driver/trip/<int:trip_id>/end', methods=['POST'])
 @role_required('DRIVER')
 def end_trip(trip_id):
-    """Body: { latitude, longitude }"""
+    """Body: { latitude, longitude } — optional, frontend abhi ye nahi bhejta."""
     driver = _current_driver()
     if not driver:
         return not_found('Driver profile not found')
@@ -195,7 +195,8 @@ def end_trip(trip_id):
     if trip.status not in ('RUNNING', 'PAUSED'):
         return bad_request(f'Trip is already {trip.status}')
 
-    data = request.get_json() or {}
+    # silent=True: koi body/Content-Type na ho to bhi 415 nahi dega, bas {} treat karega
+    data = request.get_json(silent=True) or {}
     trip.end_latitude = data.get('latitude')
     trip.end_longitude = data.get('longitude')
     trip.end_time = datetime.utcnow()
@@ -232,7 +233,7 @@ def report_breakdown(trip_id):
     if not trip:
         return not_found('Trip not found')
 
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     trip.status = 'BREAKDOWN'
     trip.breakdown_reported_at = datetime.utcnow()
     trip.remarks = data.get('remarks', trip.remarks)
