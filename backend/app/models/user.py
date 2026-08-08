@@ -23,6 +23,7 @@ class UserRole(str, enum.Enum):
     # ever reaching the platform-role lookup).
     ACADEMIC_COORDINATOR = 'ACADEMIC_COORDINATOR'
     EXAM_CONTROLLER      = 'EXAM_CONTROLLER'
+    DRIVER       = 'DRIVER'
     STUDENT      = 'STUDENT'
     PARENT       = 'PARENT'
 
