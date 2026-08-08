@@ -114,7 +114,7 @@ const transportApi = {
   // ── Live Tracking (Principal view) ──────────────────────────────────────
   live: {
     vehicles:   ()      => api.get('/transport/live'),
-    tripDetail: (tripId) => api.get(`/transport/trips/${tripId}`),
+    tripDetail: (tripId, params) => api.get(`/transport/trips/${tripId}${qs(params)}`),
     trips:      (params) => api.get(`/transport/trips${qs(params)}`),
   },
 
