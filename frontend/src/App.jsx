@@ -71,6 +71,7 @@ import TransportConductors   from './pages/transport/Conductors';
 import TransportRouteBuilder from './pages/transport/RouteBuilder';
 import TransportStops        from './pages/transport/Stops';
 import StudentTransport      from './pages/transport/StudentTransport';
+import DriverMobileApp       from './pages/transport/DriverMobileApp';
 // NOTE: TransportFees, VehicleMaintenance, DriverMobileApp, ParentTransportView,
 // TransportReports abhi banni baaki hain — unke import/route baad me add honge.
 
@@ -401,6 +402,11 @@ export default function App() {
             <Route path="/transport/students" element={
               <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
                 <StudentTransport />
+              </ProtectedRoute>
+            } />
+            <Route path="/driver/app" element={
+              <ProtectedRoute roles={['DRIVER']}>
+                <DriverMobileApp />
               </ProtectedRoute>
             } />
             
