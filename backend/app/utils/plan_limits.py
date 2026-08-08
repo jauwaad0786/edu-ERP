@@ -7,19 +7,19 @@ PLAN_LIMITS = {
     'BASIC': {
         'students':       200,
         'teachers':        20,
-        'admin_accounts':   1,
+        'admin_accounts':   5,
         'classes':         20,
     },
     'PROFESSIONAL': {
         'students':       500,
         'teachers':       100,
-        'admin_accounts':   3,
+        'admin_accounts':   10,
         'classes':        100,
     },
     'ENTERPRISE': {
         'students':     99999,
         'teachers':     99999,
-        'admin_accounts':   5,
+        'admin_accounts':   15,
         'classes':      99999,
     },
 }
@@ -34,6 +34,9 @@ ADMIN_TYPE_ROLES = {
     UserRole.HOSTEL,
     UserRole.TRANSPORT,
     UserRole.HR,
+    # DRIVER jaan-boojh kar yahan NAHI hai — drivers ki count bade schools
+    # mein 10-15+ ho sakti hai, unhe is 1-3 wale admin slot se kaat denge
+    # to Transport department kabhi drivers add hi nahi kar payega.
 }
 
 def get_limit(plan: str, resource: str) -> int:
