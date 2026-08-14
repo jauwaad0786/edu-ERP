@@ -93,7 +93,7 @@ import SupportDashboard from './pages/developer/SupportDashboard';
 import ErrorDashboard   from './pages/developer/ErrorDashboard';
 import IssueBoard       from './pages/developer/IssueBoard';
 import SystemHealthDashboard from './pages/developer/SystemHealthDashboard';
-
+import LeadsPage        from './pages/developer/LeadsPage';
 // ── RBAC Pages ──────────────────────────────────────────────────────────────
 import RoleManagement     from './pages/rbac/RoleManagement';
 import PermissionMatrix   from './pages/rbac/PermissionMatrix';
@@ -502,6 +502,11 @@ export default function App() {
             <Route path="/developer/system-health" element={
               <ProtectedRoute roles={['SUPER_ADMIN']}>
                 <SystemHealthDashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/developer/leads" element={
+              <ProtectedRoute roles={['SUPER_ADMIN']}>
+                <LeadsPage />
               </ProtectedRoute>
             } />
 
