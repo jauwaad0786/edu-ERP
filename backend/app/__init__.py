@@ -37,11 +37,15 @@ def create_app(config_name='default'):
     bcrypt.init_app(app)
     migrate.init_app(app, db)
     limiter.init_app(app)
+    _extra_origins = [o.strip() for o in os.environ.get('EXTRA_CORS_ORIGINS', '').split(',') if o.strip()]
+
     CORS(app,
         resources={r"/api/*": {"origins": [
             "http://localhost:3000",
             "https://edu-erp-frontend.onrender.com",
-            "https://edu-erp-backend-xoas.onrender.com"  # ✅ ADD THIS
+            "https://edu-erp-backend-xoas.onrender.com",  # ✅ ADD THIS
+            "https://omnisphere365.vercel.app",  # 🔧 apni asli OmniSphere 365 domain se replace/add karo
+            *_extra_origins,  # Render/Vercel env var EXTRA_CORS_ORIGINS (comma-separated) se aur domains
         ]}},
         supports_credentials=True,
         allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
@@ -95,6 +99,8 @@ def create_app(config_name='default'):
     app.register_blueprint(rbac_bp, url_prefix='/api/rbac')
     from app.routes.developer_center import developer_center_bp
     app.register_blueprint(developer_center_bp, url_prefix='/api/developer')
+    from app.routes.leads import leads_bp
+    app.register_blueprint(leads_bp, url_prefix='/api')
     from app.routes.audit import audit_bp
     app.register_blueprint(audit_bp, url_prefix='/api/audit')
 
