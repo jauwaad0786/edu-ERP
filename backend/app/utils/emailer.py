@@ -1,38 +1,31 @@
 # backend/app/utils/emailer.py
 """
-Chhota SMTP helper — sirf website-lead notifications ke liye (demo request /
-contact message aaya to CEO ke personal email pe alert). Best-effort: agar
-SMTP env vars set nahi hain ya bhejte waqt fail ho jaye, poora request 500
-nahi hona chahiye — sirf console me warning aayegi. Caller
-(routes/leads.py) is wajah se exception ko kabhi upar bubble nahi hone deta.
+Brevo Transactional Email API (HTTPS) se lead notification email bhejta hai.
+SMTP nahi use karta — Render free tier SMTP ports (587/465/2525) block karta
+hai, isliye HTTPS API use kar rahe hain jo kisi bhi network pe kaam karta hai.
+
+Zaroori env vars (Render -> backend service -> Environment):
+  BREVO_API_KEY       Brevo dashboard -> SMTP & API -> API Keys -> Generate a new API key
+  SMTP_FROM_EMAIL     verified sender email, e.g. oneplatform360@gmail.com
+  LEADS_NOTIFY_EMAIL  jis personal email pe alert chahiye (default: SMTP_FROM_EMAIL wahi)
 """
 
 import os
-import smtplib
-from email.mime.text import MIMEText
+import requests
+
+BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email'
 
 
 def send_lead_notification_email(lead):
     """
     lead: WebsiteLead instance (already committed).
-
-    Zaroori env vars (Render → backend service → Environment):
-      SMTP_HOST          e.g. smtp-relay.brevo.com
-      SMTP_PORT          e.g. 587
-      SMTP_USER          Brevo dashboard ke "SMTP" tab ka Login
-      SMTP_PASSWORD      Brevo SMTP key
-      SMTP_FROM_EMAIL    verified sender email (e.g. oneplatform360@gmail.com)
-      LEADS_NOTIFY_EMAIL jis personal email pe alert chahiye
     """
-    smtp_host     = os.environ.get('SMTP_HOST')
-    smtp_port     = os.environ.get('SMTP_PORT', '587')
-    smtp_user     = os.environ.get('SMTP_USER')
-    smtp_password = os.environ.get('SMTP_PASSWORD')
-    notify_to     = os.environ.get('LEADS_NOTIFY_EMAIL', smtp_user)
-    from_email    = os.environ.get('SMTP_FROM_EMAIL', smtp_user)
+    api_key   = os.environ.get('BREVO_API_KEY')
+    from_email = os.environ.get('SMTP_FROM_EMAIL')
+    notify_to  = os.environ.get('LEADS_NOTIFY_EMAIL', from_email)
 
-    if not all([smtp_host, smtp_user, smtp_password, notify_to]):
-        print('⚠️  SMTP env vars missing — lead notification email skipped')
+    if not all([api_key, from_email, notify_to]):
+        print('⚠️  BREVO_API_KEY / SMTP_FROM_EMAIL / LEADS_NOTIFY_EMAIL missing — lead notification email skipped')
         return False
 
     kind = 'Demo Request' if lead.lead_type == 'DEMO' else 'Contact Message'
@@ -57,20 +50,29 @@ def send_lead_notification_email(lead):
         '',
         f'View in CEO panel -> /developer/leads (Lead #{lead.id})',
     ]
+    body_text = '\n'.join(lines)
+    body_html = '<br>'.join(lines)
 
-    body = '\n'.join(lines)
+    payload = {
+        'sender': {'email': from_email, 'name': 'OnePlatform360 Leads'},
+        'to': [{'email': notify_to}],
+        'subject': subject,
+        'textContent': body_text,
+        'htmlContent': f'<pre style="font-family:inherit">{body_html}</pre>',
+    }
 
-    msg = MIMEText(body, 'plain', 'utf-8')
-    msg['Subject'] = subject
-    msg['From'] = from_email
-    msg['To'] = notify_to
+    headers = {
+        'accept': 'application/json',
+        'api-key': api_key,
+        'content-type': 'application/json',
+    }
 
     try:
-        with smtplib.SMTP(smtp_host, int(smtp_port), timeout=10) as server:
-            server.starttls()
-            server.login(smtp_user, smtp_password)
-            server.sendmail(from_email, [notify_to], msg.as_string())
-        return True
+        resp = requests.post(BREVO_API_URL, json=payload, headers=headers, timeout=10)
+        if resp.status_code in (200, 201):
+            return True
+        print(f'⚠️  Brevo API email failed: {resp.status_code} {resp.text}')
+        return False
     except Exception as e:
         print(f'⚠️  Failed to send lead notification email: {e}')
         return False
