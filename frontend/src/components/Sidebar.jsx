@@ -47,8 +47,10 @@ const ROLE_MENUS = {
             { icon: 'ti-books',            label: 'Knowledge Base', path: '/support/kb' },
           ],
         },
+        { icon: 'ti-user-plus', label: 'Demo Requests & Messages', path: '/developer/leads' },
       ],
     },
+     
     {
       group: 'Developer Tools',
       items: [
