@@ -2,21 +2,19 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import transportApi from '../../api/transportApi';
 import toast from 'react-hot-toast';
 import Sidebar from '../../components/Sidebar';
-import Navbar  from '../../components/Navbar';
-
-
+import Navbar from '../../components/Navbar';
 
 const GPS_PING_INTERVAL_MS = 8000; // ping every 8 seconds while RUNNING
 
 export default function DriverMobileApp() {
-  const [darkMode, setDarkMode] = useState(localStorage.getItem('ederp_theme') === 'dark');
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
   const [loading, setLoading] = useState(true);
-  const [home, setHome] = useState(null);       // /driver/today response
-  const [trip, setTrip] = useState(null);        // current trip (RUNNING/PAUSED/SOS/BREAKDOWN)
-  const [lastGps, setLastGps] = useState(null);   // { latitude, longitude, speed }
-  const [battery, setBattery] = useState(null);   // 0-100
+  const [home, setHome] = useState(null); // /driver/today response
+  const [trip, setTrip] = useState(null); // current trip (RUNNING/PAUSED/SOS/BREAKDOWN)
+  const [lastGps, setLastGps] = useState(null); // { latitude, longitude, speed }
+  const [battery, setBattery] = useState(null); // 0-100
   const [online, setOnline] = useState(navigator.onLine);
-  const [elapsed, setElapsed] = useState(0);       // seconds since start_time
+  const [elapsed, setElapsed] = useState(0); // seconds since start_time
   const [busy, setBusy] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [breakdownRemarks, setBreakdownRemarks] = useState('');
@@ -25,6 +23,10 @@ export default function DriverMobileApp() {
   const pingIntervalRef = useRef(null);
   const elapsedIntervalRef = useRef(null);
 
+  useEffect(() => {
+    localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light');
+  }, [darkMode]);
+
   // ── Load home screen ──
   const loadHome = useCallback(() => {
     setLoading(true);
@@ -32,7 +34,7 @@ export default function DriverMobileApp() {
       .then(r => {
         const data = r.data.data;
         setHome(data);
-        setTrip(data.current_trip || null);
+        setTrip(data?.current_trip || null);
       })
       .catch(() => toast.error('Data load nahi hua — dobara try karo'))
       .finally(() => setLoading(false));
@@ -49,7 +51,7 @@ export default function DriverMobileApp() {
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
   }, []);
 
-  // ── Battery status (best-effort, not all browsers support it) ──
+  // ── Battery status ──
   useEffect(() => {
     if (navigator.getBattery) {
       navigator.getBattery().then(b => {
@@ -104,8 +106,7 @@ export default function DriverMobileApp() {
       return stopGpsLoop;
     }
     return stopGpsLoop;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trip?.id, trip?.status]);
+  }, [trip?.id, trip?.status, battery, online]);
 
   function getCurrentPosition() {
     return new Promise((resolve, reject) => {
@@ -172,12 +173,12 @@ export default function DriverMobileApp() {
   }
 
   async function handleSOS() {
-    if (!window.confirm('SOS emergency alert bhejni hai? Principal ko turant pata chalega.')) return;
+    if (!window.confirm('SOS emergency alert bhejni hai? Principal & Admin ko turant alert jayega!')) return;
     setBusy(true);
     try {
       const r = await transportApi.driver.sos(trip.id);
       setTrip(r.data.data);
-      toast.success('SOS bhej diya — madad aa rahi hai');
+      toast.success('🚨 SOS alert bhej diya gaya — madad aa rahi hai');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Nahi hua');
     }
@@ -203,43 +204,6 @@ export default function DriverMobileApp() {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   }
 
-  // ── Styles: everything BIG, high contrast ──
-  const page = { minHeight: '100vh', background: '#0f172a', color: '#fff', display: 'flex', flexDirection: 'column', fontFamily: 'system-ui, sans-serif' };
-  const bigBtn = (bg) => ({
-    background: bg, color: '#fff', border: 'none', borderRadius: 20,
-    padding: '28px 20px', fontSize: 26, fontWeight: 800, cursor: 'pointer',
-    width: '100%', boxShadow: '0 4px 14px rgba(0,0,0,0.3)',
-  });
-  const smallBtn = (bg) => ({
-    background: bg, color: '#fff', border: 'none', borderRadius: 16,
-    padding: '18px 12px', fontSize: 18, fontWeight: 800, cursor: 'pointer', width: '100%',
-  });
-  const statCard = { background: '#1e293b', borderRadius: 16, padding: '16px 20px', textAlign: 'center' };
-
-  const Shell = ({ children }) => (
-    <div style={{ display: 'flex', minHeight: '100vh', background: darkMode ? '#0f172a' : '#f8fafc' }}>
-      <Sidebar darkMode={darkMode} />
-      <div style={{ marginLeft: 232, flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <Navbar title="My Trip" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>{children}</div>
-      </div>
-    </div>
-  );
-
-  if (loading) {
-    return <Shell><div style={{ ...page, minHeight: 'auto', flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ fontSize: 22, fontWeight: 700 }}>Loading... / लोड हो रहा है...</div>
-    </div></Shell>;
-  }
-
-  if (!home?.has_vehicle) {
-    return <Shell><div style={{ ...page, minHeight: 'auto', flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center' }}>
-      <div style={{ fontSize: 60, marginBottom: 16 }}>🚌</div>
-      <div style={{ fontSize: 22, fontWeight: 700 }}>Koi vehicle assign nahi hai</div>
-      <div style={{ fontSize: 16, color: '#94a3b8', marginTop: 8 }}>No vehicle assigned. Admin se contact karo.</div>
-    </div></Shell>;
-  }
-
   const isRunning = trip?.status === 'RUNNING';
   const isPaused  = trip?.status === 'PAUSED';
   const isSOS = trip?.status === 'SOS';
@@ -247,122 +211,391 @@ export default function DriverMobileApp() {
   const tripActive = trip && ['RUNNING', 'PAUSED', 'SOS', 'BREAKDOWN'].includes(trip.status);
 
   return (
-    <Shell>
-    <div style={{ ...page, minHeight: 'auto', flex: 1 }}>
-      {/* ── Header ── */}
-      <div style={{ padding: '20px 20px 10px', textAlign: 'center' }}>
-        <div style={{ fontSize: 28, fontWeight: 900 }}>🚌 {home.vehicle_number}</div>
-        <div style={{ fontSize: 16, color: '#94a3b8', marginTop: 4 }}>{home.route_name || 'Route not set'}</div>
-      </div>
+    <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
+      <Sidebar darkMode={darkMode} />
+      <div className="main-content">
+        <Navbar title="Driver Cockpit &amp; Trip Control" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
+        <div className="page-body" style={{ maxWidth: '900px', margin: '0 auto' }}>
 
-      {/* ── Status banner ── */}
-      {isSOS && (
-        <div style={{ background: '#dc2626', textAlign: 'center', padding: 14, fontSize: 20, fontWeight: 900 }}>
-          🚨 SOS ACTIVE — Help is on the way
-        </div>
-      )}
-      {isBreakdown && (
-        <div style={{ background: '#d97706', textAlign: 'center', padding: 14, fontSize: 20, fontWeight: 900 }}>
-          🔧 BREAKDOWN REPORTED
-        </div>
-      )}
-
-      {/* ── Quick stats ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, padding: '10px 20px' }}>
-        <div style={statCard}>
-          <div style={{ fontSize: 13, color: '#94a3b8' }}>Students / छात्र</div>
-          <div style={{ fontSize: 26, fontWeight: 900 }}>{home.students_count}</div>
-        </div>
-        <div style={statCard}>
-          <div style={{ fontSize: 13, color: '#94a3b8' }}>Speed / गति</div>
-          <div style={{ fontSize: 26, fontWeight: 900 }}>{lastGps?.speed ?? 0} <span style={{ fontSize: 14 }}>km/h</span></div>
-        </div>
-        <div style={statCard}>
-          <div style={{ fontSize: 13, color: '#94a3b8' }}>Trip Duration</div>
-          <div style={{ fontSize: 26, fontWeight: 900 }}>{isRunning ? fmtDuration(elapsed) : '--:--:--'}</div>
-        </div>
-        <div style={statCard}>
-          <div style={{ fontSize: 13, color: '#94a3b8' }}>Battery / Net</div>
-          <div style={{ fontSize: 18, fontWeight: 900 }}>
-            🔋{battery ?? '--'}% {online ? '📶' : '📵'}
-          </div>
-        </div>
-      </div>
-
-      {lastGps && (
-        <div style={{ textAlign: 'center', fontSize: 13, color: '#64748b', padding: '4px 20px' }}>
-          📍 {lastGps.latitude.toFixed(5)}, {lastGps.longitude.toFixed(5)}
-        </div>
-      )}
-
-      {/* ── Main action button ── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: 20, gap: 16 }}>
-        {!tripActive && (
-          <button disabled={busy} onClick={handleStart} style={bigBtn('#16a34a')}>
-            ▶️ START TRIP<br /><span style={{ fontSize: 16, fontWeight: 500 }}>ट्रिप शुरू करें</span>
-          </button>
-        )}
-
-        {isRunning && (
-          <>
-            <button disabled={busy} onClick={handlePause} style={bigBtn('#d97706')}>
-              ⏸️ PAUSE TRIP<br /><span style={{ fontSize: 16, fontWeight: 500 }}>रुकें</span>
-            </button>
-            <button disabled={busy} onClick={handleEnd} style={bigBtn('#dc2626')}>
-              ⏹️ END TRIP<br /><span style={{ fontSize: 16, fontWeight: 500 }}>ट्रिप खत्म करें</span>
-            </button>
-          </>
-        )}
-
-        {isPaused && (
-          <>
-            <button disabled={busy} onClick={handleResume} style={bigBtn('#16a34a')}>
-              ▶️ RESUME TRIP<br /><span style={{ fontSize: 16, fontWeight: 500 }}>फिर से शुरू करें</span>
-            </button>
-            <button disabled={busy} onClick={handleEnd} style={bigBtn('#dc2626')}>
-              ⏹️ END TRIP<br /><span style={{ fontSize: 16, fontWeight: 500 }}>ट्रिप खत्म करें</span>
-            </button>
-          </>
-        )}
-
-        {(isRunning || isPaused) && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <button disabled={busy} onClick={handleSOS} style={smallBtn('#7f1d1d')}>
-              🚨 SOS
-            </button>
-            <button disabled={busy} onClick={() => setShowBreakdown(true)} style={smallBtn('#78350f')}>
-              🔧 Breakdown
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* ── Breakdown modal — kept extremely simple ── */}
-      {showBreakdown && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
-        }}>
-          <div style={{ background: '#1e293b', borderRadius: 20, padding: 24, width: '100%', maxWidth: 380 }}>
-            <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 12 }}>Breakdown Details</div>
-            <textarea
-              value={breakdownRemarks}
-              onChange={e => setBreakdownRemarks(e.target.value)}
-              placeholder="Kya problem hai? (optional)"
-              rows={3}
-              style={{
-                width: '100%', padding: 12, fontSize: 16, borderRadius: 12,
-                border: '1px solid #334155', background: '#0f172a', color: '#fff', boxSizing: 'border-box',
-              }}
-            />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 16 }}>
-              <button onClick={() => setShowBreakdown(false)} style={smallBtn('#334155')}>Cancel</button>
-              <button disabled={busy} onClick={handleBreakdown} style={smallBtn('#d97706')}>Report</button>
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '80px 20px', color: darkMode ? '#94a3b8' : '#64748b' }}>
+              <div className="driver-spinner" style={{ margin: '0 auto 16px', width: '40px', height: '40px', border: '4px solid #6366f120', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+              <div style={{ fontSize: '20px', fontWeight: 800 }}>Loading Cockpit... / लोड हो रहा है...</div>
             </div>
-          </div>
+          ) : !home?.has_vehicle ? (
+            <div style={{
+              background: darkMode ? '#111827' : '#ffffff',
+              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+              borderRadius: '20px', padding: '60px 24px', textAlign: 'center',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.1)'
+            }}>
+              <div style={{ fontSize: '64px', marginBottom: '16px' }}>🚌</div>
+              <h2 style={{ fontSize: '24px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', margin: '0 0 8px' }}>
+                Koi Vehicle Assign Nahi Hai
+              </h2>
+              <p style={{ fontSize: '15px', color: darkMode ? '#94a3b8' : '#64748b', margin: 0 }}>
+                No vehicle assigned to your profile. Please contact School Transport Manager or Admin.
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* ══ Vehicle & Route Hero Header ══ */}
+              <div style={{
+                position: 'relative', overflow: 'hidden',
+                borderRadius: '20px', padding: '24px 28px', marginBottom: '20px',
+                background: darkMode
+                  ? 'linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%)'
+                  : 'linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)',
+                color: '#ffffff',
+                boxShadow: '0 10px 30px -5px rgba(79, 70, 229, 0.35)'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                      <span style={{
+                        padding: '3px 10px', borderRadius: '20px',
+                        background: 'rgba(255,255,255,0.15)', fontSize: '11px', fontWeight: 800,
+                        letterSpacing: '0.05em', textTransform: 'uppercase'
+                      }}>
+                        ASSIGNED BUS
+                      </span>
+                      {tripActive && (
+                        <span style={{
+                          padding: '3px 10px', borderRadius: '20px',
+                          background: isRunning ? '#10b981' : isPaused ? '#f59e0b' : '#ef4444',
+                          color: '#ffffff', fontSize: '11px', fontWeight: 800
+                        }}>
+                          {isRunning ? '● LIVE ON ROUTE' : isPaused ? '⏸ PAUSED' : '🚨 ALERT ACTIVE'}
+                        </span>
+                      )}
+                    </div>
+
+                    <h1 style={{ margin: 0, fontSize: '32px', fontWeight: 900, letterSpacing: '-0.02em', color: '#ffffff' }}>
+                      🚌 {home.vehicle_number}
+                    </h1>
+                    <div style={{ fontSize: '15px', color: 'rgba(255,255,255,0.85)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <i className="ti ti-map-pin" />
+                      <span>{home.route_name || 'Route not assigned'}</span>
+                    </div>
+                  </div>
+
+                  <div style={{
+                    display: 'flex', gap: '10px',
+                    background: 'rgba(255,255,255,0.1)', padding: '10px 16px', borderRadius: '14px',
+                    backdropFilter: 'blur(8px)', alignItems: 'center'
+                  }}>
+                    <div style={{ textAlign: 'center', padding: '0 8px' }}>
+                      <div style={{ fontSize: '11px', opacity: 0.8 }}>BATTERY</div>
+                      <div style={{ fontSize: '16px', fontWeight: 800 }}>🔋 {battery ?? '--'}%</div>
+                    </div>
+                    <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.2)' }} />
+                    <div style={{ textAlign: 'center', padding: '0 8px' }}>
+                      <div style={{ fontSize: '11px', opacity: 0.8 }}>NETWORK</div>
+                      <div style={{ fontSize: '16px', fontWeight: 800 }}>{online ? '📶 Online' : '📵 Offline'}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ══ Emergency Status Alert Banners ══ */}
+              {isSOS && (
+                <div style={{
+                  background: 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)',
+                  borderRadius: '16px', padding: '16px 20px', marginBottom: '20px',
+                  color: '#ffffff', textAlign: 'center', boxShadow: '0 8px 24px rgba(220, 38, 38, 0.4)',
+                  animation: 'pulse 1.5s infinite'
+                }}>
+                  <div style={{ fontSize: '22px', fontWeight: 900 }}>🚨 SOS EMERGENCY ACTIVE</div>
+                  <div style={{ fontSize: '13px', opacity: 0.9, marginTop: '4px' }}>
+                    School Administration and Support team have received your live location alert!
+                  </div>
+                </div>
+              )}
+
+              {isBreakdown && (
+                <div style={{
+                  background: 'linear-gradient(135deg, #d97706 0%, #b45309 100%)',
+                  borderRadius: '16px', padding: '16px 20px', marginBottom: '20px',
+                  color: '#ffffff', textAlign: 'center', boxShadow: '0 8px 24px rgba(217, 119, 6, 0.4)'
+                }}>
+                  <div style={{ fontSize: '20px', fontWeight: 900 }}>🔧 BREAKDOWN REPORTED</div>
+                  <div style={{ fontSize: '13px', opacity: 0.9, marginTop: '4px' }}>
+                    Maintenance team has been dispatched to your vehicle location.
+                  </div>
+                </div>
+              )}
+
+              {/* ══ Telemetry Cards Grid ══ */}
+              <div style={{
+                display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', marginBottom: '24px'
+              }}>
+                <div style={{
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+                  borderRadius: '16px', padding: '16px 14px', textAlign: 'center',
+                  boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
+                }}>
+                  <div style={{ fontSize: '11.5px', color: darkMode ? '#94a3b8' : '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                    Students / छात्र
+                  </div>
+                  <div style={{ fontSize: '28px', fontWeight: 900, color: '#6366f1', marginTop: '4px' }}>
+                    {home.students_count ?? 0}
+                  </div>
+                  <div style={{ fontSize: '10.5px', color: darkMode ? '#64748b' : '#94a3b8' }}>Assigned passengers</div>
+                </div>
+
+                <div style={{
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+                  borderRadius: '16px', padding: '16px 14px', textAlign: 'center',
+                  boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
+                }}>
+                  <div style={{ fontSize: '11.5px', color: darkMode ? '#94a3b8' : '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                    Speed / गति
+                  </div>
+                  <div style={{ fontSize: '28px', fontWeight: 900, color: '#10b981', marginTop: '4px' }}>
+                    {lastGps?.speed ?? 0} <span style={{ fontSize: '13px', fontWeight: 600 }}>km/h</span>
+                  </div>
+                  <div style={{ fontSize: '10.5px', color: darkMode ? '#64748b' : '#94a3b8' }}>Live telemetry</div>
+                </div>
+
+                <div style={{
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+                  borderRadius: '16px', padding: '16px 14px', textAlign: 'center',
+                  boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
+                }}>
+                  <div style={{ fontSize: '11.5px', color: darkMode ? '#94a3b8' : '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                    Duration / समय
+                  </div>
+                  <div style={{ fontSize: '24px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a', marginTop: '6px', fontFamily: 'monospace' }}>
+                    {isRunning ? fmtDuration(elapsed) : '--:--:--'}
+                  </div>
+                  <div style={{ fontSize: '10.5px', color: darkMode ? '#64748b' : '#94a3b8' }}>Elapsed trip time</div>
+                </div>
+
+                <div style={{
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+                  borderRadius: '16px', padding: '16px 14px', textAlign: 'center',
+                  boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
+                }}>
+                  <div style={{ fontSize: '11.5px', color: darkMode ? '#94a3b8' : '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                    GPS Accuracy
+                  </div>
+                  <div style={{ fontSize: '22px', fontWeight: 900, color: lastGps ? '#10b981' : '#f59e0b', marginTop: '6px' }}>
+                    {lastGps ? '🟢 LOCKED' : '🟡 SEARCHING'}
+                  </div>
+                  <div style={{ fontSize: '10.5px', color: darkMode ? '#64748b' : '#94a3b8' }}>
+                    {lastGps ? `${lastGps.latitude.toFixed(4)}, ${lastGps.longitude.toFixed(4)}` : 'Wait for GPS'}
+                  </div>
+                </div>
+              </div>
+
+              {/* ══ Giant Tactile Action Controls ══ */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '24px' }}>
+                {!tripActive && (
+                  <button
+                    disabled={busy}
+                    onClick={handleStart}
+                    style={{
+                      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                      color: '#ffffff', border: 'none', borderRadius: '24px',
+                      padding: '30px 24px', fontSize: '28px', fontWeight: 900, cursor: 'pointer',
+                      boxShadow: '0 10px 25px rgba(16, 185, 129, 0.4)',
+                      transition: 'all 0.2s ease', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'}
+                    onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+                  >
+                    <div>▶️ START TRIP</div>
+                    <span style={{ fontSize: '16px', fontWeight: 600, opacity: 0.9, marginTop: '4px' }}>
+                      ट्रिप शुरू करें (GPS Live Tracking)
+                    </span>
+                  </button>
+                )}
+
+                {isRunning && (
+                  <>
+                    <button
+                      disabled={busy}
+                      onClick={handlePause}
+                      style={{
+                        background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                        color: '#ffffff', border: 'none', borderRadius: '20px',
+                        padding: '24px 20px', fontSize: '24px', fontWeight: 900, cursor: 'pointer',
+                        boxShadow: '0 8px 20px rgba(245, 158, 11, 0.35)',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center'
+                      }}
+                    >
+                      <div>⏸️ PAUSE TRIP</div>
+                      <span style={{ fontSize: '15px', fontWeight: 600, opacity: 0.9, marginTop: '2px' }}>
+                        रुकें (Temporary Halt)
+                      </span>
+                    </button>
+
+                    <button
+                      disabled={busy}
+                      onClick={handleEnd}
+                      style={{
+                        background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                        color: '#ffffff', border: 'none', borderRadius: '20px',
+                        padding: '24px 20px', fontSize: '24px', fontWeight: 900, cursor: 'pointer',
+                        boxShadow: '0 8px 20px rgba(239, 68, 68, 0.35)',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center'
+                      }}
+                    >
+                      <div>⏹️ END TRIP</div>
+                      <span style={{ fontSize: '15px', fontWeight: 600, opacity: 0.9, marginTop: '2px' }}>
+                        ट्रिप खत्म करें (Complete Route)
+                      </span>
+                    </button>
+                  </>
+                )}
+
+                {isPaused && (
+                  <>
+                    <button
+                      disabled={busy}
+                      onClick={handleResume}
+                      style={{
+                        background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                        color: '#ffffff', border: 'none', borderRadius: '20px',
+                        padding: '24px 20px', fontSize: '24px', fontWeight: 900, cursor: 'pointer',
+                        boxShadow: '0 8px 20px rgba(16, 185, 129, 0.35)',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center'
+                      }}
+                    >
+                      <div>▶️ RESUME TRIP</div>
+                      <span style={{ fontSize: '15px', fontWeight: 600, opacity: 0.9, marginTop: '2px' }}>
+                        फिर से शुरू करें (Resume Navigation)
+                      </span>
+                    </button>
+
+                    <button
+                      disabled={busy}
+                      onClick={handleEnd}
+                      style={{
+                        background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                        color: '#ffffff', border: 'none', borderRadius: '20px',
+                        padding: '24px 20px', fontSize: '24px', fontWeight: 900, cursor: 'pointer',
+                        boxShadow: '0 8px 20px rgba(239, 68, 68, 0.35)',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center'
+                      }}
+                    >
+                      <div>⏹️ END TRIP</div>
+                      <span style={{ fontSize: '15px', fontWeight: 600, opacity: 0.9, marginTop: '2px' }}>
+                        ट्रिप खत्म करें
+                      </span>
+                    </button>
+                  </>
+                )}
+
+                {/* Secondary Safety / Emergency Triggers */}
+                {(isRunning || isPaused) && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginTop: '8px' }}>
+                    <button
+                      disabled={busy}
+                      onClick={handleSOS}
+                      style={{
+                        background: 'linear-gradient(135deg, #7f1d1d 0%, #450a0a 100%)',
+                        color: '#fca5a5', border: '2px solid #ef4444', borderRadius: '16px',
+                        padding: '16px', fontSize: '18px', fontWeight: 900, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
+                      }}
+                    >
+                      <span>🚨 SOS EMERGENCY</span>
+                    </button>
+
+                    <button
+                      disabled={busy}
+                      onClick={() => setShowBreakdown(true)}
+                      style={{
+                        background: darkMode ? '#1e293b' : '#f8fafc',
+                        color: '#d97706', border: '2px solid #f59e0b', borderRadius: '16px',
+                        padding: '16px', fontSize: '18px', fontWeight: 900, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
+                      }}
+                    >
+                      <span>🔧 Report Breakdown</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* ══ Breakdown Modal ══ */}
+              {showBreakdown && (
+                <div style={{
+                  position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px',
+                  zIndex: 9999, backdropFilter: 'blur(6px)'
+                }}>
+                  <div style={{
+                    background: darkMode ? '#111827' : '#ffffff',
+                    borderRadius: '24px', padding: '28px 24px', width: '100%', maxWidth: '440px',
+                    border: `1px solid ${darkMode ? 'rgba(255,255,255,0.1)' : '#e2e8f0'}`,
+                    boxShadow: '0 20px 40px rgba(0,0,0,0.5)'
+                  }}>
+                    <div style={{ fontSize: '22px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a', marginBottom: '8px' }}>
+                      🔧 Report Vehicle Breakdown
+                    </div>
+                    <p style={{ fontSize: '13px', color: darkMode ? '#94a3b8' : '#64748b', margin: '0 0 16px' }}>
+                      Kripya problem ka chhota sa description likhein:
+                    </p>
+
+                    <textarea
+                      value={breakdownRemarks}
+                      onChange={e => setBreakdownRemarks(e.target.value)}
+                      placeholder="e.g. Engine heat problem, flat tire near main junction..."
+                      rows={3}
+                      style={{
+                        width: '100%', padding: '12px 14px', fontSize: '15px', borderRadius: '12px',
+                        border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`,
+                        background: darkMode ? '#0f172a' : '#f8fafc',
+                        color: darkMode ? '#ffffff' : '#0f172a',
+                        boxSizing: 'border-box', outline: 'none', resize: 'vertical'
+                      }}
+                    />
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '20px' }}>
+                      <button
+                        onClick={() => setShowBreakdown(false)}
+                        style={{
+                          background: darkMode ? '#1e293b' : '#f1f5f9',
+                          color: darkMode ? '#e2e8f0' : '#475569',
+                          border: 'none', borderRadius: '12px', padding: '14px',
+                          fontSize: '15px', fontWeight: 700, cursor: 'pointer'
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        disabled={busy}
+                        onClick={handleBreakdown}
+                        style={{
+                          background: '#f59e0b', color: '#ffffff',
+                          border: 'none', borderRadius: '12px', padding: '14px',
+                          fontSize: '15px', fontWeight: 800, cursor: 'pointer'
+                        }}
+                      >
+                        Send Report
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
         </div>
-       )}
+      </div>
+
+      <style>{`
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        @media (max-width: 640px) {
+          .dash-telemetry-grid { grid-template-columns: 1fr 1fr !important; }
+        }
+      `}</style>
     </div>
-    </Shell>
   );
 }

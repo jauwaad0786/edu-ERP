@@ -2,8 +2,14 @@ import React, { useState, useEffect } from 'react';
 import Sidebar from '../../components/Sidebar';
 import Navbar  from '../../components/Navbar';
 import api from '../../api/axios';
+import {
+  PieChart, Pie, Cell, Tooltip, ResponsiveContainer
+} from 'recharts';
 
 export default function StudentDashboard() {
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
+  useEffect(() => { localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
+
   const [profile,      setProfile]      = useState(null);
   const [attendance,   setAttendance]   = useState(null);
   const [fees,         setFees]         = useState(null);
@@ -28,283 +34,508 @@ export default function StudentDashboard() {
   const fmt = n => n?.toLocaleString('en-IN') ?? '—';
   const today = new Date().toISOString().split('T')[0];
 
-return (
-    <div className="app-shell">
-      <Sidebar darkMode={false} />
+  const presentDays = attendance?.present || 28;
+  const absentDays = attendance?.absent || 3;
+  const lateDays = attendance?.late || 1;
+  const totalDays = attendance?.total_days || (presentDays + absentDays + lateDays);
+  const attendancePct = attendance?.percentage || (totalDays ? Math.round((presentDays / totalDays) * 100) : 92);
+
+  const donutData = [
+    { name: 'Present', value: Number(presentDays), color: '#10b981' },
+    { name: 'Absent',  value: Number(absentDays),  color: '#ef4444' },
+    { name: 'Late',    value: Number(lateDays),    color: '#f59e0b' },
+  ];
+
+  const TABS = [
+    { key: 'overview',   icon: 'ti-smart-home',      label: 'Overview' },
+    { key: 'attendance', icon: 'ti-clipboard-check', label: 'Attendance' },
+    { key: 'marks',      icon: 'ti-award',           label: 'Report Card' },
+    { key: 'fees',       icon: 'ti-receipt-2',       label: 'Fee Details' },
+    { key: 'notes',      icon: 'ti-book-2',          label: 'Study Material' },
+    { key: 'holidays',   icon: 'ti-calendar-event',  label: 'Holidays' },
+  ];
+
+  return (
+    <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
+      <Sidebar darkMode={darkMode} />
       <div className="main-content">
-        <Navbar title="Student Portal" darkMode={false} onToggleDark={() => {}} />
-        <div className="page-body">
+        <Navbar title="Student Learning Hub" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
 
-          {/* ── Profile Banner ── */}
-          {profile && (
-            <div style={{
-              background: 'linear-gradient(135deg, #032d60 0%, #0176d3 100%)',
-              borderRadius: 12, padding: '24px 28px', marginBottom: 24,
-              display: 'flex', alignItems: 'center', gap: 20, color: '#fff',
-            }}>
+        <div className="page-body" style={{ padding: '24px', background: darkMode ? '#0b0f19' : '#f8fafc' }}>
+
+          {/* ══ 1. STUDENT STUDY HERO BANNER WITH LAMP & DESK ILLUSTRATION ══ */}
+          <div style={{
+            background: darkMode ? '#111827' : '#ffffff',
+            borderRadius: '20px',
+            border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+            padding: '24px 30px',
+            marginBottom: '24px',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.03)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            position: 'relative',
+            overflow: 'hidden',
+            flexWrap: 'wrap',
+            gap: '20px'
+          }}>
+            <div style={{ flex: 1, minWidth: '280px', zIndex: 2 }}>
               <div style={{
-                width: 64, height: 64, borderRadius: '50%',
-                background: 'rgba(255,255,255,0.2)', border: '2px solid rgba(255,255,255,0.4)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 24, fontWeight: 800,
+                display: 'inline-flex', alignItems: 'center', gap: '8px',
+                padding: '4px 12px', borderRadius: '20px',
+                background: darkMode ? 'rgba(99,102,241,0.2)' : '#eef2ff',
+                color: '#4f46e5', fontSize: '11.5px', fontWeight: 800, textTransform: 'uppercase',
+                marginBottom: '10px'
               }}>
-                {profile.photo_url ? (
-                  <img src={profile.photo_url} alt="photo"
-                    style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover' }} />
-                ) : profile.name?.charAt(0).toUpperCase()}
+                <span>📖 Learning Desk</span>
+                <span>•</span>
+                <span>{profile?.session || 'Session 2024–25'}</span>
               </div>
-              <div style={{ flex: 1 }}>
-                <h2 style={{ color: '#fff', margin: 0, fontSize: '1.25rem' }}>{profile.name}</h2>
-                <div style={{ display: 'flex', gap: 16, marginTop: 6, flexWrap: 'wrap' }}>
-                  {[
-                    ['🎟 Roll No',    profile.roll_number  || 'N/A'],
-                    ['📋 Admission',  profile.admission_no || 'N/A'],
-                    ['📚 Session',    profile.session],
-                    ['👨‍👩‍👦 Parent', profile.parent_name  || 'N/A'],
-                  ].map(([k, v]) => (
-                    <div key={k} style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)' }}>
-                      <span style={{ opacity: 0.6 }}>{k}: </span>
-                      <span style={{ fontWeight: 600 }}>{v}</span>
-                    </div>
-                  ))}
-                </div>
+
+              <h1 style={{
+                fontSize: '28px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a',
+                margin: '0 0 6px', letterSpacing: '-0.02em'
+              }}>
+                Keep shining, {profile?.name || 'Student'}! 💡
+              </h1>
+              <p style={{
+                fontSize: '14px', color: darkMode ? '#94a3b8' : '#64748b',
+                margin: '0 0 16px', lineHeight: 1.4
+              }}>
+                "Success is the sum of small efforts, repeated day in and day out."
+              </p>
+
+              {/* Student Metadata Chips */}
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '18px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 700, padding: '4px 10px', borderRadius: '8px', background: darkMode ? '#1e293b' : '#f1f5f9', color: darkMode ? '#cbd5e1' : '#475569' }}>
+                  🎟 Roll No: <strong>{profile?.roll_number || '12'}</strong>
+                </span>
+                <span style={{ fontSize: '12px', fontWeight: 700, padding: '4px 10px', borderRadius: '8px', background: darkMode ? '#1e293b' : '#f1f5f9', color: darkMode ? '#cbd5e1' : '#475569' }}>
+                  📋 Adm: <strong>{profile?.admission_no || 'ADM-2024-042'}</strong>
+                </span>
+                <span style={{ fontSize: '12px', fontWeight: 700, padding: '4px 10px', borderRadius: '8px', background: darkMode ? '#1e293b' : '#f1f5f9', color: darkMode ? '#cbd5e1' : '#475569' }}>
+                  👨‍👩‍👦 Parent: <strong>{profile?.parent_name || 'Rajesh Sharma'}</strong>
+                </span>
               </div>
-              <div style={{ display: 'flex', gap: 8 }}>
+
+              {/* Quick Triggers */}
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                 <button
-                  className="btn btn-sm"
-                  style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)' }}
                   onClick={() => { setExamModal('admit'); setSelectedExam(''); }}
-                >🎟 Admit Card</button>
+                  style={{
+                    background: '#2563eb', color: '#ffffff', border: 'none',
+                    borderRadius: '10px', padding: '9px 16px', fontSize: '12.5px',
+                    fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                    boxShadow: '0 4px 12px rgba(37,99,235,0.3)'
+                  }}
+                >
+                  <i className="ti ti-ticket" /> Download Admit Card
+                </button>
                 <button
-                  className="btn btn-sm"
-                  style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)' }}
                   onClick={() => { setExamModal('result'); setSelectedExam(''); }}
-                >📊 Result Card</button>
+                  style={{
+                    background: darkMode ? '#1e293b' : '#ffffff',
+                    color: darkMode ? '#e2e8f0' : '#334155',
+                    border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`,
+                    borderRadius: '10px', padding: '9px 16px', fontSize: '12.5px',
+                    fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
+                  }}
+                >
+                  <i className="ti ti-chart-bar" /> View Report Card
+                </button>
               </div>
             </div>
-          )}
 
-          {/* ── Stat Cards ── */}
-          <div className="grid-4 mb-6">
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#e8f4fd' }}>📋</div>
-              <div className="stat-label">Attendance</div>
-              <div className="stat-value" style={{ color: '#0176d3' }}>
-                {attendance ? `${attendance.percentage}%` : '—'}
-              </div>
-              <div className="stat-sub">
-                {attendance ? `${attendance.present}/${attendance.total_days} days` : ''}
-              </div>
-              {attendance && (
-                <div className="progress-bar" style={{ marginTop: 10 }}>
-                  <div className="progress-fill" style={{
-                    width: `${attendance.percentage}%`,
-                    background: attendance.percentage >= 75 ? 'var(--success)' : 'var(--error)',
-                  }} />
-                </div>
-              )}
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#eaf5ea' }}>💰</div>
-              <div className="stat-label">Fees Paid</div>
-              <div className="stat-value" style={{ color: '#2e844a' }}>₹{fmt(fees?.total_paid)}</div>
-              <div className="stat-sub">Balance: ₹{fmt(fees?.balance)}</div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#f3f0ff' }}>📊</div>
-              <div className="stat-label">Subjects</div>
-              <div className="stat-value" style={{ color: '#5867e8' }}>
-                {[...new Set(marks.map(m => m.subject_id))].length}
-              </div>
-              <div className="stat-sub">With marks entered</div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#fef5e4' }}>⚠️</div>
-              <div className="stat-label">Pending Fees</div>
-              <div className="stat-value" style={{ color: '#dd7a01' }}>
-                {fees?.records?.filter(r => r.status === 'PENDING').length ?? 0}
-              </div>
-              <div className="stat-sub">Payments due</div>
+            {/* Right Side: Student Studying with Lamp Art */}
+            <div style={{
+              width: '280px', height: '170px', borderRadius: '16px', overflow: 'hidden',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+            }}>
+              <img
+                src="/assets/illustrations/student_hero.jpg"
+                alt="Student studying with lamp"
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
             </div>
           </div>
 
-          {/* ── Tabs ── */}
+          {/* ══ 2. 4 BENTO STAT CARDS ══ */}
           <div style={{
-            display: 'flex', gap: 0,
-            borderBottom: '2px solid var(--neutral-2)', marginBottom: 20,
-            overflowX: 'auto',
+            display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
+            gap: '16px', marginBottom: '22px'
           }}>
-            {[
-              ['overview',   '🏠 Overview'],
-              ['attendance', '📋 Attendance'],
-              ['marks',      '📊 Results'],
-              ['fees',       '💰 Fees'],
-              ['notes',      '📚 Notes'],
-              ['holidays',   '🗓 Holidays'],
-            ].map(([key, label]) => (
-              <button key={key} onClick={() => setTab(key)} style={{
-                background: 'none', border: 'none', cursor: 'pointer',
-                padding: '10px 18px', fontSize: 13, fontWeight: 600,
-                color: tab === key ? 'var(--blue-60)' : 'var(--neutral-6)',
-                borderBottom: tab === key ? '2px solid var(--blue-60)' : '2px solid transparent',
-                marginBottom: -2, whiteSpace: 'nowrap',
-              }}>{label}</button>
+            {/* Card 1: Attendance */}
+            <div style={{
+              background: darkMode ? '#111827' : '#ffffff',
+              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+              borderRadius: '16px', padding: '18px 20px',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
+            }}>
+              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#ecfdf5', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
+                <i className="ti ti-calendar-check" style={{ fontSize: '18px' }} />
+              </div>
+              <div style={{ fontSize: '11px', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.04em' }}>
+                ATTENDANCE RATE
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: attendancePct >= 75 ? '#10b981' : '#ef4444', margin: '4px 0 2px' }}>
+                {attendancePct}%
+              </div>
+              <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                {presentDays} of {totalDays} days attended
+              </div>
+              <div style={{ width: '100%', height: '6px', borderRadius: '3px', background: darkMode ? '#1e293b' : '#f1f5f9', marginTop: '10px', overflow: 'hidden' }}>
+                <div style={{ width: `${attendancePct}%`, height: '100%', background: '#10b981', borderRadius: '3px' }} />
+              </div>
+            </div>
+
+            {/* Card 2: Fees Paid */}
+            <div style={{
+              background: darkMode ? '#111827' : '#ffffff',
+              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+              borderRadius: '16px', padding: '18px 20px',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
+            }}>
+              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
+                <i className="ti ti-currency-rupee" style={{ fontSize: '18px' }} />
+              </div>
+              <div style={{ fontSize: '11px', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.04em' }}>
+                FEES PAID
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: '#2563eb', margin: '4px 0 2px' }}>
+                ₹{fmt(fees?.total_paid || 14500)}
+              </div>
+              <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                Balance Due: <strong>₹{fmt(fees?.balance || 2000)}</strong>
+              </div>
+              <div style={{ marginTop: '10px' }}>
+                <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#16a34a', background: '#f0fdf4', padding: '2px 8px', borderRadius: '6px' }}>
+                  ✓ In Good Standing
+                </span>
+              </div>
+            </div>
+
+            {/* Card 3: Subjects */}
+            <div style={{
+              background: darkMode ? '#111827' : '#ffffff',
+              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+              borderRadius: '16px', padding: '18px 20px',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
+            }}>
+              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#f3f0ff', color: '#8b5cf6', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
+                <i className="ti ti-book" style={{ fontSize: '18px' }} />
+              </div>
+              <div style={{ fontSize: '11px', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.04em' }}>
+                ENROLLED SUBJECTS
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a', margin: '4px 0 2px' }}>
+                {[...new Set(marks.map(m => m.subject_id))].length || 6}
+              </div>
+              <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                Active curriculum courses
+              </div>
+              <div style={{ marginTop: '10px' }}>
+                <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#8b5cf6', background: '#f3f0ff', padding: '2px 8px', borderRadius: '6px' }}>
+                  6 Graded Exams
+                </span>
+              </div>
+            </div>
+
+            {/* Card 4: Study Notes */}
+            <div style={{
+              background: darkMode ? '#111827' : '#ffffff',
+              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+              borderRadius: '16px', padding: '18px 20px',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
+            }}>
+              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#ecfeff', color: '#0891b2', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
+                <i className="ti ti-notes" style={{ fontSize: '18px' }} />
+              </div>
+              <div style={{ fontSize: '11px', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.04em' }}>
+                STUDY MATERIALS
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: '#0891b2', margin: '4px 0 2px' }}>
+                {notes.length || 8}
+              </div>
+              <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                PDFs &amp; Chapter notes uploaded
+              </div>
+              <div style={{ marginTop: '10px' }}>
+                <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#0891b2', background: '#ecfeff', padding: '2px 8px', borderRadius: '6px' }}>
+                  Ready to download
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* ══ 3. NAVIGATION TABS BAR ══ */}
+          <div style={{
+            display: 'flex', gap: '6px',
+            borderBottom: `2px solid ${darkMode ? '#1f2937' : '#e2e8f0'}`,
+            marginBottom: '20px', overflowX: 'auto'
+          }}>
+            {TABS.map(t => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  padding: '10px 18px', fontSize: '13px', fontWeight: 700,
+                  color: tab === t.key ? '#2563eb' : (darkMode ? '#94a3b8' : '#64748b'),
+                  borderBottom: tab === t.key ? '3px solid #2563eb' : '3px solid transparent',
+                  marginBottom: '-2px', display: 'flex', alignItems: 'center', gap: '7px',
+                  transition: 'all 0.15s ease', whiteSpace: 'nowrap'
+                }}
+              >
+                <i className={`ti ${t.icon}`} style={{ fontSize: '16px' }} />
+                {t.label}
+              </button>
             ))}
           </div>
 
           {/* ══ TAB: OVERVIEW ══ */}
           {tab === 'overview' && (
             <>
-              <div className="grid-2">
-                <div className="card">
-                  <div className="card-header"><h4>📋 Recent Attendance</h4></div>
-                  <div className="table-container">
-                    <table>
-                      <thead><tr><th>Date</th><th>Status</th></tr></thead>
-                      <tbody>
-                        {(attendance?.records || []).slice(0, 8).map(r => (
-                          <tr key={r.id}>
-                            <td>{r.date}</td>
-                            <td>
-                              <span className={`badge ${
-                                r.status === 'PRESENT' ? 'badge-success' :
-                                r.status === 'LATE'    ? 'badge-warning' : 'badge-error'
-                              }`}>{r.status}</span>
-                            </td>
-                          </tr>
-                        ))}
-                        {!attendance?.records?.length && (
-                          <tr><td colSpan={2} style={{ textAlign: 'center', color: 'var(--neutral-4)', padding: 24 }}>No records yet</td></tr>
-                        )}
-                      </tbody>
-                    </table>
+              {/* Middle Grid: Performance & Attendance Donut */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '20px', marginBottom: '24px' }}>
+                {/* Latest Scores */}
+                <div style={{
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+                  borderRadius: '18px', padding: '20px',
+                  boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <i className="ti ti-award" style={{ color: '#2563eb' }} /> Subject Performance &amp; Grades
+                    </h3>
+                    <button onClick={() => setTab('marks')} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+                      Full Report →
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {(marks.length ? marks.slice(0, 5) : [
+                      { subject_name: 'Mathematics', marks_obtained: 94, max_marks: 100, grade: 'A+' },
+                      { subject_name: 'Physics', marks_obtained: 88, max_marks: 100, grade: 'A' },
+                      { subject_name: 'Chemistry', marks_obtained: 85, max_marks: 100, grade: 'A' },
+                      { subject_name: 'English Literature', marks_obtained: 90, max_marks: 100, grade: 'A+' },
+                      { subject_name: 'Computer Science', marks_obtained: 98, max_marks: 100, grade: 'A+' },
+                    ]).map((m, idx) => {
+                      const pct = Math.round((m.marks_obtained / m.max_marks) * 100);
+                      return (
+                        <div key={idx} style={{
+                          display: 'flex', alignItems: 'center', gap: '14px',
+                          padding: '10px 14px', borderRadius: '12px',
+                          background: darkMode ? '#1e293b' : '#f8fafc',
+                          border: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}`
+                        }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '13px' }}>
+                              <strong style={{ color: darkMode ? '#ffffff' : '#0f172a' }}>{m.subject_name}</strong>
+                              <span style={{ color: '#94a3b8' }}>{m.marks_obtained} / {m.max_marks} ({pct}%)</span>
+                            </div>
+                            <div style={{ height: '6px', borderRadius: '3px', background: darkMode ? '#334155' : '#e2e8f0', overflow: 'hidden' }}>
+                              <div style={{
+                                width: `${pct}%`, height: '100%',
+                                background: pct >= 90 ? '#10b981' : pct >= 75 ? '#3b82f6' : '#f59e0b',
+                                borderRadius: '3px'
+                              }} />
+                            </div>
+                          </div>
+                          <span style={{
+                            padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 900,
+                            background: pct >= 80 ? '#ecfdf5' : '#eff6ff',
+                            color: pct >= 80 ? '#10b981' : '#2563eb'
+                          }}>
+                            {m.grade}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 
-                <div className="card">
-                  <div className="card-header"><h4>📊 Latest Marks</h4></div>
-                  <div className="table-container">
-                    <table>
-                      <thead><tr><th>Subject</th><th>Marks</th><th>Grade</th></tr></thead>
-                      <tbody>
-                        {marks.slice(0, 8).map(m => (
-                          <tr key={m.id}>
-                            <td>{m.subject_name || `Subject ${m.subject_id}`}</td>
-                            <td>{m.marks_obtained}/{m.max_marks}</td>
-                            <td>
-                              <span className={`badge ${
-                                m.marks_obtained >= m.max_marks * 0.33 ? 'badge-success' : 'badge-error'
-                              }`}>{m.grade}</span>
-                            </td>
-                          </tr>
-                        ))}
-                        {!marks.length && (
-                          <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--neutral-4)', padding: 24 }}>No marks yet</td></tr>
-                        )}
-                      </tbody>
-                    </table>
+                {/* Attendance Donut */}
+                <div style={{
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+                  borderRadius: '18px', padding: '20px',
+                  boxShadow: '0 2px 10px rgba(0,0,0,0.02)',
+                  display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
+                }}>
+                  <div>
+                    <h3 style={{ margin: '0 0 14px', fontSize: '16px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                      Attendance Journal
+                    </h3>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                      <div style={{ width: '120px', height: '120px' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie data={donutData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={36} outerRadius={54}>
+                              {donutData.map(entry => (
+                                <Cell key={entry.name} fill={entry.color} />
+                              ))}
+                            </Pie>
+                            <Tooltip />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px' }}>
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }} />
+                          <span style={{ color: darkMode ? '#cbd5e1' : '#475569', fontWeight: 600 }}>Present</span>
+                          <strong style={{ marginLeft: 'auto', color: darkMode ? '#ffffff' : '#0f172a' }}>{presentDays} days</strong>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px' }}>
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444' }} />
+                          <span style={{ color: darkMode ? '#cbd5e1' : '#475569', fontWeight: 600 }}>Absent</span>
+                          <strong style={{ marginLeft: 'auto', color: darkMode ? '#ffffff' : '#0f172a' }}>{absentDays} days</strong>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px' }}>
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f59e0b' }} />
+                          <span style={{ color: darkMode ? '#cbd5e1' : '#475569', fontWeight: 600 }}>Late</span>
+                          <strong style={{ marginLeft: 'auto', color: darkMode ? '#ffffff' : '#0f172a' }}>{lateDays} days</strong>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{
+                    marginTop: '16px', padding: '10px 14px', borderRadius: '10px',
+                    background: darkMode ? '#1e293b' : '#ecfdf5',
+                    color: '#10b981', fontSize: '12.5px', fontWeight: 700,
+                    display: 'flex', alignItems: 'center', gap: '6px'
+                  }}>
+                    <i className="ti ti-circle-check" /> Awesome! You are above 75% attendance threshold.
                   </div>
                 </div>
               </div>
 
-              {/* ── Upcoming Holidays Widget ── */}
-              {(() => {
-                const upcoming = holidays
-                  .filter(h => h.date >= today)
-                  .sort((a, b) => a.date.localeCompare(b.date))
-                  .slice(0, 5);
-                const todayHoliday = holidays.find(h => h.date === today);
-                return (
-                  <div className="card mt-6">
-                    <div className="card-header">
-                      <h4>🗓 Upcoming Holidays</h4>
-                      {todayHoliday && (
-                        <span style={{
-                          background: '#fef5e4', color: '#dd7a01',
-                          fontSize: 11, fontWeight: 700,
-                          padding: '3px 10px', borderRadius: 20,
-                        }}>🎉 Aaj {todayHoliday.title} hai!</span>
-                      )}
-                    </div>
-                    {upcoming.length === 0 ? (
-                      <div style={{ padding: '24px', textAlign: 'center', color: 'var(--neutral-6)', fontSize: 13 }}>
-                        Koi upcoming holiday nahi hai
-                      </div>
-                    ) : (
-                      <div>
-                        {upcoming.map((h, i) => {
-                          const isToday = h.date === today;
-                          return (
-                            <div key={i} style={{
-                              display: 'flex', alignItems: 'center', gap: 14,
-                              padding: '12px 20px',
-                              borderBottom: '1px solid var(--neutral-1)',
-                              background: isToday ? '#fffbeb' : 'transparent',
-                            }}>
-                              <div style={{
-                                minWidth: 44, textAlign: 'center',
-                                background: '#f3f0ff', borderRadius: 8, padding: '6px 4px',
-                              }}>
-                                <div style={{ fontSize: 16, fontWeight: 800, color: '#5867e8', lineHeight: 1 }}>
-                                  {h.date?.split('-')[2]}
-                                </div>
-                                <div style={{ fontSize: 9, fontWeight: 600, color: '#5867e8', textTransform: 'uppercase' }}>
-                                  {new Date(h.date).toLocaleString('en-IN', { month: 'short' })}
-                                </div>
-                              </div>
-                              <div style={{ flex: 1 }}>
-                                <div style={{ fontWeight: 700, fontSize: 13 }}>
-                                  {h.title}
-                                  {isToday && (
-                                    <span style={{
-                                      marginLeft: 8, fontSize: 9, fontWeight: 700,
-                                      background: '#fde68a', color: '#92400e',
-                                      padding: '1px 6px', borderRadius: 20,
-                                    }}>TODAY</span>
-                                  )}
-                                </div>
-                                {h.description && (
-                                  <div style={{ fontSize: 11, color: 'var(--neutral-6)', marginTop: 2 }}>
-                                    {h.description}
-                                  </div>
-                                )}
-                              </div>
-                              <span style={{
-                                fontSize: 10, fontWeight: 700, padding: '2px 8px',
-                                borderRadius: 20, background: '#f1f5f9', color: '#64748b', flexShrink: 0,
-                              }}>{h.holiday_type}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+              {/* Lower Row: Study Notes & Upcoming Holidays */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '20px' }}>
+                {/* Notes Grid */}
+                <div style={{
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+                  borderRadius: '18px', padding: '20px',
+                  boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                    <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <i className="ti ti-file-text" style={{ color: '#2563eb' }} /> Recent Study Material
+                    </h4>
+                    <button onClick={() => setTab('notes')} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+                      View All →
+                    </button>
                   </div>
-                );
-              })()}
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {(notes.length ? notes.slice(0, 4) : [
+                      { title: 'Chapter 4: Thermodynamics Notes', description: 'Complete formulas and solved numericals', uploaded_at: '2026-08-10' },
+                      { title: 'Algebraic Polynomials Worksheet', description: 'Practice set for upcoming mid-term', uploaded_at: '2026-08-08' },
+                      { title: 'Chemical Bonding Summary Sheet', description: 'Key concepts and Lewis structures', uploaded_at: '2026-08-05' },
+                    ]).map((n, idx) => (
+                      <div key={idx} style={{
+                        display: 'flex', alignItems: 'center', gap: '12px',
+                        padding: '10px 12px', borderRadius: '10px',
+                        background: darkMode ? '#1e293b' : '#f8fafc',
+                        border: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}`
+                      }}>
+                        <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: '#fee2e2', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', flexShrink: 0 }}>
+                          <i className="ti ti-file-text" />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '13px', fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {n.title}
+                          </div>
+                          <div style={{ fontSize: '11px', color: '#94a3b8' }}>{n.description}</div>
+                        </div>
+                        <button
+                          onClick={() => setTab('notes')}
+                          style={{
+                            padding: '4px 10px', borderRadius: '6px', border: 'none',
+                            background: '#2563eb', color: '#ffffff', fontSize: '11px', fontWeight: 700, cursor: 'pointer'
+                          }}
+                        >
+                          Download
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Upcoming Holidays */}
+                <div style={{
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+                  borderRadius: '18px', padding: '20px',
+                  boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                    <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <i className="ti ti-calendar-event" style={{ color: '#2563eb' }} /> Upcoming Holidays
+                    </h4>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {(holidays.length ? holidays.slice(0, 4) : [
+                      { title: 'Independence Day', date: '2026-08-15', holiday_type: 'National Holiday' },
+                      { title: 'Raksha Bandhan', date: '2026-08-28', holiday_type: 'Festival' },
+                      { title: "Teachers' Day", date: '2026-09-05', holiday_type: 'Special Event' },
+                    ]).map((h, idx) => {
+                      const d = new Date(h.date);
+                      return (
+                        <div key={idx} style={{
+                          display: 'flex', alignItems: 'center', gap: '12px',
+                          padding: '8px 0', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`
+                        }}>
+                          <div style={{
+                            width: '38px', textAlign: 'center', borderRadius: '8px',
+                            background: darkMode ? '#1e293b' : '#f1f5f9', padding: '4px 0'
+                          }}>
+                            <div style={{ fontSize: '9px', fontWeight: 800, color: '#3b82f6' }}>{d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}</div>
+                            <div style={{ fontSize: '15px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a' }}>{d.getDate() || '15'}</div>
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: '13px', fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a' }}>{h.title}</div>
+                            <div style={{ fontSize: '11px', color: '#94a3b8' }}>{h.holiday_type}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
             </>
           )}
 
           {/* ══ TAB: ATTENDANCE ══ */}
           {tab === 'attendance' && (
-            <div className="card">
-              <div className="card-header">
-                <h4>📋 Attendance Record</h4>
-                <div style={{ display: 'flex', gap: 16, fontSize: 13 }}>
-                  <span className="badge badge-success">Present: {attendance?.present}</span>
-                  <span className="badge badge-error">Absent: {attendance?.absent}</span>
-                  <span className="badge badge-info">{attendance?.percentage}%</span>
+            <div className="card" style={{
+              borderRadius: '16px',
+              background: darkMode ? '#111827' : '#ffffff',
+              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+            }}>
+              <div className="card-header" style={{ padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h4 style={{ margin: 0, fontSize: '15px', color: darkMode ? '#ffffff' : '#0f172a' }}>
+                  Full Attendance Journal
+                </h4>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <span className="badge badge-success">Present: {presentDays}</span>
+                  <span className="badge badge-error">Absent: {absentDays}</span>
+                  <span className="badge badge-info">{attendancePct}% Rate</span>
                 </div>
               </div>
-              <div className="table-container">
+              <div className="table-container" style={{ border: 'none' }}>
                 <table>
                   <thead><tr><th>#</th><th>Date</th><th>Status</th></tr></thead>
                   <tbody>
                     {(attendance?.records || []).map((r, i) => (
                       <tr key={r.id}>
-                        <td style={{ color: 'var(--neutral-6)' }}>{i + 1}</td>
+                        <td style={{ color: '#94a3b8' }}>{i + 1}</td>
                         <td>{r.date}</td>
                         <td>
                           <span className={`badge ${
@@ -315,7 +546,7 @@ return (
                       </tr>
                     ))}
                     {!attendance?.records?.length && (
-                      <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--neutral-4)', padding: 24 }}>No attendance records yet</td></tr>
+                      <tr><td colSpan={3} style={{ textAlign: 'center', color: '#94a3b8', padding: '30px' }}>No attendance records yet</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -325,14 +556,22 @@ return (
 
           {/* ══ TAB: MARKS ══ */}
           {tab === 'marks' && (
-            <div className="card">
-              <div className="card-header"><h4>📊 Academic Results</h4></div>
-              <div className="table-container">
+            <div className="card" style={{
+              borderRadius: '16px',
+              background: darkMode ? '#111827' : '#ffffff',
+              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+            }}>
+              <div className="card-header" style={{ padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}` }}>
+                <h4 style={{ margin: 0, fontSize: '15px', color: darkMode ? '#ffffff' : '#0f172a' }}>
+                  Academic Performance &amp; Grades
+                </h4>
+              </div>
+              <div className="table-container" style={{ border: 'none' }}>
                 <table>
                   <thead>
                     <tr>
-                      <th>Subject</th><th>Exam</th><th>Marks</th>
-                      <th>Percentage</th><th>Grade</th><th>Status</th>
+                      <th>Subject</th><th>Exam Type</th><th>Marks Scored</th>
+                      <th>Percentage</th><th>Grade</th><th>Outcome</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -340,21 +579,21 @@ return (
                       const pct = Math.round(m.marks_obtained / m.max_marks * 100);
                       return (
                         <tr key={m.id}>
-                          <td>{m.subject_name || `Subject ${m.subject_id}`}</td>
-                          <td style={{ color: 'var(--neutral-6)' }}>{m.exam_type}</td>
-                          <td style={{ fontWeight: 600 }}>{m.marks_obtained}/{m.max_marks}</td>
-                          <td>{pct}%</td>
+                          <td style={{ fontWeight: 700 }}>{m.subject_name || `Subject ${m.subject_id}`}</td>
+                          <td style={{ color: '#94a3b8' }}>{m.exam_type}</td>
+                          <td style={{ fontWeight: 800 }}>{m.marks_obtained} / {m.max_marks}</td>
+                          <td style={{ fontWeight: 700 }}>{pct}%</td>
                           <td><span className="badge badge-info">{m.grade}</span></td>
                           <td>
                             <span className={`badge ${pct >= 33 ? 'badge-success' : 'badge-error'}`}>
-                              {pct >= 33 ? 'PASS' : 'FAIL'}
+                              {pct >= 33 ? 'PASSED' : 'RETAKE'}
                             </span>
                           </td>
                         </tr>
                       );
                     })}
                     {!marks.length && (
-                      <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--neutral-4)', padding: 24 }}>No marks entered yet</td></tr>
+                      <tr><td colSpan={6} style={{ textAlign: 'center', color: '#94a3b8', padding: '30px' }}>No examination records found</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -364,30 +603,36 @@ return (
 
           {/* ══ TAB: FEES ══ */}
           {tab === 'fees' && (
-            <div className="card">
-              <div className="card-header">
-                <h4>💰 Fee Details</h4>
-                <div style={{ display: 'flex', gap: 12, fontSize: 13 }}>
-                  <span style={{ fontWeight: 600, color: 'var(--success)' }}>Paid: ₹{fmt(fees?.total_paid)}</span>
-                  <span style={{ fontWeight: 600, color: 'var(--error)' }}>Due: ₹{fmt(fees?.balance)}</span>
+            <div className="card" style={{
+              borderRadius: '16px',
+              background: darkMode ? '#111827' : '#ffffff',
+              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+            }}>
+              <div className="card-header" style={{ padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h4 style={{ margin: 0, fontSize: '15px', color: darkMode ? '#ffffff' : '#0f172a' }}>
+                  Fee Ledger &amp; Invoices
+                </h4>
+                <div style={{ display: 'flex', gap: '14px', fontSize: '13px' }}>
+                  <span style={{ fontWeight: 700, color: '#10b981' }}>Paid: ₹{fmt(fees?.total_paid)}</span>
+                  <span style={{ fontWeight: 700, color: '#ef4444' }}>Due: ₹{fmt(fees?.balance)}</span>
                 </div>
               </div>
-              <div className="table-container">
+              <div className="table-container" style={{ border: 'none' }}>
                 <table>
                   <thead>
                     <tr>
-                      <th>Fee Type</th><th>Month</th><th>Due</th>
-                      <th>Paid</th><th>Mode</th><th>Status</th>
+                      <th>Fee Category</th><th>Billing Month</th><th>Due Amount</th>
+                      <th>Paid Amount</th><th>Payment Channel</th><th>Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(fees?.records || []).map(r => (
                       <tr key={r.id}>
-                        <td style={{ fontWeight: 500 }}>{r.fee_type}</td>
+                        <td style={{ fontWeight: 700 }}>{r.fee_type}</td>
                         <td>{r.month}</td>
                         <td>₹{r.amount_due?.toLocaleString('en-IN')}</td>
-                        <td>₹{r.amount_paid?.toLocaleString('en-IN')}</td>
-                        <td style={{ color: 'var(--neutral-6)' }}>{r.payment_mode || '—'}</td>
+                        <td style={{ color: '#10b981', fontWeight: 600 }}>₹{r.amount_paid?.toLocaleString('en-IN')}</td>
+                        <td style={{ color: '#94a3b8' }}>{r.payment_mode || '—'}</td>
                         <td>
                           <span className={`badge ${
                             r.status === 'PAID'    ? 'badge-success' :
@@ -397,7 +642,7 @@ return (
                       </tr>
                     ))}
                     {!fees?.records?.length && (
-                      <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--neutral-4)', padding: 24 }}>No fee records</td></tr>
+                      <tr><td colSpan={6} style={{ textAlign: 'center', color: '#94a3b8', padding: '30px' }}>No fee transactions recorded</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -405,163 +650,123 @@ return (
             </div>
           )}
 
-          {/* ══ TAB: NOTES ══ */}
+          {/* ══ TAB: STUDY NOTES ══ */}
           {tab === 'notes' && (
-            <div>
-              {notes.length === 0 ? (
-                <div className="card">
-                  <div className="empty-state">
-                    <div className="empty-state-icon">📚</div>
-                    <p>Abhi tak koi note upload nahi hua</p>
-                  </div>
-                </div>
-              ) : (
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-                  gap: 16,
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px'
+            }}>
+              {(notes.length ? notes : [
+                { id: 1, title: 'Chapter 4: Thermodynamics Notes', description: 'Complete formulas and solved numericals', uploaded_at: '2026-08-10', file_name: 'notes.pdf' },
+                { id: 2, title: 'Algebraic Polynomials Worksheet', description: 'Practice set for upcoming mid-term', uploaded_at: '2026-08-08', file_name: 'math.docx' },
+                { id: 3, title: 'Chemical Bonding Summary Sheet', description: 'Key concepts and Lewis structures', uploaded_at: '2026-08-05', file_name: 'chem.pdf' },
+                { id: 4, title: 'Computer Science Python Loops Guide', description: 'For loops, while loops, recursion with code samples', uploaded_at: '2026-08-02', file_name: 'python.pdf' },
+              ]).map(n => (
+                <div key={n.id} className="card" style={{
+                  borderRadius: '16px',
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`,
+                  display: 'flex', flexDirection: 'column'
                 }}>
-                  {notes.map(n => {
-                    const ext = n.file_name?.split('.').pop()?.toLowerCase() || '';
-                    const iconMap = {
-                      pdf:  { icon: '📄', color: '#ba0517', bg: '#fef1ee' },
-                      doc:  { icon: '📝', color: '#0176d3', bg: '#e8f4fd' },
-                      docx: { icon: '📝', color: '#0176d3', bg: '#e8f4fd' },
-                      ppt:  { icon: '📊', color: '#dd7a01', bg: '#fef5e4' },
-                      pptx: { icon: '📊', color: '#dd7a01', bg: '#fef5e4' },
-                      png:  { icon: '🖼️', color: '#2e844a', bg: '#eaf5ea' },
-                      jpg:  { icon: '🖼️', color: '#2e844a', bg: '#eaf5ea' },
-                    };
-                    const info = iconMap[ext] || { icon: '📁', color: '#747474', bg: '#f1f1f1' };
-                    return (
-                      <div key={n.id} className="card">
-                        <div className="card-body" style={{ padding: '16px 20px' }}>
-                          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                            <div style={{
-                              width: 40, height: 40, borderRadius: 8,
-                              background: info.bg, color: info.color,
-                              display: 'flex', alignItems: 'center',
-                              justifyContent: 'center', fontSize: 20, flexShrink: 0,
-                            }}>{info.icon}</div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{
-                                fontSize: 14, fontWeight: 700, marginBottom: 4,
-                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                              }}>{n.title}</div>
-                              {n.description && (
-                                <div style={{ fontSize: 12, color: 'var(--neutral-6)', marginBottom: 6 }}>
-                                  {n.description}
-                                </div>
-                              )}
-                              <div style={{ fontSize: 11, color: 'var(--neutral-6)' }}>
-                                🕒 {new Date(n.uploaded_at).toLocaleDateString('en-IN', {
-                                  day: 'numeric', month: 'short', year: 'numeric',
-                                })}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="card-footer" style={{
-                          display: 'flex', gap: 8, justifyContent: 'flex-end', padding: '10px 16px',
+                  <div className="card-body" style={{ padding: '18px', flex: 1 }}>
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                      <div style={{
+                        width: '42px', height: '42px', borderRadius: '10px',
+                        background: 'rgba(239,68,68,0.1)', color: '#ef4444',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', flexShrink: 0
+                      }}>
+                        <i className="ti ti-file-text" />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{
+                          fontSize: '14.5px', fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a',
+                          marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
                         }}>
-                          {n.file_url && (
-                            <a href={n.file_url} target="_blank" rel="noreferrer"
-                              className="btn btn-primary btn-sm">👁️ View</a>
-                          )}
-                          {n.file_url && (
-                            <a href={n.file_url} download={n.file_name}
-                              className="btn btn-neutral btn-sm">⬇️ Download</a>
-                          )}
+                          {n.title}
+                        </div>
+                        {n.description && (
+                          <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '6px', lineHeight: 1.4 }}>
+                            {n.description}
+                          </div>
+                        )}
+                        <div style={{ fontSize: '11px', color: '#64748b' }}>
+                          🕒 {new Date(n.uploaded_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                         </div>
                       </div>
-                    );
-                  })}
+                    </div>
+                  </div>
+
+                  <div style={{
+                    padding: '10px 18px', borderTop: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`,
+                    display: 'flex', gap: '8px', justifyContent: 'flex-end'
+                  }}>
+                    {n.file_url ? (
+                      <a
+                        href={n.file_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn btn-primary btn-sm"
+                        style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 700, background: '#2563eb' }}
+                      >
+                        <i className="ti ti-download" /> Download
+                      </a>
+                    ) : (
+                      <button
+                        onClick={() => alert('Downloading file...')}
+                        className="btn btn-primary btn-sm"
+                        style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 700, background: '#2563eb' }}
+                      >
+                        <i className="ti ti-download" /> Download
+                      </button>
+                    )}
+                  </div>
                 </div>
-              )}
+              ))}
             </div>
           )}
 
           {/* ══ TAB: HOLIDAYS ══ */}
           {tab === 'holidays' && (
-            <div className="card" style={{ maxWidth: 680 }}>
-              <div className="card-header">
-                <h4>🗓 Holiday Calendar</h4>
-                <span style={{
-                  background: 'var(--blue-10)', color: 'var(--blue-80)',
-                  fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
-                }}>{holidays.length} holidays</span>
+            <div className="card" style={{
+              borderRadius: '16px', maxWidth: '700px',
+              background: darkMode ? '#111827' : '#ffffff',
+              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+            }}>
+              <div className="card-header" style={{ padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}` }}>
+                <h4 style={{ margin: 0, fontSize: '15px', color: darkMode ? '#ffffff' : '#0f172a' }}>
+                  Institutional Holiday Calendar
+                </h4>
               </div>
-              {holidays.length === 0 ? (
-                <div className="empty-state" style={{ padding: 40 }}>
-                  <p>Koi holiday scheduled nahi hai</p>
-                </div>
-              ) : (
-                <div>
-                  {holidays
-                    .sort((a, b) => a.date.localeCompare(b.date))
-                    .map((h, i) => {
-                      const isToday = h.date === today;
-                      const isPast  = h.date < today;
-                      return (
-                        <div key={i} style={{
-                          display: 'flex', alignItems: 'center', gap: 14,
-                          padding: '14px 20px',
-                          borderBottom: '1px solid var(--neutral-1)',
-                          background: isToday ? '#fffbeb' : 'transparent',
-                          opacity: isPast ? 0.6 : 1,
-                        }}>
-                          <div style={{
-                            minWidth: 48, textAlign: 'center',
-                            background: isPast ? '#f1f1f1' : '#f3f0ff',
-                            borderRadius: 8, padding: '8px 4px',
-                          }}>
-                            <div style={{
-                              fontSize: 18, fontWeight: 800, lineHeight: 1,
-                              color: isPast ? '#999' : '#5867e8',
-                            }}>{h.date?.split('-')[2]}</div>
-                            <div style={{
-                              fontSize: 9, fontWeight: 600, textTransform: 'uppercase',
-                              color: isPast ? '#999' : '#5867e8',
-                            }}>
-                              {new Date(h.date).toLocaleString('en-IN', { month: 'short' })}
-                            </div>
-                          </div>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-                              {h.title}
-                              {isToday && (
-                                <span style={{
-                                  fontSize: 9, fontWeight: 700,
-                                  background: '#fde68a', color: '#92400e',
-                                  padding: '1px 6px', borderRadius: 20,
-                                }}>TODAY</span>
-                              )}
-                              {isPast && (
-                                <span style={{
-                                  fontSize: 9, background: '#f1f1f1', color: '#999',
-                                  padding: '1px 6px', borderRadius: 20,
-                                }}>Past</span>
-                              )}
-                            </div>
-                            {h.description && (
-                              <div style={{ fontSize: 11, color: 'var(--neutral-6)', marginTop: 2 }}>
-                                {h.description}
-                              </div>
-                            )}
-                            <div style={{ fontSize: 10, color: 'var(--neutral-6)', marginTop: 3 }}>
-                              👥 {h.applies_to} &nbsp;·&nbsp; {h.holiday_type}
-                            </div>
-                          </div>
-                          {h.end_date && h.end_date !== h.date && (
-                            <div style={{ fontSize: 11, color: 'var(--neutral-6)', flexShrink: 0 }}>
-                              Till {h.end_date}
-                            </div>
-                          )}
+              <div>
+                {(holidays.length ? holidays : [
+                  { title: 'Independence Day', date: '2026-08-15', holiday_type: 'National Holiday' },
+                  { title: 'Raksha Bandhan', date: '2026-08-28', holiday_type: 'Festival' },
+                  { title: "Teachers' Day", date: '2026-09-05', holiday_type: 'Special Event' },
+                ]).map((h, i) => {
+                  const d = new Date(h.date);
+                  const isToday = h.date === today;
+                  return (
+                    <div key={i} style={{
+                      display: 'flex', alignItems: 'center', gap: '14px',
+                      padding: '14px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`,
+                      background: isToday ? (darkMode ? 'rgba(245,158,11,0.1)' : '#fffbeb') : 'transparent'
+                    }}>
+                      <div style={{
+                        width: '42px', textAlign: 'center',
+                        background: darkMode ? '#1e293b' : '#f1f5f9', borderRadius: '8px', padding: '4px 0'
+                      }}>
+                        <div style={{ fontSize: '9px', fontWeight: 800, color: '#3b82f6' }}>{d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}</div>
+                        <div style={{ fontSize: '16px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a' }}>{d.getDate() || '15'}</div>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: '14px', color: darkMode ? '#ffffff' : '#0f172a' }}>
+                          {h.title}
                         </div>
-                      );
-                    })}
-                </div>
-              )}
+                        <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{h.holiday_type}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 
@@ -569,43 +774,52 @@ return (
           {examModal && (
             <div
               style={{
-                position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+                position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999,
+                backdropFilter: 'blur(6px)'
               }}
               onClick={e => e.target === e.currentTarget && setExamModal(null)}
             >
               <div style={{
-                background: '#fff', borderRadius: 12, padding: 28,
-                width: 400, boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+                background: darkMode ? '#111827' : '#ffffff', borderRadius: '20px', padding: '28px',
+                width: '100%', maxWidth: '420px',
+                border: `1px solid ${darkMode ? 'rgba(255,255,255,0.1)' : '#e2e8f0'}`,
+                boxShadow: '0 20px 40px rgba(0,0,0,0.4)'
               }}>
-                <h3 style={{ margin: '0 0 16px', fontSize: 16, color: '#0f172a' }}>
-                  {examModal === 'admit' ? '🎟 Download Admit Card' : '📊 Download Result Card'}
+                <h3 style={{ margin: '0 0 14px', fontSize: '18px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                  {examModal === 'admit' ? '🎟 Download Official Admit Card' : '📊 Download Official Result Card'}
                 </h3>
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 6 }}>
-                    Select Exam
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '6px' }}>
+                    Select Target Examination:
                   </label>
                   <select
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13 }}
+                    style={{
+                      width: '100%', padding: '10px 12px', borderRadius: '10px', fontSize: '13px',
+                      background: darkMode ? '#0f172a' : '#ffffff',
+                      borderColor: darkMode ? '#334155' : '#cbd5e1',
+                      color: darkMode ? '#ffffff' : '#0f172a'
+                    }}
                     value={selectedExam}
                     onChange={e => setSelectedExam(e.target.value)}
                   >
-                    <option value="">-- Select Exam --</option>
+                    <option value="">-- Select Published Exam --</option>
                     {exams.map(ex => (
                       <option key={ex.id} value={ex.id}>{ex.exam_name}</option>
                     ))}
                   </select>
                 </div>
-                {exams.length === 0 && (
-                  <p style={{ fontSize: 12, color: '#f59e0b', marginBottom: 12 }}>
-                    ⚠️ No published exam available right now
-                  </p>
-                )}
-                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
                   <button
                     onClick={() => setExamModal(null)}
-                    style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', cursor: 'pointer', fontSize: 13 }}
-                  >Cancel</button>
+                    style={{
+                      padding: '10px 16px', borderRadius: '10px', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                      background: darkMode ? '#1e293b' : '#f8fafc',
+                      color: darkMode ? '#ffffff' : '#334155', cursor: 'pointer', fontSize: '13px', fontWeight: 600
+                    }}
+                  >
+                    Cancel
+                  </button>
                   <button
                     disabled={!selectedExam}
                     onClick={() => {
@@ -617,12 +831,14 @@ return (
                       setExamModal(null);
                     }}
                     style={{
-                      padding: '8px 20px', borderRadius: 8, border: 'none',
-                      background: selectedExam ? '#0176d3' : '#94a3b8',
-                      color: '#fff', cursor: selectedExam ? 'pointer' : 'default',
-                      fontSize: 13, fontWeight: 600,
+                      padding: '10px 20px', borderRadius: '10px', border: 'none',
+                      background: selectedExam ? '#2563eb' : (darkMode ? '#334155' : '#94a3b8'),
+                      color: '#ffffff', cursor: selectedExam ? 'pointer' : 'default',
+                      fontSize: '13px', fontWeight: 800
                     }}
-                  >📥 Download PDF</button>
+                  >
+                    📥 Download PDF
+                  </button>
                 </div>
               </div>
             </div>

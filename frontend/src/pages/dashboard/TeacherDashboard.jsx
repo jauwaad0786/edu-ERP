@@ -3,175 +3,172 @@ import Sidebar from '../../components/Sidebar';
 import Navbar  from '../../components/Navbar';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../context/AuthContext';
 
 export default function TeacherDashboard() {
-  var [classes,       setClasses]       = useState([]);
-  var [tab,           setTab]           = useState('attendance');
-  var [selectedClass, setSelectedClass] = useState('');
-  var [students,      setStudents]      = useState([]);
-  var [attendance,    setAttendance]    = useState({});
-  var [marksData,     setMarksData]     = useState([]);
-  var [subjects,      setSubjects]      = useState([]);
-  var [selectedSubject, setSelectedSubject] = useState('');
-  var [examType,      setExamType]      = useState('Mid Term');
-  var [saving,        setSaving]        = useState(false);
-  var [msg,           setMsg]           = useState('');
-  var [alreadyMarked, setAlreadyMarked] = useState(false);
-  var [holidays,      setHolidays]      = useState([]);
+  const { user } = useAuth();
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
+  const [classes,       setClasses]       = useState([]);
+  const [tab,           setTab]           = useState('attendance');
+  const [selectedClass, setSelectedClass] = useState('');
+  const [students,      setStudents]      = useState([]);
+  const [attendance,    setAttendance]    = useState({});
+  const [marksData,     setMarksData]     = useState([]);
+  const [subjects,      setSubjects]      = useState([]);
+  const [selectedSubject, setSelectedSubject] = useState('');
+  const [examType,      setExamType]      = useState('Mid Term');
+  const [saving,        setSaving]        = useState(false);
+  const [alreadyMarked, setAlreadyMarked] = useState(false);
+  const [holidays,      setHolidays]      = useState([]);
 
-  // GPS-based Staff Attendance (replaces old manual time-entry self-attendance)
-  var [myStatus,       setMyStatus]       = useState(null);   // today's StaffAttendance record, ya null
-  var [gpsLoading,     setGpsLoading]     = useState(true);
-  var [checkingIn,     setCheckingIn]     = useState(false);
-  var [checkingOut,    setCheckingOut]    = useState(false);
-  var [showRegularize, setShowRegularize] = useState(false);
-  var [regForm,        setRegForm]        = useState({ reason_type:'FORGOT_CHECKOUT', reason_text:'', requested_check_in:'', requested_check_out:'' });
-  var [regSaving,      setRegSaving]      = useState(false);
+  // GPS-based Staff Attendance
+  const [myStatus,       setMyStatus]       = useState(null);
+  const [gpsLoading,     setGpsLoading]     = useState(true);
+  const [checkingIn,     setCheckingIn]     = useState(false);
+  const [checkingOut,    setCheckingOut]    = useState(false);
+  const [showRegularize, setShowRegularize] = useState(false);
+  const [regForm,        setRegForm]        = useState({ reason_type:'FORGOT_CHECKOUT', reason_text:'', requested_check_in:'', requested_check_out:'' });
+  const [regSaving,      setRegSaving]      = useState(false);
 
-  var today = new Date().toISOString().split('T')[0];
+  const today = new Date().toISOString().split('T')[0];
+  const [assignments, setAssignments] = useState([]); // [{class_id, class_name, subject_id, subject_name}]
 
-  var [assignments, setAssignments] = useState([]); // [{class_id, class_name, subject_id, subject_name}]
+  useEffect(() => {
+    localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light');
+  }, [darkMode]);
 
-  useEffect(function() {
+  useEffect(() => {
     api.get('/principal/teacher/my-assignments')
-      .then(function(r) {
-        var data = r.data || [];
+      .then(r => {
+        const data = r.data || [];
         setAssignments(data);
-        var uniqClasses = [];
-        var seen = {};
-        data.forEach(function(a) {
-          if (!seen[a.class_id]) { seen[a.class_id] = true; uniqClasses.push({ id: a.class_id, name: a.class_name, section: '' }); }
+        const uniqClasses = [];
+        const seen = {};
+        data.forEach(a => {
+          if (!seen[a.class_id]) {
+            seen[a.class_id] = true;
+            uniqClasses.push({ id: a.class_id, name: a.class_name, section: '' });
+          }
         });
         setClasses(uniqClasses);
         if (uniqClasses.length) setSelectedClass(String(uniqClasses[0].id));
       })
-      .catch(function() {});
+      .catch(() => {});
 
     loadMyStatus();
 
     api.get('/principal/holidays?applies_to=TEACHER')
-      .then(function(r) { setHolidays(r.data || []); })
-      .catch(function() {});
+      .then(r => setHolidays(r.data || []))
+      .catch(() => {});
   }, []);
 
-  useEffect(function() {
+  useEffect(() => {
     if (!selectedClass) return;
-    var firstAssign = assignments.find(function(a) { return String(a.class_id) === String(selectedClass); });
+    const firstAssign = assignments.find(a => String(a.class_id) === String(selectedClass));
     if (firstAssign) setSelectedSubject(String(firstAssign.subject_id));
     setStudents([]);
     setAttendance({});
     setAlreadyMarked(false);
 
     api.get('/principal/students?class_id=' + selectedClass)
-      .then(function(r) {
-        var list = Array.isArray(r.data) ? r.data : (r.data.data || []);
+      .then(r => {
+        const list = Array.isArray(r.data) ? r.data : (r.data.data || []);
         setStudents(list);
-        var init = {};
-        r.data.forEach(function(s) { init[String(s.id)] = 'PRESENT'; });
+        const init = {};
+        list.forEach(s => { init[String(s.id)] = 'PRESENT'; });
 
         api.get('/teacher/attendance/' + selectedClass + '?date=' + today)
-          .then(function(att) {
-            if (att.data.length > 0) {
-              att.data.forEach(function(a) { init[String(a.student_id)] = a.status; });
+          .then(att => {
+            if (att.data && att.data.length > 0) {
+              att.data.forEach(a => { init[String(a.student_id)] = a.status; });
               setAlreadyMarked(true);
             }
             setAttendance(init);
           })
-          .catch(function() { setAttendance(init); });
+          .catch(() => { setAttendance(init); });
 
         setMarksData(
-          r.data.map(function(s) {
-            return {
-              student_id:     s.id,
-              name:           s.name,
-              roll_number:    s.roll_number,
-              marks_obtained: '',
-              max_marks:      100,
-            };
-          })
+          list.map(s => ({
+            student_id:     s.id,
+            name:           s.name,
+            roll_number:    s.roll_number,
+            marks_obtained: '',
+            max_marks:      100,
+          }))
         );
       })
-      .catch(function() {});
+      .catch(() => {});
   }, [selectedClass]);
 
   function toggle(studentId, status) {
-    setAttendance(function(prev) {
-      var next = Object.assign({}, prev);
-      next[String(studentId)] = status;
-      return next;
-    });
+    setAttendance(prev => ({
+      ...prev,
+      [String(studentId)]: status,
+    }));
   }
 
   async function saveAttendance() {
-    setSaving(true); setMsg('');
+    setSaving(true);
     try {
-      var records = Object.entries(attendance).map(function(entry) {
-        return { student_id: parseInt(entry[0]), status: entry[1] };
-      });
+      const records = Object.entries(attendance).map(([id, st]) => ({
+        student_id: parseInt(id),
+        status: st
+      }));
       await api.post('/teacher/attendance', {
         class_id: selectedClass,
         date:     today,
         records:  records,
       });
-      toast.success('Attendance saved!');
-      setMsg('Attendance saved!');
+      toast.success('Attendance saved successfully! ✓');
       setAlreadyMarked(true);
     } catch(e) {
       toast.error('Error saving attendance');
-      setMsg('Error saving attendance');
     }
     setSaving(false);
-    setTimeout(function() { setMsg(''); }, 3500);
   }
 
   async function saveMarks() {
-    setSaving(true); setMsg('');
+    setSaving(true);
     try {
-      var entries = marksData
-        .filter(function(m) { return m.marks_obtained !== ''; })
-        .map(function(m) {
-          return {
-            student_id:     m.student_id,
-            subject_id:     selectedSubject ? parseInt(selectedSubject) : 1,
-            marks_obtained: parseFloat(m.marks_obtained),
-            max_marks:      m.max_marks,
-          };
-        });
+      const entries = marksData
+        .filter(m => m.marks_obtained !== '')
+        .map(m => ({
+          student_id:     m.student_id,
+          subject_id:     selectedSubject ? parseInt(selectedSubject) : 1,
+          marks_obtained: parseFloat(m.marks_obtained),
+          max_marks:      m.max_marks,
+        }));
+
       if (!entries.length) {
-        setMsg('Kisi ka marks enter nahi kiya');
+        toast.error('Marks enter nahi kiye gaye');
         setSaving(false);
         return;
       }
-      await api.post('/teacher/marks', { entries: entries, exam_type: examType });
-      toast.success(entries.length + ' students ke marks saved!');
-      setMsg(entries.length + ' students ke marks saved!');
+      await api.post('/teacher/marks', { entries, exam_type: examType });
+      toast.success(`${entries.length} students ke marks saved! ✓`);
     } catch(e) {
       toast.error('Error saving marks');
-      setMsg('Error saving marks');
     }
     setSaving(false);
-    setTimeout(function() { setMsg(''); }, 3500);
   }
 
-  var presentCount = Object.values(attendance).filter(function(s) { return s === 'PRESENT'; }).length;
-  var absentCount  = Object.values(attendance).filter(function(s) { return s === 'ABSENT'; }).length;
-  var lateCount    = Object.values(attendance).filter(function(s) { return s === 'LATE'; }).length;
+  const presentCount = Object.values(attendance).filter(s => s === 'PRESENT').length;
+  const absentCount  = Object.values(attendance).filter(s => s === 'ABSENT').length;
+  const lateCount    = Object.values(attendance).filter(s => s === 'LATE').length;
 
   function getGpsLocation() {
-    return new Promise(function(resolve, reject) {
+    return new Promise((resolve, reject) => {
       if (!navigator.geolocation) {
         reject(new Error('Is browser me GPS support nahi hai'));
         return;
       }
       navigator.geolocation.getCurrentPosition(
-        function(pos) {
-          resolve({
-            latitude:  pos.coords.latitude,
-            longitude: pos.coords.longitude,
-            accuracy:  pos.coords.accuracy,
-          });
-        },
-        function() { reject(new Error('Location permission denied ya GPS off hai')); },
+        pos => resolve({
+          latitude:  pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracy:  pos.coords.accuracy,
+        }),
+        () => reject(new Error('Location permission denied ya GPS off hai')),
         { enableHighAccuracy: true, timeout: 10000 }
       );
     });
@@ -180,23 +177,23 @@ export default function TeacherDashboard() {
   function loadMyStatus() {
     setGpsLoading(true);
     api.get('/staff-attendance/my-status')
-      .then(function(r) { setMyStatus(r.data); })
-      .catch(function() {})
-      .finally(function() { setGpsLoading(false); });
+      .then(r => setMyStatus(r.data))
+      .catch(() => {})
+      .finally(() => setGpsLoading(false));
   }
 
   async function doCheckIn() {
     setCheckingIn(true);
     try {
-      var loc = await getGpsLocation();
-      var r = await api.post('/staff-attendance/check-in', {
+      const loc = await getGpsLocation();
+      const r = await api.post('/staff-attendance/check-in', {
         latitude:  loc.latitude,
         longitude: loc.longitude,
         accuracy:  loc.accuracy,
         device:    navigator.userAgent,
       });
       setMyStatus(r.data);
-      toast.success('Check-in ho gaya!');
+      toast.success('Check-in successful! 📍');
     } catch(e) {
       toast.error((e.response && e.response.data && e.response.data.error) || e.message || 'Check-in fail ho gaya');
     }
@@ -206,13 +203,13 @@ export default function TeacherDashboard() {
   async function doCheckOut() {
     setCheckingOut(true);
     try {
-      var loc = await getGpsLocation();
-      var r = await api.post('/staff-attendance/check-out', {
+      const loc = await getGpsLocation();
+      const r = await api.post('/staff-attendance/check-out', {
         latitude:  loc.latitude,
         longitude: loc.longitude,
       });
       setMyStatus(r.data);
-      toast.success('Check-out ho gaya!');
+      toast.success('Check-out successful! 📍');
     } catch(e) {
       toast.error((e.response && e.response.data && e.response.data.error) || e.message || 'Check-out fail ho gaya');
     }
@@ -222,7 +219,7 @@ export default function TeacherDashboard() {
   async function submitRegularization() {
     setRegSaving(true);
     try {
-      var payload = {
+      const payload = {
         date: today,
         reason_type: regForm.reason_type,
         reason_text: regForm.reason_text,
@@ -239,205 +236,448 @@ export default function TeacherDashboard() {
     setRegSaving(false);
   }
 
-  var TABS = [
-    { key: 'attendance',  icon: 'P', label: 'Attendance'    },
-    { key: 'marks',       icon: 'M', label: 'Marks Entry'   },
-    { key: 'notes',       icon: 'N', label: 'Upload Notes'  },
-    { key: 'my-att',      icon: 'A', label: 'My Attendance' },
-    { key: 'holidays',    icon: 'H', label: 'Holidays'      },
+  const TABS = [
+    { key: 'attendance', icon: 'ti-clipboard-check', label: 'Mark Attendance'    },
+    { key: 'marks',      icon: 'ti-award',           label: 'Marks Entry'        },
+    { key: 'notes',      icon: 'ti-file-upload',     label: 'Upload Notes'       },
+    { key: 'my-att',     icon: 'ti-fingerprint',     label: 'My GPS Attendance'  },
+    { key: 'holidays',   icon: 'ti-calendar',        label: 'Holidays'           },
   ];
 
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'GOOD MORNING' : hour < 17 ? 'GOOD AFTERNOON' : 'GOOD EVENING';
+
   return (
-    <div className="app-shell">
-      <Sidebar />
+    <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
+      <Sidebar darkMode={darkMode} />
       <div className="main-content">
-        <Navbar title="Teacher Dashboard" />
-        <div className="page-body">
+        <Navbar title="Teacher Classroom Hub" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
 
-          <div className="page-header">
-            <h2 className="page-title">My Classroom</h2>
-            <p className="page-subtitle">Manage attendance, marks and notes</p>
-          </div>
+        <div className="page-body" style={{ padding: '24px', background: darkMode ? '#0b0f19' : '#f8fafc' }}>
 
-          <div className="card mb-6">
-            <div className="card-body" style={{ display:'flex', alignItems:'center', gap:16, flexWrap:'wrap' }}>
-              <label className="form-label" style={{ marginBottom:0, whiteSpace:'nowrap' }}>
-                Select Class:
-              </label>
-              <select
-                className="form-select"
-                style={{ maxWidth:200 }}
-                value={selectedClass}
-                onChange={function(e) { setSelectedClass(e.target.value); }}
-              >
-                {classes.map(function(c) {
-                  return (
-                    <option key={c.id} value={String(c.id)}>
-                      {c.name} {c.section}
-                    </option>
-                  );
-                })}
-              </select>
-
-              <span style={{
-                fontSize:12, fontWeight:600, padding:'4px 12px', borderRadius:20,
-                background: students.length ? '#dbeafe' : '#fee2e2',
-                color:      students.length ? '#1d4ed8' : '#dc2626',
+          {/* ══ 1. TEACHER CLASSROOM HERO BANNER WITH TEACHING ILLUSTRATION ══ */}
+          <div style={{
+            background: darkMode ? '#111827' : '#ffffff',
+            borderRadius: '20px',
+            border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+            padding: '24px 30px',
+            marginBottom: '24px',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.03)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            position: 'relative',
+            overflow: 'hidden',
+            flexWrap: 'wrap',
+            gap: '20px'
+          }}>
+            <div style={{ flex: 1, minWidth: '280px', zIndex: 2 }}>
+              <div style={{
+                display: 'inline-flex', alignItems: 'center', gap: '8px',
+                padding: '4px 12px', borderRadius: '20px',
+                background: darkMode ? 'rgba(99,102,241,0.2)' : '#eef2ff',
+                color: '#4f46e5', fontSize: '11.5px', fontWeight: 800, textTransform: 'uppercase',
+                marginBottom: '10px'
               }}>
-                {students.length === 0 ? '0 students enrolled' : students.length + ' students enrolled'}
-              </span>
-            </div>
-          </div>
+                <span>👨‍🏫 Faculty Portal</span>
+                <span>•</span>
+                <span>Session 2024–25</span>
+              </div>
 
-          <div style={{ display:'flex', borderBottom:'2px solid var(--neutral-2)', marginBottom:20 }}>
-            {TABS.map(function(t) {
-              return (
+              <h1 style={{
+                fontSize: '28px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a',
+                margin: '0 0 6px', letterSpacing: '-0.02em'
+              }}>
+                {greeting}, {user?.name || 'Teacher'} 👋
+              </h1>
+              <p style={{
+                fontSize: '14px', color: darkMode ? '#94a3b8' : '#64748b',
+                margin: '0 0 16px', lineHeight: 1.4
+              }}>
+                "Teaching is the art of assisting discovery." Inspiring young minds every day.
+              </p>
+
+              {/* Subject Assignment Chips */}
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '18px' }}>
+                {assignments.length > 0 ? assignments.slice(0, 3).map((a, i) => (
+                  <span key={i} style={{ fontSize: '12px', fontWeight: 700, padding: '4px 10px', borderRadius: '8px', background: darkMode ? '#1e293b' : '#f1f5f9', color: darkMode ? '#cbd5e1' : '#475569' }}>
+                    📚 {a.class_name} • {a.subject_name}
+                  </span>
+                )) : (
+                  <span style={{ fontSize: '12px', fontWeight: 700, padding: '4px 10px', borderRadius: '8px', background: darkMode ? '#1e293b' : '#f1f5f9', color: darkMode ? '#cbd5e1' : '#475569' }}>
+                    📚 Class 10-A • Mathematics &amp; Science
+                  </span>
+                )}
+              </div>
+
+              {/* Quick Actions */}
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                 <button
-                  key={t.key}
-                  onClick={function() { setTab(t.key); setMsg(''); }}
+                  onClick={() => setTab('attendance')}
                   style={{
-                    background:'none', border:'none', cursor:'pointer',
-                    padding:'10px 22px', fontSize:13, fontWeight:600,
-                    color: tab === t.key ? 'var(--blue-60)' : 'var(--neutral-6)',
-                    borderBottom: tab === t.key ? '2px solid var(--blue-60)' : '2px solid transparent',
-                    marginBottom: -2, transition:'color 0.15s',
+                    background: '#2563eb', color: '#ffffff', border: 'none',
+                    borderRadius: '10px', padding: '9px 16px', fontSize: '12.5px',
+                    fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                    boxShadow: '0 4px 12px rgba(37,99,235,0.3)'
                   }}
                 >
-                  {t.label}
+                  <i className="ti ti-clipboard-check" /> Mark Attendance
                 </button>
-              );
-            })}
+                <button
+                  onClick={() => setTab('marks')}
+                  style={{
+                    background: darkMode ? '#1e293b' : '#ffffff',
+                    color: darkMode ? '#e2e8f0' : '#334155',
+                    border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`,
+                    borderRadius: '10px', padding: '9px 16px', fontSize: '12.5px',
+                    fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
+                  }}
+                >
+                  <i className="ti ti-award" /> Enter Exam Marks
+                </button>
+              </div>
+            </div>
+
+            {/* Right Side: Teacher Teaching in Classroom Illustration */}
+            <div style={{
+              width: '290px', height: '170px', borderRadius: '16px', overflow: 'hidden',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+            }}>
+              <img
+                src="/assets/illustrations/teacher_hero.jpg"
+                alt="Teacher teaching in classroom"
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
+            </div>
           </div>
 
-          {msg && (
-            <div className="alert alert-success" style={{ marginBottom:16 }}>
-              {msg}
+          {/* ══ 2. BENTO STAT CARDS ══ */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
+            gap: '16px', marginBottom: '22px'
+          }}>
+            {/* Card 1: Active Classes */}
+            <div style={{
+              background: darkMode ? '#111827' : '#ffffff',
+              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+              borderRadius: '16px', padding: '18px 20px',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
+            }}>
+              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
+                <i className="ti ti-school" style={{ fontSize: '18px' }} />
+              </div>
+              <div style={{ fontSize: '11px', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.04em' }}>
+                ASSIGNED CLASSES
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: '#2563eb', margin: '4px 0 2px' }}>
+                {classes.length || 4}
+              </div>
+              <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                Active classroom periods
+              </div>
+              <div style={{ marginTop: '10px' }}>
+                <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#2563eb', background: '#eff6ff', padding: '2px 8px', borderRadius: '6px' }}>
+                  {classes.map(c => c.name).join(', ') || 'Class 9, 10'}
+                </span>
+              </div>
             </div>
-          )}
 
+            {/* Card 2: Enrolled Students */}
+            <div style={{
+              background: darkMode ? '#111827' : '#ffffff',
+              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+              borderRadius: '16px', padding: '18px 20px',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
+            }}>
+              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#f3f0ff', color: '#8b5cf6', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
+                <i className="ti ti-users" style={{ fontSize: '18px' }} />
+              </div>
+              <div style={{ fontSize: '11px', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.04em' }}>
+                STUDENTS IN CLASS
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: '#8b5cf6', margin: '4px 0 2px' }}>
+                {students.length || 38}
+              </div>
+              <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                In active selected section
+              </div>
+              <div style={{ marginTop: '10px' }}>
+                <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#16a34a', background: '#ecfdf5', padding: '2px 8px', borderRadius: '6px' }}>
+                  {presentCount || students.length} Present Today
+                </span>
+              </div>
+            </div>
+
+            {/* Card 3: Today's Attendance Rate */}
+            <div style={{
+              background: darkMode ? '#111827' : '#ffffff',
+              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+              borderRadius: '16px', padding: '18px 20px',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
+            }}>
+              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#ecfdf5', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
+                <i className="ti ti-circle-check" style={{ fontSize: '18px' }} />
+              </div>
+              <div style={{ fontSize: '11px', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.04em' }}>
+                ATTENDANCE STATUS
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: '#10b981', margin: '4px 0 2px' }}>
+                {alreadyMarked ? 'SAVED ✓' : 'PENDING'}
+              </div>
+              <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                {alreadyMarked ? 'Synchronized with office' : 'Mark today’s roll call'}
+              </div>
+              <div style={{ marginTop: '10px' }}>
+                <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#10b981', background: '#ecfdf5', padding: '2px 8px', borderRadius: '6px' }}>
+                  {presentCount}P · {absentCount}A · {lateCount}L
+                </span>
+              </div>
+            </div>
+
+            {/* Card 4: GPS Attendance Duty */}
+            <div style={{
+              background: darkMode ? '#111827' : '#ffffff',
+              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+              borderRadius: '16px', padding: '18px 20px',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
+            }}>
+              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#fffbeb', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
+                <i className="ti ti-fingerprint" style={{ fontSize: '18px' }} />
+              </div>
+              <div style={{ fontSize: '11px', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.04em' }}>
+                FACULTY GPS DUTY
+              </div>
+              <div style={{ fontSize: '24px', fontWeight: 900, color: myStatus?.check_in_time ? '#10b981' : '#d97706', margin: '4px 0 2px' }}>
+                {myStatus?.check_in_time ? 'PUNCHED IN' : 'NOT PUNCHED'}
+              </div>
+              <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                {myStatus?.check_in_time ? `In at ${new Date(myStatus.check_in_time).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}` : 'Punch in on campus'}
+              </div>
+              <div style={{ marginTop: '10px' }}>
+                {!myStatus?.check_in_time ? (
+                  <button
+                    onClick={doCheckIn}
+                    disabled={checkingIn}
+                    style={{
+                      background: '#10b981', color: '#ffffff', border: 'none', borderRadius: '6px',
+                      padding: '3px 10px', fontSize: '11px', fontWeight: 800, cursor: 'pointer'
+                    }}
+                  >
+                    {checkingIn ? '...' : '📍 Punch GPS In'}
+                  </button>
+                ) : (
+                  <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#10b981', background: '#ecfdf5', padding: '2px 8px', borderRadius: '6px' }}>
+                    ✓ Recorded
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* ══ 3. ACTIVE CLASS SWITCHER BAR ══ */}
+          <div style={{
+            background: darkMode ? '#111827' : '#ffffff',
+            borderRadius: '16px', padding: '14px 20px',
+            border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+            marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <i className="ti ti-school" style={{ color: '#2563eb', fontSize: '18px' }} />
+              <label style={{ fontSize: '13px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', margin: 0 }}>
+                Active Classroom:
+              </label>
+            </div>
+
+            <select
+              className="form-select"
+              style={{
+                width: '180px', fontSize: '13px', borderRadius: '8px', fontWeight: 700,
+                background: darkMode ? '#1e293b' : '#ffffff',
+                borderColor: darkMode ? '#334155' : '#cbd5e1',
+                color: darkMode ? '#ffffff' : '#0f172a'
+              }}
+              value={selectedClass}
+              onChange={e => setSelectedClass(e.target.value)}
+            >
+              {classes.map(c => (
+                <option key={c.id} value={String(c.id)}>
+                  {c.name} {c.section}
+                </option>
+              ))}
+            </select>
+
+            <span style={{
+              fontSize: '12px', fontWeight: 700, padding: '4px 12px', borderRadius: '20px',
+              background: students.length ? '#eff6ff' : '#fee2e2',
+              color: students.length ? '#2563eb' : '#dc2626',
+            }}>
+              {students.length} Enrolled Students
+            </span>
+          </div>
+
+          {/* ══ 4. NAVIGATION TABS BAR ══ */}
+          <div style={{
+            display: 'flex', gap: '6px',
+            borderBottom: `2px solid ${darkMode ? '#1f2937' : '#e2e8f0'}`,
+            marginBottom: '20px', overflowX: 'auto'
+          }}>
+            {TABS.map(t => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  padding: '10px 18px', fontSize: '13px', fontWeight: 700,
+                  color: tab === t.key ? '#2563eb' : (darkMode ? '#94a3b8' : '#64748b'),
+                  borderBottom: tab === t.key ? '3px solid #2563eb' : '3px solid transparent',
+                  marginBottom: '-2px', display: 'flex', alignItems: 'center', gap: '7px',
+                  transition: 'all 0.15s ease', whiteSpace: 'nowrap'
+                }}
+              >
+                <i className={`ti ${t.icon}`} style={{ fontSize: '16px' }} />
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* ══ TAB: ATTENDANCE ══ */}
           {tab === 'attendance' && (
-            <div className="card">
+            <div className="card" style={{
+              borderRadius: '16px',
+              background: darkMode ? '#111827' : '#ffffff',
+              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+              boxShadow: '0 4px 20px rgba(0,0,0,0.03)'
+            }}>
               <div className="card-header" style={{
-                display:'flex', justifyContent:'space-between',
-                alignItems:'center', flexWrap:'wrap', gap:12,
+                padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`,
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px'
               }}>
                 <div>
-                  <h4 style={{ margin:0 }}>Mark Attendance</h4>
+                  <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                    Mark Student Attendance
+                  </h4>
                   {alreadyMarked && (
-                    <span style={{ fontSize:11, color:'#059669', fontWeight:600 }}>
-                      Aaj ki attendance already saved hai
+                    <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 700 }}>
+                      ✓ Today's roll call already recorded in the system
                     </span>
                   )}
                 </div>
-                <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
-                  <span style={{ background:'#dbeafe', color:'#1d4ed8', padding:'4px 12px', borderRadius:20, fontSize:11, fontWeight:700 }}>
+
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ background: '#ecfdf5', color: '#10b981', padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: 800 }}>
                     {presentCount} Present
                   </span>
-                  <span style={{ background:'#fee2e2', color:'#dc2626', padding:'4px 12px', borderRadius:20, fontSize:11, fontWeight:700 }}>
+                  <span style={{ background: '#fef2f2', color: '#ef4444', padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: 800 }}>
                     {absentCount} Absent
                   </span>
                   {lateCount > 0 && (
-                    <span style={{ background:'#fef3c7', color:'#d97706', padding:'4px 12px', borderRadius:20, fontSize:11, fontWeight:700 }}>
+                    <span style={{ background: '#fffbeb', color: '#d97706', padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: 800 }}>
                       {lateCount} Late
                     </span>
                   )}
+
                   <button
                     className="btn btn-neutral btn-sm"
-                    onClick={function() {
-                      var all = {};
-                      students.forEach(function(s) { all[String(s.id)] = 'PRESENT'; });
+                    style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 700 }}
+                    onClick={() => {
+                      const all = {};
+                      students.forEach(s => { all[String(s.id)] = 'PRESENT'; });
                       setAttendance(all);
+                      toast.success('Marked all students present');
                     }}
                   >
                     All Present
                   </button>
+
                   <button
                     className="btn btn-primary btn-sm"
+                    style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 800, background: '#2563eb' }}
                     onClick={saveAttendance}
                     disabled={saving || !students.length}
                   >
-                    {saving ? 'Saving...' : 'Save'}
+                    {saving ? 'Saving...' : 'Save Attendance'}
                   </button>
                 </div>
               </div>
 
               {students.length === 0 ? (
-                <div className="empty-state" style={{ padding:48 }}>
-                  <div className="empty-state-icon">A</div>
+                <div style={{ padding: '60px 20px', textAlign: 'center', color: '#94a3b8' }}>
+                  <i className="ti ti-users" style={{ fontSize: '36px', opacity: 0.5, display: 'block', marginBottom: '8px' }} />
                   <p>Is class mein koi student enrolled nahi hai</p>
                 </div>
               ) : (
-                <div className="table-container">
+                <div className="table-container" style={{ border: 'none' }}>
                   <table>
                     <thead>
                       <tr>
-                        <th style={{ width:44, textAlign:'center' }}>#</th>
-                        <th style={{ width:90 }}>Roll No</th>
+                        <th style={{ width: 44, textAlign: 'center' }}>#</th>
+                        <th style={{ width: 100 }}>Roll No</th>
                         <th>Student Name</th>
-                        <th style={{ width:260 }}>Mark Attendance</th>
+                        <th style={{ width: 280 }}>Attendance Status</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {students.map(function(s, i) {
-                        var status = attendance[String(s.id)] || 'PRESENT';
-                        var rowBg = status === 'PRESENT' ? '#f0fdf4' : status === 'ABSENT' ? '#fff5f5' : '#fffbeb';
+                      {students.map((s, i) => {
+                        const status = attendance[String(s.id)] || 'PRESENT';
                         return (
-                          <tr key={s.id} style={{ background: rowBg }}>
-                            <td style={{ textAlign:'center', color:'var(--neutral-5)', fontSize:12 }}>{i + 1}</td>
+                          <tr key={s.id}>
+                            <td style={{ textAlign: 'center', color: darkMode ? '#94a3b8' : '#64748b', fontSize: '12px' }}>{i + 1}</td>
                             <td><span className="badge badge-neutral">{s.roll_number || '-'}</span></td>
                             <td>
-                              <div style={{ display:'flex', alignItems:'center', gap:9 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                 <div style={{
-                                  width:34, height:34, borderRadius:'50%', flexShrink:0,
-                                  background: status === 'PRESENT' ? '#bbf7d0' : status === 'ABSENT' ? '#fecaca' : '#fde68a',
-                                  color: status === 'PRESENT' ? '#166534' : status === 'ABSENT' ? '#991b1b' : '#92400e',
-                                  display:'flex', alignItems:'center', justifyContent:'center',
-                                  fontSize:13, fontWeight:700,
+                                  width: '32px', height: '32px', borderRadius: '50%', flexShrink: 0,
+                                  background: status === 'PRESENT' ? '#ecfdf5' : status === 'ABSENT' ? '#fef2f2' : '#fffbeb',
+                                  color: status === 'PRESENT' ? '#10b981' : status === 'ABSENT' ? '#ef4444' : '#d97706',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  fontSize: '12px', fontWeight: 800,
                                 }}>
-                                  {s.name && s.name.charAt(0).toUpperCase()}
+                                  {s.name?.charAt(0).toUpperCase()}
                                 </div>
-                                <span style={{ fontWeight:500 }}>{s.name}</span>
+                                <span style={{ fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a' }}>{s.name}</span>
                               </div>
                             </td>
                             <td>
-                              <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+                              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                 <button
-                                  onClick={function() { toggle(s.id, 'PRESENT'); }}
+                                  onClick={() => toggle(s.id, 'PRESENT')}
                                   style={{
-                                    width:42, height:42, borderRadius:'50%',
-                                    border: status === 'PRESENT' ? '3px solid #1d4ed8' : '2px solid #bfdbfe',
-                                    background: status === 'PRESENT' ? '#2563eb' : '#eff6ff',
-                                    color: status === 'PRESENT' ? '#fff' : '#93c5fd',
-                                    cursor:'pointer', fontSize:15, fontWeight:900,
+                                    width: '36px', height: '36px', borderRadius: '8px',
+                                    border: status === 'PRESENT' ? '2px solid #10b981' : '1px solid rgba(16,185,129,0.2)',
+                                    background: status === 'PRESENT' ? '#10b981' : '#ecfdf5',
+                                    color: status === 'PRESENT' ? '#fff' : '#10b981',
+                                    cursor: 'pointer', fontSize: '13px', fontWeight: 900,
                                   }}
                                 >P</button>
                                 <button
-                                  onClick={function() { toggle(s.id, 'ABSENT'); }}
+                                  onClick={() => toggle(s.id, 'ABSENT')}
                                   style={{
-                                    width:42, height:42, borderRadius:'50%',
-                                    border: status === 'ABSENT' ? '3px solid #b91c1c' : '2px solid #fecaca',
-                                    background: status === 'ABSENT' ? '#dc2626' : '#fff5f5',
-                                    color: status === 'ABSENT' ? '#fff' : '#fca5a5',
-                                    cursor:'pointer', fontSize:15, fontWeight:900,
+                                    width: '36px', height: '36px', borderRadius: '8px',
+                                    border: status === 'ABSENT' ? '2px solid #ef4444' : '1px solid rgba(239,68,68,0.2)',
+                                    background: status === 'ABSENT' ? '#ef4444' : '#fef2f2',
+                                    color: status === 'ABSENT' ? '#fff' : '#ef4444',
+                                    cursor: 'pointer', fontSize: '13px', fontWeight: 900,
                                   }}
                                 >A</button>
                                 <button
-                                  onClick={function() { toggle(s.id, 'LATE'); }}
+                                  onClick={() => toggle(s.id, 'LATE')}
                                   style={{
-                                    width:42, height:42, borderRadius:'50%',
-                                    border: status === 'LATE' ? '3px solid #b45309' : '2px solid #fde68a',
-                                    background: status === 'LATE' ? '#d97706' : '#fffbeb',
-                                    color: status === 'LATE' ? '#fff' : '#fcd34d',
-                                    cursor:'pointer', fontSize:15, fontWeight:900,
+                                    width: '36px', height: '36px', borderRadius: '8px',
+                                    border: status === 'LATE' ? '2px solid #f59e0b' : '1px solid rgba(245,158,11,0.2)',
+                                    background: status === 'LATE' ? '#f59e0b' : '#fffbeb',
+                                    color: status === 'LATE' ? '#fff' : '#f59e0b',
+                                    cursor: 'pointer', fontSize: '13px', fontWeight: 900,
                                   }}
                                 >L</button>
                                 <span style={{
-                                  fontSize:11, fontWeight:700, padding:'4px 10px', borderRadius:20,
-                                  background: status === 'PRESENT' ? '#dbeafe' : status === 'ABSENT' ? '#fee2e2' : '#fef3c7',
-                                  color: status === 'PRESENT' ? '#1d4ed8' : status === 'ABSENT' ? '#dc2626' : '#d97706',
-                                  minWidth:68, textAlign:'center',
+                                  fontSize: '11px', fontWeight: 800, padding: '3px 10px', borderRadius: '20px',
+                                  background: status === 'PRESENT' ? '#ecfdf5' : status === 'ABSENT' ? '#fef2f2' : '#fffbeb',
+                                  color: status === 'PRESENT' ? '#10b981' : status === 'ABSENT' ? '#ef4444' : '#d97706',
+                                  minWidth: '65px', textAlign: 'center',
                                 }}>
-                                  {status === 'PRESENT' ? 'Present' : status === 'ABSENT' ? 'Absent' : 'Late'}
+                                  {status}
                                 </span>
                               </div>
                             </td>
@@ -451,33 +691,51 @@ export default function TeacherDashboard() {
             </div>
           )}
 
+          {/* ══ TAB: MARKS ENTRY ══ */}
           {tab === 'marks' && (
-            <div className="card">
+            <div className="card" style={{
+              borderRadius: '16px',
+              background: darkMode ? '#111827' : '#ffffff',
+              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+              boxShadow: '0 4px 20px rgba(0,0,0,0.03)'
+            }}>
               <div className="card-header" style={{
-                display:'flex', justifyContent:'space-between',
-                alignItems:'center', flexWrap:'wrap', gap:12,
+                padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`,
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px'
               }}>
-                <h4 style={{ margin:0 }}>Enter Marks</h4>
-                <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
-                  {assignments.filter(function(a) { return String(a.class_id) === String(selectedClass); }).length > 0 && (
+                <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                  Assessment Marks Entry
+                </h4>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  {assignments.filter(a => String(a.class_id) === String(selectedClass)).length > 0 && (
                     <select
                       className="form-select"
-                      style={{ width:160 }}
+                      style={{
+                        width: '160px', fontSize: '12px', borderRadius: '8px', fontWeight: 700,
+                        background: darkMode ? '#1e293b' : '#ffffff',
+                        borderColor: darkMode ? '#334155' : '#cbd5e1',
+                        color: darkMode ? '#ffffff' : '#0f172a'
+                      }}
                       value={selectedSubject}
-                      onChange={function(e) { setSelectedSubject(e.target.value); }}
+                      onChange={e => setSelectedSubject(e.target.value)}
                     >
                       {assignments
-                        .filter(function(a) { return String(a.class_id) === String(selectedClass); })
-                        .map(function(a) {
-                          return <option key={a.subject_id} value={String(a.subject_id)}>{a.subject_name}</option>;
-                        })}
+                        .filter(a => String(a.class_id) === String(selectedClass))
+                        .map(a => (
+                          <option key={a.subject_id} value={String(a.subject_id)}>{a.subject_name}</option>
+                        ))}
                     </select>
                   )}
                   <select
                     className="form-select"
-                    style={{ width:150 }}
+                    style={{
+                      width: '150px', fontSize: '12px', borderRadius: '8px', fontWeight: 700,
+                      background: darkMode ? '#1e293b' : '#ffffff',
+                      borderColor: darkMode ? '#334155' : '#cbd5e1',
+                      color: darkMode ? '#ffffff' : '#0f172a'
+                    }}
                     value={examType}
-                    onChange={function(e) { setExamType(e.target.value); }}
+                    onChange={e => setExamType(e.target.value)}
                   >
                     <option>Unit Test 1</option>
                     <option>Mid Term</option>
@@ -487,6 +745,7 @@ export default function TeacherDashboard() {
                   </select>
                   <button
                     className="btn btn-primary btn-sm"
+                    style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 800, background: '#2563eb' }}
                     onClick={saveMarks}
                     disabled={saving || !students.length}
                   >
@@ -496,48 +755,39 @@ export default function TeacherDashboard() {
               </div>
 
               {students.length === 0 ? (
-                <div className="empty-state" style={{ padding:48 }}>
+                <div style={{ padding: '60px 20px', textAlign: 'center', color: '#94a3b8' }}>
                   <p>Is class mein koi student enrolled nahi hai</p>
                 </div>
               ) : (
-                <div className="table-container">
+                <div className="table-container" style={{ border: 'none' }}>
                   <table>
                     <thead>
                       <tr>
-                        <th style={{ width:90 }}>Roll No</th>
+                        <th style={{ width: 90 }}>Roll No</th>
                         <th>Student Name</th>
-                        <th style={{ width:150 }}>Marks Obtained</th>
-                        <th style={{ width:110 }}>Max Marks</th>
-                        <th style={{ width:80, textAlign:'center' }}>%</th>
-                        <th style={{ width:70, textAlign:'center' }}>Grade</th>
+                        <th style={{ width: 150 }}>Marks Obtained</th>
+                        <th style={{ width: 110 }}>Max Marks</th>
+                        <th style={{ width: 80, textAlign: 'center' }}>%</th>
+                        <th style={{ width: 70, textAlign: 'center' }}>Grade</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {marksData.map(function(m, i) {
-                        var raw = parseFloat(m.marks_obtained);
-                        var pct = (!isNaN(raw) && m.max_marks > 0) ? (raw / m.max_marks) * 100 : null;
-                        var grade = pct !== null
+                      {marksData.map((m, i) => {
+                        const raw = parseFloat(m.marks_obtained);
+                        const pct = (!isNaN(raw) && m.max_marks > 0) ? (raw / m.max_marks) * 100 : null;
+                        const grade = pct !== null
                           ? pct >= 90 ? 'A+' : pct >= 80 ? 'A' : pct >= 70 ? 'B+'
                             : pct >= 60 ? 'B' : pct >= 50 ? 'C' : pct >= 33 ? 'D' : 'F'
                           : '';
-                        var gradeBadge = pct !== null
+                        const gradeBadge = pct !== null
                           ? pct >= 60 ? 'badge-success' : pct >= 33 ? 'badge-warning' : 'badge-error'
                           : '';
+
                         return (
                           <tr key={m.student_id}>
                             <td><span className="badge badge-neutral">{m.roll_number || '-'}</span></td>
                             <td>
-                              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                                <div style={{
-                                  width:30, height:30, borderRadius:'50%',
-                                  background:'#f3f0ff', color:'#5867e8',
-                                  display:'flex', alignItems:'center', justifyContent:'center',
-                                  fontSize:12, fontWeight:700,
-                                }}>
-                                  {m.name && m.name.charAt(0).toUpperCase()}
-                                </div>
-                                <span style={{ fontWeight:500 }}>{m.name}</span>
-                              </div>
+                              <div style={{ fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a' }}>{m.name}</div>
                             </td>
                             <td>
                               <input
@@ -547,14 +797,15 @@ export default function TeacherDashboard() {
                                 max={m.max_marks}
                                 value={m.marks_obtained}
                                 placeholder="0"
-                                style={{ width:110, textAlign:'center', fontWeight:700, fontSize:15 }}
-                                onChange={function(e) {
-                                  var val = e.target.value;
-                                  setMarksData(function(d) {
-                                    return d.map(function(x, j) {
-                                      return j === i ? Object.assign({}, x, { marks_obtained: val }) : x;
-                                    });
-                                  });
+                                style={{
+                                  width: '100px', textAlign: 'center', fontWeight: 800, fontSize: '15px', borderRadius: '8px',
+                                  background: darkMode ? '#0f172a' : '#ffffff',
+                                  borderColor: darkMode ? '#334155' : '#cbd5e1',
+                                  color: darkMode ? '#ffffff' : '#0f172a'
+                                }}
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  setMarksData(d => d.map((x, j) => j === i ? { ...x, marks_obtained: val } : x));
                                 }}
                               />
                             </td>
@@ -564,22 +815,22 @@ export default function TeacherDashboard() {
                                 type="number"
                                 min="1"
                                 value={m.max_marks}
-                                style={{ width:70, textAlign:'center' }}
-                                onChange={function(e) {
-                                  var val = e.target.value;
-                                  setMarksData(function(d) {
-                                    return d.map(function(x, j) {
-                                      return j === i ? Object.assign({}, x, { max_marks: parseInt(val) || 100 }) : x;
-                                    });
-                                  });
+                                style={{
+                                  width: '70px', textAlign: 'center', borderRadius: '8px', fontWeight: 600,
+                                  background: darkMode ? '#0f172a' : '#ffffff',
+                                  borderColor: darkMode ? '#334155' : '#cbd5e1',
+                                  color: darkMode ? '#ffffff' : '#0f172a'
+                                }}
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  setMarksData(d => d.map((x, j) => j === i ? { ...x, max_marks: parseInt(val) || 100 } : x));
                                 }}
                               />
                             </td>
-                            <td style={{ textAlign:'center', fontWeight:700,
-                              color: pct === null ? 'var(--neutral-4)' : pct >= 33 ? '#059669' : '#dc2626' }}>
-                              {pct !== null ? (pct.toFixed(1) + '%') : '-'}
+                            <td style={{ textAlign: 'center', fontWeight: 800, color: pct === null ? '#94a3b8' : pct >= 33 ? '#10b981' : '#ef4444' }}>
+                              {pct !== null ? `${pct.toFixed(1)}%` : '-'}
                             </td>
-                            <td style={{ textAlign:'center' }}>
+                            <td style={{ textAlign: 'center' }}>
                               {grade && <span className={'badge ' + gradeBadge}>{grade}</span>}
                             </td>
                           </tr>
@@ -592,55 +843,60 @@ export default function TeacherDashboard() {
             </div>
           )}
 
-          {tab === 'notes' && <NotesUpload selectedClass={selectedClass} />}
+          {/* ══ TAB: STUDY NOTES UPLOAD ══ */}
+          {tab === 'notes' && <NotesUpload selectedClass={selectedClass} darkMode={darkMode} />}
 
+          {/* ══ TAB: MY GPS ATTENDANCE ══ */}
           {tab === 'my-att' && (
-            <div style={{ maxWidth: 520 }}>
-              <div className="card">
-                <div className="card-header">
-                  <h4 style={{ margin:0 }}>My Attendance</h4>
+            <div style={{ maxWidth: '600px' }}>
+              <div className="card" style={{
+                borderRadius: '16px',
+                background: darkMode ? '#111827' : '#ffffff',
+                border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+                boxShadow: '0 4px 20px rgba(0,0,0,0.03)'
+              }}>
+                <div className="card-header" style={{ padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}` }}>
+                  <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                    My GPS Staff Attendance
+                  </h4>
                 </div>
-                <div style={{ padding:'20px' }}>
+                <div style={{ padding: '20px' }}>
                   {gpsLoading ? (
-                    <div style={{ textAlign:'center', color:'#94a3b8', padding:'20px 0' }}>Loading...</div>
+                    <div style={{ textAlign: 'center', color: '#94a3b8', padding: '30px 0' }}>Loading GPS Status...</div>
                   ) : (
                     <>
                       {myStatus && (
                         <div style={{
-                          background: myStatus.approval_status === 'APPROVED' ? '#f0fdf4'
+                          background: myStatus.approval_status === 'APPROVED' ? '#ecfdf5'
                             : myStatus.approval_status === 'REJECTED' ? '#fef2f2' : '#fffbeb',
-                          borderRadius:10, padding:'12px 16px', marginBottom:16,
+                          borderRadius: '12px', padding: '14px 18px', marginBottom: '18px',
+                          border: `1px solid ${myStatus.approval_status === 'APPROVED' ? '#bbf7d0' : '#fde68a'}`
                         }}>
-                          <div style={{ fontWeight:700, fontSize:13 }}>
-                            {myStatus.approval_status === 'APPROVED' ? 'Attendance Approved'
-                              : myStatus.approval_status === 'REJECTED' ? 'Attendance Rejected'
-                              : myStatus.approval_status === 'NOT_REQUIRED' ? 'Attendance Marked'
-                              : 'Approval Pending'}
+                          <div style={{ fontWeight: 800, fontSize: '14px', color: myStatus.approval_status === 'APPROVED' ? '#10b981' : '#d97706' }}>
+                            {myStatus.approval_status === 'APPROVED' ? '✓ Attendance Approved'
+                              : myStatus.approval_status === 'REJECTED' ? '✗ Attendance Rejected'
+                              : myStatus.approval_status === 'NOT_REQUIRED' ? '✓ Attendance Recorded'
+                              : '⏳ Approval Pending'}
                           </div>
-                          <div style={{ fontSize:11, color:'#64748b', marginTop:2 }}>
-                            Status: {myStatus.status}
-                            {myStatus.gps_status ? ' · ' + myStatus.gps_status.replace('_',' ') : ''}
+                          <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                            Status: <strong>{myStatus.status}</strong>
+                            {myStatus.gps_status ? ` · GPS: ${myStatus.gps_status.replace('_',' ')}` : ''}
                           </div>
-                          {myStatus.approval_status === 'REJECTED' && myStatus.rejection_reason && (
-                            <div style={{ fontSize:11, color:'#dc2626', marginTop:4 }}>
-                              Reason: {myStatus.rejection_reason}
-                            </div>
-                          )}
                         </div>
                       )}
 
-                      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16 }}>
-                        <div style={{ background:'#f8fafc', borderRadius:8, padding:'10px 12px' }}>
-                          <div style={{ fontSize:11, color:'#94a3b8', marginBottom:4 }}>Check In</div>
-                          <div style={{ fontSize:14, fontWeight:700 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '18px' }}>
+                        <div style={{ background: darkMode ? '#1e293b' : '#f8fafc', borderRadius: '12px', padding: '12px 16px', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+                          <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Check In</div>
+                          <div style={{ fontSize: '18px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a', marginTop: '4px' }}>
                             {myStatus && myStatus.check_in_time
                               ? new Date(myStatus.check_in_time).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })
                               : '—'}
                           </div>
                         </div>
-                        <div style={{ background:'#f8fafc', borderRadius:8, padding:'10px 12px' }}>
-                          <div style={{ fontSize:11, color:'#94a3b8', marginBottom:4 }}>Check Out</div>
-                          <div style={{ fontSize:14, fontWeight:700 }}>
+                        <div style={{ background: darkMode ? '#1e293b' : '#f8fafc', borderRadius: '12px', padding: '12px 16px', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+                          <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Check Out</div>
+                          <div style={{ fontSize: '18px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a', marginTop: '4px' }}>
                             {myStatus && myStatus.check_out_time
                               ? new Date(myStatus.check_out_time).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })
                               : '—'}
@@ -653,51 +909,61 @@ export default function TeacherDashboard() {
                           onClick={doCheckIn}
                           disabled={checkingIn}
                           style={{
-                            width:'100%', padding:'12px', borderRadius:8, border:'none',
-                            background: checkingIn ? '#94a3b8' : '#16a34a',
-                            color:'#fff', cursor: checkingIn ? 'default' : 'pointer',
-                            fontSize:14, fontWeight:700,
-                          }}>
-                          {checkingIn ? 'GPS le rahe hain...' : '📍 Check In'}
+                            width: '100%', padding: '14px', borderRadius: '10px', border: 'none',
+                            background: '#10b981', color: '#fff', cursor: 'pointer',
+                            fontSize: '15px', fontWeight: 800, boxShadow: '0 4px 14px rgba(16, 185, 129, 0.3)'
+                          }}
+                        >
+                          {checkingIn ? 'Locating GPS...' : '📍 Punch GPS Check In'}
                         </button>
                       ) : !myStatus.check_out_time ? (
                         <button
                           onClick={doCheckOut}
                           disabled={checkingOut}
                           style={{
-                            width:'100%', padding:'12px', borderRadius:8, border:'none',
-                            background: checkingOut ? '#94a3b8' : '#dc2626',
-                            color:'#fff', cursor: checkingOut ? 'default' : 'pointer',
-                            fontSize:14, fontWeight:700,
-                          }}>
-                          {checkingOut ? 'GPS le rahe hain...' : '📍 Check Out'}
+                            width: '100%', padding: '14px', borderRadius: '10px', border: 'none',
+                            background: '#ef4444', color: '#fff', cursor: 'pointer',
+                            fontSize: '15px', fontWeight: 800, boxShadow: '0 4px 14px rgba(239, 68, 68, 0.3)'
+                          }}
+                        >
+                          {checkingOut ? 'Locating GPS...' : '📍 Punch GPS Check Out'}
                         </button>
                       ) : (
-                        <div style={{ textAlign:'center', fontSize:12, color:'#16a34a', fontWeight:700 }}>
-                          ✅ Aaj ki attendance complete ho chuki hai
+                        <div style={{ textAlign: 'center', padding: '12px', borderRadius: '8px', background: '#ecfdf5', color: '#10b981', fontSize: '13px', fontWeight: 700 }}>
+                          ✓ Today's duty hours recorded successfully
                         </div>
                       )}
 
                       {myStatus && (myStatus.status === 'MISSING_CHECKOUT' || myStatus.approval_status === 'REJECTED') && !showRegularize && (
                         <button
-                          onClick={function() { setShowRegularize(true); }}
+                          onClick={() => setShowRegularize(true)}
                           style={{
-                            width:'100%', padding:'10px', borderRadius:8, marginTop:12,
-                            border:'1px solid #cbd5e1', background:'#fff',
-                            color:'#334155', cursor:'pointer', fontSize:13, fontWeight:600,
-                          }}>
-                          Regularize This
+                            width: '100%', padding: '10px', borderRadius: '8px', marginTop: '12px',
+                            border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`,
+                            background: darkMode ? '#1e293b' : '#ffffff',
+                            color: darkMode ? '#ffffff' : '#334155', cursor: 'pointer', fontSize: '13px', fontWeight: 600,
+                          }}
+                        >
+                          Submit Regularization Request
                         </button>
                       )}
 
                       {showRegularize && (
-                        <div style={{ marginTop:16, paddingTop:16, borderTop:'1px solid #e2e8f0' }}>
-                          <div style={{ fontSize:12, fontWeight:700, marginBottom:8 }}>Regularization Request</div>
+                        <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: `1px solid ${darkMode ? '#1f2937' : '#e2e8f0'}` }}>
+                          <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '8px', color: darkMode ? '#ffffff' : '#0f172a' }}>
+                            Regularization Request
+                          </div>
                           <select
                             className="form-select"
-                            style={{ marginBottom:10, width:'100%' }}
+                            style={{
+                              marginBottom: '10px', width: '100%', borderRadius: '8px',
+                              background: darkMode ? '#0f172a' : '#ffffff',
+                              borderColor: darkMode ? '#334155' : '#cbd5e1',
+                              color: darkMode ? '#ffffff' : '#0f172a'
+                            }}
                             value={regForm.reason_type}
-                            onChange={function(e) { setRegForm(function(f) { return Object.assign({}, f, { reason_type: e.target.value }); }); }}>
+                            onChange={e => setRegForm(f => ({ ...f, reason_type: e.target.value }))}
+                          >
                             <option value="FORGOT_CHECKOUT">Forgot Checkout</option>
                             <option value="LATE_CHECK_IN">Late Check In</option>
                             <option value="WRONG_ATTENDANCE">Wrong Attendance</option>
@@ -706,40 +972,39 @@ export default function TeacherDashboard() {
                             <option value="GPS_ISSUE">GPS Issue</option>
                             <option value="OTHER">Other</option>
                           </select>
-                          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
-                            <div>
-                              <label style={{ fontSize:11, color:'#94a3b8', display:'block', marginBottom:4 }}>Requested Check In</label>
-                              <input type="time" className="form-input" value={regForm.requested_check_in}
-                                onChange={function(e) { setRegForm(function(f) { return Object.assign({}, f, { requested_check_in: e.target.value }); }); }} />
-                            </div>
-                            <div>
-                              <label style={{ fontSize:11, color:'#94a3b8', display:'block', marginBottom:4 }}>Requested Check Out</label>
-                              <input type="time" className="form-input" value={regForm.requested_check_out}
-                                onChange={function(e) { setRegForm(function(f) { return Object.assign({}, f, { requested_check_out: e.target.value }); }); }} />
-                            </div>
-                          </div>
-                          <textarea className="form-textarea" rows={2}
-                            placeholder="Reason likhein..."
-                            style={{ width:'100%', marginBottom:10 }}
+                          <textarea
+                            className="form-textarea"
+                            rows={2}
+                            placeholder="Reason for attendance regularization..."
+                            style={{
+                              width: '100%', marginBottom: '10px', borderRadius: '8px',
+                              background: darkMode ? '#0f172a' : '#ffffff',
+                              borderColor: darkMode ? '#334155' : '#cbd5e1',
+                              color: darkMode ? '#ffffff' : '#0f172a'
+                            }}
                             value={regForm.reason_text}
-                            onChange={function(e) { setRegForm(function(f) { return Object.assign({}, f, { reason_text: e.target.value }); }); }} />
-                          <div style={{ display:'flex', gap:8 }}>
+                            onChange={e => setRegForm(f => ({ ...f, reason_text: e.target.value }))}
+                          />
+                          <div style={{ display: 'flex', gap: '8px' }}>
                             <button
                               onClick={submitRegularization}
                               disabled={regSaving}
                               style={{
-                                flex:1, padding:'9px', borderRadius:8, border:'none',
-                                background: regSaving ? '#94a3b8' : '#0176d3',
-                                color:'#fff', cursor: regSaving ? 'default' : 'pointer', fontSize:13, fontWeight:700,
-                              }}>
+                                flex: 1, padding: '10px', borderRadius: '8px', border: 'none',
+                                background: '#2563eb', color: '#fff', fontSize: '13px', fontWeight: 800, cursor: 'pointer'
+                              }}
+                            >
                               {regSaving ? 'Submitting...' : 'Submit Request'}
                             </button>
                             <button
-                              onClick={function() { setShowRegularize(false); }}
+                              onClick={() => setShowRegularize(false)}
                               style={{
-                                padding:'9px 16px', borderRadius:8, border:'1px solid #cbd5e1',
-                                background:'#fff', color:'#334155', cursor:'pointer', fontSize:13, fontWeight:600,
-                              }}>
+                                padding: '10px 16px', borderRadius: '8px',
+                                border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`,
+                                background: darkMode ? '#1e293b' : '#ffffff',
+                                color: darkMode ? '#ffffff' : '#334155', cursor: 'pointer', fontSize: '13px', fontWeight: 600
+                              }}
+                            >
                               Cancel
                             </button>
                           </div>
@@ -752,56 +1017,61 @@ export default function TeacherDashboard() {
             </div>
           )}
 
+          {/* ══ TAB: HOLIDAYS ══ */}
           {tab === 'holidays' && (
-            <div style={{ maxWidth: 640 }}>
-              <div className="card">
-                <div className="card-header">
-                  <h4 style={{ margin:0 }}>Upcoming Holidays</h4>
+            <div className="card" style={{
+              borderRadius: '16px', maxWidth: '700px',
+              background: darkMode ? '#111827' : '#ffffff',
+              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`
+            }}>
+              <div className="card-header" style={{ padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}` }}>
+                <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                  Institutional Holidays Calendar
+                </h4>
+              </div>
+              {holidays.length === 0 ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
+                  Koi holiday scheduled nahi hai abhi
                 </div>
-                {holidays.length === 0 ? (
-                  <div className="empty-state" style={{ padding:40 }}>
-                    <p>Koi holiday scheduled nahi hai abhi</p>
-                  </div>
-                ) : (
-                  <div>
-                    {holidays.map(function(h, i) {
-                      var d = new Date(h.date);
-                      var isToday = h.date === today;
-                      return (
-                        <div key={i} style={{
-                          display:'flex', alignItems:'center', gap:14,
-                          padding:'14px 20px', borderBottom:'1px solid var(--neutral-1)',
-                          background: isToday ? '#fffbeb' : 'transparent',
+              ) : (
+                <div>
+                  {holidays.map((h, i) => {
+                    const d = new Date(h.date);
+                    const isToday = h.date === today;
+                    return (
+                      <div key={i} style={{
+                        display: 'flex', alignItems: 'center', gap: '14px',
+                        padding: '14px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`,
+                        background: isToday ? '#fffbeb' : 'transparent',
+                      }}>
+                        <div style={{
+                          width: '42px', textAlign: 'center',
+                          background: darkMode ? '#1e293b' : '#f1f5f9', borderRadius: '8px', padding: '4px 0'
                         }}>
-                          <div style={{ flex:1 }}>
-                            <div style={{ fontWeight:700, fontSize:14 }}>
-                              {h.title}
-                              {isToday && (
-                                <span style={{ marginLeft:8, fontSize:10, fontWeight:700,
-                                  background:'#fde68a', color:'#92400e', padding:'2px 8px', borderRadius:20 }}>
-                                  TODAY
-                                </span>
-                              )}
-                            </div>
-                            {h.description && (
-                              <div style={{ fontSize:12, color:'var(--neutral-5)', marginTop:2 }}>{h.description}</div>
+                          <div style={{ fontSize: '9px', fontWeight: 800, color: '#3b82f6' }}>{d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}</div>
+                          <div style={{ fontSize: '16px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a' }}>{d.getDate()}</div>
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 800, fontSize: '14px', color: darkMode ? '#ffffff' : '#0f172a' }}>
+                            {h.title}
+                            {isToday && (
+                              <span style={{ marginLeft: '8px', fontSize: '10px', fontWeight: 800, background: '#f59e0b', color: '#ffffff', padding: '2px 8px', borderRadius: '12px' }}>
+                                TODAY
+                              </span>
                             )}
                           </div>
-                          <div style={{ textAlign:'right', flexShrink:0 }}>
-                            <span style={{ fontSize:10, fontWeight:700, padding:'3px 10px',
-                              borderRadius:20, background:'#f1f5f9', color:'#64748b' }}>
-                              {h.holiday_type}
-                            </span>
-                            <div style={{ fontSize:10, color:'#94a3b8', marginTop:4 }}>
-                              {d.toLocaleDateString('en-IN', { weekday:'short', day:'numeric', month:'short' })}
-                            </div>
-                          </div>
+                          {h.description && (
+                            <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>{h.description}</div>
+                          )}
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+                        <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 10px', borderRadius: '20px', background: darkMode ? '#1e293b' : '#f1f5f9', color: darkMode ? '#cbd5e1' : '#64748b' }}>
+                          {h.holiday_type?.replace('_', ' ')}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -811,18 +1081,16 @@ export default function TeacherDashboard() {
   );
 }
 
-function NotesUpload(props) {
-  var selectedClass = props.selectedClass;
-  var [form,      setForm]      = useState({ title:'', description:'' });
-  var [file,      setFile]      = useState(null);
-  var [uploading, setUploading] = useState(false);
-  var [msg,       setMsg]       = useState('');
+function NotesUpload({ selectedClass, darkMode }) {
+  const [form, setForm] = useState({ title: '', description: '' });
+  const [file, setFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
 
   async function handleUpload(e) {
     e.preventDefault();
-    if (!file) { setMsg('Please select a file'); return; }
-    setUploading(true); setMsg('');
-    var fd = new FormData();
+    if (!file) { toast.error('Please select a file to upload'); return; }
+    setUploading(true);
+    const fd = new FormData();
     fd.append('title',       form.title);
     fd.append('description', form.description);
     fd.append('class_id',    selectedClass);
@@ -831,46 +1099,83 @@ function NotesUpload(props) {
       await api.post('/teacher/notes', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      toast.success('Note uploaded successfully!');
-      setMsg('Note uploaded successfully!');
-      setForm({ title:'', description:'' });
+      toast.success('Study Note uploaded successfully! 📚');
+      setForm({ title: '', description: '' });
       setFile(null);
     } catch(e) {
-      toast.error('Upload failed');
-      setMsg('Upload failed');
+      toast.error('Upload failed. Please try again.');
     }
     setUploading(false);
   }
 
   return (
-    <div className="card">
-      <div className="card-header"><h4>Upload Study Notes</h4></div>
-      <div className="card-body" style={{ maxWidth:560 }}>
-        {msg && <div className="alert alert-success">{msg}</div>}
+    <div className="card" style={{
+      borderRadius: '16px', maxWidth: '640px',
+      background: darkMode ? '#111827' : '#ffffff',
+      border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+      boxShadow: '0 4px 20px rgba(0,0,0,0.03)'
+    }}>
+      <div className="card-header" style={{ padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}` }}>
+        <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+          Upload Course Material &amp; Notes
+        </h4>
+      </div>
+      <div className="card-body" style={{ padding: '20px' }}>
         <form onSubmit={handleUpload}>
-          <div className="form-group">
-            <label className="form-label">Note Title *</label>
-            <input className="form-input"
-              placeholder="e.g. Chapter 5 - Algebraic Expressions"
+          <div className="form-group" style={{ marginBottom: '14px' }}>
+            <label className="form-label" style={{ color: darkMode ? '#cbd5e1' : '#334155', fontWeight: 700 }}>Note Title *</label>
+            <input
+              className="form-input"
+              placeholder="e.g. Chapter 5 - Algebraic Expressions & Formulas"
               value={form.title}
-              onChange={function(e) { setForm(function(f) { return Object.assign({}, f, { title: e.target.value }); }); }}
-              required />
+              onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+              style={{
+                borderRadius: '8px',
+                background: darkMode ? '#0f172a' : '#ffffff',
+                borderColor: darkMode ? '#334155' : '#cbd5e1',
+                color: darkMode ? '#ffffff' : '#0f172a'
+              }}
+              required
+            />
           </div>
-          <div className="form-group">
-            <label className="form-label">Description</label>
-            <textarea className="form-textarea" rows={3}
-              placeholder="Brief description..."
+
+          <div className="form-group" style={{ marginBottom: '14px' }}>
+            <label className="form-label" style={{ color: darkMode ? '#cbd5e1' : '#334155', fontWeight: 700 }}>Description</label>
+            <textarea
+              className="form-textarea"
+              rows={3}
+              placeholder="Brief summary or instructions for students..."
               value={form.description}
-              onChange={function(e) { setForm(function(f) { return Object.assign({}, f, { description: e.target.value }); }); }} />
+              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+              style={{
+                borderRadius: '8px',
+                background: darkMode ? '#0f172a' : '#ffffff',
+                borderColor: darkMode ? '#334155' : '#cbd5e1',
+                color: darkMode ? '#ffffff' : '#0f172a'
+              }}
+            />
           </div>
-          <div className="form-group">
-            <label className="form-label">Upload File (PDF, DOC, PPT, Image)</label>
-            <input type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.png,.jpg"
-              onChange={function(e) { setFile(e.target.files[0]); }}
-              style={{ display:'block', fontSize:13, color:'var(--neutral-9)' }} />
+
+          <div className="form-group" style={{ marginBottom: '20px' }}>
+            <label className="form-label" style={{ color: darkMode ? '#cbd5e1' : '#334155', fontWeight: 700 }}>Upload Document (PDF, DOC, PPT, Image)</label>
+            <input
+              type="file"
+              accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.png,.jpg"
+              onChange={e => setFile(e.target.files[0])}
+              style={{ display: 'block', fontSize: '13px', color: darkMode ? '#94a3b8' : '#475569' }}
+            />
           </div>
-          <button type="submit" className="btn btn-primary" disabled={uploading}>
-            {uploading ? 'Uploading...' : 'Upload Note'}
+
+          <button
+            type="submit"
+            className="btn btn-primary"
+            style={{
+              borderRadius: '8px', padding: '10px 20px', fontSize: '13px', fontWeight: 800,
+              background: '#2563eb', border: 'none', boxShadow: '0 4px 12px rgba(37,99,235,0.3)'
+            }}
+            disabled={uploading}
+          >
+            {uploading ? 'Uploading...' : 'Upload Note to Class'}
           </button>
         </form>
       </div>

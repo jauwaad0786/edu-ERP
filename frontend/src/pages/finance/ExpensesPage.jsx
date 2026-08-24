@@ -4,10 +4,10 @@ import Navbar  from '../../components/Navbar';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
 import {
-  PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend,
+  PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
 } from 'recharts';
 
-const COLORS = ['#4f46e5', '#7c3aed', '#16a34a', '#d97706', '#dc2626', '#0891b2', '#db2777', '#65a30d', '#9333ea', '#0284c7', '#ca8a04', '#be185d'];
+const COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899', '#84cc16', '#3b82f6', '#14b8a6', '#f97316', '#a855f7'];
 
 function prettyLabel(v) {
   if (!v) return '';
@@ -25,19 +25,6 @@ function lastNMonths(n) {
   return out;
 }
 
-function StatCard({ icon, label, value, sub, color, darkMode }) {
-  return (
-    <div className="stat-card" style={{ background: darkMode ? '#141b2d' : undefined, borderColor: darkMode ? '#1e293b' : undefined }}>
-      <div className="stat-icon" style={{ background: color + '16' }}>
-        <i className={`ti ${icon}`} style={{ fontSize: 18, color }} aria-hidden="true" />
-      </div>
-      <div className="stat-label" style={{ color: darkMode ? '#94a3b8' : undefined }}>{label}</div>
-      <div className="stat-value" style={{ color }}>{value ?? '—'}</div>
-      {sub && <div className="stat-sub" style={{ color: darkMode ? '#64748b' : undefined }}>{sub}</div>}
-    </div>
-  );
-}
-
 const EMPTY_FORM = {
   category: '', title: '', vendor_name: '', amount: '', invoice_number: '',
   payment_method: 'CASH', payment_date: new Date().toISOString().slice(0, 10),
@@ -46,7 +33,7 @@ const EMPTY_FORM = {
 
 export default function ExpensesPage() {
   const { user } = useAuth();
-  const isPrincipal = user?.role === 'PRINCIPAL';
+  const isPrincipal = user?.role === 'PRINCIPAL' || user?.role === 'ACCOUNTANT' || user?.role === 'SUPER_ADMIN';
 
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
   useEffect(() => { localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
@@ -160,68 +147,226 @@ export default function ExpensesPage() {
     if (!newVendorName.trim()) return;
     setSavingVendor(true);
     try {
-      const r = await api.post('/finance/vendors', { name: newVendorName.trim(), category: 'OTHER' });
-      setVendors(v => [...v, r.data]);
-      setForm(f => ({ ...f, vendor_name: r.data.name }));
+      const res = await api.post('/finance/vendors', { name: newVendorName.trim() });
+      const created = res.data?.data || res.data;
+      setVendors(prev => [...prev, created]);
+      setForm(f => ({ ...f, vendor_name: created.name }));
       setCreatingVendor(false);
       setVendorDropdownOpen(false);
     } catch (err) {
-      alert(err?.response?.data?.error || 'Vendor save nahi hua');
+      alert(err?.response?.data?.error || 'Vendor create nahi ho paya');
     }
     setSavingVendor(false);
   };
-  const cardBg = { background: darkMode ? '#141b2d' : undefined, borderColor: darkMode ? '#1e293b' : undefined };
-  const totalExpense    = summary?.total_expense || 0;
-  const salaryTotal      = expenses.filter(e => e.category === 'TEACHER_SALARY' || e.category === 'STAFF_SALARY').reduce((a, e) => a + e.amount, 0);
-  const autoCount        = expenses.filter(e => e.source !== 'MANUAL').length;
-  const topCategory      = summary?.categories?.[0];
+
+  const totalExpense = summary?.total_expense ?? expenses.reduce((a, b) => a + Number(b.amount || 0), 0);
+  const salaryTotal  = summary?.salary_total  ?? expenses.filter(e => e.source === 'SALARY_AUTO').reduce((a, b) => a + Number(b.amount || 0), 0);
+  const topCategory  = summary?.category_breakdown?.[0];
+  const autoCount    = summary?.auto_linked_count ?? expenses.filter(e => e.source !== 'MANUAL').length;
+
+  const pieData = (summary?.category_breakdown || []).map((c, i) => ({
+    name: prettyLabel(c.category),
+    value: Number(c.amount || 0),
+    color: COLORS[i % COLORS.length],
+  })).filter(x => x.value > 0);
 
   return (
     <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
       <Sidebar darkMode={darkMode} />
       <div className="main-content">
-        <Navbar title="Expenses" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
+        <Navbar title="Financial Accounts &amp; Expense Center" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
         <div className="page-body">
 
-          <div className="page-header flex justify-between items-center">
-            <div>
-              <h2 className="page-title">Expense Management</h2>
-              <p className="page-subtitle">School ke saare kharche — ek jagah par</p>
-            </div>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <select className="form-select" style={{ width: 170 }} value={month} onChange={e => setMonth(e.target.value)}>
-                {months.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
-              <button className="btn btn-primary btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 6 }} onClick={openAdd}>
-                <i className="ti ti-plus" style={{ fontSize: 14 }} aria-hidden="true" /> Add Expense
-              </button>
+          {/* ══ Hero Command Banner ══ */}
+          <div style={{
+            position: 'relative', overflow: 'hidden',
+            borderRadius: '20px', padding: '24px 28px', marginBottom: '22px',
+            background: darkMode
+              ? 'linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%)'
+              : 'linear-gradient(135deg, #4338ca 0%, #6366f1 50%, #818cf8 100%)',
+            color: '#ffffff',
+            boxShadow: '0 10px 30px -5px rgba(79, 70, 229, 0.35)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                  <span style={{
+                    padding: '3px 10px', borderRadius: '20px',
+                    background: 'rgba(255,255,255,0.2)', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase'
+                  }}>
+                    💰 Accounts &amp; Disbursements
+                  </span>
+                  <span style={{ fontSize: '12px', opacity: 0.9 }}>
+                    Fiscal Month: {month}
+                  </span>
+                </div>
+                <h1 style={{ margin: 0, fontSize: '26px', fontWeight: 800, letterSpacing: '-0.02em', color: '#ffffff' }}>
+                  Expense Management Center
+                </h1>
+                <p style={{ margin: '4px 0 0', fontSize: '13.5px', color: 'rgba(255,255,255,0.85)' }}>
+                  Record vendor bills, payroll disbursements, inventory requisitions, and utility expenses.
+                </p>
+              </div>
+
+              {/* Month Selector & Quick Action */}
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <select
+                  className="form-select"
+                  style={{
+                    width: '180px', fontSize: '13px', borderRadius: '10px', fontWeight: 700,
+                    background: 'rgba(255,255,255,0.15)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.3)',
+                    backdropFilter: 'blur(6px)'
+                  }}
+                  value={month}
+                  onChange={e => setMonth(e.target.value)}
+                >
+                  {months.map(m => <option key={m} value={m} style={{ color: '#0f172a' }}>{m}</option>)}
+                </select>
+                <button
+                  onClick={openAdd}
+                  style={{
+                    background: '#ffffff', color: '#4f46e5', border: 'none', borderRadius: '10px',
+                    padding: '10px 18px', fontSize: '13px', fontWeight: 800, cursor: 'pointer',
+                    boxShadow: '0 4px 14px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: '6px'
+                  }}
+                >
+                  <i className="ti ti-plus" /> Add New Expense
+                </button>
+              </div>
             </div>
           </div>
 
-          <div className="grid-4 mb-6">
-            <StatCard icon="ti-receipt-2" label={`Total Expense — ${month}`} value={`₹${fmt(totalExpense)}`}
-              sub={`${expenses.length} entries`} color="#dc2626" darkMode={darkMode} />
-            <StatCard icon="ti-users" label="Salary Expense" value={`₹${fmt(salaryTotal)}`}
-              sub="Teacher + Staff" color="#4f46e5" darkMode={darkMode} />
-            <StatCard icon="ti-chart-pie" label="Top Category" value={topCategory ? prettyLabel(topCategory.category) : '—'}
-              sub={topCategory ? `₹${fmt(topCategory.amount)} · ${topCategory.pct}%` : 'Koi data nahi'} color="#d97706" darkMode={darkMode} />
-            <StatCard icon="ti-bolt" label="Auto-linked" value={autoCount}
-              sub="Salary/Inventory se auto-aayi" color="#0891b2" darkMode={darkMode} />
+          {/* ══ Bento Stat Cards ══ */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+            gap: '14px', marginBottom: '22px'
+          }}>
+            <div style={{
+              background: darkMode ? '#111827' : '#ffffff',
+              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`,
+              borderRadius: '16px', padding: '18px',
+              boxShadow: darkMode ? '0 4px 16px rgba(0,0,0,0.3)' : '0 4px 16px rgba(15,23,42,0.03)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11.5px', color: darkMode ? '#94a3b8' : '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                  Total Expense ({month})
+                </span>
+                <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'rgba(239,68,68,0.15)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <i className="ti ti-receipt-2" />
+                </div>
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: '#ef4444' }}>
+                ₹{fmt(totalExpense)}
+              </div>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{expenses.length} Total vouchers</div>
+            </div>
+
+            <div style={{
+              background: darkMode ? '#111827' : '#ffffff',
+              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`,
+              borderRadius: '16px', padding: '18px',
+              boxShadow: darkMode ? '0 4px 16px rgba(0,0,0,0.3)' : '0 4px 16px rgba(15,23,42,0.03)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11.5px', color: darkMode ? '#94a3b8' : '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                  Payroll / Salaries
+                </span>
+                <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'rgba(99,102,241,0.15)', color: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <i className="ti ti-users" />
+                </div>
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: '#6366f1' }}>
+                ₹{fmt(salaryTotal)}
+              </div>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>Teacher &amp; staff compensation</div>
+            </div>
+
+            <div style={{
+              background: darkMode ? '#111827' : '#ffffff',
+              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`,
+              borderRadius: '16px', padding: '18px',
+              boxShadow: darkMode ? '0 4px 16px rgba(0,0,0,0.3)' : '0 4px 16px rgba(15,23,42,0.03)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11.5px', color: darkMode ? '#94a3b8' : '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                  Top Category
+                </span>
+                <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'rgba(245,158,11,0.15)', color: '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <i className="ti ti-chart-pie" />
+                </div>
+              </div>
+              <div style={{ fontSize: '20px', fontWeight: 900, color: '#f59e0b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {topCategory ? prettyLabel(topCategory.category) : '—'}
+              </div>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
+                {topCategory ? `₹${fmt(topCategory.amount)} · ${topCategory.pct}%` : 'No data'}
+              </div>
+            </div>
+
+            <div style={{
+              background: darkMode ? '#111827' : '#ffffff',
+              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`,
+              borderRadius: '16px', padding: '18px',
+              boxShadow: darkMode ? '0 4px 16px rgba(0,0,0,0.3)' : '0 4px 16px rgba(15,23,42,0.03)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11.5px', color: darkMode ? '#94a3b8' : '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                  Automated Entries
+                </span>
+                <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'rgba(6,182,212,0.15)', color: '#06b6d4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <i className="ti ti-bolt" />
+                </div>
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: '#06b6d4' }}>
+                {autoCount}
+              </div>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>Synced from payroll &amp; inventory</div>
+            </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 20, marginBottom: 24, alignItems: 'start' }}>
+          {/* ══ Main Ledger & Category Distribution Grid ══ */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '20px', marginBottom: '24px', alignItems: 'start' }}>
 
-            <div className="card" style={{ margin: 0, ...cardBg }}>
-              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <h4 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <i className="ti ti-list" style={{ color: '#4f46e5', fontSize: 17 }} aria-hidden="true" /> Expense Entries
+            {/* Expense Entries Table */}
+            <div className="card" style={{
+              borderRadius: '18px', margin: 0,
+              background: darkMode ? '#111827' : '#ffffff',
+              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`,
+              boxShadow: darkMode ? '0 4px 20px rgba(0,0,0,0.3)' : '0 4px 20px rgba(15,23,42,0.03)'
+            }}>
+              <div className="card-header" style={{
+                padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`,
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap'
+              }}>
+                <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <i className="ti ti-list" style={{ color: '#6366f1', fontSize: '18px' }} /> Expense Vouchers &amp; Bills
                 </h4>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <select className="form-select" style={{ width: 160, fontSize: 12 }} value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <select
+                    className="form-select"
+                    style={{
+                      width: '150px', fontSize: '12px', borderRadius: '8px',
+                      background: darkMode ? '#1e293b' : '#ffffff',
+                      borderColor: darkMode ? '#334155' : '#cbd5e1',
+                      color: darkMode ? '#ffffff' : '#0f172a'
+                    }}
+                    value={categoryFilter}
+                    onChange={e => setCategoryFilter(e.target.value)}
+                  >
                     <option value="">All Categories</option>
                     {meta.categories.map(c => <option key={c} value={c}>{prettyLabel(c)}</option>)}
                   </select>
-                  <select className="form-select" style={{ width: 120, fontSize: 12 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+                  <select
+                    className="form-select"
+                    style={{
+                      width: '110px', fontSize: '12px', borderRadius: '8px',
+                      background: darkMode ? '#1e293b' : '#ffffff',
+                      borderColor: darkMode ? '#334155' : '#cbd5e1',
+                      color: darkMode ? '#ffffff' : '#0f172a'
+                    }}
+                    value={statusFilter}
+                    onChange={e => setStatusFilter(e.target.value)}
+                  >
                     <option value="">All Status</option>
                     <option value="PAID">Paid</option>
                     <option value="PENDING">Pending</option>
@@ -229,55 +374,55 @@ export default function ExpensesPage() {
                 </div>
               </div>
 
-              <div className="table-container">
+              <div className="table-container" style={{ border: 'none' }}>
                 <table>
                   <thead>
                     <tr>
-                      <th>Title</th><th>Category</th><th>Vendor</th><th>Amount</th>
+                      <th>Title &amp; Invoice</th><th>Category</th><th>Vendor</th><th>Amount</th>
                       <th>Date</th><th>Method</th><th>Status</th><th>Source</th>
                       {isPrincipal && <th>Action</th>}
                     </tr>
                   </thead>
                   <tbody>
                     {loading ? (
-                      <tr><td colSpan={9} style={{ textAlign: 'center', padding: 24, color: 'var(--neutral-4)' }}>Loading...</td></tr>
+                      <tr><td colSpan={9} style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>Loading expense ledger...</td></tr>
                     ) : expenses.length === 0 ? (
-                      <tr><td colSpan={9} style={{ textAlign: 'center', padding: 24, color: 'var(--neutral-4)' }}>Is mahine koi expense nahi hai</td></tr>
+                      <tr><td colSpan={9} style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>Is mahine koi expense record nahi hai</td></tr>
                     ) : expenses.map(e => (
                       <tr key={e.id}>
                         <td>
-                          <div style={{ fontWeight: 600, fontSize: 13 }}>{e.title}</div>
-                          {e.invoice_number && <div style={{ fontSize: 11, color: 'var(--neutral-5)' }}>Inv #{e.invoice_number}</div>}
+                          <div style={{ fontWeight: 700, fontSize: '13.5px', color: darkMode ? '#ffffff' : '#0f172a' }}>{e.title}</div>
+                          {e.invoice_number && <div style={{ fontSize: '11px', color: '#94a3b8' }}>Inv #{e.invoice_number}</div>}
                         </td>
-                        <td style={{ fontSize: 12 }}>{prettyLabel(e.category)}</td>
-                        <td style={{ fontSize: 12 }}>{e.vendor_name || '—'}</td>
-                        <td style={{ fontWeight: 700, fontSize: 13, color: '#dc2626' }}>₹{fmt(e.amount)}</td>
-                        <td style={{ fontSize: 12 }}>{e.payment_date}</td>
-                        <td style={{ fontSize: 12 }}>{prettyLabel(e.payment_method)}</td>
+                        <td style={{ fontSize: '12px' }}>{prettyLabel(e.category)}</td>
+                        <td style={{ fontSize: '12px', color: '#94a3b8' }}>{e.vendor_name || '—'}</td>
+                        <td style={{ fontWeight: 800, fontSize: '13.5px', color: '#ef4444' }}>₹{fmt(e.amount)}</td>
+                        <td style={{ fontSize: '12px' }}>{e.payment_date}</td>
+                        <td style={{ fontSize: '12px' }}>{prettyLabel(e.payment_method)}</td>
                         <td>
                           <span style={{
-                            padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700,
-                            background: e.status === 'PAID' ? (darkMode ? 'rgba(22,163,74,0.15)' : '#dcfce7') : (darkMode ? 'rgba(217,119,6,0.15)' : '#fef3c7'),
-                            color: e.status === 'PAID' ? '#16a34a' : '#d97706',
+                            padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 800,
+                            background: e.status === 'PAID' ? (darkMode ? 'rgba(16,185,129,0.15)' : '#dcfce7') : (darkMode ? 'rgba(245,158,11,0.15)' : '#fef3c7'),
+                            color: e.status === 'PAID' ? '#10b981' : '#d97706',
                           }}>{e.status}</span>
                         </td>
                         <td>
                           {e.source !== 'MANUAL' ? (
                             <span style={{
-                              fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
-                              background: darkMode ? 'rgba(37,99,235,0.15)' : '#eff6ff', color: '#2563eb',
-                            }}>{e.source === 'SALARY_AUTO' ? 'Salary' : 'Inventory'}</span>
-                          ) : <span style={{ fontSize: 11, color: 'var(--neutral-5)' }}>Manual</span>}
+                              fontSize: '10.5px', fontWeight: 800, padding: '2px 8px', borderRadius: '12px',
+                              background: darkMode ? 'rgba(99,102,241,0.2)' : '#e0e7ff', color: '#6366f1',
+                            }}>{e.source === 'SALARY_AUTO' ? 'Payroll' : 'Inventory'}</span>
+                          ) : <span style={{ fontSize: '11px', color: '#94a3b8' }}>Manual</span>}
                         </td>
                         {isPrincipal && (
                           <td>
-                            <div style={{ display: 'flex', gap: 6 }}>
+                            <div style={{ display: 'flex', gap: '6px' }}>
                               <button onClick={() => openEdit(e)} style={{
-                                background: 'none', border: 'none', cursor: 'pointer', color: '#4f46e5', padding: 4,
-                              }}><i className="ti ti-edit" style={{ fontSize: 15 }} aria-hidden="true" /></button>
+                                background: 'none', border: 'none', cursor: 'pointer', color: '#6366f1', padding: '4px',
+                              }}><i className="ti ti-edit" style={{ fontSize: '15px' }} /></button>
                               <button onClick={() => remove(e.id)} style={{
-                                background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', padding: 4,
-                              }}><i className="ti ti-trash" style={{ fontSize: 15 }} aria-hidden="true" /></button>
+                                background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: '4px',
+                              }}><i className="ti ti-trash" style={{ fontSize: '15px' }} /></button>
                             </div>
                           </td>
                         )}
@@ -288,191 +433,240 @@ export default function ExpensesPage() {
               </div>
             </div>
 
-            <div className="card" style={{ margin: 0, ...cardBg }}>
-              <div className="card-header">
-                <h4 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <i className="ti ti-chart-pie" style={{ color: '#7c3aed', fontSize: 17 }} aria-hidden="true" /> Category Breakdown
-                </h4>
-              </div>
-              <div style={{ padding: '12px 16px' }}>
-                {!summary || summary.categories.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: 30, color: 'var(--neutral-4)', fontSize: 13 }}>Koi expense data nahi hai</div>
-                ) : (
-                  <>
-                    <ResponsiveContainer width="100%" height={220}>
-                      <PieChart>
-                        <Pie data={summary.categories} dataKey="amount" nameKey="category" innerRadius={45} outerRadius={80} paddingAngle={2}>
-                          {summary.categories.map((c, i) => <Cell key={c.category} fill={COLORS[i % COLORS.length]} />)}
-                        </Pie>
-                        <Tooltip formatter={(v) => `₹${fmt(v)}`} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
-                      {summary.categories.map((c, i) => (
-                        <div key={c.category} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
-                          <span style={{ width: 9, height: 9, borderRadius: '50%', background: COLORS[i % COLORS.length], flexShrink: 0 }} />
-                          <span style={{ flex: 1, color: darkMode ? '#cbd5e1' : '#334155' }}>{prettyLabel(c.category)}</span>
-                          <span style={{ fontWeight: 700 }}>{c.pct}%</span>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
+            {/* Category Breakdown Donut Card */}
+            <div className="card" style={{
+              borderRadius: '18px', margin: 0,
+              background: darkMode ? '#111827' : '#ffffff',
+              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`,
+              padding: '20px', boxShadow: darkMode ? '0 4px 20px rgba(0,0,0,0.3)' : '0 4px 20px rgba(15,23,42,0.03)'
+            }}>
+              <h4 style={{ margin: '0 0 14px', fontSize: '15px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                Category Breakdown
+              </h4>
+              {pieData.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '30px 10px', color: '#94a3b8', fontSize: '13px' }}>
+                  Is mahine koi breakdown data nahi hai
+                </div>
+              ) : (
+                <>
+                  <ResponsiveContainer width="100%" height={180}>
+                    <PieChart>
+                      <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={42} outerRadius={68}>
+                        {pieData.map(entry => (
+                          <Cell key={entry.name} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={val => `₹${fmt(val)}`} />
+                    </PieChart>
+                  </ResponsiveContainer>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
+                    {summary?.category_breakdown?.slice(0, 5).map((c, i) => (
+                      <div key={c.category} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: darkMode ? '#cbd5e1' : '#475569' }}>
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: COLORS[i % COLORS.length] }} />
+                          {prettyLabel(c.category)}
+                        </span>
+                        <span style={{ fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                          ₹{fmt(c.amount)} ({c.pct}%)
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+          </div>
+
+          {/* ══ Add/Edit Expense Modal ══ */}
+          {modalOpen && (
+            <div
+              style={{
+                position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999,
+                backdropFilter: 'blur(6px)'
+              }}
+              onClick={e => e.target === e.currentTarget && setModalOpen(false)}
+            >
+              <div style={{
+                background: darkMode ? '#111827' : '#ffffff', borderRadius: '20px', padding: '28px',
+                width: '100%', maxWidth: '520px', maxHeight: '90vh', overflowY: 'auto',
+                border: `1px solid ${darkMode ? 'rgba(255,255,255,0.1)' : '#e2e8f0'}`,
+                boxShadow: '0 20px 40px rgba(0,0,0,0.4)'
+              }}>
+                <h3 style={{ margin: '0 0 18px', fontSize: '18px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                  {editingId ? '✏️ Edit Expense Voucher' : '➕ Record New Expense'}
+                </h3>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '4px' }}>
+                      Category *
+                    </label>
+                    <select
+                      className="form-select"
+                      style={{
+                        width: '100%', borderRadius: '8px', fontSize: '13px',
+                        background: darkMode ? '#0f172a' : '#ffffff',
+                        borderColor: darkMode ? '#334155' : '#cbd5e1',
+                        color: darkMode ? '#ffffff' : '#0f172a'
+                      }}
+                      value={form.category}
+                      onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+                    >
+                      <option value="">-- Select Category --</option>
+                      {meta.categories.map(c => <option key={c} value={c}>{prettyLabel(c)}</option>)}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '4px' }}>
+                      Amount (₹) *
+                    </label>
+                    <input
+                      type="number"
+                      className="form-input"
+                      style={{
+                        width: '100%', borderRadius: '8px', fontSize: '13px', fontWeight: 700,
+                        background: darkMode ? '#0f172a' : '#ffffff',
+                        borderColor: darkMode ? '#334155' : '#cbd5e1',
+                        color: darkMode ? '#ffffff' : '#0f172a'
+                      }}
+                      placeholder="0.00"
+                      value={form.amount}
+                      onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '4px' }}>
+                    Title / Purpose *
+                  </label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    style={{
+                      width: '100%', borderRadius: '8px', fontSize: '13px',
+                      background: darkMode ? '#0f172a' : '#ffffff',
+                      borderColor: darkMode ? '#334155' : '#cbd5e1',
+                      color: darkMode ? '#ffffff' : '#0f172a'
+                    }}
+                    placeholder="e.g. Science Lab Chemical Reagents"
+                    value={form.title}
+                    onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                  />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '4px' }}>
+                      Vendor / Payee
+                    </label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      style={{
+                        width: '100%', borderRadius: '8px', fontSize: '13px',
+                        background: darkMode ? '#0f172a' : '#ffffff',
+                        borderColor: darkMode ? '#334155' : '#cbd5e1',
+                        color: darkMode ? '#ffffff' : '#0f172a'
+                      }}
+                      placeholder="e.g. Apex Stationers"
+                      value={form.vendor_name}
+                      onChange={e => setForm(f => ({ ...f, vendor_name: e.target.value }))}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '4px' }}>
+                      Payment Method
+                    </label>
+                    <select
+                      className="form-select"
+                      style={{
+                        width: '100%', borderRadius: '8px', fontSize: '13px',
+                        background: darkMode ? '#0f172a' : '#ffffff',
+                        borderColor: darkMode ? '#334155' : '#cbd5e1',
+                        color: darkMode ? '#ffffff' : '#0f172a'
+                      }}
+                      value={form.payment_method}
+                      onChange={e => setForm(f => ({ ...f, payment_method: e.target.value }))}
+                    >
+                      {meta.payment_methods.map(m => <option key={m} value={m}>{prettyLabel(m)}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '4px' }}>
+                      Payment Date
+                    </label>
+                    <input
+                      type="date"
+                      className="form-input"
+                      style={{
+                        width: '100%', borderRadius: '8px', fontSize: '13px',
+                        background: darkMode ? '#0f172a' : '#ffffff',
+                        borderColor: darkMode ? '#334155' : '#cbd5e1',
+                        color: darkMode ? '#ffffff' : '#0f172a'
+                      }}
+                      value={form.payment_date}
+                      onChange={e => setForm(f => ({ ...f, payment_date: e.target.value }))}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '4px' }}>
+                      Invoice / Bill Number
+                    </label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      style={{
+                        width: '100%', borderRadius: '8px', fontSize: '13px',
+                        background: darkMode ? '#0f172a' : '#ffffff',
+                        borderColor: darkMode ? '#334155' : '#cbd5e1',
+                        color: darkMode ? '#ffffff' : '#0f172a'
+                      }}
+                      placeholder="e.g. INV-2024-991"
+                      value={form.invoice_number}
+                      onChange={e => setForm(f => ({ ...f, invoice_number: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
+                  <button
+                    onClick={() => setModalOpen(false)}
+                    style={{
+                      padding: '10px 16px', borderRadius: '10px', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                      background: darkMode ? '#1e293b' : '#f8fafc',
+                      color: darkMode ? '#ffffff' : '#334155', cursor: 'pointer', fontSize: '13px', fontWeight: 600
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    disabled={saving}
+                    onClick={save}
+                    style={{
+                      padding: '10px 20px', borderRadius: '10px', border: 'none',
+                      background: '#6366f1', color: '#ffffff', cursor: 'pointer',
+                      fontSize: '13px', fontWeight: 800
+                    }}
+                  >
+                    {saving ? 'Saving...' : 'Save Voucher'}
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+          )}
+
         </div>
       </div>
-
-      {modalOpen && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} onClick={() => setModalOpen(false)}>
-          <div onClick={e => e.stopPropagation()} style={{
-            background: darkMode ? '#141b2d' : '#fff', borderRadius: 14, width: 480, maxWidth: '92vw',
-            maxHeight: '88vh', overflowY: 'auto', padding: 24,
-          }}>
-            <h3 style={{ margin: '0 0 18px', fontSize: 16, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
-              {editingId ? 'Edit Expense' : 'Add Expense'}
-            </h3>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div>
-                <label className="form-label">Category *</label>
-                <select className="form-select" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
-                  <option value="">Select category</option>
-                  {meta.categories.map(c => <option key={c} value={c}>{prettyLabel(c)}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="form-label">Title *</label>
-                <input className="form-input" placeholder="e.g. July Electricity Bill" value={form.title}
-                  onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div style={{ position: 'relative' }}>
-                  <label className="form-label">Vendor Name</label>
-                  <input
-                    className="form-input"
-                    placeholder="Type ya list se select karo"
-                    value={form.vendor_name}
-                    onChange={e => { setForm(f => ({ ...f, vendor_name: e.target.value })); setVendorDropdownOpen(true); }}
-                    onFocus={() => setVendorDropdownOpen(true)}
-                    onBlur={() => setTimeout(() => setVendorDropdownOpen(false), 150)}
-                  />
-                  {vendorDropdownOpen && (
-                    <div style={{
-                      position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20,
-                      background: darkMode ? '#1c2436' : '#fff',
-                      border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
-                      borderRadius: 8, marginTop: 4, maxHeight: 180, overflowY: 'auto',
-                      boxShadow: '0 6px 16px rgba(0,0,0,0.15)',
-                    }}>
-                      {filteredVendors.map(v => (
-                        <div key={v.id}
-                          onMouseDown={() => selectVendor(v.name)}
-                          style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer', color: darkMode ? '#e2e8f0' : '#0f172a' }}
-                        >{v.name}</div>
-                      ))}
-                      {form.vendor_name.trim() && !exactVendorMatch && (
-                        <div
-                          onMouseDown={openCreateVendor}
-                          style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer', color: '#4f46e5', fontWeight: 600, borderTop: filteredVendors.length ? `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` : 'none' }}
-                        >+ Create "{form.vendor_name.trim()}"</div>
-                      )}
-                      {!filteredVendors.length && !form.vendor_name.trim() && (
-                        <div style={{ padding: '8px 12px', fontSize: 12, color: 'var(--neutral-5)' }}>Type karke naya vendor add karo</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <label className="form-label">Amount (₹) *</label>
-                  <input className="form-input" type="number" placeholder="0" value={form.amount}
-                    onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} />
-                </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label className="form-label">Payment Method</label>
-                  <select className="form-select" value={form.payment_method} onChange={e => setForm(f => ({ ...f, payment_method: e.target.value }))}>
-                    {meta.payment_methods.map(m => <option key={m} value={m}>{prettyLabel(m)}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="form-label">Payment Date</label>
-                  <input className="form-input" type="date" value={form.payment_date}
-                    onChange={e => setForm(f => ({ ...f, payment_date: e.target.value }))} />
-                </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label className="form-label">Invoice Number</label>
-                  <input className="form-input" placeholder="Optional" value={form.invoice_number}
-                    onChange={e => setForm(f => ({ ...f, invoice_number: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="form-label">Status</label>
-                  <select className="form-select" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
-                    <option value="PAID">Paid</option>
-                    <option value="PENDING">Pending</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="form-label">Remarks</label>
-                <textarea className="form-input" rows={2} placeholder="Optional note" value={form.remarks}
-                  onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} />
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-              <button className="btn btn-neutral btn-sm" onClick={() => setModalOpen(false)}>Cancel</button>
-              <button className="btn btn-primary btn-sm" disabled={saving} onClick={save}>
-                {saving ? 'Saving...' : editingId ? 'Update Expense' : 'Save Expense'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {creatingVendor && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} onClick={() => setCreatingVendor(false)}>
-          <div onClick={e => e.stopPropagation()} style={{
-            background: darkMode ? '#141b2d' : '#fff', borderRadius: 14, width: 360, maxWidth: '90vw', padding: 22,
-          }}>
-            <h3 style={{ margin: '0 0 14px', fontSize: 15, color: darkMode ? '#f1f5f9' : '#0f172a' }}>Create New Vendor</h3>
-            <label className="form-label">Vendor Name *</label>
-            <input className="form-input" value={newVendorName}
-              onChange={e => setNewVendorName(e.target.value)} autoFocus />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
-              <button className="btn btn-neutral btn-sm" onClick={() => setCreatingVendor(false)}>Cancel</button>
-              <button className="btn btn-primary btn-sm" disabled={savingVendor} onClick={saveNewVendor}>
-                {savingVendor ? 'Saving...' : 'Create & Select'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <style>{`
-        .theme-dark { background: #0b1220; }
-        .theme-dark .main-content { background: #0b1220; }
-        .theme-dark .card, .theme-dark .stat-card { background: #141b2d !important; border-color: #1e293b !important; }
-        .theme-dark .card-header { border-color: #1e293b !important; }
-        .theme-dark h2, .theme-dark h3, .theme-dark h4, .theme-dark .page-title, .theme-dark .stat-value { color: #f1f5f9 !important; }
-        .theme-dark .page-subtitle, .theme-dark .stat-label, .theme-dark .stat-sub { color: #94a3b8 !important; }
-        .theme-dark .table-container, .theme-dark table { background: #141b2d !important; }
-        .theme-dark th { background: #1c2436 !important; color: #94a3b8 !important; border-color: #1e293b !important; }
-        .theme-dark td { border-color: #1e293b !important; color: #cbd5e1 !important; }
-        .theme-dark .btn-neutral { background: #1e293b !important; color: #cbd5e1 !important; border-color: #334155 !important; }
-        .theme-dark .form-select, .theme-dark .form-input { background: #0f172a !important; color: #e2e8f0 !important; border-color: #334155 !important; }
-        .theme-dark .form-label { color: #94a3b8 !important; }
-      `}</style>
     </div>
   );
 }
