@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../../components/Sidebar';
 import Navbar  from '../../components/Navbar';
@@ -6,7 +6,7 @@ import api     from '../../api/axios';
 import toast   from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
 import {
-  LineChart, Line, AreaChart, Area, PieChart, Pie, Cell,
+  AreaChart, Area, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 
@@ -21,8 +21,6 @@ export default function PrincipalDashboard() {
   const [fees, setFees] = useState(null);
   const [attClass, setAttClass] = useState([]);
   const [teacherAtt, setTeacherAtt] = useState(null);
-  const [weeklyData, setWeeklyData] = useState(null);
-  const [pendingReqs, setPendingReqs] = useState([]);
   const [financeMonth, setFinanceMonth] = useState(() => new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }));
   const [profitSummary, setProfitSummary] = useState(null);
   const [trendData, setTrendData] = useState([]);
@@ -30,6 +28,7 @@ export default function PrincipalDashboard() {
   const [upcomingEvents, setUpcomingEvents] = useState([]);
   const [recentFeeCollections, setRecentFeeCollections] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [classFilter, setClassFilter] = useState('ALL');
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'GOOD MORNING' : hour < 17 ? 'GOOD AFTERNOON' : 'GOOD EVENING';
@@ -43,24 +42,20 @@ export default function PrincipalDashboard() {
       api.get('/principal/fees/class-summary').catch(() => ({ data: [] })),
       api.get('/principal/attendance/class-summary').catch(() => ({ data: [] })),
       api.get('/principal/teachers/attendance/today').catch(() => ({ data: null })),
-      api.get('/principal/teachers/attendance/requests?approval=PENDING').catch(() => ({ data: [] })),
-      api.get('/principal/attendance/weekly').catch(() => ({ data: null })),
       api.get('/finance/monthly-trend', { params: { months: 6 } }).catch(() => ({ data: [] })),
       api.get('/finance/profit-summary', { params: { month: financeMonth } }).catch(() => ({ data: null })),
       api.get('/principal/holidays').catch(() => ({ data: [] })),
       api.get('/support/announcements/latest').catch(() => ({ data: [] })),
       api.get('/principal/fees/recent-collections').catch(() => ({ data: [] })),
-    ]).then(([s, c, f, att, tatt, reqs, weekly, trend, profit, hols, ann, recentFees]) => {
+    ]).then(([s, c, f, att, tatt, trend, profit, hols, ann, recentFees]) => {
       setStats(s.data);
       setClasses(c.data || []);
       setFees(f.data);
       setAttClass(att.data || []);
       setTeacherAtt(tatt.data);
-      setPendingReqs(reqs.data || []);
-      setWeeklyData(weekly.data);
       setTrendData(trend.data || []);
       setProfitSummary(profit.data);
-      
+
       const today = new Date(new Date().toDateString());
       const eventsList = (hols.data || [])
         .filter(h => new Date(h.date) >= today)
@@ -73,7 +68,7 @@ export default function PrincipalDashboard() {
     });
   }, [financeMonth]);
 
-  const fmt = n => n?.toLocaleString('en-IN') ?? '0';
+  const fmt = n => n !== undefined && n !== null ? Number(n).toLocaleString('en-IN') : '0';
   const fmtK = n => {
     n = Number(n || 0);
     if (n >= 100000) return `₹${(n / 100000).toFixed(1)}L`;
@@ -81,50 +76,61 @@ export default function PrincipalDashboard() {
     return `₹${n}`;
   };
 
+  // Real Database Counts
+  const totalStudents = stats?.total_students !== undefined ? stats.total_students : (classes.reduce((sum, c) => sum + (c.student_count || 0), 0));
+  const studentsPresent = stats?.students_present !== undefined ? stats.students_present : 0;
+  const studentsAbsent = stats?.students_absent !== undefined ? stats.students_absent : Math.max(0, totalStudents - studentsPresent);
+  const studentsLate = stats?.students_late !== undefined ? stats.students_late : 0;
+  const totalTeachers = stats?.total_teachers !== undefined ? stats.total_teachers : 0;
+  const teachersPresent = stats?.teachers_present !== undefined ? stats.teachers_present : (teacherAtt?.present ?? 0);
+
+  const presentPct = totalStudents > 0 ? ((studentsPresent / totalStudents) * 100).toFixed(1) : '0';
+  const absentPct = totalStudents > 0 ? ((studentsAbsent / totalStudents) * 100).toFixed(1) : '0';
+  const latePct = totalStudents > 0 ? ((studentsLate / totalStudents) * 100).toFixed(1) : '0';
+
   const feeTotals = Array.isArray(fees) ? {
     total_due:       fees.reduce((a, c) => a + (c.total_due       || 0), 0),
     total_collected: fees.reduce((a, c) => a + (c.total_collected || 0), 0),
     pending_count:   fees.filter(c => c.pending > 0).length,
   } : (fees || { total_due: 0, total_collected: 0, pending_count: 0 });
 
-  const collectionPct = feeTotals.total_due > 0
-    ? Math.round(feeTotals.total_collected / feeTotals.total_due * 100)
-    : 81;
+  const totalFeeCollected = stats?.fee_collected ?? feeTotals.total_collected ?? 0;
+  const totalFeePending = stats?.fee_pending ?? (feeTotals.total_due - feeTotals.total_collected) ?? 0;
+  const collectionPct = (totalFeeCollected + totalFeePending) > 0
+    ? Math.round((totalFeeCollected / (totalFeeCollected + totalFeePending)) * 100)
+    : 0;
 
-  const handleExportCSV = () => {
-    const rows = [
-      ['Metric', 'Value'],
-      ['Total Students', stats?.total_students ?? 1248],
-      ['Students Present Today', stats?.students_present ?? 1186],
-      ['Total Teachers', stats?.total_teachers ?? 68],
-      ['Fee Collected', feeTotals.total_collected || 1920000],
-      ['Fee Pending', (feeTotals.total_due - feeTotals.total_collected) || 430000],
-      ['Collection Rate', collectionPct + '%'],
-    ];
-    const csv = rows.map(r => r.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `EduERP_Principal_Report_${todayStr.replace(/\s+/g, '_')}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success('Executive Report downloaded!');
-  };
+  // Class-wise attendance list
+  const classAttendanceList = (stats?.class_attendance_today && stats.class_attendance_today.length > 0)
+    ? stats.class_attendance_today
+    : (attClass.length > 0 ? attClass.map(ac => ({
+        class_id: ac.class_id,
+        class_name: `${ac.class_name || 'Class'}${ac.section ? ' - ' + ac.section : ''}`,
+        total: ac.total || 0,
+        present: ac.present || 0,
+        absent: ac.absent || 0,
+        late: ac.late || 0,
+        not_marked: ac.not_marked || 0,
+        percentage: ac.present_pct || (ac.total ? Math.round((ac.present / ac.total) * 100) : 0)
+      })) : []);
 
-  // Mock fallbacks to make dashboard look rich and full if live database is empty
-  const totalStudents = stats?.total_students || 1248;
-  const studentsPresent = stats?.students_present || 1186;
-  const studentsAbsent = stats?.students_absent || (totalStudents - studentsPresent) || 52;
-  const studentsLate = stats?.students_late || 10;
-  const presentPct = totalStudents ? ((studentsPresent / totalStudents) * 100).toFixed(2) : '95.03';
-  const absentPct = totalStudents ? ((studentsAbsent / totalStudents) * 100).toFixed(2) : '4.17';
-  const latePct = totalStudents ? ((studentsLate / totalStudents) * 100).toFixed(2) : '0.80';
+  // Best class calculation
+  const bestClass = stats?.best_attendance_class || (classAttendanceList.length > 0
+    ? [...classAttendanceList].filter(c => c.total > 0).sort((a, b) => b.percentage - a.percentage)[0]
+    : null);
 
-  const donutData = [
+  const filteredClasses = classFilter === 'HIGH'
+    ? classAttendanceList.filter(c => c.percentage >= 80)
+    : classFilter === 'LOW'
+    ? classAttendanceList.filter(c => c.percentage < 75 && c.total > 0)
+    : classAttendanceList;
+
+  const donutData = totalStudents > 0 ? [
     { name: 'Present', value: Number(studentsPresent), color: '#10b981' },
     { name: 'Absent',  value: Number(studentsAbsent),  color: '#ef4444' },
     { name: 'Late',    value: Number(studentsLate),    color: '#f59e0b' },
+  ] : [
+    { name: 'No Data', value: 1, color: '#94a3b8' }
   ];
 
   const financialTrend = trendData.length ? trendData : [
@@ -136,13 +142,7 @@ export default function PrincipalDashboard() {
     { month: 'Aug', revenue: 2010000, expenses: 980000 },
   ];
 
-  const recentFeesList = recentFeeCollections.length ? recentFeeCollections : [
-    { receipt_no: 'RCPT/2026/0891', student_name: 'Arjun Sharma', class_name: 'Class 10-A', amount: 12500, date: '11 Aug 2026', status: 'Paid' },
-    { receipt_no: 'RCPT/2026/0890', student_name: 'Diya Verma',   class_name: 'Class 9-B',  amount: 12500, date: '11 Aug 2026', status: 'Paid' },
-    { receipt_no: 'RCPT/2026/0889', student_name: 'Rohan Patel',  class_name: 'Class 8-A',  amount: 11500, date: '10 Aug 2026', status: 'Paid' },
-    { receipt_no: 'RCPT/2026/0888', student_name: 'Sneha Gupta',  class_name: 'Class 7-B',  amount: 11500, date: '10 Aug 2026', status: 'Paid' },
-    { receipt_no: 'RCPT/2026/0887', student_name: 'Kabir Singh',  class_name: 'Class 6-A',  amount: 10500, date: '09 Aug 2026', status: 'Paid' },
-  ];
+  const recentFeesList = recentFeeCollections.length ? recentFeeCollections : [];
 
   const eventsList = upcomingEvents.length ? upcomingEvents : [
     { month: 'AUG', day: '15', title: 'Independence Day', sub: 'School Holiday', type: 'Holiday', badgeBg: '#e0e7ff', badgeColor: '#4f46e5' },
@@ -154,8 +154,33 @@ export default function PrincipalDashboard() {
   const announcementsList = announcements.length ? announcements : [
     { id: 1, title: 'School Timings Update', desc: 'New school timing will be effective from 18th August 2026.', time: '2 hours ago' },
     { id: 2, title: 'PTM – 22 August 2026', desc: 'Parent-Teacher Meeting will be held on 22nd August. Timings will be shared soon.', time: '5 hours ago' },
-    { id: 3, title: 'Fee Reminder', desc: 'Please clear the pending fees to avoid late fine charges.', time: '1 day ago' },
   ];
+
+  const handleExportCSV = () => {
+    const rows = [
+      ['Metric', 'Value'],
+      ['Total Students', totalStudents],
+      ['Students Present Today', studentsPresent],
+      ['Students Absent Today', studentsAbsent],
+      ['Attendance Rate Today', `${presentPct}%`],
+      ['Total Teachers', totalTeachers],
+      ['Teachers Present Today', teachersPresent],
+      ['Fee Collected', totalFeeCollected],
+      ['Fee Pending', totalFeePending],
+      ['Collection Rate', `${collectionPct}%`],
+      ['Total Classes', classes.length],
+      ['Best Performing Class', bestClass ? `${bestClass.class_name} (${bestClass.percentage}%)` : 'N/A']
+    ];
+    const csv = rows.map(r => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `EduERP_Principal_Report_${todayStr.replace(/\s+/g, '_')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('Executive Report downloaded!');
+  };
 
   return (
     <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
@@ -170,16 +195,18 @@ export default function PrincipalDashboard() {
             background: darkMode ? '#111827' : '#ffffff',
             borderRadius: '20px',
             border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
-            padding: '28px 32px',
+            padding: '26px 32px',
             marginBottom: '24px',
             boxShadow: '0 4px 20px rgba(0,0,0,0.03)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
             position: 'relative',
-            overflow: 'hidden'
+            overflow: 'hidden',
+            flexWrap: 'wrap',
+            gap: '20px'
           }}>
-            <div style={{ flex: 1, zIndex: 2, maxWidth: '600px' }}>
+            <div style={{ flex: 1, minWidth: '280px', zIndex: 2 }}>
               <div style={{
                 fontSize: '12px', fontWeight: 800, color: '#3b82f6',
                 letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '6px'
@@ -196,7 +223,7 @@ export default function PrincipalDashboard() {
                 fontSize: '14px', color: darkMode ? '#94a3b8' : '#64748b',
                 margin: '0 0 20px'
               }}>
-                Great leadership builds great institutions.
+                Great leadership builds great institutions. Here is today's campus overview.
               </p>
 
               <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
@@ -228,7 +255,7 @@ export default function PrincipalDashboard() {
 
             {/* Top Right Actions & Illustration */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '16px', zIndex: 2 }}>
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
                 <span style={{
                   padding: '8px 14px', borderRadius: '10px',
                   background: darkMode ? '#1e293b' : '#f1f5f9',
@@ -279,9 +306,9 @@ export default function PrincipalDashboard() {
             </div>
           </div>
 
-          {/* ══ 2. 5 KPI METRIC CARDS ROW ══ */}
+          {/* ══ 2. 5 ACCURATE KPI METRIC CARDS ROW ══ */}
           <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)',
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
             gap: '16px', marginBottom: '22px'
           }}>
             {/* Card 1: Total Students */}
@@ -305,9 +332,9 @@ export default function PrincipalDashboard() {
                 {fmt(totalStudents)}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '12px', color: '#94a3b8' }}>Active students</span>
-                <span style={{ fontSize: '11px', fontWeight: 800, color: '#10b981', background: '#ecfdf5', padding: '2px 6px', borderRadius: '6px' }}>
-                  ↑ 12 this month
+                <span style={{ fontSize: '12px', color: '#94a3b8' }}>Enrolled students</span>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#8b5cf6', background: '#f3f0ff', padding: '2px 6px', borderRadius: '6px' }}>
+                  {classes.length} Classes
                 </span>
               </div>
             </div>
@@ -333,7 +360,7 @@ export default function PrincipalDashboard() {
                 {fmt(studentsPresent)}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '12px', color: '#94a3b8' }}>Students present</span>
+                <span style={{ fontSize: '12px', color: '#94a3b8' }}>{studentsAbsent} absent</span>
                 <span style={{ fontSize: '11px', fontWeight: 800, color: '#10b981', background: '#ecfdf5', padding: '2px 6px', borderRadius: '6px' }}>
                   {presentPct}%
                 </span>
@@ -358,12 +385,12 @@ export default function PrincipalDashboard() {
                 TOTAL TEACHERS
               </div>
               <div style={{ fontSize: '26px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a', margin: '4px 0 2px' }}>
-                {stats?.total_teachers || 68}
+                {fmt(totalTeachers)}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '12px', color: '#94a3b8' }}>Active staff</span>
+                <span style={{ fontSize: '12px', color: '#94a3b8' }}>{teachersPresent} on duty</span>
                 <span style={{ fontSize: '11px', fontWeight: 800, color: '#10b981', background: '#ecfdf5', padding: '2px 6px', borderRadius: '6px' }}>
-                  ↑ 2 this month
+                  Active Staff
                 </span>
               </div>
             </div>
@@ -386,12 +413,12 @@ export default function PrincipalDashboard() {
                 FEE COLLECTED
               </div>
               <div style={{ fontSize: '26px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a', margin: '4px 0 2px' }}>
-                {fmtK(feeTotals.total_collected || 1920000)}
+                {fmtK(totalFeeCollected)}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '12px', color: '#94a3b8' }}>This session</span>
                 <span style={{ fontSize: '11px', fontWeight: 800, color: '#10b981', background: '#ecfdf5', padding: '2px 6px', borderRadius: '6px' }}>
-                  {collectionPct}% collection
+                  {collectionPct}%
                 </span>
               </div>
             </div>
@@ -414,12 +441,12 @@ export default function PrincipalDashboard() {
                 FEE PENDING
               </div>
               <div style={{ fontSize: '26px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a', margin: '4px 0 2px' }}>
-                {fmtK(feeTotals.total_due - feeTotals.total_collected || 430000)}
+                {fmtK(totalFeePending)}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '12px', color: '#94a3b8' }}>{feeTotals.pending_count || 3} pending</span>
+                <span style={{ fontSize: '12px', color: '#94a3b8' }}>Outstanding</span>
                 <span style={{ fontSize: '11px', fontWeight: 800, color: '#ef4444', background: '#fef2f2', padding: '2px 6px', borderRadius: '6px' }}>
-                  8 overdue
+                  Pending Dues
                 </span>
               </div>
             </div>
@@ -427,7 +454,7 @@ export default function PrincipalDashboard() {
 
           {/* ══ 3. QUICK ACTION LAUNCHPAD BAR ══ */}
           <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)',
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
             gap: '12px', marginBottom: '24px'
           }}>
             <button
@@ -503,7 +530,162 @@ export default function PrincipalDashboard() {
             </button>
           </div>
 
-          {/* ══ 4. FINANCIAL & ATTENDANCE OVERVIEW GRID ══ */}
+          {/* ══ 4. TODAY'S CLASS-WISE ATTENDANCE INTEL PANEL (USER REQUESTED) ══ */}
+          <div style={{
+            background: darkMode ? '#111827' : '#ffffff',
+            border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+            borderRadius: '18px', padding: '22px',
+            marginBottom: '24px',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
+          }}>
+            {/* Header with Best Class Podium */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <i className="ti ti-chart-bar" style={{ color: '#2563eb', fontSize: '20px' }} />
+                  Class-Wise Attendance Intel (Today)
+                </h3>
+                <p style={{ margin: '3px 0 0', fontSize: '12.5px', color: '#94a3b8' }}>
+                  Real-time section breakdown of present, absent, and percentage scores.
+                </p>
+              </div>
+
+              {/* Best Class Highlight Badge */}
+              {bestClass && (
+                <div style={{
+                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  color: '#ffffff', padding: '8px 16px', borderRadius: '12px',
+                  display: 'flex', alignItems: 'center', gap: '10px',
+                  boxShadow: '0 4px 12px rgba(16,185,129,0.25)'
+                }}>
+                  <span style={{ fontSize: '20px' }}>🏆</span>
+                  <div>
+                    <div style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', opacity: 0.9 }}>
+                      Top Attendance Champion
+                    </div>
+                    <div style={{ fontSize: '13.5px', fontWeight: 900 }}>
+                      {bestClass.class_name} • {bestClass.percentage}% Present
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Filter Pills */}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+              <button
+                onClick={() => setClassFilter('ALL')}
+                style={{
+                  padding: '5px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer',
+                  background: classFilter === 'ALL' ? '#2563eb' : (darkMode ? '#1e293b' : '#f1f5f9'),
+                  color: classFilter === 'ALL' ? '#ffffff' : (darkMode ? '#cbd5e1' : '#475569'),
+                  border: 'none'
+                }}
+              >
+                All Classes ({classAttendanceList.length})
+              </button>
+              <button
+                onClick={() => setClassFilter('HIGH')}
+                style={{
+                  padding: '5px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer',
+                  background: classFilter === 'HIGH' ? '#10b981' : (darkMode ? '#1e293b' : '#f1f5f9'),
+                  color: classFilter === 'HIGH' ? '#ffffff' : (darkMode ? '#cbd5e1' : '#475569'),
+                  border: 'none'
+                }}
+              >
+                High Attendance (&gt;= 80%)
+              </button>
+              <button
+                onClick={() => setClassFilter('LOW')}
+                style={{
+                  padding: '5px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer',
+                  background: classFilter === 'LOW' ? '#ef4444' : (darkMode ? '#1e293b' : '#f1f5f9'),
+                  color: classFilter === 'LOW' ? '#ffffff' : (darkMode ? '#cbd5e1' : '#475569'),
+                  border: 'none'
+                }}
+              >
+                Needs Attention (&lt; 75%)
+              </button>
+            </div>
+
+            {/* Class Cards Grid */}
+            {filteredClasses.length === 0 ? (
+              <div style={{ padding: '30px', textAlign: 'center', color: '#94a3b8' }}>
+                <i className="ti ti-school" style={{ fontSize: '32px', display: 'block', marginBottom: '8px', opacity: 0.5 }} />
+                No class attendance recorded for today yet.
+              </div>
+            ) : (
+              <div style={{
+                display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                gap: '14px'
+              }}>
+                {filteredClasses.map((cls) => {
+                  const isTop = bestClass && bestClass.class_id === cls.class_id;
+                  const pct = cls.percentage || 0;
+                  return (
+                    <div
+                      key={cls.class_id}
+                      style={{
+                        borderRadius: '14px', padding: '16px',
+                        background: darkMode ? '#1e293b' : '#f8fafc',
+                        border: isTop ? '2px solid #10b981' : `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                        position: 'relative'
+                      }}
+                    >
+                      {isTop && (
+                        <span style={{
+                          position: 'absolute', top: '10px', right: '10px',
+                          background: '#10b981', color: '#fff', fontSize: '10px', fontWeight: 900,
+                          padding: '2px 8px', borderRadius: '12px'
+                        }}>
+                          HIGHEST
+                        </span>
+                      )}
+
+                      <div style={{ fontSize: '15px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', marginBottom: '8px' }}>
+                        {cls.class_name}
+                      </div>
+
+                      {/* Numbers Row */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '8px' }}>
+                        <span style={{ color: '#94a3b8' }}>Enrolled: <strong>{cls.total}</strong></span>
+                        <span style={{ color: '#10b981', fontWeight: 700 }}>Present: {cls.present}</span>
+                        <span style={{ color: '#ef4444', fontWeight: 700 }}>Absent: {cls.absent}</span>
+                      </div>
+
+                      {/* Progress Bar */}
+                      <div style={{ height: '8px', borderRadius: '4px', background: darkMode ? '#334155' : '#e2e8f0', overflow: 'hidden', marginBottom: '8px' }}>
+                        <div style={{
+                          width: `${pct}%`, height: '100%',
+                          background: pct >= 85 ? '#10b981' : pct >= 70 ? '#3b82f6' : '#ef4444',
+                          borderRadius: '4px'
+                        }} />
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{
+                          fontSize: '11px', fontWeight: 800,
+                          color: pct >= 85 ? '#10b981' : pct >= 70 ? '#3b82f6' : '#ef4444'
+                        }}>
+                          {pct}% Attendance
+                        </span>
+                        <button
+                          onClick={() => navigate('/attendance')}
+                          style={{
+                            background: 'none', border: 'none', color: '#2563eb', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer'
+                          }}
+                        >
+                          View Section →
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* ══ 5. FINANCIAL & ATTENDANCE OVERVIEW GRID ══ */}
           <div style={{
             display: 'grid', gridTemplateColumns: '1.7fr 1fr',
             gap: '20px', marginBottom: '24px'
@@ -515,7 +697,7 @@ export default function PrincipalDashboard() {
               borderRadius: '18px', padding: '22px',
               boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <i className="ti ti-currency-rupee" style={{ color: '#2563eb', fontSize: '20px' }} />
                   <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
@@ -580,7 +762,7 @@ export default function PrincipalDashboard() {
                     <div>
                       <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600 }}>Total Revenue</div>
                       <div style={{ fontSize: '18px', fontWeight: 900, color: '#3b82f6' }}>
-                        {fmtK(profitSummary?.revenue || 2010000)}
+                        {fmtK(profitSummary?.revenue || totalFeeCollected)}
                       </div>
                     </div>
                     <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#eff6ff', color: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -592,7 +774,7 @@ export default function PrincipalDashboard() {
                     <div>
                       <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600 }}>Total Expenses</div>
                       <div style={{ fontSize: '18px', fontWeight: 900, color: '#ef4444' }}>
-                        {fmtK(profitSummary?.expenses || 980000)}
+                        {fmtK(profitSummary?.expenses || 0)}
                       </div>
                     </div>
                     <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#fef2f2', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -604,7 +786,7 @@ export default function PrincipalDashboard() {
                     <div>
                       <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600 }}>Net Profit</div>
                       <div style={{ fontSize: '18px', fontWeight: 900, color: '#10b981' }}>
-                        {fmtK(profitSummary?.net_profit || 1030000)}
+                        {fmtK(profitSummary?.net_profit || totalFeeCollected)}
                       </div>
                     </div>
                     <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#ecfdf5', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -616,7 +798,7 @@ export default function PrincipalDashboard() {
                     <div>
                       <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600 }}>Profit Margin</div>
                       <div style={{ fontSize: '18px', fontWeight: 900, color: '#8b5cf6' }}>
-                        {profitSummary?.profit_margin ? `${profitSummary.profit_margin}%` : '51.24%'}
+                        {profitSummary?.profit_margin ? `${profitSummary.profit_margin}%` : '51.2%'}
                       </div>
                     </div>
                     <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f3f0ff', color: '#8b5cf6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -640,7 +822,7 @@ export default function PrincipalDashboard() {
                   <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
                     Attendance Overview
                   </h3>
-                  <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>This Month ▾</span>
+                  <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Today</span>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -686,14 +868,15 @@ export default function PrincipalDashboard() {
                 color: '#2563eb', fontSize: '12.5px', fontWeight: 600,
                 display: 'flex', alignItems: 'center', gap: '8px'
               }}>
-                <i className="ti ti-info-circle" /> Keep it up! Attendance is excellent.
+                <i className="ti ti-info-circle" />
+                {Number(presentPct) >= 85 ? 'Campus attendance is excellent today!' : 'Review sections with pending roll calls.'}
               </div>
             </div>
           </div>
 
-          {/* ══ 5. LOWER 3-COLUMN INTELLIGENCE SECTION ══ */}
+          {/* ══ 6. LOWER 3-COLUMN INTELLIGENCE SECTION ══ */}
           <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
             gap: '20px', marginBottom: '24px'
           }}>
             {/* Col 1: Recent Fee Collection */}
@@ -715,28 +898,34 @@ export default function PrincipalDashboard() {
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {recentFeesList.map(r => (
-                    <div key={r.receipt_no} style={{
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      fontSize: '12.5px', paddingBottom: '8px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`
-                    }}>
-                      <div>
-                        <div style={{ fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a' }}>{r.student_name}</div>
-                        <div style={{ fontSize: '11px', color: '#94a3b8' }}>{r.class_name} · {r.receipt_no}</div>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontWeight: 800, color: '#10b981' }}>₹{r.amount.toLocaleString('en-IN')}</div>
-                        <span style={{ fontSize: '10px', fontWeight: 700, color: '#10b981', background: '#ecfdf5', padding: '1px 6px', borderRadius: '4px' }}>
-                          {r.status}
-                        </span>
-                      </div>
+                  {recentFeesList.length === 0 ? (
+                    <div style={{ padding: '20px', textAlign: 'center', color: '#94a3b8', fontSize: '12.5px' }}>
+                      No recent fee transactions.
                     </div>
-                  ))}
+                  ) : (
+                    recentFeesList.slice(0, 5).map(r => (
+                      <div key={r.id || r.receipt_no} style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        fontSize: '12.5px', paddingBottom: '8px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`
+                      }}>
+                        <div>
+                          <div style={{ fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a' }}>{r.student_name}</div>
+                          <div style={{ fontSize: '11px', color: '#94a3b8' }}>{r.class_name} · {r.receipt_no}</div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontWeight: 800, color: '#10b981' }}>₹{r.amount.toLocaleString('en-IN')}</div>
+                          <span style={{ fontSize: '10px', fontWeight: 700, color: '#10b981', background: '#ecfdf5', padding: '1px 6px', borderRadius: '4px' }}>
+                            {r.status}
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
 
               <div style={{ textAlign: 'center', marginTop: '16px', fontSize: '13px', fontWeight: 800, color: '#10b981' }}>
-                Total Collected: ₹19,20,500
+                Total Collected: ₹{fmt(totalFeeCollected)}
               </div>
             </div>
 
@@ -768,20 +957,20 @@ export default function PrincipalDashboard() {
                         width: '38px', textAlign: 'center', borderRadius: '8px',
                         background: darkMode ? '#1e293b' : '#f1f5f9', padding: '4px 0'
                       }}>
-                        <div style={{ fontSize: '9px', fontWeight: 800, color: '#3b82f6' }}>{e.month}</div>
-                        <div style={{ fontSize: '15px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a' }}>{e.day}</div>
+                        <div style={{ fontSize: '9px', fontWeight: 800, color: '#3b82f6' }}>{e.month || (e.date ? new Date(e.date).toLocaleDateString('en-US', { month: 'short' }).toUpperCase() : 'AUG')}</div>
+                        <div style={{ fontSize: '15px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a' }}>{e.day || (e.date ? new Date(e.date).getDate() : '15')}</div>
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: '12.5px', fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {e.title}
                         </div>
-                        <div style={{ fontSize: '11px', color: '#94a3b8' }}>{e.sub}</div>
+                        <div style={{ fontSize: '11px', color: '#94a3b8' }}>{e.sub || e.holiday_type || 'Event'}</div>
                       </div>
                       <span style={{
                         fontSize: '10.5px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px',
                         background: e.badgeBg || '#e0e7ff', color: e.badgeColor || '#4f46e5'
                       }}>
-                        {e.type}
+                        {e.type || e.holiday_type || 'Holiday'}
                       </span>
                     </div>
                   ))}
@@ -828,8 +1017,8 @@ export default function PrincipalDashboard() {
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: '12.5px', fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a' }}>{a.title}</div>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: 1.3 }}>{a.desc}</div>
-                        <div style={{ fontSize: '10px', color: '#cbd5e1', marginTop: '2px' }}>{a.time}</div>
+                        <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: 1.3 }}>{a.description || a.desc}</div>
+                        <div style={{ fontSize: '10px', color: '#cbd5e1', marginTop: '2px' }}>{a.time || 'Today'}</div>
                       </div>
                     </div>
                   ))}
@@ -850,9 +1039,9 @@ export default function PrincipalDashboard() {
             </div>
           </div>
 
-          {/* ══ 6. QUICK REPORTS BAR ══ */}
+          {/* ══ 7. QUICK REPORTS BAR ══ */}
           <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
             gap: '16px'
           }}>
             <div

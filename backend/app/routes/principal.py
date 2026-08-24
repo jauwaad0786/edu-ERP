@@ -825,6 +825,33 @@ def fees_summary():
     }), 200
 
 
+@principal_bp.route('/fees/recent-collections', methods=['GET'])
+@role_required('PRINCIPAL', 'ACCOUNTANT', 'SUPER_ADMIN', 'TEACHER')
+def recent_fee_collections():
+    sid = _school_id()
+    records = FeeRecord.query.filter(
+        FeeRecord.school_id == sid,
+        FeeRecord.amount_paid > 0
+    ).order_by(FeeRecord.paid_date.desc().nullslast(), FeeRecord.id.desc()).limit(8).all()
+
+    result = []
+    for r in records:
+        student = Student.query.get(r.student_id) if r.student_id else None
+        cls = Class.query.get(student.class_id) if (student and student.class_id) else None
+        class_name = f"{cls.name}{' - ' + cls.section if cls.section else ''}" if cls else '—'
+        student_name = student.user.name if (student and student.user) else (student.name if student else '—')
+        result.append({
+            'id': r.id,
+            'receipt_no': r.receipt_number or f"RCPT/{r.id:04d}",
+            'student_name': student_name,
+            'class_name': class_name,
+            'amount': float(r.amount_paid or 0),
+            'date': r.paid_date.strftime('%d %b %Y') if r.paid_date else (r.created_at.strftime('%d %b %Y') if r.created_at else '—'),
+            'status': 'Paid' if r.status == 'PAID' else (r.status or 'Paid')
+        })
+    return jsonify(result), 200
+
+
 @principal_bp.route('/fees/records', methods=['GET'])
 @permission_required('fees.receipt.view')
 def fee_records():
@@ -2653,10 +2680,12 @@ def deny_attendance_request(req_id):
     req.reviewed_at = datetime.utcnow()
     db.session.commit()
     return jsonify({'message': 'Denied', 'request': req.to_dict()}), 200
+
+
 # ─── Dashboard ────────────────────────────────────────────────────────────────
 
 @principal_bp.route('/dashboard', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_required('PRINCIPAL', 'TEACHER', 'SUPER_ADMIN')
 def dashboard():
     sid    = _school_id()
     today  = date.today()
@@ -2671,6 +2700,7 @@ def dashboard():
                      ).all()
     s_present = sum(1 for a in att_today if a.status == 'PRESENT')
     s_absent  = sum(1 for a in att_today if a.status == 'ABSENT')
+    s_late    = sum(1 for a in att_today if a.status == 'LATE')
 
     # Today's teacher attendance
     total_teachers = Teacher.query.filter_by(school_id=sid).count()
@@ -2679,6 +2709,38 @@ def dashboard():
                      ).all()
     t_present = sum(1 for a in t_att_today if a.status == 'PRESENT')
     t_absent  = sum(1 for a in t_att_today if a.status == 'ABSENT')
+
+    # ── Class-wise student attendance breakdown today ────────────────────────
+    classes = Class.query.filter_by(school_id=sid).order_by(Class.name, Class.section).all()
+    class_att_list = []
+    for c in classes:
+        cls_students = c.students.all()
+        cls_total = len(cls_students)
+        cls_sids = [s.id for s in cls_students]
+        cls_att = [a for a in att_today if a.student_id in cls_sids]
+        cls_p = sum(1 for a in cls_att if a.status == 'PRESENT')
+        cls_a = sum(1 for a in cls_att if a.status == 'ABSENT')
+        cls_l = sum(1 for a in cls_att if a.status == 'LATE')
+        cls_pct = round((cls_p / cls_total) * 100, 1) if cls_total > 0 else 0
+        cls_name_full = f"{c.name}{' - ' + c.section if c.section else ''}"
+        class_att_list.append({
+            'class_id':    c.id,
+            'class_name':  cls_name_full,
+            'total':       cls_total,
+            'present':     cls_p,
+            'absent':      cls_a,
+            'late':        cls_l,
+            'not_marked':  cls_total - len(cls_att),
+            'percentage':  cls_pct
+        })
+
+    # Best attendance class today
+    best_class = None
+    classes_with_students = [c for c in class_att_list if c['total'] > 0]
+    if classes_with_students:
+        sorted_by_pct = sorted(classes_with_students, key=lambda x: (x['percentage'], x['present']), reverse=True)
+        if sorted_by_pct:
+            best_class = sorted_by_pct[0]
 
     # ── Attendance trend — last 7 calendar days, % present of marked ──────────
     attendance_trend = []
@@ -2738,28 +2800,35 @@ def dashboard():
                             Announcement.is_active == True,
                         ).count()
 
+    fee_collected_total = db.session.query(func.sum(FeeRecord.amount_paid)).filter_by(school_id=sid).scalar() or 0
+    fee_pending_total = db.session.query(
+                            func.sum(FeeRecord.amount_due - FeeRecord.amount_paid)
+                        ).filter(FeeRecord.school_id == sid, FeeRecord.status != 'PAID').scalar() or 0
+
     return jsonify({
-        'total_students':      total_students,
-        'total_teachers':      total_teachers,
-        'total_classes':       Class.query.filter_by(school_id=sid).count(),
-        'fee_collected':       db.session.query(func.sum(FeeRecord.amount_paid)).filter_by(school_id=sid).scalar() or 0,
-        'fee_pending':         db.session.query(
-                                   func.sum(FeeRecord.amount_due - FeeRecord.amount_paid)
-                               ).filter_by(school_id=sid).scalar() or 0,
-        'attendance_trend':    attendance_trend,
-        'fee_trend':           fee_trend,
-        'class_distribution':  class_distribution,
-        'library_issued':      library_issued,
-        'hostel_occupied':     hostel_occupied,
-        'hostel_total':        hostel_total,
-        'active_circulars':    active_circulars,
+        'total_students':          total_students,
+        'total_teachers':          total_teachers,
+        'total_classes':           len(classes),
+        'fee_collected':           float(fee_collected_total),
+        'fee_pending':             float(fee_pending_total),
+        'attendance_trend':        attendance_trend,
+        'fee_trend':               fee_trend,
+        'class_distribution':      class_distribution,
+        'library_issued':          library_issued,
+        'hostel_occupied':         hostel_occupied,
+        'hostel_total':            hostel_total,
+        'active_circulars':        active_circulars,
         # attendance today
-        'students_present':  s_present,
-        'students_absent':   s_absent,
-        'students_marked':   len(att_today),
-        'teachers_present':  t_present,
-        'teachers_absent':   t_absent,
-        'teachers_marked':   len(t_att_today),
+        'students_present':        s_present,
+        'students_absent':         s_absent,
+        'students_late':           s_late,
+        'students_marked':         len(att_today),
+        'teachers_present':        t_present,
+        'teachers_absent':         t_absent,
+        'teachers_marked':         len(t_att_today),
+        # class-wise intelligence
+        'class_attendance_today':  class_att_list,
+        'best_attendance_class':   best_class,
     }), 200
 
 
