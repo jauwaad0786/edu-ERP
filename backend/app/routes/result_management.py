@@ -681,8 +681,8 @@ def approve_subject():
         return jsonify({'error': 'Unauthorized'}), 403
 
     row = _get_or_create_status(sid, exam_id, class_id, subject_id)
-    if row.status not in ('SUBMITTED', 'RESUBMITTED'):
-        return jsonify({'error': f'Cannot approve — status is {row.status}'}), 409
+    if row.status in ('APPROVED', 'PUBLISHED'):
+        return jsonify({'message': f'Subject is already {row.status}', 'status': row.to_dict()}), 200
 
     row.status      = 'APPROVED'
     row.approved_at = datetime.utcnow()
@@ -714,8 +714,8 @@ def return_subject():
         return jsonify({'error': 'Unauthorized'}), 403
 
     row = _get_or_create_status(sid, exam_id, class_id, subject_id)
-    if row.status not in ('SUBMITTED', 'RESUBMITTED'):
-        return jsonify({'error': f'Cannot return — status is {row.status}'}), 409
+    if row.status in ('PUBLISHED',):
+        return jsonify({'error': 'Cannot return a published subject — please Reopen the class result first'}), 409
 
     row.status        = 'RETURNED_FOR_CORRECTION'
     row.return_reason = reason

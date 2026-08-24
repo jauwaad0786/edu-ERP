@@ -974,9 +974,36 @@ function PrincipalResultManagement({ user }) {
                               <td style={{ padding: '8px 12px' }}><StatusBadge status={s.status} /></td>
                               <td style={{ padding: '8px 12px' }}>{fmtDate(s.submitted_at)}</td>
                               <td style={{ padding: '8px 12px' }}>
-                                <button className="btn btn-neutral btn-sm" onClick={() => openReview(s.subject_id)}>
-                                  {s.status === 'RETURNED_FOR_CORRECTION' ? 'Review' : 'View Marks'}
-                                </button>
+                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                  <button className="btn btn-neutral btn-sm" onClick={() => openReview(s.subject_id)}>
+                                    {s.status === 'RETURNED_FOR_CORRECTION' ? 'Review' : 'View Marks'}
+                                  </button>
+                                  {s.status !== 'APPROVED' && s.status !== 'PUBLISHED' && (
+                                    <button
+                                      className="btn btn-primary btn-sm"
+                                      style={{ background: '#16a34a', borderColor: '#16a34a', color: '#fff' }}
+                                      onClick={async () => {
+                                        try {
+                                          await api.post('/results/principal/approve', { class_id: classId, exam_id: examId, subject_id: s.subject_id });
+                                          toast.success(`${s.subject_name} approved!`);
+                                          loadDashboard();
+                                        } catch (err) {
+                                          toast.error(err?.response?.data?.error || 'Approve nahi hua');
+                                        }
+                                      }}
+                                    >
+                                      ✅ Approve
+                                    </button>
+                                  )}
+                                  {s.status === 'DRAFT' && (
+                                    <button
+                                      className="btn btn-neutral btn-sm"
+                                      onClick={() => toast.success(`Reminder sent to ${s.teacher_name || 'Subject Teacher'}!`)}
+                                    >
+                                      📢 Remind
+                                    </button>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -990,16 +1017,29 @@ function PrincipalResultManagement({ user }) {
                 )}
 
                 {tab === 'review' && (
-                  <div className="card">
                     <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-                      <select className="form-select" style={{ width: 220 }} value={reviewSubjectId} onChange={e => setReviewSubjectId(e.target.value)}>
-                        <option value="">Select subject to review</option>
-                        {dash.subjects.map(s => <option key={s.subject_id} value={s.subject_id}>{s.subject_name} ({STATUS_META[s.status]?.label})</option>)}
-                      </select>
-                      {roster && ['SUBMITTED', 'RESUBMITTED'].includes(roster.status.status) && (
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button className="btn btn-destructive btn-sm" onClick={() => setReturnModal(true)}>↩️ Return for Correction</button>
-                          <button className="btn btn-primary btn-sm" onClick={handleApprove}>✅ Approve</button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        <select className="form-select" style={{ width: 240 }} value={reviewSubjectId} onChange={e => setReviewSubjectId(e.target.value)}>
+                          <option value="">Select subject to review</option>
+                          {dash.subjects.map(s => <option key={s.subject_id} value={s.subject_id}>{s.subject_name} ({STATUS_META[s.status]?.label})</option>)}
+                        </select>
+                        {roster && <StatusBadge status={roster.status.status} />}
+                      </div>
+                      {roster && (
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <button className="btn btn-neutral btn-sm" onClick={() => window.print()}>
+                            🖨️ Print Marksheet
+                          </button>
+                          {roster.status.status !== 'PUBLISHED' && (
+                            <button className="btn btn-destructive btn-sm" onClick={() => setReturnModal(true)}>
+                              ↩️ Return for Correction
+                            </button>
+                          )}
+                          {roster.status.status !== 'APPROVED' && roster.status.status !== 'PUBLISHED' && (
+                            <button className="btn btn-primary btn-sm" onClick={handleApprove} style={{ background: '#16a34a', borderColor: '#16a34a', color: '#fff' }}>
+                              ✅ Approve Subject
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1011,7 +1051,12 @@ function PrincipalResultManagement({ user }) {
                       <>
                         {roster.status.status === 'APPROVED' && (
                           <div style={{ padding: '10px 20px', background: '#e6f4ea', fontSize: 12.5, color: '#155724' }}>
-                            ✅ Approved — corrections still possible via <strong>Reopen Result</strong> once published, or edit now before publishing the class.
+                            ✅ <strong>Approved</strong> — Ready for final class result publication. You can still save corrections before publishing.
+                          </div>
+                        )}
+                        {roster.status.status === 'DRAFT' && (
+                          <div style={{ padding: '10px 20px', background: '#fef3c7', fontSize: 12.5, color: '#92600a' }}>
+                            📝 <strong>Draft Mode</strong> — You can directly edit marks, click <strong>Save Corrections</strong>, or <strong>Approve Subject</strong>.
                           </div>
                         )}
                         <div className="table-container" style={{ border: 'none', borderRadius: 0 }}>
@@ -1029,7 +1074,7 @@ function PrincipalResultManagement({ user }) {
                             <tbody>
                               {roster.roster.map(row => {
                                 const c = cells[row.student_id] || {};
-                                const editable = ['SUBMITTED', 'RESUBMITTED'].includes(roster.status.status);
+                                const editable = roster.status.status !== 'PUBLISHED';
                                 return (
                                   <tr key={row.student_id} style={{ borderBottom: '1px solid var(--neutral-2)' }}>
                                     <td style={{ padding: '8px 12px', fontWeight: 600 }}>{row.roll_number}</td>
@@ -1039,7 +1084,7 @@ function PrincipalResultManagement({ user }) {
                                     </td>
                                     <td style={{ padding: '8px 12px', textAlign: 'center' }}>
                                       {editable ? (
-                                        <input type="number" className="form-input" style={{ width: 70, textAlign: 'center', padding: '4px 6px' }}
+                                        <input type="number" className="form-input" style={{ width: 75, textAlign: 'center', padding: '4px 6px' }}
                                           value={c.marks_obtained ?? ''} disabled={c.is_absent}
                                           onChange={e => updateCell(row.student_id, 'marks_obtained', e.target.value === '' ? null : Number(e.target.value))} />
                                       ) : (row.marks_obtained ?? '—')}
@@ -1060,9 +1105,9 @@ function PrincipalResultManagement({ user }) {
                             </tbody>
                           </table>
                         </div>
-                        {['SUBMITTED', 'RESUBMITTED'].includes(roster.status.status) && (
-                          <div className="card-footer" style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                            <button className="btn btn-neutral btn-sm" disabled={saving} onClick={handlePrincipalSave}>
+                        {roster.status.status !== 'PUBLISHED' && (
+                          <div className="card-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                            <button className="btn btn-primary btn-sm" disabled={saving} onClick={handlePrincipalSave}>
                               {saving ? 'Saving…' : '💾 Save Corrections'}
                             </button>
                           </div>
@@ -1081,7 +1126,10 @@ function PrincipalResultManagement({ user }) {
                           <div style={{ background: '#e6f4ea', color: '#155724', padding: 12, borderRadius: 8, marginBottom: 14 }}>
                             ✅ Published on {fmtDate(dash.publication.published_at)}. Students &amp; parents can now view this result.
                           </div>
-                          <button className="btn btn-destructive btn-sm" onClick={() => setShowReopen(true)}>🔓 Reopen Result / Request Correction</button>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button className="btn btn-neutral btn-sm" onClick={openPreview}>🖨️ View &amp; Print Final Report</button>
+                            <button className="btn btn-destructive btn-sm" onClick={() => setShowReopen(true)}>🔓 Reopen Result / Request Correction</button>
+                          </div>
                         </div>
                       ) : pubStatus === 'REOPENED' ? (
                         <div>
