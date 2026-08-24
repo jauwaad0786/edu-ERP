@@ -77,5 +77,11 @@ def role_required(*roles):
 
 
 def get_current_user():
-    user_id = int(get_jwt_identity())   # ← add int()
-    return User.query.get(user_id)
+    try:
+        verify_jwt_in_request(optional=True)
+        identity = get_jwt_identity()
+        if identity is None:
+            return None
+        return User.query.get(int(identity))
+    except Exception:
+        return None

@@ -13,8 +13,9 @@ def _school_id():
     
 def _teacher_subject_ids(user, class_id=None):
     """Returns set of subject_ids this teacher is assigned to (optionally within one class).
-       Returns None if user is PRINCIPAL (no restriction)."""
-    if user.role.value == 'PRINCIPAL':
+       Returns None if user is PRINCIPAL / administrative role (no restriction)."""
+    role_val = getattr(user.role, 'value', str(user.role))
+    if role_val in ('PRINCIPAL', 'DIRECTOR', 'VICE_PRINCIPAL', 'SUPER_ADMIN'):
         return None
     from app.models.academic import Teacher
     teacher = Teacher.query.filter_by(user_id=user.id).first()
