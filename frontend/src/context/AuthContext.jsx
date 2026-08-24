@@ -21,7 +21,7 @@ export function AuthProvider({ children }) {
         }
       })
       .catch(err => {
-        if (err.response?.status === 403 || err.response?.status === 404) {
+        if (err.response?.status === 401 || err.response?.status === 403 || err.response?.status === 404) {
           localStorage.clear();
           setUser(null);
         }

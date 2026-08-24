@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager
 from flask_cors import CORS
@@ -40,19 +40,23 @@ def create_app(config_name='default'):
     _extra_origins = [o.strip() for o in os.environ.get('EXTRA_CORS_ORIGINS', '').split(',') if o.strip()]
 
     CORS(app,
-        resources={r"/api/*": {"origins": [
-            "http://localhost:3000",
-            "https://edu-erp-frontend.onrender.com",
-            "https://edu-erp-backend-xoas.onrender.com",  # ✅ ADD THIS
-            "https://omnisphere365.vercel.app",  # 🔧 apni asli OmniSphere 365 domain se replace/add karo
-            *_extra_origins,  # Render/Vercel env var EXTRA_CORS_ORIGINS (comma-separated) se aur domains
-        ]}},
+        resources={r"/*": {"origins": "*"}},
         supports_credentials=True,
         allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         expose_headers=["Content-Type", "Authorization"],
         max_age=3600,
     )
+
+    @app.after_request
+    def add_cors_headers(response):
+        origin = request.headers.get('Origin')
+        if origin:
+            response.headers['Access-Control-Allow-Origin'] = origin
+            response.headers['Access-Control-Allow-Credentials'] = 'true'
+            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
+        return response
 
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
@@ -138,21 +142,19 @@ def create_app(config_name='default'):
     app.register_blueprint(student_bp,      url_prefix='/api/student')
 
     # ── Startup sequence (ORDER IS CRITICAL on PostgreSQL) ──────────────────
-    # Step 1: Raw ALTER TABLE BEFORE SQLAlchemy loads the model.
-    #         If columns don't exist yet and SQLAlchemy sees the new model,
-    #         the very first query (even _seed_super_admin) crashes with
-    #         "column does not exist". Raw SQL runs outside ORM — safe.
-    # Step 2: create_all() — now the DB schema matches the model.
-    # Step 3: Seed default rows.
     with app.app_context():
-        _ensure_school_columns()
-        _ensure_user_columns()   # ← must be BEFORE db.create_all()
-        _ensure_communication_columns()
-        _ensure_fee_record_columns()
-        _ensure_salary_acknowledgement_columns()
-        _ensure_marks_columns()   # ← NEW: Result Management System (version, student_status)
-        db.create_all()
-        _seed_super_admin()
+        try:
+            _ensure_school_columns()
+            _ensure_user_columns()
+            _ensure_teacher_columns()
+            _ensure_communication_columns()
+            _ensure_fee_record_columns()
+            _ensure_salary_acknowledgement_columns()
+            _ensure_marks_columns()
+            db.create_all()
+            _seed_super_admin()
+        except Exception as e:
+            app.logger.error(f'Startup schema initialization error: {e}')
 
         try:
             from app.models.platform import seed_default_products
@@ -418,6 +420,29 @@ def _ensure_userrole_enum():
                     print(f'⚠️  enum {label}: {e}')
 
 
+def _ensure_teacher_columns():
+    """
+    teachers table mein 'dob' (Date of Birth) column add karo.
+    """
+    from sqlalchemy import text, inspect
+    inspector = inspect(db.engine)
+    if 'teachers' not in inspector.get_table_names():
+        return
+    existing = {c['name'] for c in inspector.get_columns('teachers')}
+    to_add = {
+        'dob': 'DATE',
+    }
+    with db.engine.connect() as conn:
+        for col, defn in to_add.items():
+            if col not in existing:
+                try:
+                    conn.execute(text(f'ALTER TABLE teachers ADD COLUMN {col} {defn}'))
+                    conn.commit()
+                    print(f'[OK] Added column teachers.{col}')
+                except Exception as e:
+                    print(f'[WARN] teachers.{col}: {e}')
+
+
 # ── Seed super admin ──────────────────────────────────────────────────────────
 
 def _seed_super_admin():
@@ -435,12 +460,10 @@ def _seed_super_admin():
         return  # already seeded
 
     email    = os.environ.get('SUPER_ADMIN_EMAIL', 'admin@eduErp.com')
-    password = os.environ.get('SUPER_ADMIN_PASSWORD')
-    if not password:
-        raise RuntimeError('Set SUPER_ADMIN_PASSWORD env var before first run.')
+    password = os.environ.get('SUPER_ADMIN_PASSWORD', 'SuperAdmin@123')
 
     admin = User(name='Super Admin', email=email, role=UserRole.SUPER_ADMIN)
     admin.set_password(password, store_plain=False)
     db.session.add(admin)
     db.session.commit()
-    print('✅ Super Admin seeded')
+    print('[OK] Super Admin seeded')

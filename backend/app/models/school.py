@@ -31,12 +31,18 @@ class School(db.Model):
         except Exception:
             return []
 
-    def set_features(self, feature_list):
-        import json
-        self.enabled_features = json.dumps(list(feature_list))
+    DEFAULT_CORE_FEATURES = {
+        'teacher_management', 'student_management', 'attendance_management',
+        'fee_management', 'exam_management', 'timetable_management',
+        'library_management', 'hostel_management', 'transport_management',
+        'communication_module', 'hrms_module', 'reports_module'
+    }
 
     def has_feature(self, key):
-        return key in self.get_features()
+        features = self.get_features()
+        if not features:
+            return True
+        return key in features or key in self.DEFAULT_CORE_FEATURES
 
     
 

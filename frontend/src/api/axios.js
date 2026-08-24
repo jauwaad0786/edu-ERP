@@ -1,7 +1,10 @@
 import axios from 'axios';
 
+const rawBase = process.env.REACT_APP_API_URL || 'https://edu-erp-backend-xoas.onrender.com';
+const cleanBase = rawBase.endsWith('/') ? rawBase.slice(0, -1) : rawBase;
+
 const api = axios.create({
-  baseURL: `${process.env.REACT_APP_API_URL}/api`,
+  baseURL: cleanBase.endsWith('/api') ? cleanBase : `${cleanBase}/api`,
   headers: { 'Content-Type': 'application/json' }
 });
 
