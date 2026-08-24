@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Navbar  from '../components/Navbar';
 import api from '../api/axios';
@@ -760,6 +761,7 @@ function CreateExamModal({ onClose, onCreated }) {
 
 // ─── Main ExamsPage ───────────────────────────────────────────────────────────
 export default function ExamsPage() {
+  const navigate = useNavigate();
   const [exams,      setExams]      = useState([]);
   const [tab,        setTab]        = useState('ALL'); // ALL | DRAFT | PUBLISHED | ARCHIVED
   const [search,     setSearch]     = useState('');
@@ -831,21 +833,39 @@ export default function ExamsPage() {
         <div className="page-body" style={{ position:'relative' }}>
 
           {/* Page header */}
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20, flexWrap:'wrap', gap:12 }}>
             <div>
-              <h2 style={{ margin:0, fontSize:20, fontWeight:800, color:'#0f172a' }}>Exam Management</h2>
+              <h2 style={{ margin:0, fontSize:20, fontWeight:800, color:'#0f172a' }}>Examination Management & Controller</h2>
               <p style={{ margin:'3px 0 0', fontSize:13, color:'#64748b' }}>
-                Create, schedule, and publish examinations — admit cards auto-generate on publish
+                Create, schedule, and publish examinations — datesheets, admit cards, and result analytics
               </p>
             </div>
-            <button onClick={() => setShowCreate(true)}
-              style={{
-                padding:'9px 18px', borderRadius:8, fontSize:13, fontWeight:700,
-                background:'#0176d3', color:'white', border:'none', cursor:'pointer',
-                display:'flex', alignItems:'center', gap:7, boxShadow:'0 2px 8px rgba(1,118,211,0.3)',
-              }}>
-              + Create Exam
-            </button>
+            <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
+              <button onClick={() => navigate('/result-management')}
+                style={{
+                  padding:'9px 16px', borderRadius:8, fontSize:13, fontWeight:700,
+                  background:'#eff6ff', color:'#0176d3', border:'1px solid #bfdbfe', cursor:'pointer',
+                  display:'flex', alignItems:'center', gap:6,
+                }}>
+                📊 Result & Analytics Hub
+              </button>
+              <button onClick={() => navigate('/marks')}
+                style={{
+                  padding:'9px 16px', borderRadius:8, fontSize:13, fontWeight:700,
+                  background:'#fdf4ff', color:'#9333ea', border:'1px solid #f5d0fe', cursor:'pointer',
+                  display:'flex', alignItems:'center', gap:6,
+                }}>
+                📝 Mark Entry Roster
+              </button>
+              <button onClick={() => setShowCreate(true)}
+                style={{
+                  padding:'9px 18px', borderRadius:8, fontSize:13, fontWeight:700,
+                  background:'#0176d3', color:'white', border:'none', cursor:'pointer',
+                  display:'flex', alignItems:'center', gap:7, boxShadow:'0 2px 8px rgba(1,118,211,0.3)',
+                }}>
+                + Create Exam
+              </button>
+            </div>
           </div>
 
           {msg && (

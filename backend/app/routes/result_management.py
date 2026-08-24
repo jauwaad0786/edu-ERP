@@ -1056,3 +1056,253 @@ def reset_status():
                old_status=old_status, new_status='DRAFT', reason=reason)
     db.session.commit()
     return jsonify({'message': 'Subject reset to Draft', 'status': row.to_dict()}), 200
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  9. EXAM ANALYTICS & OVERVIEW
+# ═══════════════════════════════════════════════════════════════════════════
+
+@result_bp.route('/analytics/filters', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER', 'SUPER_ADMIN')
+def analytics_filters():
+    sid = _school_id()
+    exams = ExamSchedule.query.filter_by(school_id=sid).all()
+    
+    exam_types = sorted(list({e.exam_type for e in exams if getattr(e, 'exam_type', None)}))
+    if not exam_types:
+        exam_types = ['UNIT_TEST', 'MID_TERM', 'FINAL', 'QUARTERLY', 'HALF_YEARLY', 'ANNUAL', 'CLASS_TEST']
+        
+    sessions = sorted(list({e.session for e in exams if getattr(e, 'session', None)}), reverse=True)
+    if not sessions:
+        sessions = ['2026-27', '2025-26', '2024-25']
+        
+    years = sorted(list({str(e.start_date.year) for e in exams if getattr(e, 'start_date', None)}), reverse=True)
+    if not years:
+        years = ['2026', '2025', '2024']
+
+    return jsonify({
+        'exam_types': exam_types,
+        'sessions': sessions,
+        'years': years
+    }), 200
+
+
+@result_bp.route('/analytics/overview', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER', 'SUPER_ADMIN')
+def analytics_overview():
+    sid = _school_id()
+    exam_type = request.args.get('exam_type')
+    year = request.args.get('year')
+    session = request.args.get('session')
+
+    q = ExamSchedule.query.filter_by(school_id=sid)
+    if exam_type:
+        q = q.filter(ExamSchedule.exam_type == exam_type)
+    if session:
+        q = q.filter(ExamSchedule.session == session)
+    if year:
+        try:
+            y_int = int(year)
+            q = q.filter(db.extract('year', ExamSchedule.start_date) == y_int)
+        except Exception:
+            pass
+
+    exams = q.order_by(ExamSchedule.id.desc()).all()
+    
+    total_appeared_all = 0
+    total_passed_all = 0
+    total_failed_all = 0
+    plus80_all = 0
+    plus90_all = 0
+    percentages_list = []
+
+    b_90_plus = 0
+    b_80_89 = 0
+    b_70_79 = 0
+    b_60_69 = 0
+    b_under_60 = 0
+
+    class_wise_stats = []
+    exams_summary_list = []
+
+    classes_all = Class.query.filter_by(school_id=sid).order_by(Class.name, Class.section).all()
+
+    for ex in exams:
+        ex_year = str(ex.start_date.year) if ex.start_date else (ex.session.split('-')[0] if ex.session else '2026')
+        ex_students = 0
+        ex_appeared = 0
+        ex_passed = 0
+        ex_80plus = 0
+
+        for c in classes_all:
+            c_students = c.students.all()
+            c_total = len(c_students)
+            if c_total == 0:
+                continue
+
+            c_marks = Marks.query.filter_by(exam_id=ex.id, class_id=c.id).all()
+            c_pub = ClassResultPublication.query.filter_by(exam_id=ex.id, class_id=c.id).first()
+            is_published = (c_pub and c_pub.status == 'PUBLISHED') or bool(ex.is_published)
+
+            student_totals = {}
+            for m in c_marks:
+                st_id = m.student_id
+                if st_id not in student_totals:
+                    student_totals[st_id] = {'obt': 0, 'max': 0, 'is_absent': False}
+                if m.is_absent:
+                    student_totals[st_id]['is_absent'] = True
+                else:
+                    student_totals[st_id]['obt'] += (m.marks_obtained or 0)
+                    student_totals[st_id]['max'] += (m.max_marks or 100)
+
+            c_appeared_cnt = len(student_totals)
+            c_passed_cnt = 0
+            c_failed_cnt = 0
+            c_80plus_cnt = 0
+
+            for st_id, data in student_totals.items():
+                if data['max'] > 0:
+                    pct = round((data['obt'] / data['max']) * 100, 1)
+                    percentages_list.append(pct)
+                    if pct >= 33:
+                        c_passed_cnt += 1
+                    else:
+                        c_failed_cnt += 1
+                    
+                    if pct >= 90:
+                        b_90_plus += 1
+                        plus90_all += 1
+                    elif pct >= 80:
+                        b_80_89 += 1
+                    elif pct >= 70:
+                        b_70_79 += 1
+                    elif pct >= 60:
+                        b_60_69 += 1
+                    else:
+                        b_under_60 += 1
+
+                    if pct >= 80:
+                        c_80plus_cnt += 1
+                        plus80_all += 1
+
+            total_appeared_all += c_appeared_cnt
+            total_passed_all += c_passed_cnt
+            total_failed_all += c_failed_cnt
+
+            ex_students += c_total
+            ex_appeared += c_appeared_cnt
+            ex_passed += c_passed_cnt
+            ex_80plus += c_80plus_cnt
+
+            if c_appeared_cnt > 0:
+                c_pass_pct = round((c_passed_cnt / c_appeared_cnt) * 100, 1)
+                c_80_pct = round((c_80plus_cnt / c_appeared_cnt) * 100, 1)
+                class_wise_stats.append({
+                    'class_id': c.id,
+                    'class_name': c.name,
+                    'section': c.section or '',
+                    'exam_id': ex.id,
+                    'total_students': c_total,
+                    'appeared': c_appeared_cnt,
+                    'passed': c_passed_cnt,
+                    'failed': c_failed_cnt,
+                    'marks_80plus': c_80plus_cnt,
+                    'plus80_pct': c_80_pct,
+                    'pass_pct': c_pass_pct,
+                    'published': is_published
+                })
+
+        ex_pass_pct = round((ex_passed / ex_appeared * 100), 1) if ex_appeared > 0 else 0
+        ex_80_pct = round((ex_80plus / ex_appeared * 100), 1) if ex_appeared > 0 else 0
+
+        exams_summary_list.append({
+            'exam_id': ex.id,
+            'year': ex_year,
+            'session': ex.session or '2024-25',
+            'exam_name': ex.exam_name,
+            'start_date': ex.start_date.isoformat() if ex.start_date else None,
+            'end_date': ex.end_date.isoformat() if ex.end_date else None,
+            'total_students': ex_students,
+            'appeared': ex_appeared,
+            'pass_pct': ex_pass_pct,
+            'plus80': ex_80plus,
+            'plus80_pct': ex_80_pct
+        })
+
+    avg_pct = round(sum(percentages_list) / len(percentages_list), 1) if percentages_list else 0
+
+    return jsonify({
+        'summary': {
+            'total_appeared': total_appeared_all,
+            'total_passed': total_passed_all,
+            'total_failed': total_failed_all,
+            'plus80': plus80_all,
+            'plus90': plus90_all,
+            'avg_pct': avg_pct
+        },
+        'distribution': [
+            {'label': '90+', 'count': b_90_plus},
+            {'label': '80-89', 'count': b_80_89},
+            {'label': '70-79', 'count': b_70_79},
+            {'label': '60-69', 'count': b_60_69},
+            {'label': '<60', 'count': b_under_60},
+        ],
+        'class_wise': class_wise_stats,
+        'exams': exams_summary_list
+    }), 200
+
+
+@result_bp.route('/analytics/class-students', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER', 'SUPER_ADMIN')
+def analytics_class_students():
+    sid = _school_id()
+    class_id = request.args.get('class_id', type=int)
+    exam_id = request.args.get('exam_id', type=int)
+    bucket = request.args.get('bucket', '80plus')
+
+    if not class_id or not exam_id:
+        return jsonify({'error': 'class_id and exam_id required'}), 400
+
+    students = Student.query.filter_by(class_id=class_id, school_id=sid).all()
+    marks = Marks.query.filter_by(class_id=class_id, exam_id=exam_id).all()
+
+    student_totals = {}
+    for m in marks:
+        st_id = m.student_id
+        if st_id not in student_totals:
+            student_totals[st_id] = {'obt': 0, 'max': 0}
+        if not m.is_absent:
+            student_totals[st_id]['obt'] += (m.marks_obtained or 0)
+            student_totals[st_id]['max'] += (m.max_marks or 100)
+
+    result_students = []
+    for s in students:
+        if s.id in student_totals and student_totals[s.id]['max'] > 0:
+            obt = student_totals[s.id]['obt']
+            mx = student_totals[s.id]['max']
+            pct = round((obt / mx) * 100, 1)
+
+            include = False
+            if bucket == '80plus' and pct >= 80:
+                include = True
+            elif bucket == '90plus' and pct >= 90:
+                include = True
+            elif bucket == 'failed' and pct < 33:
+                include = True
+            elif bucket == 'all':
+                include = True
+            elif pct >= 80:
+                include = True
+
+            if include:
+                result_students.append({
+                    'student_id': s.id,
+                    'roll_number': s.roll_number or '—',
+                    'name': s.user.name if s.user else '',
+                    'total_obtained': obt,
+                    'total_max': mx,
+                    'percentage': pct
+                })
+
+    result_students.sort(key=lambda x: x['percentage'], reverse=True)
+    return jsonify({'students': result_students}), 200

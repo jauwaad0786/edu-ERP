@@ -292,6 +292,7 @@ def create_teacher():
         department   = data.get('department'),
         designation  = data.get('designation', 'Teacher'),
         salary       = float(data['salary']) if data.get('salary') else 0.0,
+        dob          = date.fromisoformat(data['dob']) if data.get('dob') else None,
         joining_date = date.fromisoformat(data['joining_date']) if data.get('joining_date') else None,
         qualification= data.get('qualification', ''),
     )
@@ -334,6 +335,7 @@ def teacher_profile(teacher_id):
         'employee_id':  t.employee_id    or '',
         'department':   t.department     or '',
         'designation':  t.designation    or 'Teacher',
+        'dob':          str(t.dob) if t.dob else '',
         'joining_date': str(t.joining_date) if t.joining_date else '',
         'qualification':t.qualification  or '',
         'salary':       (t.salary or 0) if can_see_salary else None,
@@ -829,27 +831,33 @@ def fees_summary():
 @role_required('PRINCIPAL', 'ACCOUNTANT', 'SUPER_ADMIN', 'TEACHER')
 def recent_fee_collections():
     sid = _school_id()
-    records = FeeRecord.query.filter(
-        FeeRecord.school_id == sid,
-        FeeRecord.amount_paid > 0
-    ).order_by(FeeRecord.paid_date.desc().nullslast(), FeeRecord.id.desc()).limit(8).all()
+    try:
+        records = FeeRecord.query.filter(
+            FeeRecord.school_id == sid,
+            FeeRecord.amount_paid > 0
+        ).order_by(FeeRecord.id.desc()).limit(8).all()
 
-    result = []
-    for r in records:
-        student = Student.query.get(r.student_id) if r.student_id else None
-        cls = Class.query.get(student.class_id) if (student and student.class_id) else None
-        class_name = f"{cls.name}{' - ' + cls.section if cls.section else ''}" if cls else '—'
-        student_name = student.user.name if (student and student.user) else (student.name if student else '—')
-        result.append({
-            'id': r.id,
-            'receipt_no': r.receipt_number or f"RCPT/{r.id:04d}",
-            'student_name': student_name,
-            'class_name': class_name,
-            'amount': float(r.amount_paid or 0),
-            'date': r.paid_date.strftime('%d %b %Y') if r.paid_date else (r.created_at.strftime('%d %b %Y') if r.created_at else '—'),
-            'status': 'Paid' if r.status == 'PAID' else (r.status or 'Paid')
-        })
-    return jsonify(result), 200
+        result = []
+        for r in records:
+            student = Student.query.get(r.student_id) if r.student_id else None
+            cls = Class.query.get(student.class_id) if (student and student.class_id) else None
+            class_name = f"{cls.name}{' - ' + cls.section if cls.section else ''}" if cls else '—'
+            student_name = student.user.name if (student and student.user) else 'Student'
+            
+            p_date_str = r.paid_date.strftime('%d %b %Y') if r.paid_date else (r.created_at.strftime('%d %b %Y') if getattr(r, 'created_at', None) else 'Today')
+            
+            result.append({
+                'id': r.id,
+                'receipt_no': r.receipt_no or f"RCPT/{r.id:04d}",
+                'student_name': student_name,
+                'class_name': class_name,
+                'amount': float(r.amount_paid or 0),
+                'date': p_date_str,
+                'status': 'Paid' if r.status == 'PAID' else (r.status or 'Paid')
+            })
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify([]), 200
 
 
 @principal_bp.route('/fees/records', methods=['GET'])
@@ -2800,10 +2808,49 @@ def dashboard():
                             Announcement.is_active == True,
                         ).count()
 
+    # ── Teacher Celebrations: Birthdays & Work Anniversaries today ─────────────
+    teachers_all = Teacher.query.filter_by(school_id=sid).all()
+    today_birthdays = []
+    today_anniversaries = []
+
+    for t in teachers_all:
+        t_name = t.user.name if (t.user and t.user.name) else 'Faculty Member'
+        dept = t.department or t.designation or 'Faculty'
+        
+        # Birthday Check
+        if t.dob and t.dob.month == today.month and t.dob.day == today.day:
+            today_birthdays.append({
+                'id': t.id,
+                'name': t_name,
+                'department': dept,
+                'designation': t.designation or 'Teacher',
+                'photo_url': t.photo_url,
+                'type': 'BIRTHDAY',
+                'message': f"Wishing {t_name} a very Happy Birthday! 🎂🎉"
+            })
+        
+        # Work Anniversary Check
+        if t.joining_date and t.joining_date.month == today.month and t.joining_date.day == today.day:
+            years = today.year - t.joining_date.year
+            if years >= 1:
+                today_anniversaries.append({
+                    'id': t.id,
+                    'name': t_name,
+                    'department': dept,
+                    'designation': t.designation or 'Teacher',
+                    'photo_url': t.photo_url,
+                    'years': years,
+                    'type': 'ANNIVERSARY',
+                    'message': f"Happy {years}{'st' if years==1 else 'nd' if years==2 else 'rd' if years==3 else 'th'} Work Anniversary to {t_name}! 🌟"
+                })
+
     fee_collected_total = db.session.query(func.sum(FeeRecord.amount_paid)).filter_by(school_id=sid).scalar() or 0
     fee_pending_total = db.session.query(
                             func.sum(FeeRecord.amount_due - FeeRecord.amount_paid)
                         ).filter(FeeRecord.school_id == sid, FeeRecord.status != 'PAID').scalar() or 0
+
+    teachers_marked_count = len(t_att_today)
+    teachers_pct = round((t_present / total_teachers * 100), 1) if total_teachers > 0 else 0
 
     return jsonify({
         'total_students':          total_students,
@@ -2818,17 +2865,22 @@ def dashboard():
         'hostel_occupied':         hostel_occupied,
         'hostel_total':            hostel_total,
         'active_circulars':        active_circulars,
-        # attendance today
+        # student attendance today
         'students_present':        s_present,
         'students_absent':         s_absent,
         'students_late':           s_late,
         'students_marked':         len(att_today),
+        # teacher attendance today
         'teachers_present':        t_present,
         'teachers_absent':         t_absent,
-        'teachers_marked':         len(t_att_today),
+        'teachers_marked':         teachers_marked_count,
+        'teachers_percentage':     teachers_pct,
         # class-wise intelligence
         'class_attendance_today':  class_att_list,
         'best_attendance_class':   best_class,
+        # celebrations
+        'today_birthdays':         today_birthdays,
+        'today_anniversaries':     today_anniversaries,
     }), 200
 
 

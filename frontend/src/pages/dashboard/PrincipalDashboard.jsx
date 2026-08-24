@@ -6,8 +6,8 @@ import api     from '../../api/axios';
 import toast   from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
 import {
-  AreaChart, Area, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+  BarChart, Bar, AreaChart, Area, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
 
 export default function PrincipalDashboard() {
@@ -28,7 +28,7 @@ export default function PrincipalDashboard() {
   const [upcomingEvents, setUpcomingEvents] = useState([]);
   const [recentFeeCollections, setRecentFeeCollections] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [classFilter, setClassFilter] = useState('ALL');
+  const [classViewMode, setClassViewMode] = useState('GRAPH'); // 'GRAPH' or 'GRID'
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'GOOD MORNING' : hour < 17 ? 'GOOD AFTERNOON' : 'GOOD EVENING';
@@ -81,8 +81,12 @@ export default function PrincipalDashboard() {
   const studentsPresent = stats?.students_present !== undefined ? stats.students_present : 0;
   const studentsAbsent = stats?.students_absent !== undefined ? stats.students_absent : Math.max(0, totalStudents - studentsPresent);
   const studentsLate = stats?.students_late !== undefined ? stats.students_late : 0;
+  
+  // Teacher Telemetry
   const totalTeachers = stats?.total_teachers !== undefined ? stats.total_teachers : 0;
   const teachersPresent = stats?.teachers_present !== undefined ? stats.teachers_present : (teacherAtt?.present ?? 0);
+  const teachersAbsent = stats?.teachers_absent !== undefined ? stats.teachers_absent : (teacherAtt?.absent ?? Math.max(0, totalTeachers - teachersPresent));
+  const teachersPct = totalTeachers > 0 ? ((teachersPresent / totalTeachers) * 100).toFixed(1) : '0';
 
   const presentPct = totalStudents > 0 ? ((studentsPresent / totalStudents) * 100).toFixed(1) : '0';
   const absentPct = totalStudents > 0 ? ((studentsAbsent / totalStudents) * 100).toFixed(1) : '0';
@@ -119,11 +123,9 @@ export default function PrincipalDashboard() {
     ? [...classAttendanceList].filter(c => c.total > 0).sort((a, b) => b.percentage - a.percentage)[0]
     : null);
 
-  const filteredClasses = classFilter === 'HIGH'
-    ? classAttendanceList.filter(c => c.percentage >= 80)
-    : classFilter === 'LOW'
-    ? classAttendanceList.filter(c => c.percentage < 75 && c.total > 0)
-    : classAttendanceList;
+  // Celebrations (Birthdays & Anniversaries)
+  const birthdays = stats?.today_birthdays || [];
+  const anniversaries = stats?.today_anniversaries || [];
 
   const donutData = totalStudents > 0 ? [
     { name: 'Present', value: Number(studentsPresent), color: '#10b981' },
@@ -162,13 +164,14 @@ export default function PrincipalDashboard() {
       ['Total Students', totalStudents],
       ['Students Present Today', studentsPresent],
       ['Students Absent Today', studentsAbsent],
-      ['Attendance Rate Today', `${presentPct}%`],
+      ['Student Attendance Rate', `${presentPct}%`],
       ['Total Teachers', totalTeachers],
       ['Teachers Present Today', teachersPresent],
+      ['Teachers Absent Today', teachersAbsent],
+      ['Teacher Attendance Rate', `${teachersPct}%`],
       ['Fee Collected', totalFeeCollected],
       ['Fee Pending', totalFeePending],
       ['Collection Rate', `${collectionPct}%`],
-      ['Total Classes', classes.length],
       ['Best Performing Class', bestClass ? `${bestClass.class_name} (${bestClass.percentage}%)` : 'N/A']
     ];
     const csv = rows.map(r => r.join(',')).join('\n');
@@ -186,7 +189,7 @@ export default function PrincipalDashboard() {
     <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
       <Sidebar darkMode={darkMode} />
       <div className="main-content">
-        <Navbar title="Principal Dashboard" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
+        <Navbar title="Principal Executive Command" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
 
         <div className="page-body" style={{ padding: '24px', background: darkMode ? '#0b0f19' : '#f8fafc' }}>
 
@@ -339,7 +342,7 @@ export default function PrincipalDashboard() {
               </div>
             </div>
 
-            {/* Card 2: Present Today */}
+            {/* Card 2: Student Attendance Today */}
             <div style={{
               background: darkMode ? '#111827' : '#ffffff',
               border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
@@ -354,7 +357,7 @@ export default function PrincipalDashboard() {
                 <i className="ti ti-circle-check" style={{ fontSize: '18px' }} />
               </div>
               <div style={{ fontSize: '11px', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.04em' }}>
-                PRESENT TODAY
+                STUDENTS PRESENT
               </div>
               <div style={{ fontSize: '26px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a', margin: '4px 0 2px' }}>
                 {fmt(studentsPresent)}
@@ -367,7 +370,7 @@ export default function PrincipalDashboard() {
               </div>
             </div>
 
-            {/* Card 3: Total Teachers */}
+            {/* Card 3: Teacher Attendance Today (USER REQUESTED) */}
             <div style={{
               background: darkMode ? '#111827' : '#ffffff',
               border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
@@ -379,18 +382,18 @@ export default function PrincipalDashboard() {
                 background: '#eff6ff', color: '#3b82f6',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '12px'
               }}>
-                <i className="ti ti-user" style={{ fontSize: '18px' }} />
+                <i className="ti ti-user-check" style={{ fontSize: '18px' }} />
               </div>
               <div style={{ fontSize: '11px', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.04em' }}>
-                TOTAL TEACHERS
+                TEACHERS PRESENT
               </div>
               <div style={{ fontSize: '26px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a', margin: '4px 0 2px' }}>
-                {fmt(totalTeachers)}
+                {fmt(teachersPresent)} / {fmt(totalTeachers)}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '12px', color: '#94a3b8' }}>{teachersPresent} on duty</span>
-                <span style={{ fontSize: '11px', fontWeight: 800, color: '#10b981', background: '#ecfdf5', padding: '2px 6px', borderRadius: '6px' }}>
-                  Active Staff
+                <span style={{ fontSize: '12px', color: '#94a3b8' }}>{teachersAbsent} absent</span>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#2563eb', background: '#eff6ff', padding: '2px 6px', borderRadius: '6px' }}>
+                  {teachersPct}% Staff
                 </span>
               </div>
             </div>
@@ -452,7 +455,65 @@ export default function PrincipalDashboard() {
             </div>
           </div>
 
-          {/* ══ 3. QUICK ACTION LAUNCHPAD BAR ══ */}
+          {/* ══ 3. FACULTY CELEBRATIONS BANNER (BIRTHDAYS & ANNIVERSARIES) ══ */}
+          {(birthdays.length > 0 || anniversaries.length > 0) && (
+            <div style={{
+              background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #db2777 100%)',
+              borderRadius: '18px', padding: '18px 24px', marginBottom: '22px',
+              color: '#ffffff', boxShadow: '0 8px 24px rgba(124,58,237,0.3)',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <div style={{
+                  width: '48px', height: '48px', borderRadius: '14px',
+                  background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '24px', backdropFilter: 'blur(4px)'
+                }}>
+                  🎉
+                </div>
+                <div>
+                  <div style={{ fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', opacity: 0.9 }}>
+                    Campus Celebrations Today
+                  </div>
+                  <div style={{ fontSize: '15px', fontWeight: 900 }}>
+                    {birthdays.length > 0 && `🎂 Happy Birthday: ${birthdays.map(b => b.name).join(', ')}! `}
+                    {anniversaries.length > 0 && `🌟 Work Anniversary: ${anniversaries.map(a => `${a.name} (${a.years} yrs)`).join(', ')}!`}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                {birthdays.map(b => (
+                  <button
+                    key={b.id}
+                    onClick={() => toast.success(`Birthday greeting card sent to ${b.name}! 🎂`)}
+                    style={{
+                      background: '#ffffff', color: '#4f46e5', border: 'none',
+                      borderRadius: '10px', padding: '8px 14px', fontSize: '12px',
+                      fontWeight: 800, cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
+                    }}
+                  >
+                    🎉 Wish {b.name}
+                  </button>
+                ))}
+                {anniversaries.map(a => (
+                  <button
+                    key={a.id}
+                    onClick={() => toast.success(`Congratulation note sent to ${a.name}! 🌟`)}
+                    style={{
+                      background: '#ffffff', color: '#db2777', border: 'none',
+                      borderRadius: '10px', padding: '8px 14px', fontSize: '12px',
+                      fontWeight: 800, cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
+                    }}
+                  >
+                    🌟 Congratulate {a.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ══ 4. QUICK ACTION LAUNCHPAD BAR ══ */}
           <div style={{
             display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
             gap: '12px', marginBottom: '24px'
@@ -514,7 +575,7 @@ export default function PrincipalDashboard() {
                 cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
               }}
             >
-              <i className="ti ti-user-check" style={{ fontSize: '16px' }} /> Add Teacher
+              <i className="ti ti-user-check" style={{ fontSize: '16px' }} /> Onboard Teacher
             </button>
 
             <button
@@ -530,7 +591,7 @@ export default function PrincipalDashboard() {
             </button>
           </div>
 
-          {/* ══ 4. TODAY'S CLASS-WISE ATTENDANCE INTEL PANEL (USER REQUESTED) ══ */}
+          {/* ══ 5. CLASS-WISE ATTENDANCE INTEL VIA INTERACTIVE BAR GRAPH & CARDS ══ */}
           <div style={{
             background: darkMode ? '#111827' : '#ffffff',
             border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
@@ -538,7 +599,7 @@ export default function PrincipalDashboard() {
             marginBottom: '24px',
             boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
           }}>
-            {/* Header with Best Class Podium */}
+            {/* Header with Best Class Podium & View Mode Toggle */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -546,80 +607,103 @@ export default function PrincipalDashboard() {
                   Class-Wise Attendance Intel (Today)
                 </h3>
                 <p style={{ margin: '3px 0 0', fontSize: '12.5px', color: '#94a3b8' }}>
-                  Real-time section breakdown of present, absent, and percentage scores.
+                  Real-time section breakdown comparing present vs absent students across grades.
                 </p>
               </div>
 
-              {/* Best Class Highlight Badge */}
-              {bestClass && (
-                <div style={{
-                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                  color: '#ffffff', padding: '8px 16px', borderRadius: '12px',
-                  display: 'flex', alignItems: 'center', gap: '10px',
-                  boxShadow: '0 4px 12px rgba(16,185,129,0.25)'
-                }}>
-                  <span style={{ fontSize: '20px' }}>🏆</span>
-                  <div>
-                    <div style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', opacity: 0.9 }}>
-                      Top Attendance Champion
-                    </div>
-                    <div style={{ fontSize: '13.5px', fontWeight: 900 }}>
-                      {bestClass.class_name} • {bestClass.percentage}% Present
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                {/* Best Class Highlight Badge */}
+                {bestClass && (
+                  <div style={{
+                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                    color: '#ffffff', padding: '7px 14px', borderRadius: '10px',
+                    display: 'flex', alignItems: 'center', gap: '8px',
+                    boxShadow: '0 4px 12px rgba(16,185,129,0.25)'
+                  }}>
+                    <span style={{ fontSize: '18px' }}>🏆</span>
+                    <div>
+                      <div style={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', opacity: 0.9 }}>
+                        Highest Attendance
+                      </div>
+                      <div style={{ fontSize: '13px', fontWeight: 900 }}>
+                        {bestClass.class_name} • {bestClass.percentage}%
+                      </div>
                     </div>
                   </div>
+                )}
+
+                {/* View Switcher: Graph vs Grid */}
+                <div style={{
+                  display: 'flex', background: darkMode ? '#1e293b' : '#f1f5f9',
+                  borderRadius: '10px', padding: '3px'
+                }}>
+                  <button
+                    onClick={() => setClassViewMode('GRAPH')}
+                    style={{
+                      padding: '6px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700,
+                      background: classViewMode === 'GRAPH' ? '#2563eb' : 'transparent',
+                      color: classViewMode === 'GRAPH' ? '#ffffff' : (darkMode ? '#cbd5e1' : '#64748b'),
+                      border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+                    }}
+                  >
+                    <i className="ti ti-chart-bar" /> Graph
+                  </button>
+                  <button
+                    onClick={() => setClassViewMode('GRID')}
+                    style={{
+                      padding: '6px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700,
+                      background: classViewMode === 'GRID' ? '#2563eb' : 'transparent',
+                      color: classViewMode === 'GRID' ? '#ffffff' : (darkMode ? '#cbd5e1' : '#64748b'),
+                      border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+                    }}
+                  >
+                    <i className="ti ti-layout-grid" /> Cards
+                  </button>
                 </div>
-              )}
-            </div>
-
-            {/* Filter Pills */}
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-              <button
-                onClick={() => setClassFilter('ALL')}
-                style={{
-                  padding: '5px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer',
-                  background: classFilter === 'ALL' ? '#2563eb' : (darkMode ? '#1e293b' : '#f1f5f9'),
-                  color: classFilter === 'ALL' ? '#ffffff' : (darkMode ? '#cbd5e1' : '#475569'),
-                  border: 'none'
-                }}
-              >
-                All Classes ({classAttendanceList.length})
-              </button>
-              <button
-                onClick={() => setClassFilter('HIGH')}
-                style={{
-                  padding: '5px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer',
-                  background: classFilter === 'HIGH' ? '#10b981' : (darkMode ? '#1e293b' : '#f1f5f9'),
-                  color: classFilter === 'HIGH' ? '#ffffff' : (darkMode ? '#cbd5e1' : '#475569'),
-                  border: 'none'
-                }}
-              >
-                High Attendance (&gt;= 80%)
-              </button>
-              <button
-                onClick={() => setClassFilter('LOW')}
-                style={{
-                  padding: '5px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer',
-                  background: classFilter === 'LOW' ? '#ef4444' : (darkMode ? '#1e293b' : '#f1f5f9'),
-                  color: classFilter === 'LOW' ? '#ffffff' : (darkMode ? '#cbd5e1' : '#475569'),
-                  border: 'none'
-                }}
-              >
-                Needs Attention (&lt; 75%)
-              </button>
-            </div>
-
-            {/* Class Cards Grid */}
-            {filteredClasses.length === 0 ? (
-              <div style={{ padding: '30px', textAlign: 'center', color: '#94a3b8' }}>
-                <i className="ti ti-school" style={{ fontSize: '32px', display: 'block', marginBottom: '8px', opacity: 0.5 }} />
-                No class attendance recorded for today yet.
               </div>
-            ) : (
+            </div>
+
+            {/* View Mode: Interactive Recharts Bar Chart */}
+            {classViewMode === 'GRAPH' && (
+              <div style={{ width: '100%', height: '280px', marginTop: '10px' }}>
+                {classAttendanceList.length === 0 ? (
+                  <div style={{ padding: '60px', textAlign: 'center', color: '#94a3b8' }}>
+                    <i className="ti ti-chart-bar" style={{ fontSize: '32px', display: 'block', marginBottom: '8px', opacity: 0.5 }} />
+                    No class attendance marked for today yet.
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={classAttendanceList} margin={{ top: 15, right: 15, left: -20, bottom: 20 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#1f2937' : '#f1f5f9'} />
+                      <XAxis dataKey="class_name" tick={{ fontSize: 11, fill: '#94a3b8' }} angle={-15} textAnchor="end" />
+                      <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: darkMode ? '#1e293b' : '#ffffff',
+                          borderColor: darkMode ? '#334155' : '#e2e8f0',
+                          borderRadius: '10px',
+                          color: darkMode ? '#ffffff' : '#0f172a',
+                          fontWeight: 600
+                        }}
+                        formatter={(val, name) => [`${val} Students`, name]}
+                      />
+                      <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '12px', fontWeight: 700 }} />
+                      <Bar dataKey="present" name="Present Today" fill="#10b981" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="absent" name="Absent Today" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="total" name="Total Enrolled" fill="#94a3b8" radius={[4, 4, 0, 0]} opacity={0.3} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            )}
+
+            {/* View Mode: Cards Grid */}
+            {classViewMode === 'GRID' && (
               <div style={{
-                display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-                gap: '14px'
+                display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+                gap: '14px', marginTop: '10px'
               }}>
-                {filteredClasses.map((cls) => {
+                {classAttendanceList.map((cls) => {
                   const isTop = bestClass && bestClass.class_id === cls.class_id;
                   const pct = cls.percentage || 0;
                   return (
@@ -638,23 +722,21 @@ export default function PrincipalDashboard() {
                           background: '#10b981', color: '#fff', fontSize: '10px', fontWeight: 900,
                           padding: '2px 8px', borderRadius: '12px'
                         }}>
-                          HIGHEST
+                          TOP
                         </span>
                       )}
 
-                      <div style={{ fontSize: '15px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', marginBottom: '8px' }}>
+                      <div style={{ fontSize: '14.5px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', marginBottom: '8px' }}>
                         {cls.class_name}
                       </div>
 
-                      {/* Numbers Row */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '8px' }}>
-                        <span style={{ color: '#94a3b8' }}>Enrolled: <strong>{cls.total}</strong></span>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '8px' }}>
+                        <span style={{ color: '#94a3b8' }}>Total: <strong>{cls.total}</strong></span>
                         <span style={{ color: '#10b981', fontWeight: 700 }}>Present: {cls.present}</span>
                         <span style={{ color: '#ef4444', fontWeight: 700 }}>Absent: {cls.absent}</span>
                       </div>
 
-                      {/* Progress Bar */}
-                      <div style={{ height: '8px', borderRadius: '4px', background: darkMode ? '#334155' : '#e2e8f0', overflow: 'hidden', marginBottom: '8px' }}>
+                      <div style={{ height: '7px', borderRadius: '4px', background: darkMode ? '#334155' : '#e2e8f0', overflow: 'hidden', marginBottom: '8px' }}>
                         <div style={{
                           width: `${pct}%`, height: '100%',
                           background: pct >= 85 ? '#10b981' : pct >= 70 ? '#3b82f6' : '#ef4444',
@@ -675,7 +757,7 @@ export default function PrincipalDashboard() {
                             background: 'none', border: 'none', color: '#2563eb', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer'
                           }}
                         >
-                          View Section →
+                          Details →
                         </button>
                       </div>
                     </div>
@@ -685,7 +767,7 @@ export default function PrincipalDashboard() {
             )}
           </div>
 
-          {/* ══ 5. FINANCIAL & ATTENDANCE OVERVIEW GRID ══ */}
+          {/* ══ 6. FINANCIAL & ATTENDANCE OVERVIEW GRID ══ */}
           <div style={{
             display: 'grid', gridTemplateColumns: '1.7fr 1fr',
             gap: '20px', marginBottom: '24px'
@@ -809,7 +891,7 @@ export default function PrincipalDashboard() {
               </div>
             </div>
 
-            {/* Right Card: Attendance Overview */}
+            {/* Right Card: Student Attendance Donut */}
             <div style={{
               background: darkMode ? '#111827' : '#ffffff',
               border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
@@ -820,7 +902,7 @@ export default function PrincipalDashboard() {
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                   <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
-                    Attendance Overview
+                    Student Attendance
                   </h3>
                   <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Today</span>
                 </div>
@@ -874,7 +956,7 @@ export default function PrincipalDashboard() {
             </div>
           </div>
 
-          {/* ══ 6. LOWER 3-COLUMN INTELLIGENCE SECTION ══ */}
+          {/* ══ 7. LOWER 3-COLUMN INTELLIGENCE SECTION ══ */}
           <div style={{
             display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
             gap: '20px', marginBottom: '24px'
@@ -1039,7 +1121,7 @@ export default function PrincipalDashboard() {
             </div>
           </div>
 
-          {/* ══ 7. QUICK REPORTS BAR ══ */}
+          {/* ══ 8. QUICK REPORTS BAR ══ */}
           <div style={{
             display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
             gap: '16px'

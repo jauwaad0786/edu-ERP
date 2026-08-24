@@ -200,13 +200,13 @@ def revoke_delegation(delegation_id, revoker):
         return False, f"Delegation is already {delegation.status}"
 
     # Check if revoker is authorized: delegator OR higher hierarchy
-    # Check if revoker is authorized: delegator OR higher hierarchy
     if revoker.id != delegation.delegator_user_id:
         revoker_roles = _get_user_roles_with_legacy_fallback(revoker)
         delegator = User.query.get(delegation.delegator_user_id)
-        delegator_roles = _get_user_roles_with_legacy_fallback(delegator)
-        if not can_manage_role(revoker_roles, delegator_roles):
-            return False, "Only the delegator or a higher authority can revoke this delegation"
+        if delegator:
+            delegator_roles = _get_user_roles_with_legacy_fallback(delegator)
+            if not can_manage_role(revoker_roles, delegator_roles):
+                return False, "Only the delegator or a higher authority can revoke this delegation"
 
     # Update delegation status
     delegation.status = 'REVOKED'
@@ -216,12 +216,13 @@ def revoke_delegation(delegation_id, revoker):
     _remove_temporary_role_if_no_other(delegation.delegatee_user_id, delegation.role_id)
 
     # Audit logging
+    revoker_label = getattr(revoker, 'name', None) or getattr(revoker, 'username', None) or 'Admin'
     _log_delegation_audit(
         actor=revoker,
         target=User.query.get(delegation.delegatee_user_id),
         action='REVOKE',
         delegation=delegation,
-        reason=f"Manually revoked by {revoker.username}"
+        reason=f"Manually revoked by {revoker_label}"
     )
 
     db.session.commit()
@@ -434,13 +435,13 @@ def _log_delegation_audit(actor, target, action, delegation, reason=None):
         'action': action,
         'old_value': {
             'status': 'ACTIVE',
-            'end_date': delegation.end_date.isoformat(),
-            'role_key': delegation.role.key,
+            'end_date': delegation.end_date.isoformat() if delegation.end_date else None,
+            'role_key': delegation.role.key if getattr(delegation, 'role', None) else 'ROLE',
         },
         'new_value': {
             'status': delegation.status,
-            'end_date': delegation.end_date.isoformat(),
-            'role_key': delegation.role.key,
+            'end_date': delegation.end_date.isoformat() if delegation.end_date else None,
+            'role_key': delegation.role.key if getattr(delegation, 'role', None) else 'ROLE',
             'delegator': delegation.delegator_user_id,
             'delegatee': delegation.delegatee_user_id,
         },

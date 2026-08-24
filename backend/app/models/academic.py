@@ -69,6 +69,7 @@ class Teacher(db.Model):
     employee_id   = db.Column(db.String(30), unique=True)
     department    = db.Column(db.String(100))
     designation   = db.Column(db.String(100), default='Teacher')
+    dob           = db.Column(db.Date)
     joining_date  = db.Column(db.Date)
     qualification = db.Column(db.String(200))
     salary        = db.Column(db.Float, default=0.0)
@@ -79,15 +80,20 @@ class Teacher(db.Model):
 
     def to_dict(self):
         return {
-            'id':          self.id,
-            'user_id':     self.user_id,
-            'employee_id': self.employee_id,
-            'department':  self.department,
-            'designation': self.designation,
-            'school_id':   self.school_id,
-            'name':        self.user.name  if self.user else '',
-            'email':       self.user.email if self.user else '',
-            'photo_url':   self.photo_url,
+            'id':            self.id,
+            'user_id':       self.user_id,
+            'employee_id':   self.employee_id,
+            'department':    self.department,
+            'designation':   self.designation,
+            'school_id':     self.school_id,
+            'name':          self.user.name  if self.user else '',
+            'email':         self.user.email if self.user else '',
+            'phone':         self.user.phone if self.user else '',
+            'photo_url':     self.photo_url,
+            'dob':           self.dob.isoformat() if self.dob else None,
+            'joining_date':  self.joining_date.isoformat() if self.joining_date else None,
+            'qualification': self.qualification,
+            'salary':        self.salary,
         }
 
 

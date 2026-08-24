@@ -55,6 +55,7 @@ async function deleteTeacherPhoto(teacherId) {
     try {
       await api.post('/principal/teachers', {
         ...form,
+        dob:          form.dob          || undefined,
         salary:       form.salary       ? parseFloat(form.salary) : undefined,
         joining_date: form.joining_date || undefined,
         qualification:form.qualification|| undefined,
@@ -311,6 +312,11 @@ async function deleteTeacherPhoto(teacherId) {
                       onChange={e => setForm(f => ({...f, salary: e.target.value}))} />
                   </div>
                   <div className="form-group">
+                    <label className="form-label">Date of Birth (DOB)</label>
+                    <input className="form-input" type="date"
+                      onChange={e => setForm(f => ({...f, dob: e.target.value}))} />
+                  </div>
+                  <div className="form-group">
                     <label className="form-label">Date of Joining</label>
                     <input className="form-input" type="date"
                       onChange={e => setForm(f => ({...f, joining_date: e.target.value}))} />
@@ -400,6 +406,7 @@ async function deleteTeacherPhoto(teacherId) {
                     ['Designation',        'designation',  'text',   'e.g. Senior Teacher'],
                     ['Phone',              'phone',        'text',   '+91-XXXXX'],
                     ['Monthly Salary (₹)', 'salary',       'number', 'e.g. 25000'],
+                    ['Date of Birth (DOB)','dob',          'date',   ''],
                     ['Date of Joining',    'joining_date', 'date',   ''],
                     ['Qualification',      'qualification','text',   'e.g. B.Ed'],
                   ].map(([label, field, type, ph]) => (
