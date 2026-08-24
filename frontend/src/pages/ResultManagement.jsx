@@ -1017,6 +1017,7 @@ function PrincipalResultManagement({ user }) {
                 )}
 
                 {tab === 'review' && (
+                  <div className="card">
                     <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                         <select className="form-select" style={{ width: 240 }} value={reviewSubjectId} onChange={e => setReviewSubjectId(e.target.value)}>
