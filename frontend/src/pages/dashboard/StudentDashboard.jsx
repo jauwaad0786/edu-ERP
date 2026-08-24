@@ -827,7 +827,8 @@ export default function StudentDashboard() {
                       const url = examModal === 'admit'
                         ? `/api/principal/admit-card/${profile.id}/${selectedExam}`
                         : `/api/principal/result-card/${profile.id}/${selectedExam}`;
-                      window.open(`${process.env.REACT_APP_API_URL}${url}`, '_blank');
+                      const base = (process.env.REACT_APP_API_URL || '').replace(/\/+$/, '');
+                      window.open(`${base}${url}`, '_blank');
                       setExamModal(null);
                     }}
                     style={{

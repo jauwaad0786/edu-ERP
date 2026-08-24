@@ -147,9 +147,7 @@ def get_school_detail(school_id):
     total_classes = Class.query.filter_by(school_id=school_id).count()
 
     # Fee stats
-    fee_records = FeeRecord.query.join(
-        User, FeeRecord.student_id == User.id
-    ).filter(User.school_id == school_id).all()
+    fee_records = FeeRecord.query.filter_by(school_id=school_id).all()
     total_due  = sum(r.amount_due  for r in fee_records)
     total_paid = sum(r.amount_paid for r in fee_records)
 

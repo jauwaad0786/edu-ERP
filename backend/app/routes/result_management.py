@@ -234,7 +234,8 @@ def _school_id():
 
 
 def _is_principal(user):
-    return user.role.value in ('PRINCIPAL', 'DIRECTOR', 'VICE_PRINCIPAL')
+    role_val = getattr(user.role, 'value', str(user.role))
+    return role_val in ('PRINCIPAL', 'DIRECTOR', 'VICE_PRINCIPAL', 'SUPER_ADMIN')
 
 
 def _teacher_record(user):

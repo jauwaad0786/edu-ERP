@@ -38,7 +38,7 @@ class Subject(db.Model):
     school_id  = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=True)
     marks             = db.relationship('Marks', backref='subject', lazy='dynamic')
     notes             = db.relationship('Note', backref='subject', lazy='dynamic')
-    assigned_teacher  = db.relationship('Teacher', foreign_keys=[teacher_id], lazy='select')
+    assigned_teacher  = db.relationship('Teacher', foreign_keys=[teacher_id], lazy='select', overlaps="classes_taught,teacher_ref")
 
     def to_dict(self):
         teacher_name = ''
@@ -76,7 +76,7 @@ class Teacher(db.Model):
     photo_url     = db.Column(db.String(500))
 
     classes_taught = db.relationship('Subject', backref='teacher_ref', lazy='dynamic',
-                                     foreign_keys='Subject.teacher_id')
+                                     foreign_keys='Subject.teacher_id', overlaps="assigned_teacher,teacher_ref")
 
     def to_dict(self):
         return {
@@ -120,7 +120,7 @@ class Student(db.Model):
 
     attendance = db.relationship('Attendance', backref='student', lazy='dynamic')
     marks      = db.relationship('Marks', backref='student', lazy='dynamic')
-    fees = db.relationship('FeeRecord', backref='student_ref', lazy='dynamic')
+    fees = db.relationship('FeeRecord', backref=db.backref('student_ref', overlaps="fee_records_rel,student"), lazy='dynamic', overlaps="fee_records_rel,student")
 
     def to_dict(self):
         return {

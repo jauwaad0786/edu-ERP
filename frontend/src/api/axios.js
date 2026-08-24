@@ -47,8 +47,9 @@ api.interceptors.response.use(
       try {
         const refresh = localStorage.getItem('refresh_token');
 
+        const refreshUrl = cleanBase.endsWith('/api') ? `${cleanBase}/auth/refresh` : `${cleanBase}/api/auth/refresh`;
         const { data } = await axios.post(
-          `${process.env.REACT_APP_API_URL}/api/auth/refresh`,
+          refreshUrl,
           {},
           {
             headers: {

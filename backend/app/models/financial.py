@@ -72,7 +72,7 @@ class FeeRecord(db.Model):
     session      = db.Column(db.String(20), default='2024-25')
     remarks      = db.Column(db.String(300))
     created_at   = db.Column(db.DateTime, default=datetime.utcnow)
-    student      = db.relationship('Student', foreign_keys=[student_id], backref='fee_records_rel')
+    student      = db.relationship('Student', foreign_keys=[student_id], backref='fee_records_rel', overlaps="fee_records_rel,student_ref,fees")
 
     def to_dict(self):
         return {
