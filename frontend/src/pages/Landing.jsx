@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 
 const INDUSTRY_MODULES = [
   {
@@ -8,21 +9,18 @@ const INDUSTRY_MODULES = [
     name: 'EduERP',
     subtitle: 'School Management Suite',
     industry: 'K-12 & Senior Secondary Schools',
-    desc: 'Automate admissions, daily attendance, class timetable, fee collection, examinations, admit cards, and progress report cards.',
+    desc: 'Complete school operating system covering admissions, daily attendance, class timetable, automated fee collection, exams, admit cards, and progress report cards.',
     icon: 'ti-building-school',
-    theme: {
-      primary: '#0176d3',
-      dark: '#032d60',
-      gradient: 'linear-gradient(135deg, #032d60 0%, #0b5cab 50%, #0176d3 100%)',
-      accent: '#38bdf8',
-      pillBg: '#e0f2fe',
-      pillText: '#0369a1',
-    },
-    thought: '"Education is the most powerful weapon which you can use to change the world."',
-    author: 'Nelson Mandela',
-    badge: 'LIVE & ACTIVE',
-    ready: true,
-    highlights: ['Student Admissions & IDs', 'Admit Cards & Result Cards', 'Automated Fee Management', 'Hostel & Transport GPS'],
+    themeColor: '#0176d3',
+    lightBg: '#e8f4fd',
+    badge: 'ACTIVE & LIVE',
+    isLive: true,
+    highlights: [
+      'Student Admissions & Digital ID Cards',
+      'Admit Cards & Cumulative Result Cards',
+      'Automated Fee Collection & Receipts',
+      'Daily Attendance, Timetable & SMS',
+    ],
     stats: '150+ Schools Active',
   },
   {
@@ -31,22 +29,19 @@ const INDUSTRY_MODULES = [
     name: 'Campus360',
     subtitle: 'College & University ERP',
     industry: 'Colleges, Universities & Higher Ed',
-    desc: 'Semester credit system, department faculties, research papers, campus placement portal, and student examinations.',
+    desc: 'Semester credit system, department faculties, research papers, campus placement portal, and student examination CGPA automation.',
     icon: 'ti-school',
-    theme: {
-      primary: '#6366f1',
-      dark: '#1e1b4b',
-      gradient: 'linear-gradient(135deg, #1e1b4b 0%, #4338ca 50%, #6366f1 100%)',
-      accent: '#c084fc',
-      pillBg: '#ede9fe',
-      pillText: '#5b21b6',
-    },
-    thought: '"The beautiful thing about learning is that no one can take it away from you."',
-    author: 'B.B. King',
-    badge: 'LIVE & ACTIVE',
-    ready: true,
-    highlights: ['Semester & Credit System', 'Faculty Research Portal', 'Exam & CGPA Analytics', 'Campus Placement Hub'],
-    stats: '40+ Universities',
+    themeColor: '#6366f1',
+    lightBg: '#ede9fe',
+    badge: 'COMING SOON',
+    isLive: false,
+    highlights: [
+      'Semester & Credit System',
+      'Faculty Research & Publications',
+      'Exam & CGPA Analytics',
+      'Campus Placement Hub',
+    ],
+    stats: 'Launching Q4 2026',
   },
   {
     id: 'hospital',
@@ -56,20 +51,17 @@ const INDUSTRY_MODULES = [
     industry: 'Multi-Speciality Hospitals & Clinics',
     desc: 'OPD/IPD patient registration, doctor scheduling, electronic health records (EHR), pharmacy billing, and diagnostic labs.',
     icon: 'ti-heart-rate-monitor',
-    theme: {
-      primary: '#059669',
-      dark: '#064e3b',
-      gradient: 'linear-gradient(135deg, #064e3b 0%, #047857 50%, #059669 100%)',
-      accent: '#34d399',
-      pillBg: '#d1fae5',
-      pillText: '#065f46',
-    },
-    thought: '"Wherever the art of medicine is loved, there is also a love of humanity."',
-    author: 'Hippocrates',
-    badge: 'ENTERPRISE READY',
-    ready: true,
-    highlights: ['OPD & IPD Management', 'Digital Prescriptions', 'Pharmacy & Lab Billing', 'Doctor Roster Scheduling'],
-    stats: '25+ Medical Centers',
+    themeColor: '#059669',
+    lightBg: '#d1fae5',
+    badge: 'COMING SOON',
+    isLive: false,
+    highlights: [
+      'OPD & IPD Electronic Records',
+      'Digital Prescriptions & Pharmacy',
+      'Lab Diagnostics & Radiology',
+      'Doctor Roster & OPD Queues',
+    ],
+    stats: 'In Development',
   },
   {
     id: 'industry',
@@ -79,20 +71,17 @@ const INDUSTRY_MODULES = [
     industry: 'Factories, Production & Supply Chain',
     desc: 'Inventory control, supply chain logistics, staff payroll, vendor procurement, machine maintenance, and financial ledger.',
     icon: 'ti-building-factory-2',
-    theme: {
-      primary: '#d97706',
-      dark: '#0f172a',
-      gradient: 'linear-gradient(135deg, #0f172a 0%, #78350f 50%, #d97706 100%)',
-      accent: '#fbbf24',
-      pillBg: '#fef3c7',
-      pillText: '#92400e',
-    },
-    thought: '"Innovation distinguishes between a leader and a follower."',
-    author: 'Steve Jobs',
-    badge: 'ENTERPRISE READY',
-    ready: true,
-    highlights: ['Inventory & Warehouse', 'Procurement & Vendors', 'Staff Payroll & Biometric', 'Production Scheduling'],
-    stats: '60+ Plants Powered',
+    themeColor: '#d97706',
+    lightBg: '#fef3c7',
+    badge: 'COMING SOON',
+    isLive: false,
+    highlights: [
+      'Inventory & Warehouse Tracking',
+      'Procurement & Vendor Portal',
+      'Biometric Attendance & Payroll',
+      'Production Schedules & BOM',
+    ],
+    stats: 'In Development',
   },
   {
     id: 'hospitality',
@@ -102,20 +91,17 @@ const INDUSTRY_MODULES = [
     industry: 'Luxury Resorts, Hotels & Dining',
     desc: 'Room reservation engine, guest check-in/out, POS restaurant billing, housekeeping workflow, and event banquet management.',
     icon: 'ti-bed',
-    theme: {
-      primary: '#e11d48',
-      dark: '#4c0519',
-      gradient: 'linear-gradient(135deg, #4c0519 0%, #9f1239 50%, #e11d48 100%)',
-      accent: '#fda4af',
-      pillBg: '#ffe4e6',
-      pillText: '#9f1239',
-    },
-    thought: '"Hospitality is simply an opportunity to show love and care."',
-    author: 'Guest Excellence',
-    badge: 'CLOUD SUITE',
-    ready: true,
-    highlights: ['Room Booking Engine', 'Restaurant POS & KOT', 'Housekeeping Workflows', 'Banquet & Events'],
-    stats: '30+ Resorts',
+    themeColor: '#e11d48',
+    lightBg: '#ffe4e6',
+    badge: 'COMING SOON',
+    isLive: false,
+    highlights: [
+      'Room Booking & Reservations',
+      'Restaurant POS & KOT System',
+      'Housekeeping Workflows',
+      'Banquet & Event Booking',
+    ],
+    stats: 'In Development',
   },
   {
     id: 'coaching',
@@ -125,27 +111,23 @@ const INDUSTRY_MODULES = [
     industry: 'Competitive Coaching & EdTech',
     desc: 'Batch allotment, mock test series, online question bank, fee installments, and AI-powered student rank prediction.',
     icon: 'ti-book',
-    theme: {
-      primary: '#2563eb',
-      dark: '#172554',
-      gradient: 'linear-gradient(135deg, #172554 0%, #1d4ed8 50%, #2563eb 100%)',
-      accent: '#60a5fa',
-      pillBg: '#dbeafe',
-      pillText: '#1e40af',
-    },
-    thought: '"The secret of getting ahead is getting started."',
-    author: 'Mark Twain',
-    badge: 'ACTIVE SUITE',
-    ready: true,
-    highlights: ['Batch & Faculty Scheduler', 'Online Mock Test Series', 'Rank Prediction Analytics', 'Fee Installment Plans'],
-    stats: '85+ Coaching Hubs',
+    themeColor: '#2563eb',
+    lightBg: '#dbeafe',
+    badge: 'COMING SOON',
+    isLive: false,
+    highlights: [
+      'Batch & Faculty Scheduler',
+      'Online Mock Test Series',
+      'Rank Prediction Analytics',
+      'Fee Installment Plans',
+    ],
+    stats: 'In Development',
   },
 ];
 
 export default function Landing() {
   const navigate = useNavigate();
   const [activeCategory, setActiveCategory] = useState('all');
-  const [selectedModule, setSelectedModule] = useState(INDUSTRY_MODULES[0]);
 
   const filteredModules = INDUSTRY_MODULES.filter(m => {
     if (activeCategory === 'all') return true;
@@ -153,6 +135,19 @@ export default function Landing() {
   });
 
   const handleLaunch = (mod) => {
+    if (!mod.isLive) {
+      toast(`${mod.name} (${mod.subtitle}) is currently under active development. Coming soon!`, {
+        icon: '⏳',
+        style: {
+          borderRadius: '10px',
+          background: '#032d60',
+          color: '#ffffff',
+          fontSize: '13px',
+          fontWeight: '600'
+        }
+      });
+      return;
+    }
     localStorage.setItem('oneplatform_selected_module', mod.id);
     navigate(`/login?module=${mod.id}`);
   };
@@ -166,579 +161,481 @@ export default function Landing() {
 
         .oneplatform-landing {
           min-height: 100vh;
-          font-family: 'Plus Jakarta Sans', sans-serif;
-          background: #080e1a;
-          color: #ffffff;
+          font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+          background: linear-gradient(180deg, #f0f7ff 0%, #ffffff 40%, #f8fafc 100%);
+          color: #0f172a;
           display: flex;
           flex-direction: column;
-          position: relative;
-          overflow-x: hidden;
         }
 
-        /* Top Brand Navigation Bar */
+        /* ── Top Navigation Bar ── */
         .landing-nav {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 20px 48px;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-          background: rgba(8, 14, 26, 0.85);
+          padding: 16px 48px;
+          background: rgba(255, 255, 255, 0.9);
           backdrop-filter: blur(12px);
+          border-bottom: 1px solid #e2e8f0;
           position: sticky;
           top: 0;
           z-index: 50;
+          box-shadow: 0 2px 10px rgba(0, 70, 150, 0.04);
         }
 
         .brand-logo-wrap {
           display: flex;
           align-items: center;
-          gap: 14px;
+          gap: 12px;
           cursor: pointer;
         }
 
         .brand-logo-icon {
-          width: 44px;
-          height: 44px;
-          border-radius: 12px;
-          background: linear-gradient(135deg, #0284c7 0%, #4f46e5 50%, #9333ea 100%);
+          width: 42px;
+          height: 42px;
+          border-radius: 10px;
+          background: linear-gradient(135deg, #032d60 0%, #0176d3 100%);
           display: flex;
           align-items: center;
           justify-content: center;
+          color: #ffffff;
           font-weight: 900;
           font-size: 20px;
-          box-shadow: 0 4px 16px rgba(79, 70, 229, 0.4);
-          border: 1.5px solid rgba(255, 255, 255, 0.25);
-        }
-
-        .brand-text-wrap {
-          display: flex;
-          flex-direction: column;
+          box-shadow: 0 4px 12px rgba(1, 118, 211, 0.3);
         }
 
         .brand-name {
           font-size: 20px;
           font-weight: 900;
-          letter-spacing: -0.03em;
-          background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
+          color: #032d60;
+          letter-spacing: -0.02em;
+          line-height: 1.1;
+        }
+
+        .brand-name span {
+          color: #0176d3;
         }
 
         .brand-tagline {
-          font-size: 10px;
+          font-size: 10.5px;
           font-weight: 700;
-          color: #38bdf8;
-          letter-spacing: 0.12em;
+          color: #64748b;
+          letter-spacing: 0.08em;
           text-transform: uppercase;
         }
 
         .nav-actions {
           display: flex;
           align-items: center;
-          gap: 16px;
+          gap: 14px;
         }
 
-        .nav-direct-login-btn {
-          background: rgba(255, 255, 255, 0.1);
-          border: 1px solid rgba(255, 255, 255, 0.2);
+        .nav-school-btn {
+          background: linear-gradient(135deg, #0176d3 0%, #032d60 100%);
+          border: none;
           color: #ffffff;
-          padding: 8px 18px;
+          padding: 9px 20px;
           border-radius: 8px;
           font-size: 13px;
           font-weight: 700;
           cursor: pointer;
           transition: all 0.2s;
-        }
-        .nav-direct-login-btn:hover {
-          background: rgba(255, 255, 255, 0.2);
-          border-color: #38bdf8;
-        }
-
-        /* Main Container */
-        .landing-body {
-          flex: 1;
-          display: grid;
-          grid-template-columns: 1.15fr 0.85fr;
-          gap: 36px;
-          max-width: 1440px;
-          width: 100%;
-          margin: 0 auto;
-          padding: 40px 48px;
-        }
-
-        /* Left Section: Header & Module Grid */
-        .left-suite-section {
           display: flex;
-          flex-direction: column;
+          align-items: center;
+          gap: 8px;
+          box-shadow: 0 4px 12px rgba(1, 118, 211, 0.25);
+        }
+
+        .nav-school-btn:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 6px 18px rgba(1, 118, 211, 0.35);
+        }
+
+        /* ── Hero Section ── */
+        .landing-hero {
+          text-align: center;
+          padding: 56px 24px 32px;
+          max-width: 900px;
+          margin: 0 auto;
         }
 
         .hero-pill {
           display: inline-flex;
           align-items: center;
           gap: 8px;
-          padding: 6px 14px;
-          border-radius: 30px;
-          background: rgba(56, 189, 248, 0.12);
-          border: 1px solid rgba(56, 189, 248, 0.3);
-          color: #38bdf8;
-          font-size: 11.5px;
-          font-weight: 700;
-          letter-spacing: 0.05em;
-          text-transform: uppercase;
-          margin-bottom: 16px;
-          width: fit-content;
+          padding: 6px 16px;
+          background: #e8f4fd;
+          border: 1px solid #b9e2fe;
+          border-radius: 24px;
+          color: #0176d3;
+          font-size: 12px;
+          font-weight: 800;
+          letter-spacing: 0.04em;
+          margin-bottom: 20px;
         }
 
-        .hero-headline {
-          font-size: 2.5rem;
+        .hero-title {
+          font-size: 2.6rem;
           font-weight: 900;
+          color: #032d60;
           line-height: 1.15;
           letter-spacing: -0.03em;
-          margin: 0 0 14px 0;
+          margin-bottom: 14px;
         }
 
-        .hero-headline span {
-          background: linear-gradient(135deg, #38bdf8 0%, #818cf8 100%);
+        .hero-title span {
+          background: linear-gradient(135deg, #0176d3 0%, #2563eb 100%);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
         }
 
-        .hero-subtext {
-          font-size: 14px;
-          color: #94a3b8;
+        .hero-desc {
+          font-size: 15.5px;
+          color: #475569;
           line-height: 1.6;
-          margin: 0 0 28px 0;
-          max-width: 580px;
+          max-width: 680px;
+          margin: 0 auto 32px;
         }
 
         /* Category Filter Tabs */
         .category-tabs {
           display: flex;
+          justify-content: center;
           gap: 8px;
-          margin-bottom: 24px;
           flex-wrap: wrap;
+          margin-bottom: 40px;
         }
 
-        .category-btn {
-          background: rgba(255, 255, 255, 0.05);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          color: #94a3b8;
-          padding: 7px 16px;
+        .tab-btn {
+          padding: 8px 18px;
           border-radius: 20px;
-          font-size: 12px;
+          border: 1.5px solid #e2e8f0;
+          background: #ffffff;
+          color: #475569;
+          font-size: 13px;
           font-weight: 700;
           cursor: pointer;
           transition: all 0.2s;
         }
 
-        .category-btn.active {
-          background: #0284c7;
-          border-color: #38bdf8;
-          color: #ffffff;
-          box-shadow: 0 2px 10px rgba(2, 132, 199, 0.35);
+        .tab-btn:hover {
+          border-color: #0176d3;
+          color: #0176d3;
         }
 
-        /* Modules Grid */
+        .tab-btn.active {
+          background: #0176d3;
+          border-color: #0176d3;
+          color: #ffffff;
+          box-shadow: 0 4px 12px rgba(1, 118, 211, 0.25);
+        }
+
+        /* ── Module Cards Grid ── */
         .modules-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-          gap: 16px;
-          margin-bottom: 24px;
+          grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+          gap: 24px;
+          max-width: 1200px;
+          margin: 0 auto 60px;
+          padding: 0 24px;
         }
 
         .module-card {
-          background: rgba(15, 23, 42, 0.65);
-          border: 1.5px solid rgba(255, 255, 255, 0.08);
-          border-radius: 14px;
-          padding: 20px;
-          cursor: pointer;
-          transition: all 0.25s ease;
+          background: #ffffff;
+          border-radius: 16px;
+          border: 1.5px solid #e2e8f0;
+          padding: 28px;
           display: flex;
           flex-direction: column;
           justify-content: space-between;
+          transition: all 0.25s ease;
           position: relative;
-          backdrop-filter: blur(10px);
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+        }
+
+        .module-card.live-card {
+          border-color: #0176d3;
+          box-shadow: 0 8px 30px rgba(1, 118, 211, 0.12);
+          background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
         }
 
         .module-card:hover {
-          transform: translateY(-3px);
-          border-color: rgba(56, 189, 248, 0.5);
-          box-shadow: 0 10px 24px -5px rgba(0, 0, 0, 0.5);
-          background: rgba(30, 41, 59, 0.7);
+          transform: translateY(-4px);
+          box-shadow: 0 12px 32px rgba(0, 70, 150, 0.1);
         }
 
-        .module-card.selected {
-          border-color: #38bdf8;
-          background: rgba(14, 165, 233, 0.12);
-          box-shadow: 0 0 0 1px #38bdf8, 0 8px 24px rgba(2, 132, 199, 0.25);
-        }
-
-        .card-top {
+        .card-header {
           display: flex;
-          align-items: center;
+          align-items: flex-start;
           justify-content: space-between;
-          margin-bottom: 14px;
+          margin-bottom: 16px;
         }
 
-        .card-icon-box {
-          width: 42px;
-          height: 42px;
-          border-radius: 10px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 20px;
-          color: #ffffff;
-        }
-
-        .card-badge {
-          font-size: 9.5px;
-          font-weight: 800;
-          padding: 3px 8px;
+        .card-icon {
+          width: 52px;
+          height: 52px;
           border-radius: 12px;
-          letter-spacing: 0.05em;
-        }
-
-        .card-title {
-          font-size: 16px;
-          font-weight: 800;
-          color: #ffffff;
-          margin: 0 0 3px 0;
-        }
-
-        .card-industry {
-          font-size: 11px;
-          font-weight: 700;
-          color: #38bdf8;
-          margin-bottom: 8px;
-        }
-
-        .card-desc {
-          font-size: 11.5px;
-          color: #94a3b8;
-          line-height: 1.45;
-          margin-bottom: 14px;
-          display: -webkit-box;
-          -webkit-line-clamp: 2;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-        }
-
-        .card-footer {
-          border-top: 1px solid rgba(255, 255, 255, 0.08);
-          padding-top: 10px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          font-size: 11px;
-          color: #64748b;
-          font-weight: 600;
-        }
-
-        /* Right Section: Interactive Live Preview Hub */
-        .right-preview-hub {
-          background: rgba(15, 23, 42, 0.85);
-          border: 1px solid rgba(255, 255, 255, 0.12);
-          border-radius: 20px;
-          padding: 32px;
-          display: flex;
-          flex-direction: column;
-          justify-content: space-between;
-          backdrop-filter: blur(16px);
-          box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
-          position: sticky;
-          top: 100px;
-          height: fit-content;
-        }
-
-        .preview-header {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-          margin-bottom: 20px;
-        }
-
-        .preview-icon-huge {
-          width: 58px;
-          height: 58px;
-          border-radius: 14px;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 26px;
-          color: #ffffff;
-          box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+          font-size: 24px;
         }
 
-        .preview-title-box h2 {
-          margin: 0;
-          font-size: 22px;
-          font-weight: 900;
-          color: #ffffff;
-        }
-
-        .preview-title-box p {
-          margin: 3px 0 0;
-          font-size: 12px;
-          font-weight: 700;
-          color: #38bdf8;
-        }
-
-        /* Thought of the Day Box */
-        .thought-card {
-          background: rgba(255, 255, 255, 0.04);
-          border-left: 3px solid #38bdf8;
-          border-radius: 8px;
-          padding: 14px 16px;
-          margin-bottom: 20px;
-        }
-
-        .thought-text {
-          font-size: 13px;
-          font-style: italic;
-          color: #e2e8f0;
-          line-height: 1.5;
-          margin: 0 0 6px 0;
-        }
-
-        .thought-author {
-          font-size: 11px;
-          font-weight: 700;
-          color: #94a3b8;
-          text-align: right;
-        }
-
-        /* Highlights Checklist */
-        .highlights-box {
-          margin-bottom: 24px;
-        }
-
-        .highlights-title {
+        .badge-pill {
+          padding: 4px 10px;
+          border-radius: 12px;
           font-size: 11px;
           font-weight: 800;
-          letter-spacing: 0.08em;
-          text-transform: uppercase;
-          color: #94a3b8;
-          margin-bottom: 12px;
+          letter-spacing: 0.04em;
         }
 
-        .highlight-item {
-          display: flex;
-          align-items: center;
-          gap: 10px;
+        .badge-live {
+          background: #ecfdf5;
+          color: #059669;
+          border: 1px solid #a7f3d0;
+        }
+
+        .badge-soon {
+          background: #f1f5f9;
+          color: #64748b;
+          border: 1px solid #e2e8f0;
+        }
+
+        .card-title-wrap h3 {
+          font-size: 19px;
+          font-weight: 800;
+          color: #032d60;
+          margin: 0 0 2px 0;
+        }
+
+        .card-subtitle {
           font-size: 12.5px;
-          color: #cbd5e1;
+          font-weight: 700;
+          color: #0176d3;
           margin-bottom: 10px;
         }
 
-        .highlight-tick {
-          width: 18px;
-          height: 18px;
-          border-radius: 50%;
-          background: rgba(56, 189, 248, 0.15);
-          color: #38bdf8;
+        .card-desc {
+          font-size: 13px;
+          color: #475569;
+          line-height: 1.5;
+          margin-bottom: 20px;
+        }
+
+        .card-highlights {
+          list-style: none;
+          padding: 0;
+          margin: 0 0 24px 0;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .card-highlights li {
+          font-size: 12.5px;
+          color: #334155;
           display: flex;
           align-items: center;
-          justify-content: center;
-          font-size: 10px;
-          font-weight: 900;
+          gap: 8px;
+          font-weight: 500;
+        }
+
+        .card-highlights li i {
+          color: #0176d3;
+          font-size: 14px;
           flex-shrink: 0;
         }
 
-        /* Launch Button */
-        .preview-launch-btn {
+        .launch-btn {
           width: 100%;
-          padding: 15px;
-          border-radius: 12px;
-          border: none;
-          color: #ffffff;
-          font-size: 15px;
-          font-weight: 800;
+          padding: 12px;
+          border-radius: 10px;
+          font-size: 13.5px;
+          font-weight: 700;
           cursor: pointer;
+          transition: all 0.2s;
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 10px;
-          box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
-          transition: all 0.2s;
+          gap: 8px;
+          border: none;
         }
 
-        .preview-launch-btn:hover {
-          filter: brightness(1.1);
-          transform: translateY(-2px);
+        .launch-btn.active-btn {
+          background: linear-gradient(135deg, #0176d3 0%, #032d60 100%);
+          color: #ffffff;
+          box-shadow: 0 4px 14px rgba(1, 118, 211, 0.3);
         }
 
-        .preview-powered-tag {
-          text-align: center;
-          margin-top: 14px;
-          font-size: 11px;
+        .launch-btn.active-btn:hover {
+          background: linear-gradient(135deg, #0284c7 0%, #014486 100%);
+          box-shadow: 0 6px 20px rgba(1, 118, 211, 0.4);
+        }
+
+        .launch-btn.disabled-btn {
+          background: #f1f5f9;
+          color: #94a3b8;
+          border: 1px solid #e2e8f0;
+          cursor: pointer;
+        }
+
+        .launch-btn.disabled-btn:hover {
+          background: #e2e8f0;
+          color: #475569;
+        }
+
+        /* ── Footer ── */
+        .landing-footer {
+          margin-top: auto;
+          background: #ffffff;
+          border-top: 1px solid #e2e8f0;
+          padding: 28px 48px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 16px;
+          font-size: 13px;
           color: #64748b;
-          font-weight: 600;
         }
 
-        .preview-powered-tag strong {
-          color: #38bdf8;
+        .footer-brand {
+          font-weight: 800;
+          color: #032d60;
         }
 
-        /* Responsive Breakpoints */
-        @media (max-width: 1024px) {
-          .landing-body {
-            grid-template-columns: 1fr;
-          }
-          .right-preview-hub {
-            position: relative;
-            top: 0;
-          }
-        }
-
-        @media (max-width: 640px) {
+        @media (max-width: 768px) {
           .landing-nav { padding: 16px 20px; }
-          .landing-body { padding: 24px 20px; }
-          .hero-headline { font-size: 1.9rem; }
-          .modules-grid { grid-template-columns: 1fr; }
+          .landing-hero { padding: 36px 16px 24px; }
+          .hero-title { font-size: 2rem; }
+          .modules-grid { grid-template-columns: 1fr; padding: 0 16px; }
+          .landing-footer { padding: 20px; text-align: center; justify-content: center; }
         }
       `}</style>
 
-      {/* Top Header */}
+      {/* Top Navbar */}
       <header className="landing-nav">
-        <div className="brand-logo-wrap" onClick={() => setActiveCategory('all')}>
-          <div className="brand-logo-icon">360°</div>
-          <div className="brand-text-wrap">
-            <span className="brand-name">OnePlatform360</span>
-            <span className="brand-tagline">Enterprise Cloud ERP OS</span>
+        <div className="brand-logo-wrap" onClick={() => navigate('/')}>
+          <div className="brand-logo-icon">
+            <i className="ti ti-layers-linked" />
+          </div>
+          <div>
+            <div className="brand-name">OnePlatform<span>360</span></div>
+            <div className="brand-tagline">Multi-Industry ERP Cloud</div>
           </div>
         </div>
 
         <div className="nav-actions">
-          <button className="nav-direct-login-btn" onClick={() => handleLaunch(selectedModule)}>
-            Sign In &rarr;
+          <button className="nav-school-btn" onClick={() => handleLaunch(INDUSTRY_MODULES[0])}>
+            <i className="ti ti-building-school" />
+            Launch School ERP
           </button>
         </div>
       </header>
 
-      {/* Body Area */}
-      <main className="landing-body">
-        {/* Left Side Modules Grid */}
-        <section className="left-suite-section">
-          <div className="hero-pill">
-            <i className="ti ti-sparkles" /> Multi-Industry Ecosystem
-          </div>
+      {/* Hero Section */}
+      <section className="landing-hero">
+        <div className="hero-pill">
+          <span>✨</span> ONEPLATFORM360 ENTERPRISE CLOUD SUITE
+        </div>
+        <h1 className="hero-title">
+          Select Your <span>Industry ERP</span> Portal
+        </h1>
+        <p className="hero-desc">
+          Unified enterprise automation for educational institutions, healthcare centers, hotels, and businesses. Built for scale, security, and effortless management.
+        </p>
 
-          <h1 className="hero-headline">
-            Select Your <span>Industry ERP Suite</span>
-          </h1>
-
-          <p className="hero-subtext">
-            One unified platform tailored with industry-specific workflows. Select your module to access your personalized institution portal.
-          </p>
-
-          {/* Category Filter Tabs */}
-          <div className="category-tabs">
-            {[
-              { id: 'all', label: 'All Industries' },
-              { id: 'education', label: '🎓 Education & Campus' },
-              { id: 'healthcare', label: '🏥 Healthcare & Clinics' },
-              { id: 'corporate', label: '🏭 Manufacturing & HR' },
-              { id: 'hospitality', label: '🏨 Hospitality & Resorts' },
-            ].map(cat => (
-              <button
-                key={cat.id}
-                className={`category-btn ${activeCategory === cat.id ? 'active' : ''}`}
-                onClick={() => setActiveCategory(cat.id)}
-              >
-                {cat.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Module Cards Grid */}
-          <div className="modules-grid">
-            {filteredModules.map(mod => {
-              const isSelected = selectedModule.id === mod.id;
-              return (
-                <div
-                  key={mod.id}
-                  className={`module-card ${isSelected ? 'selected' : ''}`}
-                  onClick={() => setSelectedModule(mod)}
-                  onDoubleClick={() => handleLaunch(mod)}
-                >
-                  <div>
-                    <div className="card-top">
-                      <div className="card-icon-box" style={{ background: mod.theme.gradient }}>
-                        <i className={`ti ${mod.icon}`} />
-                      </div>
-                      <span className="card-badge" style={{ background: mod.theme.pillBg, color: mod.theme.pillText }}>
-                        {mod.badge}
-                      </span>
-                    </div>
-
-                    <h3 className="card-title">{mod.name}</h3>
-                    <div className="card-industry">{mod.industry}</div>
-                    <p className="card-desc">{mod.desc}</p>
-                  </div>
-
-                  <div className="card-footer">
-                    <span>{mod.stats}</span>
-                    <span style={{ color: mod.theme.accent, fontWeight: 700 }}>
-                      {isSelected ? 'Selected ✓' : 'Click to Select →'}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* Right Side Interactive Live Preview Hub */}
-        <section className="right-preview-hub">
-          <div>
-            <div className="preview-header">
-              <div className="preview-icon-huge" style={{ background: selectedModule.theme.gradient }}>
-                <i className={`ti ${selectedModule.icon}`} />
-              </div>
-              <div className="preview-title-box">
-                <h2>{selectedModule.name}</h2>
-                <p>{selectedModule.industry}</p>
-              </div>
-            </div>
-
-            {/* Industry Thought of the Day */}
-            <div className="thought-card" style={{ borderLeftColor: selectedModule.theme.primary }}>
-              <p className="thought-text">{selectedModule.thought}</p>
-              <div className="thought-author">— {selectedModule.author}</div>
-            </div>
-
-            <p style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.5, marginBottom: 20 }}>
-              {selectedModule.desc}
-            </p>
-
-            {/* Key Capabilities */}
-            <div className="highlights-box">
-              <div className="highlights-title">Core Capabilities &amp; Features</div>
-              {selectedModule.highlights.map((item, idx) => (
-                <div key={idx} className="highlight-item">
-                  <div className="highlight-tick">✓</div>
-                  <span>{item}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div>
+        {/* Filter Tabs */}
+        <div className="category-tabs">
+          {[
+            { id: 'all', label: 'All Modules' },
+            { id: 'education', label: '🎓 Education & Schools' },
+            { id: 'healthcare', label: '🏥 Healthcare' },
+            { id: 'corporate', label: '🏭 Manufacturing' },
+            { id: 'hospitality', label: '🏨 Hospitality' },
+          ].map(tab => (
             <button
-              className="preview-launch-btn"
-              style={{ background: selectedModule.theme.gradient }}
-              onClick={() => handleLaunch(selectedModule)}
+              key={tab.id}
+              className={`tab-btn ${activeCategory === tab.id ? 'active' : ''}`}
+              onClick={() => setActiveCategory(tab.id)}
             >
-              <span>Launch {selectedModule.name} Portal</span>
-              <i className="ti ti-arrow-right" />
+              {tab.label}
             </button>
-            <div className="preview-powered-tag">
-              Powered by <strong>OnePlatform360</strong> — Multi-Industry OS
+          ))}
+        </div>
+      </section>
+
+      {/* Modules Grid */}
+      <div className="modules-grid">
+        {filteredModules.map(mod => (
+          <div
+            key={mod.id}
+            className={`module-card ${mod.isLive ? 'live-card' : ''}`}
+          >
+            <div>
+              <div className="card-header">
+                <div
+                  className="card-icon"
+                  style={{
+                    background: mod.lightBg,
+                    color: mod.themeColor,
+                  }}
+                >
+                  <i className={`ti ${mod.icon}`} />
+                </div>
+                <span className={`badge-pill ${mod.isLive ? 'badge-live' : 'badge-soon'}`}>
+                  {mod.badge}
+                </span>
+              </div>
+
+              <div className="card-title-wrap">
+                <h3>{mod.name}</h3>
+                <div className="card-subtitle">{mod.subtitle}</div>
+              </div>
+
+              <p className="card-desc">{mod.desc}</p>
+
+              <ul className="card-highlights">
+                {mod.highlights.map((h, i) => (
+                  <li key={i}>
+                    <i className="ti ti-circle-check-filled" style={{ color: mod.isLive ? '#0176d3' : '#94a3b8' }} />
+                    {h}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <button
+                className={`launch-btn ${mod.isLive ? 'active-btn' : 'disabled-btn'}`}
+                onClick={() => handleLaunch(mod)}
+              >
+                {mod.isLive ? (
+                  <>
+                    <span>Enter School Portal</span>
+                    <i className="ti ti-arrow-right" />
+                  </>
+                ) : (
+                  <>
+                    <i className="ti ti-clock" />
+                    <span>Coming Soon</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
-        </section>
-      </main>
+        ))}
+      </div>
+
+      {/* Footer */}
+      <footer className="landing-footer">
+        <div>
+          <span className="footer-brand">OnePlatform360</span> — Unified Cloud ERP Suite
+        </div>
+        <div>
+          © {new Date().getFullYear()} OnePlatform360 Systems. All rights reserved.
+        </div>
+      </footer>
     </div>
   );
 }
