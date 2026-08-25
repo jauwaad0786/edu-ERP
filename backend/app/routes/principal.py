@@ -2085,7 +2085,10 @@ def mark_teacher_attendance():
 # ─── Exams & PDF ──────────────────────────────────────────────────────────────
 
 @principal_bp.route('/exams', methods=['GET'])
-@role_or_permission_required('exams.schedule.manage', roles=['PRINCIPAL', 'TEACHER', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR', 'ACCOUNTANT'])
+@role_or_permission_required(
+    roles=['PRINCIPAL', 'TEACHER', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR', 'ACCOUNTANT'],
+    permissions=['exams.schedule.manage']
+)
 def list_exams():
     status = request.args.get('status')  # DRAFT / PUBLISHED / ARCHIVED
     curr = get_current_user()
@@ -2204,7 +2207,10 @@ def archive_exam(exam_id):
 # ─── Exam Timetable (Subject-wise papers) ─────────────────────────────────────
 
 @principal_bp.route('/exams/<int:exam_id>/timetable', methods=['GET'])
-@role_or_permission_required('exams.timetable.manage', roles=['PRINCIPAL', 'TEACHER', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR'])
+@role_or_permission_required(
+    roles=['PRINCIPAL', 'TEACHER', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR'],
+    permissions=['exams.timetable.manage']
+)
 def get_exam_timetable(exam_id):
     exam = ExamSchedule.query.get_or_404(exam_id)
     curr = get_current_user()
@@ -2295,7 +2301,10 @@ def delete_timetable_item(item_id):
 # ─── Admit Card & Result Card PDF ─────────────────────────────────────────────
 
 @principal_bp.route('/admit-card/<int:student_id>/<int:exam_id>', methods=['GET'])
-@role_or_permission_required('exams.admitcard.generate', roles=['PRINCIPAL', 'TEACHER', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR'])
+@role_or_permission_required(
+    roles=['PRINCIPAL', 'TEACHER', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR'],
+    permissions=['exams.admitcard.generate']
+)
 def admit_card_pdf(student_id, exam_id):
     curr = get_current_user()
     student = Student.query.get_or_404(student_id)
@@ -2316,7 +2325,10 @@ def admit_card_pdf(student_id, exam_id):
 
 
 @principal_bp.route('/result-card/<int:student_id>/<int:exam_id>', methods=['GET'])
-@role_or_permission_required('exams.results.publish', roles=['PRINCIPAL', 'TEACHER', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR'])
+@role_or_permission_required(
+    roles=['PRINCIPAL', 'TEACHER', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR'],
+    permissions=['exams.results.publish']
+)
 def result_card_pdf(student_id, exam_id):
     curr = get_current_user()
     student = Student.query.get_or_404(student_id)
@@ -2344,7 +2356,10 @@ def result_card_pdf(student_id, exam_id):
 
 
 @principal_bp.route('/result-card/<int:student_id>/<int:exam_id>/data', methods=['GET'])
-@role_or_permission_required('exams.results.publish', roles=['PRINCIPAL', 'TEACHER', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR'])
+@role_or_permission_required(
+    roles=['PRINCIPAL', 'TEACHER', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR'],
+    permissions=['exams.results.publish']
+)
 def result_card_data(student_id, exam_id):
     curr = get_current_user()
     student = Student.query.get_or_404(student_id)
