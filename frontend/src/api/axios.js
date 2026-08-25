@@ -46,9 +46,11 @@ api.interceptors.response.use(
 
       try {
         const refresh = localStorage.getItem('refresh_token');
+        if (!refresh) throw new Error('No refresh token');
 
+        const refreshBase = cleanBase.endsWith('/api') ? cleanBase : `${cleanBase}/api`;
         const { data } = await axios.post(
-          `${process.env.REACT_APP_API_URL}/api/auth/refresh`,
+          `${refreshBase}/auth/refresh`,
           {},
           {
             headers: {

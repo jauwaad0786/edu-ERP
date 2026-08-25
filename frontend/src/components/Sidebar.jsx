@@ -92,6 +92,7 @@ const ROLE_MENUS = {
             { icon: 'ti-checklist',        label: 'Mark Entry',         path: '/mark-entry' },
             { icon: 'ti-clipboard-check',  label: 'Result Management',  path: '/result-management' },
             { icon: 'ti-ticket',           label: 'Admit Cards',        path: '/admit-card' },
+            { icon: 'ti-file-certificate', label: 'Result Cards',       path: '/result-card' },
           ],
         },
 
@@ -358,13 +359,13 @@ const ROLE_MENUS = {
     {
       group: 'My School',
       items: [
-        { icon: 'ti-calendar-time',   label: 'Timetable',  path: '/timetable' },
-        { icon: 'ti-clipboard-check', label: 'Attendance', path: '/attendance' },
-        { icon: 'ti-chart-bar',       label: 'Results',    path: '/results' },
-        { icon: 'ti-receipt',         label: 'Fees',       path: '/fees' },
-        { icon: 'ti-notes',           label: 'Notes',      path: '/notes' },
-        { icon: 'ti-book',            label: 'Library',    path: '/library/books' },
-        { icon: 'ti-ticket',          label: 'Admit Card', path: '/admit-card' },
+        { icon: 'ti-calendar-time',   label: 'Timetable',   path: '/timetable' },
+        { icon: 'ti-clipboard-check', label: 'Attendance',  path: '/attendance' },
+        { icon: 'ti-file-certificate',label: 'Result Card', path: '/result-card' },
+        { icon: 'ti-receipt',         label: 'Fees',        path: '/fees' },
+        { icon: 'ti-notes',           label: 'Notes',       path: '/notes' },
+        { icon: 'ti-book',            label: 'Library',     path: '/library/books' },
+        { icon: 'ti-ticket',          label: 'Admit Card',  path: '/admit-card' },
       ],
     },
     {
@@ -385,9 +386,9 @@ const ROLE_MENUS = {
     {
       group: 'My Child',
       items: [
-        { icon: 'ti-clipboard-check', label: 'Attendance', path: '/attendance' },
-        { icon: 'ti-chart-bar',       label: 'Progress',   path: '/results' },
-        { icon: 'ti-receipt',         label: 'Fees',       path: '/fees' },
+        { icon: 'ti-clipboard-check', label: 'Attendance',  path: '/attendance' },
+        { icon: 'ti-file-certificate',label: 'Report Card', path: '/result-card' },
+        { icon: 'ti-receipt',         label: 'Fees',        path: '/fees' },
       ],
     },
     {
@@ -560,7 +561,31 @@ export default function Sidebar({ darkMode }) {
     [baseGroups, user?.permissions, isCompanyActor, isTrueAdmin]
   );
   const [search,   setSearch]   = useState('');
-  const [expanded, setExpanded] = useState({});
+  const [expanded, setExpanded] = useState(() => {
+    try {
+      const saved = localStorage.getItem('ederp_sidebar_expanded');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const navRef = React.useRef(null);
+
+  // Preserve scroll position in sidebar nav
+  React.useEffect(() => {
+    const navEl = navRef.current;
+    if (!navEl) return;
+    const savedScroll = sessionStorage.getItem('ederp_sidebar_scroll');
+    if (savedScroll) {
+      navEl.scrollTop = Number(savedScroll);
+    }
+    const handleScroll = () => {
+      sessionStorage.setItem('ederp_sidebar_scroll', String(navEl.scrollTop));
+    };
+    navEl.addEventListener('scroll', handleScroll, { passive: true });
+    return () => navEl.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const schoolName   = user?.school?.name || user?.school_name || 'EduERP';
   const schoolCode   = user?.school?.code || user?.school_code || '';
@@ -581,11 +606,23 @@ export default function Sidebar({ darkMode }) {
         }
       });
     });
-    setExpanded(prev => ({ ...prev, ...next }));
-  }, [location.pathname]); // eslint-disable-line
+    setExpanded(prev => {
+      const updated = { ...prev, ...next };
+      try {
+        localStorage.setItem('ederp_sidebar_expanded', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  }, [location.pathname, groups]);
 
   function toggleExpand(path) {
-    setExpanded(prev => ({ ...prev, [path]: !prev[path] }));
+    setExpanded(prev => {
+      const updated = { ...prev, [path]: !prev[path] };
+      try {
+        localStorage.setItem('ederp_sidebar_expanded', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
   }
 
   function isItemActive(item) {
@@ -684,7 +721,7 @@ export default function Sidebar({ darkMode }) {
         </div>
 
         {/* Nav */}
-        <nav style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '4px 8px 8px' }}>
+        <nav ref={navRef} style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '4px 8px 8px' }}>
           <style>{`
             aside nav::-webkit-scrollbar { width: 3px; }
             aside nav::-webkit-scrollbar-track { background: transparent; }

@@ -34,7 +34,10 @@ export const PERMISSION_MENU_ITEMS = {
   // Now points at the new Draft→Submit→Review→Publish workflow dashboard
   // (Principal/VP/Academic Coordinator/Exam Controller hold this key by
   // default — see permission_catalog.py DEFAULT_SCHOOL_ROLE_PERMISSIONS).
-  'exams.results.publish':     { group: 'Examinations', item: { icon: 'ti-clipboard-check', label: 'Result Management', path: '/result-management' } },
+  'exams.results.publish': [
+    { group: 'Examinations', item: { icon: 'ti-clipboard-check',  label: 'Result Management', path: '/result-management' } },
+    { group: 'Examinations', item: { icon: 'ti-file-certificate', label: 'Result Cards',      path: '/result-card' } },
+  ],
   'exams.admitcard.generate':  { group: 'Examinations', item: { icon: 'ti-ticket',    label: 'Admit Cards',   path: '/admit-card' } },
   // CHANGED — was a single item; now an array so Teachers keep the existing
   // quick-entry Marks grid (path: '/marks', untouched) AND get the new

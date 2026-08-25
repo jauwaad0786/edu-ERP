@@ -32,6 +32,8 @@ import NotesPage        from './pages/NotesPage';
 import SubjectsPage     from './pages/SubjectsPage';
 import TimetablePage    from './pages/TimetablePage';
 import IDCardPage       from './pages/IDCardPage';
+import AdmitCardPage    from './pages/AdmitCardPage';
+import ResultCardPage   from './pages/ResultCardPage';
 import MarksPage        from './pages/MarksPage';
 import ResultManagement from './pages/ResultManagement';
 import MyServices       from './pages/MyServices';
@@ -242,6 +244,19 @@ export default function App() {
                 <ExamsPage />
               </ProtectedRoute>
             } />
+            <Route path="/admit-card" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR']} permissions={ROUTE_PERMISSIONS['/admit-card']}>
+                <AdmitCardPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/admit-cards" element={<Navigate to="/admit-card" replace />} />
+            <Route path="/result-card" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR']} permissions={ROUTE_PERMISSIONS['/result-card']}>
+                <ResultCardPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/result-cards" element={<Navigate to="/result-card" replace />} />
+            <Route path="/results" element={<Navigate to="/result-card" replace />} />
             <Route path="/timetable" element={
               <ProtectedRoute roles={['PRINCIPAL', 'TEACHER', 'STUDENT', 'PARENT']}>
                 <TimetablePage />

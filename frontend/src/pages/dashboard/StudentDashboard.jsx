@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Sidebar from '../../components/Sidebar';
 import Navbar  from '../../components/Navbar';
 import api from '../../api/axios';
+import toast from 'react-hot-toast';
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer
 } from 'recharts';
 
 export default function StudentDashboard() {
+  const navigate = useNavigate();
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
   useEffect(() => { localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
 
@@ -20,6 +23,7 @@ export default function StudentDashboard() {
   const [selectedExam, setSelectedExam] = useState('');
   const [holidays,     setHolidays]     = useState([]);
   const [notes,        setNotes]        = useState([]);
+  const [downloading,  setDownloading]  = useState(false);
 
   useEffect(() => {
     api.get('/student/profile').then(r => setProfile(r.data)).catch(() => {});
@@ -121,7 +125,7 @@ export default function StudentDashboard() {
               {/* Quick Triggers */}
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                 <button
-                  onClick={() => { setExamModal('admit'); setSelectedExam(''); }}
+                  onClick={() => navigate('/admit-card')}
                   style={{
                     background: '#2563eb', color: '#ffffff', border: 'none',
                     borderRadius: '10px', padding: '9px 16px', fontSize: '12.5px',
@@ -132,7 +136,7 @@ export default function StudentDashboard() {
                   <i className="ti ti-ticket" /> Download Admit Card
                 </button>
                 <button
-                  onClick={() => { setExamModal('result'); setSelectedExam(''); }}
+                  onClick={() => navigate('/result-card')}
                   style={{
                     background: darkMode ? '#1e293b' : '#ffffff',
                     color: darkMode ? '#e2e8f0' : '#334155',
@@ -821,23 +825,47 @@ export default function StudentDashboard() {
                     Cancel
                   </button>
                   <button
-                    disabled={!selectedExam}
-                    onClick={() => {
+                    disabled={!selectedExam || downloading}
+                    onClick={async () => {
                       if (!selectedExam || !profile) return;
-                      const url = examModal === 'admit'
-                        ? `/api/principal/admit-card/${profile.id}/${selectedExam}`
-                        : `/api/principal/result-card/${profile.id}/${selectedExam}`;
-                      window.open(`${process.env.REACT_APP_API_URL}${url}`, '_blank');
-                      setExamModal(null);
+                      setDownloading(true);
+                      const tid = toast.loading('Generating official PDF...');
+                      try {
+                        const url = examModal === 'admit'
+                          ? `/principal/admit-card/${profile.id}/${selectedExam}`
+                          : `/principal/result-card/${profile.id}/${selectedExam}`;
+                        const res = await api.get(url, { responseType: 'blob' });
+                        const blob = new Blob([res.data], { type: 'application/pdf' });
+                        const blobUrl = window.URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = blobUrl;
+                        const exObj = exams.find(e => String(e.id) === String(selectedExam));
+                        const exName = (exObj?.exam_name || 'Exam').replace(/\s+/g, '_');
+                        const stdName = (profile?.name || 'Student').replace(/\s+/g, '_');
+                        link.download = examModal === 'admit'
+                          ? `AdmitCard_${stdName}_${exName}.pdf`
+                          : `ResultCard_${stdName}_${exName}.pdf`;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        window.URL.revokeObjectURL(blobUrl);
+                        toast.success(examModal === 'admit' ? 'Admit Card downloaded!' : 'Result Card downloaded!', { id: tid });
+                        setExamModal(null);
+                      } catch (err) {
+                        console.error('Failed to download exam PDF', err);
+                        toast.error('Failed to generate PDF. Make sure marks/schedule are published.', { id: tid });
+                      } finally {
+                        setDownloading(false);
+                      }
                     }}
                     style={{
                       padding: '10px 20px', borderRadius: '10px', border: 'none',
-                      background: selectedExam ? '#2563eb' : (darkMode ? '#334155' : '#94a3b8'),
-                      color: '#ffffff', cursor: selectedExam ? 'pointer' : 'default',
+                      background: selectedExam && !downloading ? '#2563eb' : (darkMode ? '#334155' : '#94a3b8'),
+                      color: '#ffffff', cursor: selectedExam && !downloading ? 'pointer' : 'default',
                       fontSize: '13px', fontWeight: 800
                     }}
                   >
-                    📥 Download PDF
+                    {downloading ? '⏳ Generating...' : '📥 Download PDF'}
                   </button>
                 </div>
               </div>

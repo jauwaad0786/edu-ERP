@@ -2085,11 +2085,15 @@ def mark_teacher_attendance():
 # ─── Exams & PDF ──────────────────────────────────────────────────────────────
 
 @principal_bp.route('/exams', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_or_permission_required('exams.schedule.manage', roles=['PRINCIPAL', 'TEACHER', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR', 'ACCOUNTANT'])
 def list_exams():
     status = request.args.get('status')  # DRAFT / PUBLISHED / ARCHIVED
-    q = ExamSchedule.query.filter_by(school_id=_school_id())
-    if status:
+    curr = get_current_user()
+    sid = curr.school_id if curr else _school_id()
+    q = ExamSchedule.query.filter_by(school_id=sid)
+    if curr and curr.role in ['STUDENT', 'PARENT'] and not status:
+        q = q.filter((ExamSchedule.status == 'PUBLISHED') | (ExamSchedule.is_published == True))
+    elif status:
         q = q.filter_by(status=status)
     exams = q.order_by(ExamSchedule.created_at.desc()).all()
     result = []
@@ -2200,10 +2204,11 @@ def archive_exam(exam_id):
 # ─── Exam Timetable (Subject-wise papers) ─────────────────────────────────────
 
 @principal_bp.route('/exams/<int:exam_id>/timetable', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_or_permission_required('exams.timetable.manage', roles=['PRINCIPAL', 'TEACHER', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR'])
 def get_exam_timetable(exam_id):
     exam = ExamSchedule.query.get_or_404(exam_id)
-    if exam.school_id != _school_id():
+    curr = get_current_user()
+    if not curr.is_super and curr.school_id and exam.school_id != curr.school_id:
         return jsonify({'error': 'Unauthorized'}), 403
     class_id = request.args.get('class_id')
     q = ExamTimetable.query.filter_by(exam_id=exam_id)
@@ -2290,14 +2295,17 @@ def delete_timetable_item(item_id):
 # ─── Admit Card & Result Card PDF ─────────────────────────────────────────────
 
 @principal_bp.route('/admit-card/<int:student_id>/<int:exam_id>', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_or_permission_required('exams.admitcard.generate', roles=['PRINCIPAL', 'TEACHER', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR'])
 def admit_card_pdf(student_id, exam_id):
-    student   = Student.query.get_or_404(student_id)
-    if student.school_id != _school_id():
+    curr = get_current_user()
+    student = Student.query.get_or_404(student_id)
+    if curr.role == 'STUDENT' and student.user_id != curr.id:
         return jsonify({'error': 'Unauthorized'}), 403
-    exam      = ExamSchedule.query.get_or_404(exam_id)
+    if not curr.is_super and curr.school_id and student.school_id != curr.school_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    exam = ExamSchedule.query.get_or_404(exam_id)
     from app.models.school import School
-    school    = School.query.get(student.school_id)
+    school = School.query.get(student.school_id)
     timetable = ExamTimetable.query.filter_by(
         exam_id=exam_id, class_id=student.class_id
     ).order_by(ExamTimetable.exam_date.asc()).all()
@@ -2307,24 +2315,70 @@ def admit_card_pdf(student_id, exam_id):
 
 
 @principal_bp.route('/result-card/<int:student_id>/<int:exam_id>', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_or_permission_required('exams.results.publish', roles=['PRINCIPAL', 'TEACHER', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR'])
 def result_card_pdf(student_id, exam_id):
+    curr = get_current_user()
     student = Student.query.get_or_404(student_id)
-    if student.school_id != _school_id():
+    if curr.role == 'STUDENT' and student.user_id != curr.id:
         return jsonify({'error': 'Unauthorized'}), 403
-    exam    = ExamSchedule.query.get_or_404(exam_id)
+    if not curr.is_super and curr.school_id and student.school_id != curr.school_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    exam = ExamSchedule.query.get_or_404(exam_id)
     from app.models.school import School
-    school  = School.query.get(student.school_id)
-    marks   = Marks.query.filter_by(student_id=student_id, exam_type=exam.exam_name).all()
+    school = School.query.get(student.school_id)
+    marks = Marks.query.filter_by(student_id=student_id).filter(
+        (Marks.exam_id == exam_id) | (Marks.exam_type == exam.exam_name)
+    ).all()
     marks_data = [{
         'subject_name':   m.subject.name if m.subject else 'N/A',
-        'max_marks':      m.max_marks,
-        'marks_obtained': m.marks_obtained,
-        'grade':          m.grade
+        'max_marks':      m.max_marks or 100,
+        'marks_obtained': m.marks_obtained or 0,
+        'grade':          m.grade or '—'
     } for m in marks]
     buf = generate_result_card(student, school, exam, marks_data)
+    student_name = student.user.name if (student.user and student.user.name) else f"Student_{student.id}"
     return send_file(buf, mimetype='application/pdf',
-                     download_name=f'ResultCard_{student.roll_number}_{exam.exam_name}.pdf')
+                     download_name=f'ResultCard_{student.roll_number}_{student_name}.pdf')
+
+
+@principal_bp.route('/result-card/<int:student_id>/<int:exam_id>/data', methods=['GET'])
+@role_or_permission_required('exams.results.publish', roles=['PRINCIPAL', 'TEACHER', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR'])
+def result_card_data(student_id, exam_id):
+    curr = get_current_user()
+    student = Student.query.get_or_404(student_id)
+    if curr.role == 'STUDENT' and student.user_id != curr.id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    if not curr.is_super and curr.school_id and student.school_id != curr.school_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    exam = ExamSchedule.query.get_or_404(exam_id)
+    from app.models.school import School
+    school = School.query.get(student.school_id)
+    marks = Marks.query.filter_by(student_id=student_id).filter(
+        (Marks.exam_id == exam_id) | (Marks.exam_type == exam.exam_name)
+    ).all()
+    marks_data = [{
+        'id':             m.id,
+        'subject_name':   m.subject.name if m.subject else 'N/A',
+        'max_marks':      m.max_marks or 100,
+        'marks_obtained': m.marks_obtained or 0,
+        'grade':          m.grade or '—'
+    } for m in marks]
+    
+    total_max = sum(m['max_marks'] for m in marks_data)
+    total_obtained = sum(m['marks_obtained'] for m in marks_data)
+    overall_pct = round((total_obtained / total_max * 100), 1) if total_max else 0
+    overall_result = 'PASS' if overall_pct >= 33 else 'FAIL'
+    
+    return jsonify({
+        'student': student.to_dict(),
+        'school': school.to_dict() if school else {},
+        'exam': exam.to_dict(),
+        'marks': marks_data,
+        'total_max': total_max,
+        'total_obtained': total_obtained,
+        'overall_percentage': overall_pct,
+        'overall_result': overall_result,
+    }), 200
 
 
 # NEW — paste near admit_card_pdf / result_card_pdf routes
