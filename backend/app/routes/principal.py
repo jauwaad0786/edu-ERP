@@ -2347,9 +2347,42 @@ def result_card_pdf(student_id, exam_id):
         'subject_name':   m.subject.name if m.subject else 'N/A',
         'max_marks':      m.max_marks or 100,
         'marks_obtained': m.marks_obtained or 0,
-        'grade':          m.grade or '—'
+        'grade':          m.grade or '-'
     } for m in marks]
-    buf = generate_result_card(student, school, exam, marks_data)
+
+    # For FINAL/ANNUAL exams: fetch previous mid-term marks for cumulative result
+    prev_marks_data = None
+    prev_exam_id = request.args.get('prev_exam_id', type=int)
+    if prev_exam_id:
+        prev_marks = Marks.query.filter_by(student_id=student_id).filter(
+            (Marks.exam_id == prev_exam_id)
+        ).all()
+        prev_marks_data = [{
+            'subject_name':   m.subject.name if m.subject else 'N/A',
+            'max_marks':      m.max_marks or 100,
+            'marks_obtained': m.marks_obtained or 0,
+            'grade':          m.grade or '-'
+        } for m in prev_marks]
+    elif (exam.exam_type or '').upper() in ('FINAL', 'ANNUAL', 'FINAL_TERM'):
+        # auto-find the most recent MID_TERM/HALF_YEARLY exam of same session & school
+        prev_exam = ExamSchedule.query.filter_by(
+            school_id=exam.school_id, session=exam.session
+        ).filter(
+            ExamSchedule.exam_type.in_(['MID_TERM', 'HALF_YEARLY', 'UNIT_TEST'])
+        ).order_by(ExamSchedule.start_date.desc()).first()
+        if prev_exam:
+            prev_marks = Marks.query.filter_by(student_id=student_id).filter(
+                (Marks.exam_id == prev_exam.id) | (Marks.exam_type == prev_exam.exam_name)
+            ).all()
+            if prev_marks:
+                prev_marks_data = [{
+                    'subject_name':   m.subject.name if m.subject else 'N/A',
+                    'max_marks':      m.max_marks or 100,
+                    'marks_obtained': m.marks_obtained or 0,
+                    'grade':          m.grade or '-'
+                } for m in prev_marks]
+
+    buf = generate_result_card(student, school, exam, marks_data, prev_marks_data=prev_marks_data)
     student_name = student.user.name if (student.user and student.user.name) else f"Student_{student.id}"
     return send_file(buf, mimetype='application/pdf',
                      download_name=f'ResultCard_{student.roll_number}_{student_name}.pdf')
@@ -2378,19 +2411,48 @@ def result_card_data(student_id, exam_id):
         'subject_name':   m.subject.name if m.subject else 'N/A',
         'max_marks':      m.max_marks or 100,
         'marks_obtained': m.marks_obtained or 0,
-        'grade':          m.grade or '—'
+        'grade':          m.grade or '-'
     } for m in marks]
-    
+
+    # Also fetch previous mid-term marks if this is a FINAL exam
+    prev_marks_data = []
+    prev_exam_id = request.args.get('prev_exam_id', type=int)
+    if prev_exam_id:
+        prev_marks = Marks.query.filter_by(student_id=student_id, exam_id=prev_exam_id).all()
+        prev_marks_data = [{
+            'subject_name':   m.subject.name if m.subject else 'N/A',
+            'max_marks':      m.max_marks or 100,
+            'marks_obtained': m.marks_obtained or 0,
+            'grade':          m.grade or '-'
+        } for m in prev_marks]
+    elif (exam.exam_type or '').upper() in ('FINAL', 'ANNUAL', 'FINAL_TERM'):
+        prev_exam = ExamSchedule.query.filter_by(
+            school_id=exam.school_id, session=exam.session
+        ).filter(
+            ExamSchedule.exam_type.in_(['MID_TERM', 'HALF_YEARLY', 'UNIT_TEST'])
+        ).order_by(ExamSchedule.start_date.desc()).first()
+        if prev_exam:
+            prev_marks = Marks.query.filter_by(student_id=student_id).filter(
+                (Marks.exam_id == prev_exam.id) | (Marks.exam_type == prev_exam.exam_name)
+            ).all()
+            prev_marks_data = [{
+                'subject_name':   m.subject.name if m.subject else 'N/A',
+                'max_marks':      m.max_marks or 100,
+                'marks_obtained': m.marks_obtained or 0,
+                'grade':          m.grade or '-'
+            } for m in prev_marks]
+
     total_max = sum(m['max_marks'] for m in marks_data)
     total_obtained = sum(m['marks_obtained'] for m in marks_data)
     overall_pct = round((total_obtained / total_max * 100), 1) if total_max else 0
     overall_result = 'PASS' if overall_pct >= 33 else 'FAIL'
-    
+
     return jsonify({
         'student': student.to_dict(),
         'school': school.to_dict() if school else {},
         'exam': exam.to_dict(),
         'marks': marks_data,
+        'prev_marks': prev_marks_data,
         'total_max': total_max,
         'total_obtained': total_obtained,
         'overall_percentage': overall_pct,

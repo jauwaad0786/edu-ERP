@@ -317,7 +317,7 @@ function AdmitCardPanel({ exam }) {
 
   useEffect(() => {
     const url = selClass ? `/principal/students?class_id=${selClass}` : '/principal/students';
-    api.get(url).then(r => setStudents(r.data)).catch(() => {});
+    api.get(url).then(r => { const raw = r.data; setStudents(Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : [])); }).catch(() => {});
   }, [selClass]);
 
   const downloadOne = async (studentId, studentName) => {

@@ -100,7 +100,8 @@ export default function AdmitCardPage() {
         ? `/principal/students?class_id=${selectedClassId}`
         : '/principal/students';
       const res = await api.get(url);
-      setStudents(res.data || []);
+      const raw = res.data;
+      setStudents(Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []));
     } catch (err) {
       console.error('Failed to load students', err);
       toast.error('Failed to load students');

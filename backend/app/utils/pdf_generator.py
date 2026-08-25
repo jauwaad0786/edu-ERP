@@ -1,4 +1,4 @@
-from reportlab.lib.pagesizes import A4
+﻿from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.lib import colors
@@ -236,7 +236,12 @@ def generate_admit_card(student, school, exam, timetable_items):
 #  RESULT CARD
 # ═══════════════════════════════════════════════════════════════════════════
 
-def generate_result_card(student, school, exam, marks_data):
+def generate_result_card(student, school, exam, marks_data, prev_marks_data=None):
+    """
+    Premium Result Card PDF.
+    prev_marks_data: optional list from a previous Mid-Term/Half-Yearly exam;
+                     when supplied (for FINAL/ANNUAL exams), shows cumulative columns.
+    """
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4,
                              rightMargin=1.5 * cm, leftMargin=1.5 * cm,
@@ -250,12 +255,22 @@ def generate_result_card(student, school, exam, marks_data):
 
     cls = Class.query.get(student.class_id) if student.class_id else None
     info_rows = [
-        [Paragraph('Student Name', label_style), Paragraph(_esc(student.user.name if student.user else ''), value_style),
-         Paragraph('Roll No', label_style), Paragraph(_esc(student.roll_number or 'N/A'), value_style)],
-        [Paragraph('Admission No', label_style), Paragraph(_esc(student.admission_no or ''), value_style),
-         Paragraph('Class', label_style), Paragraph(_esc(cls.name if cls else ''), value_style)],
-        [Paragraph('Father/Guardian', label_style), Paragraph(_esc(student.parent_name or ''), value_style),
-         Paragraph('Session', label_style), Paragraph(_esc(exam.session), value_style)],
+        [Paragraph('Student Name', label_style),
+         Paragraph(_esc(student.user.name if student.user else ''), value_style),
+         Paragraph('Roll No', label_style),
+         Paragraph(_esc(student.roll_number or 'N/A'), value_style)],
+        [Paragraph('Admission No', label_style),
+         Paragraph(_esc(student.admission_no or ''), value_style),
+         Paragraph('Class / Section', label_style),
+         Paragraph(_esc((cls.name + (' - ' + cls.section if cls and cls.section else '')) if cls else ''), value_style)],
+        [Paragraph('Father / Guardian', label_style),
+         Paragraph(_esc(student.parent_name or getattr(student, 'father_name', '') or ''), value_style),
+         Paragraph('Session', label_style),
+         Paragraph(_esc(exam.session), value_style)],
+        [Paragraph('Exam Type', label_style),
+         Paragraph(_esc(exam.exam_type or 'Annual'), value_style),
+         Paragraph('Exam Name', label_style),
+         Paragraph(_esc(exam.exam_name), value_style)],
     ]
     info_table = Table(info_rows, colWidths=[3.2 * cm, 5.6 * cm, 2.6 * cm, 5.6 * cm])
     info_table.setStyle(TableStyle([
@@ -268,64 +283,150 @@ def generate_result_card(student, school, exam, marks_data):
     elements.append(info_table)
     elements.append(Spacer(1, 0.5 * cm))
 
-    marks_rows = [['Subject', 'Max Marks', 'Obtained', 'Percentage', 'Grade', 'Result']]
-    total_max = total_obtained = 0
+    # ─── Table layout: simple or cumulative ───────────────────────────────────
+    is_final = (exam.exam_type or '').upper() in ('FINAL', 'ANNUAL', 'FINAL_TERM', 'PRE_BOARD')
+    has_prev = bool(prev_marks_data) and is_final
+
+    if has_prev:
+        prev_map = {m['subject_name']: m for m in prev_marks_data}
+        header = ['Subject', 'Mid-Term\nMax', 'Mid-Term\nObt.', 'Final\nMax', 'Final\nObt.',
+                  'Grand\nMax', 'Grand\nObt.', 'Total\n%', 'Grade', 'Result']
+        col_widths = [3.8*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.4*cm, 1.2*cm, 1.5*cm]
+    else:
+        header = ['Subject', 'Max Marks', 'Obtained', 'Percentage', 'Grade', 'Result']
+        col_widths = [5*cm, 2.4*cm, 2.6*cm, 2.4*cm, 1.8*cm, 2.8*cm]
+
+    marks_rows = [header]
+    total_max = total_obtained = prev_total_max = prev_total_obt = 0
+
     for m in marks_data:
         pct = round((m['marks_obtained'] / m['max_marks'] * 100), 1) if m['max_marks'] else 0
         status = 'PASS' if m['marks_obtained'] >= (m['max_marks'] * 0.33) else 'FAIL'
-        marks_rows.append([
-            _esc(m['subject_name']), str(m['max_marks']), str(m['marks_obtained']),
-            f"{pct}%", m.get('grade', _get_grade(pct)), status
-        ])
-        total_max += m['max_marks']
-        total_obtained += m['marks_obtained']
+        if has_prev:
+            pm = prev_map.get(m['subject_name'], {})
+            p_max = float(pm.get('max_marks', 0))
+            p_obt = float(pm.get('marks_obtained', 0))
+            t_max = m['max_marks'] + p_max
+            t_obt = m['marks_obtained'] + p_obt
+            t_pct = round((t_obt / t_max * 100), 1) if t_max else 0
+            t_status = 'PASS' if t_pct >= 33 else 'FAIL'
+            marks_rows.append([
+                _esc(m['subject_name']),
+                str(int(p_max)), str(int(p_obt)),
+                str(int(m['max_marks'])), str(int(m['marks_obtained'])),
+                str(int(t_max)), str(int(t_obt)),
+                f"{t_pct}%", m.get('grade', _get_grade(t_pct)), t_status
+            ])
+            total_max += m['max_marks']
+            total_obtained += m['marks_obtained']
+            prev_total_max += p_max
+            prev_total_obt += p_obt
+        else:
+            marks_rows.append([
+                _esc(m['subject_name']), str(m['max_marks']), str(m['marks_obtained']),
+                f"{pct}%", m.get('grade', _get_grade(pct)), status
+            ])
+            total_max += m['max_marks']
+            total_obtained += m['marks_obtained']
 
     overall_pct = round(total_obtained / total_max * 100, 1) if total_max else 0
     overall_result = 'PASS' if overall_pct >= 33 else 'FAIL'
-    marks_rows.append(['TOTAL', str(total_max), str(total_obtained), f"{overall_pct}%",
-                        _get_grade(overall_pct), overall_result])
 
-    marks_table = Table(marks_rows, colWidths=[5 * cm, 2.4 * cm, 2.6 * cm, 2.4 * cm, 1.8 * cm, 2.8 * cm])
+    if has_prev:
+        grand_max = total_max + prev_total_max
+        grand_obt = total_obtained + prev_total_obt
+        grand_pct = round(grand_obt / grand_max * 100, 1) if grand_max else 0
+        grand_result = 'PASS' if grand_pct >= 33 else 'FAIL'
+        marks_rows.append([
+            'TOTAL',
+            str(int(prev_total_max)), str(int(prev_total_obt)),
+            str(int(total_max)), str(int(total_obtained)),
+            str(int(grand_max)), str(int(grand_obt)),
+            f"{grand_pct}%", _get_grade(grand_pct), grand_result
+        ])
+        overall_pct = grand_pct
+        overall_result = grand_result
+    else:
+        marks_rows.append(['TOTAL', str(total_max), str(total_obtained), f"{overall_pct}%",
+                            _get_grade(overall_pct), overall_result])
+
+    pass_col = len(header) - 1
+    marks_table = Table(marks_rows, colWidths=col_widths)
     style_cmds = [
         ('BACKGROUND', (0, 0), (-1, 0), PRIMARY_DARK),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
         ('BACKGROUND', (0, -1), (-1, -1), PRIMARY_SOFT),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('FONTSIZE', (0, 0), (-1, -1), 8.5),
         ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, ZEBRA]),
         ('GRID', (0, 0), (-1, -1), 0.5, GREY_LINE),
         ('ALIGN', (1, 0), (-1, -1), 'CENTER'), ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 7), ('TOPPADDING', (0, 0), (-1, -1), 7),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6), ('TOPPADDING', (0, 0), (-1, -1), 6),
     ]
     for idx, row in enumerate(marks_rows[1:], start=1):
-        color = SUCCESS if row[-1] == 'PASS' else DANGER
-        style_cmds.append(('TEXTCOLOR', (5, idx), (5, idx), color))
-        style_cmds.append(('FONTNAME', (5, idx), (5, idx), 'Helvetica-Bold'))
+        color = SUCCESS if row[pass_col] == 'PASS' else DANGER
+        style_cmds.append(('TEXTCOLOR', (pass_col, idx), (pass_col, idx), color))
+        style_cmds.append(('FONTNAME', (pass_col, idx), (pass_col, idx), 'Helvetica-Bold'))
     marks_table.setStyle(TableStyle(style_cmds))
     elements.append(marks_table)
     elements.append(Spacer(1, 0.55 * cm))
 
+    # ─── Overall Result Badge ─────────────────────────────────────────────────
     result_color = SUCCESS if overall_result == 'PASS' else DANGER
     result_bg = SUCCESS_BG if overall_result == 'PASS' else DANGER_BG
     result_badge = Table([[Paragraph(
-        f'Overall Result: {overall_result}  |  Percentage: {overall_pct}%  |  Grade: {_get_grade(overall_pct)}',
-        ParagraphStyle('res', fontSize=13, textColor=result_color, fontName='Helvetica-Bold', alignment=TA_CENTER)
+        f'Overall Result: <b>{overall_result}</b>  |  Percentage: <b>{overall_pct}%</b>  |  Grade: <b>{_get_grade(overall_pct)}</b>',
+        ParagraphStyle('res', fontSize=12, textColor=result_color, fontName='Helvetica-Bold', alignment=TA_CENTER)
     )]], colWidths=[17.4 * cm])
     result_badge.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), result_bg), ('BOX', (0, 0), (-1, -1), 1, result_color),
+        ('BACKGROUND', (0, 0), (-1, -1), result_bg), ('BOX', (0, 0), (-1, -1), 1.5, result_color),
         ('TOPPADDING', (0, 0), (-1, -1), 9), ('BOTTOMPADDING', (0, 0), (-1, -1), 9),
     ]))
     elements.append(result_badge)
+    elements.append(Spacer(1, 0.5 * cm))
+
+    # ─── Grade Legend ─────────────────────────────────────────────────────────
+    elements.append(Paragraph(
+        'Grade Scale:  A+ (>=90%)  |  A (>=80%)  |  B+ (>=70%)  |  B (>=60%)  |  C (>=50%)  |  D (>=33%)  |  F (<33%)',
+        ParagraphStyle('gl', fontSize=7.5, textColor=GREY_TEXT, alignment=TA_CENTER)
+    ))
+    elements.append(Spacer(1, 0.9 * cm))
+
+    # ─── Signature + Stamp Block ──────────────────────────────────────────────
+    stamp_box = Table(
+        [[Paragraph('OFFICIAL\nSTAMP', ParagraphStyle('stmp', fontSize=7.5, fontName='Helvetica',
+                                                       textColor=GREY_TEXT, alignment=TA_CENTER))]],
+        colWidths=[3.5 * cm], rowHeights=[2.8 * cm]
+    )
+    stamp_box.setStyle(TableStyle([
+        ('BOX', (0, 0), (-1, -1), 1, GREY_LINE),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'), ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BACKGROUND', (0, 0), (-1, -1), PRIMARY_SOFT),
+    ]))
+    sig_data = [[
+        Paragraph("___________________________<br/><b>Class Teacher's Signature</b>",
+                  ParagraphStyle('s1', fontSize=8.5, fontName='Helvetica', textColor=GREY_TEXT, alignment=TA_CENTER)),
+        stamp_box,
+        Paragraph("___________________________<br/><b>Principal's Signature</b>",
+                  ParagraphStyle('s3', fontSize=8.5, fontName='Helvetica', textColor=GREY_TEXT, alignment=TA_CENTER)),
+    ]]
+    sig_table = Table(sig_data, colWidths=[6.2 * cm, 4.5 * cm, 6.5 * cm])
+    sig_table.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(sig_table)
+    elements.append(Spacer(1, 0.3 * cm))
+    elements.append(Paragraph(
+        '* Computer generated document. Valid only with official stamp and authorized signature.',
+        ParagraphStyle('disc', fontSize=7, textColor=GREY_TEXT, alignment=TA_CENTER)
+    ))
 
     doc.build(elements, onFirstPage=_footer, onLaterPages=_footer)
     buffer.seek(0)
     return buffer
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-#  ADMISSION CARD
-# ═══════════════════════════════════════════════════════════════════════════
 
 def generate_admission_card(student, school):
     buffer = io.BytesIO()
