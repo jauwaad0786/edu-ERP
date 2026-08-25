@@ -165,7 +165,7 @@ def inbox():
     ).subquery()
 
     latest_msgs = ChatMessage.query.filter(
-        ChatMessage.id.in_(latest_subq)
+        ChatMessage.id.in_(db.select(latest_subq.c.max_id))
     ).order_by(ChatMessage.created_at.desc()).all()
 
     result = []

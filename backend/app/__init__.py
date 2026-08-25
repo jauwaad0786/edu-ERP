@@ -111,16 +111,6 @@ def create_app(config_name='default'):
     from app.routes.staff_attendance import staff_attendance_bp
     app.register_blueprint(staff_attendance_bp, url_prefix='/api/staff-attendance')
 
-    # ── RBAC: seed default role-permissions for all schools on boot ──
-    # Idempotent — only inserts missing (role, permission_key) rows, never
-    # overwrites a Principal's manual customization. Safe to run every deploy.
-    with app.app_context():
-        try:
-            from app.models.permissions import seed_default_permissions_all_schools
-            seed_default_permissions_all_schools()
-        except Exception as e:
-            app.logger.warning(f'Permission seed skipped: {e}')
-
     from app.routes.whatsapp_settings import whatsapp_settings_bp
     app.register_blueprint(whatsapp_settings_bp, url_prefix='/api/principal/whatsapp')
 
@@ -155,6 +145,13 @@ def create_app(config_name='default'):
             _seed_super_admin()
         except Exception as e:
             app.logger.error(f'Startup schema initialization error: {e}')
+
+        # ── RBAC: seed default role-permissions for all schools on boot ──
+        try:
+            from app.models.permissions import seed_default_permissions_all_schools
+            seed_default_permissions_all_schools()
+        except Exception as e:
+            app.logger.warning(f'Permission seed skipped: {e}')
 
         try:
             from app.models.platform import seed_default_products

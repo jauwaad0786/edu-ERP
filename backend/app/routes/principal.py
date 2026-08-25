@@ -2299,9 +2299,10 @@ def delete_timetable_item(item_id):
 def admit_card_pdf(student_id, exam_id):
     curr = get_current_user()
     student = Student.query.get_or_404(student_id)
-    if curr.role == 'STUDENT' and student.user_id != curr.id:
-        return jsonify({'error': 'Unauthorized'}), 403
-    if not curr.is_super and curr.school_id and student.school_id != curr.school_id:
+    if curr and getattr(curr.role, 'value', str(curr.role)) in ('STUDENT', 'PARENT'):
+        if student.user_id != curr.id:
+            return jsonify({'error': 'Unauthorized'}), 403
+    elif not getattr(curr, 'is_super', False) and curr.school_id and student.school_id != curr.school_id:
         return jsonify({'error': 'Unauthorized'}), 403
     exam = ExamSchedule.query.get_or_404(exam_id)
     from app.models.school import School
@@ -2319,9 +2320,10 @@ def admit_card_pdf(student_id, exam_id):
 def result_card_pdf(student_id, exam_id):
     curr = get_current_user()
     student = Student.query.get_or_404(student_id)
-    if curr.role == 'STUDENT' and student.user_id != curr.id:
-        return jsonify({'error': 'Unauthorized'}), 403
-    if not curr.is_super and curr.school_id and student.school_id != curr.school_id:
+    if curr and getattr(curr.role, 'value', str(curr.role)) in ('STUDENT', 'PARENT'):
+        if student.user_id != curr.id:
+            return jsonify({'error': 'Unauthorized'}), 403
+    elif not getattr(curr, 'is_super', False) and curr.school_id and student.school_id != curr.school_id:
         return jsonify({'error': 'Unauthorized'}), 403
     exam = ExamSchedule.query.get_or_404(exam_id)
     from app.models.school import School
@@ -2439,6 +2441,7 @@ def student_notice_pdf(student_id):
                       download_name=f'Notice_{student.roll_number or student_id}_{month}.pdf')
 
 @principal_bp.route('/students/<int:student_id>/profile', methods=['GET'])
+@principal_bp.route('/students/<int:student_id>', methods=['GET'])
 @role_required('PRINCIPAL', 'TEACHER')
 def student_profile(student_id):
     """
@@ -3425,7 +3428,7 @@ def delete_subject(subj_id):
 # Yeh code principal.py ke BILKUL NEECHE add karo (last line ke baad)
 
 @principal_bp.route('/students/<int:student_id>/id-card', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_required('PRINCIPAL', 'TEACHER', 'STUDENT', 'PARENT')
 def generate_student_id_card(student_id):
     """
     Generate and download ID card PDF for a single student.
@@ -3435,7 +3438,11 @@ def generate_student_id_card(student_id):
     from app.utils.id_card_generator import generate_id_card_pdf
 
     student = Student.query.get_or_404(student_id)
-    if student.school_id != _school_id():
+    cur_user = get_current_user()
+    if cur_user and getattr(cur_user.role, 'value', str(cur_user.role)) in ('STUDENT', 'PARENT'):
+        if student.user_id != cur_user.id:
+            return jsonify({'error': 'Unauthorized'}), 403
+    elif student.school_id != _school_id():
         return jsonify({'error': 'Unauthorized'}), 403
 
     school = School.query.get(student.school_id)

@@ -104,7 +104,7 @@ def _scope_to_own_assignments(query, actor):
     assigned_ids = db.session.query(IssueAssignment.error_id).filter(
         IssueAssignment.assigned_to_user_id == actor.id
     ).subquery()
-    return query.filter(ErrorLog.id.in_(assigned_ids))
+    return query.filter(ErrorLog.id.in_(db.select(assigned_ids.c.error_id)))
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────
