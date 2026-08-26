@@ -729,7 +729,7 @@ function TeacherMarkEntry({ user }) {
    (Subject Submission Status / Review & Approve / Publish Result)
    ═══════════════════════════════════════════════════════════════════════ */
 
-function PrincipalResultManagement({ user }) {
+function PrincipalResultManagement({ user, embedded = false }) {
   const [classes, setClasses] = useState([]);
   const [exams, setExams]     = useState([]);
   const [classId, setClassId] = useState('');
