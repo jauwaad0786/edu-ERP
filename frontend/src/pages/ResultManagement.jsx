@@ -1291,11 +1291,9 @@ function PrincipalResultManagement({ user }) {
               </div>
             </div>
           )}
-        </div>
-      </div>
 
-      {historyFor && (
-        <HistoryModal studentId={historyFor.student_id} subjectId={reviewSubjectId} examId={examId}
+          {historyFor && (
+            <HistoryModal studentId={historyFor.student_id} subjectId={reviewSubjectId} examId={examId}
           studentName={historyFor.name} rollNo={historyFor.roll_number} subjectName={roster?.subject?.name}
           onClose={() => setHistoryFor(null)} />
       )}

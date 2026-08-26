@@ -1096,16 +1096,14 @@ export default function ExamsPage() {
               })}
             </div>
           )}
-        </div>
-      </div>
 
-      {/* Overlay */}
-      {selected && (
-        <div
-          style={{ position:'fixed', inset:0, background:'rgba(15,23,42,0.3)', zIndex:999 }}
-          onClick={() => setSelected(null)}
-        />
-      )}
+          {/* Overlay */}
+          {selected && (
+            <div
+              style={{ position:'fixed', inset:0, background:'rgba(15,23,42,0.3)', zIndex:999 }}
+              onClick={() => setSelected(null)}
+            />
+          )}
 
       {/* Detail Drawer */}
       {selected && (
