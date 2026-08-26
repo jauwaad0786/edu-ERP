@@ -8,7 +8,8 @@ from app.models.academic import (
 )
 from app.models.financial import (
     FeeRecord, FeeStructure, FeeTransaction, FeeGenerationBatch,
-    ExamSchedule, ExamTimetable, Holiday, Timetable, TimetablePeriod,
+    ExamSchedule, ExamTimetable, ExamClass, ExamSubject, ExamTeacherDelegation, ResultVersion,
+    Holiday, Timetable, TimetablePeriod,
     FeeReceiptGroup,
 )
 from app.models.documents import IssuedDocument, StudentDocument
@@ -18,7 +19,10 @@ ISSUED_DOC_TYPES  = ['BONAFIDE', 'TC', 'CHARACTER_CERTIFICATE', 'FEE_RECEIPT', '
 from app.utils.decorators import role_required, get_current_user
 from app.services.permission_resolver import permission_required, role_or_permission_required
 from app.utils.feature_gate import feature_required
-from app.utils.pdf_generator import generate_admit_card, generate_result_card
+from app.utils.pdf_generator import (
+    generate_admit_card, generate_result_card,
+    generate_bulk_admit_cards, generate_bulk_result_cards
+)
 from app.routes.admin import FEATURE_CATALOG, PLAN_PRESETS, PLAN_PRICING
 
 from sqlalchemy import func
@@ -2056,7 +2060,7 @@ def mark_teacher_attendance():
 
     for rec in records:
         existing = TeacherAttendance.query.filter_by(
-            teacher_id=rec['teacher_id'], date=att_date
+        teacher_id=rec['teacher_id'], date=att_date
         ).first()
         if existing:
             existing.status    = rec.get('status', 'PRESENT')
@@ -2082,101 +2086,417 @@ def mark_teacher_attendance():
 
 # ─── Exams & PDF ──────────────────────────────────────────────────────────────
 
-# ─── Exams & PDF ──────────────────────────────────────────────────────────────
-
 @principal_bp.route('/exams', methods=['GET'])
 @role_or_permission_required(
     roles=['PRINCIPAL', 'TEACHER', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR', 'ACCOUNTANT'],
     permissions=['exams.schedule.manage']
 )
 def list_exams():
-    status = request.args.get('status')  # DRAFT / PUBLISHED / ARCHIVED
+    status = request.args.get('status')  # DRAFT / PUBLISHED / ARCHIVED / etc.
+    session_filter = request.args.get('session')
     curr = get_current_user()
     sid = curr.school_id if curr else _school_id()
     q = ExamSchedule.query.filter_by(school_id=sid)
-    if curr and curr.role in ['STUDENT', 'PARENT'] and not status:
+    if curr and getattr(curr.role, 'value', str(curr.role)) in ('STUDENT', 'PARENT') and not status:
         q = q.filter((ExamSchedule.status == 'PUBLISHED') | (ExamSchedule.is_published == True))
     elif status:
         q = q.filter_by(status=status)
+    if session_filter:
+        q = q.filter_by(session=session_filter)
     exams = q.order_by(ExamSchedule.created_at.desc()).all()
     result = []
     for e in exams:
         d = e.to_dict()
         d['timetable_count'] = e.timetable.count()
-        # class list jo is exam mein hain
-        class_ids = list({t.class_id for t in e.timetable.all()})
-        classes = Class.query.filter(Class.id.in_(class_ids)).all() if class_ids else []
-        d['classes'] = [{'id': c.id, 'name': c.name, 'section': c.section} for c in classes]
+        # Participating classes from ExamClass or fallback to Timetable
+        p_classes = e.participating_classes.all()
+        if p_classes:
+            d['classes'] = [pc.to_dict() for pc in p_classes]
+            d['class_ids'] = [pc.class_id for pc in p_classes]
+        else:
+            class_ids = list({t.class_id for t in e.timetable.all()})
+            classes = Class.query.filter(Class.id.in_(class_ids)).all() if class_ids else []
+            d['classes'] = [{'id': c.id, 'name': c.name, 'section': c.section, 'class_id': c.id, 'class_name': c.name} for c in classes]
+            d['class_ids'] = class_ids
+        
+        d['subject_count'] = e.subjects_config.count()
         result.append(d)
     return jsonify(result), 200
+
+
+@principal_bp.route('/exams/<int:exam_id>', methods=['GET'])
+@role_or_permission_required(
+    roles=['PRINCIPAL', 'TEACHER', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR'],
+    permissions=['exams.schedule.manage']
+)
+def get_exam_detail(exam_id):
+    exam = ExamSchedule.query.get_or_404(exam_id)
+    curr = get_current_user()
+    if not getattr(curr, 'is_super', False) and curr.school_id and exam.school_id != curr.school_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    d = exam.to_dict()
+    d['timetable'] = [t.to_dict() for t in exam.timetable.order_by(ExamTimetable.exam_date.asc()).all()]
+    d['participating_classes'] = [pc.to_dict() for pc in exam.participating_classes.all()]
+    d['subjects_config'] = [sc.to_dict() for sc in exam.subjects_config.all()]
+    return jsonify(d), 200
 
 
 @principal_bp.route('/exams', methods=['POST'])
 @role_required('PRINCIPAL', 'TEACHER')
 def create_exam():
-    data = request.get_json()
+    data = request.get_json() or {}
+    sid = _school_id()
+    if not data.get('exam_name') or not data.get('start_date') or not data.get('end_date'):
+        return jsonify({'error': 'Exam Name, Start Date, and End Date are required'}), 400
+
+    try:
+        start_d = date.fromisoformat(str(data['start_date']).split('T')[0])
+        end_d = date.fromisoformat(str(data['end_date']).split('T')[0])
+    except Exception:
+        return jsonify({'error': 'Invalid start_date or end_date format (YYYY-MM-DD)'}), 400
+
+    if end_d < start_d:
+        return jsonify({'error': 'End date cannot be earlier than start date'}), 400
+
     exam = ExamSchedule(
-        school_id    = _school_id(),
-        exam_name    = data['exam_name'],
-        exam_type    = data.get('exam_type', 'MID_TERM'),
-        session      = data.get('session', '2024-25'),
-        start_date   = date.fromisoformat(data['start_date']),
-        end_date     = date.fromisoformat(data['end_date']),
-        instructions = data.get('instructions', ''),
-        status       = 'DRAFT',
-        is_published = False,
-        created_by   = get_current_user().id
+        school_id             = sid,
+        exam_name             = data['exam_name'].strip(),
+        exam_type             = data.get('exam_type', 'MID_TERM'),
+        session               = data.get('session', '2024-25'),
+        academic_year         = data.get('academic_year') or (data.get('session', '2024-25').split('-')[0]),
+        start_date            = start_d,
+        end_date              = end_d,
+        description           = data.get('description', ''),
+        instructions          = data.get('instructions', ''),
+        result_published_date = date.fromisoformat(str(data['result_published_date']).split('T')[0]) if data.get('result_published_date') else None,
+        grading_system        = data.get('grading_system', 'STANDARD'),
+        status                = 'DRAFT',
+        is_published          = False,
+        created_by            = get_current_user().id
     )
     db.session.add(exam)
+    db.session.flush()
+
+    # Link participating classes if provided
+    class_ids = data.get('class_ids', [])
+    for cid in class_ids:
+        cls = Class.query.get(cid)
+        if cls and cls.school_id == sid:
+            db.session.add(ExamClass(school_id=sid, exam_id=exam.id, class_id=cid))
+
+    # Log audit
+    from app.services.audit_service import log_action
+    try:
+        log_action('exam', 'management', 'CREATE', user=get_current_user(), new_value=exam.to_dict(), remarks=f"Created Exam {exam.exam_name}")
+    except Exception:
+        pass
+
     db.session.commit()
     return jsonify(exam.to_dict()), 201
 
 
-@principal_bp.route('/exams/<int:exam_id>', methods=['PATCH'])
+@principal_bp.route('/exams/<int:exam_id>', methods=['PATCH', 'PUT'])
 @role_required('PRINCIPAL', 'TEACHER')
 def update_exam(exam_id):
     exam = ExamSchedule.query.get_or_404(exam_id)
-    if exam.school_id != _school_id():
+    sid = _school_id()
+    if exam.school_id != sid:
         return jsonify({'error': 'Unauthorized'}), 403
-    if exam.status == 'PUBLISHED':
-        return jsonify({'error': 'Published exam edit nahi ho sakta. Pehle unpublish karo.'}), 400
-    data = request.get_json()
-    if data.get('exam_name'):    exam.exam_name    = data['exam_name']
-    if data.get('exam_type'):    exam.exam_type    = data['exam_type']
-    if data.get('session'):      exam.session      = data['session']
-    if data.get('start_date'):   exam.start_date   = date.fromisoformat(data['start_date'])
-    if data.get('end_date'):     exam.end_date     = date.fromisoformat(data['end_date'])
+    
+    data = request.get_json() or {}
+    reason = (data.get('reason') or '').strip()
+
+    # If exam is already published, require reason for modification
+    if exam.status == 'PUBLISHED' and not reason:
+        return jsonify({'error': 'Reason is required when modifying an already published exam.'}), 400
+
+    old_val = exam.to_dict()
+
+    if data.get('exam_name'):     exam.exam_name     = data['exam_name'].strip()
+    if data.get('exam_type'):     exam.exam_type     = data['exam_type']
+    if data.get('session'):       exam.session       = data['session']
+    if data.get('academic_year'): exam.academic_year = data['academic_year']
+    if data.get('grading_system'):exam.grading_system= data['grading_system']
+    if data.get('description') is not None:
+        exam.description = data['description']
     if data.get('instructions') is not None:
-                                 exam.instructions = data['instructions']
+        exam.instructions = data['instructions']
+    if data.get('result_published_date'):
+        try:
+            exam.result_published_date = date.fromisoformat(str(data['result_published_date']).split('T')[0])
+        except Exception:
+            pass
+
+    if data.get('start_date'):
+        exam.start_date = date.fromisoformat(str(data['start_date']).split('T')[0])
+    if data.get('end_date'):
+        exam.end_date = date.fromisoformat(str(data['end_date']).split('T')[0])
+
+    if exam.start_date and exam.end_date and exam.end_date < exam.start_date:
+        return jsonify({'error': 'End date cannot be earlier than start date'}), 400
+
+    # Update participating classes if supplied
+    if 'class_ids' in data:
+        class_ids = data['class_ids'] or []
+        ExamClass.query.filter_by(exam_id=exam.id).delete()
+        for cid in class_ids:
+            cls = Class.query.get(cid)
+            if cls and cls.school_id == sid:
+                db.session.add(ExamClass(school_id=sid, exam_id=exam.id, class_id=cid))
+
+    # Log audit
+    from app.services.audit_service import log_action
+    try:
+        log_action('exam', 'management', 'UPDATE', user=get_current_user(),
+                   old_value=old_val, new_value=exam.to_dict(),
+                   remarks=reason or f"Updated exam {exam.exam_name}")
+    except Exception:
+        pass
+
     db.session.commit()
     return jsonify(exam.to_dict()), 200
 
 
-@principal_bp.route('/exams/<int:exam_id>', methods=['DELETE'])
-@role_required('PRINCIPAL')
-def delete_exam(exam_id):
+@principal_bp.route('/exams/<int:exam_id>/classes', methods=['GET', 'POST'])
+@role_required('PRINCIPAL', 'TEACHER')
+def manage_exam_classes(exam_id):
     exam = ExamSchedule.query.get_or_404(exam_id)
-    if exam.school_id != _school_id():
+    sid = _school_id()
+    if exam.school_id != sid:
         return jsonify({'error': 'Unauthorized'}), 403
-    if exam.status == 'PUBLISHED':
-        return jsonify({'error': 'Published exam delete nahi ho sakta'}), 400
-    db.session.delete(exam)
+
+    if request.method == 'GET':
+        classes = exam.participating_classes.all()
+        return jsonify([c.to_dict() for c in classes]), 200
+
+    data = request.get_json() or {}
+    class_ids = data.get('class_ids', [])
+    ExamClass.query.filter_by(exam_id=exam.id).delete()
+    for cid in class_ids:
+        cls = Class.query.get(cid)
+        if cls and cls.school_id == sid:
+            db.session.add(ExamClass(school_id=sid, exam_id=exam.id, class_id=cid))
     db.session.commit()
-    return jsonify({'message': 'Exam deleted'}), 200
+    return jsonify({'message': 'Participating classes updated', 'classes': [c.to_dict() for c in exam.participating_classes.all()]}), 200
+
+
+@principal_bp.route('/exams/<int:exam_id>/subjects', methods=['GET', 'POST'])
+@role_required('PRINCIPAL', 'TEACHER')
+def manage_exam_subjects(exam_id):
+    exam = ExamSchedule.query.get_or_404(exam_id)
+    sid = _school_id()
+    if exam.school_id != sid:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    class_id = request.args.get('class_id', type=int)
+
+    if request.method == 'GET':
+        q = ExamSubject.query.filter_by(exam_id=exam.id)
+        if class_id:
+            q = q.filter_by(class_id=class_id)
+        return jsonify([s.to_dict() for s in q.all()]), 200
+
+    data = request.get_json() or {}
+    configs = data.get('subjects', [])
+    for cfg in configs:
+        cid = cfg.get('class_id')
+        sub_id = cfg.get('subject_id')
+        if not cid or not sub_id:
+            continue
+        row = ExamSubject.query.filter_by(exam_id=exam.id, class_id=cid, subject_id=sub_id).first()
+        if not row:
+            row = ExamSubject(school_id=sid, exam_id=exam.id, class_id=cid, subject_id=sub_id)
+            db.session.add(row)
+        
+        row.max_marks             = float(cfg.get('max_marks', 100))
+        row.pass_marks            = float(cfg.get('pass_marks', 33))
+        row.theory_marks          = float(cfg.get('theory_marks', 80))
+        row.practical_marks       = float(cfg.get('practical_marks', 20))
+        row.internal_marks        = float(cfg.get('internal_marks', 0))
+        row.weightage             = float(cfg.get('weightage', 100))
+        row.grade_scheme          = cfg.get('grade_scheme', 'STANDARD')
+        row.is_included_in_result = bool(cfg.get('is_included_in_result', True))
+        row.subject_code          = cfg.get('subject_code', '')
+
+    db.session.commit()
+    return jsonify({'message': 'Exam subjects configuration saved'}), 200
+
+
+@principal_bp.route('/exams/<int:exam_id>/validate', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER')
+def validate_exam(exam_id):
+    """
+    Step 6 — Pre-publish Exam Validation.
+    Comprehensive validation engine checking all prerequisites before allowing publish.
+    """
+    exam = ExamSchedule.query.get_or_404(exam_id)
+    sid = _school_id()
+    if exam.school_id != sid:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    blockers = []
+    warnings = []
+
+    # 1. Exam basic info checks
+    if not exam.exam_name or len(exam.exam_name.strip()) < 2:
+        blockers.append("Exam Name is missing or too short.")
+    if not exam.session:
+        blockers.append("Academic session is not defined.")
+    if not exam.start_date or not exam.end_date:
+        blockers.append("Exam start and end dates must be configured.")
+    elif exam.end_date < exam.start_date:
+        blockers.append("Exam end date cannot be earlier than start date.")
+
+    # 2. Participating classes
+    participating = exam.participating_classes.all()
+    class_ids = [p.class_id for p in participating]
+    if not class_ids:
+        # Check if timetable has classes
+        class_ids = list({t.class_id for t in exam.timetable.all()})
+
+    if not class_ids:
+        blockers.append("No classes selected. Select at least one participating class.")
+    else:
+        for cid in class_ids:
+            cls = Class.query.get(cid)
+            c_name = f"{cls.name} - {cls.section}" if cls else f"Class #{cid}"
+            
+            # 3. Student enrollment check
+            students_count = Student.query.filter_by(class_id=cid, school_id=sid).count()
+            if students_count == 0:
+                warnings.append(f"{c_name} has no enrolled active students.")
+
+            # 4. Subjects check
+            subjects = Subject.query.filter_by(class_id=cid).all()
+            if not subjects:
+                blockers.append(f"{c_name} has no subjects configured in the school curriculum.")
+            else:
+                for sub in subjects:
+                    if not sub.teacher_id:
+                        warnings.append(f"{c_name} -> {sub.name} has no assigned subject teacher.")
+
+            # 5. Timetable check for class
+            tt_items = ExamTimetable.query.filter_by(exam_id=exam.id, class_id=cid).all()
+            if not tt_items:
+                blockers.append(f"{c_name} has no exam timetable/papers configured.")
+            else:
+                tt_subject_ids = {t.subject_id for t in tt_items}
+                for sub in subjects:
+                    if sub.id not in tt_subject_ids:
+                        warnings.append(f"{c_name} -> {sub.name} is missing from the exam timetable.")
+
+    # 6. Timing conflict checks across timetable
+    all_tt = exam.timetable.all()
+    date_subj_map = {}
+    for item in all_tt:
+        key = (item.class_id, str(item.exam_date), item.subject_id)
+        if key in date_subj_map:
+            cls = Class.query.get(item.class_id)
+            c_name = f"{cls.name} - {cls.section}" if cls else ""
+            blockers.append(f"Duplicate subject paper in {c_name} on {item.exam_date}.")
+        date_subj_map[key] = True
+
+        # Check date range
+        if exam.start_date and exam.end_date:
+            if item.exam_date < exam.start_date or item.exam_date > exam.end_date:
+                blockers.append(f"Paper for subject #{item.subject_id} on {item.exam_date} falls outside the exam period ({exam.start_date} to {exam.end_date}).")
+
+    can_publish = len(blockers) == 0
+    return jsonify({
+        'exam_id':          exam.id,
+        'exam_name':        exam.exam_name,
+        'status':           exam.status,
+        'ready_to_publish': can_publish,
+        'blockers':         blockers,
+        'warnings':         warnings,
+        'summary': {
+            'classes_count':   len(class_ids),
+            'papers_count':    len(all_tt),
+            'blockers_count':  len(blockers),
+            'warnings_count':  len(warnings),
+        }
+    }), 200
 
 
 @principal_bp.route('/exams/<int:exam_id>/publish', methods=['POST'])
 @role_required('PRINCIPAL')
 def publish_exam(exam_id):
     exam = ExamSchedule.query.get_or_404(exam_id)
-    if exam.school_id != _school_id():
+    sid = _school_id()
+    if exam.school_id != sid:
         return jsonify({'error': 'Unauthorized'}), 403
+
+    data = request.get_json(silent=True) or {}
+    force = bool(data.get('force', False))
+    reason = (data.get('reason') or '').strip()
+
+    # Pre-publish validation check
+    participating = exam.participating_classes.all()
+    class_ids = [p.class_id for p in participating] or list({t.class_id for t in exam.timetable.all()})
+    if not class_ids and not force:
+        return jsonify({'error': 'Cannot publish exam: At least one class must be configured.'}), 400
+
     exam.status       = 'PUBLISHED'
     exam.is_published = True
     exam.published_at = datetime.utcnow()
     exam.published_by = get_current_user().id
+
+    # Auto-initialize participating classes if missing
+    if not participating and class_ids:
+        for cid in class_ids:
+            db.session.add(ExamClass(school_id=sid, exam_id=exam.id, class_id=cid))
+
+    # Send in-app notification to school staff & teachers
+    from app.models.communication import SupportNotification
+    from app.models.user import User, UserRole
+    teachers = User.query.filter_by(school_id=sid, role=UserRole.TEACHER, is_active=True).all()
+    for t in teachers:
+        db.session.add(SupportNotification(
+            user_id=t.id, school_id=sid,
+            title=f"Exam Published: {exam.exam_name}",
+            message=f"The examination '{exam.exam_name}' ({exam.session}) has been published. Timetable and mark assignments are now active.",
+            notif_type='EXAM'
+        ))
+
+    # Log audit
+    from app.services.audit_service import log_action
+    try:
+        log_action('exam', 'management', 'PUBLISH', user=get_current_user(), new_value=exam.to_dict(), remarks=f"Published exam {exam.exam_name}")
+    except Exception:
+        pass
+
     db.session.commit()
-    return jsonify({'message': 'Exam published', 'exam': exam.to_dict()}), 200
+    return jsonify({'message': 'Exam published successfully', 'exam': exam.to_dict()}), 200
+
+
+@principal_bp.route('/exams/<int:exam_id>/reopen', methods=['POST'])
+@role_required('PRINCIPAL')
+def reopen_exam(exam_id):
+    exam = ExamSchedule.query.get_or_404(exam_id)
+    sid = _school_id()
+    if exam.school_id != sid:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    data = request.get_json() or {}
+    reason = (data.get('reason') or '').strip()
+    if not reason:
+        return jsonify({'error': 'Reason is mandatory to reopen/edit a published exam.'}), 400
+
+    old_val = exam.to_dict()
+    exam.status       = 'DRAFT'
+    exam.is_published = False
+
+    # Log audit
+    from app.services.audit_service import log_action
+    try:
+        log_action('exam', 'management', 'REOPEN', user=get_current_user(),
+                   old_value=old_val, new_value=exam.to_dict(), remarks=f"Reopened exam {exam.exam_name}. Reason: {reason}")
+    except Exception:
+        pass
+
+    db.session.commit()
+    return jsonify({'message': 'Exam reopened to Draft for modifications', 'exam': exam.to_dict()}), 200
 
 
 @principal_bp.route('/exams/<int:exam_id>/unpublish', methods=['POST'])
@@ -2204,6 +2524,19 @@ def archive_exam(exam_id):
     return jsonify({'message': 'Exam archived'}), 200
 
 
+@principal_bp.route('/exams/<int:exam_id>', methods=['DELETE'])
+@role_required('PRINCIPAL')
+def delete_exam(exam_id):
+    exam = ExamSchedule.query.get_or_404(exam_id)
+    if exam.school_id != _school_id():
+        return jsonify({'error': 'Unauthorized'}), 403
+    if exam.status == 'PUBLISHED':
+        return jsonify({'error': 'Published exam delete nahi ho sakta. Pehle reopen/unpublish karo.'}), 400
+    db.session.delete(exam)
+    db.session.commit()
+    return jsonify({'message': 'Exam deleted'}), 200
+
+
 # ─── Exam Timetable (Subject-wise papers) ─────────────────────────────────────
 
 @principal_bp.route('/exams/<int:exam_id>/timetable', methods=['GET'])
@@ -2227,26 +2560,30 @@ def get_exam_timetable(exam_id):
 @principal_bp.route('/exams/<int:exam_id>/timetable', methods=['POST'])
 @role_required('PRINCIPAL', 'TEACHER')
 def add_timetable_item(exam_id):
-    """Add subject-wise paper to exam timetable."""
+    """Add subject-wise paper to exam timetable with conflict validation."""
     exam = ExamSchedule.query.get_or_404(exam_id)
-    if exam.school_id != _school_id():
+    sid = _school_id()
+    if exam.school_id != sid:
         return jsonify({'error': 'Unauthorized'}), 403
-    data = request.get_json()
+    data = request.get_json() or {}
+
+    class_id = data.get('class_id')
+    if not class_id:
+        return jsonify({'error': 'class_id is required'}), 400
 
     subject_id = data.get('subject_id') or None
-
     if not subject_id and data.get('subject_name_manual'):
         existing = Subject.query.filter_by(
             name=data['subject_name_manual'],
-            class_id=data['class_id']
+            class_id=class_id
         ).first()
         if existing:
             subject_id = existing.id
         else:
             new_subj = Subject(
                 name=data['subject_name_manual'],
-                class_id=data['class_id'],
-                school_id=_school_id()
+                class_id=class_id,
+                school_id=sid
             )
             db.session.add(new_subj)
             db.session.flush()
@@ -2255,36 +2592,55 @@ def add_timetable_item(exam_id):
     if not subject_id:
         return jsonify({'error': 'Subject select karo ya naam type karo'}), 400
 
+    try:
+        ex_date = date.fromisoformat(str(data['exam_date']).split('T')[0])
+    except Exception:
+        return jsonify({'error': 'Invalid exam_date'}), 400
+
+    # Conflict check: same subject on same date in same class
+    conflict = ExamTimetable.query.filter_by(
+        exam_id=exam_id, class_id=class_id, subject_id=subject_id, exam_date=ex_date
+    ).first()
+    if conflict:
+        return jsonify({'error': 'This subject paper is already scheduled on this date for this class'}), 400
+
     item = ExamTimetable(
-        exam_id      = exam_id,
-        class_id     = data['class_id'],
-        subject_id   = subject_id,
-        exam_date    = date.fromisoformat(data['exam_date']),
-        start_time   = data.get('start_time', '10:00 AM'),
-        end_time     = data.get('end_time',   '01:00 PM'),
-        venue        = data.get('venue',      'Main Hall'),
-        max_marks    = data.get('max_marks',  100),
-        pass_marks   = data.get('pass_marks', 33),
-        instructions = data.get('instructions', ''),
+        exam_id          = exam_id,
+        class_id         = class_id,
+        subject_id       = subject_id,
+        exam_date        = ex_date,
+        start_time       = data.get('start_time', '10:00 AM'),
+        end_time         = data.get('end_time',   '01:00 PM'),
+        venue            = data.get('venue') or data.get('room') or 'Main Hall',
+        room             = data.get('room') or data.get('venue') or '',
+        invigilator_id   = data.get('invigilator_id') or None,
+        invigilator_name = data.get('invigilator_name') or '',
+        max_marks        = int(data.get('max_marks',  100)),
+        pass_marks       = int(data.get('pass_marks', 33)),
+        instructions     = data.get('instructions', ''),
     )
     db.session.add(item)
     db.session.commit()
     return jsonify(item.to_dict()), 201
 
 
-@principal_bp.route('/exams/timetable/<int:item_id>', methods=['PATCH'])
+@principal_bp.route('/exams/timetable/<int:item_id>', methods=['PATCH', 'PUT'])
 @role_required('PRINCIPAL', 'TEACHER')
 def update_timetable_item(item_id):
     item = ExamTimetable.query.get_or_404(item_id)
-    data = request.get_json()
-    if data.get('exam_date'):    item.exam_date    = date.fromisoformat(data['exam_date'])
-    if data.get('start_time'):   item.start_time   = data['start_time']
-    if data.get('end_time'):     item.end_time     = data['end_time']
-    if data.get('venue'):        item.venue        = data['venue']
-    if data.get('max_marks'):    item.max_marks    = data['max_marks']
-    if data.get('pass_marks'):   item.pass_marks   = data['pass_marks']
+    data = request.get_json() or {}
+    if data.get('exam_date'):
+        item.exam_date = date.fromisoformat(str(data['exam_date']).split('T')[0])
+    if data.get('start_time'):       item.start_time       = data['start_time']
+    if data.get('end_time'):         item.end_time         = data['end_time']
+    if data.get('venue'):            item.venue            = data['venue']
+    if data.get('room'):             item.room             = data['room']
+    if data.get('invigilator_id'):   item.invigilator_id   = data['invigilator_id']
+    if data.get('invigilator_name'): item.invigilator_name = data['invigilator_name']
+    if data.get('max_marks'):        item.max_marks        = int(data['max_marks'])
+    if data.get('pass_marks'):       item.pass_marks       = int(data['pass_marks'])
     if data.get('instructions') is not None:
-                                 item.instructions = data['instructions']
+        item.instructions = data['instructions']
     db.session.commit()
     return jsonify(item.to_dict()), 200
 
@@ -2295,10 +2651,10 @@ def delete_timetable_item(item_id):
     item = ExamTimetable.query.get_or_404(item_id)
     db.session.delete(item)
     db.session.commit()
-    return jsonify({'message': 'Deleted'}), 200
+    return jsonify({'message': 'Timetable paper deleted'}), 200
 
 
-# ─── Admit Card & Result Card PDF ─────────────────────────────────────────────
+# ─── Single & Bulk Admit Card PDF ─────────────────────────────────────────────
 
 @principal_bp.route('/admit-card/<int:student_id>/<int:exam_id>', methods=['GET'])
 @role_or_permission_required(
@@ -2310,7 +2666,12 @@ def admit_card_pdf(student_id, exam_id):
     student = Student.query.get_or_404(student_id)
     if curr and getattr(curr.role, 'value', str(curr.role)) in ('STUDENT', 'PARENT'):
         if student.user_id != curr.id:
-            return jsonify({'error': 'Unauthorized'}), 403
+            # Check parent link
+            if getattr(curr.role, 'value', str(curr.role)) == 'PARENT':
+                if student.parent_email != curr.email and student.parent_phone != curr.phone:
+                    return jsonify({'error': 'Unauthorized'}), 403
+            else:
+                return jsonify({'error': 'Unauthorized'}), 403
     elif not getattr(curr, 'is_super', False) and curr.school_id and student.school_id != curr.school_id:
         return jsonify({'error': 'Unauthorized'}), 403
     exam = ExamSchedule.query.get_or_404(exam_id)
@@ -2321,8 +2682,52 @@ def admit_card_pdf(student_id, exam_id):
     ).order_by(ExamTimetable.exam_date.asc()).all()
     buf = generate_admit_card(student, school, exam, timetable)
     return send_file(buf, mimetype='application/pdf',
-                     download_name=f'AdmitCard_{student.roll_number}_{exam.exam_name}.pdf')
+                     download_name=f'AdmitCard_{student.roll_number or student.id}_{exam.exam_name}.pdf')
 
+
+@principal_bp.route('/admit-card/class/<int:class_id>/<int:exam_id>', methods=['GET'])
+@principal_bp.route('/exams/<int:exam_id>/admit-cards/bulk', methods=['GET'])
+@role_required('PRINCIPAL', 'SUPER_ADMIN', 'TEACHER')
+def bulk_admit_cards(exam_id, class_id=None):
+    """Generate bulk class-wise or entire-exam admit cards."""
+    if not class_id:
+        class_id = request.args.get('class_id', type=int)
+
+    exam = ExamSchedule.query.get_or_404(exam_id)
+    sid = _school_id()
+    if exam.school_id != sid:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    from app.models.school import School
+    school = School.query.get(sid)
+
+    # Find students
+    q = Student.query.filter_by(school_id=sid)
+    if class_id:
+        q = q.filter_by(class_id=class_id)
+    else:
+        p_classes = exam.participating_classes.all()
+        if p_classes:
+            cids = [pc.class_id for pc in p_classes]
+            q = q.filter(Student.class_id.in_(cids))
+
+    students = q.order_by(Student.class_id.asc(), Student.roll_number.asc()).all()
+    if not students:
+        return jsonify({'error': 'No enrolled active students found for admit cards'}), 404
+
+    # Build student + timetable pairs
+    pairs = []
+    for s in students:
+        tt = ExamTimetable.query.filter_by(exam_id=exam_id, class_id=s.class_id).order_by(ExamTimetable.exam_date.asc()).all()
+        pairs.append((s, tt))
+
+    buf = generate_bulk_admit_cards(pairs, school, exam)
+    cls_suffix = f"_Class_{class_id}" if class_id else "_AllClasses"
+    return send_file(buf, mimetype='application/pdf',
+                     download_name=f'BulkAdmitCards_{exam.exam_name}{cls_suffix}.pdf')
+
+
+# ─── Single & Bulk Result Card PDF ─────────────────────────────────────────────
 
 @principal_bp.route('/result-card/<int:student_id>/<int:exam_id>', methods=['GET'])
 @role_or_permission_required(
@@ -2332,11 +2737,23 @@ def admit_card_pdf(student_id, exam_id):
 def result_card_pdf(student_id, exam_id):
     curr = get_current_user()
     student = Student.query.get_or_404(student_id)
+    
+    # Check publication gating for Student / Parent
+    from app.routes.result_management import ClassResultPublication
+    pub = ClassResultPublication.query.filter_by(exam_id=exam_id, class_id=student.class_id).first()
+    is_published = (pub and pub.status == 'PUBLISHED') or bool(getattr(ExamSchedule.query.get(exam_id), 'is_published', False))
+
     if curr and getattr(curr.role, 'value', str(curr.role)) in ('STUDENT', 'PARENT'):
-        if student.user_id != curr.id:
+        if not is_published:
+            return jsonify({'error': 'Result is not published yet'}), 403
+        if getattr(curr.role, 'value', str(curr.role)) == 'STUDENT' and student.user_id != curr.id:
             return jsonify({'error': 'Unauthorized'}), 403
+        elif getattr(curr.role, 'value', str(curr.role)) == 'PARENT':
+            if student.parent_email != curr.email and student.parent_phone != curr.phone and student.user_id != curr.id:
+                return jsonify({'error': 'Unauthorized'}), 403
     elif not getattr(curr, 'is_super', False) and curr.school_id and student.school_id != curr.school_id:
         return jsonify({'error': 'Unauthorized'}), 403
+
     exam = ExamSchedule.query.get_or_404(exam_id)
     from app.models.school import School
     school = School.query.get(student.school_id)
@@ -2354,9 +2771,7 @@ def result_card_pdf(student_id, exam_id):
     prev_marks_data = None
     prev_exam_id = request.args.get('prev_exam_id', type=int)
     if prev_exam_id:
-        prev_marks = Marks.query.filter_by(student_id=student_id).filter(
-            (Marks.exam_id == prev_exam_id)
-        ).all()
+        prev_marks = Marks.query.filter_by(student_id=student_id, exam_id=prev_exam_id).all()
         prev_marks_data = [{
             'subject_name':   m.subject.name if m.subject else 'N/A',
             'max_marks':      m.max_marks or 100,
@@ -2364,7 +2779,6 @@ def result_card_pdf(student_id, exam_id):
             'grade':          m.grade or '-'
         } for m in prev_marks]
     elif (exam.exam_type or '').upper() in ('FINAL', 'ANNUAL', 'FINAL_TERM'):
-        # auto-find the most recent MID_TERM/HALF_YEARLY exam of same session & school
         prev_exam = ExamSchedule.query.filter_by(
             school_id=exam.school_id, session=exam.session
         ).filter(
@@ -2382,10 +2796,65 @@ def result_card_pdf(student_id, exam_id):
                     'grade':          m.grade or '-'
                 } for m in prev_marks]
 
-    buf = generate_result_card(student, school, exam, marks_data, prev_marks_data=prev_marks_data)
+    ver_no = (pub.republish_count + 1) if pub else 1
+    buf = generate_result_card(student, school, exam, marks_data, prev_marks_data=prev_marks_data, version_number=ver_no)
     student_name = student.user.name if (student.user and student.user.name) else f"Student_{student.id}"
     return send_file(buf, mimetype='application/pdf',
-                     download_name=f'ResultCard_{student.roll_number}_{student_name}.pdf')
+                     download_name=f'ResultCard_{student.roll_number or student.id}_{student_name}.pdf')
+
+
+@principal_bp.route('/result-card/class/<int:class_id>/<int:exam_id>', methods=['GET'])
+@principal_bp.route('/exams/<int:exam_id>/result-cards/bulk', methods=['GET'])
+@role_required('PRINCIPAL', 'SUPER_ADMIN', 'TEACHER')
+def bulk_result_cards(exam_id, class_id=None):
+    """Generate bulk class-wise or exam-wide result cards."""
+    if not class_id:
+        class_id = request.args.get('class_id', type=int)
+
+    exam = ExamSchedule.query.get_or_404(exam_id)
+    sid = _school_id()
+    if exam.school_id != sid:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    from app.models.school import School
+    school = School.query.get(sid)
+
+    # Students list
+    q = Student.query.filter_by(school_id=sid)
+    if class_id:
+        q = q.filter_by(class_id=class_id)
+    else:
+        p_classes = exam.participating_classes.all()
+        if p_classes:
+            cids = [pc.class_id for pc in p_classes]
+            q = q.filter(Student.class_id.in_(cids))
+
+    students = q.order_by(Student.class_id.asc(), Student.roll_number.asc()).all()
+    if not students:
+        return jsonify({'error': 'No students found for result card generation'}), 404
+
+    # Build student + marks tuples
+    tuples = []
+    for s in students:
+        marks = Marks.query.filter_by(student_id=s.id).filter(
+            (Marks.exam_id == exam_id) | (Marks.exam_type == exam.exam_name)
+        ).all()
+        marks_data = [{
+            'subject_name':   m.subject.name if m.subject else 'N/A',
+            'max_marks':      m.max_marks or 100,
+            'marks_obtained': m.marks_obtained or 0,
+            'grade':          m.grade or '-'
+        } for m in marks]
+        tuples.append((s, marks_data, None))
+
+    from app.routes.result_management import ClassResultPublication
+    pub = ClassResultPublication.query.filter_by(exam_id=exam_id, class_id=class_id).first() if class_id else None
+    ver_no = (pub.republish_count + 1) if pub else 1
+
+    buf = generate_bulk_result_cards(tuples, school, exam, version_number=ver_no)
+    cls_suffix = f"_Class_{class_id}" if class_id else "_AllClasses"
+    return send_file(buf, mimetype='application/pdf',
+                     download_name=f'BulkResultCards_{exam.exam_name}{cls_suffix}.pdf')
 
 
 @principal_bp.route('/result-card/<int:student_id>/<int:exam_id>/data', methods=['GET'])

@@ -141,6 +141,7 @@ def create_app(config_name='default'):
             _ensure_fee_record_columns()
             _ensure_salary_acknowledgement_columns()
             _ensure_marks_columns()
+            _ensure_exam_columns()
             db.create_all()
             _seed_super_admin()
         except Exception as e:
@@ -250,16 +251,11 @@ def _ensure_marks_columns():
     NEW — Result Management System.
     marks table mein 'version' (optimistic locking) aur 'student_status'
     (Pass/Fail/Absent/Medical Leave/Not Evaluated override) add karo.
-    Existing rows: version=0, student_status=NULL (derived on read).
-    The 4 brand-new RMS tables (result_subject_status, result_return_items,
-    marks_audit_logs, class_result_publication) need no ALTER at all —
-    they don't exist yet anywhere, so db.create_all() right after this
-    builds them from scratch on first boot.
     """
     from sqlalchemy import text, inspect
     inspector = inspect(db.engine)
     if 'marks' not in inspector.get_table_names():
-        return  # brand-new DB — create_all() handles it fully
+        return
 
     existing = {c['name'] for c in inspector.get_columns('marks')}
     to_add = {
@@ -275,6 +271,44 @@ def _ensure_marks_columns():
                     print(f'✅ Added column marks.{col}')
                 except Exception as e:
                     print(f'⚠️  marks.{col}: {e}')
+
+
+def _ensure_exam_columns():
+    """Ensure newly added columns exist in exam_schedules and exam_timetable."""
+    from sqlalchemy import text, inspect
+    inspector = inspect(db.engine)
+    if 'exam_schedules' in inspector.get_table_names():
+        existing = {c['name'] for c in inspector.get_columns('exam_schedules')}
+        to_add = {
+            'academic_year': 'VARCHAR(20)',
+            'description': 'TEXT',
+            'result_published_date': 'DATE',
+            'grading_system': "VARCHAR(50) DEFAULT 'STANDARD'",
+        }
+        with db.engine.connect() as conn:
+            for col, defn in to_add.items():
+                if col not in existing:
+                    try:
+                        conn.execute(text(f'ALTER TABLE exam_schedules ADD COLUMN {col} {defn}'))
+                        conn.commit()
+                    except Exception:
+                        pass
+
+    if 'exam_timetable' in inspector.get_table_names():
+        existing = {c['name'] for c in inspector.get_columns('exam_timetable')}
+        to_add = {
+            'room': 'VARCHAR(50)',
+            'invigilator_id': 'INTEGER',
+            'invigilator_name': 'VARCHAR(120)',
+        }
+        with db.engine.connect() as conn:
+            for col, defn in to_add.items():
+                if col not in existing:
+                    try:
+                        conn.execute(text(f'ALTER TABLE exam_timetable ADD COLUMN {col} {defn}'))
+                        conn.commit()
+                    except Exception:
+                        pass
 
 
 def _ensure_salary_acknowledgement_columns():

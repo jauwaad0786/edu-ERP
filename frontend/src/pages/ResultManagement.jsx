@@ -750,10 +750,15 @@ function PrincipalResultManagement({ user }) {
   const [showReopen, setShowReopen] = useState(false);
   const [reopenReason, setReopenReason] = useState('');
   const [publishing, setPublishing] = useState(false);
+  const [teachers, setTeachers] = useState([]);
+  const [delegationModal, setDelegationModal] = useState(null); // subject obj
+  const [delegationForm, setDelegationForm] = useState({ delegated_teacher_id: '', end_date: '', reason: '' });
+  const [savingDelegation, setSavingDelegation] = useState(false);
 
   useEffect(() => {
     api.get('/principal/classes').then(r => setClasses(r.data || [])).catch(() => {});
     api.get('/principal/exams').then(r => setExams(r.data || [])).catch(() => {});
+    api.get('/principal/teachers').then(r => setTeachers(r.data || [])).catch(() => {});
   }, []);
 
   const loadDashboard = useCallback(() => {
@@ -996,12 +1001,35 @@ function PrincipalResultManagement({ user }) {
                                     </button>
                                   )}
                                   {s.status === 'DRAFT' && (
-                                    <button
-                                      className="btn btn-neutral btn-sm"
-                                      onClick={() => toast.success(`Reminder sent to ${s.teacher_name || 'Subject Teacher'}!`)}
-                                    >
-                                      📢 Remind
-                                    </button>
+                                    <>
+                                      <button
+                                        className="btn btn-neutral btn-sm"
+                                        onClick={async () => {
+                                          try {
+                                            const r = await api.post('/results/notify-teacher', {
+                                              exam_id: examId,
+                                              class_id: classId,
+                                              subject_id: s.subject_id,
+                                            });
+                                            toast.success(r.data?.message || 'Reminder sent!');
+                                          } catch (err) {
+                                            toast.error(err?.response?.data?.error || 'Failed to send reminder');
+                                          }
+                                        }}
+                                      >
+                                        📢 Remind
+                                      </button>
+                                      <button
+                                        className="btn btn-neutral btn-sm"
+                                        style={{ background: '#f0fdf4', color: '#15803d', borderColor: '#bbf7d0' }}
+                                        onClick={() => {
+                                          setDelegationModal(s);
+                                          setDelegationForm({ delegated_teacher_id: '', end_date: '', reason: '' });
+                                        }}
+                                      >
+                                        🔄 Delegate
+                                      </button>
+                                    </>
                                   )}
                                 </div>
                               </td>
@@ -1129,6 +1157,25 @@ function PrincipalResultManagement({ user }) {
                           </div>
                           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                             <button className="btn btn-neutral btn-sm" onClick={openPreview}>🖨️ View &amp; Print Final Report</button>
+                            <button
+                              className="btn btn-primary btn-sm"
+                              style={{ background: '#0284c7', borderColor: '#0284c7' }}
+                              onClick={async () => {
+                                try {
+                                  const res = await api.get(`/principal/result-card/class/${classId}/${examId}`, { responseType: 'blob' });
+                                  const url = window.URL.createObjectURL(new Blob([res.data]));
+                                  const a = document.createElement('a');
+                                  a.href = url;
+                                  a.download = `ResultCards_Class_${classId}_Exam_${examId}.pdf`;
+                                  a.click();
+                                  toast.success('Downloaded bulk result cards');
+                                } catch {
+                                  toast.error('Failed to download bulk result cards');
+                                }
+                              }}
+                            >
+                              ⬇️ Download Bulk Result Cards (PDF)
+                            </button>
                             <button className="btn btn-destructive btn-sm" onClick={() => setShowReopen(true)}>🔓 Reopen Result / Request Correction</button>
                           </div>
                         </div>
@@ -1332,6 +1379,78 @@ function PrincipalResultManagement({ user }) {
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
             <button className="btn btn-neutral btn-sm" onClick={() => setShowReopen(false)}>Cancel</button>
             <button className="btn btn-destructive btn-sm" onClick={handleReopen}>Reopen Result</button>
+          </div>
+        </Modal>
+      )}
+
+      {delegationModal && (
+        <Modal title={`Delegate Mark Entry — ${delegationModal.subject_name}`} onClose={() => setDelegationModal(null)} width={500}>
+          <p style={{ fontSize: 13, color: 'var(--neutral-6)', margin: '0 0 14px' }}>
+            Temporarily delegate mark entry permissions for <strong>{delegationModal.subject_name}</strong> to a replacement teacher.
+          </p>
+          <div style={{ marginBottom: 12 }}>
+            <label className="form-label">Replacement Teacher *</label>
+            <select
+              className="form-select"
+              value={delegationForm.delegated_teacher_id}
+              onChange={e => setDelegationForm(f => ({ ...f, delegated_teacher_id: e.target.value }))}
+            >
+              <option value="">Select teacher...</option>
+              {teachers.map(t => (
+                <option key={t.id} value={t.id}>{t.name} ({t.employee_id || 'Staff'})</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <label className="form-label">Delegation Valid Until *</label>
+            <input
+              type="date"
+              className="form-input"
+              value={delegationForm.end_date}
+              onChange={e => setDelegationForm(f => ({ ...f, end_date: e.target.value }))}
+            />
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label className="form-label">Reason *</label>
+            <textarea
+              className="form-textarea"
+              rows={2}
+              placeholder="e.g. Subject teacher on medical leave until Friday"
+              value={delegationForm.reason}
+              onChange={e => setDelegationForm(f => ({ ...f, reason: e.target.value }))}
+            />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button className="btn btn-neutral btn-sm" onClick={() => setDelegationModal(null)}>Cancel</button>
+            <button
+              className="btn btn-primary btn-sm"
+              disabled={savingDelegation}
+              onClick={async () => {
+                if (!delegationForm.delegated_teacher_id || !delegationForm.end_date || !delegationForm.reason.trim()) {
+                  toast.error('All fields are required');
+                  return;
+                }
+                setSavingDelegation(true);
+                try {
+                  await api.post('/results/delegations', {
+                    exam_id: examId,
+                    class_id: classId,
+                    subject_id: delegationModal.subject_id,
+                    delegated_teacher_id: Number(delegationForm.delegated_teacher_id),
+                    end_date: `${delegationForm.end_date}T23:59:59`,
+                    reason: delegationForm.reason.trim(),
+                  });
+                  toast.success('Teacher delegation activated!');
+                  setDelegationModal(null);
+                  loadDashboard();
+                } catch (err) {
+                  toast.error(err?.response?.data?.error || 'Failed to delegate teacher');
+                }
+                setSavingDelegation(false);
+              }}
+            >
+              {savingDelegation ? 'Saving…' : 'Activate Delegation'}
+            </button>
           </div>
         </Modal>
       )}

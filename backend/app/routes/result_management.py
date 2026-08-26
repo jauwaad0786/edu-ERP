@@ -23,11 +23,13 @@ ALTER TABLE needed for these; only Marks got 2 new columns, see academic.py):
   - ClassResultPublication  publish / reopen / republish state per (exam, class)
 """
 from datetime import datetime
+import json
 from flask import Blueprint, request, jsonify
 from app import db
 from app.models.academic import Class, Subject, Student, Teacher, Marks
-from app.models.financial import ExamSchedule, ExamTimetable
+from app.models.financial import ExamSchedule, ExamTimetable, ExamTeacherDelegation, ResultVersion, ExamClass, ExamSubject
 from app.models.communication import SupportNotification
+from app.models.user import User, UserRole
 from app.utils.decorators import role_required, get_current_user
 from app.routes.marks import _grade
 
@@ -238,18 +240,40 @@ def _is_principal(user):
     return role_val in ('PRINCIPAL', 'DIRECTOR', 'VICE_PRINCIPAL', 'SUPER_ADMIN')
 
 
+def _school_principals(sid):
+    return User.query.filter_by(school_id=sid, is_active=True).filter(
+        User.role.in_([UserRole.PRINCIPAL, UserRole.DIRECTOR, UserRole.VICE_PRINCIPAL])
+    ).all()
+
+
 def _teacher_record(user):
     return Teacher.query.filter_by(user_id=user.id).first()
 
 
-def _teacher_subject_ids(user):
-    """Subject IDs this teacher is assigned to. None = no restriction (Principal)."""
+def _teacher_subject_ids(user, exam_id=None, class_id=None):
+    """Subject IDs this teacher is assigned to (including active temporary delegations).
+    None = no restriction (Principal/Director/SuperAdmin)."""
     if _is_principal(user):
         return None
     t = _teacher_record(user)
     if not t:
         return set()
-    return {s.id for s in Subject.query.filter_by(teacher_id=t.id).all()}
+    
+    # 1. Permanent assignments
+    assigned = {s.id for s in Subject.query.filter_by(teacher_id=t.id).all()}
+
+    # 2. Active temporary delegations for this teacher
+    now = datetime.utcnow()
+    q_del = ExamTeacherDelegation.query.filter_by(
+        delegated_teacher_id=t.id, status='ACTIVE'
+    ).filter(ExamTeacherDelegation.end_date >= now)
+    if exam_id:
+        q_del = q_del.filter_by(exam_id=exam_id)
+    if class_id:
+        q_del = q_del.filter_by(class_id=class_id)
+    delegated = {d.subject_id for d in q_del.all()}
+
+    return assigned | delegated
 
 
 def _get_or_create_status(sid, exam_id, class_id, subject_id):
@@ -289,7 +313,7 @@ def _log_audit(user, student, subject, exam, cls, marks_record_id=None,
         old_remarks=old_remarks, new_remarks=new_remarks,
         changed_by_user_id=user.id,
         changed_by_name=user.name,
-        changed_by_role=user.role.value,
+        changed_by_role=getattr(user.role, 'value', str(user.role)),
         change_reason=reason,
         action_type=action_type,
     ))
@@ -589,23 +613,22 @@ def submit_to_principal():
     status_row.submitted_by = user.id
     status_row.version      = (status_row.version or 0) + 1
 
-    _log_audit(user, None, subject, exam, cls, action_type='RESUBMITTED' if was_return else 'SUBMITTED')
+    try:
+        _log_audit(user, None, subject, exam, cls, action_type='RESUBMITTED' if was_return else 'SUBMITTED')
+    except Exception:
+        pass
 
-    for principal in _school_principals(sid):
-        _notify(principal.id, 'Marks submitted for review',
-                f'{subject.name} marks for {cls.name} - {cls.section} ({exam.exam_name}) '
-                f'have been {"resubmitted" if was_return else "submitted"} by {user.name}.',
-                school_id=sid)
+    try:
+        for principal in _school_principals(sid):
+            _notify(principal.id, 'Marks submitted for review',
+                    f'{subject.name} marks for {cls.name} - {cls.section} ({exam.exam_name}) '
+                    f'have been {"resubmitted" if was_return else "submitted"} by {user.name}.',
+                    school_id=sid)
+    except Exception:
+        pass
 
     db.session.commit()
     return jsonify({'message': 'Submitted to Principal', 'status': status_row.to_dict()}), 200
-
-
-def _school_principals(sid):
-    from app.models.user import User, UserRole
-    return User.query.filter(User.school_id == sid,
-                              User.role.in_([UserRole.PRINCIPAL, UserRole.VICE_PRINCIPAL, UserRole.DIRECTOR]),
-                              User.is_active == True).all()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -863,6 +886,27 @@ def publish_result():
         r.status = 'PUBLISHED'
         Marks.query.filter_by(exam_id=exam_id, class_id=class_id, subject_id=r.subject_id).update({'is_locked': True})
 
+    # Archive snapshot into ResultVersion
+    marks_list = Marks.query.filter_by(exam_id=exam_id, class_id=class_id).all()
+    snapshot_data = [
+        {
+            'student_id': m.student_id,
+            'subject_id': m.subject_id,
+            'marks_obtained': m.marks_obtained,
+            'max_marks': m.max_marks,
+            'is_absent': m.is_absent,
+            'grade': m.grade,
+            'status': m.student_status,
+        }
+        for m in marks_list
+    ]
+    ver_entry = ResultVersion(
+        school_id=sid, exam_id=exam_id, class_id=class_id,
+        version_number=1, published_by=user.id, published_at=datetime.utcnow(),
+        reason='Initial publication', snapshot_json=json.dumps(snapshot_data)
+    )
+    db.session.add(ver_entry)
+
     _log_audit(user, None, None, exam, cls, action_type='RESULT_PUBLISHED')
 
     for s in Student.query.filter_by(class_id=class_id, school_id=sid).all():
@@ -905,6 +949,13 @@ def reopen_result():
             row.status = 'APPROVED'  # stays approved — principal can now correct + republish directly
         Marks.query.filter_by(exam_id=exam_id, class_id=class_id, subject_id=s.id).update({'is_locked': False})
 
+    # Update latest ResultVersion record with reopen details
+    last_ver = ResultVersion.query.filter_by(exam_id=exam_id, class_id=class_id).order_by(ResultVersion.version_number.desc()).first()
+    if last_ver:
+        last_ver.reopened_by = user.id
+        last_ver.reopened_at = datetime.utcnow()
+        last_ver.reason = reason
+
     _log_audit(user, None, None, exam, cls, action_type='RESULT_REOPENED', reason=reason)
     db.session.commit()
     return jsonify({'message': 'Result reopened for correction', 'publication': pub.to_dict()}), 200
@@ -938,6 +989,27 @@ def republish_result():
             row.status = 'PUBLISHED'
         Marks.query.filter_by(exam_id=exam_id, class_id=class_id, subject_id=s.id).update({'is_locked': True})
 
+    # Archive new version snapshot into ResultVersion
+    marks_list = Marks.query.filter_by(exam_id=exam_id, class_id=class_id).all()
+    snapshot_data = [
+        {
+            'student_id': m.student_id,
+            'subject_id': m.subject_id,
+            'marks_obtained': m.marks_obtained,
+            'max_marks': m.max_marks,
+            'is_absent': m.is_absent,
+            'grade': m.grade,
+            'status': m.student_status,
+        }
+        for m in marks_list
+    ]
+    new_ver = ResultVersion(
+        school_id=sid, exam_id=exam_id, class_id=class_id,
+        version_number=pub.republish_count + 1, published_by=user.id, published_at=datetime.utcnow(),
+        reason='Republished after correction', snapshot_json=json.dumps(snapshot_data)
+    )
+    db.session.add(new_ver)
+
     _log_audit(user, None, None, exam, cls, action_type='RESULT_REPUBLISHED')
 
     for s in Student.query.filter_by(class_id=class_id, school_id=sid).all():
@@ -948,6 +1020,171 @@ def republish_result():
 
     db.session.commit()
     return jsonify({'message': 'Result republished', 'publication': pub.to_dict()}), 200
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  7. TEACHER DELEGATIONS & NOTIFICATIONS & SEARCH
+# ═══════════════════════════════════════════════════════════════════════════
+
+@result_bp.route('/delegations', methods=['GET', 'POST'])
+@role_required('PRINCIPAL', 'SUPER_ADMIN')
+def manage_delegations():
+    sid = _school_id()
+    user = get_current_user()
+
+    if request.method == 'GET':
+        exam_id = request.args.get('exam_id', type=int)
+        class_id = request.args.get('class_id', type=int)
+        q = ExamTeacherDelegation.query.filter_by(school_id=sid)
+        if exam_id:
+            q = q.filter_by(exam_id=exam_id)
+        if class_id:
+            q = q.filter_by(class_id=class_id)
+        delegations = q.order_by(ExamTeacherDelegation.created_at.desc()).all()
+        return jsonify([d.to_dict() for d in delegations]), 200
+
+    # POST — create delegation
+    data = request.get_json() or {}
+    exam_id              = data.get('exam_id')
+    class_id             = data.get('class_id')
+    subject_id           = data.get('subject_id')
+    delegated_teacher_id = data.get('delegated_teacher_id')
+    end_date_str         = data.get('end_date')
+    reason               = (data.get('reason') or '').strip()
+
+    if not all([exam_id, class_id, subject_id, delegated_teacher_id, end_date_str, reason]):
+        return jsonify({'error': 'exam_id, class_id, subject_id, delegated_teacher_id, end_date, and reason are required'}), 400
+
+    subject = Subject.query.get_or_404(subject_id)
+    if subject.school_id and subject.school_id != sid:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    try:
+        end_dt = datetime.fromisoformat(str(end_date_str).replace('Z', '+00:00')).replace(tzinfo=None)
+    except Exception:
+        return jsonify({'error': 'Invalid end_date format'}), 400
+
+    if end_dt <= datetime.utcnow():
+        return jsonify({'error': 'End date must be in the future'}), 400
+
+    delegation = ExamTeacherDelegation(
+        school_id=sid,
+        exam_id=exam_id,
+        class_id=class_id,
+        subject_id=subject_id,
+        original_teacher_id=subject.teacher_id,
+        delegated_teacher_id=delegated_teacher_id,
+        start_date=datetime.utcnow(),
+        end_date=end_dt,
+        reason=reason,
+        status='ACTIVE',
+        created_by=user.id
+    )
+    db.session.add(delegation)
+
+    # Notify replacement teacher
+    del_teacher = Teacher.query.get(delegated_teacher_id)
+    if del_teacher and del_teacher.user_id:
+        exam = ExamSchedule.query.get(exam_id)
+        cls = Class.query.get(class_id)
+        _notify(
+            del_teacher.user_id,
+            'Mark Entry Delegated',
+            f'You have been temporarily delegated mark entry for {subject.name} ({cls.name}-{cls.section}) for {exam.exam_name}. Reason: {reason}',
+            school_id=sid
+        )
+
+    db.session.commit()
+    return jsonify(delegation.to_dict()), 201
+
+
+@result_bp.route('/delegations/<int:delegation_id>/revoke', methods=['POST'])
+@role_required('PRINCIPAL', 'SUPER_ADMIN')
+def revoke_delegation(delegation_id):
+    sid = _school_id()
+    del_rec = ExamTeacherDelegation.query.get_or_404(delegation_id)
+    if del_rec.school_id != sid:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    del_rec.status = 'REVOKED'
+    del_rec.updated_at = datetime.utcnow()
+    db.session.commit()
+    return jsonify({'message': 'Delegation revoked successfully'}), 200
+
+
+@result_bp.route('/notify-teacher', methods=['POST'])
+@role_required('PRINCIPAL', 'SUPER_ADMIN')
+def notify_teacher_pending():
+    """Principal clicks 'Notify Teacher' to remind them to submit marks."""
+    sid = _school_id()
+    data = request.get_json() or {}
+    exam_id = data.get('exam_id')
+    class_id = data.get('class_id')
+    subject_id = data.get('subject_id')
+
+    if not all([exam_id, class_id, subject_id]):
+        return jsonify({'error': 'exam_id, class_id, subject_id required'}), 400
+
+    exam = ExamSchedule.query.get_or_404(exam_id)
+    cls = Class.query.get_or_404(class_id)
+    subject = Subject.query.get_or_404(subject_id)
+    if exam.school_id != sid or cls.school_id != sid:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    # Find recipient: check active delegation first, fallback to subject teacher
+    now = datetime.utcnow()
+    delegation = ExamTeacherDelegation.query.filter_by(
+        exam_id=exam_id, class_id=class_id, subject_id=subject_id, status='ACTIVE'
+    ).filter(ExamTeacherDelegation.end_date >= now).first()
+
+    teacher_id = delegation.delegated_teacher_id if delegation else subject.teacher_id
+    if not teacher_id:
+        return jsonify({'error': 'No teacher currently assigned to this subject'}), 400
+
+    teacher = Teacher.query.get(teacher_id)
+    if not teacher or not teacher.user_id:
+        return jsonify({'error': 'Teacher user account not found'}), 404
+
+    msg = f"Reminder: Please complete and submit marks for {subject.name} ({cls.name} - {cls.section}) for {exam.exam_name}."
+    _notify(teacher.user_id, 'Marks Submission Reminder', msg, school_id=sid)
+    db.session.commit()
+
+    return jsonify({'message': f'Notification sent to {teacher.user.name if teacher.user else "teacher"}'}), 200
+
+
+@result_bp.route('/search', methods=['GET'])
+@role_required('PRINCIPAL', 'SUPER_ADMIN', 'TEACHER')
+def search_student_results():
+    """Search for students by name, roll number, or admission number and view their published results."""
+    sid = _school_id()
+    query_str = (request.args.get('q') or '').strip()
+    if not query_str or len(query_str) < 2:
+        return jsonify({'error': 'Search query must be at least 2 characters'}), 400
+
+    students = Student.query.join(User, Student.user_id == User.id).filter(
+        Student.school_id == sid,
+        (User.name.ilike(f'%{query_str}%')) |
+        (Student.roll_number.ilike(f'%{query_str}%')) |
+        (Student.admission_no.ilike(f'%{query_str}%'))
+    ).limit(20).all()
+
+    out = []
+    for s in students:
+        marks = Marks.query.filter_by(student_id=s.id).all()
+        exam_ids = list({m.exam_id for m in marks if m.exam_id})
+        exams = ExamSchedule.query.filter(ExamSchedule.id.in_(exam_ids)).all() if exam_ids else []
+        
+        cls = s.class_ref
+        out.append({
+            'student_id':   s.id,
+            'name':         s.user.name if s.user else '',
+            'roll_number':  s.roll_number or '—',
+            'admission_no': s.admission_no or '—',
+            'class_name':   f"{cls.name} - {cls.section}" if cls else '',
+            'exams':        [{'id': e.id, 'exam_name': e.exam_name, 'session': e.session, 'status': e.status, 'is_published': e.is_published} for e in exams]
+        })
+
+    return jsonify({'results': out}), 200
 
 
 # ═══════════════════════════════════════════════════════════════════════════

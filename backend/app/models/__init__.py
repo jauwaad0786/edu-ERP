@@ -5,7 +5,10 @@ from app.models.rbac import Role, Permission, RolePermission, UserRoleAssignment
 from app.models.audit import AuditLog, CompanyActivityLog, LoginHistory, SessionHistory, DeletedLogsArchive
 from app.models.developer_center import ErrorLog, IssueAssignment
 
-from app.models.financial import FeeStructure, FeeRecord, ExamSchedule, ExamTimetable
+from app.models.financial import (
+    FeeStructure, FeeRecord, ExamSchedule, ExamTimetable,
+    ExamClass, ExamSubject, ExamTeacherDelegation, ResultVersion
+)
 from app.models.academic import Class, Teacher, Student, Subject, Marks, Attendance, Note, TeacherAttendance
 from app.models.staff_attendance import (
     StaffAttendanceSettings, StaffAttendance, StaffAttendanceRegularization,
@@ -18,6 +21,7 @@ __all__ = [
     'AuditLog', 'CompanyActivityLog', 'LoginHistory', 'SessionHistory', 'DeletedLogsArchive','ErrorLog', 'IssueAssignment',
     'Class', 'Subject', 'Teacher', 'Student', 'Attendance', 'Marks', 'Note',
     'FeeStructure', 'FeeRecord', 'ExamSchedule', 'ExamTimetable',
+    'ExamClass', 'ExamSubject', 'ExamTeacherDelegation', 'ResultVersion',
     'StaffAttendanceSettings', 'StaffAttendance', 'StaffAttendanceRegularization',
     'StaffAttendanceAuditLog', 'StaffMonthlyAttendanceSummary',
 ]

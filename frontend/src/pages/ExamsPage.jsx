@@ -1,23 +1,38 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Navbar  from '../components/Navbar';
 import api from '../api/axios';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const EXAM_TYPES  = ['MID_TERM','FINAL','UNIT_TEST','PRE_BOARD'];
+const EXAM_TYPES  = ['MID_TERM','FINAL','UNIT_TEST','PRE_BOARD','ANNUAL','HALF_YEARLY','CLASS_TEST','PRACTICALS'];
 const SESSIONS    = ['2023-24','2024-25','2025-26','2026-27'];
+const GRADING_SCHEMES = [
+  { id: 'STANDARD', label: 'Standard (A+, A, B+, B, C, D, F)' },
+  { id: 'CBSE', label: 'CBSE 9-Point Scale (A1 to E2)' },
+  { id: 'PERCENTAGE', label: 'Percentage Only' },
+];
+
 const STATUS_META = {
-  DRAFT:     { label: 'Draft',     color: '#f59e0b', bg: '#fffbeb', icon: '✏️' },
-  PUBLISHED: { label: 'Published', color: '#10b981', bg: '#ecfdf5', icon: '✅' },
-  ARCHIVED:  { label: 'Archived',  color: '#94a3b8', bg: '#f8fafc', icon: '📦' },
+  DRAFT:             { label: 'Draft',     color: '#f59e0b', bg: '#fffbeb', icon: '✏️' },
+  READY_FOR_REVIEW:  { label: 'Review',    color: '#3b82f6', bg: '#eff6ff', icon: '🔍' },
+  PUBLISHED:         { label: 'Published', color: '#10b981', bg: '#ecfdf5', icon: '✅' },
+  ONGOING:           { label: 'Ongoing',   color: '#8b5cf6', bg: '#f5f3ff', icon: '⏳' },
+  COMPLETED:         { label: 'Completed', color: '#059669', bg: '#d1fae5', icon: '🏁' },
+  CANCELLED:         { label: 'Cancelled', color: '#ef4444', bg: '#fef2f2', icon: '❌' },
+  ARCHIVED:          { label: 'Archived',  color: '#94a3b8', bg: '#f8fafc', icon: '📦' },
 };
+
 const TYPE_META = {
-  MID_TERM:  { label: 'Mid Term',    color: '#3b82f6', bg: '#eff6ff' },
-  FINAL:     { label: 'Final/Annual',color: '#ef4444', bg: '#fef2f2' },
-  UNIT_TEST: { label: 'Unit Test',   color: '#8b5cf6', bg: '#f5f3ff' },
-  PRE_BOARD: { label: 'Pre Board',   color: '#f97316', bg: '#fff7ed' },
+  MID_TERM:    { label: 'Mid Term',    color: '#3b82f6', bg: '#eff6ff' },
+  FINAL:       { label: 'Final/Annual',color: '#ef4444', bg: '#fef2f2' },
+  UNIT_TEST:   { label: 'Unit Test',   color: '#8b5cf6', bg: '#f5f3ff' },
+  PRE_BOARD:   { label: 'Pre Board',   color: '#f97316', bg: '#fff7ed' },
+  ANNUAL:      { label: 'Annual',      color: '#dc2626', bg: '#fef2f2' },
+  HALF_YEARLY: { label: 'Half Yearly', color: '#0284c7', bg: '#f0f9ff' },
+  CLASS_TEST:  { label: 'Class Test',  color: '#64748b', bg: '#f8fafc' },
+  PRACTICALS:  { label: 'Practicals',  color: '#0d9488', bg: '#f0fdfa' },
 };
+
 const TIME_OPTIONS = [
   '08:00 AM','08:30 AM','09:00 AM','09:30 AM','10:00 AM','10:30 AM',
   '11:00 AM','11:30 AM','12:00 PM','12:30 PM','01:00 PM','01:30 PM',
@@ -27,8 +42,6 @@ const TIME_OPTIONS = [
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmt = d => d ? new Date(d).toLocaleDateString('en-IN',{ day:'2-digit', month:'short', year:'numeric' }) : '—';
 const flash = (setMsg, text, dur = 3500) => { setMsg(text); setTimeout(() => setMsg(''), dur); };
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function StatusBadge({ status }) {
   const m = STATUS_META[status] || STATUS_META.DRAFT;
@@ -58,7 +71,7 @@ function TypeBadge({ type }) {
   );
 }
 
-// ─── Timetable Builder (inside exam detail panel) ─────────────────────────────
+// ─── Timetable Builder Component ─────────────────────────────────────────────
 function TimetableBuilder({ exam, onUpdate }) {
   const [classes,  setClasses]  = useState([]);
   const [subjects, setSubjects] = useState([]);
@@ -176,23 +189,15 @@ function TimetableBuilder({ exam, onUpdate }) {
               <div>
                 <label style={{ fontSize:11, fontWeight:600, color:'#475569', display:'block', marginBottom:3 }}>Subject *</label>
                 {subjects.length > 0 ? (
-                  <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-                    <select value={form.subject_id}
-                      onChange={e => setForm(f => ({...f, subject_id: e.target.value, subject_name: ''}))}
-                      style={{ width:'100%', padding:'6px 8px', borderRadius:5, border:'1px solid #cbd5e1', fontSize:12 }}>
-                      <option value=''>-- Select from list --</option>
-                      {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                    <div style={{ fontSize:10, color:'#94a3b8', textAlign:'center' }}>— ya —</div>
-                    <input
-                      placeholder='Type subject name manually'
-                      value={form.subject_name || ''}
-                      onChange={e => setForm(f => ({...f, subject_name: e.target.value, subject_id: ''}))}
-                      style={{ width:'100%', padding:'6px 8px', borderRadius:5, border:'1px solid #cbd5e1', fontSize:12 }} />
-                  </div>
+                  <select value={form.subject_id} required
+                    onChange={e => setForm(f => ({...f, subject_id: e.target.value}))}
+                    style={{ width:'100%', padding:'6px 8px', borderRadius:5, border:'1px solid #cbd5e1', fontSize:12 }}>
+                    <option value=''>-- Select Subject --</option>
+                    {subjects.map(s => <option key={s.id} value={s.id}>{s.name} ({s.code || 'No Code'})</option>)}
+                  </select>
                 ) : (
                   <input required
-                    placeholder='e.g. Mathematics, Science...'
+                    placeholder='Subject name'
                     value={form.subject_name || ''}
                     onChange={e => setForm(f => ({...f, subject_name: e.target.value, subject_id: ''}))}
                     style={{ width:'100%', padding:'6px 8px', borderRadius:5, border:'1px solid #cbd5e1', fontSize:12 }} />
@@ -221,7 +226,7 @@ function TimetableBuilder({ exam, onUpdate }) {
                 </select>
               </div>
               <div>
-                <label style={{ fontSize:11, fontWeight:600, color:'#475569', display:'block', marginBottom:3 }}>Venue</label>
+                <label style={{ fontSize:11, fontWeight:600, color:'#475569', display:'block', marginBottom:3 }}>Venue / Room</label>
                 <input value={form.venue}
                   onChange={e => setForm(f => ({...f, venue: e.target.value}))}
                   style={{ width:'100%', padding:'6px 8px', borderRadius:5, border:'1px solid #cbd5e1', fontSize:12 }} />
@@ -238,13 +243,6 @@ function TimetableBuilder({ exam, onUpdate }) {
                   onChange={e => setForm(f => ({...f, pass_marks: Number(e.target.value)}))}
                   style={{ width:'100%', padding:'6px 8px', borderRadius:5, border:'1px solid #cbd5e1', fontSize:12 }} />
               </div>
-            </div>
-            <div style={{ marginTop:10 }}>
-              <label style={{ fontSize:11, fontWeight:600, color:'#475569', display:'block', marginBottom:3 }}>Instructions (optional)</label>
-              <textarea value={form.instructions} rows={2}
-                onChange={e => setForm(f => ({...f, instructions: e.target.value}))}
-                placeholder='Bring calculator, No mobile phones...'
-                style={{ width:'100%', padding:'6px 8px', borderRadius:5, border:'1px solid #cbd5e1', fontSize:12, resize:'vertical' }} />
             </div>
             <div style={{ marginTop:10, display:'flex', justifyContent:'flex-end', gap:8 }}>
               <button type='button' onClick={() => setAdding(false)}
@@ -266,7 +264,7 @@ function TimetableBuilder({ exam, onUpdate }) {
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
             <thead>
               <tr style={{ background:'#f1f5f9' }}>
-                {['Subject','Date','Time','Venue','Max','Pass',''].map(h => (
+                {['Subject','Date','Time','Venue/Room','Max','Pass',''].map(h => (
                   <th key={h} style={{ padding:'8px 10px', textAlign:'left', fontWeight:700, color:'#475569', borderBottom:'1px solid #e2e8f0', whiteSpace:'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -279,7 +277,7 @@ function TimetableBuilder({ exam, onUpdate }) {
                   <td style={{ padding:'8px 10px', color:'#475569', whiteSpace:'nowrap' }}>
                     {item.start_time} – {item.end_time}
                   </td>
-                  <td style={{ padding:'8px 10px', color:'#475569' }}>{item.venue}</td>
+                  <td style={{ padding:'8px 10px', color:'#475569' }}>{item.venue || item.room || 'Main Hall'}</td>
                   <td style={{ padding:'8px 10px', fontWeight:600, color:'#0176d3' }}>{item.max_marks}</td>
                   <td style={{ padding:'8px 10px', color:'#64748b' }}>{item.pass_marks}</td>
                   <td style={{ padding:'8px 10px' }}>
@@ -303,6 +301,117 @@ function TimetableBuilder({ exam, onUpdate }) {
   );
 }
 
+// ─── Pre-Publish Validation Checklist Component ─────────────────────────────
+function ValidationChecklist({ exam, onPublishSuccess }) {
+  const [valData, setValData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const runValidation = useCallback(() => {
+    if (!exam?.id) return;
+    setLoading(true);
+    api.get(`/principal/exams/${exam.id}/validate`)
+      .then(r => setValData(r.data))
+      .catch(() => setValData(null))
+      .finally(() => setLoading(false));
+  }, [exam?.id]);
+
+  useEffect(() => { runValidation(); }, [runValidation]);
+
+  const doPublish = async () => {
+    if (!window.confirm(`Publish examination '${exam.exam_name}'? Students and teachers will get access.`)) return;
+    setPublishing(true);
+    try {
+      await api.post(`/principal/exams/${exam.id}/publish`);
+      flash(setMsg, '✅ Exam published successfully!');
+      onPublishSuccess?.();
+    } catch(ex) {
+      flash(setMsg, '❌ ' + (ex.response?.data?.error || 'Publish failed'));
+    }
+    setPublishing(false);
+  };
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+        <h4 style={{ margin:0, fontSize:13, fontWeight:700, color:'#0f172a' }}>
+          🛡 Pre-Publish Validation Engine
+        </h4>
+        <button onClick={runValidation} disabled={loading}
+          style={{ padding:'4px 10px', fontSize:11, borderRadius:5, background:'white', border:'1px solid #cbd5e1', cursor:'pointer' }}>
+          {loading ? 'Validating…' : '🔄 Refresh Check'}
+        </button>
+      </div>
+
+      {msg && (
+        <div style={{ padding:'8px 12px', borderRadius:6, marginBottom:12, fontSize:12,
+          background: msg.startsWith('✅') ? '#ecfdf5' : '#fef2f2',
+          color: msg.startsWith('✅') ? '#10b981' : '#ef4444' }}>{msg}</div>
+      )}
+
+      {loading ? (
+        <div style={{ padding:20, textAlign:'center', color:'#94a3b8' }}>Checking exam prerequisites…</div>
+      ) : valData ? (
+        <div>
+          {/* Status banner */}
+          <div style={{
+            padding:'12px 16px', borderRadius:8, marginBottom:14,
+            background: valData.ready_to_publish ? '#ecfdf5' : '#fef2f2',
+            border: `1px solid ${valData.ready_to_publish ? '#a7f3d0' : '#fecaca'}`,
+            display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:10,
+          }}>
+            <div>
+              <div style={{ fontWeight:800, fontSize:13, color: valData.ready_to_publish ? '#065f46' : '#991b1b' }}>
+                {valData.ready_to_publish ? '✅ READY TO PUBLISH' : '❌ CANNOT PUBLISH YET'}
+              </div>
+              <div style={{ fontSize:11, color: valData.ready_to_publish ? '#047857' : '#b91c1c', marginTop:2 }}>
+                {valData.ready_to_publish
+                  ? 'All mandatory requirements satisfied. You can publish this exam now.'
+                  : `There are ${valData.blockers.length} blocker(s) that must be resolved before publishing.`}
+              </div>
+            </div>
+            {valData.ready_to_publish && exam.status !== 'PUBLISHED' && (
+              <button onClick={doPublish} disabled={publishing}
+                style={{ padding:'8px 18px', borderRadius:7, background:'#10b981', color:'white', border:'none', fontWeight:700, fontSize:12, cursor:'pointer' }}>
+                {publishing ? 'Publishing…' : '📢 Publish Exam Now'}
+              </button>
+            )}
+          </div>
+
+          {/* Blockers list */}
+          {valData.blockers?.length > 0 && (
+            <div style={{ marginBottom:14 }}>
+              <div style={{ fontSize:12, fontWeight:700, color:'#b91c1c', marginBottom:6 }}>🛑 Critical Blockers:</div>
+              <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                {valData.blockers.map((b, idx) => (
+                  <div key={idx} style={{ padding:'8px 12px', borderRadius:6, background:'#fff5f5', border:'1px solid #fed7d7', fontSize:12, color:'#991b1b' }}>
+                    • {b}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Warnings list */}
+          {valData.warnings?.length > 0 && (
+            <div style={{ marginBottom:14 }}>
+              <div style={{ fontSize:12, fontWeight:700, color:'#d97706', marginBottom:6 }}>⚠️ Non-blocking Recommendations:</div>
+              <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                {valData.warnings.map((w, idx) => (
+                  <div key={idx} style={{ padding:'8px 12px', borderRadius:6, background:'#fffbeb', border:'1px solid #fef3c7', fontSize:12, color:'#b45309' }}>
+                    • {w}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 // ─── Admit Card Download Panel ────────────────────────────────────────────────
 function AdmitCardPanel({ exam }) {
   const [classes,  setClasses]  = useState([]);
@@ -317,25 +426,43 @@ function AdmitCardPanel({ exam }) {
 
   useEffect(() => {
     const url = selClass ? `/principal/students?class_id=${selClass}` : '/principal/students';
-    api.get(url).then(r => { const raw = r.data; setStudents(Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : [])); }).catch(() => {});
+    api.get(url).then(r => {
+      const raw = r.data;
+      setStudents(Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []));
+    }).catch(() => {});
   }, [selClass]);
 
   const downloadOne = async (studentId, studentName) => {
-    const key = `${studentId}`;
-    setDownloading(key);
+    setDownloading(String(studentId));
     try {
       const res = await api.get(`/principal/admit-card/${studentId}/${exam.id}`, { responseType:'blob' });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const a = document.createElement('a');
-      a.href = url; a.download = `AdmitCard_${studentName}.pdf`; a.click();
-    } catch { flash(setMsg, '❌ Error generating admit card'); }
+      a.href = url;
+      a.download = `AdmitCard_${studentName || studentId}.pdf`;
+      a.click();
+    } catch {
+      flash(setMsg, '❌ Error generating admit card');
+    }
     setDownloading('');
   };
 
-  const downloadAll = async () => {
-    for (const s of students) {
-      await downloadOne(s.id, s.name);
+  const downloadBulk = async () => {
+    setDownloading('bulk');
+    try {
+      const url = selClass
+        ? `/principal/admit-card/class/${selClass}/${exam.id}`
+        : `/principal/exams/${exam.id}/admit-cards/bulk`;
+      const res = await api.get(url, { responseType:'blob' });
+      const blobUrl = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `AdmitCards_${exam.exam_name}${selClass ? `_Class_${selClass}` : '_All'}.pdf`;
+      a.click();
+    } catch {
+      flash(setMsg, '❌ Bulk admit cards generation failed');
     }
+    setDownloading('');
   };
 
   return (
@@ -343,7 +470,7 @@ function AdmitCardPanel({ exam }) {
       {msg && (
         <div style={{ padding:'8px 14px', borderRadius:6, marginBottom:10, fontSize:12, background:'#fef2f2', color:'#ef4444', border:'1px solid #fecaca' }}>{msg}</div>
       )}
-      {/* Class filter */}
+      {/* Class filter and Bulk download */}
       <div style={{ display:'flex', gap:8, marginBottom:12, flexWrap:'wrap', alignItems:'center', justifyContent:'space-between' }}>
         <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
           <button onClick={() => setSelClass('')}
@@ -362,12 +489,12 @@ function AdmitCardPanel({ exam }) {
               }}>{c.name} {c.section}</button>
           ))}
         </div>
-        <button onClick={downloadAll} disabled={!students.length || !!downloading}
+        <button onClick={downloadBulk} disabled={!students.length || !!downloading}
           style={{
             padding:'6px 14px', borderRadius:6, fontSize:12, fontWeight:700,
             background:'#0176d3', color:'white', border:'none', cursor:'pointer',
           }}>
-          {downloading ? '⏳ Downloading…' : `⬇ Download All (${students.length})`}
+          {downloading === 'bulk' ? '⏳ Generating Bulk PDF…' : `⬇ Download Bulk Admit Cards (${students.length})`}
         </button>
       </div>
 
@@ -378,15 +505,11 @@ function AdmitCardPanel({ exam }) {
             background:'white', border:'1px solid #e2e8f0', borderRadius:8,
             padding:'10px 12px', display:'flex', alignItems:'center', gap:10,
           }}>
-            {s.photo_url
-              ? <img src={s.photo_url} alt={s.name}
-                  style={{ width:36, height:36, borderRadius:'50%', objectFit:'cover', flexShrink:0 }} />
-              : <div style={{
-                  width:36, height:36, borderRadius:'50%', flexShrink:0,
-                  background:'#eff6ff', color:'#0176d3', display:'flex',
-                  alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:14,
-                }}>{s.name?.charAt(0).toUpperCase()}</div>
-            }
+            <div style={{
+              width:36, height:36, borderRadius:'50%', flexShrink:0,
+              background:'#eff6ff', color:'#0176d3', display:'flex',
+              alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:14,
+            }}>{s.name?.charAt(0).toUpperCase() || 'S'}</div>
             <div style={{ flex:1, minWidth:0 }}>
               <div style={{ fontWeight:600, fontSize:12, color:'#1e293b', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{s.name}</div>
               <div style={{ fontSize:11, color:'#94a3b8' }}>Roll: {s.roll_number || '—'}</div>
@@ -412,16 +535,20 @@ function AdmitCardPanel({ exam }) {
   );
 }
 
-// ─── Exam Detail Panel (right drawer style, inline) ──────────────────────────
+// ─── Exam Detail Panel (Drawer style) ────────────────────────────────────────
 function ExamDetailPanel({ exam, onClose, onUpdate }) {
-  const [activeTab, setActiveTab] = useState('timetable'); // timetable | admitcards
+  const [activeTab, setActiveTab] = useState('timetable'); // timetable | validation | admitcards
   const [editing, setEditing] = useState(false);
+  const [reopenModal, setReopenModal] = useState(false);
+  const [reopenReason, setReopenReason] = useState('');
   const [form, setForm] = useState({
     exam_name: exam.exam_name,
     exam_type: exam.exam_type,
     session:   exam.session,
     start_date: exam.start_date,
     end_date:   exam.end_date,
+    grading_system: exam.grading_system || 'STANDARD',
+    description: exam.description || '',
     instructions: exam.instructions || '',
   });
   const [saving, setSaving] = useState(false);
@@ -443,33 +570,16 @@ function ExamDetailPanel({ exam, onClose, onUpdate }) {
     setSaving(false);
   };
 
-  const doPublish = async () => {
-    if (!window.confirm('Publish this exam? Students will see admit cards.')) return;
-    try {
-      await api.post(`/principal/exams/${exam.id}/publish`);
-      flash(setMsg, '✅ Exam published!');
-      onUpdate?.();
-    } catch(err) {
-      flash(setMsg, '❌ ' + (err.response?.data?.error || 'Error'));
+  const doReopen = async () => {
+    if (!reopenReason.trim()) {
+      alert('Please provide a reason for reopening this published exam.');
+      return;
     }
-  };
-
-  const doUnpublish = async () => {
-    if (!window.confirm('Unpublish? Students will lose access to admit cards.')) return;
     try {
-      await api.post(`/principal/exams/${exam.id}/unpublish`);
-      flash(setMsg, '✅ Unpublished');
-      onUpdate?.();
-    } catch(err) {
-      flash(setMsg, '❌ ' + (err.response?.data?.error || 'Error'));
-    }
-  };
-
-  const doArchive = async () => {
-    if (!window.confirm('Archive this exam?')) return;
-    try {
-      await api.post(`/principal/exams/${exam.id}/archive`);
-      flash(setMsg, '✅ Archived');
+      await api.post(`/principal/exams/${exam.id}/reopen`, { reason: reopenReason });
+      flash(setMsg, '✅ Exam reopened to Draft!');
+      setReopenModal(false);
+      setReopenReason('');
       onUpdate?.();
     } catch(err) {
       flash(setMsg, '❌ ' + (err.response?.data?.error || 'Error'));
@@ -477,26 +587,26 @@ function ExamDetailPanel({ exam, onClose, onUpdate }) {
   };
 
   const doDelete = async () => {
-    if (!window.confirm('Delete this exam? This cannot be undone.')) return;
+    if (!window.confirm('Are you sure you want to delete this exam?')) return;
     try {
       await api.delete(`/principal/exams/${exam.id}`);
       onClose?.();
       onUpdate?.();
-    } catch(err) {
-      flash(setMsg, '❌ ' + (err.response?.data?.error || 'Error'));
+    } catch(ex) {
+      flash(setMsg, '❌ ' + (ex.response?.data?.error || 'Delete failed'));
     }
   };
 
   return (
     <div style={{
-      position:'fixed', top:0, right:0, bottom:0, width:720,
-      background:'white', boxShadow:'-4px 0 24px rgba(0,0,0,0.12)',
-      zIndex:1000, display:'flex', flexDirection:'column', overflowY:'auto',
+      position:'fixed', top:0, right:0, bottom:0, width:680, maxWidth:'95vw',
+      background:'white', zIndex:1000, boxShadow:'-4px 0 24px rgba(0,0,0,0.15)',
+      display:'flex', flexDirection:'column', overflow:'hidden',
     }}>
       {/* Header */}
       <div style={{
         padding:'16px 20px', borderBottom:'1px solid #e2e8f0',
-        display:'flex', alignItems:'flex-start', justifyContent:'space-between',
+        display:'flex', justifyContent:'space-between', alignItems:'flex-start',
         background:'#f8faff', flexShrink:0,
       }}>
         <div>
@@ -531,11 +641,11 @@ function ExamDetailPanel({ exam, onClose, onUpdate }) {
           <>
             <button onClick={() => setEditing(e => !e)}
               style={{ padding:'6px 14px', borderRadius:6, fontSize:12, fontWeight:600, cursor:'pointer', background: editing ? '#f1f5f9' : '#eff6ff', color:'#0176d3', border:'1px solid #bfdbfe' }}>
-              {editing ? '✕ Cancel Edit' : '✏️ Edit'}
+              {editing ? '✕ Cancel Edit' : '✏️ Edit Setup'}
             </button>
-            <button onClick={doPublish}
+            <button onClick={() => setActiveTab('validation')}
               style={{ padding:'6px 14px', borderRadius:6, fontSize:12, fontWeight:700, cursor:'pointer', background:'#10b981', color:'white', border:'none' }}>
-              📢 Publish
+              🛡 Validate & Publish
             </button>
             <button onClick={doDelete}
               style={{ padding:'6px 14px', borderRadius:6, fontSize:12, fontWeight:600, cursor:'pointer', background:'#fef2f2', color:'#ef4444', border:'1px solid #fecaca' }}>
@@ -545,18 +655,11 @@ function ExamDetailPanel({ exam, onClose, onUpdate }) {
         )}
         {isPublished && (
           <>
-            <button onClick={doUnpublish}
+            <button onClick={() => setReopenModal(true)}
               style={{ padding:'6px 14px', borderRadius:6, fontSize:12, fontWeight:600, cursor:'pointer', background:'#fffbeb', color:'#f59e0b', border:'1px solid #fde68a' }}>
-              ↩ Unpublish
-            </button>
-            <button onClick={doArchive}
-              style={{ padding:'6px 14px', borderRadius:6, fontSize:12, fontWeight:600, cursor:'pointer', background:'#f8fafc', color:'#64748b', border:'1px solid #e2e8f0' }}>
-              📦 Archive
+              ↩ Reopen / Edit
             </button>
           </>
-        )}
-        {isArchived && (
-          <span style={{ fontSize:12, color:'#94a3b8', padding:'6px 0' }}>Archived — read only</span>
         )}
       </div>
 
@@ -579,10 +682,10 @@ function ExamDetailPanel({ exam, onClose, onUpdate }) {
                 </select>
               </div>
               <div>
-                <label style={{ fontSize:11, fontWeight:600, color:'#475569', display:'block', marginBottom:3 }}>Session</label>
-                <select value={form.session} onChange={e => setForm(f => ({...f, session: e.target.value}))}
+                <label style={{ fontSize:11, fontWeight:600, color:'#475569', display:'block', marginBottom:3 }}>Grading Scheme</label>
+                <select value={form.grading_system} onChange={e => setForm(f => ({...f, grading_system: e.target.value}))}
                   style={{ width:'100%', padding:'7px 10px', borderRadius:6, border:'1px solid #cbd5e1', fontSize:13 }}>
-                  {SESSIONS.map(s => <option key={s}>{s}</option>)}
+                  {GRADING_SCHEMES.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
                 </select>
               </div>
               <div>
@@ -596,13 +699,6 @@ function ExamDetailPanel({ exam, onClose, onUpdate }) {
                 <input type='date' value={form.end_date || ''}
                   onChange={e => setForm(f => ({...f, end_date: e.target.value}))}
                   style={{ width:'100%', padding:'7px 10px', borderRadius:6, border:'1px solid #cbd5e1', fontSize:13, boxSizing:'border-box' }} />
-              </div>
-              <div style={{ gridColumn:'1/-1' }}>
-                <label style={{ fontSize:11, fontWeight:600, color:'#475569', display:'block', marginBottom:3 }}>Instructions</label>
-                <textarea rows={3} value={form.instructions}
-                  onChange={e => setForm(f => ({...f, instructions: e.target.value}))}
-                  placeholder='General exam instructions...'
-                  style={{ width:'100%', padding:'7px 10px', borderRadius:6, border:'1px solid #cbd5e1', fontSize:13, resize:'vertical', boxSizing:'border-box' }} />
               </div>
             </div>
             <div style={{ display:'flex', justifyContent:'flex-end', gap:8, marginTop:10 }}>
@@ -620,7 +716,8 @@ function ExamDetailPanel({ exam, onClose, onUpdate }) {
       {/* Tabs */}
       <div style={{ display:'flex', borderBottom:'1px solid #e2e8f0', flexShrink:0, paddingLeft:20 }}>
         {[
-          { key:'timetable',  label:'📋 Subject Papers', show: true },
+          { key:'timetable',  label:'📋 Timetable & Papers', show: true },
+          { key:'validation', label:'🛡 Validation & Publish', show: true },
           { key:'admitcards', label:'🎟 Admit Cards',    show: isPublished },
         ].filter(t => t.show).map(t => (
           <button key={t.key} onClick={() => setActiveTab(t.key)}
@@ -632,13 +729,6 @@ function ExamDetailPanel({ exam, onClose, onUpdate }) {
               marginBottom:-1,
             }}>{t.label}</button>
         ))}
-        {exam.timetable_count > 0 && (
-          <span style={{
-            alignSelf:'center', marginLeft:4,
-            background:'#eff6ff', color:'#0176d3',
-            borderRadius:20, padding:'2px 8px', fontSize:10, fontWeight:700,
-          }}>{exam.timetable_count}</span>
-        )}
       </div>
 
       {/* Tab content */}
@@ -646,28 +736,77 @@ function ExamDetailPanel({ exam, onClose, onUpdate }) {
         {activeTab === 'timetable' && (
           <TimetableBuilder exam={exam} onUpdate={onUpdate} />
         )}
+        {activeTab === 'validation' && (
+          <ValidationChecklist exam={exam} onPublishSuccess={() => { onUpdate?.(); }} />
+        )}
         {activeTab === 'admitcards' && (
           <AdmitCardPanel exam={exam} />
         )}
       </div>
+
+      {/* Reopen Reason Modal */}
+      {reopenModal && (
+        <div style={{
+          position:'fixed', inset:0, background:'rgba(15,23,42,0.5)',
+          display:'flex', alignItems:'center', justifyContent:'center', zIndex:1200, padding:16,
+        }}>
+          <div style={{ background:'white', borderRadius:10, width:440, maxWidth:'100%', padding:20, boxShadow:'0 20px 60px rgba(0,0,0,0.2)' }}>
+            <h4 style={{ margin:'0 0 8px', fontSize:14, fontWeight:800, color:'#0f172a' }}>↩ Reopen Exam to Draft</h4>
+            <p style={{ fontSize:12, color:'#64748b', margin:'0 0 12px' }}>
+              Reopening will return the exam to Draft status and log an audit record. Please specify the mandatory reason:
+            </p>
+            <textarea
+              required rows={3}
+              value={reopenReason}
+              onChange={e => setReopenReason(e.target.value)}
+              placeholder='Reason for reopening (e.g., Timetable schedule modification for Class 8)...'
+              style={{ width:'100%', padding:'8px 10px', borderRadius:6, border:'1px solid #cbd5e1', fontSize:12, boxSizing:'border-box', marginBottom:14 }}
+            />
+            <div style={{ display:'flex', justifyContent:'flex-end', gap:8 }}>
+              <button onClick={() => setReopenModal(false)}
+                style={{ padding:'6px 14px', borderRadius:6, background:'white', border:'1px solid #e2e8f0', fontSize:12, cursor:'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={doReopen}
+                style={{ padding:'6px 16px', borderRadius:6, background:'#f59e0b', color:'white', border:'none', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                Confirm Reopen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-// ─── Create Exam Modal ────────────────────────────────────────────────────────
+// ─── Create Exam Wizard Modal ────────────────────────────────────────────────
 function CreateExamModal({ onClose, onCreated }) {
+  const [classes, setClasses] = useState([]);
+  const [selectedClasses, setSelectedClasses] = useState([]);
   const [form, setForm] = useState({
     exam_name:'', exam_type:'MID_TERM', session:'2025-26',
-    start_date:'', end_date:'', instructions:'',
+    start_date:'', end_date:'', grading_system:'STANDARD',
+    instructions:'', description:'',
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const set = (k, v) => setForm(f => ({...f, [k]: v}));
 
+  useEffect(() => {
+    api.get('/principal/classes').then(r => setClasses(r.data)).catch(() => {});
+  }, []);
+
+  const toggleClass = (cid) => {
+    setSelectedClasses(prev => prev.includes(cid) ? prev.filter(id => id !== cid) : [...prev, cid]);
+  };
+
   const submit = async e => {
     e.preventDefault(); setSaving(true); setErr('');
     try {
-      const res = await api.post('/principal/exams', form);
+      const res = await api.post('/principal/exams', {
+        ...form,
+        class_ids: selectedClasses,
+      });
       onCreated?.(res.data);
       onClose?.();
     } catch(ex) {
@@ -682,7 +821,7 @@ function CreateExamModal({ onClose, onCreated }) {
       display:'flex', alignItems:'center', justifyContent:'center', zIndex:1100,
     }} onClick={e => e.target === e.currentTarget && onClose?.()}>
       <div style={{
-        background:'white', borderRadius:12, width:560, maxWidth:'95vw',
+        background:'white', borderRadius:12, width:600, maxWidth:'95vw',
         maxHeight:'90vh', overflowY:'auto', boxShadow:'0 20px 60px rgba(0,0,0,0.2)',
       }}>
         <div style={{
@@ -690,8 +829,8 @@ function CreateExamModal({ onClose, onCreated }) {
           display:'flex', justifyContent:'space-between', alignItems:'center',
         }}>
           <div>
-            <h3 style={{ margin:0, fontSize:15, fontWeight:800, color:'#0f172a' }}>📝 Create New Exam</h3>
-            <p style={{ margin:'2px 0 0', fontSize:12, color:'#64748b' }}>Fill details — papers can be added after creation</p>
+            <h3 style={{ margin:0, fontSize:15, fontWeight:800, color:'#0f172a' }}>📝 Create New Examination</h3>
+            <p style={{ margin:'2px 0 0', fontSize:12, color:'#64748b' }}>Configure basic details and select participating classes</p>
           </div>
           <button onClick={onClose} style={{ background:'none', border:'none', fontSize:18, cursor:'pointer', color:'#94a3b8' }}>✕</button>
         </div>
@@ -700,7 +839,7 @@ function CreateExamModal({ onClose, onCreated }) {
           <div style={{ padding:'16px 20px', display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
             <div style={{ gridColumn:'1/-1' }}>
               <label style={{ fontSize:11, fontWeight:700, color:'#475569', display:'block', marginBottom:4 }}>Exam Name *</label>
-              <input required value={form.exam_name} placeholder='e.g. Half Yearly Examination 2025'
+              <input required value={form.exam_name} placeholder='e.g. Annual Examination 2026'
                 onChange={e => set('exam_name', e.target.value)}
                 style={{ width:'100%', padding:'9px 12px', borderRadius:7, border:'1.5px solid #e2e8f0', fontSize:13, boxSizing:'border-box' }} />
             </div>
@@ -730,9 +869,33 @@ function CreateExamModal({ onClose, onCreated }) {
                 onChange={e => set('end_date', e.target.value)}
                 style={{ width:'100%', padding:'9px 12px', borderRadius:7, border:'1.5px solid #e2e8f0', fontSize:13, boxSizing:'border-box' }} />
             </div>
+
+            {/* Participating Classes Selection */}
+            <div style={{ gridColumn:'1/-1' }}>
+              <label style={{ fontSize:11, fontWeight:700, color:'#475569', display:'block', marginBottom:6 }}>
+                Participating Classes & Sections:
+              </label>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:6, maxHeight:120, overflowY:'auto', padding:8, background:'#f8fafc', borderRadius:8, border:'1px solid #e2e8f0' }}>
+                {classes.map(c => {
+                  const active = selectedClasses.includes(c.id);
+                  return (
+                    <button type='button' key={c.id} onClick={() => toggleClass(c.id)}
+                      style={{
+                        padding:'5px 12px', borderRadius:20, fontSize:11, fontWeight:600, cursor:'pointer',
+                        border: active ? '1.5px solid #0176d3' : '1px solid #cbd5e1',
+                        background: active ? '#eff6ff' : 'white',
+                        color: active ? '#0176d3' : '#475569',
+                      }}>
+                      {active ? '✓ ' : '+ '}{c.name} {c.section}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <div style={{ gridColumn:'1/-1' }}>
               <label style={{ fontSize:11, fontWeight:700, color:'#475569', display:'block', marginBottom:4 }}>General Instructions</label>
-              <textarea rows={3} value={form.instructions}
+              <textarea rows={2} value={form.instructions}
                 onChange={e => set('instructions', e.target.value)}
                 placeholder='e.g. Students must carry admit card, No electronic devices...'
                 style={{ width:'100%', padding:'9px 12px', borderRadius:7, border:'1.5px solid #e2e8f0', fontSize:13, resize:'vertical', boxSizing:'border-box' }} />
@@ -749,8 +912,8 @@ function CreateExamModal({ onClose, onCreated }) {
               Cancel
             </button>
             <button type='submit' disabled={saving}
-              style={{ padding:'8px 20px', borderRadius:7, fontSize:13, fontWeight:700, background:'#0176d3', color:'white', border:'none', cursor:'pointer' }}>
-              {saving ? 'Creating…' : '📝 Create Exam (Draft)'}
+              style={{ padding:'8px 22px', borderRadius:7, fontSize:13, fontWeight:700, background:'#0176d3', color:'white', border:'none', cursor:'pointer' }}>
+              {saving ? 'Creating…' : 'Create Exam'}
             </button>
           </div>
         </form>
@@ -759,144 +922,75 @@ function CreateExamModal({ onClose, onCreated }) {
   );
 }
 
-// ─── Main ExamsPage ───────────────────────────────────────────────────────────
+// ─── Main Exams Page ─────────────────────────────────────────────────────────
 export default function ExamsPage() {
-  const navigate = useNavigate();
-  const [exams,      setExams]      = useState([]);
-  const [tab,        setTab]        = useState('ALL'); // ALL | DRAFT | PUBLISHED | ARCHIVED
-  const [search,     setSearch]     = useState('');
+  const [exams, setExams] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState('ALL'); // ALL | DRAFT | PUBLISHED | ARCHIVED
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [selected,   setSelected]   = useState(null); // exam object for detail panel
-  const [msg,        setMsg]        = useState('');
-  const [loading,    setLoading]    = useState(true);
+  const [msg, setMsg] = useState('');
 
-  const load = useCallback(async () => {
-    try {
-      const r = await api.get('/principal/exams');
-      setExams(r.data);
-    } catch {}
-    setLoading(false);
+  const load = useCallback(() => {
+    setLoading(true);
+    api.get('/principal/exams')
+      .then(r => setExams(r.data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  // Re-fetch selected exam data after updates
-  const reload = useCallback(() => {
-    load().then(() => {
-      if (selected) {
-        // refresh selected from latest data
-        setExams(prev => {
-          const updated = prev.find(e => e.id === selected.id);
-          if (updated) setSelected(updated);
-          return prev;
-        });
-      }
-    });
-  }, [load, selected]);
-
-  const handleUpdate = useCallback(() => {
-    load();
-    setSelected(prev => {
-      if (!prev) return null;
-      // will be updated via load
-      return prev;
-    });
-    // Re-sync selected
-    setTimeout(() => {
-      setExams(prev => {
-        const updated = prev.find(e => e.id === selected?.id);
-        if (updated) setSelected(updated);
-        return prev;
-      });
-    }, 400);
-  }, [load, selected]);
-
-  const tabs = [
-    { key:'ALL',       label:'All',       count: exams.length },
-    { key:'DRAFT',     label:'Draft',     count: exams.filter(e => (e.status||'DRAFT') === 'DRAFT').length },
-    { key:'PUBLISHED', label:'Published', count: exams.filter(e => e.status === 'PUBLISHED').length },
-    { key:'ARCHIVED',  label:'Archived',  count: exams.filter(e => e.status === 'ARCHIVED').length },
-  ];
-
   const filtered = exams.filter(e => {
-    const status = e.status || (e.is_published ? 'PUBLISHED' : 'DRAFT');
-    const matchTab = tab === 'ALL' || status === tab;
-    const matchSearch = !search || e.exam_name.toLowerCase().includes(search.toLowerCase());
-    return matchTab && matchSearch;
+    const st = e.status || (e.is_published ? 'PUBLISHED' : 'DRAFT');
+    if (tab !== 'ALL' && st !== tab) return false;
+    if (search && !e.exam_name?.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
   });
 
-  return (
-    <div className="app-shell">
-      <Sidebar />
-      <div className="main-content">
-        <Navbar title="Exam Management" />
-        <div className="page-body" style={{ position:'relative' }}>
+  const countFor = s => exams.filter(e => (e.status || (e.is_published ? 'PUBLISHED' : 'DRAFT')) === s).length;
+  const tabs = [
+    { key:'ALL', label:'All Exams', count: exams.length },
+    { key:'DRAFT', label:'Drafts', count: countFor('DRAFT') },
+    { key:'PUBLISHED', label:'Published', count: countFor('PUBLISHED') },
+    { key:'ARCHIVED', label:'Archived', count: countFor('ARCHIVED') },
+  ];
 
-          {/* Page header */}
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20, flexWrap:'wrap', gap:12 }}>
+  return (
+    <div style={{ display:'flex', minHeight:'100vh', background:'#f8fafc' }}>
+      <Sidebar />
+      <div style={{ flex:1, display:'flex', flexDirection:'column', minWidth:0 }}>
+        <Navbar />
+        <div style={{ padding:'24px 32px', flex:1 }}>
+          {/* Header */}
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20 }}>
             <div>
-              <h2 style={{ margin:0, fontSize:20, fontWeight:800, color:'#0f172a' }}>Examination Management & Controller</h2>
-              <p style={{ margin:'3px 0 0', fontSize:13, color:'#64748b' }}>
-                Create, schedule, and publish examinations — datesheets, admit cards, and result analytics
+              <h1 style={{ margin:0, fontSize:22, fontWeight:800, color:'#0f172a' }}>📋 Examination Management</h1>
+              <p style={{ margin:'4px 0 0', fontSize:13, color:'#64748b' }}>
+                Setup exam schedules, configure class participation, manage papers, validate readiness, and generate admit cards.
               </p>
             </div>
-            <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
-              <button onClick={() => navigate('/result-management')}
-                style={{
-                  padding:'9px 16px', borderRadius:8, fontSize:13, fontWeight:700,
-                  background:'#eff6ff', color:'#0176d3', border:'1px solid #bfdbfe', cursor:'pointer',
-                  display:'flex', alignItems:'center', gap:6,
-                }}>
-                📊 Result & Analytics Hub
-              </button>
-              <button onClick={() => navigate('/marks')}
-                style={{
-                  padding:'9px 16px', borderRadius:8, fontSize:13, fontWeight:700,
-                  background:'#fdf4ff', color:'#9333ea', border:'1px solid #f5d0fe', cursor:'pointer',
-                  display:'flex', alignItems:'center', gap:6,
-                }}>
-                📝 Mark Entry Roster
-              </button>
-              <button onClick={() => setShowCreate(true)}
-                style={{
-                  padding:'9px 18px', borderRadius:8, fontSize:13, fontWeight:700,
-                  background:'#0176d3', color:'white', border:'none', cursor:'pointer',
-                  display:'flex', alignItems:'center', gap:7, boxShadow:'0 2px 8px rgba(1,118,211,0.3)',
-                }}>
-                + Create Exam
-              </button>
-            </div>
+            <button onClick={() => setShowCreate(true)}
+              style={{
+                padding:'9px 20px', borderRadius:8, background:'#0176d3', color:'white',
+                border:'none', fontSize:13, fontWeight:700, cursor:'pointer',
+                display:'flex', alignItems:'center', gap:6, boxShadow:'0 2px 6px rgba(1,118,211,0.3)',
+              }}>
+              + Create Exam
+            </button>
           </div>
 
           {msg && (
             <div style={{
-              padding:'10px 16px', borderRadius:7, marginBottom:14, fontSize:13,
+              padding:'10px 16px', borderRadius:8, marginBottom:16, fontSize:13,
               background: msg.startsWith('✅') ? '#ecfdf5' : '#fef2f2',
               color: msg.startsWith('✅') ? '#10b981' : '#ef4444',
               border: `1px solid ${msg.startsWith('✅') ? '#a7f3d0' : '#fecaca'}`,
             }}>{msg}</div>
           )}
 
-          {/* Stats row */}
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:20 }}>
-            {[
-              { label:'Total Exams',  value: exams.length, color:'#0176d3', bg:'#eff6ff', icon:'📋' },
-              { label:'Draft',        value: exams.filter(e => (e.status||'DRAFT') === 'DRAFT').length, color:'#f59e0b', bg:'#fffbeb', icon:'✏️' },
-              { label:'Published',    value: exams.filter(e => e.status === 'PUBLISHED').length, color:'#10b981', bg:'#ecfdf5', icon:'✅' },
-              { label:'Archived',     value: exams.filter(e => e.status === 'ARCHIVED').length, color:'#94a3b8', bg:'#f8fafc', icon:'📦' },
-            ].map(s => (
-              <div key={s.label} style={{
-                background: s.bg, borderRadius:10, padding:'14px 16px',
-                border: `1px solid ${s.color}22`,
-              }}>
-                <div style={{ fontSize:20, marginBottom:4 }}>{s.icon}</div>
-                <div style={{ fontSize:22, fontWeight:800, color: s.color, lineHeight:1 }}>{s.value}</div>
-                <div style={{ fontSize:11, color:'#94a3b8', marginTop:3, fontWeight:600 }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Tabs + Search */}
+          {/* Filter Bar */}
           <div style={{
             display:'flex', justifyContent:'space-between', alignItems:'center',
             borderBottom:'1px solid #e2e8f0', marginBottom:16, gap:12,
@@ -928,7 +1022,7 @@ export default function ExamsPage() {
               }} />
           </div>
 
-          {/* Exam cards grid */}
+          {/* Exam Cards Grid */}
           {loading ? (
             <div style={{ textAlign:'center', padding:40, color:'#94a3b8' }}>Loading…</div>
           ) : filtered.length === 0 ? (
@@ -964,7 +1058,6 @@ export default function ExamsPage() {
                     onMouseEnter={e => { if (selected?.id !== exam.id) e.currentTarget.style.borderColor = '#93c5fd'; }}
                     onMouseLeave={e => { if (selected?.id !== exam.id) e.currentTarget.style.borderColor = '#e2e8f0'; }}
                   >
-                    {/* Card top */}
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
                       <span style={{ background: sm.bg, color: sm.color, borderRadius:20, padding:'3px 9px', fontSize:10, fontWeight:700, border:`1px solid ${sm.color}33` }}>
                         {sm.icon} {sm.label}
@@ -983,20 +1076,19 @@ export default function ExamsPage() {
                       <span>🎓 Session: {exam.session}</span>
                     </div>
 
-                    {/* Footer */}
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', paddingTop:10, borderTop:'1px solid #f1f5f9' }}>
                       <div style={{ display:'flex', gap:6 }}>
-                        {(exam.classes || []).slice(0,3).map(c => (
-                          <span key={c.id} style={{ background:'#f1f5f9', color:'#475569', borderRadius:4, padding:'2px 6px', fontSize:10, fontWeight:600 }}>
-                            {c.name} {c.section}
+                        {(exam.classes || []).slice(0,3).map((c, i) => (
+                          <span key={i} style={{ background:'#f1f5f9', color:'#475569', borderRadius:4, padding:'2px 6px', fontSize:10, fontWeight:600 }}>
+                            {c.name || c.class_name} {c.section}
                           </span>
                         ))}
                         {(exam.classes || []).length > 3 && (
                           <span style={{ fontSize:10, color:'#94a3b8' }}>+{exam.classes.length - 3}</span>
                         )}
                       </div>
-                      <span style={{ fontSize:11, color:'#94a3b8', fontWeight:600 }}>
-                        {exam.timetable_count || 0} papers →
+                      <span style={{ fontSize:11, color:'#0176d3', fontWeight:700 }}>
+                        Configure →
                       </span>
                     </div>
                   </div>
@@ -1007,7 +1099,7 @@ export default function ExamsPage() {
         </div>
       </div>
 
-      {/* Overlay for drawer */}
+      {/* Overlay */}
       {selected && (
         <div
           style={{ position:'fixed', inset:0, background:'rgba(15,23,42,0.3)', zIndex:999 }}

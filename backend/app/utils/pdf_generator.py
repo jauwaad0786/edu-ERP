@@ -1,9 +1,9 @@
-﻿from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.lib import colors
 from reportlab.platypus import (
-    SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage
+    SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage, PageBreak
 )
 from reportlab.lib.enums import TA_CENTER
 from xml.sax.saxutils import escape as _xml_escape
@@ -39,6 +39,17 @@ COMPANY_TAGLINE = 'Powered by OnePlatform360'
 def _esc(text):
     """Names/addresses mein '&', '<' jaisa special char aaye to PDF crash na ho."""
     return _xml_escape(str(text or ''))
+
+
+def _get_grade(percentage):
+    pct = float(percentage or 0)
+    if pct >= 90: return 'A+'
+    if pct >= 80: return 'A'
+    if pct >= 70: return 'B+'
+    if pct >= 60: return 'B'
+    if pct >= 50: return 'C'
+    if pct >= 33: return 'D'
+    return 'F'
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -144,15 +155,10 @@ def _footer(canvas_obj, doc):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  ADMIT CARD
+#  ADMIT CARD (SINGLE & BULK)
 # ═══════════════════════════════════════════════════════════════════════════
 
-def generate_admit_card(student, school, exam, timetable_items):
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4,
-                             rightMargin=1.5 * cm, leftMargin=1.5 * cm,
-                             topMargin=1.2 * cm, bottomMargin=2 * cm)
-
+def _build_admit_card_elements(student, school, exam, timetable_items):
     elements = _letterhead(school, 'ADMIT CARD', f'{_esc(exam.exam_name)}  |  Session: {_esc(exam.session)}')
 
     label_style = ParagraphStyle('l', fontSize=9, fontName='Helvetica-Bold', textColor=PRIMARY_DARK)
@@ -202,7 +208,7 @@ def generate_admit_card(student, school, exam, timetable_items):
     for i, item in enumerate(timetable_items, 1):
         tt_data.append([
             str(i), _esc(item.subject.name if item.subject else ''), str(item.exam_date),
-            f"{item.start_time} - {item.end_time}", _esc(item.venue or 'Main Hall'), str(item.max_marks)
+            f"{item.start_time} - {item.end_time}", _esc(item.venue or getattr(item, 'room', None) or 'Main Hall'), str(item.max_marks)
         ])
 
     tt_table = Table(tt_data, colWidths=[0.9 * cm, 5 * cm, 2.6 * cm, 4 * cm, 3 * cm, 2 * cm])
@@ -226,27 +232,44 @@ def generate_admit_card(student, school, exam, timetable_items):
     wrap = Table([[sig_table]], colWidths=[17.7 * cm])
     wrap.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'RIGHT')]))
     elements.append(wrap)
+    return elements
 
+
+def generate_admit_card(student, school, exam, timetable_items):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4,
+                             rightMargin=1.5 * cm, leftMargin=1.5 * cm,
+                             topMargin=1.2 * cm, bottomMargin=2 * cm)
+    elements = _build_admit_card_elements(student, school, exam, timetable_items)
     doc.build(elements, onFirstPage=_footer, onLaterPages=_footer)
     buffer.seek(0)
     return buffer
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  RESULT CARD
-# ═══════════════════════════════════════════════════════════════════════════
-
-def generate_result_card(student, school, exam, marks_data, prev_marks_data=None):
-    """
-    Premium Result Card PDF.
-    prev_marks_data: optional list from a previous Mid-Term/Half-Yearly exam;
-                     when supplied (for FINAL/ANNUAL exams), shows cumulative columns.
-    """
+def generate_bulk_admit_cards(student_timetable_pairs, school, exam):
+    """Generate multi-page admit cards in one PDF."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4,
                              rightMargin=1.5 * cm, leftMargin=1.5 * cm,
                              topMargin=1.2 * cm, bottomMargin=2 * cm)
+    all_elements = []
+    for i, (student, timetable) in enumerate(student_timetable_pairs):
+        elems = _build_admit_card_elements(student, school, exam, timetable)
+        all_elements.extend(elems)
+        if i < len(student_timetable_pairs) - 1:
+            all_elements.append(PageBreak())
+    if not all_elements:
+        all_elements = [Paragraph('No students found for admit cards.', ParagraphStyle('none', fontSize=12))]
+    doc.build(all_elements, onFirstPage=_footer, onLaterPages=_footer)
+    buffer.seek(0)
+    return buffer
 
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  RESULT CARD (SINGLE & BULK)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _build_result_card_elements(student, school, exam, marks_data, prev_marks_data=None, version_number=1):
     elements = _letterhead(school, 'PROGRESS REPORT / RESULT CARD',
                             f'{_esc(exam.exam_name)}  |  Session: {_esc(exam.session)}')
 
@@ -417,14 +440,46 @@ def generate_result_card(student, school, exam, marks_data, prev_marks_data=None
         ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
         ('TOPPADDING', (0, 0), (-1, -1), 4),
     ]))
-    elements.append(sig_table)
     elements.append(Spacer(1, 0.3 * cm))
     elements.append(Paragraph(
-        '* Computer generated document. Valid only with official stamp and authorized signature.',
+        f'* Computer generated document (Version {version_number}). Valid only with official stamp and authorized signature.',
         ParagraphStyle('disc', fontSize=7, textColor=GREY_TEXT, alignment=TA_CENTER)
     ))
+    return elements
 
+
+def generate_result_card(student, school, exam, marks_data, prev_marks_data=None, version_number=1):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4,
+                             rightMargin=1.5 * cm, leftMargin=1.5 * cm,
+                             topMargin=1.2 * cm, bottomMargin=2 * cm)
+    elements = _build_result_card_elements(student, school, exam, marks_data, prev_marks_data=prev_marks_data, version_number=version_number)
     doc.build(elements, onFirstPage=_footer, onLaterPages=_footer)
+    buffer.seek(0)
+    return buffer
+
+
+def generate_bulk_result_cards(student_marks_tuples, school, exam, version_number=1):
+    """
+    Generate multiple result cards combined in a single PDF.
+    student_marks_tuples: list of (student, marks_data, prev_marks_data)
+    """
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4,
+                             rightMargin=1.5 * cm, leftMargin=1.5 * cm,
+                             topMargin=1.2 * cm, bottomMargin=2 * cm)
+    all_elements = []
+    for i, item in enumerate(student_marks_tuples):
+        student = item[0]
+        marks_data = item[1]
+        prev_marks_data = item[2] if len(item) > 2 else None
+        elems = _build_result_card_elements(student, school, exam, marks_data, prev_marks_data=prev_marks_data, version_number=version_number)
+        all_elements.extend(elems)
+        if i < len(student_marks_tuples) - 1:
+            all_elements.append(PageBreak())
+    if not all_elements:
+        all_elements = [Paragraph('No student results available to print.', ParagraphStyle('none', fontSize=12))]
+    doc.build(all_elements, onFirstPage=_footer, onLaterPages=_footer)
     buffer.seek(0)
     return buffer
 
