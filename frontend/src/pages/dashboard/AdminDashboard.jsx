@@ -210,48 +210,145 @@ export default function AdminDashboard() {
         <Navbar title="Super Admin — Control Center" darkMode={false} onToggleDark={() => {}} />
         <div className="page-body">
 
-          {/* ── Page Header ── */}
-          <div className="page-header flex justify-between items-center">
-            <div>
-              <h2 className="page-title">Control Center</h2>
-              <p className="page-subtitle">Manage all schools, access & users across EduERP</p>
+          {/* ══ Super Admin Enterprise Hero Command Banner ══ */}
+          <div style={{
+            position: 'relative', overflow: 'hidden',
+            borderRadius: '24px', padding: '28px 34px', marginBottom: '24px',
+            background: 'radial-gradient(circle at 85% 20%, rgba(2,132,199,0.3) 0%, transparent 60%), linear-gradient(135deg, #030712 0%, #0f172a 45%, #0369a1 85%, #0284c7 100%)',
+            color: '#ffffff',
+            boxShadow: '0 15px 35px -5px rgba(2,132,199,0.35), inset 0 1px 0 rgba(255,255,255,0.2)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '24px',
+            border: '1px solid rgba(255,255,255,0.2)'
+          }}>
+            {/* Background Ambient Glows */}
+            <div style={{
+              position: 'absolute', top: '-50px', right: '280px', width: '220px', height: '220px',
+              borderRadius: '50%', background: 'rgba(255,255,255,0.06)', pointerEvents: 'none', filter: 'blur(30px)'
+            }} />
+            <div style={{
+              position: 'absolute', bottom: '-40px', left: '15%', width: '180px', height: '180px',
+              borderRadius: '50%', background: 'rgba(56,189,248,0.15)', pointerEvents: 'none', filter: 'blur(40px)'
+            }} />
+
+            <div style={{ flex: 1, minWidth: '300px', zIndex: 2 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                <span style={{
+                  padding: '4px 12px', borderRadius: '20px',
+                  background: 'rgba(255,255,255,0.2)', fontSize: '11.5px', fontWeight: 800, textTransform: 'uppercase',
+                  backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.25)',
+                  display: 'flex', alignItems: 'center', gap: '6px', color: '#ffffff'
+                }}>
+                  🌐 Multi-School Network Governance
+                </span>
+                <span style={{
+                  padding: '4px 12px', borderRadius: '20px',
+                  background: 'rgba(255,255,255,0.12)', color: '#e0f2fe',
+                  fontSize: '11.5px', fontWeight: 700, backdropFilter: 'blur(6px)'
+                }}>
+                  School ERP Super Admin Control
+                </span>
+              </div>
+
+              <h1 style={{
+                margin: '0 0 8px', fontSize: '32px', fontWeight: 900, letterSpacing: '-0.02em', color: '#ffffff',
+                textShadow: '0 2px 10px rgba(0,0,0,0.2)'
+              }}>
+                School Operations Control Center 🏫
+              </h1>
+
+              <p style={{
+                margin: '0 0 20px', fontSize: '14.5px', color: 'rgba(255,255,255,0.92)',
+                maxWidth: '540px', lineHeight: 1.5, fontWeight: 500
+              }}>
+                Manage school branches, Principals, teacher staff credentials, academic board sessions, and student enrollments.
+              </p>
+
+              {/* Action Buttons & Filters */}
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <select
+                  value={filterMonth}
+                  onChange={e => setFilterMonth(Number(e.target.value))}
+                  style={{
+                    padding: '9px 14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.3)',
+                    fontSize: '13px', color: '#ffffff', cursor: 'pointer', background: 'rgba(255,255,255,0.18)',
+                    backdropFilter: 'blur(8px)', outline: 'none', fontWeight: 700
+                  }}>
+                  {MONTHS.map((m, i) => <option key={m} value={i} style={{ color: '#0f172a' }}>{m}</option>)}
+                </select>
+
+                <select
+                  value={filterYear}
+                  onChange={e => setFilterYear(Number(e.target.value))}
+                  style={{
+                    padding: '9px 14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.3)',
+                    fontSize: '13px', color: '#ffffff', cursor: 'pointer', background: 'rgba(255,255,255,0.18)',
+                    backdropFilter: 'blur(8px)', outline: 'none', fontWeight: 700
+                  }}>
+                  {YEARS.map(y => <option key={y} value={y} style={{ color: '#0f172a' }}>{y}</option>)}
+                </select>
+
+                <button
+                  onClick={() => { setForm({}); setShowCompanyStaffModal(true); }}
+                  style={{
+                    background: 'rgba(255,255,255,0.16)', color: '#ffffff', border: '1.5px solid rgba(255,255,255,0.35)',
+                    borderRadius: '10px', padding: '10px 16px', fontSize: '13px', fontWeight: 700, cursor: 'pointer',
+                    backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', gap: '6px'
+                  }}
+                >
+                  🧑‍💼 Company Staff
+                </button>
+                <button
+                  onClick={() => { setForm({}); setShowSchoolHeadModal(true); }}
+                  style={{
+                    background: 'rgba(255,255,255,0.16)', color: '#ffffff', border: '1.5px solid rgba(255,255,255,0.35)',
+                    borderRadius: '10px', padding: '10px 16px', fontSize: '13px', fontWeight: 700, cursor: 'pointer',
+                    backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', gap: '6px'
+                  }}
+                >
+                  🏫 Assign School Head
+                </button>
+                <button
+                  onClick={() => { setForm({}); setShowSchoolModal(true); }}
+                  style={{
+                    background: '#ffffff', color: '#0369a1', border: 'none', borderRadius: '10px',
+                    padding: '10px 18px', fontSize: '13px', fontWeight: 900, cursor: 'pointer',
+                    boxShadow: '0 4px 14px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: '6px'
+                  }}
+                >
+                  + Add School
+                </button>
+              </div>
             </div>
-            <div className="flex gap-2" style={{ alignItems: 'center' }}>
 
-              {/* Month Filter */}
-              <select
-                value={filterMonth}
-                onChange={e => setFilterMonth(Number(e.target.value))}
-                style={{
-                  padding: '6px 12px', borderRadius: 6, border: '1px solid #e2e8f0',
-                  fontSize: 12, color: '#475569', cursor: 'pointer', background: '#fff',
-                }}>
-                {MONTHS.map((m, i) => <option key={m} value={i}>{m}</option>)}
-              </select>
-
-              {/* Year Filter */}
-              <select
-                value={filterYear}
-                onChange={e => setFilterYear(Number(e.target.value))}
-                style={{
-                  padding: '6px 12px', borderRadius: 6, border: '1px solid #e2e8f0',
-                  fontSize: 12, color: '#475569', cursor: 'pointer', background: '#fff',
-                }}>
-                {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
-
-              <button className="btn btn-neutral btn-sm"
-                onClick={() => { setForm({}); setShowCompanyStaffModal(true); }}>
-                🧑‍💼 Company Staff
-              </button>
-              <button className="btn btn-neutral btn-sm"
-                onClick={() => { setForm({}); setShowSchoolHeadModal(true); }}>
-                🏫 Assign School Head
-              </button>
-              <button className="btn btn-primary btn-sm"
-                onClick={() => { setForm({}); setShowSchoolModal(true); }}>
-                🏫 Add School
-              </button>
+            {/* Framed 3D Isometric Admin HQ & Command Tower Card */}
+            <div style={{
+              width: '320px', height: '160px', borderRadius: '18px', overflow: 'hidden',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              background: 'rgba(255,255,255,0.12)',
+              border: '1.5px solid rgba(255,255,255,0.25)',
+              backdropFilter: 'blur(10px)',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+              padding: '6px',
+              position: 'relative'
+            }}>
+              <img
+                src="/assets/illustrations/admin_hero.jpg"
+                alt="Admin Headquarters"
+                style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '14px' }}
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
+              <div style={{
+                position: 'absolute', bottom: '12px', right: '14px',
+                background: 'rgba(3,7,18,0.85)', color: '#ffffff',
+                padding: '3px 8px', borderRadius: '6px', fontSize: '10.5px',
+                fontWeight: 800, backdropFilter: 'blur(6px)', letterSpacing: '0.04em'
+              }}>
+                🌐 GLOBAL HQ
+              </div>
             </div>
           </div>
 

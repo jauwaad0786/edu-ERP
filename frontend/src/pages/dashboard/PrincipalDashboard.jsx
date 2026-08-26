@@ -195,75 +195,113 @@ export default function PrincipalDashboard() {
 
           {/* ══ 1. EXECUTIVE HERO BANNER ══ */}
           <div style={{
-            background: darkMode ? '#111827' : '#ffffff',
-            borderRadius: '20px',
-            border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
-            padding: '26px 32px',
+            background: darkMode
+              ? 'radial-gradient(circle at 85% 20%, rgba(2,132,199,0.3) 0%, transparent 60%), linear-gradient(135deg, #0b1528 0%, #0f172a 45%, #1e293b 100%)'
+              : 'radial-gradient(circle at 85% 20%, rgba(255,255,255,0.18) 0%, transparent 50%), linear-gradient(135deg, #0b254a 0%, #014486 35%, #0284c7 75%, #38bdf8 100%)',
+            borderRadius: '24px',
+            border: darkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(255,255,255,0.25)',
+            padding: '28px 34px',
             marginBottom: '24px',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.03)',
+            boxShadow: darkMode
+              ? '0 12px 35px -5px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1)'
+              : '0 15px 35px -5px rgba(2,132,199,0.35), inset 0 1px 0 rgba(255,255,255,0.3)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
             position: 'relative',
             overflow: 'hidden',
             flexWrap: 'wrap',
-            gap: '20px'
+            gap: '24px'
           }}>
-            <div style={{ flex: 1, minWidth: '280px', zIndex: 2 }}>
-              <div style={{
-                fontSize: '12px', fontWeight: 800, color: '#3b82f6',
-                letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '6px'
-              }}>
-                {greeting} • {user?.active_role?.name || 'PRINCIPAL'}
+            {/* Background Decorative Rings */}
+            <div style={{
+              position: 'absolute', top: '-60px', right: '280px', width: '220px', height: '220px',
+              borderRadius: '50%', background: 'rgba(255,255,255,0.06)', pointerEvents: 'none', filter: 'blur(30px)'
+            }} />
+            <div style={{
+              position: 'absolute', bottom: '-40px', left: '20%', width: '180px', height: '180px',
+              borderRadius: '50%', background: 'rgba(56,189,248,0.12)', pointerEvents: 'none', filter: 'blur(40px)'
+            }} />
+
+            <div style={{ flex: 1, minWidth: '300px', zIndex: 2 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                <span style={{
+                  padding: '4px 12px', borderRadius: '20px',
+                  background: 'rgba(255,255,255,0.2)',
+                  color: '#ffffff', fontSize: '11.5px', fontWeight: 800,
+                  letterSpacing: '0.05em', textTransform: 'uppercase',
+                  backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.25)',
+                  display: 'flex', alignItems: 'center', gap: '6px'
+                }}>
+                  <i className="ti ti-crown" /> {greeting} • {user?.active_role?.name || 'PRINCIPAL'}
+                </span>
+                <span style={{
+                  padding: '4px 12px', borderRadius: '20px',
+                  background: 'rgba(255,255,255,0.12)', color: '#e0f2fe',
+                  fontSize: '11.5px', fontWeight: 700, backdropFilter: 'blur(6px)'
+                }}>
+                  🏫 Academic Session 2024–25
+                </span>
               </div>
+
               <h1 style={{
-                fontSize: '30px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a',
-                margin: '0 0 6px', letterSpacing: '-0.02em'
+                fontSize: '32px', fontWeight: 900, color: '#ffffff',
+                margin: '0 0 8px', letterSpacing: '-0.02em',
+                textShadow: '0 2px 10px rgba(0,0,0,0.2)'
               }}>
                 Welcome back, {user?.name || 'Principal'} 👋
               </h1>
+
               <p style={{
-                fontSize: '14px', color: darkMode ? '#94a3b8' : '#64748b',
-                margin: '0 0 20px'
+                fontSize: '14.5px', color: 'rgba(255,255,255,0.92)',
+                margin: '0 0 20px', maxWidth: '560px', lineHeight: 1.5,
+                fontWeight: 500
               }}>
-                Great leadership builds great institutions. Here is today's campus overview.
+                Great leadership builds a great school. Here is today's real-time school overview, class attendance, and academic progress.
               </p>
 
-              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
                 <button
                   onClick={() => navigate('/students')}
                   style={{
-                    background: '#2563eb', color: '#ffffff', border: 'none',
-                    borderRadius: '10px', padding: '10px 18px', fontSize: '13px',
-                    fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
-                    boxShadow: '0 4px 12px rgba(37,99,235,0.3)'
+                    background: '#ffffff', color: '#014486', border: 'none',
+                    borderRadius: '12px', padding: '11px 20px', fontSize: '13.5px',
+                    fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+                    boxShadow: '0 6px 18px rgba(0,0,0,0.15)', transition: 'all 0.2s'
                   }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 22px rgba(0,0,0,0.22)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 6px 18px rgba(0,0,0,0.15)'; }}
                 >
-                  <i className="ti ti-bolt" /> Quick Actions
+                  <i className="ti ti-bolt" style={{ color: '#0284c7' }} /> Quick Actions
                 </button>
                 <button
                   onClick={() => navigate('/school-profile')}
                   style={{
-                    background: darkMode ? '#1e293b' : '#ffffff',
-                    color: darkMode ? '#e2e8f0' : '#334155',
-                    border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`,
-                    borderRadius: '10px', padding: '10px 18px', fontSize: '13px',
-                    fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
+                    background: 'rgba(255,255,255,0.16)',
+                    color: '#ffffff',
+                    border: '1.5px solid rgba(255,255,255,0.35)',
+                    borderRadius: '12px', padding: '11px 20px', fontSize: '13.5px',
+                    fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+                    backdropFilter: 'blur(8px)', transition: 'all 0.2s'
                   }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.28)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.16)'}
                 >
-                  <i className="ti ti-user" /> View School Profile
+                  <i className="ti ti-building" /> School Profile
                 </button>
               </div>
             </div>
 
-            {/* Top Right Actions & Illustration */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '16px', zIndex: 2 }}>
+            {/* Top Right Actions & 3D Isometric Illustration */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '14px', zIndex: 2 }}>
               <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
                 <span style={{
                   padding: '8px 14px', borderRadius: '10px',
-                  background: darkMode ? '#1e293b' : '#f1f5f9',
-                  color: darkMode ? '#cbd5e1' : '#475569', fontSize: '12.5px', fontWeight: 700,
-                  display: 'flex', alignItems: 'center', gap: '6px'
+                  background: 'rgba(255,255,255,0.15)',
+                  color: '#ffffff', fontSize: '12.5px', fontWeight: 700,
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.2)'
                 }}>
                   <i className="ti ti-calendar" /> {todayStr}
                 </span>
@@ -271,40 +309,60 @@ export default function PrincipalDashboard() {
                   onClick={handleExportCSV}
                   style={{
                     padding: '8px 14px', borderRadius: '10px',
-                    background: darkMode ? '#1e293b' : '#ffffff',
-                    color: darkMode ? '#cbd5e1' : '#475569',
-                    border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`,
+                    background: 'rgba(255,255,255,0.15)',
+                    color: '#ffffff',
+                    border: '1px solid rgba(255,255,255,0.25)',
                     fontSize: '12.5px', fontWeight: 700, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', gap: '6px'
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    backdropFilter: 'blur(8px)', transition: 'all 0.2s'
                   }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.25)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
                 >
                   <i className="ti ti-download" /> Export
                 </button>
                 <button
                   onClick={() => navigate('/admissions/new')}
                   style={{
-                    padding: '8px 16px', borderRadius: '10px',
-                    background: '#2563eb', color: '#ffffff', border: 'none',
-                    fontSize: '12.5px', fontWeight: 800, cursor: 'pointer',
-                    boxShadow: '0 4px 12px rgba(37,99,235,0.3)',
-                    display: 'flex', alignItems: 'center', gap: '6px'
+                    padding: '9px 18px', borderRadius: '10px',
+                    background: '#ffffff', color: '#014486', border: 'none',
+                    fontSize: '12.5px', fontWeight: 900, cursor: 'pointer',
+                    boxShadow: '0 4px 14px rgba(0,0,0,0.15)',
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    transition: 'all 0.2s'
                   }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.03)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; }}
                 >
                   + New Admission
                 </button>
               </div>
 
-              {/* School Vector Illustration */}
+              {/* 3D Isometric School Building Card */}
               <div style={{
                 width: '320px', height: '140px', overflow: 'hidden',
-                borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'rgba(255,255,255,0.12)',
+                border: '1.5px solid rgba(255,255,255,0.25)',
+                backdropFilter: 'blur(10px)',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+                padding: '6px',
+                position: 'relative'
               }}>
                 <img
                   src="/assets/illustrations/school_hero.jpg"
-                  alt="School Campus"
-                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                  alt="School Building"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '12px' }}
                   onError={(e) => { e.currentTarget.style.display = 'none'; }}
                 />
+                <div style={{
+                  position: 'absolute', bottom: '10px', right: '12px',
+                  background: 'rgba(15,23,42,0.75)', color: '#ffffff',
+                  padding: '3px 8px', borderRadius: '6px', fontSize: '10.5px',
+                  fontWeight: 800, backdropFilter: 'blur(6px)', letterSpacing: '0.04em'
+                }}>
+                  🏫 SCHOOL HQ
+                </div>
               </div>
             </div>
           </div>

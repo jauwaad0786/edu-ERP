@@ -584,11 +584,20 @@ function TeacherMarkEntry({ user }) {
           </div>
 
           {!classId || !examId || !subjectId ? (
-            <div className="card"><div className="card-body" style={{ textAlign: 'center', color: 'var(--neutral-6)', padding: 40 }}>
-              ☝️ Class, Subject aur Exam select karo — student list dikhegi
-            </div></div>
+            <div className="card" style={{ border: '1.5px dashed #cbd5e1', background: '#f8fafc' }}>
+              <div className="card-body" style={{ textAlign: 'center', padding: '48px 24px' }}>
+                <div style={{ fontSize: 42, marginBottom: 12 }}>📝</div>
+                <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700, color: '#1e293b' }}>Select Class, Subject & Examination</h3>
+                <p style={{ margin: 0, fontSize: 13, color: '#64748b', maxWidth: 450, marginInline: 'auto' }}>
+                  Please select your assigned class, subject, and examination from the dropdown above to load the student marks entry roster.
+                </p>
+              </div>
+            </div>
           ) : loading ? (
-            <div className="card"><div className="card-body">Loading…</div></div>
+            <div className="card"><div className="card-body" style={{ textAlign: 'center', padding: 40, color: '#64748b' }}>
+              <i className="ti ti-loader" style={{ fontSize: 24, animation: 'spin 1s infinite' }} />
+              <div style={{ marginTop: 8, fontSize: 13 }}>Loading student roster…</div>
+            </div></div>
           ) : !data ? null : (
             <>
               {status === 'RETURNED_FOR_CORRECTION' && (
@@ -898,19 +907,15 @@ function PrincipalResultManagement({ user }) {
 
   const pubStatus = dash?.publication?.status || 'NOT_PUBLISHED';
 
-  return (
-    <div className="app-shell">
-      <Sidebar />
-      <div className="main-content">
-        <Navbar title="Result Management" />
-        <div className="page-body">
-          <div style={{ marginBottom: 18 }}>
-            <h2 style={{ margin: 0 }}>Result Management</h2>
-            <p style={{ margin: '4px 0 0' }}>Manage marks, review and publish results</p>
-          </div>
+  const innerContent = (
+    <div>
+      <div style={{ marginBottom: 18 }}>
+        <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>Result Management Workflow</h2>
+        <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 13 }}>Review subject-wise mark submissions, return for correction, approve marks, and publish official results</p>
+      </div>
 
-          <div className="card" style={{ marginBottom: 16 }}>
-            <div className="card-body" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 14, alignItems: 'end' }}>
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card-body" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 14, alignItems: 'end' }}>
               <div>
                 <label className="form-label">Class</label>
                 <select className="form-select" value={classId} onChange={e => { setClassId(e.target.value); setTab('status'); }}>
@@ -930,11 +935,20 @@ function PrincipalResultManagement({ user }) {
           </div>
 
           {!classId || !examId ? (
-            <div className="card"><div className="card-body" style={{ textAlign: 'center', color: 'var(--neutral-6)', padding: 40 }}>
-              ☝️ Class aur Exam select karo
-            </div></div>
+            <div className="card" style={{ border: '1.5px dashed #cbd5e1', background: '#f8fafc' }}>
+              <div className="card-body" style={{ textAlign: 'center', padding: '48px 24px' }}>
+                <div style={{ fontSize: 42, marginBottom: 12 }}>📋</div>
+                <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700, color: '#1e293b' }}>Select Class & Examination</h3>
+                <p style={{ margin: 0, fontSize: 13, color: '#64748b', maxWidth: 450, marginInline: 'auto' }}>
+                  Please select a Class and Examination above to monitor subject mark submissions, review pending teacher entries, and publish official results.
+                </p>
+              </div>
+            </div>
           ) : loadingDash || !dash ? (
-            <div className="card"><div className="card-body">Loading…</div></div>
+            <div className="card"><div className="card-body" style={{ textAlign: 'center', padding: 40, color: '#64748b' }}>
+              <i className="ti ti-loader" style={{ fontSize: 24, animation: 'spin 1s infinite' }} />
+              <div style={{ marginTop: 8, fontSize: 13 }}>Loading examination submission dashboard…</div>
+            </div></div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: '2.4fr 1fr', gap: 18 }}>
               {/* ── LEFT: tabs ── */}
@@ -1454,6 +1468,20 @@ function PrincipalResultManagement({ user }) {
           </div>
         </Modal>
       )}
+    </div>
+  );
+
+  if (embedded) return innerContent;
+
+  return (
+    <div className="app-shell">
+      <Sidebar />
+      <div className="main-content">
+        <Navbar title="Result Management" />
+        <div className="page-body">
+          {innerContent}
+        </div>
+      </div>
     </div>
   );
 }

@@ -123,20 +123,26 @@ class Student(db.Model):
     fees = db.relationship('FeeRecord', backref=db.backref('student_ref', overlaps="fee_records_rel,student"), lazy='dynamic', overlaps="fee_records_rel,student")
 
     def to_dict(self):
+        c_name = self.class_ref.name if self.class_ref else ''
+        c_sec  = self.class_ref.section if self.class_ref else ''
         return {
-            'id':           self.id,
-            'roll_number':  self.roll_number,
-            'admission_no': self.admission_no,
-            'class_id':     self.class_id,
-            'school_id':    self.school_id,
-            'session':      self.session,
-            'name':         self.user.name  if self.user else '',
-            'email':        self.user.email if self.user else '',
-            'parent_name':  self.parent_name,
-            'parent_phone': self.parent_phone,
-            'father_name':  self.father_name,
-            'mother_name':  self.mother_name,
-            'photo_url':    self.photo_url,
+            'id':               self.id,
+            'roll_number':      self.roll_number or '',
+            'admission_no':     self.admission_no or '',
+            'admission_number': self.admission_no or '',
+            'class_id':         self.class_id,
+            'class_name':       c_name,
+            'section':          c_sec,
+            'class_display':    f"{c_name} - {c_sec}".strip(' -') if c_name else '',
+            'school_id':        self.school_id,
+            'session':          self.session,
+            'name':             self.user.name  if self.user else '',
+            'email':            self.user.email if self.user else '',
+            'parent_name':      self.parent_name or self.father_name or '',
+            'parent_phone':     self.parent_phone or '',
+            'father_name':      self.father_name or '',
+            'mother_name':      self.mother_name or '',
+            'photo_url':        self.photo_url,
         }
 
 

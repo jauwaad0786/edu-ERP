@@ -251,12 +251,12 @@ export default function ResultCardPage() {
 
           {/* Top Banner Header */}
           <div style={{
-            background: 'linear-gradient(135deg, #4f46e5 0%, #4338ca 50%, #3730a3 100%)',
+            background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
             borderRadius: 16,
             padding: '24px 28px',
             color: '#ffffff',
             marginBottom: 24,
-            boxShadow: '0 10px 25px -5px rgba(79, 70, 229, 0.35)',
+            boxShadow: '0 10px 25px -5px rgba(2, 132, 199, 0.3)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
@@ -276,7 +276,7 @@ export default function ResultCardPage() {
                   alignItems: 'center',
                   gap: 6
                 }}>
-                  <i className="ti ti-file-certificate" /> Official Academic Marksheet &amp; Report Card Hub
+                  <i className="ti ti-file-certificate" /> Official Academic Marksheet & Report Card Hub
                 </div>
                 {selectedExam && (
                   <div style={{
@@ -325,7 +325,7 @@ export default function ResultCardPage() {
                   disabled={bulkDownloading || !filteredStudents.length || !selectedExamId}
                   style={{
                     background: '#ffffff',
-                    color: '#4338ca',
+                    color: '#0369a1',
                     border: 'none',
                     padding: '10px 18px',
                     borderRadius: 10,
@@ -495,8 +495,8 @@ export default function ResultCardPage() {
                 width: 64,
                 height: 64,
                 borderRadius: '50%',
-                background: '#ede9fe',
-                color: '#6366f1',
+                background: '#e0f2fe',
+                color: '#0284c7',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -527,7 +527,7 @@ export default function ResultCardPage() {
                 }}>
                   <div><span style={{ color: '#64748b' }}>Student Name:</span> <strong>{studentProfile.name}</strong></div>
                   <div><span style={{ color: '#64748b' }}>Roll Number:</span> <strong>{studentProfile.roll_number || '—'}</strong></div>
-                  <div><span style={{ color: '#64748b' }}>Class & Section:</span> <strong>{studentProfile.class_name || studentProfile.class?.name || '—'} {studentProfile.section ? `(${studentProfile.section})` : ''}</strong></div>
+                  <div><span style={{ color: '#64748b' }}>Class &amp; Section:</span> <strong>{studentProfile.class_display || studentProfile.class_name || studentProfile.class?.name || '—'} {studentProfile.section ? `(${studentProfile.section})` : ''}</strong></div>
                   <div><span style={{ color: '#64748b' }}>Admission No:</span> <strong>{studentProfile.admission_number || studentProfile.admission_no || '—'}</strong></div>
                 </div>
               )}
@@ -537,9 +537,9 @@ export default function ResultCardPage() {
                   <button
                     onClick={() => setPreviewStudent(studentProfile || { id: user?.student_id, name: user?.name, roll_number: user?.roll_number })}
                     style={{
-                      background: '#ede9fe',
-                      color: '#4338ca',
-                      border: '1px solid #c7d2fe',
+                      background: '#eff6ff',
+                      color: '#0284c7',
+                      border: '1px solid #bfdbfe',
                       padding: '12px 24px',
                       borderRadius: 10,
                       fontSize: 14,
@@ -556,7 +556,7 @@ export default function ResultCardPage() {
                     onClick={() => handleDownload(studentProfile?.id || user?.student_id, studentProfile?.name || user?.name)}
                     disabled={downloadingId !== null}
                     style={{
-                      background: '#4f46e5',
+                      background: '#0284c7',
                       color: '#ffffff',
                       border: 'none',
                       padding: '12px 28px',
@@ -567,7 +567,7 @@ export default function ResultCardPage() {
                       display: 'flex',
                       alignItems: 'center',
                       gap: 8,
-                      boxShadow: '0 4px 14px rgba(79,70,229,0.3)'
+                      boxShadow: '0 4px 14px rgba(2,132,199,0.3)'
                     }}
                   >
                     <i className={downloadingId !== null ? 'ti ti-loader' : 'ti ti-download'} />
@@ -576,7 +576,7 @@ export default function ResultCardPage() {
                 </div>
               ) : (
                 <div style={{ padding: 20, color: '#94a3b8', fontSize: 13 }}>
-                  No published results available yet.
+                  No published examination results available for your class.
                 </div>
               )}
             </div>
@@ -590,7 +590,7 @@ export default function ResultCardPage() {
                 {search && (
                   <button
                     onClick={() => setSearch('')}
-                    style={{ background: 'none', border: 'none', color: '#4f46e5', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                    style={{ background: 'none', border: 'none', color: '#0284c7', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
                   >
                     Clear Filter
                   </button>
@@ -600,7 +600,7 @@ export default function ResultCardPage() {
               {loadingStudents ? (
                 <div style={{ padding: 60, textAlign: 'center', color: '#64748b' }}>
                   <i className="ti ti-loader" style={{ fontSize: 28, animation: 'spin 1s infinite' }} />
-                  <p style={{ marginTop: 10, fontSize: 14 }}>Loading students roster...</p>
+                  <p style={{ marginTop: 10, fontSize: 14 }}>Loading student results roster...</p>
                 </div>
               ) : filteredStudents.length === 0 ? (
                 <div style={{
@@ -612,14 +612,17 @@ export default function ResultCardPage() {
                   color: '#64748b'
                 }}>
                   <i className="ti ti-mood-empty" style={{ fontSize: 42, color: '#94a3b8', marginBottom: 12 }} />
-                  <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700, color: '#334155' }}>No students found</h3>
+                  <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700, color: '#334155' }}>No student records found</h3>
                   <p style={{ margin: 0, fontSize: 13 }}>Try changing your search keywords or class selection.</p>
                 </div>
               ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 16 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
                   {filteredStudents.map(student => {
                     const isDownloading = downloadingId === student.id;
                     const initial = (student.name || 'S').charAt(0).toUpperCase();
+                    const clsObj = classes.find(c => String(c.id) === String(student.class_id));
+                    const classText = student.class_display || (student.class_name ? `${student.class_name} ${student.section || ''}`.trim() : (clsObj ? `${clsObj.name} ${clsObj.section || ''}`.trim() : (student.class?.name || 'Class')));
+                    const parentText = student.parent_name || student.father_name || 'Guardian';
 
                     return (
                       <div
@@ -636,9 +639,9 @@ export default function ResultCardPage() {
                           transition: 'all 0.2s',
                         }}
                         onMouseEnter={e => {
-                          e.currentTarget.style.borderColor = '#4f46e5';
+                          e.currentTarget.style.borderColor = '#0284c7';
                           e.currentTarget.style.transform = 'translateY(-2px)';
-                          e.currentTarget.style.boxShadow = '0 6px 16px rgba(79,70,229,0.12)';
+                          e.currentTarget.style.boxShadow = '0 6px 16px rgba(2,132,199,0.12)';
                         }}
                         onMouseLeave={e => {
                           e.currentTarget.style.borderColor = '#e2e8f0';
@@ -660,7 +663,7 @@ export default function ResultCardPage() {
                                 width: 44,
                                 height: 44,
                                 borderRadius: 10,
-                                background: 'linear-gradient(135deg, #4f46e5, #4338ca)',
+                                background: 'linear-gradient(135deg, #0284c7, #0369a1)',
                                 color: '#fff',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -698,10 +701,16 @@ export default function ResultCardPage() {
                             color: '#475569',
                             display: 'flex',
                             justifyContent: 'space-between',
-                            marginBottom: 14
+                            alignItems: 'center',
+                            marginBottom: 14,
+                            gap: 8,
                           }}>
-                            <span>🏫 {student.class_name || student.class?.name || 'Class'} {student.section ? `(${student.section})` : ''}</span>
-                            <span>👨‍👩‍👦 {student.parent_name || student.father_name || 'Guardian'}</span>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={classText}>
+                              🎓 <strong>{classText}</strong>
+                            </span>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={parentText}>
+                              👨‍👦 {parentText}
+                            </span>
                           </div>
                         </div>
 
@@ -737,7 +746,7 @@ export default function ResultCardPage() {
                               padding: '8px 12px',
                               borderRadius: 8,
                               border: 'none',
-                              background: '#4f46e5',
+                              background: '#0284c7',
                               color: '#ffffff',
                               fontSize: 12,
                               fontWeight: 700,
@@ -796,9 +805,9 @@ export default function ResultCardPage() {
                   background: '#f8fafc'
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <i className="ti ti-file-certificate" style={{ fontSize: 18, color: '#4f46e5' }} />
+                    <i className="ti ti-file-certificate" style={{ fontSize: 18, color: '#0284c7' }} />
                     <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#0f172a' }}>
-                      Result Card &amp; Marksheet Preview
+                      Result Card & Marksheet Preview
                     </h3>
                   </div>
                   <button
@@ -818,15 +827,15 @@ export default function ResultCardPage() {
                     </div>
                   ) : (
                     <div style={{
-                      border: '2px solid #4f46e5',
+                      border: '2px solid #0284c7',
                       borderRadius: 12,
                       padding: 20,
                       background: '#ffffff',
                       position: 'relative'
                     }}>
                       {/* School Letterhead */}
-                      <div style={{ textAlign: 'center', borderBottom: '2px solid #4f46e5', paddingBottom: 14, marginBottom: 16 }}>
-                        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 900, color: '#3730a3', textTransform: 'uppercase' }}>
+                      <div style={{ textAlign: 'center', borderBottom: '2px solid #0284c7', paddingBottom: 14, marginBottom: 16 }}>
+                        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 900, color: '#0369a1', textTransform: 'uppercase' }}>
                           {previewData?.school?.name || user?.school?.name || user?.school_name || 'School Examination Board'}
                         </h2>
                         <p style={{ margin: '3px 0 0', fontSize: 11, color: '#64748b' }}>
@@ -834,7 +843,7 @@ export default function ResultCardPage() {
                         </p>
                         <div style={{
                           display: 'inline-block',
-                          background: '#4f46e5',
+                          background: '#0284c7',
                           color: '#ffffff',
                           padding: '3px 14px',
                           borderRadius: 12,
@@ -843,7 +852,7 @@ export default function ResultCardPage() {
                           marginTop: 8,
                           letterSpacing: '0.05em'
                         }}>
-                          PROGRESS REPORT &amp; OFFICIAL RESULT CARD
+                          PROGRESS REPORT & OFFICIAL RESULT CARD
                         </div>
                       </div>
 
@@ -860,9 +869,9 @@ export default function ResultCardPage() {
                         marginBottom: 16
                       }}>
                         <div><span style={{ color: '#64748b' }}>Student Name:</span> <strong style={{ color: '#0f172a' }}>{previewStudent.name}</strong></div>
-                        <div><span style={{ color: '#64748b' }}>Roll Number:</span> <strong style={{ color: '#4f46e5' }}>{previewStudent.roll_number || '—'}</strong></div>
+                        <div><span style={{ color: '#64748b' }}>Roll Number:</span> <strong style={{ color: '#0284c7' }}>{previewStudent.roll_number || '—'}</strong></div>
                         <div><span style={{ color: '#64748b' }}>Admission No:</span> <strong>{previewStudent.admission_number || previewStudent.admission_no || '—'}</strong></div>
-                        <div><span style={{ color: '#64748b' }}>Class &amp; Section:</span> <strong>{previewStudent.class_name || previewStudent.class?.name || '—'} {previewStudent.section ? `(${previewStudent.section})` : ''}</strong></div>
+                        <div><span style={{ color: '#64748b' }}>Class & Section:</span> <strong>{previewStudent.class_display || previewStudent.class_name || previewStudent.class?.name || (classes.find(c => String(c.id) === String(previewStudent.class_id))?.name) || '—'} {previewStudent.section ? `(${previewStudent.section})` : ''}</strong></div>
                         <div><span style={{ color: '#64748b' }}>Father / Guardian:</span> <strong>{previewStudent.parent_name || previewStudent.father_name || '—'}</strong></div>
                         <div><span style={{ color: '#64748b' }}>Exam:</span> <strong>{selectedExam?.exam_name || 'Terminal Exam'}</strong></div>
                       </div>
@@ -879,7 +888,7 @@ export default function ResultCardPage() {
                         ) : (
                           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
                             <thead>
-                              <tr style={{ background: '#4f46e5', color: '#ffffff' }}>
+                              <tr style={{ background: '#0284c7', color: '#ffffff' }}>
                                 <th style={{ padding: '7px 10px', textAlign: 'left' }}>Subject</th>
                                 <th style={{ padding: '7px 10px', textAlign: 'center' }}>Max Marks</th>
                                 <th style={{ padding: '7px 10px', textAlign: 'center' }}>Obtained</th>
@@ -907,10 +916,10 @@ export default function ResultCardPage() {
                               })}
                             </tbody>
                             <tfoot>
-                              <tr style={{ background: '#ede9fe', fontWeight: 800, borderTop: '2px solid #4f46e5' }}>
+                              <tr style={{ background: '#e0f2fe', fontWeight: 800, borderTop: '2px solid #0284c7' }}>
                                 <td style={{ padding: '8px 10px' }}>TOTAL</td>
                                 <td style={{ padding: '8px 10px', textAlign: 'center' }}>{previewData.total_max}</td>
-                                <td style={{ padding: '8px 10px', textAlign: 'center', color: '#4338ca' }}>{previewData.total_obtained}</td>
+                                <td style={{ padding: '8px 10px', textAlign: 'center', color: '#0369a1' }}>{previewData.total_obtained}</td>
                                 <td style={{ padding: '8px 10px', textAlign: 'center' }}>{previewData.overall_percentage}%</td>
                                 <td style={{ padding: '8px 10px', textAlign: 'center' }}>{getGrade(previewData.overall_percentage)}</td>
                                 <td style={{ padding: '8px 10px', textAlign: 'center', color: previewData.overall_result === 'PASS' ? '#16a34a' : '#dc2626' }}>
@@ -987,7 +996,7 @@ export default function ResultCardPage() {
                       padding: '8px 20px',
                       borderRadius: 8,
                       border: 'none',
-                      background: '#4f46e5',
+                      background: '#0284c7',
                       color: '#fff',
                       fontSize: 13,
                       fontWeight: 700,

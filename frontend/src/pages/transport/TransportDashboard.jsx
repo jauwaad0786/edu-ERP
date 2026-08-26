@@ -80,67 +80,121 @@ export default function TransportDashboard() {
           {/* ══ Hero Command Banner ══ */}
           <div style={{
             position: 'relative', overflow: 'hidden',
-            borderRadius: '20px', padding: '24px 28px', marginBottom: '22px',
+            borderRadius: '24px', padding: '28px 34px', marginBottom: '24px',
             background: darkMode
-              ? 'linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%)'
-              : 'linear-gradient(135deg, #1e293b 0%, #334155 50%, #475569 100%)',
+              ? 'radial-gradient(circle at 85% 20%, rgba(245,158,11,0.25) 0%, transparent 60%), linear-gradient(135deg, #2b1102 0%, #451a03 45%, #0f172a 100%)'
+              : 'radial-gradient(circle at 85% 20%, rgba(255,255,255,0.18) 0%, transparent 50%), linear-gradient(135deg, #78350f 0%, #b45309 35%, #d97706 75%, #f59e0b 100%)',
             color: '#ffffff',
-            boxShadow: '0 10px 30px -5px rgba(30, 41, 59, 0.4)'
+            boxShadow: darkMode
+              ? '0 12px 35px -5px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1)'
+              : '0 15px 35px -5px rgba(217,119,6,0.35), inset 0 1px 0 rgba(255,255,255,0.3)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '24px',
+            border: darkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(255,255,255,0.25)'
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                  <span style={{
-                    padding: '3px 10px', borderRadius: '20px',
-                    background: 'rgba(255,255,255,0.15)', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase'
-                  }}>
-                    🚌 Smart Fleet Operations
-                  </span>
-                  <span style={{ fontSize: '12px', opacity: 0.9, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
-                    {data?.live_trips_now ?? 0} Live GPS Vehicles Active
-                  </span>
-                </div>
-                <h1 style={{ margin: 0, fontSize: '26px', fontWeight: 800, letterSpacing: '-0.02em', color: '#ffffff' }}>
-                  Transport Command Center
-                </h1>
-                <p style={{ margin: '4px 0 0', fontSize: '13.5px', color: 'rgba(255,255,255,0.85)' }}>
-                  Live vehicle route telemetry, passenger assignments, fee recovery momentum, and maintenance tracking.
-                </p>
+            {/* Background Ambient Highlights */}
+            <div style={{
+              position: 'absolute', top: '-50px', right: '280px', width: '220px', height: '220px',
+              borderRadius: '50%', background: 'rgba(255,255,255,0.06)', pointerEvents: 'none', filter: 'blur(30px)'
+            }} />
+            <div style={{
+              position: 'absolute', bottom: '-40px', left: '15%', width: '180px', height: '180px',
+              borderRadius: '50%', background: 'rgba(251,191,36,0.2)', pointerEvents: 'none', filter: 'blur(40px)'
+            }} />
+
+            <div style={{ flex: 1, minWidth: '300px', zIndex: 2 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                <span style={{
+                  padding: '4px 12px', borderRadius: '20px',
+                  background: 'rgba(255,255,255,0.2)', fontSize: '11.5px', fontWeight: 800, textTransform: 'uppercase',
+                  backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.25)',
+                  display: 'flex', alignItems: 'center', gap: '6px', color: '#ffffff'
+                }}>
+                  🚌 Smart Fleet Operations
+                </span>
+                <span style={{
+                  padding: '4px 12px', borderRadius: '20px',
+                  background: 'rgba(255,255,255,0.12)', color: '#fef3c7',
+                  fontSize: '11.5px', fontWeight: 700, backdropFilter: 'blur(6px)',
+                  display: 'flex', alignItems: 'center', gap: '6px'
+                }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#4ade80', display: 'inline-block', boxShadow: '0 0 8px #4ade80' }} />
+                  {data?.live_trips_now ?? 0} Live GPS Vehicles Active
+                </span>
               </div>
 
+              <h1 style={{
+                margin: '0 0 8px', fontSize: '32px', fontWeight: 900, letterSpacing: '-0.02em', color: '#ffffff',
+                textShadow: '0 2px 10px rgba(0,0,0,0.2)'
+              }}>
+                Transport Command Center 🚏
+              </h1>
+
+              <p style={{
+                margin: '0 0 20px', fontSize: '14.5px', color: 'rgba(255,255,255,0.92)',
+                maxWidth: '540px', lineHeight: 1.5, fontWeight: 500
+              }}>
+                Live vehicle route telemetry, real-time stop arrivals, driver attendance, student safety tracking, and automated fee recovery.
+              </p>
+
               {/* Quick Launchpad Actions */}
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
                 <button
                   onClick={() => navigate('/transport/live')}
                   style={{
-                    background: '#10b981', color: '#ffffff', border: 'none', borderRadius: '10px',
-                    padding: '10px 16px', fontSize: '13px', fontWeight: 800, cursor: 'pointer',
-                    boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)', display: 'flex', alignItems: 'center', gap: '6px'
+                    background: '#ffffff', color: '#78350f', border: 'none', borderRadius: '12px',
+                    padding: '11px 20px', fontSize: '13.5px', fontWeight: 800, cursor: 'pointer',
+                    boxShadow: '0 6px 18px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: '8px',
+                    transition: 'all 0.2s'
                   }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
                 >
-                  <i className="ti ti-broadcast" /> 📡 Live Tracking Map
+                  <i className="ti ti-broadcast" style={{ color: '#d97706' }} /> Live GPS Map
                 </button>
                 <button
                   onClick={() => navigate('/transport/students')}
                   style={{
-                    background: 'rgba(255,255,255,0.15)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.3)',
-                    borderRadius: '10px', padding: '10px 16px', fontSize: '13px', fontWeight: 700, cursor: 'pointer',
-                    backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', gap: '6px'
+                    background: 'rgba(255,255,255,0.16)', color: '#ffffff', border: '1.5px solid rgba(255,255,255,0.35)',
+                    borderRadius: '12px', padding: '11px 20px', fontSize: '13.5px', fontWeight: 700, cursor: 'pointer',
+                    backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', gap: '8px',
+                    transition: 'all 0.2s'
                   }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.28)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.16)'}
                 >
-                  <i className="ti ti-user-plus" /> Assign Transport
+                  <i className="ti ti-users" /> Student Allocations
                 </button>
-                <button
-                  onClick={() => navigate('/transport/routes')}
-                  style={{
-                    background: 'rgba(255,255,255,0.15)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.3)',
-                    borderRadius: '10px', padding: '10px 16px', fontSize: '13px', fontWeight: 700, cursor: 'pointer',
-                    backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', gap: '6px'
-                  }}
-                >
-                  <i className="ti ti-map-pins" /> Manage Routes
-                </button>
+              </div>
+            </div>
+
+            {/* Framed 3D Isometric Transport Bus Card */}
+            <div style={{
+              width: '320px', height: '160px', borderRadius: '18px', overflow: 'hidden',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              background: 'rgba(255,255,255,0.12)',
+              border: '1.5px solid rgba(255,255,255,0.25)',
+              backdropFilter: 'blur(10px)',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+              padding: '6px',
+              position: 'relative'
+            }}>
+              <img
+                src="/assets/illustrations/transport_hero.jpg"
+                alt="Transport Fleet"
+                style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '14px' }}
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
+              <div style={{
+                position: 'absolute', bottom: '12px', right: '14px',
+                background: 'rgba(120,53,15,0.85)', color: '#ffffff',
+                padding: '3px 8px', borderRadius: '6px', fontSize: '10.5px',
+                fontWeight: 800, backdropFilter: 'blur(6px)', letterSpacing: '0.04em'
+              }}>
+                🚏 FLEET STATION
               </div>
             </div>
           </div>

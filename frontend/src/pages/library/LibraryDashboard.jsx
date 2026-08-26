@@ -63,56 +63,119 @@ export default function LibraryDashboard() {
           {/* ══ Hero Command Banner ══ */}
           <div style={{
             position: 'relative', overflow: 'hidden',
-            borderRadius: '20px', padding: '24px 28px', marginBottom: '22px',
+            borderRadius: '24px', padding: '28px 34px', marginBottom: '24px',
             background: darkMode
-              ? 'linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%)'
-              : 'linear-gradient(135deg, #4338ca 0%, #6366f1 50%, #818cf8 100%)',
+              ? 'radial-gradient(circle at 85% 20%, rgba(168,85,247,0.25) 0%, transparent 60%), linear-gradient(135deg, #1e0938 0%, #3b0764 45%, #0f172a 100%)'
+              : 'radial-gradient(circle at 85% 20%, rgba(255,255,255,0.18) 0%, transparent 50%), linear-gradient(135deg, #3b0764 0%, #581c87 35%, #7c3aed 75%, #a855f7 100%)',
             color: '#ffffff',
-            boxShadow: '0 10px 30px -5px rgba(79, 70, 229, 0.35)'
+            boxShadow: darkMode
+              ? '0 12px 35px -5px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1)'
+              : '0 15px 35px -5px rgba(124,58,237,0.35), inset 0 1px 0 rgba(255,255,255,0.3)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '24px',
+            border: darkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(255,255,255,0.25)'
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                  <span style={{
-                    padding: '3px 10px', borderRadius: '20px',
-                    background: 'rgba(255,255,255,0.2)', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase'
-                  }}>
-                    📚 Learning Resource Center
-                  </span>
-                  <span style={{ fontSize: '12px', opacity: 0.9 }}>
-                    Active Circulation Engine
-                  </span>
-                </div>
-                <h1 style={{ margin: 0, fontSize: '26px', fontWeight: 800, letterSpacing: '-0.02em', color: '#ffffff' }}>
-                  Library Operations Center
-                </h1>
-                <p style={{ margin: '4px 0 0', fontSize: '13.5px', color: 'rgba(255,255,255,0.85)' }}>
-                  Monitor book circulation, manage reservations, track overdue returns, and collect fines.
-                </p>
+            {/* Background Ambient Highlights */}
+            <div style={{
+              position: 'absolute', top: '-50px', right: '280px', width: '220px', height: '220px',
+              borderRadius: '50%', background: 'rgba(255,255,255,0.06)', pointerEvents: 'none', filter: 'blur(30px)'
+            }} />
+            <div style={{
+              position: 'absolute', bottom: '-40px', left: '15%', width: '180px', height: '180px',
+              borderRadius: '50%', background: 'rgba(192,132,252,0.2)', pointerEvents: 'none', filter: 'blur(40px)'
+            }} />
+
+            <div style={{ flex: 1, minWidth: '300px', zIndex: 2 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                <span style={{
+                  padding: '4px 12px', borderRadius: '20px',
+                  background: 'rgba(255,255,255,0.2)', fontSize: '11.5px', fontWeight: 800, textTransform: 'uppercase',
+                  backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.25)',
+                  display: 'flex', alignItems: 'center', gap: '6px', color: '#ffffff'
+                }}>
+                  📚 Learning Resource Center
+                </span>
+                <span style={{
+                  padding: '4px 12px', borderRadius: '20px',
+                  background: 'rgba(255,255,255,0.12)', color: '#f3e8ff',
+                  fontSize: '11.5px', fontWeight: 700, backdropFilter: 'blur(6px)'
+                }}>
+                  Active Circulation Engine
+                </span>
               </div>
 
+              <h1 style={{
+                margin: '0 0 8px', fontSize: '32px', fontWeight: 900, letterSpacing: '-0.02em', color: '#ffffff',
+                textShadow: '0 2px 10px rgba(0,0,0,0.2)'
+              }}>
+                Library Operations Center 📖
+              </h1>
+
+              <p style={{
+                margin: '0 0 20px', fontSize: '14.5px', color: 'rgba(255,255,255,0.92)',
+                maxWidth: '540px', lineHeight: 1.5, fontWeight: 500
+              }}>
+                Manage book circulation, catalog indexes, digital reservations, student borrowings, and fine reconciliation in real-time.
+              </p>
+
               {/* Quick Launchpad Actions */}
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
                 <button
                   onClick={() => navigate('/library/issue-return')}
                   style={{
-                    background: '#ffffff', color: '#4f46e5', border: 'none', borderRadius: '10px',
-                    padding: '10px 16px', fontSize: '13px', fontWeight: 800, cursor: 'pointer',
-                    boxShadow: '0 4px 14px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: '6px'
+                    background: '#ffffff', color: '#581c87', border: 'none', borderRadius: '12px',
+                    padding: '11px 20px', fontSize: '13.5px', fontWeight: 800, cursor: 'pointer',
+                    boxShadow: '0 6px 18px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: '8px',
+                    transition: 'all 0.2s'
                   }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
                 >
-                  <i className="ti ti-arrows-exchange" /> Issue / Return Book
+                  <i className="ti ti-arrows-exchange" style={{ color: '#7c3aed' }} /> Issue / Return Book
                 </button>
                 <button
                   onClick={() => navigate('/library/books')}
                   style={{
-                    background: 'rgba(255,255,255,0.15)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.3)',
-                    borderRadius: '10px', padding: '10px 16px', fontSize: '13px', fontWeight: 700, cursor: 'pointer',
-                    backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', gap: '6px'
+                    background: 'rgba(255,255,255,0.16)', color: '#ffffff', border: '1.5px solid rgba(255,255,255,0.35)',
+                    borderRadius: '12px', padding: '11px 20px', fontSize: '13.5px', fontWeight: 700, cursor: 'pointer',
+                    backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', gap: '8px',
+                    transition: 'all 0.2s'
                   }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.28)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.16)'}
                 >
                   <i className="ti ti-books" /> Catalog Search
                 </button>
+              </div>
+            </div>
+
+            {/* Framed 3D Isometric Library Card */}
+            <div style={{
+              width: '320px', height: '160px', borderRadius: '18px', overflow: 'hidden',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              background: 'rgba(255,255,255,0.12)',
+              border: '1.5px solid rgba(255,255,255,0.25)',
+              backdropFilter: 'blur(10px)',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+              padding: '6px',
+              position: 'relative'
+            }}>
+              <img
+                src="/assets/illustrations/library_hero.jpg"
+                alt="Library Center"
+                style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '14px' }}
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
+              <div style={{
+                position: 'absolute', bottom: '12px', right: '14px',
+                background: 'rgba(59,7,100,0.85)', color: '#ffffff',
+                padding: '3px 8px', borderRadius: '6px', fontSize: '10.5px',
+                fontWeight: 800, backdropFilter: 'blur(6px)', letterSpacing: '0.04em'
+              }}>
+                📖 DIGITAL LIBRARY
               </div>
             </div>
           </div>

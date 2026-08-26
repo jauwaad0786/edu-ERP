@@ -610,6 +610,9 @@ export default function AdmitCardPage() {
                   {filteredStudents.map(student => {
                     const isDownloading = downloadingId === student.id;
                     const initial = (student.name || 'S').charAt(0).toUpperCase();
+                    const clsObj = classes.find(c => String(c.id) === String(student.class_id));
+                    const classText = student.class_display || (student.class_name ? `${student.class_name} ${student.section || ''}`.trim() : (clsObj ? `${clsObj.name} ${clsObj.section || ''}`.trim() : (student.class?.name || 'Class')));
+                    const parentText = student.parent_name || student.father_name || 'Guardian';
 
                     return (
                       <div
@@ -674,7 +677,7 @@ export default function AdmitCardPage() {
                                 {student.name}
                               </div>
                               <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
-                                Roll: <strong>{student.roll_number || '—'}</strong> | Adm: <strong>{student.admission_number || '—'}</strong>
+                                Roll: <strong>{student.roll_number || '—'}</strong> | Adm: <strong>{student.admission_number || student.admission_no || '—'}</strong>
                               </div>
                             </div>
                           </div>
@@ -688,10 +691,16 @@ export default function AdmitCardPage() {
                             color: '#475569',
                             display: 'flex',
                             justifyContent: 'space-between',
-                            marginBottom: 14
+                            alignItems: 'center',
+                            marginBottom: 14,
+                            gap: 8,
                           }}>
-                            <span>🏫 {student.class_name || student.class?.name || 'Class'} {student.section ? `(${student.section})` : ''}</span>
-                            <span>👨‍👩‍👦 {student.parent_name || student.father_name || 'Guardian'}</span>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={classText}>
+                              🎓 <strong>{classText}</strong>
+                            </span>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={parentText}>
+                              👨‍👦 {parentText}
+                            </span>
                           </div>
                         </div>
 

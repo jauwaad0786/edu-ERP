@@ -69,98 +69,154 @@ export default function StudentDashboard() {
 
           {/* ══ 1. STUDENT STUDY HERO BANNER WITH LAMP & DESK ILLUSTRATION ══ */}
           <div style={{
-            background: darkMode ? '#111827' : '#ffffff',
-            borderRadius: '20px',
-            border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
-            padding: '24px 30px',
+            background: darkMode
+              ? 'radial-gradient(circle at 85% 20%, rgba(99,102,241,0.3) 0%, transparent 60%), linear-gradient(135deg, #1e1b4b 0%, #312e81 45%, #0f172a 100%)'
+              : 'radial-gradient(circle at 85% 20%, rgba(255,255,255,0.18) 0%, transparent 50%), linear-gradient(135deg, #312e81 0%, #4338ca 35%, #4f46e5 75%, #0284c7 100%)',
+            borderRadius: '24px',
+            border: darkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(255,255,255,0.25)',
+            padding: '28px 34px',
             marginBottom: '24px',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.03)',
+            boxShadow: darkMode
+              ? '0 12px 35px -5px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1)'
+              : '0 15px 35px -5px rgba(79,70,229,0.35), inset 0 1px 0 rgba(255,255,255,0.3)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
             position: 'relative',
             overflow: 'hidden',
             flexWrap: 'wrap',
-            gap: '20px'
+            gap: '24px'
           }}>
-            <div style={{ flex: 1, minWidth: '280px', zIndex: 2 }}>
-              <div style={{
-                display: 'inline-flex', alignItems: 'center', gap: '8px',
-                padding: '4px 12px', borderRadius: '20px',
-                background: darkMode ? 'rgba(99,102,241,0.2)' : '#eef2ff',
-                color: '#4f46e5', fontSize: '11.5px', fontWeight: 800, textTransform: 'uppercase',
-                marginBottom: '10px'
-              }}>
-                <span>📖 Learning Desk</span>
-                <span>•</span>
-                <span>{profile?.session || 'Session 2024–25'}</span>
+            {/* Ambient Background Glows */}
+            <div style={{
+              position: 'absolute', top: '-50px', right: '280px', width: '220px', height: '220px',
+              borderRadius: '50%', background: 'rgba(255,255,255,0.06)', pointerEvents: 'none', filter: 'blur(30px)'
+            }} />
+            <div style={{
+              position: 'absolute', bottom: '-40px', left: '15%', width: '180px', height: '180px',
+              borderRadius: '50%', background: 'rgba(129,140,248,0.2)', pointerEvents: 'none', filter: 'blur(40px)'
+            }} />
+
+            <div style={{ flex: 1, minWidth: '300px', zIndex: 2 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                <span style={{
+                  padding: '4px 12px', borderRadius: '20px',
+                  background: 'rgba(255,255,255,0.2)',
+                  color: '#ffffff', fontSize: '11.5px', fontWeight: 800,
+                  letterSpacing: '0.05em', textTransform: 'uppercase',
+                  backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.25)',
+                  display: 'flex', alignItems: 'center', gap: '6px'
+                }}>
+                  <i className="ti ti-book" /> 📖 Learning Desk
+                </span>
+                <span style={{
+                  padding: '4px 12px', borderRadius: '20px',
+                  background: 'rgba(255,255,255,0.12)', color: '#e0e7ff',
+                  fontSize: '11.5px', fontWeight: 700, backdropFilter: 'blur(6px)'
+                }}>
+                  {profile?.session || 'Session 2024–25'}
+                </span>
               </div>
 
               <h1 style={{
-                fontSize: '28px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a',
-                margin: '0 0 6px', letterSpacing: '-0.02em'
+                fontSize: '32px', fontWeight: 900, color: '#ffffff',
+                margin: '0 0 8px', letterSpacing: '-0.02em',
+                textShadow: '0 2px 10px rgba(0,0,0,0.2)'
               }}>
                 Keep shining, {profile?.name || 'Student'}! 💡
               </h1>
+
               <p style={{
-                fontSize: '14px', color: darkMode ? '#94a3b8' : '#64748b',
-                margin: '0 0 16px', lineHeight: 1.4
+                fontSize: '14.5px', color: 'rgba(255,255,255,0.92)',
+                margin: '0 0 16px', maxWidth: '540px', lineHeight: 1.5,
+                fontWeight: 500
               }}>
-                "Success is the sum of small efforts, repeated day in and day out."
+                "Success is the sum of small efforts, repeated day in and day out." Track your attendance, exam schedules, and academic reports.
               </p>
 
               {/* Student Metadata Chips */}
-              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '18px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 700, padding: '4px 10px', borderRadius: '8px', background: darkMode ? '#1e293b' : '#f1f5f9', color: darkMode ? '#cbd5e1' : '#475569' }}>
-                  🎟 Roll No: <strong>{profile?.roll_number || '12'}</strong>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '20px' }}>
+                <span style={{
+                  fontSize: '12px', fontWeight: 700, padding: '5px 12px', borderRadius: '10px',
+                  background: 'rgba(255,255,255,0.16)', color: '#ffffff',
+                  backdropFilter: 'blur(6px)', border: '1px solid rgba(255,255,255,0.2)'
+                }}>
+                  🎟 Roll: <strong>{profile?.roll_number || '12'}</strong>
                 </span>
-                <span style={{ fontSize: '12px', fontWeight: 700, padding: '4px 10px', borderRadius: '8px', background: darkMode ? '#1e293b' : '#f1f5f9', color: darkMode ? '#cbd5e1' : '#475569' }}>
-                  📋 Adm: <strong>{profile?.admission_no || 'ADM-2024-042'}</strong>
+                <span style={{
+                  fontSize: '12px', fontWeight: 700, padding: '5px 12px', borderRadius: '10px',
+                  background: 'rgba(255,255,255,0.16)', color: '#ffffff',
+                  backdropFilter: 'blur(6px)', border: '1px solid rgba(255,255,255,0.2)'
+                }}>
+                  📋 Adm: <strong>{profile?.admission_no || profile?.admission_number || 'ADM-042'}</strong>
                 </span>
-                <span style={{ fontSize: '12px', fontWeight: 700, padding: '4px 10px', borderRadius: '8px', background: darkMode ? '#1e293b' : '#f1f5f9', color: darkMode ? '#cbd5e1' : '#475569' }}>
-                  👨‍👩‍👦 Parent: <strong>{profile?.parent_name || 'Rajesh Sharma'}</strong>
+                <span style={{
+                  fontSize: '12px', fontWeight: 700, padding: '5px 12px', borderRadius: '10px',
+                  background: 'rgba(255,255,255,0.16)', color: '#ffffff',
+                  backdropFilter: 'blur(6px)', border: '1px solid rgba(255,255,255,0.2)'
+                }}>
+                  👨‍👩‍👦 Parent: <strong>{profile?.parent_name || profile?.father_name || 'Guardian'}</strong>
                 </span>
               </div>
 
               {/* Quick Triggers */}
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
                 <button
                   onClick={() => navigate('/admit-card')}
                   style={{
-                    background: '#2563eb', color: '#ffffff', border: 'none',
-                    borderRadius: '10px', padding: '9px 16px', fontSize: '12.5px',
-                    fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
-                    boxShadow: '0 4px 12px rgba(37,99,235,0.3)'
+                    background: '#ffffff', color: '#3730a3', border: 'none',
+                    borderRadius: '12px', padding: '11px 20px', fontSize: '13.5px',
+                    fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+                    boxShadow: '0 6px 18px rgba(0,0,0,0.15)', transition: 'all 0.2s'
                   }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
                 >
-                  <i className="ti ti-ticket" /> Download Admit Card
+                  <i className="ti ti-ticket" style={{ color: '#4f46e5' }} /> Download Admit Card
                 </button>
                 <button
                   onClick={() => navigate('/result-card')}
                   style={{
-                    background: darkMode ? '#1e293b' : '#ffffff',
-                    color: darkMode ? '#e2e8f0' : '#334155',
-                    border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`,
-                    borderRadius: '10px', padding: '9px 16px', fontSize: '12.5px',
-                    fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
+                    background: 'rgba(255,255,255,0.16)',
+                    color: '#ffffff',
+                    border: '1.5px solid rgba(255,255,255,0.35)',
+                    borderRadius: '12px', padding: '11px 20px', fontSize: '13.5px',
+                    fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+                    backdropFilter: 'blur(8px)', transition: 'all 0.2s'
                   }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.28)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.16)'}
                 >
                   <i className="ti ti-chart-bar" /> View Report Card
                 </button>
               </div>
             </div>
 
-            {/* Right Side: Student Studying with Lamp Art */}
+            {/* Right Side: Framed 3D Student Studying with Lamp Art */}
             <div style={{
-              width: '280px', height: '170px', borderRadius: '16px', overflow: 'hidden',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+              width: '320px', height: '160px', borderRadius: '18px', overflow: 'hidden',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              background: 'rgba(255,255,255,0.12)',
+              border: '1.5px solid rgba(255,255,255,0.25)',
+              backdropFilter: 'blur(10px)',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+              padding: '6px',
+              position: 'relative'
             }}>
               <img
                 src="/assets/illustrations/student_hero.jpg"
                 alt="Student studying with lamp"
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '14px' }}
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />
+              <div style={{
+                position: 'absolute', bottom: '12px', right: '14px',
+                background: 'rgba(49,46,129,0.85)', color: '#ffffff',
+                padding: '3px 8px', borderRadius: '6px', fontSize: '10.5px',
+                fontWeight: 800, backdropFilter: 'blur(6px)', letterSpacing: '0.04em'
+              }}>
+                ⭐ STUDENT DESK
+              </div>
             </div>
           </div>
 

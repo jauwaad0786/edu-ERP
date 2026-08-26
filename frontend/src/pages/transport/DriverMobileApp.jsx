@@ -242,57 +242,76 @@ export default function DriverMobileApp() {
               {/* ══ Vehicle & Route Hero Header ══ */}
               <div style={{
                 position: 'relative', overflow: 'hidden',
-                borderRadius: '20px', padding: '24px 28px', marginBottom: '20px',
+                borderRadius: '24px', padding: '26px 30px', marginBottom: '22px',
                 background: darkMode
-                  ? 'linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%)'
-                  : 'linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)',
+                  ? 'radial-gradient(circle at 85% 20%, rgba(245,158,11,0.25) 0%, transparent 60%), linear-gradient(135deg, #2b1102 0%, #451a03 45%, #0f172a 100%)'
+                  : 'radial-gradient(circle at 85% 20%, rgba(255,255,255,0.18) 0%, transparent 50%), linear-gradient(135deg, #78350f 0%, #b45309 35%, #d97706 75%, #f59e0b 100%)',
                 color: '#ffffff',
-                boxShadow: '0 10px 30px -5px rgba(79, 70, 229, 0.35)'
+                boxShadow: darkMode
+                  ? '0 12px 35px -5px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1)'
+                  : '0 15px 35px -5px rgba(217,119,6,0.35), inset 0 1px 0 rgba(255,255,255,0.3)',
+                border: darkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(255,255,255,0.25)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '20px'
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    <span style={{
+                      padding: '4px 12px', borderRadius: '20px',
+                      background: 'rgba(255,255,255,0.2)', fontSize: '11.5px', fontWeight: 800,
+                      letterSpacing: '0.05em', textTransform: 'uppercase',
+                      backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.25)'
+                    }}>
+                      🚏 ASSIGNED BUS FLEET
+                    </span>
+                    {tripActive && (
                       <span style={{
-                        padding: '3px 10px', borderRadius: '20px',
-                        background: 'rgba(255,255,255,0.15)', fontSize: '11px', fontWeight: 800,
-                        letterSpacing: '0.05em', textTransform: 'uppercase'
+                        padding: '4px 12px', borderRadius: '20px',
+                        background: isRunning ? '#10b981' : isPaused ? '#f59e0b' : '#ef4444',
+                        color: '#ffffff', fontSize: '11.5px', fontWeight: 800,
+                        boxShadow: '0 0 10px rgba(0,0,0,0.2)'
                       }}>
-                        ASSIGNED BUS
+                        {isRunning ? '● LIVE ON ROUTE' : isPaused ? '⏸ PAUSED' : '🚨 ALERT ACTIVE'}
                       </span>
-                      {tripActive && (
-                        <span style={{
-                          padding: '3px 10px', borderRadius: '20px',
-                          background: isRunning ? '#10b981' : isPaused ? '#f59e0b' : '#ef4444',
-                          color: '#ffffff', fontSize: '11px', fontWeight: 800
-                        }}>
-                          {isRunning ? '● LIVE ON ROUTE' : isPaused ? '⏸ PAUSED' : '🚨 ALERT ACTIVE'}
-                        </span>
-                      )}
-                    </div>
+                    )}
+                  </div>
 
-                    <h1 style={{ margin: 0, fontSize: '32px', fontWeight: 900, letterSpacing: '-0.02em', color: '#ffffff' }}>
-                      🚌 {home.vehicle_number}
-                    </h1>
-                    <div style={{ fontSize: '15px', color: 'rgba(255,255,255,0.85)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <i className="ti ti-map-pin" />
-                      <span>{home.route_name || 'Route not assigned'}</span>
+                  <h1 style={{ margin: 0, fontSize: '34px', fontWeight: 900, letterSpacing: '-0.02em', color: '#ffffff', textShadow: '0 2px 10px rgba(0,0,0,0.2)' }}>
+                    🚌 {home.vehicle_number}
+                  </h1>
+                  <div style={{ fontSize: '15px', color: 'rgba(255,255,255,0.92)', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
+                    <i className="ti ti-map-pin" style={{ color: '#fef3c7' }} />
+                    <span>{home.route_name || 'Route not assigned'}</span>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                  <div style={{
+                    display: 'flex', gap: '12px',
+                    background: 'rgba(255,255,255,0.15)', padding: '12px 18px', borderRadius: '16px',
+                    backdropFilter: 'blur(8px)', alignItems: 'center', border: '1px solid rgba(255,255,255,0.2)'
+                  }}>
+                    <div style={{ textAlign: 'center', padding: '0 6px' }}>
+                      <div style={{ fontSize: '11px', opacity: 0.85, fontWeight: 700 }}>BATTERY</div>
+                      <div style={{ fontSize: '16px', fontWeight: 900 }}>🔋 {battery ?? '--'}%</div>
+                    </div>
+                    <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.25)' }} />
+                    <div style={{ textAlign: 'center', padding: '0 6px' }}>
+                      <div style={{ fontSize: '11px', opacity: 0.85, fontWeight: 700 }}>NETWORK</div>
+                      <div style={{ fontSize: '16px', fontWeight: 900 }}>{online ? '📶 Online' : '📵 Offline'}</div>
                     </div>
                   </div>
 
+                  {/* Mini Framed 3D Bus */}
                   <div style={{
-                    display: 'flex', gap: '10px',
-                    background: 'rgba(255,255,255,0.1)', padding: '10px 16px', borderRadius: '14px',
-                    backdropFilter: 'blur(8px)', alignItems: 'center'
+                    width: '120px', height: '80px', borderRadius: '12px', overflow: 'hidden',
+                    background: 'rgba(255,255,255,0.15)', border: '1.5px solid rgba(255,255,255,0.25)',
+                    padding: '3px'
                   }}>
-                    <div style={{ textAlign: 'center', padding: '0 8px' }}>
-                      <div style={{ fontSize: '11px', opacity: 0.8 }}>BATTERY</div>
-                      <div style={{ fontSize: '16px', fontWeight: 800 }}>🔋 {battery ?? '--'}%</div>
-                    </div>
-                    <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.2)' }} />
-                    <div style={{ textAlign: 'center', padding: '0 8px' }}>
-                      <div style={{ fontSize: '11px', opacity: 0.8 }}>NETWORK</div>
-                      <div style={{ fontSize: '16px', fontWeight: 800 }}>{online ? '📶 Online' : '📵 Offline'}</div>
-                    </div>
+                    <img src="/assets/illustrations/transport_hero.jpg" alt="Bus" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px' }} />
                   </div>
                 </div>
               </div>

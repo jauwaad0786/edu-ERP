@@ -56,46 +56,124 @@ export default function EmployeeDashboard() {
           {/* ══ Hero Command Banner ══ */}
           <div style={{
             position: 'relative', overflow: 'hidden',
-            borderRadius: '20px', padding: '24px 28px', marginBottom: '22px',
+            borderRadius: '24px', padding: '28px 34px', marginBottom: '24px',
             background: darkMode
-              ? 'linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%)'
-              : 'linear-gradient(135deg, #312e81 0%, #4338ca 50%, #6366f1 100%)',
+              ? 'radial-gradient(circle at 85% 20%, rgba(99,102,241,0.25) 0%, transparent 60%), linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #030712 100%)'
+              : 'radial-gradient(circle at 85% 20%, rgba(255,255,255,0.18) 0%, transparent 50%), linear-gradient(135deg, #1e1b4b 0%, #312e81 40%, #4338ca 80%, #6366f1 100%)',
             color: '#ffffff',
-            boxShadow: '0 10px 30px -5px rgba(79, 70, 229, 0.35)'
+            boxShadow: darkMode
+              ? '0 12px 35px -5px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1)'
+              : '0 15px 35px -5px rgba(79,70,229,0.35), inset 0 1px 0 rgba(255,255,255,0.3)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '24px',
+            border: darkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(255,255,255,0.25)'
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                  <span style={{
-                    padding: '3px 10px', borderRadius: '20px',
-                    background: 'rgba(255,255,255,0.2)', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase'
-                  }}>
-                    💻 Internal Team Hub
-                  </span>
-                  <span style={{ fontSize: '12px', opacity: 0.9 }}>
-                    {user?.active_role?.name || 'Staff Member'}
-                  </span>
-                </div>
-                <h1 style={{ margin: 0, fontSize: '26px', fontWeight: 800, letterSpacing: '-0.02em', color: '#ffffff' }}>
-                  Welcome back, {user?.name} 👋
-                </h1>
-                <p style={{ margin: '4px 0 0', fontSize: '13.5px', color: 'rgba(255,255,255,0.85)' }}>
-                  {canTriage ? 'You have system triage privileges for Error Center & Health monitoring.' : 'Your active tasks, error triage queue, and daily work streams.'}
-                </p>
+            {/* Ambient Background Glows */}
+            <div style={{
+              position: 'absolute', top: '-50px', right: '280px', width: '220px', height: '220px',
+              borderRadius: '50%', background: 'rgba(255,255,255,0.06)', pointerEvents: 'none', filter: 'blur(30px)'
+            }} />
+            <div style={{
+              position: 'absolute', bottom: '-40px', left: '15%', width: '180px', height: '180px',
+              borderRadius: '50%', background: 'rgba(129,140,248,0.2)', pointerEvents: 'none', filter: 'blur(40px)'
+            }} />
+
+            <div style={{ flex: 1, minWidth: '300px', zIndex: 2 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                <span style={{
+                  padding: '4px 12px', borderRadius: '20px',
+                  background: 'rgba(255,255,255,0.2)', fontSize: '11.5px', fontWeight: 800, textTransform: 'uppercase',
+                  backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.25)',
+                  display: 'flex', alignItems: 'center', gap: '6px', color: '#ffffff'
+                }}>
+                  💻 Internal Team Operations Hub
+                </span>
+                <span style={{
+                  padding: '4px 12px', borderRadius: '20px',
+                  background: 'rgba(255,255,255,0.12)', color: '#e0e7ff',
+                  fontSize: '11.5px', fontWeight: 700, backdropFilter: 'blur(6px)'
+                }}>
+                  {user?.active_role?.name || 'Company Engineer'}
+                </span>
               </div>
 
+              <h1 style={{
+                margin: '0 0 8px', fontSize: '32px', fontWeight: 900, letterSpacing: '-0.02em', color: '#ffffff',
+                textShadow: '0 2px 10px rgba(0,0,0,0.2)'
+              }}>
+                Welcome back, {user?.name} 👋
+              </h1>
+
+              <p style={{
+                margin: '0 0 20px', fontSize: '14.5px', color: 'rgba(255,255,255,0.92)',
+                maxWidth: '540px', lineHeight: 1.5, fontWeight: 500
+              }}>
+                {canTriage
+                  ? 'System triage privileges active. Real-time platform errors, telemetry health streams, and active assignees.'
+                  : 'Your active company sprints, assigned support tickets, error queue triage, and daily workflow streams.'}
+              </p>
+
               {canTriage && (
-                <a
-                  href="/developer/errors"
-                  style={{
-                    background: '#ffffff', color: '#4f46e5', textDecoration: 'none', borderRadius: '10px',
-                    padding: '10px 16px', fontSize: '13px', fontWeight: 800, cursor: 'pointer',
-                    boxShadow: '0 4px 14px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: '6px'
-                  }}
-                >
-                  <i className="ti ti-bug" /> Open Full Error Center
-                </a>
+                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <a
+                    href="/developer/errors"
+                    style={{
+                      background: '#ffffff', color: '#312e81', textDecoration: 'none', borderRadius: '12px',
+                      padding: '11px 20px', fontSize: '13.5px', fontWeight: 800, cursor: 'pointer',
+                      boxShadow: '0 6px 18px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: '8px',
+                      transition: 'all 0.2s'
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
+                  >
+                    <i className="ti ti-bug" style={{ color: '#ef4444' }} /> Open Error Triage Center
+                  </a>
+                  <a
+                    href="/developer/health"
+                    style={{
+                      background: 'rgba(255,255,255,0.16)', color: '#ffffff', textDecoration: 'none',
+                      border: '1.5px solid rgba(255,255,255,0.35)', borderRadius: '12px',
+                      padding: '11px 20px', fontSize: '13.5px', fontWeight: 700, cursor: 'pointer',
+                      backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', gap: '8px',
+                      transition: 'all 0.2s'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.28)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.16)'}
+                  >
+                    <i className="ti ti-activity" /> System Health
+                  </a>
+                </div>
               )}
+            </div>
+
+            {/* Framed 3D Isometric Command Center Card */}
+            <div style={{
+              width: '320px', height: '160px', borderRadius: '18px', overflow: 'hidden',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              background: 'rgba(255,255,255,0.12)',
+              border: '1.5px solid rgba(255,255,255,0.25)',
+              backdropFilter: 'blur(10px)',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+              padding: '6px',
+              position: 'relative'
+            }}>
+              <img
+                src="/assets/illustrations/admin_hero.jpg"
+                alt="Command Center"
+                style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '14px' }}
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
+              <div style={{
+                position: 'absolute', bottom: '12px', right: '14px',
+                background: 'rgba(30,27,75,0.85)', color: '#ffffff',
+                padding: '3px 8px', borderRadius: '6px', fontSize: '10.5px',
+                fontWeight: 800, backdropFilter: 'blur(6px)', letterSpacing: '0.04em'
+              }}>
+                ⚡ OPERATIONS DESK
+              </div>
             </div>
           </div>
 

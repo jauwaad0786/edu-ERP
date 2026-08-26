@@ -958,11 +958,11 @@ export default function ExamsPage() {
   ];
 
   return (
-    <div style={{ display:'flex', minHeight:'100vh', background:'#f8fafc' }}>
+    <div className="app-shell">
       <Sidebar />
-      <div style={{ flex:1, display:'flex', flexDirection:'column', minWidth:0 }}>
-        <Navbar />
-        <div style={{ padding:'24px 32px', flex:1 }}>
+      <div className="main-content">
+        <Navbar title="Examination Management" />
+        <div className="page-body">
           {/* Header */}
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20 }}>
             <div>
@@ -1132,6 +1132,8 @@ export default function ExamsPage() {
           onCreated={() => { load(); flash(setMsg, '✅ Exam created as Draft!'); }}
         />
       )}
+        </div>
+      </div>
     </div>
   );
 }

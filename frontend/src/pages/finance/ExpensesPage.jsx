@@ -180,42 +180,71 @@ export default function ExpensesPage() {
           {/* ══ Hero Command Banner ══ */}
           <div style={{
             position: 'relative', overflow: 'hidden',
-            borderRadius: '20px', padding: '24px 28px', marginBottom: '22px',
+            borderRadius: '24px', padding: '28px 34px', marginBottom: '24px',
             background: darkMode
-              ? 'linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%)'
-              : 'linear-gradient(135deg, #4338ca 0%, #6366f1 50%, #818cf8 100%)',
+              ? 'radial-gradient(circle at 85% 20%, rgba(16,185,129,0.25) 0%, transparent 60%), linear-gradient(135deg, #04251e 0%, #064e3b 45%, #0f172a 100%)'
+              : 'radial-gradient(circle at 85% 20%, rgba(255,255,255,0.18) 0%, transparent 50%), linear-gradient(135deg, #064e3b 0%, #065f46 35%, #059669 75%, #10b981 100%)',
             color: '#ffffff',
-            boxShadow: '0 10px 30px -5px rgba(79, 70, 229, 0.35)'
+            boxShadow: darkMode
+              ? '0 12px 35px -5px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1)'
+              : '0 15px 35px -5px rgba(5,150,105,0.35), inset 0 1px 0 rgba(255,255,255,0.3)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '24px',
+            border: darkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(255,255,255,0.25)'
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                  <span style={{
-                    padding: '3px 10px', borderRadius: '20px',
-                    background: 'rgba(255,255,255,0.2)', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase'
-                  }}>
-                    💰 Accounts &amp; Disbursements
-                  </span>
-                  <span style={{ fontSize: '12px', opacity: 0.9 }}>
-                    Fiscal Month: {month}
-                  </span>
-                </div>
-                <h1 style={{ margin: 0, fontSize: '26px', fontWeight: 800, letterSpacing: '-0.02em', color: '#ffffff' }}>
-                  Expense Management Center
-                </h1>
-                <p style={{ margin: '4px 0 0', fontSize: '13.5px', color: 'rgba(255,255,255,0.85)' }}>
-                  Record vendor bills, payroll disbursements, inventory requisitions, and utility expenses.
-                </p>
+            {/* Ambient Background Glows */}
+            <div style={{
+              position: 'absolute', top: '-50px', right: '280px', width: '220px', height: '220px',
+              borderRadius: '50%', background: 'rgba(255,255,255,0.06)', pointerEvents: 'none', filter: 'blur(30px)'
+            }} />
+            <div style={{
+              position: 'absolute', bottom: '-40px', left: '15%', width: '180px', height: '180px',
+              borderRadius: '50%', background: 'rgba(52,211,153,0.2)', pointerEvents: 'none', filter: 'blur(40px)'
+            }} />
+
+            <div style={{ flex: 1, minWidth: '300px', zIndex: 2 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                <span style={{
+                  padding: '4px 12px', borderRadius: '20px',
+                  background: 'rgba(255,255,255,0.2)', fontSize: '11.5px', fontWeight: 800, textTransform: 'uppercase',
+                  backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.25)',
+                  display: 'flex', alignItems: 'center', gap: '6px', color: '#ffffff'
+                }}>
+                  💰 Accounts & Disbursements
+                </span>
+                <span style={{
+                  padding: '4px 12px', borderRadius: '20px',
+                  background: 'rgba(255,255,255,0.12)', color: '#d1fae5',
+                  fontSize: '11.5px', fontWeight: 700, backdropFilter: 'blur(6px)'
+                }}>
+                  Fiscal Month: {month}
+                </span>
               </div>
 
+              <h1 style={{
+                margin: '0 0 8px', fontSize: '32px', fontWeight: 900, letterSpacing: '-0.02em', color: '#ffffff',
+                textShadow: '0 2px 10px rgba(0,0,0,0.2)'
+              }}>
+                Financial Accounts & Expense Hub 💵
+              </h1>
+
+              <p style={{
+                margin: '0 0 20px', fontSize: '14.5px', color: 'rgba(255,255,255,0.92)',
+                maxWidth: '540px', lineHeight: 1.5, fontWeight: 500
+              }}>
+                Record vendor bills, staff payroll disbursements, inventory vouchers, and monitor monthly institutional cash flows.
+              </p>
+
               {/* Month Selector & Quick Action */}
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
                 <select
-                  className="form-select"
                   style={{
-                    width: '180px', fontSize: '13px', borderRadius: '10px', fontWeight: 700,
-                    background: 'rgba(255,255,255,0.15)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.3)',
-                    backdropFilter: 'blur(6px)'
+                    width: '190px', fontSize: '13px', borderRadius: '12px', fontWeight: 700,
+                    background: 'rgba(255,255,255,0.18)', color: '#ffffff', border: '1.5px solid rgba(255,255,255,0.3)',
+                    backdropFilter: 'blur(8px)', padding: '10px 14px', outline: 'none'
                   }}
                   value={month}
                   onChange={e => setMonth(e.target.value)}
@@ -225,13 +254,43 @@ export default function ExpensesPage() {
                 <button
                   onClick={openAdd}
                   style={{
-                    background: '#ffffff', color: '#4f46e5', border: 'none', borderRadius: '10px',
-                    padding: '10px 18px', fontSize: '13px', fontWeight: 800, cursor: 'pointer',
-                    boxShadow: '0 4px 14px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: '6px'
+                    background: '#ffffff', color: '#064e3b', border: 'none', borderRadius: '12px',
+                    padding: '11px 20px', fontSize: '13.5px', fontWeight: 800, cursor: 'pointer',
+                    boxShadow: '0 6px 18px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: '8px',
+                    transition: 'all 0.2s'
                   }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
                 >
-                  <i className="ti ti-plus" /> Add New Expense
+                  <i className="ti ti-plus" style={{ color: '#059669' }} /> Add New Expense
                 </button>
+              </div>
+            </div>
+
+            {/* Framed 3D Isometric Accountant Office Card */}
+            <div style={{
+              width: '320px', height: '160px', borderRadius: '18px', overflow: 'hidden',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              background: 'rgba(255,255,255,0.12)',
+              border: '1.5px solid rgba(255,255,255,0.25)',
+              backdropFilter: 'blur(10px)',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+              padding: '6px',
+              position: 'relative'
+            }}>
+              <img
+                src="/assets/illustrations/accountant_hero.jpg"
+                alt="Accountant Office"
+                style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '14px' }}
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
+              <div style={{
+                position: 'absolute', bottom: '12px', right: '14px',
+                background: 'rgba(6,78,59,0.85)', color: '#ffffff',
+                padding: '3px 8px', borderRadius: '6px', fontSize: '10.5px',
+                fontWeight: 800, backdropFilter: 'blur(6px)', letterSpacing: '0.04em'
+              }}>
+                💵 FINANCE VAULT
               </div>
             </div>
           </div>
