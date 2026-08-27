@@ -188,6 +188,42 @@ export default function ResultCardPage() {
     }
   };
 
+  // 5.1 Print Single Result Card via Backend PDF (Guarantees exact 1-page output)
+  const handlePrint = async (studentId, studentName) => {
+    if (!selectedExamId) {
+      toast.error('Please select an examination first');
+      return;
+    }
+    const toastId = toast.loading('Preparing 1-page Result Card for printing...');
+    try {
+      const res = await api.get(`/principal/result-card/${studentId}/${selectedExamId}`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const blobUrl = window.URL.createObjectURL(blob);
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      iframe.src = blobUrl;
+      document.body.appendChild(iframe);
+      iframe.onload = () => {
+        setTimeout(() => {
+          toast.dismiss(toastId);
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+        }, 400);
+      };
+    } catch (err) {
+      toast.dismiss(toastId);
+      console.error('Failed to print result card', err);
+      toast.error('Failed to prepare result card for print');
+    }
+  };
+
   // 6. Bulk Download Result Cards for All Students in list
   const handleBulkDownload = async () => {
     const targetStudents = filteredStudents;
@@ -739,10 +775,29 @@ export default function ResultCardPage() {
                             <i className="ti ti-eye" /> Preview
                           </button>
                           <button
-                            onClick={() => {
-                              setPreviewStudent(student);
-                              setTimeout(() => window.print(), 400);
+                            onClick={() => setPreviewStudent(student)}
+                            style={{
+                              flex: 1,
+                              padding: '8px 6px',
+                              borderRadius: 8,
+                              border: '1px solid #e2e8f0',
+                              background: '#ffffff',
+                              color: '#475569',
+                              fontSize: 11.5,
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: 4
                             }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#f1f5f9'}
+                            onMouseLeave={e => e.currentTarget.style.background = '#ffffff'}
+                          >
+                            <i className="ti ti-eye" /> Preview
+                          </button>
+                          <button
+                            onClick={() => handlePrint(student.id, student.name)}
                             style={{
                               flex: 1,
                               padding: '8px 6px',
@@ -761,7 +816,7 @@ export default function ResultCardPage() {
                             onMouseEnter={e => e.currentTarget.style.background = '#dbeafe'}
                             onMouseLeave={e => e.currentTarget.style.background = '#eff6ff'}
                           >
-                            <i className="ti ti-printer" /> Print
+                            <i className="ti ti-printer" /> Print (1-Page)
                           </button>
                           <button
                             onClick={() => handleDownload(student.id, student.name)}
@@ -832,12 +887,12 @@ export default function ResultCardPage() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <i className="ti ti-file-certificate" style={{ fontSize: 18, color: '#0b3b7b' }} />
                     <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#0f172a' }}>
-                      Mark Sheet Live Preview &amp; Print
+                      Mark Sheet Official Preview
                     </h3>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <button
-                      onClick={() => window.print()}
+                      onClick={() => handlePrint(previewStudent.id, previewStudent.name)}
                       style={{
                         padding: '6px 14px',
                         borderRadius: 6,
@@ -852,7 +907,7 @@ export default function ResultCardPage() {
                         gap: 6
                       }}
                     >
-                      <i className="ti ti-printer" /> Print Direct
+                      <i className="ti ti-printer" /> Print (1-Page PDF)
                     </button>
                     <button
                       onClick={() => setPreviewStudent(null)}
@@ -1170,7 +1225,7 @@ export default function ResultCardPage() {
                     Close
                   </button>
                   <button
-                    onClick={() => window.print()}
+                    onClick={() => handlePrint(previewStudent.id, previewStudent.name)}
                     style={{
                       padding: '8px 18px',
                       borderRadius: 8,
@@ -1185,7 +1240,7 @@ export default function ResultCardPage() {
                       gap: 6
                     }}
                   >
-                    <i className="ti ti-printer" /> Print Direct
+                    <i className="ti ti-printer" /> Print (1-Page PDF)
                   </button>
                   <button
                     onClick={() => handleDownload(previewStudent.id, previewStudent.name)}

@@ -176,6 +176,42 @@ export default function AdmitCardPage() {
     }
   };
 
+  // 5.1 Print Single Admit Card via Backend PDF (Guarantees exact 1-page output)
+  const handlePrint = async (studentId, studentName) => {
+    if (!selectedExamId) {
+      toast.error('Please select an examination');
+      return;
+    }
+    const toastId = toast.loading('Preparing 1-page PDF for printing...');
+    try {
+      const res = await api.get(`/principal/admit-card/${studentId}/${selectedExamId}`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const blobUrl = window.URL.createObjectURL(blob);
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      iframe.src = blobUrl;
+      document.body.appendChild(iframe);
+      iframe.onload = () => {
+        setTimeout(() => {
+          toast.dismiss(toastId);
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+        }, 400);
+      };
+    } catch (err) {
+      toast.dismiss(toastId);
+      console.error('Failed to print admit card', err);
+      toast.error('Failed to prepare admit card for print');
+    }
+  };
+
   // 6. Bulk Download All Students
   const handleBulkDownload = async () => {
     const targetStudents = filteredStudents;
@@ -737,10 +773,29 @@ export default function AdmitCardPage() {
                             <i className="ti ti-eye" /> Preview
                           </button>
                           <button
-                            onClick={() => {
-                              setPreviewStudent(student);
-                              setTimeout(() => window.print(), 350);
+                            onClick={() => setPreviewStudent(student)}
+                            style={{
+                              flex: 1,
+                              padding: '8px 6px',
+                              borderRadius: 8,
+                              border: '1px solid #cbd5e1',
+                              background: '#ffffff',
+                              color: '#475569',
+                              fontSize: 11.5,
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: 4
                             }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#f1f5f9'}
+                            onMouseLeave={e => e.currentTarget.style.background = '#ffffff'}
+                          >
+                            <i className="ti ti-eye" /> Preview
+                          </button>
+                          <button
+                            onClick={() => handlePrint(student.id, student.name)}
                             style={{
                               flex: 1,
                               padding: '8px 6px',
@@ -759,7 +814,7 @@ export default function AdmitCardPage() {
                             onMouseEnter={e => e.currentTarget.style.background = '#dbeafe'}
                             onMouseLeave={e => e.currentTarget.style.background = '#eff6ff'}
                           >
-                            <i className="ti ti-printer" /> Print
+                            <i className="ti ti-printer" /> Print (1-Page)
                           </button>
                           <button
                             onClick={() => handleDownload(student.id, student.name)}
@@ -830,12 +885,12 @@ export default function AdmitCardPage() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <i className="ti ti-id" style={{ fontSize: 18, color: '#0b3b7b' }} />
                     <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#0f172a' }}>
-                      Admit Card Live Preview & Print
+                      Admit Card Official Preview
                     </h3>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <button
-                      onClick={() => window.print()}
+                      onClick={() => handlePrint(previewStudent.id, previewStudent.name)}
                       style={{
                         padding: '6px 14px',
                         borderRadius: 6,
@@ -850,7 +905,7 @@ export default function AdmitCardPage() {
                         gap: 6
                       }}
                     >
-                      <i className="ti ti-printer" /> Print Direct
+                      <i className="ti ti-printer" /> Print (1-Page PDF)
                     </button>
                     <button
                       onClick={() => setPreviewStudent(null)}
@@ -911,7 +966,7 @@ export default function AdmitCardPage() {
                       <div style={{
                         background: '#0b3b7b',
                         color: '#ffffff',
-                        padding: '5px 32px',
+                        padding: '6px 36px',
                         fontSize: 13,
                         fontWeight: 900,
                         letterSpacing: '0.08em',
@@ -921,11 +976,11 @@ export default function AdmitCardPage() {
                       }}>
                         ADMIT CARD
                       </div>
-                      <div style={{ fontSize: 11.5, fontWeight: 800, color: '#0b3b7b', marginTop: 4 }}>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: '#0b3b7b', marginTop: 4 }}>
                         {selectedExam?.exam_name || 'ANNUAL EXAMINATION'} {selectedExam?.session || previewStudent?.session || '2024-25'}
                       </div>
-                      <div style={{ fontSize: 10.5, fontWeight: 700, color: '#475569', marginTop: 1 }}>
-                        (Class {previewStudent.class_name || previewStudent.class?.name || 'All Classes'})
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#475569', marginTop: 1 }}>
+                        (Class {previewStudent.class_name || previewStudent.class?.name || 'All Classes'} {previewStudent.section ? `- ${previewStudent.section}` : ''})
                       </div>
                     </div>
 
@@ -943,20 +998,20 @@ export default function AdmitCardPage() {
                     }}>
                       {/* Column 1 */}
                       <div style={{ fontSize: 11.5, lineHeight: 1.7 }}>
-                        <div><span style={{ color: '#64748b', display: 'inline-block', width: 140 }}>👤 Student Name</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.name || '—'}</strong></div>
-                        <div><span style={{ color: '#64748b', display: 'inline-block', width: 140 }}>👤 Father's / Guardian's</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.father_name || previewStudent.parent_name || '—'}</strong></div>
-                        <div><span style={{ color: '#64748b', display: 'inline-block', width: 140 }}>👤 Mother's Name</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.mother_name || '—'}</strong></div>
-                        <div><span style={{ color: '#64748b', display: 'inline-block', width: 140 }}>🏫 Admission No.</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.admission_number || previewStudent.admission_no || '—'}</strong></div>
-                        <div><span style={{ color: '#64748b', display: 'inline-block', width: 140 }}>🪪 Roll No.</span> : <strong style={{ color: '#0b3b7b' }}>{previewStudent.roll_number || '—'}</strong></div>
-                        <div><span style={{ color: '#64748b', display: 'inline-block', width: 140 }}>👥 Class / Section</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.class_name || previewStudent.class?.name || '—'} {previewStudent.section ? `/ ${previewStudent.section}` : ''}</strong></div>
+                        <div><span style={{ color: '#64748b', display: 'inline-block', width: 140 }}>Student Name</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.name || '—'}</strong></div>
+                        <div><span style={{ color: '#64748b', display: 'inline-block', width: 140 }}>Father's Name</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.father_name || previewStudent.parent_name || '—'}</strong></div>
+                        <div><span style={{ color: '#64748b', display: 'inline-block', width: 140 }}>Mother's Name</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.mother_name || '—'}</strong></div>
+                        <div><span style={{ color: '#64748b', display: 'inline-block', width: 140 }}>Admission No.</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.admission_number || previewStudent.admission_no || '—'}</strong></div>
+                        <div><span style={{ color: '#64748b', display: 'inline-block', width: 140 }}>Roll No.</span> : <strong style={{ color: '#0b3b7b' }}>{previewStudent.roll_number || '—'}</strong></div>
+                        <div><span style={{ color: '#64748b', display: 'inline-block', width: 140 }}>Class / Section</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.class_name || previewStudent.class?.name || '—'} {previewStudent.section ? `/ ${previewStudent.section}` : ''}</strong></div>
                       </div>
 
                       {/* Column 2 */}
                       <div style={{ fontSize: 11.5, lineHeight: 1.7 }}>
-                        <div><span style={{ color: '#64748b', display: 'inline-block', width: 110 }}>📅 Date of Birth</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.dob ? formatDate(previewStudent.dob) : '—'}</strong></div>
-                        <div><span style={{ color: '#64748b', display: 'inline-block', width: 110 }}>📝 Exam Type</span> : <strong style={{ color: '#0f172a' }}>{selectedExam?.exam_name || 'Annual Examination'}</strong></div>
-                        <div><span style={{ color: '#64748b', display: 'inline-block', width: 110 }}>📖 School Code</span> : <strong style={{ color: '#0f172a' }}>{schoolSettings?.code || schoolSettings?.school_code || (schoolSettings?.id ? `SCH${schoolSettings.id}` : 'XYZ123')}</strong></div>
-                        <div><span style={{ color: '#64748b', display: 'inline-block', width: 110 }}>📅 Date of Issue</span> : <strong style={{ color: '#0f172a' }}>{new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-')}</strong></div>
+                        <div><span style={{ color: '#64748b', display: 'inline-block', width: 110 }}>Date of Birth</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.dob ? formatDate(previewStudent.dob) : '—'}</strong></div>
+                        <div><span style={{ color: '#64748b', display: 'inline-block', width: 110 }}>Exam Type</span> : <strong style={{ color: '#0f172a' }}>{selectedExam?.exam_name || 'Annual Examination'}</strong></div>
+                        <div><span style={{ color: '#64748b', display: 'inline-block', width: 110 }}>School Code</span> : <strong style={{ color: '#0f172a' }}>{schoolSettings?.code || schoolSettings?.school_code || (schoolSettings?.id ? `SCH${schoolSettings.id}` : 'XYZ123')}</strong></div>
+                        <div><span style={{ color: '#64748b', display: 'inline-block', width: 110 }}>Date of Issue</span> : <strong style={{ color: '#0f172a' }}>{new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-')}</strong></div>
                       </div>
 
                       {/* Column 3: Photo */}
@@ -965,12 +1020,12 @@ export default function AdmitCardPage() {
                           <img
                             src={previewStudent.photo_url}
                             alt="Student"
-                            style={{ width: 72, height: 86, borderRadius: 6, objectFit: 'cover', border: '1px solid #cbd5e1' }}
+                            style={{ width: 78, height: 95, borderRadius: 6, objectFit: 'cover', border: '1px solid #cbd5e1' }}
                           />
                         ) : (
                           <div style={{
-                            width: 72,
-                            height: 86,
+                            width: 78,
+                            height: 95,
                             borderRadius: 6,
                             background: '#f1f5f9',
                             border: '1px solid #cbd5e1',
@@ -982,25 +1037,23 @@ export default function AdmitCardPage() {
                             color: '#94a3b8',
                             fontWeight: 700
                           }}>
-                            <i className="ti ti-user" style={{ fontSize: 24, marginBottom: 2 }} />
                             PHOTO
                           </div>
                         )}
-                        <div style={{ fontSize: 9.5, color: '#64748b', marginTop: 3 }}>Student Photo</div>
                       </div>
                     </div>
 
                     {/* Examination Timetable Table */}
                     <div style={{ marginBottom: 14 }}>
-                      <div style={{ background: '#0b3b7b', color: '#ffffff', padding: '5px 12px', fontSize: 11, fontWeight: 800, textAlign: 'center', letterSpacing: '0.03em', borderRadius: '4px 4px 0 0' }}>
-                        📅 EXAMINATION TIMETABLE
+                      <div style={{ background: '#0b3b7b', color: '#ffffff', padding: '6px 12px', fontSize: 11, fontWeight: 800, textAlign: 'center', letterSpacing: '0.03em', borderRadius: '4px 4px 0 0' }}>
+                        EXAMINATION TIMETABLE
                       </div>
                       {loadingTimetable ? (
                         <div style={{ padding: 16, textAlign: 'center', color: '#64748b', fontSize: 12, border: '1px solid #93c5fd', borderTop: 'none' }}>
                           Loading timetable...
                         </div>
                       ) : (
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, border: '1px solid #93c5fd', borderTop: 'none' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5, border: '1px solid #93c5fd', borderTop: 'none' }}>
                           <thead>
                             <tr style={{ background: '#0b3b7b', color: '#ffffff', borderTop: '1px solid #93c5fd' }}>
                               <th style={{ padding: '6px 8px', textAlign: 'center', width: 45 }}>S.No.</th>
@@ -1021,7 +1074,7 @@ export default function AdmitCardPage() {
                                   <td style={{ padding: '6px 10px', textAlign: 'center' }}>{formatDate(item.exam_date)}</td>
                                   <td style={{ padding: '6px 10px', textAlign: 'center' }}>{item.day || (item.exam_date ? new Date(item.exam_date).toLocaleDateString('en-US', { weekday: 'long' }) : '—')}</td>
                                   <td style={{ padding: '6px 10px', textAlign: 'center' }}>{item.start_time ? `${item.start_time} - ${item.end_time || ''}` : '10:00 AM - 01:00 PM'}</td>
-                                  <td style={{ padding: '6px 10px', textAlign: 'center' }}>{item.venue || item.room || item.room_no || 'Room 1'}</td>
+                                  <td style={{ padding: '6px 10px', textAlign: 'center' }}>{item.venue || item.room || item.room_no || 'Main Hall'}</td>
                                   <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700 }}>{item.max_marks || 100}</td>
                                 </tr>
                               ))
@@ -1037,44 +1090,39 @@ export default function AdmitCardPage() {
                       )}
                     </div>
 
-                    {/* Lower Section: Side-by-Side Instructions & Quote / Principal Signature */}
+                    {/* Lower Section: Side-by-Side Instructions & Principal Signature */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 14, marginBottom: 14 }}>
                       
                       {/* Left: Instructions */}
                       <div style={{ border: '1px solid #93c5fd', borderRadius: 6, overflow: 'hidden', background: '#ffffff' }}>
-                        <div style={{ background: '#0b3b7b', color: '#ffffff', padding: '5px 12px', fontSize: 11, fontWeight: 800, textAlign: 'center', letterSpacing: '0.03em' }}>
-                          📝 INSTRUCTIONS
+                        <div style={{ background: '#0b3b7b', color: '#ffffff', padding: '6px 12px', fontSize: 11, fontWeight: 800, textAlign: 'center', letterSpacing: '0.03em' }}>
+                          EXAMINATION INSTRUCTIONS
                         </div>
-                        <div style={{ padding: '8px 12px', fontSize: 10.5, lineHeight: 1.6, color: '#1e293b' }}>
+                        <div style={{ padding: '10px 12px', fontSize: 10.5, lineHeight: 1.6, color: '#1e293b' }}>
                           <div><strong>1.</strong> Bring this Admit Card along with a valid school ID to the examination centre.</div>
                           <div><strong>2.</strong> Reach the examination centre at least 30 minutes before the reporting time.</div>
                           <div><strong>3.</strong> Use only blue/black ballpoint pen for answering the paper.</div>
                           <div><strong>4.</strong> Mobile phones, smart watches, calculators and electronic gadgets are strictly prohibited.</div>
                           <div><strong>5.</strong> Do not carry any study material, notes or written/printed chits.</div>
-                          <div><strong>6.</strong> Follow all instructions given by the invigilator and maintain discipline.</div>
+                          <div><strong>6.</strong> Follow all instructions given by the invigilator and maintain strict discipline.</div>
                         </div>
                       </div>
 
-                      {/* Right: Quote & Principal Signature */}
+                      {/* Right: Clean Principal Signature Box */}
                       <div style={{
                         border: '1px solid #93c5fd',
                         borderRadius: 6,
                         background: '#f8fafc',
-                        padding: '12px 14px',
+                        padding: '14px',
                         display: 'flex',
                         flexDirection: 'column',
-                        justifyContent: 'space-between',
+                        justifyContent: 'flex-end',
                         alignItems: 'center',
                         textAlign: 'center'
                       }}>
-                        <div>
-                          <div style={{ fontSize: 15, fontWeight: 900, color: '#0b3b7b', fontStyle: 'italic', marginBottom: 2 }}>All the Best!</div>
-                          <div style={{ fontSize: 10, color: '#475569', fontWeight: 600 }}>Stay Focused, Stay Confident</div>
-                        </div>
-
-                        <div style={{ width: '100%', paddingTop: 16 }}>
-                          <div style={{ width: 140, margin: '0 auto 4px', borderTop: '1.5px solid #0b3b7b' }}></div>
-                          <div style={{ fontSize: 11, fontWeight: 800, color: '#0b3b7b' }}>Principal</div>
+                        <div style={{ width: '100%' }}>
+                          <div style={{ width: 150, margin: '0 auto 4px', borderTop: '1.5px solid #0b3b7b' }}></div>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: '#0b3b7b' }}>Principal Signature</div>
                           {schoolSettings?.principal_name && (
                             <div style={{ fontSize: 10, color: '#64748b' }}>({schoolSettings.principal_name})</div>
                           )}
@@ -1083,10 +1131,30 @@ export default function AdmitCardPage() {
 
                     </div>
 
-                    {/* Footer: Date & Place */}
-                    <div style={{ fontSize: 11, color: '#0f172a', lineHeight: 1.6, paddingTop: 4 }}>
-                      <strong>Date :</strong> {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-')} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-                      <strong>Place :</strong> {schoolSettings?.city || user?.school?.city || 'School Campus'}
+                    {/* Footer: Date, Place & Candidate Signatures */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'flex-end',
+                      fontSize: 11,
+                      color: '#0f172a',
+                      paddingTop: 10,
+                      borderTop: '1px dashed #cbd5e1'
+                    }}>
+                      <div style={{ lineHeight: 1.6 }}>
+                        <div><strong>Date :</strong> {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-')}</div>
+                        <div><strong>Place :</strong> {schoolSettings?.city || user?.school?.city || 'Delhi'}</div>
+                      </div>
+
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ width: 140, borderTop: '1.5px solid #64748b', marginBottom: 4 }}></div>
+                        <div style={{ fontWeight: 700 }}>Student Signature</div>
+                      </div>
+
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ width: 160, borderTop: '1.5px solid #0b3b7b', marginBottom: 4 }}></div>
+                        <div style={{ fontWeight: 700, color: '#0b3b7b' }}>Center Superintendent</div>
+                      </div>
                     </div>
 
                   </div>
@@ -1114,10 +1182,10 @@ export default function AdmitCardPage() {
                       cursor: 'pointer'
                     }}
                   >
-                    Close Preview
+                    Close
                   </button>
                   <button
-                    onClick={() => window.print()}
+                    onClick={() => handlePrint(previewStudent.id, previewStudent.name)}
                     style={{
                       padding: '8px 18px',
                       borderRadius: 8,
@@ -1132,7 +1200,7 @@ export default function AdmitCardPage() {
                       gap: 6
                     }}
                   >
-                    <i className="ti ti-printer" /> Print Direct
+                    <i className="ti ti-printer" /> Print (1-Page PDF)
                   </button>
                   <button
                     onClick={() => {
@@ -1152,7 +1220,7 @@ export default function AdmitCardPage() {
                       gap: 6
                     }}
                   >
-                    <i className="ti ti-download" /> Download PDF Card
+                    <i className="ti ti-download" /> Download PDF
                   </button>
                 </div>
               </div>
