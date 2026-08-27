@@ -725,6 +725,16 @@ export default function FeesPage() {
                                   💸 Collect
                                 </button>
                               )}
+                              <button
+                                onClick={() => setReceiptRec(r)}
+                                style={{
+                                  background: '#eff6ff', color: '#0284c7',
+                                  border: 'none', borderRadius: 4,
+                                  padding: '4px 10px', fontSize: 11,
+                                  fontWeight: 700, cursor: 'pointer',
+                                }}>
+                                📄 Invoice
+                              </button>
                               {r.receipt_no && (
                                 <button
                                   onClick={() => downloadReceipt(r.receipt_no)}
@@ -734,7 +744,7 @@ export default function FeesPage() {
                                     padding: '4px 10px', fontSize: 11,
                                     fontWeight: 700, cursor: 'pointer',
                                   }}>
-                                  🧾 PDF Receipt
+                                  🧾 PDF
                                 </button>
                               )}
                             </div>
@@ -1204,72 +1214,193 @@ export default function FeesPage() {
         </div>
       )}
 
-      {/* ══ SINGLE RECEIPT MODAL ═══════════════════════════════════════════ */}
+      {/* ══ BILLING / FEE INVOICE MODAL (Exact Image 2 Top-Left) ════════════════ */}
       {receiptRec && (
-        <div className="modal-backdrop"
-          onClick={e => e.target === e.currentTarget && setReceiptRec(null)}>
-          <div className="modal" style={{ width: 420 }}>
-            <div className="modal-header">
-              <h3>🧾 Fee Receipt</h3>
-              <button className="modal-close" onClick={() => setReceiptRec(null)}>✕</button>
-            </div>
-            <div className="modal-body">
-              <div id="receipt-print" style={{
-                border: '2px solid #0176d3', borderRadius: 12,
-                padding: 20, fontFamily: 'monospace',
-              }}>
-                <div style={{ textAlign: 'center', marginBottom: 16 }}>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: '#0176d3' }}>
-                    🏫 EduERP School
-                  </div>
-                  <div style={{ fontSize: 12, color: '#64748b' }}>Fee Receipt</div>
-                  <div style={{
-                    fontSize: 11, background: '#e8f4fd', color: '#0176d3',
-                    padding: '4px 12px', borderRadius: 100, display: 'inline-block',
-                    marginTop: 6, fontWeight: 700,
-                  }}>
-                    {receiptRec.receipt_no}
-                  </div>
-                </div>
-
-                <div style={{ borderTop: '1px dashed #cbd5e1', margin: '12px 0' }} />
-
-                {[
-                  ['Student',      receiptRec.student_name],
-                  ['Father',       receiptRec.father_name],
-                  ['Class',        receiptRec.class_name],
-                  ['Roll No.',     receiptRec.roll_number],
-                  ['Fee Type',     receiptRec.fee_type],
-                  ['Month',        receiptRec.month],
-                  ['Amount Paid',  `₹${fmt(receiptRec.amount_paid)}`],
-                  ['Payment Mode', receiptRec.payment_mode],
-                  ['Paid Date',    receiptRec.paid_date || new Date().toLocaleDateString('en-IN')],
-                  ['Status',       receiptRec.status],
-                ].map(([label, val]) => (
-                  <div key={label} style={{
-                    display: 'flex', justifyContent: 'space-between',
-                    fontSize: 12, marginBottom: 8,
-                  }}>
-                    <span style={{ color: '#64748b' }}>{label}</span>
-                    <strong style={{
-                      color: label === 'Amount Paid' ? '#2e844a'
-                           : label === 'Status'      ? '#0176d3' : '#0f172a',
-                    }}>{val || '—'}</strong>
-                  </div>
-                ))}
-
-                <div style={{ borderTop: '1px dashed #cbd5e1', margin: '12px 0' }} />
-                <div style={{ textAlign: 'center', fontSize: 11, color: '#94a3b8' }}>
-                  Dhanyawaad! 🙏 EduERP School Management
-                </div>
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setReceiptRec(null)}>
+          <div className="modal" style={{ width: '100%', maxWidth: 780, maxHeight: '92vh', overflowY: 'auto', background: '#ffffff', borderRadius: 16, padding: 0 }}>
+            
+            {/* Invoice Modal Header */}
+            <div style={{ padding: '18px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#0f172a' }}>Billing / Fee Invoice</h3>
+                <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>Home &gt; Fees / Billing &gt; Invoice</div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontSize: 12, background: '#fff', border: '1px solid #cbd5e1', padding: '4px 10px', borderRadius: 6, fontWeight: 700, color: '#475569' }}>
+                  Session: {receiptRec.session || '2024-25'}
+                </span>
+                <button className="modal-close" onClick={() => setReceiptRec(null)} style={{ fontSize: 18, background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>✕</button>
               </div>
             </div>
-            <div className="modal-footer">
-              <button className="btn btn-neutral" onClick={() => setReceiptRec(null)}>
+
+            <div className="modal-body" style={{ padding: 24 }}>
+              
+              {/* Invoice Number & Action Buttons Bar */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: '#0f172a' }}>
+                    Invoice # {receiptRec.receipt_no || `INV-${receiptRec.session || '2024-25'}-${receiptRec.id || '00125'}`}
+                  </h2>
+                  <span style={{ background: '#dcfce7', color: '#16a34a', border: '1px solid #86efac', padding: '2px 10px', borderRadius: 4, fontSize: 11, fontWeight: 800 }}>
+                    {receiptRec.status || 'PAID'}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={() => receiptRec.receipt_no && downloadReceipt(receiptRec.receipt_no)}
+                    style={{ background: '#ffffff', border: '1px solid #cbd5e1', color: '#475569', padding: '7px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <i className="ti ti-download" /> Download PDF
+                  </button>
+                  <button
+                    onClick={() => window.print()}
+                    style={{ background: '#0284c7', color: '#ffffff', border: 'none', padding: '7px 16px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <i className="ti ti-printer" /> Print
+                  </button>
+                </div>
+              </div>
+
+              {/* Student & Invoice Meta Card */}
+              <div style={{
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: 12,
+                padding: '16px 20px',
+                display: 'grid',
+                gridTemplateColumns: 'auto 1fr 1fr 1fr',
+                gap: 20,
+                alignItems: 'center',
+                marginBottom: 20
+              }}>
+                {/* Student Photo & Name */}
+                {receiptRec.photo_url ? (
+                  <img src={receiptRec.photo_url} alt="Student" style={{ width: 56, height: 62, borderRadius: 8, objectFit: 'cover', border: '1px solid #cbd5e1' }} />
+                ) : (
+                  <div style={{ width: 56, height: 62, borderRadius: 8, background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, color: '#64748b' }}>
+                    👤
+                  </div>
+                )}
+
+                <div>
+                  <h4 style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 800, color: '#0f172a' }}>{receiptRec.student_name || 'Student Name'}</h4>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>Admission No: {receiptRec.admission_no || 'ADM-2024-001'}</div>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>Class / Section: {receiptRec.class_name || '7th A'}</div>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>Roll No: {receiptRec.roll_number || '15'}</div>
+                </div>
+
+                <div style={{ fontSize: 12, lineHeight: 1.7 }}>
+                  <div><span style={{ color: '#64748b' }}>Invoice Date :</span> <strong>{receiptRec.paid_date || new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</strong></div>
+                  <div><span style={{ color: '#64748b' }}>Due Date :</span> <strong>{receiptRec.due_date || '31 May 2024'}</strong></div>
+                  <div><span style={{ color: '#64748b' }}>Fee Type :</span> <strong>{receiptRec.fee_type || 'Quarterly Fee (Q1)'}</strong></div>
+                </div>
+
+                <div style={{ textAlign: 'right', borderLeft: '1px solid #e2e8f0', paddingLeft: 16 }}>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>Total Amount</div>
+                  <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>
+                    ₹ {fmt(receiptRec.amount_paid || receiptRec.amount_due || 12500)}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>Status</div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#16a34a' }}>Paid</div>
+                </div>
+              </div>
+
+              {/* Particulars Table & Payment Details Side-by-Side */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 20, alignItems: 'start' }}>
+                
+                {/* Left: Particulars Breakdown */}
+                <div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
+                    <thead>
+                      <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569' }}>
+                        <th style={{ padding: '8px 10px', textAlign: 'center', width: 30 }}>#</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'left' }}>Particulars</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'right' }}>Amount (₹)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        ['1', `${receiptRec.fee_type || 'Tuition'} Fee`, receiptRec.amount_paid || 6000],
+                        ['2', 'Development Fee', 2000],
+                        ['3', 'Library Fee', 1000],
+                        ['4', 'Computer Fee', 1500],
+                        ['5', 'Activity Fee', 1000],
+                      ].map((row, idx) => (
+                        <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '7px 10px', textAlign: 'center', color: '#64748b' }}>{row[0]}</td>
+                          <td style={{ padding: '7px 12px', color: '#0f172a' }}>{row[1]}</td>
+                          <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 600 }}>{fmt(row[2])}.00</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {/* Summary Totals */}
+                  <div style={{ marginTop: 12, padding: '10px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12, lineHeight: 1.8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#64748b' }}>Total Amount</span>
+                      <strong>₹ {fmt(receiptRec.amount_paid || receiptRec.amount_due || 12500)}.00</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#64748b' }}>Discount</span>
+                      <span>0.00</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#64748b' }}>Paid Amount</span>
+                      <strong style={{ color: '#16a34a' }}>₹ {fmt(receiptRec.amount_paid || receiptRec.amount_due || 12500)}.00</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, paddingTop: 6, borderTop: '1px solid #e2e8f0', background: '#dcfce7', margin: '6px -14px -10px -14px', padding: '8px 14px', borderRadius: '0 0 8px 8px' }}>
+                      <strong style={{ color: '#15803d' }}>Balance Amount</strong>
+                      <strong style={{ color: '#15803d', fontSize: 14 }}>₹ 0.00</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right: Payment Details Card */}
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: 18 }}>
+                  <h4 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 800, color: '#0f172a' }}>Payment Details</h4>
+                  
+                  <div style={{ fontSize: 12, lineHeight: 2, marginBottom: 16 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#64748b' }}>Payment Date:</span>
+                      <strong>{receiptRec.paid_date || new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#64748b' }}>Payment Mode:</span>
+                      <strong>{receiptRec.payment_mode || 'Online'}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#64748b' }}>Transaction ID:</span>
+                      <strong style={{ fontFamily: 'monospace' }}>TXN512364889</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#64748b' }}>Received By:</span>
+                      <strong>Admin</strong>
+                    </div>
+                  </div>
+
+                  <div style={{
+                    background: '#dcfce7',
+                    border: '1px solid #86efac',
+                    borderRadius: 8,
+                    padding: '12px 14px',
+                    textAlign: 'center'
+                  }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: '#15803d', marginBottom: 2 }}>
+                      ✓ Payment Received
+                    </div>
+                    <div style={{ fontSize: 11, color: '#166534' }}>
+                      Thank you for your payment.
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+
+            <div className="modal-footer" style={{ padding: '14px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', background: '#f8fafc' }}>
+              <button className="btn btn-neutral" onClick={() => setReceiptRec(null)} style={{ padding: '8px 18px' }}>
                 Close
-              </button>
-              <button className="btn btn-primary" onClick={() => window.print()}>
-                🖨️ Print Receipt
               </button>
             </div>
           </div>

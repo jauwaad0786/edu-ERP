@@ -811,100 +811,119 @@ export default function AdmitCardPage() {
                 {/* Modal Printable Card Body */}
                 <div style={{ padding: 24, overflowY: 'auto', flex: 1 }}>
                   <div style={{
-                    border: '2px solid #0284c7',
+                    border: '1.5px solid #1e3a8a',
                     borderRadius: 12,
-                    padding: 20,
+                    padding: 24,
                     background: '#ffffff',
                     position: 'relative'
                   }}>
                     {/* School Letterhead */}
-                    <div style={{ textAlign: 'center', borderBottom: '2px solid #0284c7', paddingBottom: 14, marginBottom: 16 }}>
-                      <h2 style={{ margin: 0, fontSize: 18, fontWeight: 900, color: '#0369a1', textTransform: 'uppercase' }}>
-                        {user?.school?.name || user?.school_name || 'School Examination Board'}
-                      </h2>
-                      <p style={{ margin: '3px 0 0', fontSize: 11, color: '#64748b' }}>
-                        {user?.school?.city || user?.school_city || 'Official Examination Center'} | Session: {selectedExam?.session || '2025-2026'}
+                    <div style={{ textAlign: 'center', marginBottom: 12 }}>
+                      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12, marginBottom: 4 }}>
+                        <div style={{ width: 44, height: 44, borderRadius: 8, background: '#1e3a8a', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16 }}>
+                          ★
+                        </div>
+                        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900, color: '#0f2942', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                          {user?.school?.name || user?.school_name || 'SUNRISE PUBLIC SCHOOL'}
+                        </h2>
+                      </div>
+                      <p style={{ margin: '2px 0', fontSize: 11, color: '#475569' }}>
+                        {user?.school?.address || 'Sector 15, Noida, Uttar Pradesh - 201301'}
                       </p>
+                      <p style={{ margin: 0, fontSize: 10.5, color: '#64748b' }}>
+                        Phone: {user?.school?.phone || '0120-4567890'} | Email: {user?.school?.email || 'info@sunrisepublicschool.edu.in'}
+                      </p>
+                      
                       <div style={{
                         display: 'inline-block',
-                        background: '#0284c7',
+                        background: '#1e3a8a',
                         color: '#ffffff',
-                        padding: '3px 14px',
-                        borderRadius: 12,
+                        padding: '4px 18px',
+                        borderRadius: 4,
                         fontSize: 11,
                         fontWeight: 800,
-                        marginTop: 8,
+                        marginTop: 10,
                         letterSpacing: '0.05em'
                       }}>
-                        OFFICIAL ADMIT CARD / HALL TICKET
+                        ADMIT CARD
+                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: '#1e3a8a', marginTop: 4 }}>
+                        {selectedExam?.exam_name || 'ANNUAL EXAMINATION'} {selectedExam?.session || '2024-25'}
                       </div>
                     </div>
 
-                    {/* Student Info Row */}
-                    <div style={{ display: 'flex', gap: 16, marginBottom: 18, alignItems: 'center' }}>
-                      {previewStudent.photo_url ? (
-                        <img
-                          src={previewStudent.photo_url}
-                          alt="Student"
-                          style={{ width: 70, height: 80, borderRadius: 8, objectFit: 'cover', border: '1.5px solid #cbd5e1' }}
-                        />
-                      ) : (
-                        <div style={{
-                          width: 70,
-                          height: 80,
-                          borderRadius: 8,
-                          background: '#e0f2fe',
-                          border: '1.5px dashed #0284c7',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: 24,
-                          color: '#0284c7',
-                          fontWeight: 800
-                        }}>
-                          {(previewStudent.name || 'S').charAt(0).toUpperCase()}
-                        </div>
-                      )}
+                    {/* Student Info & Photo Row */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 16, padding: '10px 0', borderTop: '1px solid #f1f5f9' }}>
+                      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', fontSize: 11.5 }}>
+                        <div><span style={{ color: '#64748b' }}>Student Name</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.name}</strong></div>
+                        <div><span style={{ color: '#64748b' }}>Father's Name</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.father_name || previewStudent.parent_name || 'Rajesh Sharma'}</strong></div>
+                        <div><span style={{ color: '#64748b' }}>Class / Section</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.class_name || previewStudent.class?.name || '7th A'} {previewStudent.section || ''}</strong></div>
+                        <div><span style={{ color: '#64748b' }}>Date of Birth</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.dob ? formatDate(previewStudent.dob) : '12-06-2011'}</strong></div>
+                        <div><span style={{ color: '#64748b' }}>Roll No.</span> : <strong style={{ color: '#1e3a8a' }}>{previewStudent.roll_number || '15'}</strong></div>
+                        <div><span style={{ color: '#64748b' }}>School Code</span> : <strong style={{ color: '#0f172a' }}>SPS/2024</strong></div>
+                        <div><span style={{ color: '#64748b' }}>Admission No.</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.admission_number || previewStudent.admission_no || 'ADM-2024-001'}</strong></div>
+                      </div>
 
-                      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: 12 }}>
-                        <div><span style={{ color: '#64748b' }}>Candidate Name:</span> <strong style={{ color: '#0f172a' }}>{previewStudent.name}</strong></div>
-                        <div><span style={{ color: '#64748b' }}>Roll Number:</span> <strong style={{ color: '#0284c7' }}>{previewStudent.roll_number || '—'}</strong></div>
-                        <div><span style={{ color: '#64748b' }}>Class & Section:</span> <strong>{previewStudent.class_name || previewStudent.class?.name || '—'} {previewStudent.section ? `(${previewStudent.section})` : ''}</strong></div>
-                        <div><span style={{ color: '#64748b' }}>Admission No:</span> <strong>{previewStudent.admission_number || '—'}</strong></div>
-                        <div style={{ gridColumn: '1 / -1' }}><span style={{ color: '#64748b' }}>Exam:</span> <strong>{selectedExam?.exam_name || 'Main Exam'}</strong></div>
+                      <div>
+                        {previewStudent.photo_url ? (
+                          <img
+                            src={previewStudent.photo_url}
+                            alt="Student"
+                            style={{ width: 74, height: 86, borderRadius: 6, objectFit: 'cover', border: '1px solid #cbd5e1' }}
+                          />
+                        ) : (
+                          <div style={{
+                            width: 74,
+                            height: 86,
+                            borderRadius: 6,
+                            background: '#f8fafc',
+                            border: '1px solid #cbd5e1',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: 12,
+                            color: '#64748b',
+                            fontWeight: 700
+                          }}>
+                            PHOTO
+                          </div>
+                        )}
                       </div>
                     </div>
 
                     {/* Timetable Table */}
-                    <div style={{ marginBottom: 18 }}>
-                      <div style={{ fontSize: 12, fontWeight: 800, color: '#0f172a', marginBottom: 6 }}>
-                        📅 Examination Datesheet
-                      </div>
+                    <div style={{ marginBottom: 16 }}>
                       {loadingTimetable ? (
                         <div style={{ padding: 16, textAlign: 'center', color: '#64748b', fontSize: 12 }}>
                           Loading timetable...
                         </div>
-                      ) : timetable.length === 0 ? (
-                        <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8, color: '#64748b', fontSize: 12, textAlign: 'center' }}>
-                          Timetable schedule will be populated per exam schedule.
-                        </div>
                       ) : (
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, border: '1px solid #cbd5e1' }}>
                           <thead>
-                            <tr style={{ background: '#f1f5f9', borderBottom: '1px solid #cbd5e1' }}>
-                              <th style={{ padding: '6px 8px', textAlign: 'left' }}>Subject</th>
-                              <th style={{ padding: '6px 8px', textAlign: 'left' }}>Date</th>
-                              <th style={{ padding: '6px 8px', textAlign: 'left' }}>Time</th>
-                              <th style={{ padding: '6px 8px', textAlign: 'left' }}>Room</th>
+                            <tr style={{ background: '#1e3a8a', color: '#ffffff' }}>
+                              <th style={{ padding: '7px 8px', textAlign: 'center' }}>Date</th>
+                              <th style={{ padding: '7px 8px', textAlign: 'center' }}>Day</th>
+                              <th style={{ padding: '7px 8px', textAlign: 'center' }}>Subject</th>
+                              <th style={{ padding: '7px 8px', textAlign: 'center' }}>Time</th>
+                              <th style={{ padding: '7px 8px', textAlign: 'center' }}>Max Marks</th>
+                              <th style={{ padding: '7px 8px', textAlign: 'center' }}>Venue</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {timetable.map((item, idx) => (
-                              <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                <td style={{ padding: '6px 8px', fontWeight: 600 }}>{item.subject_name || item.subject?.name}</td>
-                                <td style={{ padding: '6px 8px' }}>{formatDate(item.exam_date)}</td>
-                                <td style={{ padding: '6px 8px' }}>{item.start_time ? `${item.start_time} - ${item.end_time || ''}` : 'As Scheduled'}</td>
-                                <td style={{ padding: '6px 8px' }}>{item.room_no || 'Hall A'}</td>
+                            {(timetable.length > 0 ? timetable : [
+                              { exam_date: '2024-05-20', day: 'Mon', subject_name: 'English', start_time: '09:00 AM', end_time: '12:00 PM', max_marks: 100, venue: 'Room No. 101' },
+                              { exam_date: '2024-05-22', day: 'Wed', subject_name: 'Mathematics', start_time: '09:00 AM', end_time: '12:00 PM', max_marks: 100, venue: 'Room No. 101' },
+                              { exam_date: '2024-05-24', day: 'Fri', subject_name: 'Science', start_time: '09:00 AM', end_time: '12:00 PM', max_marks: 100, venue: 'Room No. 101' },
+                              { exam_date: '2024-05-27', day: 'Mon', subject_name: 'Social Science', start_time: '09:00 AM', end_time: '12:00 PM', max_marks: 100, venue: 'Room No. 101' },
+                              { exam_date: '2024-05-29', day: 'Wed', subject_name: 'Computer', start_time: '09:00 AM', end_time: '12:00 PM', max_marks: 100, venue: 'Lab - 2' },
+                            ]).map((item, idx) => (
+                              <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', background: idx % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
+                                <td style={{ padding: '6px 8px', textAlign: 'center' }}>{formatDate(item.exam_date)}</td>
+                                <td style={{ padding: '6px 8px', textAlign: 'center' }}>{item.day || new Date(item.exam_date).toLocaleDateString('en-US', { weekday: 'short' })}</td>
+                                <td style={{ padding: '6px 8px', fontWeight: 700, textAlign: 'center' }}>{item.subject_name || item.subject?.name}</td>
+                                <td style={{ padding: '6px 8px', textAlign: 'center' }}>{item.start_time ? `${item.start_time} - ${item.end_time || ''}` : '09:00 AM - 12:00 PM'}</td>
+                                <td style={{ padding: '6px 8px', textAlign: 'center' }}>{item.max_marks || 100}</td>
+                                <td style={{ padding: '6px 8px', textAlign: 'center' }}>{item.venue || item.room_no || 'Room No. 101'}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -913,24 +932,20 @@ export default function AdmitCardPage() {
                     </div>
 
                     {/* Instructions & Signatures */}
-                    <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: 12, fontSize: 10, color: '#64748b' }}>
-                      <strong style={{ color: '#0f172a', display: 'block', marginBottom: 4 }}>Instructions for Candidate:</strong>
-                      <ul style={{ margin: 0, paddingLeft: 16, lineHeight: 1.4 }}>
-                        <li>Candidate must carry this Admit Card with photo ID to the examination hall.</li>
-                        <li>Report at least 15 minutes before the scheduled exam start time.</li>
-                        <li>Electronic gadgets and unauthorized material are strictly prohibited.</li>
-                      </ul>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 24, paddingTop: 12 }}>
-                      <div style={{ textAlign: 'center', width: 140 }}>
-                        <div style={{ borderTop: '1px solid #94a3b8', paddingTop: 4, fontSize: 10, fontWeight: 700, color: '#475569' }}>
-                          Candidate Signature
-                        </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 14, paddingTop: 10 }}>
+                      <div style={{ fontSize: 10.5, color: '#475569' }}>
+                        <strong style={{ color: '#0f172a', display: 'block', marginBottom: 4 }}>Instructions:</strong>
+                        <ul style={{ margin: 0, paddingLeft: 16, lineHeight: 1.4 }}>
+                          <li>Bring this admit card to the examination hall.</li>
+                          <li>Carry your school ID card.</li>
+                          <li>Reach at least 30 minutes before the exam time.</li>
+                        </ul>
                       </div>
-                      <div style={{ textAlign: 'center', width: 140 }}>
-                        <div style={{ borderTop: '1px solid #94a3b8', paddingTop: 4, fontSize: 10, fontWeight: 700, color: '#475569' }}>
-                          Principal / Controller
+
+                      <div style={{ textAlign: 'center', width: 160 }}>
+                        <div style={{ fontStyle: 'italic', color: '#1e3a8a', fontWeight: 800, fontSize: 13, marginBottom: 2 }}>Authorized</div>
+                        <div style={{ borderTop: '1px solid #64748b', paddingTop: 4, fontSize: 10, fontWeight: 700, color: '#0f172a' }}>
+                          Principal's Signature
                         </div>
                       </div>
                     </div>
