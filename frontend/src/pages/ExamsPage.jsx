@@ -534,6 +534,85 @@ function AdmitCardPanel({ exam }) {
     </div>
   );
 }
+// ─── Result Card Download Panel ───────────────────────────────────────────────
+function ResultCardPanel({ exam }) {
+  const [classes,     setClasses]     = useState([]);
+  const [students,    setStudents]    = useState([]);
+  const [selClass,    setSelClass]    = useState('');
+  const [downloading, setDownloading] = useState('');
+  const [msg,         setMsg]         = useState('');
+
+  useEffect(() => {
+    api.get('/principal/classes').then(r => setClasses(r.data)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const url = selClass ? `/principal/students?class_id=${selClass}` : '/principal/students';
+    api.get(url).then(r => setStudents(r.data)).catch(() => {});
+  }, [selClass]);
+
+  const downloadOne = async (studentId, studentName) => {
+    setDownloading(String(studentId));
+    try {
+      const res = await api.get(`/principal/result-card/${studentId}/${exam.id}`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url; a.download = `ResultCard_${studentName}.pdf`; a.click();
+    } catch { flash(setMsg, '❌ Error generating result card'); }
+    setDownloading('');
+  };
+
+  const downloadAll = async () => {
+    for (const s of students) await downloadOne(s.id, s.name);
+  };
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      {msg && (
+        <div style={{ padding: '8px 14px', borderRadius: 6, marginBottom: 10, fontSize: 12, background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca' }}>{msg}</div>
+      )}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <button onClick={() => setSelClass('')}
+            style={{ padding: '5px 12px', borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer', border: !selClass ? '2px solid #0176d3' : '1px solid #e2e8f0', background: !selClass ? '#eff6ff' : 'white', color: !selClass ? '#0176d3' : '#64748b' }}>
+            All Classes
+          </button>
+          {classes.map(c => (
+            <button key={c.id} onClick={() => setSelClass(String(c.id))}
+              style={{ padding: '5px 12px', borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer', border: selClass === String(c.id) ? '2px solid #0176d3' : '1px solid #e2e8f0', background: selClass === String(c.id) ? '#eff6ff' : 'white', color: selClass === String(c.id) ? '#0176d3' : '#64748b' }}>
+              {c.name} {c.section}
+            </button>
+          ))}
+        </div>
+        <button onClick={downloadAll} disabled={!students.length || !!downloading}
+          style={{ padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 700, background: '#0176d3', color: 'white', border: 'none', cursor: 'pointer' }}>
+          {downloading ? '⏳ Downloading…' : `⬇ Download All (${students.length})`}
+        </button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px,1fr))', gap: 10 }}>
+        {students.map(s => (
+          <div key={s.id} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
+            {s.photo_url
+              ? <img src={s.photo_url} alt={s.name} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+              : <div style={{ width: 36, height: 36, borderRadius: '50%', flexShrink: 0, background: '#eff6ff', color: '#0176d3', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14 }}>{s.name?.charAt(0).toUpperCase()}</div>
+            }
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 12, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</div>
+              <div style={{ fontSize: 11, color: '#94a3b8' }}>Roll: {s.roll_number || '—'}</div>
+            </div>
+            <button onClick={() => downloadOne(s.id, s.name)} disabled={downloading === String(s.id)}
+              style={{ background: downloading === String(s.id) ? '#f1f5f9' : '#f0fdf4', color: '#16a34a', border: 'none', borderRadius: 5, padding: '5px 8px', fontSize: 11, cursor: 'pointer', fontWeight: 700, flexShrink: 0 }}>
+              {downloading === String(s.id) ? '…' : '📊 PDF'}
+            </button>
+          </div>
+        ))}
+        {!students.length && (
+          <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: 24, color: '#94a3b8', fontSize: 13 }}>No students found.</div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // ─── Exam Detail Panel (Drawer style) ────────────────────────────────────────
 function ExamDetailPanel({ exam, onClose, onUpdate }) {
@@ -716,9 +795,10 @@ function ExamDetailPanel({ exam, onClose, onUpdate }) {
       {/* Tabs */}
       <div style={{ display:'flex', borderBottom:'1px solid #e2e8f0', flexShrink:0, paddingLeft:20 }}>
         {[
-          { key:'timetable',  label:'📋 Timetable & Papers', show: true },
-          { key:'validation', label:'🛡 Validation & Publish', show: true },
-          { key:'admitcards', label:'🎟 Admit Cards',    show: isPublished },
+          { key:'timetable',   label:'📋 Timetable & Papers',    show: true },
+          { key:'validation',  label:'🛡 Validation & Publish', show: true },
+          { key:'admitcards',  label:'🎟 Admit Cards',           show: isPublished },
+          { key:'resultcards', label:'📊 Result Cards',          show: isPublished },
         ].filter(t => t.show).map(t => (
           <button key={t.key} onClick={() => setActiveTab(t.key)}
             style={{
@@ -731,6 +811,18 @@ function ExamDetailPanel({ exam, onClose, onUpdate }) {
         ))}
       </div>
 
+      {/* ⚠️ Warning: Published but timetable is empty */}
+      {isPublished && exam.timetable_count === 0 && (
+        <div style={{
+          margin:'10px 20px 0', padding:'10px 14px', borderRadius:8,
+          background:'#fffbeb', border:'1px solid #fcd34d',
+          fontSize:12, color:'#92400e', flexShrink:0,
+        }}>
+          ⚠️ <strong>Timetable empty hai!</strong> Admit cards mein koi subject nahi dikhega.
+          Pehle &quot;📋 Timetable & Papers&quot; tab mein class-wise subjects add karo.
+        </div>
+      )}
+
       {/* Tab content */}
       <div style={{ padding:'12px 20px 20px', flex:1, overflow:'auto' }}>
         {activeTab === 'timetable' && (
@@ -741,6 +833,9 @@ function ExamDetailPanel({ exam, onClose, onUpdate }) {
         )}
         {activeTab === 'admitcards' && (
           <AdmitCardPanel exam={exam} />
+        )}
+        {activeTab === 'resultcards' && (
+          <ResultCardPanel exam={exam} />
         )}
       </div>
 

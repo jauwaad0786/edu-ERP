@@ -222,6 +222,17 @@ export default function StudentProfile() {
   const [docSaving, setDocSaving] = useState(false);
   const [deleteDocTarget, setDeleteDocTarget] = useState(null); // { kind: 'issued'|'student', id }
 
+  // ── Exam Cards (Admit / Result) ──
+  const [publishedExams, setPublishedExams] = useState([]);
+  const [examPickerType, setExamPickerType] = useState(null); // 'admit' | 'result'
+  const [pickedExamId, setPickedExamId]     = useState('');
+
+  useEffect(() => {
+    api.get('/principal/exams?status=PUBLISHED')
+      .then(r => setPublishedExams(r.data || []))
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     setLoading(true);
     api.get(`/principal/students/${id}/profile`)
@@ -292,19 +303,39 @@ export default function StudentProfile() {
     }
   }
 
-  const downloadCard = async (type) => {
+  // Fixed downloadCard — type can be 'admission', 'admit', or 'result'
+  const downloadCard = async (type, examId) => {
     setDlLoading(type);
     try {
-      const url = type === 'admission'
-        ? `/principal/admission-card/${id}`
-        : `/principal/admit-card/${id}/${type}`;
+      let url;
+      if (type === 'admission') {
+        url = `/principal/admission-card/${id}`;
+      } else if (type === 'admit') {
+        url = `/principal/admit-card/${id}/${examId}`;
+      } else if (type === 'result') {
+        url = `/principal/result-card/${id}/${examId}`;
+      }
       const res = await api.get(url, { responseType: 'blob' });
       const link = document.createElement('a');
       link.href = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
       link.download = `${type}_card_${data?.info?.name}.pdf`;
       link.click();
-    } catch { toast.error('PDF generate nahi hua'); }
+      toast.success('PDF download ho raha hai!');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'PDF generate nahi hua');
+    }
     setDlLoading(false);
+  };
+
+  const openExamPicker = (type) => {
+    setPickedExamId('');
+    setExamPickerType(type);
+  };
+
+  const confirmExamPicker = () => {
+    if (!pickedExamId) { toast.error('Pehle exam select karo'); return; }
+    downloadCard(examPickerType, pickedExamId);
+    setExamPickerType(null);
   };
 
   const fmt  = n => Number(n || 0).toLocaleString('en-IN');
@@ -680,18 +711,41 @@ export default function StudentProfile() {
           {tab === 'documents' && (
             <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
 
-              {/* Admission Card download (existing) */}
-              <div className="card" style={{ margin:0, padding:24, textAlign:'center', maxWidth:280 }}>
-                <div style={{ fontSize:40, marginBottom:12 }}>🎓</div>
-                <div style={{ fontWeight:700, fontSize:15, marginBottom:6 }}>Admission Card</div>
-                <div style={{ fontSize:12, color:'var(--neutral-5)', marginBottom:16 }}>Student ka official admission card PDF</div>
-                <button
-                  className="btn btn-primary btn-sm"
-                  disabled={dlLoading === 'admission'}
-                  onClick={() => downloadCard('admission')}
-                  style={{ width:'100%' }}>
-                  {dlLoading === 'admission' ? '⏳ Generating...' : '⬇️ Download PDF'}
-                </button>
+              {/* PDF Cards — Admission + Admit + Result */}
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(230px,1fr))', gap:16 }}>
+
+                {/* Admission Card */}
+                <div className="card" style={{ margin:0, padding:24, textAlign:'center' }}>
+                  <div style={{ fontSize:38, marginBottom:10 }}>🎓</div>
+                  <div style={{ fontWeight:700, fontSize:14, marginBottom:4 }}>Admission Card</div>
+                  <div style={{ fontSize:11, color:'var(--neutral-5)', marginBottom:14 }}>Official admission registration card</div>
+                  <button className="btn btn-primary btn-sm" disabled={dlLoading === 'admission'}
+                    onClick={() => downloadCard('admission')} style={{ width:'100%' }}>
+                    {dlLoading === 'admission' ? '⏳ Generating...' : '⬇️ Download PDF'}
+                  </button>
+                </div>
+
+                {/* Admit Card */}
+                <div className="card" style={{ margin:0, padding:24, textAlign:'center' }}>
+                  <div style={{ fontSize:38, marginBottom:10 }}>🎟️</div>
+                  <div style={{ fontWeight:700, fontSize:14, marginBottom:4 }}>Admit Card</div>
+                  <div style={{ fontSize:11, color:'var(--neutral-5)', marginBottom:14 }}>Exam ka admit card (subject-wise timetable)</div>
+                  <button className="btn btn-primary btn-sm" disabled={dlLoading === 'admit'}
+                    onClick={() => openExamPicker('admit')} style={{ width:'100%' }}>
+                    {dlLoading === 'admit' ? '⏳ Generating...' : '⬇️ Download PDF'}
+                  </button>
+                </div>
+
+                {/* Result Card */}
+                <div className="card" style={{ margin:0, padding:24, textAlign:'center' }}>
+                  <div style={{ fontSize:38, marginBottom:10 }}>📊</div>
+                  <div style={{ fontWeight:700, fontSize:14, marginBottom:4 }}>Result Card</div>
+                  <div style={{ fontSize:11, color:'var(--neutral-5)', marginBottom:14 }}>Exam ka progress report / marksheet</div>
+                  <button className="btn btn-primary btn-sm" disabled={dlLoading === 'result'}
+                    onClick={() => openExamPicker('result')} style={{ width:'100%' }}>
+                    {dlLoading === 'result' ? '⏳ Generating...' : '⬇️ Download PDF'}
+                  </button>
+                </div>
               </div>
 
               {docsLoading && (
@@ -903,6 +957,45 @@ export default function StudentProfile() {
                 style={{ background:'#dc2626', color:'#fff', border:'none', borderRadius:6, padding:'8px 18px', fontSize:13, fontWeight:700, cursor:'pointer' }}>
                 Yes, Delete
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Exam Picker Modal (Admit Card / Result Card) ── */}
+      {examPickerType && (
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setExamPickerType(null)}>
+          <div className="modal" style={{ maxWidth: 420 }}>
+            <div className="modal-header">
+              <h3>{examPickerType === 'admit' ? '🎟️ Admit Card Download' : '📊 Result Card Download'}</h3>
+              <button className="modal-close" onClick={() => setExamPickerType(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label className="form-label">Exam Select Karo *</label>
+                {publishedExams.length === 0 ? (
+                  <div style={{ padding:'12px 16px', background:'#fffbeb', border:'1px solid #fcd34d', borderRadius:8, fontSize:13, color:'#92400e' }}>
+                    ⚠️ Koi published exam nahi mila. Principal se exam publish karwao.
+                  </div>
+                ) : (
+                  <select className="form-input" value={pickedExamId} onChange={e => setPickedExamId(e.target.value)}>
+                    <option value="">-- Exam chunein --</option>
+                    {publishedExams.map(ex => (
+                      <option key={ex.id} value={ex.id}>{ex.exam_name} ({ex.session})</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              {examPickerType === 'admit' && (
+                <div style={{ fontSize:11, color:'var(--neutral-5)', marginTop:4 }}>
+                  📌 Admit card mein subjects tabhi aayenge jab principal ne exam ka timetable add kiya ho.
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-neutral" onClick={() => setExamPickerType(null)}>Cancel</button>
+              <button className="btn btn-primary" disabled={!pickedExamId || publishedExams.length === 0}
+                onClick={confirmExamPicker}>⬇️ Download PDF</button>
             </div>
           </div>
         </div>

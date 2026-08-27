@@ -3607,6 +3607,9 @@ def dashboard():
 @role_required('PRINCIPAL', 'TEACHER')
 def admission_card_pdf(student_id):
     student = Student.query.get_or_404(student_id)
+    # Security: student isi school ka hona chahiye
+    if student.school_id != _school_id():
+        return jsonify({'error': 'Unauthorized'}), 403
     from app.models.school import School
     school  = School.query.get(student.school_id)
     from app.utils.pdf_generator import generate_admission_card
