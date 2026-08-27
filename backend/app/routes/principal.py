@@ -721,15 +721,30 @@ def create_student():
             'plan':    plan,
         }), 403
 
-    if User.query.filter_by(email=data['email']).first():
-        return jsonify({'error': 'Email already registered'}), 409
+    raw_email = (data.get('email') or '').strip().lower()
+    first = ''.join(c for c in (data.get('name') or 'student').lower().split()[0] if c.isalnum()) or 'student'
+    if not raw_email:
+        raw_email = f"{first}{random.randint(100, 999)}@eduerp.com"
+
+    final_email = raw_email
+    counter = 1
+    while User.query.filter_by(email=final_email).first():
+        base = raw_email.split('@')[0]
+        domain = raw_email.split('@')[1] if '@' in raw_email else 'eduerp.com'
+        final_email = f"{base}_{random.randint(100, 999)}@{domain}"
+        counter += 1
+        if counter > 10:
+            final_email = f"{first}_{int(datetime.utcnow().timestamp())}@{domain}"
+            break
+
     user = User(
-        name=data['name'], email=data['email'].lower(),
+        name=data['name'], email=final_email,
         role=UserRole.STUDENT, school_id=sid
     )
     user.set_password(data.get('password', 'Student@123'), store_plain=True)
     db.session.add(user)
     db.session.flush()
+
     # Parse dates safely
     dob_val = None
     if data.get('dob'):
@@ -755,11 +770,30 @@ def create_student():
         except Exception:
             tc_date_val = None
 
+    # Safe unique admission_no
+    session_str = data.get('session', '2024-25')
+    year_prefix = session_str[:4] if session_str else '2024'
+    adm_no = (data.get('admission_no') or '').strip()
+    if not adm_no:
+        while True:
+            candidate = f"ADM-{year_prefix}-{random.randint(1000, 9999)}"
+            if not Student.query.filter_by(admission_no=candidate).first():
+                adm_no = candidate
+                break
+    else:
+        if Student.query.filter_by(admission_no=adm_no).first():
+            adm_no = f"{adm_no}-{random.randint(10, 99)}"
+
+    roll_no = (data.get('roll_number') or '').strip()
+    if not roll_no and data.get('class_id'):
+        count_in_cls = Student.query.filter_by(school_id=sid, class_id=data.get('class_id')).count()
+        roll_no = str(count_in_cls + 1)
+
     student = Student(
         user_id=user.id, school_id=_school_id(),
         class_id=data.get('class_id'),
-        roll_number=data.get('roll_number'),
-        admission_no=data.get('admission_no'),
+        roll_number=roll_no,
+        admission_no=adm_no,
         parent_name=data.get('parent_name') or data.get('father_name'),
         parent_phone=data.get('parent_phone'),
         parent_email=data.get('parent_email'),
@@ -777,7 +811,7 @@ def create_student():
         nationality=data.get('nationality', 'Indian'),
         religion=data.get('religion'),
         address=data.get('address'),
-        session=data.get('session', '2024-25'),
+        session=session_str,
         admission_date=adm_date_val,
         aadhar_no=data.get('aadhar_no'),
         parent_aadhar_no=data.get('parent_aadhar_no'),
@@ -789,24 +823,27 @@ def create_student():
         previous_reason=data.get('previous_reason'),
     )
     db.session.add(student)
-    db.session.flush()   # ← student.id ab available hai, commit se pehle
+    db.session.flush()
 
-    admission_fs = FeeStructure.query.filter_by(
-        school_id=sid, class_id=student.class_id, fee_type='ADMISSION',
-        frequency='ONE_TIME', status='ACTIVE'
-    ).first() or FeeStructure.query.filter_by(
-        school_id=sid, class_id=None, fee_type='ADMISSION',
-        frequency='ONE_TIME', status='ACTIVE'
-    ).first()
+    try:
+        admission_fs = FeeStructure.query.filter_by(
+            school_id=sid, class_id=student.class_id, fee_type='ADMISSION',
+            frequency='ONE_TIME', status='ACTIVE'
+        ).first() or FeeStructure.query.filter_by(
+            school_id=sid, class_id=None, fee_type='ADMISSION',
+            frequency='ONE_TIME', status='ACTIVE'
+        ).first()
 
-    if admission_fs:
-        rec = FeeRecord(
-            school_id=sid, student_id=student.id, fee_type='ADMISSION',
-            amount_due=admission_fs.amount, amount_paid=0, status='PENDING',
-            due_date=date.today() + timedelta(days=7),
-            session=student.session, remarks='Admission Fee — auto-generated',
-        )
-        db.session.add(rec)
+        if admission_fs:
+            rec = FeeRecord(
+                school_id=sid, student_id=student.id, fee_type='ADMISSION',
+                amount_due=admission_fs.amount, amount_paid=0, status='PENDING',
+                due_date=date.today() + timedelta(days=7),
+                session=student.session, remarks='Admission Fee — auto-generated',
+            )
+            db.session.add(rec)
+    except Exception:
+        pass
 
     db.session.commit()
     return jsonify(student.to_dict()), 201
