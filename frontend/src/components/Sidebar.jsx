@@ -70,7 +70,6 @@ const ROLE_MENUS = {
         {
           icon: 'ti-address-book', label: 'Student Management', path: '/students',
           children: [
-            { icon: 'ti-list',           label: 'Classes & Sections',    path: '/classes' },
             { icon: 'ti-user-plus',      label: 'Admissions',            path: '/admission' },
             { icon: 'ti-address-book',   label: 'Students',              path: '/students' },
             { icon: 'ti-edit',           label: 'Students Bulk Edit',    path: '/students/bulk-edit' },
@@ -82,7 +81,14 @@ const ROLE_MENUS = {
 
         { icon: 'ti-clipboard-check', label: 'Attendance', path: '/attendance' },
 
-        { icon: 'ti-books', label: 'Academics', path: '/subjects' },
+        {
+          icon: 'ti-books', label: 'Academics', path: '/classes',
+          children: [
+            { icon: 'ti-list',          label: 'Classes & Sections', path: '/classes' },
+            { icon: 'ti-bookmark',      label: 'Subject Management', path: '/subjects' },
+            { icon: 'ti-calendar-time', label: 'Timetable',          path: '/timetable' },
+          ],
+        },
 
         {
           icon: 'ti-pencil', label: 'Examinations', path: '/exams',
@@ -95,8 +101,6 @@ const ROLE_MENUS = {
             { icon: 'ti-file-certificate', label: 'Result Cards',       path: '/result-card' },
           ],
         },
-
-        { icon: 'ti-calendar-time', label: 'Timetable', path: '/timetable' },
 
         {
           icon: 'ti-receipt', label: 'Fees Management', path: '/fees',

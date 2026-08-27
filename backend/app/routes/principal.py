@@ -51,13 +51,20 @@ def _gen_receipt():
 # ─── Classes ──────────────────────────────────────────────────────────────────
 
 @principal_bp.route('/classes', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT', 'SUPER_ADMIN', 'ADMIN')
 def list_classes():
-    classes = Class.query.filter_by(school_id=_school_id()).all()
+    classes = Class.query.filter_by(school_id=_school_id()).order_by(Class.name.asc(), Class.section.asc()).all()
     result = []
     for c in classes:
         d = c.to_dict()
         d['student_count'] = c.students.count()
+        d['subjects_count'] = c.subjects.count()
+        t_name = ''
+        if c.teacher_id:
+            t = Teacher.query.get(c.teacher_id)
+            if t and t.user:
+                t_name = t.user.name
+        d['teacher_name'] = t_name
         result.append(d)
     return jsonify(result), 200
 @principal_bp.route('/classes/<int:class_id>', methods=['PATCH'])
@@ -211,12 +218,17 @@ def class_detail(class_id):
     present_today = sum(1 for a in att_today if a.status == 'PRESENT')
     absent_today  = sum(1 for a in att_today if a.status == 'ABSENT')
 
+    # ── Class Subjects list with teacher details ──
+    subjects_list = [s.to_dict() for s in cls.subjects.order_by(Subject.name.asc()).all()]
+
     return jsonify({
         'class_id':       cls.id,
         'class_name':     cls.name,
         'section':        cls.section,
         'session':        cls.session,
         'total_students': total_students,
+        'subjects':       subjects_list,
+        'subjects_count': len(subjects_list),
         'fees': {
             'total_due':    total_due,
             'total_paid':   total_paid,
