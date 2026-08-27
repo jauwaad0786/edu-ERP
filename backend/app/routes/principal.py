@@ -2484,7 +2484,10 @@ def validate_exam(exam_id):
         # Check date range
         if exam.start_date and exam.end_date:
             if item.exam_date < exam.start_date or item.exam_date > exam.end_date:
-                blockers.append(f"Paper for subject #{item.subject_id} on {item.exam_date} falls outside the exam period ({exam.start_date} to {exam.end_date}).")
+                sub_name = item.subject.name if item.subject else f"Subject #{item.subject_id}"
+                cls = Class.query.get(item.class_id)
+                c_name = f" ({cls.name} - {cls.section})" if cls else ""
+                blockers.append(f"Paper for {sub_name}{c_name} on {item.exam_date} falls outside the exam period ({exam.start_date} to {exam.end_date}). Edit paper date to be within exam range.")
 
     can_publish = len(blockers) == 0
     return jsonify({
@@ -3880,15 +3883,17 @@ def teacher_photo(teacher_id):
 
 
 
-# ─── Classes subjects route ───────────────────────────────────────────────────
-
 @principal_bp.route('/classes/<int:class_id>/subjects', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_or_permission_required(
+    roles=['PRINCIPAL', 'TEACHER', 'SUPER_ADMIN', 'ADMIN', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR', 'ACCOUNTANT'],
+    permissions=['academics.subjects.view', 'exams.timetable.manage']
+)
 def class_subjects(class_id):
     cls = Class.query.get_or_404(class_id)
-    if cls.school_id != _school_id():
+    curr = get_current_user()
+    if not getattr(curr, 'is_super', False) and curr.school_id and cls.school_id != curr.school_id:
         return jsonify({'error': 'Unauthorized'}), 403
-    subjects = cls.subjects.all()
+    subjects = Subject.query.filter_by(class_id=class_id).order_by(Subject.name.asc()).all()
     return jsonify([s.to_dict() for s in subjects]), 200
 
 
@@ -4054,7 +4059,7 @@ def list_subjects():
 @principal_bp.route('/subjects', methods=['POST'])
 @role_required('PRINCIPAL', 'TEACHER')
 def create_subject():
-    data       = request.get_json()
+    data       = request.get_json() or {}
     name       = data.get('name', '').strip()
     class_id   = data.get('class_id')
     teacher_id = data.get('teacher_id') or None
@@ -4069,9 +4074,12 @@ def create_subject():
     try:
         subj = Subject(
             name       = name,
+            code       = data.get('code', '').strip(),
             class_id   = int(class_id),
             school_id  = _school_id(),
             teacher_id = int(teacher_id) if teacher_id else None,
+            max_marks  = int(data.get('max_marks', 100)),
+            pass_marks = int(data.get('pass_marks', 33)),
         )
         db.session.add(subj)
         db.session.commit()

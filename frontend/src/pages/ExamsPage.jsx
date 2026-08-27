@@ -86,25 +86,63 @@ function TimetableBuilder({ exam, onUpdate }) {
   const [msg,    setMsg]    = useState('');
 
   const loadClasses = useCallback(() => {
-    api.get('/principal/classes').then(r => setClasses(r.data)).catch(() => {});
-  }, []);
+    api.get('/principal/classes').then(r => {
+      const clsData = Array.isArray(r.data) ? r.data : [];
+      setClasses(clsData);
+      // Auto-select first participating class or first class if none selected
+      if (!selClass && clsData.length > 0) {
+        setSelClass(String(clsData[0].id));
+      }
+    }).catch(() => {});
+  }, [selClass]);
 
   const loadTimetable = useCallback(() => {
     if (!exam?.id) return;
     const url = selClass
       ? `/principal/exams/${exam.id}/timetable?class_id=${selClass}`
       : `/principal/exams/${exam.id}/timetable`;
-    api.get(url).then(r => setItems(r.data)).catch(() => {});
+    api.get(url).then(r => setItems(Array.isArray(r.data) ? r.data : [])).catch(() => {});
   }, [exam?.id, selClass]);
 
   const loadSubjects = useCallback(() => {
     if (!selClass) { setSubjects([]); return; }
-    api.get(`/principal/classes/${selClass}/subjects`).then(r => setSubjects(r.data)).catch(() => {});
+    // Fetch subjects with primary + fallback endpoint
+    api.get(`/principal/classes/${selClass}/subjects`)
+      .then(r => {
+        if (Array.isArray(r.data) && r.data.length > 0) {
+          setSubjects(r.data);
+        } else {
+          api.get(`/principal/subjects?class_id=${selClass}`)
+            .then(res => setSubjects(Array.isArray(res.data) ? res.data : []))
+            .catch(() => setSubjects([]));
+        }
+      })
+      .catch(() => {
+        api.get(`/principal/subjects?class_id=${selClass}`)
+          .then(res => setSubjects(Array.isArray(res.data) ? res.data : []))
+          .catch(() => setSubjects([]));
+      });
   }, [selClass]);
 
   useEffect(() => { loadClasses(); }, [loadClasses]);
   useEffect(() => { loadTimetable(); }, [loadTimetable]);
   useEffect(() => { loadSubjects(); }, [loadSubjects]);
+
+  const startAdding = () => {
+    const defaultDate = exam?.start_date ? String(exam.start_date).split('T')[0] : '';
+    setForm({
+      subject_id: subjects.length > 0 ? String(subjects[0].id) : '',
+      subject_name: '',
+      exam_date: defaultDate,
+      start_time: '10:00 AM',
+      end_time: '01:00 PM',
+      venue: 'Main Hall',
+      max_marks: subjects.length > 0 ? (subjects[0].max_marks || 100) : 100,
+      pass_marks: subjects.length > 0 ? (subjects[0].pass_marks || 33) : 33,
+      instructions: '',
+    });
+    setAdding(true);
+  };
 
   const addItem = async e => {
     e.preventDefault(); setSaving(true);
@@ -132,6 +170,8 @@ function TimetableBuilder({ exam, onUpdate }) {
   };
 
   const isPublished = exam?.status === 'PUBLISHED';
+  const startDateStr = exam?.start_date ? String(exam.start_date).split('T')[0] : '';
+  const endDateStr = exam?.end_date ? String(exam.end_date).split('T')[0] : '';
 
   return (
     <div style={{ marginTop: 12 }}>
@@ -157,7 +197,7 @@ function TimetableBuilder({ exam, onUpdate }) {
           ))}
         </div>
         {!isPublished && selClass && (
-          <button onClick={() => setAdding(a => !a)}
+          <button onClick={() => adding ? setAdding(false) : startAdding()}
             style={{
               padding:'6px 14px', borderRadius:6, fontSize:12, fontWeight:700,
               background: adding ? '#f1f5f9' : '#0176d3', color: adding ? '#64748b' : 'white',
@@ -180,81 +220,111 @@ function TimetableBuilder({ exam, onUpdate }) {
       {/* Add paper inline form */}
       {adding && selClass && (
         <div style={{
-          background:'#f8faff', border:'1px solid #bfdbfe', borderRadius:8,
-          padding:'14px 16px', marginBottom:12,
+          background:'#f8faff', border:'1.5px solid #93c5fd', borderRadius:10,
+          padding:'16px 18px', marginBottom:14, boxShadow:'0 4px 12px rgba(1,118,211,0.06)',
         }}>
-          <div style={{ fontWeight:700, fontSize:12, color:'#0176d3', marginBottom:10 }}>📋 Add New Paper</div>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+            <div style={{ fontWeight:800, fontSize:13, color:'#0176d3' }}>
+              📋 Add Paper for {classes.find(c => String(c.id) === String(selClass))?.name || 'Class'}
+            </div>
+            {startDateStr && endDateStr && (
+              <span style={{ fontSize:11, background:'#e0f2fe', color:'#0369a1', padding:'2px 8px', borderRadius:12, fontWeight:600 }}>
+                📅 Exam Period: {fmt(startDateStr)} – {fmt(endDateStr)}
+              </span>
+            )}
+          </div>
           <form onSubmit={addItem}>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(160px,1fr))', gap:10 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(170px,1fr))', gap:12 }}>
               <div>
-                <label style={{ fontSize:11, fontWeight:600, color:'#475569', display:'block', marginBottom:3 }}>Subject *</label>
+                <label style={{ fontSize:11, fontWeight:700, color:'#334155', display:'block', marginBottom:3 }}>Subject *</label>
                 {subjects.length > 0 ? (
                   <select value={form.subject_id} required
-                    onChange={e => setForm(f => ({...f, subject_id: e.target.value}))}
-                    style={{ width:'100%', padding:'6px 8px', borderRadius:5, border:'1px solid #cbd5e1', fontSize:12 }}>
-                    <option value=''>-- Select Subject --</option>
-                    {subjects.map(s => <option key={s.id} value={s.id}>{s.name} ({s.code || 'No Code'})</option>)}
+                    onChange={e => {
+                      const sId = e.target.value;
+                      const selSub = subjects.find(s => String(s.id) === String(sId));
+                      setForm(f => ({
+                        ...f,
+                        subject_id: sId,
+                        max_marks: selSub?.max_marks || f.max_marks || 100,
+                        pass_marks: selSub?.pass_marks || f.pass_marks || 33,
+                      }));
+                    }}
+                    style={{ width:'100%', padding:'7px 9px', borderRadius:6, border:'1.5px solid #cbd5e1', fontSize:12, background:'white' }}>
+                    <option value=''>-- Select Subject ({subjects.length} available) --</option>
+                    {subjects.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} {s.code ? `[${s.code}]` : ''} {s.teacher_name ? `(${s.teacher_name})` : ''}
+                      </option>
+                    ))}
                   </select>
                 ) : (
-                  <input required
-                    placeholder='Subject name'
-                    value={form.subject_name || ''}
-                    onChange={e => setForm(f => ({...f, subject_name: e.target.value, subject_id: ''}))}
-                    style={{ width:'100%', padding:'6px 8px', borderRadius:5, border:'1px solid #cbd5e1', fontSize:12 }} />
+                  <div>
+                    <input required
+                      placeholder='Type subject name (e.g. Maths)'
+                      value={form.subject_name || ''}
+                      onChange={e => setForm(f => ({...f, subject_name: e.target.value, subject_id: ''}))}
+                      style={{ width:'100%', padding:'7px 9px', borderRadius:6, border:'1.5px solid #f59e0b', fontSize:12, background:'#fffbeb' }} />
+                    <span style={{ fontSize:10, color:'#b45309', marginTop:2, display:'block' }}>
+                      ⚠️ No subjects found for this class. Enter manually or add in Subjects Page.
+                    </span>
+                  </div>
                 )}
               </div>
               <div>
-                <label style={{ fontSize:11, fontWeight:600, color:'#475569', display:'block', marginBottom:3 }}>Date *</label>
+                <label style={{ fontSize:11, fontWeight:700, color:'#334155', display:'block', marginBottom:3 }}>
+                  Exam Date *
+                </label>
                 <input required type='date' value={form.exam_date}
+                  min={startDateStr || undefined}
+                  max={endDateStr || undefined}
                   onChange={e => setForm(f => ({...f, exam_date: e.target.value}))}
-                  style={{ width:'100%', padding:'6px 8px', borderRadius:5, border:'1px solid #cbd5e1', fontSize:12 }} />
+                  style={{ width:'100%', padding:'7px 9px', borderRadius:6, border:'1.5px solid #cbd5e1', fontSize:12, background:'white', boxSizing:'border-box' }} />
               </div>
               <div>
-                <label style={{ fontSize:11, fontWeight:600, color:'#475569', display:'block', marginBottom:3 }}>Start Time</label>
+                <label style={{ fontSize:11, fontWeight:700, color:'#334155', display:'block', marginBottom:3 }}>Start Time</label>
                 <select value={form.start_time}
                   onChange={e => setForm(f => ({...f, start_time: e.target.value}))}
-                  style={{ width:'100%', padding:'6px 8px', borderRadius:5, border:'1px solid #cbd5e1', fontSize:12 }}>
+                  style={{ width:'100%', padding:'7px 9px', borderRadius:6, border:'1.5px solid #cbd5e1', fontSize:12, background:'white' }}>
                   {TIME_OPTIONS.map(t => <option key={t}>{t}</option>)}
                 </select>
               </div>
               <div>
-                <label style={{ fontSize:11, fontWeight:600, color:'#475569', display:'block', marginBottom:3 }}>End Time</label>
+                <label style={{ fontSize:11, fontWeight:700, color:'#334155', display:'block', marginBottom:3 }}>End Time</label>
                 <select value={form.end_time}
                   onChange={e => setForm(f => ({...f, end_time: e.target.value}))}
-                  style={{ width:'100%', padding:'6px 8px', borderRadius:5, border:'1px solid #cbd5e1', fontSize:12 }}>
+                  style={{ width:'100%', padding:'7px 9px', borderRadius:6, border:'1.5px solid #cbd5e1', fontSize:12, background:'white' }}>
                   {TIME_OPTIONS.map(t => <option key={t}>{t}</option>)}
                 </select>
               </div>
               <div>
-                <label style={{ fontSize:11, fontWeight:600, color:'#475569', display:'block', marginBottom:3 }}>Venue / Room</label>
-                <input value={form.venue}
+                <label style={{ fontSize:11, fontWeight:700, color:'#334155', display:'block', marginBottom:3 }}>Venue / Room</label>
+                <input value={form.venue} placeholder='e.g. Room 101 / Hall'
                   onChange={e => setForm(f => ({...f, venue: e.target.value}))}
-                  style={{ width:'100%', padding:'6px 8px', borderRadius:5, border:'1px solid #cbd5e1', fontSize:12 }} />
+                  style={{ width:'100%', padding:'7px 9px', borderRadius:6, border:'1.5px solid #cbd5e1', fontSize:12, boxSizing:'border-box' }} />
               </div>
               <div>
-                <label style={{ fontSize:11, fontWeight:600, color:'#475569', display:'block', marginBottom:3 }}>Max Marks</label>
-                <input type='number' value={form.max_marks}
+                <label style={{ fontSize:11, fontWeight:700, color:'#334155', display:'block', marginBottom:3 }}>Max Marks</label>
+                <input type='number' value={form.max_marks} min={1}
                   onChange={e => setForm(f => ({...f, max_marks: Number(e.target.value)}))}
-                  style={{ width:'100%', padding:'6px 8px', borderRadius:5, border:'1px solid #cbd5e1', fontSize:12 }} />
+                  style={{ width:'100%', padding:'7px 9px', borderRadius:6, border:'1.5px solid #cbd5e1', fontSize:12, boxSizing:'border-box' }} />
               </div>
               <div>
-                <label style={{ fontSize:11, fontWeight:600, color:'#475569', display:'block', marginBottom:3 }}>Pass Marks</label>
-                <input type='number' value={form.pass_marks}
+                <label style={{ fontSize:11, fontWeight:700, color:'#334155', display:'block', marginBottom:3 }}>Pass Marks</label>
+                <input type='number' value={form.pass_marks} min={0}
                   onChange={e => setForm(f => ({...f, pass_marks: Number(e.target.value)}))}
-                  style={{ width:'100%', padding:'6px 8px', borderRadius:5, border:'1px solid #cbd5e1', fontSize:12 }} />
+                  style={{ width:'100%', padding:'7px 9px', borderRadius:6, border:'1.5px solid #cbd5e1', fontSize:12, boxSizing:'border-box' }} />
               </div>
             </div>
-            <div style={{ marginTop:10, display:'flex', justifyContent:'flex-end', gap:8 }}>
+            <div style={{ marginTop:14, display:'flex', justifyContent:'flex-end', gap:8 }}>
               <button type='button' onClick={() => setAdding(false)}
-                style={{ padding:'6px 14px', borderRadius:5, fontSize:12, background:'white', border:'1px solid #e2e8f0', cursor:'pointer' }}>
+                style={{ padding:'7px 16px', borderRadius:6, fontSize:12, background:'white', border:'1px solid #cbd5e1', cursor:'pointer' }}>
                 Cancel
               </button>
               <button type='submit' disabled={saving}
-                style={{ padding:'6px 16px', borderRadius:5, fontSize:12, fontWeight:700, background:'#0176d3', color:'white', border:'none', cursor:'pointer' }}>
+                style={{ padding:'7px 18px', borderRadius:6, fontSize:12, fontWeight:700, background:'#0176d3', color:'white', border:'none', cursor:'pointer' }}>
                 {saving ? 'Saving…' : '+ Add Paper'}
               </button>
             </div>
-          </form>
         </div>
       )}
 
