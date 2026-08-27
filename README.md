@@ -40,7 +40,6 @@ EduERP/
 
 ---
 
-## 🚀 Setup (Office Laptop / Home Laptop)
 
 ### 1. Clone the repo
 ```bash
