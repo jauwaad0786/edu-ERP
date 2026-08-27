@@ -38,8 +38,16 @@ export default function AdmitCardPage() {
 
   // Student specific data
   const [studentProfile, setStudentProfile] = useState(null);
+  const [schoolSettings, setSchoolSettings] = useState(null);
 
-  // 1. Load exams
+  // 1. Load school settings
+  useEffect(() => {
+    api.get('/principal/school/settings')
+      .then(res => setSchoolSettings(res.data))
+      .catch(() => {});
+  }, []);
+
+  // 2. Load exams
   useEffect(() => {
     async function fetchExams() {
       try {
@@ -77,7 +85,7 @@ export default function AdmitCardPage() {
     fetchExams();
   }, [isStudentOrParent]);
 
-  // 2. Load classes for admin/teacher
+  // 3. Load classes for admin/teacher
   useEffect(() => {
     if (isStudentOrParent) return;
     async function fetchClasses() {
@@ -820,19 +828,30 @@ export default function AdmitCardPage() {
                     {/* School Letterhead */}
                     <div style={{ textAlign: 'center', marginBottom: 12 }}>
                       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12, marginBottom: 4 }}>
-                        <div style={{ width: 44, height: 44, borderRadius: 8, background: '#1e3a8a', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16 }}>
-                          ★
-                        </div>
+                        {schoolSettings?.logo_url ? (
+                          <img src={schoolSettings.logo_url} alt="Logo" style={{ width: 44, height: 44, borderRadius: 8, objectFit: 'contain' }} />
+                        ) : (
+                          <div style={{ width: 44, height: 44, borderRadius: 8, background: '#1e3a8a', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16 }}>
+                            ★
+                          </div>
+                        )}
                         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900, color: '#0f2942', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
-                          {user?.school?.name || user?.school_name || 'SUNRISE PUBLIC SCHOOL'}
+                          {schoolSettings?.name || user?.school?.name || user?.school_name || 'School Name'}
                         </h2>
                       </div>
-                      <p style={{ margin: '2px 0', fontSize: 11, color: '#475569' }}>
-                        {user?.school?.address || 'Sector 15, Noida, Uttar Pradesh - 201301'}
-                      </p>
-                      <p style={{ margin: 0, fontSize: 10.5, color: '#64748b' }}>
-                        Phone: {user?.school?.phone || '0120-4567890'} | Email: {user?.school?.email || 'info@sunrisepublicschool.edu.in'}
-                      </p>
+                      {(schoolSettings?.address || user?.school?.address) && (
+                        <p style={{ margin: '2px 0', fontSize: 11, color: '#475569' }}>
+                          {schoolSettings?.address || user?.school?.address}
+                        </p>
+                      )}
+                      {(schoolSettings?.phone || user?.school?.phone || schoolSettings?.email || user?.school?.email) && (
+                        <p style={{ margin: 0, fontSize: 10.5, color: '#64748b' }}>
+                          {[
+                            (schoolSettings?.phone || user?.school?.phone) ? `Phone: ${schoolSettings?.phone || user?.school?.phone}` : null,
+                            (schoolSettings?.email || user?.school?.email) ? `Email: ${schoolSettings?.email || user?.school?.email}` : null,
+                          ].filter(Boolean).join(' | ')}
+                        </p>
+                      )}
                       
                       <div style={{
                         display: 'inline-block',
@@ -855,13 +874,13 @@ export default function AdmitCardPage() {
                     {/* Student Info & Photo Row */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 16, padding: '10px 0', borderTop: '1px solid #f1f5f9' }}>
                       <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', fontSize: 11.5 }}>
-                        <div><span style={{ color: '#64748b' }}>Student Name</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.name}</strong></div>
-                        <div><span style={{ color: '#64748b' }}>Father's Name</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.father_name || previewStudent.parent_name || 'Rajesh Sharma'}</strong></div>
-                        <div><span style={{ color: '#64748b' }}>Class / Section</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.class_name || previewStudent.class?.name || '7th A'} {previewStudent.section || ''}</strong></div>
-                        <div><span style={{ color: '#64748b' }}>Date of Birth</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.dob ? formatDate(previewStudent.dob) : '12-06-2011'}</strong></div>
-                        <div><span style={{ color: '#64748b' }}>Roll No.</span> : <strong style={{ color: '#1e3a8a' }}>{previewStudent.roll_number || '15'}</strong></div>
-                        <div><span style={{ color: '#64748b' }}>School Code</span> : <strong style={{ color: '#0f172a' }}>SPS/2024</strong></div>
-                        <div><span style={{ color: '#64748b' }}>Admission No.</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.admission_number || previewStudent.admission_no || 'ADM-2024-001'}</strong></div>
+                        <div><span style={{ color: '#64748b' }}>Student Name</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.name || '—'}</strong></div>
+                        <div><span style={{ color: '#64748b' }}>Father's Name</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.father_name || previewStudent.parent_name || '—'}</strong></div>
+                        <div><span style={{ color: '#64748b' }}>Class / Section</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.class_name || previewStudent.class?.name || '—'} {previewStudent.section || ''}</strong></div>
+                        <div><span style={{ color: '#64748b' }}>Date of Birth</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.dob ? formatDate(previewStudent.dob) : '—'}</strong></div>
+                        <div><span style={{ color: '#64748b' }}>Roll No.</span> : <strong style={{ color: '#1e3a8a' }}>{previewStudent.roll_number || '—'}</strong></div>
+                        <div><span style={{ color: '#64748b' }}>School Code</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.school_code || (selectedExam?.session ? `SPS/${selectedExam.session.slice(0, 4)}` : '—')}</strong></div>
+                        <div><span style={{ color: '#64748b' }}>Admission No.</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.admission_number || previewStudent.admission_no || '—'}</strong></div>
                       </div>
 
                       <div>
@@ -910,22 +929,24 @@ export default function AdmitCardPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {(timetable.length > 0 ? timetable : [
-                              { exam_date: '2024-05-20', day: 'Mon', subject_name: 'English', start_time: '09:00 AM', end_time: '12:00 PM', max_marks: 100, venue: 'Room No. 101' },
-                              { exam_date: '2024-05-22', day: 'Wed', subject_name: 'Mathematics', start_time: '09:00 AM', end_time: '12:00 PM', max_marks: 100, venue: 'Room No. 101' },
-                              { exam_date: '2024-05-24', day: 'Fri', subject_name: 'Science', start_time: '09:00 AM', end_time: '12:00 PM', max_marks: 100, venue: 'Room No. 101' },
-                              { exam_date: '2024-05-27', day: 'Mon', subject_name: 'Social Science', start_time: '09:00 AM', end_time: '12:00 PM', max_marks: 100, venue: 'Room No. 101' },
-                              { exam_date: '2024-05-29', day: 'Wed', subject_name: 'Computer', start_time: '09:00 AM', end_time: '12:00 PM', max_marks: 100, venue: 'Lab - 2' },
-                            ]).map((item, idx) => (
-                              <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', background: idx % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
-                                <td style={{ padding: '6px 8px', textAlign: 'center' }}>{formatDate(item.exam_date)}</td>
-                                <td style={{ padding: '6px 8px', textAlign: 'center' }}>{item.day || new Date(item.exam_date).toLocaleDateString('en-US', { weekday: 'short' })}</td>
-                                <td style={{ padding: '6px 8px', fontWeight: 700, textAlign: 'center' }}>{item.subject_name || item.subject?.name}</td>
-                                <td style={{ padding: '6px 8px', textAlign: 'center' }}>{item.start_time ? `${item.start_time} - ${item.end_time || ''}` : '09:00 AM - 12:00 PM'}</td>
-                                <td style={{ padding: '6px 8px', textAlign: 'center' }}>{item.max_marks || 100}</td>
-                                <td style={{ padding: '6px 8px', textAlign: 'center' }}>{item.venue || item.room_no || 'Room No. 101'}</td>
+                            {timetable.length > 0 ? (
+                              timetable.map((item, idx) => (
+                                <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', background: idx % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
+                                  <td style={{ padding: '6px 8px', textAlign: 'center' }}>{formatDate(item.exam_date)}</td>
+                                  <td style={{ padding: '6px 8px', textAlign: 'center' }}>{item.day || (item.exam_date ? new Date(item.exam_date).toLocaleDateString('en-US', { weekday: 'short' }) : '—')}</td>
+                                  <td style={{ padding: '6px 8px', fontWeight: 700, textAlign: 'center' }}>{item.subject_name || item.subject?.name || 'Subject'}</td>
+                                  <td style={{ padding: '6px 8px', textAlign: 'center' }}>{item.start_time ? `${item.start_time} - ${item.end_time || ''}` : '—'}</td>
+                                  <td style={{ padding: '6px 8px', textAlign: 'center' }}>{item.max_marks || 100}</td>
+                                  <td style={{ padding: '6px 8px', textAlign: 'center' }}>{item.venue || item.room || item.room_no || '—'}</td>
+                                </tr>
+                              ))
+                            ) : (
+                              <tr>
+                                <td colSpan="6" style={{ padding: 18, textAlign: 'center', color: '#64748b', fontStyle: 'italic' }}>
+                                  No timetable schedule added for this exam / class yet.
+                                </td>
                               </tr>
-                            ))}
+                            )}
                           </tbody>
                         </table>
                       )}

@@ -173,11 +173,12 @@ def _build_admission_confirmation_elements(student, school):
     elements = []
     
     # ── Top Letterhead ───────────────────────────────────────────────────────
-    school_name = _esc(school.name if school and school.name else 'SUNRISE PUBLIC SCHOOL')
-    addr_line = _esc(f"{school.address or 'Sector 15'}, {school.city or 'Noida, Uttar Pradesh'} - {getattr(school, 'pincode', '') or '201301'}")
-    phone_line = _esc(school.phone or '0120-4567890')
-    email_line = _esc(school.email or 'info@sunrisepublicschool.edu.in')
-    web_line   = _esc(getattr(school, 'website', None) or 'www.sunrisepublicschool.edu.in')
+    school_name = _esc(getattr(school, 'name', None) or 'School')
+    addr_parts = [p for p in [getattr(school, 'address', None), getattr(school, 'city', None), getattr(school, 'pincode', None)] if p]
+    addr_line = _esc(', '.join(addr_parts))
+    phone_line = _esc(getattr(school, 'phone', None) or '')
+    email_line = _esc(getattr(school, 'email', None) or '')
+    web_line   = _esc(getattr(school, 'website', None) or '')
     session_str = _esc(student.session or '2024-25')
 
     logo_img = _fetch_remote_image(getattr(school, 'logo_url', None), 2.2 * cm, 2.2 * cm)
@@ -189,8 +190,12 @@ def _build_admission_confirmation_elements(student, school):
         logo_img = logo_box
 
     title_para = Paragraph(f"<b><font size='14' color='{NAVY_PRIMARY.hexval()}'>{school_name}</font></b>", ParagraphStyle('sn', leading=16))
-    addr_para  = Paragraph(f"<font size='8' color='#475569'>{addr_line}</font>", ParagraphStyle('sa', leading=10))
-    contact_para = Paragraph(f"<font size='7.5' color='#334155'>📞 {phone_line}   |   ✉ {email_line}</font>", ParagraphStyle('sc', leading=9.5))
+    addr_para  = Paragraph(f"<font size='8' color='#475569'>{addr_line}</font>", ParagraphStyle('sa', leading=10)) if addr_line else Paragraph("", ParagraphStyle('sa'))
+    
+    contacts = []
+    if phone_line: contacts.append(f"📞 {phone_line}")
+    if email_line: contacts.append(f"✉ {email_line}")
+    contact_para = Paragraph(f"<font size='7.5' color='#334155'>{'   |   '.join(contacts)}</font>", ParagraphStyle('sc', leading=9.5)) if contacts else Paragraph("", ParagraphStyle('sc'))
 
     badge_p = Paragraph(f"<b><font color='white' size='8'>ADMISSION CONFIRMATION</font></b>", ParagraphStyle('b', alignment=TA_CENTER, leading=9))
     session_p = Paragraph(f"<font size='8.5' color='#0F172A'><b>Session :</b> {session_str}</font>", ParagraphStyle('sess', alignment=TA_RIGHT, leading=10))
@@ -493,10 +498,11 @@ def generate_admission_card(student, school):
 def _build_admit_card_elements(student, school, exam, timetable_items):
     elements = []
     
-    school_name = _esc(school.name if school and school.name else 'SUNRISE PUBLIC SCHOOL')
-    addr_line = _esc(f"{school.address or 'Sector 15'}, {school.city or 'Noida, Uttar Pradesh'} - {getattr(school, 'pincode', '') or '201301'}")
-    phone_line = _esc(school.phone or '0120-4567890')
-    email_line = _esc(school.email or 'info@sunrisepublicschool.edu.in')
+    school_name = _esc(getattr(school, 'name', None) or 'School')
+    addr_parts = [p for p in [getattr(school, 'address', None), getattr(school, 'city', None), getattr(school, 'pincode', None)] if p]
+    addr_line = _esc(', '.join(addr_parts))
+    phone_line = _esc(getattr(school, 'phone', None) or '')
+    email_line = _esc(getattr(school, 'email', None) or '')
     exam_title = _esc(exam.exam_name if exam else 'ANNUAL EXAMINATION').upper()
     session_str = _esc(exam.session if exam else '2024-25')
 
@@ -508,8 +514,12 @@ def _build_admit_card_elements(student, school, exam, timetable_items):
         logo_img = logo_box
 
     title_p = Paragraph(f"<b><font size='15' color='{NAVY_PRIMARY.hexval()}'>{school_name}</font></b>", ParagraphStyle('sn', alignment=TA_CENTER, leading=17))
-    addr_p = Paragraph(f"<font size='8' color='#475569'>{addr_line}</font>", ParagraphStyle('sa', alignment=TA_CENTER, leading=10))
-    contact_p = Paragraph(f"<font size='7.5' color='#334155'>Phone: {phone_line}   |   Email: {email_line}</font>", ParagraphStyle('sc', alignment=TA_CENTER, leading=9))
+    addr_p = Paragraph(f"<font size='8' color='#475569'>{addr_line}</font>", ParagraphStyle('sa', alignment=TA_CENTER, leading=10)) if addr_line else Paragraph("", ParagraphStyle('sa'))
+    
+    contacts = []
+    if phone_line: contacts.append(f"Phone: {phone_line}")
+    if email_line: contacts.append(f"Email: {email_line}")
+    contact_p = Paragraph(f"<font size='7.5' color='#334155'>{'   |   '.join(contacts)}</font>", ParagraphStyle('sc', alignment=TA_CENTER, leading=9)) if contacts else Paragraph("", ParagraphStyle('sc'))
 
     top_rows = [
         [logo_img, title_p],
@@ -595,42 +605,45 @@ def _build_admit_card_elements(student, school, exam, timetable_items):
         ['Date', 'Day', 'Subject', 'Time', 'Max Marks', 'Venue']
     ]
 
-    if timetable_items:
+    has_tt = bool(timetable_items and len(timetable_items) > 0)
+    if has_tt:
         for it in timetable_items:
             sub_name = it.subject.name if hasattr(it, 'subject') and it.subject else (getattr(it, 'subject_name', '') or 'Subject')
             d_obj = it.exam_date if hasattr(it, 'exam_date') else None
-            date_str = d_obj.strftime('%d %b %Y') if d_obj and hasattr(d_obj, 'strftime') else str(d_obj or '20 May 2024')
-            day_str  = d_obj.strftime('%a') if d_obj and hasattr(d_obj, 'strftime') else 'Mon'
-            time_str = f"{getattr(it, 'start_time', '') or '09:00 AM'} - {getattr(it, 'end_time', '') or '12:00 PM'}"
+            date_str = d_obj.strftime('%d %b %Y') if d_obj and hasattr(d_obj, 'strftime') else str(d_obj or '—')
+            day_str  = d_obj.strftime('%a') if d_obj and hasattr(d_obj, 'strftime') else (getattr(it, 'day', '') or '—')
+            time_str = f"{getattr(it, 'start_time', '') or '—'} - {getattr(it, 'end_time', '') or ''}".strip(' -')
             max_m    = str(getattr(it, 'max_marks', 100))
-            venue    = _esc(getattr(it, 'venue', '') or getattr(it, 'room_no', '') or 'Room No. 101')
-            tt_rows.append([date_str, day_str, sub_name, time_str, max_m, venue])
+            venue    = _esc(getattr(it, 'venue', '') or getattr(it, 'room', '') or getattr(it, 'room_no', '') or '—')
+            tt_rows.append([date_str, day_str, sub_name, time_str or '—', max_m, venue])
     else:
-        sample_tt = [
-            ('20 May 2024', 'Mon', 'English', '09:00 AM - 12:00 PM', '100', 'Room No. 101'),
-            ('22 May 2024', 'Wed', 'Mathematics', '09:00 AM - 12:00 PM', '100', 'Room No. 101'),
-            ('24 May 2024', 'Fri', 'Science', '09:00 AM - 12:00 PM', '100', 'Room No. 101'),
-            ('27 May 2024', 'Mon', 'Social Science', '09:00 AM - 12:00 PM', '100', 'Room No. 101'),
-            ('29 May 2024', 'Wed', 'Computer', '09:00 AM - 12:00 PM', '100', 'Lab - 2'),
-        ]
-        for row in sample_tt:
-            tt_rows.append(list(row))
+        tt_rows.append(['No examination timetable scheduled for this class.', '', '', '', '', ''])
 
     tt_table = Table(tt_rows, colWidths=[2.8 * cm, 1.8 * cm, 4.2 * cm, 4.4 * cm, 2.2 * cm, 2.3 * cm])
-    tt_table.setStyle(TableStyle([
+    tt_style = [
         ('BACKGROUND', (0, 0), (-1, 0), NAVY_HEADER),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 8),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (2, 1), (2, -1), 'Helvetica-Bold'),
         ('BOX', (0, 0), (-1, -1), 0.5, GREY_LINE),
         ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#E2E8F0')),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, ZEBRA]),
         ('TOPPADDING', (0, 0), (-1, -1), 4),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-    ]))
+    ]
+    if has_tt:
+        tt_style.extend([
+            ('FONTNAME', (2, 1), (2, -1), 'Helvetica-Bold'),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, ZEBRA]),
+        ])
+    else:
+        tt_style.extend([
+            ('SPAN', (0, 1), (-1, 1)),
+            ('TEXTCOLOR', (0, 1), (-1, 1), GREY_TEXT),
+            ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Oblique'),
+        ])
+    tt_table.setStyle(TableStyle(tt_style))
     elements.append(tt_table)
     elements.append(Spacer(1, 0.4 * cm))
 
@@ -702,10 +715,11 @@ def generate_bulk_admit_cards(student_timetable_pairs, school, exam):
 def _build_result_card_elements(student, school, exam, marks_data, prev_marks_data=None, version_number=1):
     elements = []
     
-    school_name = _esc(school.name if school and school.name else 'SUNRISE PUBLIC SCHOOL')
-    addr_line = _esc(f"{school.address or 'Sector 15'}, {school.city or 'Noida, Uttar Pradesh'} - {getattr(school, 'pincode', '') or '201301'}")
-    phone_line = _esc(school.phone or '0120-4567890')
-    email_line = _esc(school.email or 'info@sunrisepublicschool.edu.in')
+    school_name = _esc(getattr(school, 'name', None) or 'School')
+    addr_parts = [p for p in [getattr(school, 'address', None), getattr(school, 'city', None), getattr(school, 'pincode', None)] if p]
+    addr_line = _esc(', '.join(addr_parts))
+    phone_line = _esc(getattr(school, 'phone', None) or '')
+    email_line = _esc(getattr(school, 'email', None) or '')
     exam_title = _esc(exam.exam_name if exam else 'Annual Examination')
     session_str = _esc(exam.session if exam else '2024-25')
 
@@ -717,8 +731,12 @@ def _build_result_card_elements(student, school, exam, marks_data, prev_marks_da
         logo_img = logo_box
 
     title_p = Paragraph(f"<b><font size='15' color='#14532D'>{school_name}</font></b>", ParagraphStyle('sn', alignment=TA_CENTER, leading=17))
-    addr_p = Paragraph(f"<font size='8' color='#475569'>{addr_line}</font>", ParagraphStyle('sa', alignment=TA_CENTER, leading=10))
-    contact_p = Paragraph(f"<font size='7.5' color='#334155'>Phone: {phone_line}   |   Email: {email_line}</font>", ParagraphStyle('sc', alignment=TA_CENTER, leading=9))
+    addr_p = Paragraph(f"<font size='8' color='#475569'>{addr_line}</font>", ParagraphStyle('sa', alignment=TA_CENTER, leading=10)) if addr_line else Paragraph("", ParagraphStyle('sa'))
+    
+    contacts = []
+    if phone_line: contacts.append(f"Phone: {phone_line}")
+    if email_line: contacts.append(f"Email: {email_line}")
+    contact_p = Paragraph(f"<font size='7.5' color='#334155'>{'   |   '.join(contacts)}</font>", ParagraphStyle('sc', alignment=TA_CENTER, leading=9)) if contacts else Paragraph("", ParagraphStyle('sc'))
 
     badge_table = Table([['RESULT CARD'], [session_str], [exam_title]], colWidths=[3.8 * cm], rowHeights=[0.55 * cm, 0.45 * cm, 0.45 * cm])
     badge_table.setStyle(TableStyle([
@@ -753,12 +771,12 @@ def _build_result_card_elements(student, school, exam, marks_data, prev_marks_da
 
     # Student Details & Photo
     cls = Class.query.get(student.class_id) if student.class_id else None
-    cls_name = f"{cls.name} {cls.section or ''}".strip() if cls else '7th A'
-    std_name = student.user.name if student.user else (getattr(student, 'name', '') or 'Student Name')
-    father_name = student.father_name or student.parent_name or 'Rajesh Sharma'
-    dob_str = student.dob.strftime('%d-%m-%Y') if hasattr(student, 'dob') and student.dob else '12-06-2011'
-    adm_no = student.admission_no or f"ADM-{session_str}-001"
-    roll_no = student.roll_number or '15'
+    cls_name = f"{cls.name} {cls.section or ''}".strip() if cls else '—'
+    std_name = student.user.name if student.user else (getattr(student, 'name', '') or '—')
+    father_name = student.father_name or student.parent_name or '—'
+    dob_str = student.dob.strftime('%d-%m-%Y') if hasattr(student, 'dob') and student.dob else '—'
+    adm_no = student.admission_no or '—'
+    roll_no = student.roll_number or '—'
 
     photo_img = _fetch_remote_image(getattr(student, 'photo_url', None), 2.6 * cm, 3.2 * cm)
     if not photo_img:
@@ -799,8 +817,9 @@ def _build_result_card_elements(student, school, exam, marks_data, prev_marks_da
 
     tot_max = 0
     tot_obt = 0
+    has_marks = bool(marks_data and len(marks_data) > 0)
 
-    if marks_data:
+    if has_marks:
         for m in marks_data:
             s_name = m.get('subject_name') or 'Subject'
             mm = int(m.get('max_marks') or 100)
@@ -810,51 +829,51 @@ def _build_result_card_elements(student, school, exam, marks_data, prev_marks_da
             tot_max += mm
             tot_obt += mo
             marks_rows.append([s_name, str(mm), str(mo), f"{pct}%", grd])
+        overall_pct = round((tot_obt / tot_max * 100), 1) if tot_max else 0
+        overall_grade = _get_grade(overall_pct)
+        overall_status = 'PASS' if overall_pct >= 33 else 'FAIL'
+        marks_rows.append(['Total', str(tot_max), str(tot_obt), f"{overall_pct}%", overall_grade])
     else:
-        sample_marks = [
-            ('English', 100, 86, '86%', 'A'),
-            ('Mathematics', 100, 92, '92%', 'A+'),
-            ('Science', 100, 88, '88%', 'A'),
-            ('Social Science', 100, 84, '84%', 'A'),
-            ('Computer', 100, 95, '95%', 'A+'),
-        ]
-        for row in sample_marks:
-            tot_max += row[1]
-            tot_obt += row[2]
-            marks_rows.append([row[0], str(row[1]), str(row[2]), row[3], row[4]])
-
-    overall_pct = round((tot_obt / tot_max * 100), 1) if tot_max else 0
-    overall_grade = _get_grade(overall_pct)
-    overall_status = 'PASS' if overall_pct >= 33 else 'FAIL'
-
-    marks_rows.append(['Total', str(tot_max), str(tot_obt), f"{overall_pct}%", overall_grade])
+        marks_rows.append(['No marks entered for this student in this exam.', '', '', '', ''])
+        overall_status = '—'
 
     marks_table = Table(marks_rows, colWidths=[6.5 * cm, 2.8 * cm, 3.2 * cm, 2.8 * cm, 2.4 * cm])
-    marks_table.setStyle(TableStyle([
+    m_style = [
         ('BACKGROUND', (0, 0), (-1, 0), GREEN_DARK),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 8.5),
         ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (2, 1), (2, -1), 'Helvetica-Bold'),
-        ('FONTNAME', (4, 1), (4, -1), 'Helvetica-Bold'),
         ('BOX', (0, 0), (-1, -1), 0.5, GREY_LINE),
-        ('GRID', (0, 0), (-1, -2), 0.4, colors.HexColor('#E2E8F0')),
-        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#DCFCE7')),
-        ('TEXTCOLOR', (0, -1), (-1, -1), colors.HexColor('#14532D')),
-        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, ZEBRA]),
+        ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#E2E8F0')),
         ('TOPPADDING', (0, 0), (-1, -1), 4),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-    ]))
+    ]
+    if has_marks:
+        m_style.extend([
+            ('FONTNAME', (2, 1), (2, -2), 'Helvetica-Bold'),
+            ('FONTNAME', (4, 1), (4, -2), 'Helvetica-Bold'),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#DCFCE7')),
+            ('TEXTCOLOR', (0, -1), (-1, -1), colors.HexColor('#14532D')),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, ZEBRA]),
+        ])
+    else:
+        m_style.extend([
+            ('SPAN', (0, 1), (-1, 1)),
+            ('TEXTCOLOR', (0, 1), (-1, 1), GREY_TEXT),
+            ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Oblique'),
+        ])
+    marks_table.setStyle(TableStyle(m_style))
     elements.append(marks_table)
     elements.append(Spacer(1, 0.4 * cm))
 
     # 3 Summary Pills Bar: Attendance | Position in Class | Result
+    att_str = f"Attendance: {getattr(student, 'attendance_percentage', None) or '—'}%" if getattr(student, 'attendance_percentage', None) is not None else "Attendance: —"
     summary_cells = [
-        'Attendance: 93%',
-        'Position in Class: 2 / 35',
+        att_str,
+        'Position in Class: —',
         f'Result: {overall_status}'
     ]
     summary_bar = Table([summary_cells], colWidths=[5.9 * cm, 5.9 * cm, 5.9 * cm])
@@ -862,7 +881,7 @@ def _build_result_card_elements(student, school, exam, marks_data, prev_marks_da
         ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 8.5),
         ('TEXTCOLOR', (0, 0), (1, 0), TEXT_MAIN),
-        ('TEXTCOLOR', (2, 0), (2, 0), colors.HexColor('#16A34A')),
+        ('TEXTCOLOR', (2, 0), (2, 0), colors.HexColor('#16A34A') if overall_status == 'PASS' else colors.HexColor('#DC2626')),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('BOX', (0, 0), (-1, -1), 0.8, colors.HexColor('#86EFAC')),
         ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F0FDF4')),
@@ -942,8 +961,8 @@ def generate_fee_receipt_pdf(student, school, transactions, receipt_no):
     )
     elements = []
     
-    inv_no = _esc(receipt_no or 'INV-2024-25-00125')
-    session_str = _esc(student.session or '2024-25')
+    inv_no = _esc(receipt_no or 'INV-001')
+    session_str = _esc(student.session if hasattr(student, 'session') and student.session else '2024-25')
 
     logo_img = _fetch_remote_image(getattr(school, 'logo_url', None), 2.0 * cm, 2.0 * cm)
     if not logo_img:
@@ -993,12 +1012,12 @@ def generate_fee_receipt_pdf(student, school, transactions, receipt_no):
     elements.append(Spacer(1, 0.25 * cm))
 
     # Student & Invoice Meta block
-    cls = Class.query.get(student.class_id) if student.class_id else None
-    cls_name = f"{cls.name} {cls.section or ''}".strip() if cls else '7th A'
-    std_name = student.user.name if student.user else (getattr(student, 'name', '') or 'Student Name')
-    adm_no = student.admission_no or f"ADM-{session_str}-001"
-    roll_no = student.roll_number or '15'
-    total_amount = sum(getattr(t, 'amount', 0) for t in transactions) if transactions else 12500.0
+    cls = Class.query.get(student.class_id) if (hasattr(student, 'class_id') and student.class_id) else None
+    cls_name = f"{cls.name} {cls.section or ''}".strip() if cls else '—'
+    std_name = student.user.name if (hasattr(student, 'user') and student.user) else (getattr(student, 'name', '') or '—')
+    adm_no = getattr(student, 'admission_no', '') or getattr(student, 'admission_number', '') or '—'
+    roll_no = getattr(student, 'roll_number', '') or '—'
+    total_amount = sum(getattr(t, 'amount', 0) for t in transactions) if transactions else 0.0
 
     photo_img = _fetch_remote_image(getattr(student, 'photo_url', None), 2.2 * cm, 2.5 * cm)
     if not photo_img:
@@ -1008,13 +1027,13 @@ def generate_fee_receipt_pdf(student, school, transactions, receipt_no):
         photo_img = photo_box
 
     first_txn = transactions[0] if transactions else None
-    paid_date_str = first_txn.transaction_date.strftime('%d %b %Y') if first_txn and hasattr(first_txn.transaction_date, 'strftime') else date.today().strftime('%d %b %Y')
-    pay_mode_str = first_txn.payment_mode if first_txn else 'Online'
-    fee_type_str = getattr(first_txn.fee_record, 'fee_type', 'Quarterly Fee (Q1)') if (first_txn and hasattr(first_txn, 'fee_record') and first_txn.fee_record) else 'Quarterly Fee (Q1)'
+    paid_date_str = first_txn.transaction_date.strftime('%d %b %Y') if (first_txn and hasattr(first_txn, 'transaction_date') and hasattr(first_txn.transaction_date, 'strftime')) else date.today().strftime('%d %b %Y')
+    pay_mode_str = getattr(first_txn, 'payment_mode', 'Online') if first_txn else 'Online'
+    fee_type_str = getattr(first_txn.fee_record, 'fee_type', 'Tuition Fee') if (first_txn and hasattr(first_txn, 'fee_record') and first_txn.fee_record) else 'Tuition Fee'
 
     card_rows = [
         [photo_img, std_name, 'Invoice Date :', paid_date_str, 'Total Amount', ''],
-        ['', f"Admission No: {adm_no}", 'Due Date :', f"31 May {session_str[:4]}", f"₹ {total_amount:,.2f}", ''],
+        ['', f"Admission No: {adm_no}", 'Due Date :', '—', f"₹ {total_amount:,.2f}", ''],
         ['', f"Class / Section: {cls_name}", 'Fee Type :', fee_type_str, 'Status', ''],
         ['', f"Roll No: {roll_no}", '', '', 'Paid', '']
     ]
@@ -1046,31 +1065,61 @@ def generate_fee_receipt_pdf(student, school, transactions, receipt_no):
     elements.append(card_table)
     elements.append(Spacer(1, 0.35 * cm))
 
+    # Particulars Table & Payment Details side by side in a combined grid
     part_and_pay_rows = [
         ['#', 'Particulars', 'Amount (₹)', 'Payment Details', '', ''],
-        ['1', 'Tuition Fee', '6,000.00', 'Payment Date', ':', paid_date_str],
-        ['2', 'Development Fee', '2,000.00', 'Payment Mode', ':', pay_mode_str],
-        ['3', 'Library Fee', '1,000.00', 'Transaction ID', ':', 'TXN512364889'],
-        ['4', 'Computer Fee', '1,500.00', 'Received By', ':', 'Admin'],
-        ['5', 'Activity Fee', '1,000.00', '✓ Payment Received', '', ''],
-        ['', 'Total Amount', f"₹ {total_amount:,.2f}", 'Thank you for your payment.', '', ''],
-        ['', 'Discount', '0.00', '', '', ''],
-        ['', 'Paid Amount', f"₹ {total_amount:,.2f}", '', '', ''],
-        ['', 'Balance Amount', '₹ 0.00', '', '', ''],
     ]
+    if transactions and len(transactions) > 0:
+        for idx, t in enumerate(transactions, 1):
+            r = getattr(t, 'fee_record', None)
+            name = r.fee_type if r and getattr(r, 'fee_type', None) else 'Tuition Fee'
+            t_amt = getattr(t, 'amount', 0)
+            pay_m = getattr(t, 'payment_mode', 'Online')
+            txn_id = getattr(t, 'transaction_id', getattr(t, 'receipt_no', f'TXN-{t.id}'))
+            if idx == 1:
+                part_and_pay_rows.append([str(idx), name, f"{t_amt:,.2f}", 'Payment Date', ':', paid_date_str])
+            elif idx == 2:
+                part_and_pay_rows.append([str(idx), name, f"{t_amt:,.2f}", 'Payment Mode', ':', pay_m])
+            elif idx == 3:
+                part_and_pay_rows.append([str(idx), name, f"{t_amt:,.2f}", 'Transaction ID', ':', str(txn_id)])
+            elif idx == 4:
+                part_and_pay_rows.append([str(idx), name, f"{t_amt:,.2f}", 'Received By', ':', 'Admin'])
+            else:
+                part_and_pay_rows.append([str(idx), name, f"{t_amt:,.2f}", '', '', ''])
+    else:
+        part_and_pay_rows.append(['1', fee_type_str, f"{total_amount:,.2f}", 'Payment Date', ':', paid_date_str])
+        part_and_pay_rows.append(['', '', '', 'Payment Mode', ':', pay_mode_str])
+        part_and_pay_rows.append(['', '', '', 'Transaction ID', ':', 'TXN-001'])
+        part_and_pay_rows.append(['', '', '', 'Received By', ':', 'Admin'])
+
+    # Fill payment details if less than 4 rows
+    while len(part_and_pay_rows) < 5:
+        idx = len(part_and_pay_rows)
+        if idx == 2:
+            part_and_pay_rows.append(['', '', '', 'Payment Mode', ':', pay_mode_str])
+        elif idx == 3:
+            part_and_pay_rows.append(['', '', '', 'Transaction ID', ':', 'TXN-001'])
+        elif idx == 4:
+            part_and_pay_rows.append(['', '', '', 'Received By', ':', 'Admin'])
+
+    part_and_pay_rows.append(['', '', '', '✓ Payment Received', '', ''])
+    part_and_pay_rows.append(['', 'Total Amount', f"₹ {total_amount:,.2f}", 'Thank you for your payment.', '', ''])
+    part_and_pay_rows.append(['', 'Discount', '0.00', '', '', ''])
+    part_and_pay_rows.append(['', 'Paid Amount', f"₹ {total_amount:,.2f}", '', '', ''])
+    part_and_pay_rows.append(['', 'Balance Amount', '₹ 0.00', '', '', ''])
 
     combined_fin_table = Table(part_and_pay_rows, colWidths=[0.8 * cm, 6.2 * cm, 3.4 * cm, 2.6 * cm, 0.3 * cm, 4.4 * cm])
     combined_fin_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (2, 0), colors.HexColor('#F8FAFC')),
         ('FONTNAME', (0, 0), (2, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 7.5),
-        ('BOX', (0, 0), (2, 5), 0.5, GREY_LINE),
-        ('GRID', (0, 0), (2, 5), 0.4, colors.HexColor('#E2E8F0')),
-        ('ALIGN', (0, 0), (0, 5), 'CENTER'),
+        ('BOX', (0, 0), (2, 4), 0.5, GREY_LINE),
+        ('GRID', (0, 0), (2, 4), 0.4, colors.HexColor('#E2E8F0')),
+        ('ALIGN', (0, 0), (0, 4), 'CENTER'),
         ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
-        ('FONTNAME', (2, 1), (2, 5), 'Helvetica-Bold'),
+        ('FONTNAME', (2, 1), (2, 4), 'Helvetica-Bold'),
         # Totals area
-        ('BOX', (1, 6), (2, -1), 0.5, GREY_LINE),
+        ('BOX', (1, 5), (2, -1), 0.5, GREY_LINE),
         ('FONTNAME', (1, -1), (2, -1), 'Helvetica-Bold'),
         ('BACKGROUND', (1, -1), (2, -1), colors.HexColor('#DCFCE7')),
         ('TEXTCOLOR', (1, -1), (2, -1), colors.HexColor('#15803D')),

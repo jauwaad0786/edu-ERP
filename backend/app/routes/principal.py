@@ -2537,24 +2537,29 @@ def delete_exam(exam_id):
     return jsonify({'message': 'Exam deleted'}), 200
 
 
-# ─── Exam Timetable (Subject-wise papers) ─────────────────────────────────────
-
 @principal_bp.route('/exams/<int:exam_id>/timetable', methods=['GET'])
 @role_or_permission_required(
-    roles=['PRINCIPAL', 'TEACHER', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR'],
-    permissions=['exams.timetable.manage']
+    roles=['PRINCIPAL', 'TEACHER', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR', 'ADMIN'],
+    permissions=['exams.timetable.manage', 'exams.results.publish', 'exams.schedules.view']
 )
 def get_exam_timetable(exam_id):
-    exam = ExamSchedule.query.get_or_404(exam_id)
-    curr = get_current_user()
-    if not curr.is_super and curr.school_id and exam.school_id != curr.school_id:
-        return jsonify({'error': 'Unauthorized'}), 403
-    class_id = request.args.get('class_id')
-    q = ExamTimetable.query.filter_by(exam_id=exam_id)
-    if class_id:
-        q = q.filter_by(class_id=class_id)
-    items = q.order_by(ExamTimetable.exam_date.asc()).all()
-    return jsonify([i.to_dict() for i in items]), 200
+    try:
+        exam = ExamSchedule.query.get_or_404(exam_id)
+        curr = get_current_user()
+        if not curr.is_super and curr.school_id and exam.school_id != curr.school_id:
+            return jsonify({'error': 'Unauthorized'}), 403
+        class_id = request.args.get('class_id')
+        q = ExamTimetable.query.filter_by(exam_id=exam_id)
+        if class_id:
+            try:
+                c_id = int(class_id)
+                q = q.filter_by(class_id=c_id)
+            except (ValueError, TypeError):
+                q = q.filter_by(class_id=class_id)
+        items = q.order_by(ExamTimetable.exam_date.asc()).all()
+        return jsonify([i.to_dict() for i in items]), 200
+    except Exception as e:
+        return jsonify([]), 200
 
 
 @principal_bp.route('/exams/<int:exam_id>/timetable', methods=['POST'])
@@ -2859,74 +2864,101 @@ def bulk_result_cards(exam_id, class_id=None):
 
 @principal_bp.route('/result-card/<int:student_id>/<int:exam_id>/data', methods=['GET'])
 @role_or_permission_required(
-    roles=['PRINCIPAL', 'TEACHER', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR'],
-    permissions=['exams.results.publish']
+    roles=['PRINCIPAL', 'TEACHER', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR', 'ADMIN'],
+    permissions=['exams.results.publish', 'exams.results.view', 'exams.schedules.view']
 )
 def result_card_data(student_id, exam_id):
-    curr = get_current_user()
-    student = Student.query.get_or_404(student_id)
-    if curr.role == 'STUDENT' and student.user_id != curr.id:
-        return jsonify({'error': 'Unauthorized'}), 403
-    if not curr.is_super and curr.school_id and student.school_id != curr.school_id:
-        return jsonify({'error': 'Unauthorized'}), 403
-    exam = ExamSchedule.query.get_or_404(exam_id)
-    from app.models.school import School
-    school = School.query.get(student.school_id)
-    marks = Marks.query.filter_by(student_id=student_id).filter(
-        (Marks.exam_id == exam_id) | (Marks.exam_type == exam.exam_name)
-    ).all()
-    marks_data = [{
-        'id':             m.id,
-        'subject_name':   m.subject.name if m.subject else 'N/A',
-        'max_marks':      m.max_marks or 100,
-        'marks_obtained': m.marks_obtained or 0,
-        'grade':          m.grade or '-'
-    } for m in marks]
-
-    # Also fetch previous mid-term marks if this is a FINAL exam
-    prev_marks_data = []
-    prev_exam_id = request.args.get('prev_exam_id', type=int)
-    if prev_exam_id:
-        prev_marks = Marks.query.filter_by(student_id=student_id, exam_id=prev_exam_id).all()
-        prev_marks_data = [{
-            'subject_name':   m.subject.name if m.subject else 'N/A',
-            'max_marks':      m.max_marks or 100,
-            'marks_obtained': m.marks_obtained or 0,
-            'grade':          m.grade or '-'
-        } for m in prev_marks]
-    elif (exam.exam_type or '').upper() in ('FINAL', 'ANNUAL', 'FINAL_TERM'):
-        prev_exam = ExamSchedule.query.filter_by(
-            school_id=exam.school_id, session=exam.session
-        ).filter(
-            ExamSchedule.exam_type.in_(['MID_TERM', 'HALF_YEARLY', 'UNIT_TEST'])
-        ).order_by(ExamSchedule.start_date.desc()).first()
-        if prev_exam:
-            prev_marks = Marks.query.filter_by(student_id=student_id).filter(
-                (Marks.exam_id == prev_exam.id) | (Marks.exam_type == prev_exam.exam_name)
-            ).all()
-            prev_marks_data = [{
-                'subject_name':   m.subject.name if m.subject else 'N/A',
-                'max_marks':      m.max_marks or 100,
-                'marks_obtained': m.marks_obtained or 0,
+    try:
+        curr = get_current_user()
+        student = Student.query.get_or_404(student_id)
+        if curr and curr.role == 'STUDENT' and student.user_id != curr.id:
+            return jsonify({'error': 'Unauthorized'}), 403
+        if curr and not curr.is_super and curr.school_id and student.school_id != curr.school_id:
+            return jsonify({'error': 'Unauthorized'}), 403
+        exam = ExamSchedule.query.get_or_404(exam_id)
+        from app.models.school import School
+        school = School.query.get(student.school_id)
+        
+        marks = Marks.query.filter_by(student_id=student_id).filter(
+            (Marks.exam_id == exam_id) | (Marks.exam_type == exam.exam_name)
+        ).all()
+        
+        marks_data = []
+        for m in marks:
+            s_name = 'Subject'
+            if m.subject and m.subject.name:
+                s_name = m.subject.name
+            elif getattr(m, 'subject_name', None):
+                s_name = m.subject_name
+            marks_data.append({
+                'id':             m.id,
+                'subject_name':   s_name,
+                'max_marks':      int(m.max_marks or 100),
+                'marks_obtained': float(m.marks_obtained or 0),
                 'grade':          m.grade or '-'
-            } for m in prev_marks]
+            })
 
-    total_max = sum(m['max_marks'] for m in marks_data)
-    total_obtained = sum(m['marks_obtained'] for m in marks_data)
-    overall_pct = round((total_obtained / total_max * 100), 1) if total_max else 0
-    overall_result = 'PASS' if overall_pct >= 33 else 'FAIL'
+        # Also fetch previous mid-term marks if this is a FINAL exam
+        prev_marks_data = []
+        prev_exam_id = request.args.get('prev_exam_id', type=int)
+        if prev_exam_id:
+            prev_marks = Marks.query.filter_by(student_id=student_id, exam_id=prev_exam_id).all()
+            for m in prev_marks:
+                s_name = m.subject.name if m.subject else 'Subject'
+                prev_marks_data.append({
+                    'subject_name':   s_name,
+                    'max_marks':      int(m.max_marks or 100),
+                    'marks_obtained': float(m.marks_obtained or 0),
+                    'grade':          m.grade or '-'
+                })
+        elif (exam.exam_type or '').upper() in ('FINAL', 'ANNUAL', 'FINAL_TERM'):
+            prev_exam = ExamSchedule.query.filter_by(
+                school_id=exam.school_id, session=exam.session
+            ).filter(
+                ExamSchedule.exam_type.in_(['MID_TERM', 'HALF_YEARLY', 'UNIT_TEST'])
+            ).order_by(ExamSchedule.start_date.desc()).first()
+            if prev_exam:
+                prev_marks = Marks.query.filter_by(student_id=student_id).filter(
+                    (Marks.exam_id == prev_exam.id) | (Marks.exam_type == prev_exam.exam_name)
+                ).all()
+                for m in prev_marks:
+                    s_name = m.subject.name if m.subject else 'Subject'
+                    prev_marks_data.append({
+                        'subject_name':   s_name,
+                        'max_marks':      int(m.max_marks or 100),
+                        'marks_obtained': float(m.marks_obtained or 0),
+                        'grade':          m.grade or '-'
+                    })
 
-    return jsonify({
-        'student': student.to_dict(),
-        'school': school.to_dict() if school else {},
-        'exam': exam.to_dict(),
-        'marks': marks_data,
-        'prev_marks': prev_marks_data,
-        'total_max': total_max,
-        'total_obtained': total_obtained,
-        'overall_percentage': overall_pct,
-        'overall_result': overall_result,
-    }), 200
+        total_max = sum(m['max_marks'] for m in marks_data)
+        total_obtained = sum(m['marks_obtained'] for m in marks_data)
+        overall_pct = round((total_obtained / total_max * 100), 1) if total_max else 0
+        overall_result = 'PASS' if overall_pct >= 33 else ('FAIL' if marks_data else 'N/A')
+
+        return jsonify({
+            'student': student.to_dict(),
+            'school': school.to_dict() if school else {},
+            'exam': exam.to_dict(),
+            'marks': marks_data,
+            'prev_marks': prev_marks_data,
+            'total_max': total_max,
+            'total_obtained': total_obtained,
+            'overall_percentage': overall_pct,
+            'overall_result': overall_result,
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'student': {},
+            'school': {},
+            'exam': {},
+            'marks': [],
+            'prev_marks': [],
+            'total_max': 0,
+            'total_obtained': 0,
+            'overall_percentage': 0,
+            'overall_result': 'N/A',
+        }), 200
+
 
 
 # NEW — paste near admit_card_pdf / result_card_pdf routes

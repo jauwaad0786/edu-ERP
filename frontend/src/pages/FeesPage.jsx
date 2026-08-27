@@ -1283,24 +1283,30 @@ export default function FeesPage() {
 
                 <div>
                   <h4 style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 800, color: '#0f172a' }}>{receiptRec.student_name || 'Student Name'}</h4>
-                  <div style={{ fontSize: 11, color: '#64748b' }}>Admission No: {receiptRec.admission_no || 'ADM-2024-001'}</div>
-                  <div style={{ fontSize: 11, color: '#64748b' }}>Class / Section: {receiptRec.class_name || '7th A'}</div>
-                  <div style={{ fontSize: 11, color: '#64748b' }}>Roll No: {receiptRec.roll_number || '15'}</div>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>Admission No: {receiptRec.admission_no || '—'}</div>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>Class / Section: {receiptRec.class_name || '—'}</div>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>Roll No: {receiptRec.roll_number || '—'}</div>
                 </div>
 
                 <div style={{ fontSize: 12, lineHeight: 1.7 }}>
-                  <div><span style={{ color: '#64748b' }}>Invoice Date :</span> <strong>{receiptRec.paid_date || new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</strong></div>
-                  <div><span style={{ color: '#64748b' }}>Due Date :</span> <strong>{receiptRec.due_date || '31 May 2024'}</strong></div>
-                  <div><span style={{ color: '#64748b' }}>Fee Type :</span> <strong>{receiptRec.fee_type || 'Quarterly Fee (Q1)'}</strong></div>
+                  <div><span style={{ color: '#64748b' }}>Invoice Date :</span> <strong>{receiptRec.paid_date || receiptRec.payment_date || new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</strong></div>
+                  <div><span style={{ color: '#64748b' }}>Due Date :</span> <strong>{receiptRec.due_date || '—'}</strong></div>
+                  <div><span style={{ color: '#64748b' }}>Fee Type :</span> <strong>{receiptRec.fee_type || 'Tuition Fee'}</strong></div>
                 </div>
 
                 <div style={{ textAlign: 'right', borderLeft: '1px solid #e2e8f0', paddingLeft: 16 }}>
                   <div style={{ fontSize: 11, color: '#64748b' }}>Total Amount</div>
                   <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>
-                    ₹ {fmt(receiptRec.amount_paid || receiptRec.amount_due || 12500)}
+                    ₹ {fmt(receiptRec.amount_due || receiptRec.amount_paid || 0)}
                   </div>
                   <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>Status</div>
-                  <div style={{ fontSize: 12, fontWeight: 800, color: '#16a34a' }}>Paid</div>
+                  <div style={{
+                    fontSize: 12,
+                    fontWeight: 800,
+                    color: (receiptRec.status === 'PAID' || (receiptRec.amount_paid >= (receiptRec.amount_due || 0) && (receiptRec.amount_paid || 0) > 0)) ? '#16a34a' : '#ea580c'
+                  }}>
+                    {receiptRec.status || ((receiptRec.amount_paid >= (receiptRec.amount_due || 0) && (receiptRec.amount_paid || 0) > 0) ? 'PAID' : 'PENDING')}
+                  </div>
                 </div>
               </div>
 
@@ -1318,41 +1324,50 @@ export default function FeesPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {[
-                        ['1', `${receiptRec.fee_type || 'Tuition'} Fee`, receiptRec.amount_paid || 6000],
-                        ['2', 'Development Fee', 2000],
-                        ['3', 'Library Fee', 1000],
-                        ['4', 'Computer Fee', 1500],
-                        ['5', 'Activity Fee', 1000],
-                      ].map((row, idx) => (
-                        <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                          <td style={{ padding: '7px 10px', textAlign: 'center', color: '#64748b' }}>{row[0]}</td>
-                          <td style={{ padding: '7px 12px', color: '#0f172a' }}>{row[1]}</td>
-                          <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 600 }}>{fmt(row[2])}.00</td>
+                      <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '7px 10px', textAlign: 'center', color: '#64748b' }}>1</td>
+                        <td style={{ padding: '7px 12px', color: '#0f172a', fontWeight: 600 }}>{receiptRec.fee_type || 'Tuition Fee'}</td>
+                        <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 600 }}>{fmt(receiptRec.amount_due || receiptRec.amount_paid || 0)}.00</td>
+                      </tr>
+                      {receiptRec.fine && Number(receiptRec.fine) > 0 && (
+                        <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '7px 10px', textAlign: 'center', color: '#64748b' }}>2</td>
+                          <td style={{ padding: '7px 12px', color: '#dc2626' }}>Late Fine</td>
+                          <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 600, color: '#dc2626' }}>{fmt(receiptRec.fine)}.00</td>
                         </tr>
-                      ))}
+                      )}
                     </tbody>
                   </table>
 
                   {/* Summary Totals */}
-                  <div style={{ marginTop: 12, padding: '10px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12, lineHeight: 1.8 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#64748b' }}>Total Amount</span>
-                      <strong>₹ {fmt(receiptRec.amount_paid || receiptRec.amount_due || 12500)}.00</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#64748b' }}>Discount</span>
-                      <span>0.00</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#64748b' }}>Paid Amount</span>
-                      <strong style={{ color: '#16a34a' }}>₹ {fmt(receiptRec.amount_paid || receiptRec.amount_due || 12500)}.00</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, paddingTop: 6, borderTop: '1px solid #e2e8f0', background: '#dcfce7', margin: '6px -14px -10px -14px', padding: '8px 14px', borderRadius: '0 0 8px 8px' }}>
-                      <strong style={{ color: '#15803d' }}>Balance Amount</strong>
-                      <strong style={{ color: '#15803d', fontSize: 14 }}>₹ 0.00</strong>
-                    </div>
-                  </div>
+                  {(() => {
+                    const baseAmt = Number(receiptRec.amount_due || receiptRec.amount_paid || 0);
+                    const fineAmt = Number(receiptRec.fine || 0);
+                    const totalAmt = baseAmt + fineAmt;
+                    const discAmt = Number(receiptRec.discount || 0);
+                    const paidAmt = Number(receiptRec.amount_paid || 0);
+                    const balAmt = Math.max(0, totalAmt - discAmt - paidAmt);
+                    return (
+                      <div style={{ marginTop: 12, padding: '10px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12, lineHeight: 1.8 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: '#64748b' }}>Total Amount</span>
+                          <strong>₹ {fmt(totalAmt)}.00</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: '#64748b' }}>Discount</span>
+                          <span>{discAmt > 0 ? `₹ ${fmt(discAmt)}.00` : '0.00'}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: '#64748b' }}>Paid Amount</span>
+                          <strong style={{ color: '#16a34a' }}>₹ {fmt(paidAmt)}.00</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, paddingTop: 6, borderTop: '1px solid #e2e8f0', background: balAmt === 0 ? '#dcfce7' : '#fef3c7', margin: '6px -14px -10px -14px', padding: '8px 14px', borderRadius: '0 0 8px 8px' }}>
+                          <strong style={{ color: balAmt === 0 ? '#15803d' : '#b45309' }}>Balance Amount</strong>
+                          <strong style={{ color: balAmt === 0 ? '#15803d' : '#b45309', fontSize: 14 }}>₹ {fmt(balAmt)}.00</strong>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Right: Payment Details Card */}
@@ -1362,19 +1377,19 @@ export default function FeesPage() {
                   <div style={{ fontSize: 12, lineHeight: 2, marginBottom: 16 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ color: '#64748b' }}>Payment Date:</span>
-                      <strong>{receiptRec.paid_date || new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</strong>
+                      <strong>{receiptRec.paid_date || receiptRec.payment_date || new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</strong>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ color: '#64748b' }}>Payment Mode:</span>
-                      <strong>{receiptRec.payment_mode || 'Online'}</strong>
+                      <strong>{receiptRec.payment_mode || 'Online / Cash'}</strong>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ color: '#64748b' }}>Transaction ID:</span>
-                      <strong style={{ fontFamily: 'monospace' }}>TXN512364889</strong>
+                      <strong style={{ fontFamily: 'monospace' }}>{receiptRec.transaction_id || receiptRec.receipt_no || (receiptRec.id ? `TXN-${receiptRec.id}` : '—')}</strong>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ color: '#64748b' }}>Received By:</span>
-                      <strong>Admin</strong>
+                      <strong>{receiptRec.collected_by || 'Admin'}</strong>
                     </div>
                   </div>
 

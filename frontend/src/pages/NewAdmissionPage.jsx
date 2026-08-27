@@ -98,6 +98,47 @@ export default function NewAdmissionPage() {
       .catch(() => {});
   }, []);
 
+  const [feeStructures, setFeeStructures] = useState([]);
+  const [loadingFeeStructures, setLoadingFeeStructures] = useState(false);
+
+  useEffect(() => {
+    if (!form.class_id) return;
+    async function fetchFeeStructures() {
+      try {
+        setLoadingFeeStructures(true);
+        const res = await api.get(`/principal/fee-structures?class_id=${form.class_id}`);
+        const items = res.data?.items || (Array.isArray(res.data) ? res.data : []);
+        setFeeStructures(items);
+        if (items.length > 0) {
+          let adm = 0, caution = 0, tuition = 0, dev = 0, act = 0;
+          items.forEach(fs => {
+            const name = (fs.fee_type || fs.name || '').toLowerCase();
+            const amt = Number(fs.amount || 0);
+            if (name.includes('admission')) adm = amt;
+            else if (name.includes('caution')) caution = amt;
+            else if (name.includes('tuition')) tuition = amt;
+            else if (name.includes('development')) dev = amt;
+            else if (name.includes('activity')) act = amt;
+            else if (!tuition) tuition = amt;
+          });
+          setForm(f => ({
+            ...f,
+            admission_fee: adm || f.admission_fee,
+            caution_money: caution || f.caution_money,
+            tuition_fee: tuition || f.tuition_fee,
+            development_fee: dev || f.development_fee,
+            activity_fee: act || f.activity_fee,
+          }));
+        }
+      } catch (err) {
+        console.error('Error loading class fee structures', err);
+      } finally {
+        setLoadingFeeStructures(false);
+      }
+    }
+    fetchFeeStructures();
+  }, [form.class_id]);
+
   function set(field, val) {
     setForm(f => ({ ...f, [field]: val }));
   }
@@ -998,19 +1039,30 @@ export default function NewAdmissionPage() {
                 {/* Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #1e3a8a', paddingBottom: 16, marginBottom: 16 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                    <div style={{ width: 56, height: 56, borderRadius: 8, background: '#1e3a8a', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18 }}>
-                      ★
-                    </div>
+                    {schoolSettings?.logo_url ? (
+                      <img src={schoolSettings.logo_url} alt="Logo" style={{ width: 56, height: 56, borderRadius: 8, objectFit: 'contain' }} />
+                    ) : (
+                      <div style={{ width: 56, height: 56, borderRadius: 8, background: '#1e3a8a', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18 }}>
+                        ★
+                      </div>
+                    )}
                     <div>
                       <h2 style={{ margin: '0 0 2px', fontSize: 20, fontWeight: 900, color: '#0f2942', textTransform: 'uppercase' }}>
-                        {schoolSettings?.name || 'SUNRISE PUBLIC SCHOOL'}
+                        {schoolSettings?.name || 'School Name'}
                       </h2>
-                      <div style={{ fontSize: 11.5, color: '#475569' }}>
-                        {schoolSettings?.address || 'Sector 15, Noida, Uttar Pradesh - 201301'}
-                      </div>
-                      <div style={{ fontSize: 11, color: '#64748b' }}>
-                        📞 {schoolSettings?.phone || '0120-4567890'} | ✉ {schoolSettings?.email || 'info@sunrisepublicschool.edu.in'}
-                      </div>
+                      {schoolSettings?.address && (
+                        <div style={{ fontSize: 11.5, color: '#475569' }}>
+                          {schoolSettings.address}
+                        </div>
+                      )}
+                      {(schoolSettings?.phone || schoolSettings?.email) && (
+                        <div style={{ fontSize: 11, color: '#64748b' }}>
+                          {[
+                            schoolSettings?.phone ? `📞 ${schoolSettings.phone}` : null,
+                            schoolSettings?.email ? `✉ ${schoolSettings.email}` : null,
+                          ].filter(Boolean).join(' | ')}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1075,7 +1127,7 @@ export default function NewAdmissionPage() {
                       <td style={{ padding: '6px 8px', color: '#64748b' }}>Student Name</td>
                       <td style={{ padding: '6px 8px', fontWeight: 700 }}>: {form.name}</td>
                       <td style={{ padding: '6px 8px', color: '#64748b' }}>Class / Section</td>
-                      <td style={{ padding: '6px 8px', fontWeight: 700 }}>: {selectedClass?.name || '7th A'}</td>
+                      <td style={{ padding: '6px 8px', fontWeight: 700 }}>: {selectedClass?.name || '—'}</td>
                     </tr>
                     <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
                       <td style={{ padding: '6px 8px', color: '#64748b' }}>Date of Birth</td>
@@ -1094,7 +1146,7 @@ export default function NewAdmissionPage() {
 
                 {/* Bottom Bar */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '2px solid #1e3a8a', paddingTop: 14, marginTop: 24, fontSize: 11, color: '#64748b' }}>
-                  <div>🏫 Thank you for choosing {schoolSettings?.name || 'Sunrise Public School'}. Together, we nurture tomorrow's leaders.</div>
+                  <div>🏫 Thank you for choosing {schoolSettings?.name || 'our school'}. Together, we nurture tomorrow's leaders.</div>
                   <div>Principal's Signature: _______________________</div>
                 </div>
 

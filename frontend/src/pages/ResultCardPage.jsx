@@ -836,19 +836,30 @@ export default function ResultCardPage() {
                       {/* School Letterhead & Badge */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #16a34a', paddingBottom: 14, marginBottom: 16 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                          <div style={{ width: 48, height: 48, borderRadius: 8, background: '#15803d', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16 }}>
-                            ★
-                          </div>
+                          {previewData?.school?.logo_url ? (
+                            <img src={previewData.school.logo_url} alt="Logo" style={{ width: 48, height: 48, borderRadius: 8, objectFit: 'contain' }} />
+                          ) : (
+                            <div style={{ width: 48, height: 48, borderRadius: 8, background: '#15803d', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16 }}>
+                              ★
+                            </div>
+                          )}
                           <div>
                             <h2 style={{ margin: '0 0 2px', fontSize: 19, fontWeight: 900, color: '#14532d', textTransform: 'uppercase' }}>
-                              {previewData?.school?.name || user?.school?.name || user?.school_name || 'SUNRISE PUBLIC SCHOOL'}
+                              {previewData?.school?.name || user?.school?.name || user?.school_name || 'School Name'}
                             </h2>
-                            <div style={{ fontSize: 11, color: '#475569' }}>
-                              {previewData?.school?.address || 'Sector 15, Noida, Uttar Pradesh - 201301'}
-                            </div>
-                            <div style={{ fontSize: 10.5, color: '#64748b' }}>
-                              Phone: {previewData?.school?.phone || '0120-4567890'} | Email: {previewData?.school?.email || 'info@sunrisepublicschool.edu.in'}
-                            </div>
+                            {(previewData?.school?.address || user?.school?.address) && (
+                              <div style={{ fontSize: 11, color: '#475569' }}>
+                                {previewData?.school?.address || user?.school?.address}
+                              </div>
+                            )}
+                            {(previewData?.school?.phone || user?.school?.phone || previewData?.school?.email || user?.school?.email) && (
+                              <div style={{ fontSize: 10.5, color: '#64748b' }}>
+                                {[
+                                  (previewData?.school?.phone || user?.school?.phone) ? `Phone: ${previewData?.school?.phone || user?.school?.phone}` : null,
+                                  (previewData?.school?.email || user?.school?.email) ? `Email: ${previewData?.school?.email || user?.school?.email}` : null,
+                                ].filter(Boolean).join(' | ')}
+                              </div>
+                            )}
                           </div>
                         </div>
 
@@ -878,13 +889,13 @@ export default function ResultCardPage() {
                       {/* Student Info & Photo Row */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 16 }}>
                         <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', fontSize: 11.5 }}>
-                          <div><span style={{ color: '#64748b' }}>Student Name</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.name}</strong></div>
-                          <div><span style={{ color: '#64748b' }}>Father's Name</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.father_name || previewStudent.parent_name || 'Rajesh Sharma'}</strong></div>
-                          <div><span style={{ color: '#64748b' }}>Class / Section</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.class_display || previewStudent.class_name || '7th A'} {previewStudent.section || ''}</strong></div>
-                          <div><span style={{ color: '#64748b' }}>Date of Birth</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.dob ? formatDate(previewStudent.dob) : '12-06-2011'}</strong></div>
-                          <div><span style={{ color: '#64748b' }}>Roll No.</span> : <strong style={{ color: '#15803d' }}>{previewStudent.roll_number || '15'}</strong></div>
-                          <div><span style={{ color: '#64748b' }}>School Code</span> : <strong style={{ color: '#0f172a' }}>SPS/2024</strong></div>
-                          <div><span style={{ color: '#64748b' }}>Admission No.</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.admission_number || previewStudent.admission_no || 'ADM-2024-001'}</strong></div>
+                          <div><span style={{ color: '#64748b' }}>Student Name</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.name || '—'}</strong></div>
+                          <div><span style={{ color: '#64748b' }}>Father's Name</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.father_name || previewStudent.parent_name || '—'}</strong></div>
+                          <div><span style={{ color: '#64748b' }}>Class / Section</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.class_display || previewStudent.class_name || '—'} {previewStudent.section || ''}</strong></div>
+                          <div><span style={{ color: '#64748b' }}>Date of Birth</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.dob ? formatDate(previewStudent.dob) : '—'}</strong></div>
+                          <div><span style={{ color: '#64748b' }}>Roll No.</span> : <strong style={{ color: '#15803d' }}>{previewStudent.roll_number || '—'}</strong></div>
+                          <div><span style={{ color: '#64748b' }}>School Code</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.school_code || (selectedExam?.session ? `SPS/${selectedExam.session.slice(0, 4)}` : '—')}</strong></div>
+                          <div><span style={{ color: '#64748b' }}>Admission No.</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.admission_number || previewStudent.admission_no || '—'}</strong></div>
                         </div>
 
                         <div>
@@ -927,34 +938,38 @@ export default function ResultCardPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {((previewData?.marks && previewData.marks.length > 0) ? previewData.marks : [
-                              { subject_name: 'English', max_marks: 100, marks_obtained: 86, grade: 'A' },
-                              { subject_name: 'Mathematics', max_marks: 100, marks_obtained: 92, grade: 'A+' },
-                              { subject_name: 'Science', max_marks: 100, marks_obtained: 88, grade: 'A' },
-                              { subject_name: 'Social Science', max_marks: 100, marks_obtained: 84, grade: 'A' },
-                              { subject_name: 'Computer', max_marks: 100, marks_obtained: 95, grade: 'A+' },
-                            ]).map((m, idx) => {
-                              const pct = m.max_marks ? Math.round((m.marks_obtained / m.max_marks) * 100) : 0;
-                              return (
-                                <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', background: idx % 2 === 1 ? '#f8fafc' : '#ffffff' }}>
-                                  <td style={{ padding: '6px 10px', fontWeight: 600, color: '#1e293b' }}>{m.subject_name}</td>
-                                  <td style={{ padding: '6px 10px', textAlign: 'center' }}>{m.max_marks}</td>
-                                  <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700 }}>{m.marks_obtained}</td>
-                                  <td style={{ padding: '6px 10px', textAlign: 'center' }}>{pct}%</td>
-                                  <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700 }}>{m.grade || getGrade(pct)}</td>
-                                </tr>
-                              );
-                            })}
+                            {previewData?.marks && previewData.marks.length > 0 ? (
+                              previewData.marks.map((m, idx) => {
+                                const pct = m.max_marks ? Math.round((m.marks_obtained / m.max_marks) * 100) : 0;
+                                return (
+                                  <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', background: idx % 2 === 1 ? '#f8fafc' : '#ffffff' }}>
+                                    <td style={{ padding: '6px 10px', fontWeight: 600, color: '#1e293b' }}>{m.subject_name}</td>
+                                    <td style={{ padding: '6px 10px', textAlign: 'center' }}>{m.max_marks}</td>
+                                    <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700 }}>{m.marks_obtained}</td>
+                                    <td style={{ padding: '6px 10px', textAlign: 'center' }}>{pct}%</td>
+                                    <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700 }}>{m.grade || getGrade(pct)}</td>
+                                  </tr>
+                                );
+                              })
+                            ) : (
+                              <tr>
+                                <td colSpan="5" style={{ padding: 18, textAlign: 'center', color: '#64748b', fontStyle: 'italic' }}>
+                                  No marks entered for this student in this exam yet.
+                                </td>
+                              </tr>
+                            )}
                           </tbody>
-                          <tfoot>
-                            <tr style={{ background: '#dcfce7', fontWeight: 800, borderTop: '1.5px solid #15803d', color: '#14532d' }}>
-                              <td style={{ padding: '7px 10px' }}>Total</td>
-                              <td style={{ padding: '7px 10px', textAlign: 'center' }}>{previewData?.total_max || 500}</td>
-                              <td style={{ padding: '7px 10px', textAlign: 'center' }}>{previewData?.total_obtained || 445}</td>
-                              <td style={{ padding: '7px 10px', textAlign: 'center' }}>{previewData?.overall_percentage || 89}%</td>
-                              <td style={{ padding: '7px 10px', textAlign: 'center' }}>{getGrade(previewData?.overall_percentage || 89)}</td>
-                            </tr>
-                          </tfoot>
+                          {previewData?.marks && previewData.marks.length > 0 && (
+                            <tfoot>
+                              <tr style={{ background: '#dcfce7', fontWeight: 800, borderTop: '1.5px solid #15803d', color: '#14532d' }}>
+                                <td style={{ padding: '7px 10px' }}>Total</td>
+                                <td style={{ padding: '7px 10px', textAlign: 'center' }}>{previewData.total_max || 0}</td>
+                                <td style={{ padding: '7px 10px', textAlign: 'center' }}>{previewData.total_obtained || 0}</td>
+                                <td style={{ padding: '7px 10px', textAlign: 'center' }}>{previewData.overall_percentage || 0}%</td>
+                                <td style={{ padding: '7px 10px', textAlign: 'center' }}>{getGrade(previewData.overall_percentage || 0)}</td>
+                              </tr>
+                            </tfoot>
+                          )}
                         </table>
                       </div>
 
@@ -971,9 +986,11 @@ export default function ResultCardPage() {
                         fontWeight: 700,
                         color: '#14532d'
                       }}>
-                        <div>Attendance: <strong>93%</strong></div>
-                        <div>Position in Class: <strong>2 / 35</strong></div>
-                        <div>Result: <strong style={{ color: '#16a34a' }}>PASS</strong></div>
+                        <div>Attendance: <strong>{previewStudent.attendance_percentage != null ? `${previewStudent.attendance_percentage}%` : (previewData?.attendance_pct != null ? `${previewData.attendance_pct}%` : '—')}</strong></div>
+                        <div>Position in Class: <strong>{previewData?.rank ? `${previewData.rank} / ${previewData.total_students || '—'}` : '—'}</strong></div>
+                        <div>Result: <strong style={{ color: (previewData?.overall_result === 'PASS' || (!previewData?.overall_result && previewData?.overall_percentage >= 33)) ? '#16a34a' : '#ef4444' }}>
+                          {previewData?.marks?.length ? (previewData?.overall_result || (previewData?.overall_percentage >= 33 ? 'PASS' : 'FAIL')) : '—'}
+                        </strong></div>
                       </div>
 
                       {/* Date & Signature */}
