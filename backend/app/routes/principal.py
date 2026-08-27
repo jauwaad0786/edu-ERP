@@ -2612,16 +2612,53 @@ def archive_exam(exam_id):
 
 
 @principal_bp.route('/exams/<int:exam_id>', methods=['DELETE'])
-@role_required('PRINCIPAL')
+@role_or_permission_required(
+    roles=['PRINCIPAL', 'SUPER_ADMIN', 'ADMIN', 'VICE_PRINCIPAL', 'DIRECTOR'],
+    permissions=['exams.schedule.manage']
+)
 def delete_exam(exam_id):
     exam = ExamSchedule.query.get_or_404(exam_id)
-    if exam.school_id != _school_id():
+    curr = get_current_user()
+    if not getattr(curr, 'is_super', False) and curr.school_id and exam.school_id != curr.school_id:
         return jsonify({'error': 'Unauthorized'}), 403
-    if exam.status == 'PUBLISHED':
-        return jsonify({'error': 'Published exam delete nahi ho sakta. Pehle reopen/unpublish karo.'}), 400
-    db.session.delete(exam)
-    db.session.commit()
-    return jsonify({'message': 'Exam deleted'}), 200
+
+    force = request.args.get('force', 'false').lower() in ('true', '1')
+    if exam.status == 'PUBLISHED' and not force:
+        return jsonify({'error': 'Published exam delete nahi ho sakta. Pehle reopen/unpublish karo ya delete confirm karo.'}), 400
+
+    try:
+        # Cascade delete child relationships safely
+        ExamTimetable.query.filter_by(exam_id=exam_id).delete()
+        ExamClass.query.filter_by(exam_id=exam_id).delete()
+        ExamSubject.query.filter_by(exam_id=exam_id).delete()
+
+        try:
+            ExamTeacherDelegation.query.filter_by(exam_id=exam_id).delete()
+        except Exception:
+            pass
+
+        try:
+            ResultVersion.query.filter_by(exam_id=exam_id).delete()
+        except Exception:
+            pass
+
+        try:
+            from app.routes.result_management import ClassResultPublication
+            ClassResultPublication.query.filter_by(exam_id=exam_id).delete()
+        except Exception:
+            pass
+
+        try:
+            Marks.query.filter_by(exam_id=exam_id).delete()
+        except Exception:
+            pass
+
+        db.session.delete(exam)
+        db.session.commit()
+        return jsonify({'message': f"Exam '{exam.exam_name}' deleted successfully"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f"Delete failed: {str(e)}"}), 500
 
 
 @principal_bp.route('/exams/<int:exam_id>/timetable', methods=['GET'])

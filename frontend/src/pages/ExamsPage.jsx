@@ -736,9 +736,9 @@ function ExamDetailPanel({ exam, onClose, onUpdate }) {
   };
 
   const doDelete = async () => {
-    if (!window.confirm('Are you sure you want to delete this exam?')) return;
+    if (!window.confirm(`Are you sure you want to delete exam '${exam.exam_name}'? All scheduled papers and timetable data will be permanently removed.`)) return;
     try {
-      await api.delete(`/principal/exams/${exam.id}`);
+      await api.delete(`/principal/exams/${exam.id}?force=true`);
       onClose?.();
       onUpdate?.();
     } catch(ex) {
@@ -1252,9 +1252,37 @@ export default function ExamsPage() {
                           <span style={{ fontSize:10, color:'#94a3b8' }}>+{exam.classes.length - 3}</span>
                         )}
                       </div>
-                      <span style={{ fontSize:11, color:'#0176d3', fontWeight:700 }}>
-                        Configure →
-                      </span>
+                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                        <span style={{ fontSize:11, color:'#0176d3', fontWeight:700 }}>
+                          Configure →
+                        </span>
+                        <button
+                          type="button"
+                          title="Delete Exam"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm(`Delete exam '${exam.exam_name}'?`)) {
+                              api.delete(`/principal/exams/${exam.id}?force=true`)
+                                .then(() => {
+                                  flash(setMsg, `✅ Exam '${exam.exam_name}' deleted.`);
+                                  load();
+                                })
+                                .catch(err => {
+                                  flash(setMsg, '❌ ' + (err.response?.data?.error || 'Delete failed'));
+                                });
+                            }
+                          }}
+                          style={{
+                            background:'none', border:'none', color:'#ef4444',
+                            cursor:'pointer', fontSize:13, padding:'2px 4px',
+                            borderRadius:4, display:'inline-flex', alignItems:'center'
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#fee2e2'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                        >
+                          🗑
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
