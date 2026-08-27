@@ -325,6 +325,7 @@ function TimetableBuilder({ exam, onUpdate }) {
                 {saving ? 'Saving…' : '+ Add Paper'}
               </button>
             </div>
+          </form>
         </div>
       )}
 
