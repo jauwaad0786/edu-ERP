@@ -714,18 +714,18 @@ export default function ResultCardPage() {
                           </div>
                         </div>
 
-                        {/* Actions */}
-                        <div style={{ display: 'flex', gap: 8, borderTop: '1px solid #f1f5f9', paddingTop: 12 }}>
+                        {/* Action buttons */}
+                        <div style={{ display: 'flex', gap: 6, borderTop: '1px solid #f1f5f9', paddingTop: 12 }}>
                           <button
                             onClick={() => setPreviewStudent(student)}
                             style={{
                               flex: 1,
-                              padding: '8px 10px',
+                              padding: '8px 6px',
                               borderRadius: 8,
                               border: '1px solid #e2e8f0',
                               background: '#ffffff',
                               color: '#475569',
-                              fontSize: 12,
+                              fontSize: 11.5,
                               fontWeight: 600,
                               cursor: 'pointer',
                               display: 'flex',
@@ -739,26 +739,51 @@ export default function ResultCardPage() {
                             <i className="ti ti-eye" /> Preview
                           </button>
                           <button
+                            onClick={() => {
+                              setPreviewStudent(student);
+                              setTimeout(() => window.print(), 400);
+                            }}
+                            style={{
+                              flex: 1,
+                              padding: '8px 6px',
+                              borderRadius: 8,
+                              border: '1px solid #93c5fd',
+                              background: '#eff6ff',
+                              color: '#0b3b7b',
+                              fontSize: 11.5,
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: 4
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#dbeafe'}
+                            onMouseLeave={e => e.currentTarget.style.background = '#eff6ff'}
+                          >
+                            <i className="ti ti-printer" /> Print
+                          </button>
+                          <button
                             onClick={() => handleDownload(student.id, student.name)}
                             disabled={isDownloading}
                             style={{
-                              flex: 1.2,
-                              padding: '8px 12px',
+                              flex: 1,
+                              padding: '8px 6px',
                               borderRadius: 8,
                               border: 'none',
-                              background: '#0284c7',
+                              background: '#0b3b7b',
                               color: '#ffffff',
-                              fontSize: 12,
+                              fontSize: 11.5,
                               fontWeight: 700,
                               cursor: isDownloading ? 'wait' : 'pointer',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              gap: 6
+                              gap: 4
                             }}
                           >
                             <i className={isDownloading ? 'ti ti-loader' : 'ti ti-download'} />
-                            {isDownloading ? 'Generating...' : 'Result Card'}
+                            {isDownloading ? '...' : 'PDF'}
                           </button>
                         </div>
                       </div>
@@ -788,7 +813,7 @@ export default function ResultCardPage() {
                 background: '#ffffff',
                 borderRadius: 16,
                 width: '100%',
-                maxWidth: 680,
+                maxWidth: 820,
                 maxHeight: '94vh',
                 display: 'flex',
                 flexDirection: 'column',
@@ -805,17 +830,37 @@ export default function ResultCardPage() {
                   background: '#f8fafc'
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <i className="ti ti-file-certificate" style={{ fontSize: 18, color: '#0284c7' }} />
+                    <i className="ti ti-file-certificate" style={{ fontSize: 18, color: '#0b3b7b' }} />
                     <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#0f172a' }}>
-                      Result Card & Marksheet Preview
+                      Mark Sheet Live Preview &amp; Print
                     </h3>
                   </div>
-                  <button
-                    onClick={() => setPreviewStudent(null)}
-                    style={{ background: 'none', border: 'none', fontSize: 18, color: '#64748b', cursor: 'pointer' }}
-                  >
-                    ✕
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <button
+                      onClick={() => window.print()}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: 6,
+                        border: '1px solid #93c5fd',
+                        background: '#eff6ff',
+                        color: '#0b3b7b',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6
+                      }}
+                    >
+                      <i className="ti ti-printer" /> Print Direct
+                    </button>
+                    <button
+                      onClick={() => setPreviewStudent(null)}
+                      style={{ background: 'none', border: 'none', fontSize: 18, color: '#64748b', cursor: 'pointer' }}
+                    >
+                      ✕
+                    </button>
+                  </div>
                 </div>
 
                 {/* Printable Result Card Content */}
@@ -826,7 +871,7 @@ export default function ResultCardPage() {
                       <p style={{ marginTop: 10, fontSize: 13 }}>Generating report card view...</p>
                     </div>
                   ) : (
-                    <div style={{
+                    <div id="printable-marksheet-area" style={{
                       border: '2px solid #0b3b7b',
                       borderRadius: 10,
                       padding: 20,
@@ -1125,12 +1170,30 @@ export default function ResultCardPage() {
                     Close
                   </button>
                   <button
+                    onClick={() => window.print()}
+                    style={{
+                      padding: '8px 18px',
+                      borderRadius: 8,
+                      border: '1px solid #93c5fd',
+                      background: '#eff6ff',
+                      color: '#0b3b7b',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6
+                    }}
+                  >
+                    <i className="ti ti-printer" /> Print Direct
+                  </button>
+                  <button
                     onClick={() => handleDownload(previewStudent.id, previewStudent.name)}
                     style={{
                       padding: '8px 20px',
                       borderRadius: 8,
                       border: 'none',
-                      background: '#0284c7',
+                      background: '#0b3b7b',
                       color: '#fff',
                       fontSize: 13,
                       fontWeight: 700,
@@ -1146,6 +1209,35 @@ export default function ResultCardPage() {
               </div>
             </div>
           )}
+
+          {/* Global Print Stylesheet for Result Card */}
+          <style>{`
+            @media print {
+              body * {
+                visibility: hidden !important;
+              }
+              #printable-marksheet-area, #printable-marksheet-area * {
+                visibility: visible !important;
+              }
+              #printable-marksheet-area {
+                position: fixed !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                margin: 0 !important;
+                padding: 15px !important;
+                border: 2px solid #0b3b7b !important;
+                box-shadow: none !important;
+                background: white !important;
+                z-index: 9999999 !important;
+              }
+              @page {
+                size: A4 portrait;
+                margin: 10mm;
+              }
+            }
+          `}</style>
 
         </div>
       </div>
