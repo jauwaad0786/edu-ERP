@@ -742,62 +742,66 @@ def _build_admit_card_elements(student, school, exam, timetable_items):
     cls = Class.query.get(student.class_id) if student.class_id else None
     cls_name = f"{cls.name} / {cls.section}".strip(' /') if cls else '—'
     cls_only = cls.name if cls else 'All Classes'
+    class_banner_str = cls_only if cls_only.lower().startswith('class') else f"Class {cls_only}"
+    if cls and cls.section:
+        class_banner_str += f" - {cls.section}"
 
     # 1. School Logo
-    logo_img = _fetch_remote_image(getattr(school, 'logo_url', None), 2.2 * cm, 2.2 * cm)
+    logo_img = _fetch_remote_image(getattr(school, 'logo_url', None), 2.5 * cm, 2.5 * cm)
     if not logo_img:
-        logo_box = Drawing(2.2 * cm, 2.2 * cm)
-        logo_box.add(Rect(0, 0, 2.2 * cm, 2.2 * cm, rx=4, ry=4, fillColor=NAVY_THEME, strokeColor=None))
-        logo_box.add(String(1.1 * cm, 1.3 * cm, "★ SCHOOL ★", textAnchor='middle', fontSize=6.5, fontName='Helvetica-Bold', fillColor=colors.white))
-        logo_box.add(String(1.1 * cm, 0.7 * cm, "KNOWLEDGE", textAnchor='middle', fontSize=5.5, fontName='Helvetica', fillColor=colors.white))
+        logo_box = Drawing(2.5 * cm, 2.5 * cm)
+        logo_box.add(Rect(0, 0, 2.5 * cm, 2.5 * cm, rx=4, ry=4, fillColor=NAVY_THEME, strokeColor=None))
+        logo_box.add(String(1.25 * cm, 1.5 * cm, "★ SCHOOL ★", textAnchor='middle', fontSize=7.5, fontName='Helvetica-Bold', fillColor=colors.white))
+        logo_box.add(String(1.25 * cm, 0.8 * cm, "KNOWLEDGE", textAnchor='middle', fontSize=6.5, fontName='Helvetica', fillColor=colors.white))
         logo_img = logo_box
 
     # 2. Header Information
-    title_p = Paragraph(f"<b><font size='16' color='#0B3B7B'>{school_name}</font></b>", ParagraphStyle('sn', alignment=TA_CENTER, leading=18))
-    affil_p = Paragraph(f"<font size='8' color='#1E293B'><b>{affiliation_str} | SCHOOL CODE: {school_code}</b></font>", ParagraphStyle('sf', alignment=TA_CENTER, leading=10.5))
+    title_p = Paragraph(f"<b><font size='18' color='#0B3B7B'>{school_name}</font></b>", ParagraphStyle('sn', alignment=TA_CENTER, leading=21))
+    affil_p = Paragraph(f"<font size='9.5' color='#1E293B'><b>{affiliation_str} | SCHOOL CODE: {school_code}</b></font>", ParagraphStyle('sf', alignment=TA_CENTER, leading=12))
     
     contacts = []
+    if addr_line: contacts.append(f"📍 {addr_line}")
     if phone_line: contacts.append(f"📞 {phone_line}")
     if email_line: contacts.append(f"✉ {email_line}")
-    contact_p = Paragraph(f"<font size='7.5' color='#334155'>{'   |   '.join(contacts)}</font>", ParagraphStyle('sc', alignment=TA_CENTER, leading=9.5)) if contacts else Paragraph("", ParagraphStyle('sc'))
+    contact_p = Paragraph(f"<font size='8.5' color='#334155'>{'   |   '.join(contacts)}</font>", ParagraphStyle('sc', alignment=TA_CENTER, leading=11)) if contacts else Paragraph("", ParagraphStyle('sc'))
 
     head_rows = [
         [logo_img, title_p],
         ['', affil_p],
         ['', contact_p]
     ]
-    head_table = Table(head_rows, colWidths=[2.3 * cm, 15.0 * cm])
+    head_table = Table(head_rows, colWidths=[2.6 * cm, 15.4 * cm])
     head_table.setStyle(TableStyle([
         ('SPAN', (0, 0), (0, 2)),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 0), (-1, -1), 0.5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 0.5),
+        ('TOPPADDING', (0, 0), (-1, -1), 1),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
     ]))
     elements.append(head_table)
-    elements.append(Spacer(1, 0.15 * cm))
+    elements.append(Spacer(1, 0.3 * cm))
 
     # 3. ADMIT CARD Banner
     banner_table = Table([
         ['ADMIT CARD'],
-        [f"{exam_title} {session_str}"],
-        [f"(Class {cls_only})"]
-    ], colWidths=[17.3 * cm], rowHeights=[0.55 * cm, 0.42 * cm, 0.38 * cm])
+        [f"{exam_title}  {session_str}"],
+        [f"({class_banner_str})"]
+    ], colWidths=[18.0 * cm], rowHeights=[0.68 * cm, 0.52 * cm, 0.46 * cm])
     banner_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (0, 0), NAVY_THEME),
         ('TEXTCOLOR', (0, 0), (0, 0), colors.white),
         ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (0, 0), 10.5),
+        ('FONTSIZE', (0, 0), (0, 0), 12),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('FONTNAME', (0, 1), (0, 1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 1), (0, 1), 8.5),
+        ('FONTSIZE', (0, 1), (0, 1), 10),
         ('TEXTCOLOR', (0, 1), (0, 1), NAVY_THEME),
         ('FONTNAME', (0, 2), (0, 2), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 2), (0, 2), 7.5),
+        ('FONTSIZE', (0, 2), (0, 2), 9),
         ('TEXTCOLOR', (0, 2), (0, 2), colors.HexColor('#475569')),
     ]))
     elements.append(banner_table)
-    elements.append(Spacer(1, 0.2 * cm))
+    elements.append(Spacer(1, 0.35 * cm))
 
     # 4. Student Details Box
     std_name = student.user.name if student.user else (getattr(student, 'name', '') or '—')
@@ -808,49 +812,51 @@ def _build_admit_card_elements(student, school, exam, timetable_items):
     roll_no = student.roll_number or '—'
     issue_date_str = date.today().strftime('%d-%m-%Y')
 
-    photo_img = _fetch_remote_image(getattr(student, 'photo_url', None), 2.3 * cm, 2.8 * cm)
+    photo_img = _fetch_remote_image(getattr(student, 'photo_url', None), 2.8 * cm, 3.4 * cm)
     if not photo_img:
-        photo_box = Drawing(2.3 * cm, 2.8 * cm)
-        photo_box.add(Rect(0, 0, 2.3 * cm, 2.8 * cm, rx=3, ry=3, fillColor=colors.HexColor('#F1F5F9'), strokeColor=colors.HexColor('#CBD5E1'), strokeWidth=0.5))
-        photo_box.add(String(1.15 * cm, 1.4 * cm, "PHOTO", textAnchor='middle', fontSize=7.5, fontName='Helvetica-Bold', fillColor=colors.HexColor('#94A3B8')))
+        photo_box = Drawing(2.8 * cm, 3.4 * cm)
+        photo_box.add(Rect(0, 0, 2.8 * cm, 3.4 * cm, rx=3, ry=3, fillColor=colors.HexColor('#F1F5F9'), strokeColor=colors.HexColor('#CBD5E1'), strokeWidth=0.5))
+        photo_box.add(String(1.4 * cm, 1.7 * cm, "PHOTO", textAnchor='middle', fontSize=9, fontName='Helvetica-Bold', fillColor=colors.HexColor('#94A3B8')))
         photo_img = photo_box
 
     info_rows = [
         ['Student Name', ':', std_name, 'Date of Birth', ':', dob_str, photo_img],
-        ["Father's / Guardian's Name", ':', father_name, 'Exam Type', ':', exam_title, ''],
+        ["Father's Name", ':', father_name, 'Exam Type', ':', exam_title, ''],
         ["Mother's Name", ':', mother_name, 'School Code', ':', school_code, ''],
         ['Admission No.', ':', adm_no, 'Date of Issue', ':', issue_date_str, ''],
         ['Roll No.', ':', roll_no, '', '', '', ''],
         ['Class / Section', ':', cls_name, '', '', '', ''],
     ]
-    info_table = Table(info_rows, colWidths=[2.8 * cm, 0.3 * cm, 4.3 * cm, 2.3 * cm, 0.3 * cm, 4.3 * cm, 2.8 * cm], rowHeights=[0.48 * cm] * 6)
+    info_table = Table(info_rows, colWidths=[3.2 * cm, 0.3 * cm, 4.5 * cm, 2.8 * cm, 0.3 * cm, 4.1 * cm, 2.8 * cm], rowHeights=[0.65 * cm] * 6)
     info_table.setStyle(TableStyle([
         ('SPAN', (6, 0), (6, -1)),
-        ('BOX', (0, 0), (-1, -1), 0.8, BORDER_BLUE),
+        ('BOX', (0, 0), (-1, -1), 0.9, BORDER_BLUE),
         ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
         ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#475569')),
         ('TEXTCOLOR', (3, 0), (3, -1), colors.HexColor('#475569')),
         ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
         ('FONTNAME', (5, 0), (5, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (2, 0), (2, -1), 9.5),
+        ('FONTSIZE', (5, 0), (5, -1), 9.5),
         ('TEXTCOLOR', (2, 0), (2, -1), TEXT_MAIN),
         ('TEXTCOLOR', (5, 0), (5, -1), TEXT_MAIN),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('ALIGN', (6, 0), (6, -1), 'CENTER'),
-        ('TOPPADDING', (0, 0), (-1, -1), 0.5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 0.5),
-        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 1),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
     ]))
     elements.append(info_table)
-    elements.append(Spacer(1, 0.2 * cm))
+    elements.append(Spacer(1, 0.35 * cm))
 
     # 5. Examination Timetable Header & Table
-    tt_header = Table([['EXAMINATION TIMETABLE']], colWidths=[17.3 * cm], rowHeights=[0.45 * cm])
+    tt_header = Table([['EXAMINATION TIMETABLE']], colWidths=[18.0 * cm], rowHeights=[0.58 * cm])
     tt_header.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, -1), NAVY_THEME),
         ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
         ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('FONTSIZE', (0, 0), (-1, -1), 9.5),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
     ]))
@@ -869,23 +875,23 @@ def _build_admit_card_elements(student, school, exam, timetable_items):
             day_str  = d_obj.strftime('%A') if d_obj and hasattr(d_obj, 'strftime') else (getattr(it, 'day', '') or '—')
             time_str = f"{getattr(it, 'start_time', '') or '10:00 AM'} - {getattr(it, 'end_time', '') or '01:00 PM'}".strip(' -')
             max_m    = str(getattr(it, 'max_marks', 100))
-            venue    = _esc(getattr(it, 'venue', '') or getattr(it, 'room', '') or getattr(it, 'room_no', '') or 'Room 1')
+            venue    = _esc(getattr(it, 'venue', '') or getattr(it, 'room', '') or getattr(it, 'room_no', '') or 'Main Hall')
             tt_rows.append([str(idx), sub_name, date_str, day_str, time_str, venue, max_m])
     else:
         tt_rows.append(['No examination timetable scheduled for this class.', '', '', '', '', '', ''])
 
-    tt_table = Table(tt_rows, colWidths=[1.1 * cm, 4.4 * cm, 2.4 * cm, 2.3 * cm, 3.4 * cm, 2.1 * cm, 1.6 * cm])
+    tt_table = Table(tt_rows, colWidths=[1.2 * cm, 4.6 * cm, 2.6 * cm, 2.4 * cm, 3.4 * cm, 2.2 * cm, 1.6 * cm])
     tt_style = [
         ('BACKGROUND', (0, 0), (-1, 0), NAVY_THEME),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 7.5),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
         ('ALIGN', (0, 0), (0, -1), 'CENTER'),
         ('ALIGN', (2, 0), (-1, -1), 'CENTER'),
-        ('BOX', (0, 0), (-1, -1), 0.8, BORDER_BLUE),
+        ('BOX', (0, 0), (-1, -1), 0.9, BORDER_BLUE),
         ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#E2E8F0')),
-        ('TOPPADDING', (0, 0), (-1, -1), 2),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
     ]
     if has_tt:
@@ -901,33 +907,33 @@ def _build_admit_card_elements(student, school, exam, timetable_items):
         ])
     tt_table.setStyle(TableStyle(tt_style))
     elements.append(tt_table)
-    elements.append(Spacer(1, 0.25 * cm))
+    elements.append(Spacer(1, 0.4 * cm))
 
     # 6. Lower Section: Side-by-Side Instructions & Quote / Principal Signature
     inst_rows = [
-        ['INSTRUCTIONS'],
+        ['EXAMINATION INSTRUCTIONS'],
         ['1. Bring this Admit Card along with a valid school ID to the examination centre.'],
         ['2. Reach the examination centre at least 30 minutes before the reporting time.'],
         ['3. Use only blue/black ballpoint pen for answering the paper.'],
         ['4. Mobile phones, smart watches, calculators and electronic gadgets are strictly prohibited.'],
         ['5. Do not carry any study material, notes or written/printed chits.'],
-        ['6. Follow all instructions given by the invigilator and maintain discipline.']
+        ['6. Follow all instructions given by the invigilator and maintain strict discipline.']
     ]
-    inst_table = Table(inst_rows, colWidths=[9.4 * cm], rowHeights=[0.42 * cm] + [0.38 * cm] * 6)
+    inst_table = Table(inst_rows, colWidths=[10.2 * cm], rowHeights=[0.58 * cm] + [0.52 * cm] * 6)
     inst_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (0, 0), NAVY_THEME),
         ('TEXTCOLOR', (0, 0), (0, 0), colors.white),
         ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (0, 0), 8),
+        ('FONTSIZE', (0, 0), (0, 0), 9),
         ('ALIGN', (0, 0), (0, 0), 'CENTER'),
-        ('BOX', (0, 0), (-1, -1), 0.8, BORDER_BLUE),
+        ('BOX', (0, 0), (-1, -1), 0.9, BORDER_BLUE),
         ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 6.8),
+        ('FONTSIZE', (0, 1), (-1, -1), 8),
         ('TEXTCOLOR', (0, 1), (-1, -1), colors.HexColor('#1E293B')),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 0), (-1, -1), 0.5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 0.5),
-        ('LEFTPADDING', (0, 1), (-1, -1), 6),
+        ('TOPPADDING', (0, 0), (-1, -1), 1),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+        ('LEFTPADDING', (0, 1), (-1, -1), 8),
     ]))
 
     principal_name = _esc(getattr(school, 'principal_name', None) or '')
@@ -935,24 +941,24 @@ def _build_admit_card_elements(student, school, exam, timetable_items):
     
     quote_and_sig_p = Paragraph(
         "<div align='center'>"
-        "<i><font size='11' color='#0B3B7B'><b>All the Best!</b></font></i><br/>"
-        "<font size='7' color='#475569'>Stay Focused, Stay Confident</font>"
-        "<br/><br/>"
+        "<i><font size='13' color='#0B3B7B'><b>All the Best!</b></font></i><br/>"
+        "<font size='8.5' color='#475569'>Stay Focused, Stay Confident</font>"
+        "<br/><br/><br/>"
         "____________________________<br/>"
-        f"<b><font size='8' color='#0B3B7B'>Principal</font></b>{p_name_line}"
+        f"<b><font size='9.5' color='#0B3B7B'>Principal Signature</font></b>{p_name_line}"
         "</div>",
-        ParagraphStyle('qs', alignment=TA_CENTER, leading=10)
+        ParagraphStyle('qs', alignment=TA_CENTER, leading=12)
     )
 
-    right_box = Table([[quote_and_sig_p]], colWidths=[7.5 * cm], rowHeights=[2.7 * cm])
+    right_box = Table([[quote_and_sig_p]], colWidths=[7.4 * cm], rowHeights=[3.7 * cm])
     right_box.setStyle(TableStyle([
-        ('BOX', (0, 0), (-1, -1), 0.8, BORDER_BLUE),
+        ('BOX', (0, 0), (-1, -1), 0.9, BORDER_BLUE),
         ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F8FAFC')),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
     ]))
 
-    side_block = Table([[inst_table, '', right_box]], colWidths=[9.4 * cm, 0.4 * cm, 7.5 * cm])
+    side_block = Table([[inst_table, '', right_box]], colWidths=[10.2 * cm, 0.4 * cm, 7.4 * cm])
     side_block.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('TOPPADDING', (0, 0), (-1, -1), 0),
@@ -961,18 +967,42 @@ def _build_admit_card_elements(student, school, exam, timetable_items):
         ('RIGHTPADDING', (0, 0), (-1, -1), 0),
     ]))
     elements.append(side_block)
-    elements.append(Spacer(1, 0.3 * cm))
+    elements.append(Spacer(1, 0.5 * cm))
 
-    # 7. Footer: Date & Place
+    # 7. Footer: Date, Place & Candidate Sign
     place_str = _esc(getattr(school, 'city', None) or 'School Campus')
-    foot_p = Paragraph(
-        f"<font size='7.5' color='#0F172A'>"
-        f"<b>Date :</b> {issue_date_str}   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;   "
+    foot_date_p = Paragraph(
+        f"<font size='9' color='#0F172A'>"
+        f"<b>Date :</b> {issue_date_str}<br/>"
         f"<b>Place :</b> {place_str}"
         f"</font>",
-        ParagraphStyle('fl', leading=10)
+        ParagraphStyle('fl', leading=12)
     )
-    elements.append(foot_p)
+    foot_cand_p = Paragraph(
+        "<font size='9' color='#475569'>"
+        "____________________________<br/>"
+        "<b>Student Signature</b>"
+        "</font>",
+        ParagraphStyle('cs', alignment=TA_CENTER, leading=12)
+    )
+    foot_invig_p = Paragraph(
+        "<font size='9' color='#0B3B7B'>"
+        "____________________________<br/>"
+        "<b>Center Superintendent</b>"
+        "</font>",
+        ParagraphStyle('is', alignment=TA_RIGHT, leading=12)
+    )
+
+    foot_table = Table([[foot_date_p, foot_cand_p, foot_invig_p]], colWidths=[5.6 * cm, 6.2 * cm, 6.2 * cm])
+    foot_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
+        ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+        ('ALIGN', (1, 0), (1, 0), 'CENTER'),
+        ('ALIGN', (2, 0), (2, 0), 'RIGHT'),
+        ('TOPPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+    ]))
+    elements.append(foot_table)
 
     return elements
 
@@ -1044,23 +1074,23 @@ def _build_result_card_elements(student, school, exam, marks_data, prev_marks_da
     session_str = _esc(exam.session if exam else (getattr(student, 'session', None) or '2024-25'))
 
     # 1. School Logo
-    logo_img = _fetch_remote_image(getattr(school, 'logo_url', None), 2.2 * cm, 2.2 * cm)
+    logo_img = _fetch_remote_image(getattr(school, 'logo_url', None), 2.5 * cm, 2.5 * cm)
     if not logo_img:
-        logo_box = Drawing(2.2 * cm, 2.2 * cm)
-        logo_box.add(Rect(0, 0, 2.2 * cm, 2.2 * cm, rx=4, ry=4, fillColor=NAVY_THEME, strokeColor=None))
-        logo_box.add(String(1.1 * cm, 1.3 * cm, "★ SCHOOL ★", textAnchor='middle', fontSize=6.5, fontName='Helvetica-Bold', fillColor=colors.white))
-        logo_box.add(String(1.1 * cm, 0.7 * cm, "KNOWLEDGE", textAnchor='middle', fontSize=5.5, fontName='Helvetica', fillColor=colors.white))
+        logo_box = Drawing(2.5 * cm, 2.5 * cm)
+        logo_box.add(Rect(0, 0, 2.5 * cm, 2.5 * cm, rx=4, ry=4, fillColor=NAVY_THEME, strokeColor=None))
+        logo_box.add(String(1.25 * cm, 1.5 * cm, "★ SCHOOL ★", textAnchor='middle', fontSize=7.5, fontName='Helvetica-Bold', fillColor=colors.white))
+        logo_box.add(String(1.25 * cm, 0.8 * cm, "KNOWLEDGE", textAnchor='middle', fontSize=6.5, fontName='Helvetica', fillColor=colors.white))
         logo_img = logo_box
 
     # 2. Header Information
-    title_p = Paragraph(f"<b><font size='16' color='#0B3B7B'>{school_name}</font></b>", ParagraphStyle('sn', alignment=TA_CENTER, leading=18))
-    affil_p = Paragraph(f"<font size='8' color='#1E293B'><b>{affiliation_str} | SCHOOL CODE: {school_code}</b></font>", ParagraphStyle('sf', alignment=TA_CENTER, leading=10.5))
-    addr_p = Paragraph(f"<font size='7.5' color='#475569'>📍 {addr_line}</font>", ParagraphStyle('sa', alignment=TA_CENTER, leading=10)) if addr_line else Paragraph("", ParagraphStyle('sa'))
+    title_p = Paragraph(f"<b><font size='18' color='#0B3B7B'>{school_name}</font></b>", ParagraphStyle('sn', alignment=TA_CENTER, leading=21))
+    affil_p = Paragraph(f"<font size='9.5' color='#1E293B'><b>{affiliation_str} | SCHOOL CODE: {school_code}</b></font>", ParagraphStyle('sf', alignment=TA_CENTER, leading=12))
+    addr_p = Paragraph(f"<font size='8.5' color='#475569'>📍 {addr_line}</font>", ParagraphStyle('sa', alignment=TA_CENTER, leading=11)) if addr_line else Paragraph("", ParagraphStyle('sa'))
     
     contacts = []
     if phone_line: contacts.append(f"📞 {phone_line}")
     if email_line: contacts.append(f"✉ {email_line}")
-    contact_p = Paragraph(f"<font size='7.5' color='#334155'>{'   |   '.join(contacts)}</font>", ParagraphStyle('sc', alignment=TA_CENTER, leading=9.5)) if contacts else Paragraph("", ParagraphStyle('sc'))
+    contact_p = Paragraph(f"<font size='8.5' color='#334155'>{'   |   '.join(contacts)}</font>", ParagraphStyle('sc', alignment=TA_CENTER, leading=11)) if contacts else Paragraph("", ParagraphStyle('sc'))
 
     head_rows = [
         [logo_img, title_p],
@@ -1068,34 +1098,34 @@ def _build_result_card_elements(student, school, exam, marks_data, prev_marks_da
         ['', addr_p],
         ['', contact_p]
     ]
-    head_table = Table(head_rows, colWidths=[2.3 * cm, 15.0 * cm])
+    head_table = Table(head_rows, colWidths=[2.6 * cm, 15.4 * cm])
     head_table.setStyle(TableStyle([
         ('SPAN', (0, 0), (0, 3)),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 0), (-1, -1), 0.5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 0.5),
+        ('TOPPADDING', (0, 0), (-1, -1), 1),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
     ]))
     elements.append(head_table)
-    elements.append(Spacer(1, 0.15 * cm))
+    elements.append(Spacer(1, 0.3 * cm))
 
     # 3. MARK SHEET Banner with decorative bar
     banner_table = Table([
         ['MARK SHEET'],
-        [f"{exam_title} {session_str}"]
-    ], colWidths=[17.3 * cm], rowHeights=[0.55 * cm, 0.45 * cm])
+        [f"{exam_title}  {session_str}"]
+    ], colWidths=[18.0 * cm], rowHeights=[0.68 * cm, 0.52 * cm])
     banner_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (0, 0), NAVY_THEME),
         ('TEXTCOLOR', (0, 0), (0, 0), colors.white),
         ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (0, 0), 10.5),
+        ('FONTSIZE', (0, 0), (0, 0), 12),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('FONTNAME', (0, 1), (0, 1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 1), (0, 1), 8.5),
+        ('FONTSIZE', (0, 1), (0, 1), 10),
         ('TEXTCOLOR', (0, 1), (0, 1), NAVY_THEME),
     ]))
     elements.append(banner_table)
-    elements.append(Spacer(1, 0.2 * cm))
+    elements.append(Spacer(1, 0.35 * cm))
 
     # 4. Student Details Box
     cls = Class.query.get(student.class_id) if student.class_id else None
@@ -1108,11 +1138,11 @@ def _build_result_card_elements(student, school, exam, marks_data, prev_marks_da
     roll_no = student.roll_number or '—'
     result_date_str = date.today().strftime('%d-%m-%Y')
 
-    photo_img = _fetch_remote_image(getattr(student, 'photo_url', None), 2.3 * cm, 2.8 * cm)
+    photo_img = _fetch_remote_image(getattr(student, 'photo_url', None), 2.8 * cm, 3.4 * cm)
     if not photo_img:
-        photo_box = Drawing(2.3 * cm, 2.8 * cm)
-        photo_box.add(Rect(0, 0, 2.3 * cm, 2.8 * cm, rx=3, ry=3, fillColor=colors.HexColor('#F1F5F9'), strokeColor=colors.HexColor('#CBD5E1'), strokeWidth=0.5))
-        photo_box.add(String(1.15 * cm, 1.4 * cm, "PHOTO", textAnchor='middle', fontSize=7.5, fontName='Helvetica-Bold', fillColor=colors.HexColor('#94A3B8')))
+        photo_box = Drawing(2.8 * cm, 3.4 * cm)
+        photo_box.add(Rect(0, 0, 2.8 * cm, 3.4 * cm, rx=3, ry=3, fillColor=colors.HexColor('#F1F5F9'), strokeColor=colors.HexColor('#CBD5E1'), strokeWidth=0.5))
+        photo_box.add(String(1.4 * cm, 1.7 * cm, "PHOTO", textAnchor='middle', fontSize=9, fontName='Helvetica-Bold', fillColor=colors.HexColor('#94A3B8')))
         photo_img = photo_box
 
     info_rows = [
@@ -1123,26 +1153,28 @@ def _build_result_card_elements(student, school, exam, marks_data, prev_marks_da
         ['Roll No.', ':', roll_no, 'Date of Result', ':', result_date_str, ''],
         ['Class / Section', ':', cls_name, '', '', '', ''],
     ]
-    info_table = Table(info_rows, colWidths=[2.5 * cm, 0.3 * cm, 4.4 * cm, 2.4 * cm, 0.3 * cm, 4.2 * cm, 2.8 * cm], rowHeights=[0.48 * cm] * 6)
+    info_table = Table(info_rows, colWidths=[3.0 * cm, 0.3 * cm, 4.6 * cm, 2.9 * cm, 0.3 * cm, 4.1 * cm, 2.8 * cm], rowHeights=[0.65 * cm] * 6)
     info_table.setStyle(TableStyle([
         ('SPAN', (6, 0), (6, -1)),
-        ('BOX', (0, 0), (-1, -1), 0.8, BORDER_BLUE),
+        ('BOX', (0, 0), (-1, -1), 0.9, BORDER_BLUE),
         ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
         ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#475569')),
         ('TEXTCOLOR', (3, 0), (3, -1), colors.HexColor('#475569')),
         ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
         ('FONTNAME', (5, 0), (5, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (2, 0), (2, -1), 9.5),
+        ('FONTSIZE', (5, 0), (5, -1), 9.5),
         ('TEXTCOLOR', (2, 0), (2, -1), TEXT_MAIN),
         ('TEXTCOLOR', (5, 0), (5, -1), TEXT_MAIN),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('ALIGN', (6, 0), (6, -1), 'CENTER'),
-        ('TOPPADDING', (0, 0), (-1, -1), 0.5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 0.5),
-        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 1),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
     ]))
     elements.append(info_table)
-    elements.append(Spacer(1, 0.25 * cm))
+    elements.append(Spacer(1, 0.35 * cm))
 
     # 5. Marks Breakdown Table
     marks_rows = [
@@ -1176,18 +1208,18 @@ def _build_result_card_elements(student, school, exam, marks_data, prev_marks_da
         overall_grade = '—'
         overall_status = '—'
 
-    marks_table = Table(marks_rows, colWidths=[1.2 * cm, 5.4 * cm, 2.6 * cm, 2.7 * cm, 2.9 * cm, 2.5 * cm])
+    marks_table = Table(marks_rows, colWidths=[1.3 * cm, 5.7 * cm, 2.7 * cm, 2.9 * cm, 3.0 * cm, 2.4 * cm])
     m_style = [
         ('BACKGROUND', (0, 0), (-1, 0), NAVY_THEME),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
         ('ALIGN', (0, 0), (0, -1), 'CENTER'),
         ('ALIGN', (2, 0), (-1, -1), 'CENTER'),
-        ('BOX', (0, 0), (-1, -1), 0.8, BORDER_BLUE),
+        ('BOX', (0, 0), (-1, -1), 0.9, BORDER_BLUE),
         ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#E2E8F0')),
-        ('TOPPADDING', (0, 0), (-1, -1), 2.5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2.5),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
     ]
     if has_marks:
@@ -1196,6 +1228,7 @@ def _build_result_card_elements(student, school, exam, marks_data, prev_marks_da
             ('BACKGROUND', (0, -1), (-1, -1), LIGHT_BG),
             ('TEXTCOLOR', (0, -1), (-1, -1), NAVY_THEME),
             ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, -1), (-1, -1), 9.5),
             ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#F8FAFC')]),
         ])
     else:
@@ -1206,10 +1239,9 @@ def _build_result_card_elements(student, school, exam, marks_data, prev_marks_da
         ])
     marks_table.setStyle(TableStyle(m_style))
     elements.append(marks_table)
-    elements.append(Spacer(1, 0.25 * cm))
+    elements.append(Spacer(1, 0.4 * cm))
 
     # 6. Side-by-Side Lower Cards: PERFORMANCE SUMMARY & GRADE SCALE
-    # Left Card: Performance Summary
     tot_obt_display = str(int(tot_obt)) if isinstance(tot_obt, float) and tot_obt.is_integer() else (f"{tot_obt:.1f}" if has_marks else '0')
     perf_rows = [
         ['PERFORMANCE SUMMARY', ''],
@@ -1219,24 +1251,25 @@ def _build_result_card_elements(student, school, exam, marks_data, prev_marks_da
         ['Overall Grade', f":  {overall_grade}"],
         ['Result', f":  {overall_status}"],
     ]
-    perf_table = Table(perf_rows, colWidths=[4.2 * cm, 4.0 * cm], rowHeights=[0.45 * cm, 0.42 * cm, 0.42 * cm, 0.42 * cm, 0.42 * cm, 0.42 * cm])
+    perf_table = Table(perf_rows, colWidths=[4.6 * cm, 4.2 * cm], rowHeights=[0.6 * cm, 0.55 * cm, 0.55 * cm, 0.55 * cm, 0.55 * cm, 0.55 * cm])
     perf_table.setStyle(TableStyle([
         ('SPAN', (0, 0), (1, 0)),
         ('BACKGROUND', (0, 0), (1, 0), NAVY_THEME),
         ('TEXTCOLOR', (0, 0), (1, 0), colors.white),
         ('FONTNAME', (0, 0), (1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (1, 0), 8),
+        ('FONTSIZE', (0, 0), (1, 0), 9.5),
         ('ALIGN', (0, 0), (1, 0), 'CENTER'),
-        ('BOX', (0, 0), (-1, -1), 0.8, BORDER_BLUE),
+        ('BOX', (0, 0), (-1, -1), 0.9, BORDER_BLUE),
         ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('FONTSIZE', (0, 1), (-1, -1), 9),
         ('TEXTCOLOR', (0, 1), (0, -1), colors.HexColor('#0F172A')),
         ('FONTNAME', (1, 1), (1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (1, 1), (1, -1), 9.5),
         ('TEXTCOLOR', (1, -1), (1, -1), colors.HexColor('#16A34A') if overall_status == 'PASS' else (colors.HexColor('#DC2626') if overall_status == 'FAIL' else TEXT_MAIN)),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 0), (-1, -1), 1),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING', (0, 0), (-1, -1), 1.5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1.5),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
     ]))
 
     # Right Card: Grade Scale Table
@@ -1251,27 +1284,27 @@ def _build_result_card_elements(student, school, exam, marks_data, prev_marks_da
         ['33 - 50', 'D'],
         ['Below 33', 'E (Fail)'],
     ]
-    scale_table = Table(scale_rows, colWidths=[5.4 * cm, 2.9 * cm], rowHeights=[0.45 * cm] + [0.32 * cm] * 8)
+    scale_table = Table(scale_rows, colWidths=[5.6 * cm, 3.2 * cm], rowHeights=[0.58 * cm, 0.44 * cm] + [0.38 * cm] * 7)
     scale_table.setStyle(TableStyle([
         ('SPAN', (0, 0), (1, 0)),
         ('BACKGROUND', (0, 0), (1, 0), NAVY_THEME),
         ('TEXTCOLOR', (0, 0), (1, 0), colors.white),
         ('FONTNAME', (0, 0), (1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (1, 0), 8),
+        ('FONTSIZE', (0, 0), (1, 0), 9.5),
         ('ALIGN', (0, 0), (1, 0), 'CENTER'),
         ('BACKGROUND', (0, 1), (1, 1), LIGHT_BG),
         ('FONTNAME', (0, 1), (1, 1), 'Helvetica-Bold'),
         ('TEXTCOLOR', (0, 1), (1, 1), NAVY_THEME),
-        ('FONTSIZE', (0, 1), (-1, -1), 7),
+        ('FONTSIZE', (0, 1), (-1, -1), 8),
         ('ALIGN', (0, 1), (-1, -1), 'CENTER'),
-        ('BOX', (0, 0), (-1, -1), 0.8, BORDER_BLUE),
+        ('BOX', (0, 0), (-1, -1), 0.9, BORDER_BLUE),
         ('GRID', (0, 1), (-1, -1), 0.3, colors.HexColor('#E2E8F0')),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 0), (-1, -1), 0.5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 0.5),
+        ('TOPPADDING', (0, 0), (-1, -1), 1),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
     ]))
 
-    side_cards = Table([[perf_table, '', scale_table]], colWidths=[8.4 * cm, 0.4 * cm, 8.5 * cm])
+    side_cards = Table([[perf_table, '', scale_table]], colWidths=[8.8 * cm, 0.4 * cm, 8.8 * cm])
     side_cards.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('TOPPADDING', (0, 0), (-1, -1), 0),
@@ -1280,37 +1313,37 @@ def _build_result_card_elements(student, school, exam, marks_data, prev_marks_da
         ('RIGHTPADDING', (0, 0), (-1, -1), 0),
     ]))
     elements.append(side_cards)
-    elements.append(Spacer(1, 0.4 * cm))
+    elements.append(Spacer(1, 0.6 * cm))
 
     # 7. Footer: Date, Place & Dual Signatures (Class Teacher + Principal)
     place_str = _esc(getattr(school, 'city', None) or 'School Campus')
     foot_para_left = Paragraph(
-        f"<font size='7.5' color='#0F172A'>"
+        f"<font size='9' color='#0F172A'>"
         f"<b>Date :</b> {result_date_str}<br/>"
         f"<b>Place :</b> {place_str}"
         f"</font>",
-        ParagraphStyle('fl', leading=11)
+        ParagraphStyle('fl', leading=13)
     )
 
     teacher_sig = Paragraph(
-        "<font size='7.5' color='#475569'>"
+        "<font size='9' color='#475569'>"
         "____________________________<br/>"
         "<b>Class Teacher</b>"
         "</font>",
-        ParagraphStyle('ts', alignment=TA_CENTER, leading=10)
+        ParagraphStyle('ts', alignment=TA_CENTER, leading=12)
     )
 
     principal_name = _esc(getattr(school, 'principal_name', None) or '')
     p_name_line = f"<br/>({principal_name})" if principal_name else ""
     principal_sig = Paragraph(
-        f"<font size='7.5' color='#0B3B7B'>"
+        f"<font size='9' color='#0B3B7B'>"
         f"____________________________<br/>"
-        f"<b>Principal</b>{p_name_line}"
+        f"<b>Principal Signature</b>{p_name_line}"
         f"</font>",
-        ParagraphStyle('ps', alignment=TA_CENTER, leading=10)
+        ParagraphStyle('ps', alignment=TA_CENTER, leading=12)
     )
 
-    foot_table = Table([[foot_para_left, teacher_sig, principal_sig]], colWidths=[5.5 * cm, 5.8 * cm, 5.8 * cm])
+    foot_table = Table([[foot_para_left, teacher_sig, principal_sig]], colWidths=[5.6 * cm, 6.2 * cm, 6.2 * cm])
     foot_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
         ('ALIGN', (0, 0), (0, 0), 'LEFT'),
