@@ -137,6 +137,7 @@ def create_app(config_name='default'):
             _ensure_school_columns()
             _ensure_user_columns()
             _ensure_teacher_columns()
+            _ensure_student_columns()
             _ensure_communication_columns()
             _ensure_fee_record_columns()
             _ensure_salary_acknowledgement_columns()
@@ -472,6 +473,47 @@ def _ensure_teacher_columns():
                     print(f'[OK] Added column teachers.{col}')
                 except Exception as e:
                     print(f'[WARN] teachers.{col}: {e}')
+
+
+def _ensure_student_columns():
+    """
+    Run raw ALTER TABLE before SQLAlchemy ORM touches the students table.
+    This prevents 'column does not exist' on PostgreSQL/Render when deployed.
+    """
+    from sqlalchemy import text, inspect
+    inspector = inspect(db.engine)
+    if 'students' not in inspector.get_table_names():
+        return
+
+    existing = {c['name'] for c in inspector.get_columns('students')}
+    to_add = {
+        'admission_date':       'DATE',
+        'aadhar_no':            'VARCHAR(30)',
+        'parent_aadhar_no':     'VARCHAR(30)',
+        'category':             "VARCHAR(50) DEFAULT 'General'",
+        'nationality':          "VARCHAR(50) DEFAULT 'Indian'",
+        'religion':             'VARCHAR(50)',
+        'father_occupation':    'VARCHAR(100)',
+        'mother_occupation':    'VARCHAR(100)',
+        'guardian_name':        'VARCHAR(120)',
+        'guardian_relation':    'VARCHAR(50)',
+        'guardian_phone':       'VARCHAR(20)',
+        'is_first_school':      'BOOLEAN DEFAULT FALSE',
+        'previous_school_name': 'VARCHAR(200)',
+        'previous_class':       'VARCHAR(50)',
+        'previous_tc_no':       'VARCHAR(100)',
+        'previous_tc_date':     'DATE',
+        'previous_reason':      'VARCHAR(250)',
+    }
+    with db.engine.connect() as conn:
+        for col, defn in to_add.items():
+            if col not in existing:
+                try:
+                    conn.execute(text(f'ALTER TABLE students ADD COLUMN {col} {defn}'))
+                    conn.commit()
+                    print(f'✅ Added column students.{col}')
+                except Exception as e:
+                    print(f'⚠️  students.{col}: {e}')
 
 
 # ── Seed super admin ──────────────────────────────────────────────────────────
