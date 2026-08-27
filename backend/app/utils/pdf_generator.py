@@ -165,328 +165,545 @@ def _make_seal_stamp(text="ADMISSION\nCONFIRMED", width_cm=2.4, height_cm=2.4):
         return None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  1. ADMISSION CONFIRMATION & RECEIPT PDF (Exact Image 1 Replica)
-# ═══════════════════════════════════════════════════════════════════════════
+def _draw_admission_page_frame(canvas, doc):
+    canvas.saveState()
+    # Outer navy double frame with rounded corners
+    canvas.setStrokeColor(colors.HexColor('#0B3B7B'))
+    canvas.setLineWidth(1.8)
+    canvas.roundRect(0.7 * cm, 0.7 * cm, doc.pagesize[0] - 1.4 * cm, doc.pagesize[1] - 1.4 * cm, 8, stroke=1, fill=0)
+    canvas.setLineWidth(0.6)
+    canvas.roundRect(0.85 * cm, 0.85 * cm, doc.pagesize[0] - 1.7 * cm, doc.pagesize[1] - 1.7 * cm, 6, stroke=1, fill=0)
+    canvas.restoreState()
+
 
 def _build_admission_confirmation_elements(student, school):
     elements = []
     
-    # ── Top Letterhead ───────────────────────────────────────────────────────
-    school_name = _esc(getattr(school, 'name', None) or 'School')
+    NAVY_THEME = colors.HexColor('#0B3B7B')
+    BORDER_BLUE = colors.HexColor('#93C5FD')
+
+    school_name = _esc(getattr(school, 'name', None) or 'School Name').upper()
+    school_code = _esc(getattr(school, 'code', None) or getattr(school, 'school_code', None) or f"SCH{getattr(school, 'id', 101)}")
+    affiliation_str = _esc(getattr(school, 'affiliation', None) or 'AFFILIATED TO CBSE, NEW DELHI')
     addr_parts = [p for p in [getattr(school, 'address', None), getattr(school, 'city', None), getattr(school, 'pincode', None)] if p]
     addr_line = _esc(', '.join(addr_parts))
     phone_line = _esc(getattr(school, 'phone', None) or '')
     email_line = _esc(getattr(school, 'email', None) or '')
-    web_line   = _esc(getattr(school, 'website', None) or '')
     session_str = _esc(student.session or '2024-25')
 
-    logo_img = _fetch_remote_image(getattr(school, 'logo_url', None), 2.2 * cm, 2.2 * cm)
-    if not logo_img:
-        logo_box = Drawing(2.2 * cm, 2.2 * cm)
-        logo_box.add(Rect(0, 0, 2.2 * cm, 2.2 * cm, rx=4, ry=4, fillColor=NAVY_HEADER, strokeColor=None))
-        logo_box.add(String(1.1 * cm, 1.3 * cm, "★ SCHOOL ★", textAnchor='middle', fontSize=7, fontName='Helvetica-Bold', fillColor=colors.white))
-        logo_box.add(String(1.1 * cm, 0.7 * cm, "ESTD", textAnchor='middle', fontSize=6, fontName='Helvetica', fillColor=colors.white))
-        logo_img = logo_box
+    cls = Class.query.get(student.class_id) if student.class_id else None
+    cls_name = cls.name if cls else '—'
+    sec_name = cls.section if cls and cls.section else (getattr(student, 'section', None) or '—')
 
-    title_para = Paragraph(f"<b><font size='14' color='{NAVY_PRIMARY.hexval()}'>{school_name}</font></b>", ParagraphStyle('sn', leading=16))
-    addr_para  = Paragraph(f"<font size='8' color='#475569'>{addr_line}</font>", ParagraphStyle('sa', leading=10)) if addr_line else Paragraph("", ParagraphStyle('sa'))
-    
-    contacts = []
-    if phone_line: contacts.append(f"📞 {phone_line}")
-    if email_line: contacts.append(f"✉ {email_line}")
-    contact_para = Paragraph(f"<font size='7.5' color='#334155'>{'   |   '.join(contacts)}</font>", ParagraphStyle('sc', leading=9.5)) if contacts else Paragraph("", ParagraphStyle('sc'))
+    std_name = student.user.name if student.user else (getattr(student, 'name', '') or '—')
+    adm_no = _esc(student.admission_no or f"ADM-{session_str}-001")
+    adm_date_str = student.admission_date.strftime('%d-%m-%Y') if hasattr(student, 'admission_date') and student.admission_date else date.today().strftime('%d-%m-%Y')
+    roll_no = _esc(student.roll_number or '—')
+    dob_str = student.dob.strftime('%d-%m-%Y') if hasattr(student, 'dob') and student.dob else '—'
+    gender_str = _esc(student.gender or '—')
+    blood_str = _esc(getattr(student, 'blood_group', None) or '—')
+    category_str = _esc(getattr(student, 'category', None) or 'General')
+    nationality_str = _esc(getattr(student, 'nationality', None) or 'Indian')
+    religion_str = _esc(getattr(student, 'religion', None) or '—')
+    aadhar_str = _esc(getattr(student, 'aadhar_no', None) or '—')
+    addr_str = _esc(student.address or '—')
+    mob_str = _esc(student.parent_phone or getattr(student.user, 'phone', None) or '—')
 
-    badge_p = Paragraph(f"<b><font color='white' size='8'>ADMISSION CONFIRMATION</font></b>", ParagraphStyle('b', alignment=TA_CENTER, leading=9))
-    session_p = Paragraph(f"<font size='8.5' color='#0F172A'><b>Session :</b> {session_str}</font>", ParagraphStyle('sess', alignment=TA_RIGHT, leading=10))
+    father_name = _esc(student.father_name or student.parent_name or '—')
+    father_occ = _esc(getattr(student, 'father_occupation', None) or '—')
+    mother_name = _esc(getattr(student, 'mother_name', None) or '—')
+    mother_occ = _esc(getattr(student, 'mother_occupation', None) or '—')
+    guardian_name = _esc(getattr(student, 'guardian_name', None) or '—')
+    guardian_rel = _esc(getattr(student, 'guardian_relation', None) or '—')
+    guardian_mob = _esc(getattr(student, 'guardian_phone', None) or '—')
 
-    top_rows = [
-        [logo_img, title_para, badge_p],
-        ['', addr_para, session_p],
-        ['', contact_para, '']
-    ]
-    top_table = Table(top_rows, colWidths=[2.2 * cm, 11.2 * cm, 4.3 * cm])
-    top_table.setStyle(TableStyle([
-        ('SPAN', (0, 0), (0, 2)),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (2, 0), (2, 0), 'CENTER'),
-        ('BACKGROUND', (2, 0), (2, 0), NAVY_PRIMARY),
-        ('ALIGN', (2, 1), (2, 1), 'RIGHT'),
-        ('TOPPADDING', (0, 0), (-1, -1), 1),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
-    ]))
-    elements.append(top_table)
-    elements.append(Spacer(1, 0.12 * cm))
+    is_first_school = bool(getattr(student, 'is_first_school', False))
+    prev_school = _esc(getattr(student, 'previous_school_name', None) or '—')
+    prev_class = _esc(getattr(student, 'previous_class', None) or '—')
+    prev_tc = _esc(getattr(student, 'previous_tc_no', None) or '—')
+    prev_tc_date = getattr(student, 'previous_tc_date', None)
+    prev_tc_date_str = prev_tc_date.strftime('%d-%m-%Y') if prev_tc_date and hasattr(prev_tc_date, 'strftime') else (str(prev_tc_date) if prev_tc_date else '—')
+    prev_reason = _esc(getattr(student, 'previous_reason', None) or '—')
 
-    # Divider bar
-    div_bar = Table([['']], colWidths=[17.7 * cm], rowHeights=[0.06 * cm])
-    div_bar.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, -1), NAVY_HEADER)]))
-    elements.append(div_bar)
-    elements.append(Spacer(1, 0.15 * cm))
+    # Common Header Builder
+    def _create_page_header(page_badge_text):
+        logo_img = _fetch_remote_image(getattr(school, 'logo_url', None), 2.2 * cm, 2.2 * cm)
+        if not logo_img:
+            logo_box = Drawing(2.2 * cm, 2.2 * cm)
+            logo_box.add(Rect(0, 0, 2.2 * cm, 2.2 * cm, rx=4, ry=4, fillColor=NAVY_THEME, strokeColor=None))
+            logo_box.add(String(1.1 * cm, 1.3 * cm, "★ SCHOOL ★", textAnchor='middle', fontSize=6.5, fontName='Helvetica-Bold', fillColor=colors.white))
+            logo_box.add(String(1.1 * cm, 0.7 * cm, "KNOWLEDGE", textAnchor='middle', fontSize=5.5, fontName='Helvetica', fillColor=colors.white))
+            logo_img = logo_box
 
-    # ── Heading ──────────────────────────────────────────────────────────────
-    elements.append(Paragraph(
-        "<i><font size='12' color='#1E3A8A'><b>Admission Confirmation & Receipt</b></font></i>",
-        ParagraphStyle('act', alignment=TA_CENTER, fontName='Helvetica-BoldOblique')
-    ))
-    elements.append(Spacer(1, 0.04 * cm))
-    elements.append(Paragraph(
-        "<font size='7.5' color='#64748B'>We are pleased to confirm the admission of the student as per the details below.</font>",
-        ParagraphStyle('actsub', alignment=TA_CENTER)
-    ))
-    elements.append(Spacer(1, 0.2 * cm))
+        title_p = Paragraph(f"<b><font size='16' color='#0B3B7B'>{school_name}</font></b>", ParagraphStyle('sn', alignment=TA_CENTER, leading=18))
+        affil_p = Paragraph(f"<font size='8' color='#1E293B'><b>{affiliation_str} | SCHOOL CODE: {school_code}</b></font>", ParagraphStyle('sf', alignment=TA_CENTER, leading=10.5))
+        
+        contacts = []
+        if addr_line: contacts.append(f"📍 {addr_line}")
+        if phone_line: contacts.append(f"📞 {phone_line}")
+        if email_line: contacts.append(f"✉ {email_line}")
+        contact_p = Paragraph(f"<font size='7' color='#334155'>{'   |   '.join(contacts)}</font>", ParagraphStyle('sc', alignment=TA_CENTER, leading=9)) if contacts else Paragraph("", ParagraphStyle('sc'))
 
-    # ── Admission No + Stamp + Student Photo Row ────────────────────────────
-    adm_no   = _esc(student.admission_no or f"ADM-{session_str}-001")
-    adm_date = student.created_at.strftime('%d %B %Y') if hasattr(student, 'created_at') and student.created_at else date.today().strftime('%d %B %Y')
-    roll_no  = _esc(student.roll_number or '—')
-
-    seal_img = _make_seal_stamp("ADMISSION\nCONFIRMED", 2.3, 2.3)
-    photo_img = _fetch_remote_image(getattr(student, 'photo_url', None), 2.3 * cm, 2.7 * cm)
-    if not photo_img:
-        photo_box = Drawing(2.3 * cm, 2.7 * cm)
-        photo_box.add(Rect(0, 0, 2.3 * cm, 2.7 * cm, rx=3, ry=3, fillColor=GREY_LIGHT, strokeColor=GREY_LINE, strokeWidth=0.5))
-        photo_box.add(String(1.15 * cm, 1.35 * cm, "PHOTO", textAnchor='middle', fontSize=7, fontName='Helvetica-Bold', fillColor=GREY_MUTED))
-        photo_img = photo_box
-
-    mid_rows = [
-        ['Admission No.', ':', adm_no, seal_img, photo_img],
-        ['Admission Date', ':', adm_date, '', ''],
-        ['Roll No.', ':', roll_no, '', ''],
-    ]
-    mid_table = Table(mid_rows, colWidths=[2.6 * cm, 0.3 * cm, 5.0 * cm, 6.8 * cm, 3.0 * cm], rowHeights=[0.8 * cm, 0.8 * cm, 0.8 * cm])
-    mid_table.setStyle(TableStyle([
-        ('SPAN', (3, 0), (3, 2)),
-        ('SPAN', (4, 0), (4, 2)),
-        ('FONTNAME', (0, 0), (0, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('TEXTCOLOR', (0, 0), (0, -1), GREY_TEXT),
-        ('FONTNAME', (2, 0), (2, 0), 'Helvetica-Bold'),
-        ('TEXTCOLOR', (2, 0), (2, 0), NAVY_HEADER),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (3, 0), (3, 2), 'CENTER'),
-        ('ALIGN', (4, 0), (4, 2), 'RIGHT'),
-        ('TOPPADDING', (0, 0), (-1, -1), 1),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
-    ]))
-    elements.append(mid_table)
-    elements.append(Spacer(1, 0.2 * cm))
-
-    # Helper for Section Title Banner
-    def _section_header(title):
-        t = Table([[title]], colWidths=[17.7 * cm])
-        t.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, -1), NAVY_HEADER),
+        page_tag = Table([[page_badge_text]], colWidths=[2.0 * cm], rowHeights=[0.45 * cm])
+        page_tag.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), NAVY_THEME),
             ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
             ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 8),
-            ('TOPPADDING', (0, 0), (-1, -1), 3),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-            ('LEFTPADDING', (0, 0), (-1, -1), 6),
+            ('FONTSIZE', (0, 0), (-1, -1), 7),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ]))
-        return t
 
-    # ── 1. STUDENT DETAILS ───────────────────────────────────────────────────
-    elements.append(_section_header('STUDENT DETAILS'))
-    
-    cls = Class.query.get(student.class_id) if student.class_id else None
-    cls_name = f"{cls.name} {cls.section or ''}".strip() if cls else '7th A'
-    std_name = student.user.name if student.user else (getattr(student, 'name', '') or 'Student Name')
-    dob_str  = student.dob.strftime('%d %B %Y') if hasattr(student, 'dob') and student.dob else '12 June 2011'
-    gender_str = student.gender or 'Male'
-    blood_str = getattr(student, 'blood_group', None) or 'B+'
-    
-    std_data = [
-        ['Student Name', ':', std_name, 'Class / Section', ':', cls_name],
-        ['Date of Birth', ':', dob_str, 'Date of Joining', ':', adm_date],
-        ['Gender', ':', gender_str, 'Academic Session', ':', session_str],
-        ['Category', ':', 'General', 'Previous School', ':', getattr(school, 'name', '') or 'Delhi Public School'],
-        ['Blood Group', ':', blood_str, 'School Code', ':', f"SPS/{session_str[:4]}"],
-        ['Aadhaar No.', ':', '1234 5678 9012', 'Transport Required', ':', 'Yes'],
-    ]
-    std_table = Table(std_data, colWidths=[2.5 * cm, 0.3 * cm, 5.8 * cm, 2.8 * cm, 0.3 * cm, 6.0 * cm])
-    std_table.setStyle(TableStyle([
-        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        h_rows = [
+            [logo_img, title_p, page_tag],
+            ['', affil_p, ''],
+            ['', contact_p, '']
+        ]
+        h_table = Table(h_rows, colWidths=[2.2 * cm, 13.1 * cm, 2.0 * cm])
+        h_table.setStyle(TableStyle([
+            ('SPAN', (0, 0), (0, 2)),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('ALIGN', (2, 0), (2, 0), 'RIGHT'),
+            ('TOPPADDING', (0, 0), (-1, -1), 0.5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 0.5),
+        ]))
+        return h_table
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # ── PAGE 1 ─────────────────────────────────────────────────────────────────
+    # ═══════════════════════════════════════════════════════════════════════════
+    elements.append(_create_page_header('Page 1 of 2'))
+    elements.append(Spacer(1, 0.15 * cm))
+
+    # Page 1 Ribbon Banner
+    p1_banner = Table([
+        ['NEW ADMISSION FORM'],
+        [f"ACADEMIC SESSION: {session_str}"]
+    ], colWidths=[17.3 * cm], rowHeights=[0.55 * cm, 0.42 * cm])
+    p1_banner.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (0, 0), NAVY_THEME),
+        ('TEXTCOLOR', (0, 0), (0, 0), colors.white),
+        ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (0, 0), 10.5),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('FONTNAME', (0, 1), (0, 1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 1), (0, 1), 8),
+        ('TEXTCOLOR', (0, 1), (0, 1), NAVY_THEME),
+    ]))
+    elements.append(p1_banner)
+    elements.append(Spacer(1, 0.15 * cm))
+
+    # 1. ADMISSION DETAILS Box
+    photo_img = _fetch_remote_image(getattr(student, 'photo_url', None), 2.5 * cm, 3.1 * cm)
+    if not photo_img:
+        photo_box = Drawing(2.5 * cm, 3.1 * cm)
+        photo_box.add(Rect(0, 0, 2.5 * cm, 3.1 * cm, rx=3, ry=3, fillColor=colors.HexColor('#F1F5F9'), strokeColor=colors.HexColor('#CBD5E1'), strokeWidth=0.5))
+        photo_box.add(String(1.25 * cm, 1.7 * cm, "PHOTO", textAnchor='middle', fontSize=7.5, fontName='Helvetica-Bold', fillColor=colors.HexColor('#94A3B8')))
+        photo_box.add(String(1.25 * cm, 0.9 * cm, "Passport Size", textAnchor='middle', fontSize=5.5, fontName='Helvetica', fillColor=colors.HexColor('#94A3B8')))
+        photo_img = photo_box
+
+    adm_hdr = Table([['ADMISSION DETAILS']], colWidths=[17.3 * cm], rowHeights=[0.42 * cm])
+    adm_hdr.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), NAVY_THEME),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('TEXTCOLOR', (0, 0), (0, -1), GREY_TEXT),
-        ('TEXTCOLOR', (3, 0), (3, -1), GREY_TEXT),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    elements.append(adm_hdr)
+
+    adm_rows = [
+        ['Admission No.', ':', adm_no, 'Date of Birth', ':', dob_str, photo_img],
+        ['Admission Date', ':', adm_date_str, 'Gender', ':', gender_str, ''],
+        ['Class Applying For', ':', cls_name, 'Blood Group', ':', blood_str, ''],
+        ['Section', ':', sec_name, 'Category', ':', category_str, ''],
+        ['Roll No. (On Admission)', ':', roll_no, '', '', '', ''],
+    ]
+    adm_table = Table(adm_rows, colWidths=[3.2 * cm, 0.3 * cm, 4.2 * cm, 2.6 * cm, 0.3 * cm, 3.9 * cm, 2.8 * cm], rowHeights=[0.55 * cm] * 5)
+    adm_table.setStyle(TableStyle([
+        ('SPAN', (6, 0), (6, -1)),
+        ('BOX', (0, 0), (-1, -1), 0.8, BORDER_BLUE),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 7.8),
+        ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#475569')),
+        ('TEXTCOLOR', (3, 0), (3, -1), colors.HexColor('#475569')),
         ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
         ('FONTNAME', (5, 0), (5, -1), 'Helvetica-Bold'),
         ('TEXTCOLOR', (2, 0), (2, -1), TEXT_MAIN),
         ('TEXTCOLOR', (5, 0), (5, -1), TEXT_MAIN),
-        ('BOX', (0, 0), (-1, -1), 0.5, GREY_LINE),
-        ('GRID', (0, 0), (-1, -1), 0.3, colors.HexColor('#F1F5F9')),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 0), (-1, -1), 2),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ('ALIGN', (6, 0), (6, -1), 'CENTER'),
+        ('TOPPADDING', (0, 0), (-1, -1), 1),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(adm_table)
+    elements.append(Spacer(1, 0.2 * cm))
+
+    # 2. STUDENT DETAILS Box
+    std_hdr = Table([['STUDENT DETAILS']], colWidths=[17.3 * cm], rowHeights=[0.42 * cm])
+    std_hdr.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), NAVY_THEME),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    elements.append(std_hdr)
+
+    std_rows = [
+        ['Student Name (As per Aadhar)', ':', std_name, 'Nationality', ':', nationality_str],
+        ['Aadhar No.', ':', aadhar_str, 'Religion', ':', religion_str],
+        ['Address', ':', addr_str, 'Mobile No.', ':', mob_str],
+    ]
+    std_table = Table(std_rows, colWidths=[4.2 * cm, 0.3 * cm, 6.2 * cm, 2.0 * cm, 0.3 * cm, 4.3 * cm], rowHeights=[0.55 * cm] * 3)
+    std_table.setStyle(TableStyle([
+        ('BOX', (0, 0), (-1, -1), 0.8, BORDER_BLUE),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 7.8),
+        ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#475569')),
+        ('TEXTCOLOR', (3, 0), (3, -1), colors.HexColor('#475569')),
+        ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
+        ('FONTNAME', (5, 0), (5, -1), 'Helvetica-Bold'),
+        ('TEXTCOLOR', (2, 0), (2, -1), TEXT_MAIN),
+        ('TEXTCOLOR', (5, 0), (5, -1), TEXT_MAIN),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 1),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
     ]))
     elements.append(std_table)
     elements.append(Spacer(1, 0.2 * cm))
 
-    # ── 2. PARENT / GUARDIAN DETAILS & ADDRESS DETAILS ───────────────────────
-    parent_hdr = Table([['PARENT / GUARDIAN DETAILS', 'ADDRESS DETAILS']], colWidths=[8.85 * cm, 8.85 * cm])
-    parent_hdr.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), NAVY_HEADER),
-        ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
-        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('TOPPADDING', (0, 0), (-1, -1), 3),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-    ]))
-    elements.append(parent_hdr)
-
-    father_name = student.father_name or student.parent_name or 'Rajesh Sharma'
-    mother_name = student.mother_name or 'Neha Sharma'
-    parent_phone = student.parent_phone or '9876543210'
-    parent_email = student.parent_email or f"{father_name.split()[0].lower()}@gmail.com"
-    addr_str = student.address or 'H-123, Sector 45, Noida, Uttar Pradesh - 201301'
-
-    combined_rows = [
-        ["Father's Name", ':', father_name, 'Address', ':', addr_str],
-        ['Occupation', ':', 'Business', 'City / State', ':', 'Noida, Uttar Pradesh'],
-        ['Mobile No.', ':', parent_phone, 'Pincode', ':', '201301'],
-        ['Email ID', ':', parent_email, 'Emergency Contact', ':', 'Amit Sharma (9876501234)'],
-        ["Mother's Name", ':', mother_name, 'Relationship', ':', 'Uncle'],
+    # 3. Lower Section: Side-by-Side Parent Details & Previous School Details
+    parent_rows = [
+        ['PARENT / GUARDIAN DETAILS', ''],
+        ["Father's Name", f": {father_name}"],
+        ["Father's Occupation", f": {father_occ}"],
+        ["Mobile No.", f": {mob_str}"],
+        ["Mother's Name", f": {mother_name}"],
+        ["Mother's Occupation", f": {mother_occ}"],
+        ["Mobile No.", f": {mob_str}"],
+        ["Guardian Name (If Any)", f": {guardian_name}"],
+        ["Relation", f": {guardian_rel}"],
+        ["Guardian Mobile No.", f": {guardian_mob}"],
     ]
-    combined_box = Table(combined_rows, colWidths=[2.3 * cm, 0.3 * cm, 5.9 * cm, 2.7 * cm, 0.3 * cm, 6.2 * cm])
-    combined_box.setStyle(TableStyle([
-        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('TEXTCOLOR', (0, 0), (0, -1), GREY_TEXT),
-        ('TEXTCOLOR', (3, 0), (3, -1), GREY_TEXT),
-        ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
-        ('FONTNAME', (5, 0), (5, -1), 'Helvetica-Bold'),
-        ('TEXTCOLOR', (2, 0), (2, -1), TEXT_MAIN),
-        ('TEXTCOLOR', (5, 0), (5, -1), TEXT_MAIN),
-        ('BOX', (0, 0), (-1, -1), 0.5, GREY_LINE),
-        ('GRID', (0, 0), (-1, -1), 0.3, colors.HexColor('#F1F5F9')),
+    parent_box = Table(parent_rows, colWidths=[3.8 * cm, 4.6 * cm], rowHeights=[0.42 * cm] + [0.46 * cm] * 9)
+    parent_box.setStyle(TableStyle([
+        ('SPAN', (0, 0), (1, 0)),
+        ('BACKGROUND', (0, 0), (1, 0), NAVY_THEME),
+        ('TEXTCOLOR', (0, 0), (1, 0), colors.white),
+        ('FONTNAME', (0, 0), (1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (1, 0), 7.5),
+        ('ALIGN', (0, 0), (1, 0), 'CENTER'),
+        ('BOX', (0, 0), (-1, -1), 0.8, BORDER_BLUE),
+        ('FONTNAME', (0, 1), (0, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 7.5),
+        ('TEXTCOLOR', (0, 1), (0, -1), colors.HexColor('#475569')),
+        ('FONTNAME', (1, 1), (1, -1), 'Helvetica-Bold'),
+        ('TEXTCOLOR', (1, 1), (1, -1), TEXT_MAIN),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 0), (-1, -1), 2),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 0.5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0.5),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
     ]))
-    elements.append(combined_box)
+
+    if is_first_school:
+        prev_p = Paragraph(
+            "<div align='center'><br/><br/>"
+            "<b><font size='9' color='#0B3B7B'>First School Admission</font></b><br/><br/>"
+            "<i><font size='8' color='#475569'>This is the student's 1st school.<br/>No previous school details applicable.</font></i>"
+            "</div>",
+            ParagraphStyle('fs', alignment=TA_CENTER, leading=12)
+        )
+        prev_rows = [
+            ['PREVIOUS SCHOOL DETAILS (IF APPLICABLE)'],
+            [prev_p]
+        ]
+        prev_box = Table(prev_rows, colWidths=[8.5 * cm], rowHeights=[0.42 * cm, 4.14 * cm])
+        prev_box.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, 0), NAVY_THEME),
+            ('TEXTCOLOR', (0, 0), (0, 0), colors.white),
+            ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (0, 0), 7.5),
+            ('ALIGN', (0, 0), (0, 0), 'CENTER'),
+            ('BOX', (0, 0), (-1, -1), 0.8, BORDER_BLUE),
+            ('VALIGN', (0, 1), (0, 1), 'MIDDLE'),
+            ('BACKGROUND', (0, 1), (0, 1), colors.HexColor('#F8FAFC')),
+        ]))
+    else:
+        prev_rows = [
+            ['PREVIOUS SCHOOL DETAILS (IF APPLICABLE)', ''],
+            ['Previous School Name', f": {prev_school}"],
+            ['Last Class', f": {prev_class}"],
+            ['TC No.', f": {prev_tc}"],
+            ['TC Issuing Date', f": {prev_tc_date_str}"],
+            ['Reason for Leaving', f": {prev_reason}"],
+            ['', ''],
+            ['', ''],
+            ['', ''],
+            ['', ''],
+        ]
+        prev_box = Table(prev_rows, colWidths=[3.7 * cm, 4.8 * cm], rowHeights=[0.42 * cm] + [0.46 * cm] * 9)
+        prev_box.setStyle(TableStyle([
+            ('SPAN', (0, 0), (1, 0)),
+            ('BACKGROUND', (0, 0), (1, 0), NAVY_THEME),
+            ('TEXTCOLOR', (0, 0), (1, 0), colors.white),
+            ('FONTNAME', (0, 0), (1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (1, 0), 7.5),
+            ('ALIGN', (0, 0), (1, 0), 'CENTER'),
+            ('BOX', (0, 0), (-1, -1), 0.8, BORDER_BLUE),
+            ('FONTNAME', (0, 1), (0, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 7.5),
+            ('TEXTCOLOR', (0, 1), (0, -1), colors.HexColor('#475569')),
+            ('FONTNAME', (1, 1), (1, -1), 'Helvetica-Bold'),
+            ('TEXTCOLOR', (1, 1), (1, -1), TEXT_MAIN),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 0.5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 0.5),
+            ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ]))
+
+    side_split = Table([[parent_box, '', prev_box]], colWidths=[8.4 * cm, 0.4 * cm, 8.5 * cm])
+    side_split.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('TOPPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+    ]))
+    elements.append(side_split)
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # ── PAGE BREAK TO PAGE 2 ───────────────────────────────────────────────────
+    # ═══════════════════════════════════════════════════════════════════════════
+    elements.append(PageBreak())
+
+    elements.append(_create_page_header('Page 2 of 2'))
+    elements.append(Spacer(1, 0.15 * cm))
+
+    # Page 2 Ribbon Banner
+    p2_banner = Table([
+        ['NEW ADMISSION FORM (CONTINUED)']
+    ], colWidths=[17.3 * cm], rowHeights=[0.55 * cm])
+    p2_banner.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (0, 0), NAVY_THEME),
+        ('TEXTCOLOR', (0, 0), (0, 0), colors.white),
+        ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (0, 0), 10.5),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    elements.append(p2_banner)
     elements.append(Spacer(1, 0.2 * cm))
 
-    # ── 3. FEE DETAILS & PAYMENT SUMMARY ─────────────────────────────────────
-    fee_hdr = Table([['FEE DETAILS', 'PAYMENT SUMMARY']], colWidths=[10.8 * cm, 6.9 * cm])
-    fee_hdr.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (0, 0), NAVY_HEADER),
-        ('TEXTCOLOR', (0, 0), (0, 0), colors.white),
-        ('BACKGROUND', (1, 0), (1, 0), colors.HexColor('#EFF6FF')),
-        ('TEXTCOLOR', (1, 0), (1, 0), NAVY_HEADER),
-        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('BOX', (1, 0), (1, 0), 0.5, colors.HexColor('#BFDBFE')),
-        ('TOPPADDING', (0, 0), (-1, -1), 3),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-    ]))
-    elements.append(fee_hdr)
+    # 4. Side-by-Side: Documents Submitted Checklist & Fee Details
+    # Query student docs for dynamic check
+    uploaded_doc_types = set()
+    try:
+        if student.id:
+            s_docs = StudentDocument.query.filter_by(student_id=student.id).all()
+            for sd in s_docs:
+                uploaded_doc_types.add(sd.doc_type)
+    except Exception:
+        pass
 
-    fee_summary_rows = [
-        ['1', 'Admission Fee', '5,000.00', 'Total Amount', ':', '23,000.00'],
-        ['2', 'Caution Money (Refundable)', '3,000.00', 'Amount Paid', ':', '23,000.00'],
-        ['3', 'Tuition Fee (Quarterly)', '12,000.00', 'Payment Mode', ':', 'Online'],
-        ['4', 'Development Fee', '2,000.00', 'Transaction ID', ':', 'TXN512364889'],
-        ['5', 'Activity Fee', '1,000.00', 'Payment Date', ':', adm_date],
-        ['', 'Total Amount (₹)', '23,000.00', 'Payment Status : PAID', '', ''],
+    doc_list = [
+        ('1.', 'Birth Certificate', ('BIRTH_CERTIFICATE' in uploaded_doc_types)),
+        ('2.', 'Aadhar Card (Student)', ('AADHAR' in uploaded_doc_types or 'AADHAR_STUDENT' in uploaded_doc_types or bool(student.aadhar_no))),
+        ('3.', 'Aadhar Card (Parents)', ('AADHAR_PARENT' in uploaded_doc_types or bool(student.parent_aadhar_no))),
+        ('4.', 'Passport Size Photograph (2 Nos.)', bool(student.photo_url)),
+        ('5.', 'Transfer Certificate (TC)', ('TRANSFER_CERTIFICATE' in uploaded_doc_types or bool(student.previous_tc_no))),
+        ('6.', 'Previous Class Report Card', ('REPORT_CARD' in uploaded_doc_types)),
+        ('7.', 'Address Proof', ('ADDRESS_PROOF' in uploaded_doc_types or bool(student.address))),
+        ('8.', 'Caste / Category Certificate (If Applicable)', ('CASTE_CERTIFICATE' in uploaded_doc_types)),
+        ('9.', 'Medical Fitness Certificate', ('MEDICAL_CERTIFICATE' in uploaded_doc_types)),
+        ('10.', 'Any Other Document', ('OTHER' in uploaded_doc_types)),
     ]
 
-    fee_sum_table = Table(fee_summary_rows, colWidths=[0.8 * cm, 7.3 * cm, 2.7 * cm, 2.5 * cm, 0.3 * cm, 4.1 * cm])
-    fee_sum_table.setStyle(TableStyle([
-        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 0), (-1, -1), 7.5),
-        ('ALIGN', (0, 0), (0, 4), 'CENTER'),
-        ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
-        ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
-        ('BOX', (0, 0), (2, -1), 0.5, GREY_LINE),
-        ('BOX', (3, 0), (-1, -1), 0.5, colors.HexColor('#BFDBFE')),
-        ('BACKGROUND', (3, 0), (-1, -1), colors.HexColor('#F8FAFC')),
-        ('BACKGROUND', (0, -1), (2, -1), colors.HexColor('#EFF6FF')),
-        ('FONTNAME', (1, -1), (2, -1), 'Helvetica-Bold'),
-        ('TEXTCOLOR', (1, -1), (2, -1), NAVY_HEADER),
-        ('BACKGROUND', (3, -1), (-1, -1), colors.HexColor('#DCFCE7')),
-        ('TEXTCOLOR', (3, -1), (-1, -1), colors.HexColor('#16A34A')),
-        ('FONTNAME', (3, -1), (-1, -1), 'Helvetica-Bold'),
-        ('ALIGN', (3, -1), (-1, -1), 'CENTER'),
-        ('SPAN', (3, -1), (-1, -1)),
-        ('GRID', (0, 0), (2, -2), 0.3, colors.HexColor('#E2E8F0')),
+    doc_rows = [
+        ['DOCUMENTS SUBMITTED', '', 'Yes', 'No']
+    ]
+    for sno, dname, is_submitted in doc_list:
+        yes_chk = '[✓]' if is_submitted else '[  ]'
+        no_chk  = '[  ]' if is_submitted else '[✓]'
+        doc_rows.append([f"{sno} {dname}", '', yes_chk, no_chk])
+
+    doc_table = Table(doc_rows, colWidths=[5.4 * cm, 0.2 * cm, 1.2 * cm, 1.2 * cm], rowHeights=[0.42 * cm] + [0.46 * cm] * 10)
+    doc_table.setStyle(TableStyle([
+        ('SPAN', (0, 0), (1, 0)),
+        ('BACKGROUND', (0, 0), (-1, 0), NAVY_THEME),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 7.5),
+        ('ALIGN', (0, 0), (1, 0), 'CENTER'),
+        ('ALIGN', (2, 0), (-1, -1), 'CENTER'),
+        ('BOX', (0, 0), (-1, -1), 0.8, BORDER_BLUE),
+        ('GRID', (0, 0), (-1, -1), 0.3, colors.HexColor('#E2E8F0')),
+        ('FONTNAME', (0, 1), (0, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 7.2),
+        ('TEXTCOLOR', (0, 1), (0, -1), colors.HexColor('#1E293B')),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 0), (-1, -1), 2),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 0.5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0.5),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+    ]))
+
+    # Dynamic Fee Items
+    fee_records = []
+    try:
+        if student.id:
+            fee_records = FeeRecord.query.filter_by(student_id=student.id).all()
+    except Exception:
+        pass
+
+    default_fee_items = [
+        ('1', 'Admission Fee', 5000),
+        ('2', 'Registration Fee', 1000),
+        ('3', 'Tuition Fee (1st Quarter)', 12000),
+        ('4', 'Activity Fee', 1000),
+        ('5', 'Development Fee', 2000),
+        ('6', 'Smart Class Fee', 1500),
+        ('7', 'Library Fee', 800),
+        ('8', 'Examination Fee', 1200),
+        ('9', 'Security Deposit (Refundable)', 3000),
+        ('10', 'Other Charges (If Any)', 500),
+    ]
+
+    total_fee_amt = 0
+    fee_rows = [
+        ['S.No.', 'Particulars', 'Amount (₹)']
+    ]
+    if fee_records:
+        for idx, fr in enumerate(fee_records[:10], 1):
+            f_amt = float(fr.amount_due or fr.amount_paid or 0)
+            total_fee_amt += f_amt
+            f_name = fr.fee_type.replace('_', ' ').title() if fr.fee_type else 'Fee'
+            fee_rows.append([str(idx), f_name, f"₹ {f_amt:,.2f}"])
+        # Fill remaining up to 10 rows
+        for idx in range(len(fee_records) + 1, 11):
+            fee_rows.append([str(idx), '—', '—'])
+    else:
+        for sno, fname, famt in default_fee_items:
+            total_fee_amt += famt
+            fee_rows.append([sno, fname, f"₹ {famt:,.2f}"])
+
+    fee_rows.append(['TOTAL AMOUNT', '', f"₹ {total_fee_amt:,.2f}"])
+
+    fee_box = Table(fee_rows, colWidths=[1.1 * cm, 5.4 * cm, 2.7 * cm], rowHeights=[0.42 * cm] + [0.46 * cm] * 10 + [0.5 * cm])
+    fee_box.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), NAVY_THEME),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 7.5),
+        ('ALIGN', (0, 0), (0, -2), 'CENTER'),
+        ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
+        ('BOX', (0, 0), (-1, -1), 0.8, BORDER_BLUE),
+        ('GRID', (0, 0), (-1, -2), 0.3, colors.HexColor('#E2E8F0')),
+        ('FONTNAME', (1, 1), (1, -2), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 7.2),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 0.5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0.5),
+        ('SPAN', (0, -1), (1, -1)),
+        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#EFF6FF')),
+        ('TEXTCOLOR', (0, -1), (-1, -1), NAVY_THEME),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('ALIGN', (0, -1), (1, -1), 'CENTER'),
         ('LEFTPADDING', (0, 0), (-1, -1), 4),
         ('RIGHTPADDING', (0, 0), (-1, -1), 4),
     ]))
-    elements.append(fee_sum_table)
 
-    words_para = Paragraph(f"<font size='7.5' color='#475569'><b>Amount in Words :</b> <i>{_num_to_words_inr(23000)}</i></font>", ParagraphStyle('wrd'))
-    elements.append(Spacer(1, 0.08 * cm))
-    elements.append(words_para)
+    fee_doc_split = Table([[doc_table, '', fee_box]], colWidths=[8.0 * cm, 0.1 * cm, 9.2 * cm])
+    fee_doc_split.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('TOPPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+    ]))
+    elements.append(fee_doc_split)
     elements.append(Spacer(1, 0.2 * cm))
 
-    # ── 4. TERMS & CONDITIONS, QR CODE, PRINCIPAL SIGNATURE ─────────────────
-    tc_para = Paragraph(
-        "<b><font size='7.5' color='#0F172A'>TERMS & CONDITIONS</font></b><br/>"
-        "<font size='6.8' color='#475569'>"
-        "• The admission is confirmed subject to submission of all required documents.<br/>"
-        "• Fee once paid is non-refundable (except caution money as per school policy).<br/>"
-        "• School rules and regulations must be strictly followed.<br/>"
-        "• Please keep this receipt safely for future reference."
-        "</font>",
-        ParagraphStyle('tc', leading=9.5)
+    # 5. Bottom Row: Declaration, School Seal Stamp, and For School Use Only
+    decl_p = Paragraph(
+        "<div align='justify'>"
+        "I / We declare that the above information provided by me / us is true and correct to the best of my / our knowledge and belief. "
+        "I / We shall abide by the rules and regulations of the school."
+        "<br/><br/><br/>"
+        "______________________________ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>Date :</b> " + adm_date_str + "<br/>"
+        "<b>Signature of Parent / Guardian</b>"
+        "</div>",
+        ParagraphStyle('dcl', leading=8.5, fontSize=6.8, textColor=colors.HexColor('#1E293B'))
     )
+    decl_box = Table([
+        ['DECLARATION'],
+        [decl_p]
+    ], colWidths=[6.8 * cm], rowHeights=[0.42 * cm, 2.5 * cm])
+    decl_box.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (0, 0), NAVY_THEME),
+        ('TEXTCOLOR', (0, 0), (0, 0), colors.white),
+        ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (0, 0), 7.5),
+        ('ALIGN', (0, 0), (0, 0), 'CENTER'),
+        ('BOX', (0, 0), (-1, -1), 0.8, BORDER_BLUE),
+        ('VALIGN', (0, 1), (0, 1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 1), (0, 1), 4),
+        ('RIGHTPADDING', (0, 1), (0, 1), 4),
+    ]))
 
-    qr_img = _make_qr_code(f"ADM:{adm_no}|NAME:{std_name}|DATE:{adm_date}|STATUS:CONFIRMED", size_cm=1.8)
+    seal_img = _make_seal_stamp("SCHOOL\nSEAL", 2.2, 2.2)
 
-    sig_block = [
-        Paragraph("<i><font size='9' color='#1E3A8A'><b>Authorized Signatory</b></font></i>", ParagraphStyle('sg', alignment=TA_CENTER)),
-        Spacer(1, 0.5 * cm),
-        Paragraph("<font size='7.5' color='#64748B'>-----------------------------------------<br/><b>Principal's Signature</b><br/>" + school_name + "</font>", ParagraphStyle('sg2', alignment=TA_CENTER, leading=9))
+    office_rows = [
+        ['FOR SCHOOL USE ONLY', ''],
+        ['Verified By', ': ____________________'],
+        ['Approved By', ': ____________________'],
+        ['Admission Date', f": {adm_date_str}"],
+        ['Remarks', ': ____________________'],
     ]
+    office_box = Table(office_rows, colWidths=[2.6 * cm, 4.4 * cm], rowHeights=[0.42 * cm] + [0.55 * cm] * 4)
+    office_box.setStyle(TableStyle([
+        ('SPAN', (0, 0), (1, 0)),
+        ('BACKGROUND', (0, 0), (1, 0), NAVY_THEME),
+        ('TEXTCOLOR', (0, 0), (1, 0), colors.white),
+        ('FONTNAME', (0, 0), (1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (1, 0), 7.5),
+        ('ALIGN', (0, 0), (1, 0), 'CENTER'),
+        ('BOX', (0, 0), (-1, -1), 0.8, BORDER_BLUE),
+        ('FONTNAME', (0, 1), (0, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 7.2),
+        ('TEXTCOLOR', (0, 1), (0, -1), colors.HexColor('#475569')),
+        ('FONTNAME', (1, 1), (1, -1), 'Helvetica-Bold'),
+        ('TEXTCOLOR', (1, 1), (1, -1), TEXT_MAIN),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+    ]))
 
-    bottom_table = Table([[tc_para, qr_img, sig_block]], colWidths=[9.0 * cm, 3.2 * cm, 5.5 * cm])
-    bottom_table.setStyle(TableStyle([
+    bottom_block = Table([[decl_box, seal_img, office_box]], colWidths=[6.8 * cm, 3.5 * cm, 7.0 * cm])
+    bottom_block.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('ALIGN', (1, 0), (1, -1), 'CENTER'),
-        ('ALIGN', (2, 0), (2, -1), 'CENTER'),
+        ('TOPPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
     ]))
-    elements.append(bottom_table)
-    elements.append(Spacer(1, 0.15 * cm))
-
-    # ── 5. Bottom School Slogan Bar ──────────────────────────────────────────
-    curr_time_str = datetime.now().strftime('%d %b %Y | %I:%M %p')
-    footer_row = [
-        Paragraph(f"<b><font color='white' size='7'>🏫 Thank you for choosing {school_name}.</font></b><br/>"
-                  f"<i><font color='#93C5FD' size='6.5'>Together, we nurture tomorrow's leaders.</font></i>", ParagraphStyle('fmsg', leading=8)),
-        Paragraph(f"<font color='white' size='7'>Date of Print : {curr_time_str}</font>", ParagraphStyle('fdt', alignment=TA_RIGHT, leading=8))
-    ]
-    foot_table = Table([footer_row], colWidths=[11.7 * cm, 6.0 * cm])
-    foot_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), NAVY_PRIMARY),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 0), (-1, -1), 3.5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 3.5),
-        ('LEFTPADDING', (0, 0), (-1, -1), 8),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
-    ]))
-    elements.append(foot_table)
+    elements.append(bottom_block)
 
     return elements
 
 
 def generate_admission_card(student, school):
-    """Generate Admission Confirmation & Receipt PDF."""
+    """Generate 2-Page Admission Form PDF matching exact reference layout."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=A4,
         rightMargin=1.0 * cm, leftMargin=1.0 * cm,
-        topMargin=0.8 * cm, bottomMargin=0.8 * cm
+        topMargin=1.0 * cm, bottomMargin=1.0 * cm
     )
     elements = _build_admission_confirmation_elements(student, school)
-    doc.build(elements)
+    doc.build(elements, onFirstPage=_draw_admission_page_frame, onLaterPages=_draw_admission_page_frame)
     buffer.seek(0)
     return buffer
 

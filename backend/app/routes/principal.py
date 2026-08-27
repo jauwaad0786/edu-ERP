@@ -14,7 +14,11 @@ from app.models.financial import (
 )
 from app.models.documents import IssuedDocument, StudentDocument
 
-STUDENT_DOC_TYPES = ['AADHAR', 'RATION_CARD', 'BIRTH_CERTIFICATE', 'CASTE_CERTIFICATE', 'OTHER']
+STUDENT_DOC_TYPES = [
+    'AADHAR', 'AADHAR_STUDENT', 'AADHAR_PARENT', 'RATION_CARD',
+    'BIRTH_CERTIFICATE', 'CASTE_CERTIFICATE', 'TRANSFER_CERTIFICATE',
+    'REPORT_CARD', 'ADDRESS_PROOF', 'MEDICAL_CERTIFICATE', 'OTHER'
+]
 ISSUED_DOC_TYPES  = ['BONAFIDE', 'TC', 'CHARACTER_CERTIFICATE', 'FEE_RECEIPT', 'OTHER']
 from app.utils.decorators import role_required, get_current_user
 from app.services.permission_resolver import permission_required, role_or_permission_required
@@ -726,20 +730,63 @@ def create_student():
     user.set_password(data.get('password', 'Student@123'), store_plain=True)
     db.session.add(user)
     db.session.flush()
+    # Parse dates safely
+    dob_val = None
+    if data.get('dob'):
+        try:
+            dob_val = date.fromisoformat(str(data['dob'])[:10])
+        except Exception:
+            dob_val = None
+
+    adm_date_val = None
+    if data.get('admission_date') or data.get('date_of_joining'):
+        try:
+            raw_adm = data.get('admission_date') or data.get('date_of_joining')
+            adm_date_val = date.fromisoformat(str(raw_adm)[:10])
+        except Exception:
+            adm_date_val = date.today()
+    else:
+        adm_date_val = date.today()
+
+    tc_date_val = None
+    if data.get('previous_tc_date'):
+        try:
+            tc_date_val = date.fromisoformat(str(data['previous_tc_date'])[:10])
+        except Exception:
+            tc_date_val = None
+
     student = Student(
         user_id=user.id, school_id=_school_id(),
         class_id=data.get('class_id'),
         roll_number=data.get('roll_number'),
         admission_no=data.get('admission_no'),
-        parent_name=data.get('parent_name'),
+        parent_name=data.get('parent_name') or data.get('father_name'),
         parent_phone=data.get('parent_phone'),
         parent_email=data.get('parent_email'),
         father_name=data.get('father_name'),
+        father_occupation=data.get('father_occupation'),
         mother_name=data.get('mother_name'),
+        mother_occupation=data.get('mother_occupation'),
+        guardian_name=data.get('guardian_name'),
+        guardian_relation=data.get('guardian_relation') or data.get('emergency_relation'),
+        guardian_phone=data.get('guardian_phone') or data.get('emergency_phone'),
         gender=data.get('gender'),
-        dob=date.fromisoformat(data['dob']) if data.get('dob') else None,
+        dob=dob_val,
+        blood_group=data.get('blood_group'),
+        category=data.get('category', 'General'),
+        nationality=data.get('nationality', 'Indian'),
+        religion=data.get('religion'),
         address=data.get('address'),
-        session=data.get('session', '2024-25')
+        session=data.get('session', '2024-25'),
+        admission_date=adm_date_val,
+        aadhar_no=data.get('aadhar_no'),
+        parent_aadhar_no=data.get('parent_aadhar_no'),
+        is_first_school=bool(data.get('is_first_school')),
+        previous_school_name=data.get('previous_school_name') or data.get('previous_school'),
+        previous_class=data.get('previous_class'),
+        previous_tc_no=data.get('previous_tc_no'),
+        previous_tc_date=tc_date_val,
+        previous_reason=data.get('previous_reason'),
     )
     db.session.add(student)
     db.session.flush()   # ← student.id ab available hai, commit se pehle
@@ -5044,6 +5091,16 @@ def upload_student_document(student_id):
     if not file:
         return jsonify({'error': 'File nahi mila — field name: file'}), 400
 
+    # Max 10MB check
+    try:
+        file.seek(0, os.SEEK_END)
+        file_size = file.tell()
+        file.seek(0)
+        if file_size > 10 * 1024 * 1024:
+            return jsonify({'error': 'File size 10 MB se zyada nahi honi chahiye'}), 400
+    except Exception:
+        pass
+
     result = cloudinary.uploader.upload(
         file,
         folder=f'eduerp/schools/{_school_id()}/students/{student_id}/kyc_documents',
@@ -5052,16 +5109,32 @@ def upload_student_document(student_id):
         unique_filename=True,
     )
 
-    doc = StudentDocument(
-        school_id    = _school_id(),
-        student_id   = student_id,
-        doc_type     = doc_type,
-        custom_label = custom_label,
-        file_url     = result['secure_url'],
-        file_name    = file.filename,
-        uploaded_by  = get_current_user().id,
-    )
-    db.session.add(doc)
+    # Prevent duplicates: replace existing document of same doc_type if exists
+    existing_doc = StudentDocument.query.filter_by(
+        school_id=_school_id(),
+        student_id=student_id,
+        doc_type=doc_type
+    ).first()
+
+    if existing_doc:
+        existing_doc.file_url = result['secure_url']
+        existing_doc.file_name = file.filename
+        existing_doc.custom_label = custom_label
+        existing_doc.uploaded_by = get_current_user().id
+        existing_doc.uploaded_at = datetime.utcnow()
+        doc = existing_doc
+    else:
+        doc = StudentDocument(
+            school_id    = _school_id(),
+            student_id   = student_id,
+            doc_type     = doc_type,
+            custom_label = custom_label,
+            file_url     = result['secure_url'],
+            file_name    = file.filename,
+            uploaded_by  = get_current_user().id,
+        )
+        db.session.add(doc)
+
     db.session.commit()
     return jsonify(doc.to_dict()), 201
 
@@ -5075,6 +5148,55 @@ def delete_student_document(doc_id):
     db.session.delete(doc)
     db.session.commit()
     return jsonify({'message': 'Document deleted'}), 200
+
+
+@principal_bp.route('/documents/students/all', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER')
+def list_all_students_documents():
+    """
+    Search and list permanent KYC documents across all students in the school.
+    Supports query by search text (student name, roll no, admission no, parent name).
+    Documents are permanently attached to students without class restriction.
+    """
+    sid = _school_id()
+    search = request.args.get('search', '').strip()
+    doc_type_filter = request.args.get('doc_type', '').strip().upper()
+
+    q = db.session.query(StudentDocument, Student, User)\
+        .join(Student, StudentDocument.student_id == Student.id)\
+        .join(User, Student.user_id == User.id)\
+        .filter(StudentDocument.school_id == sid)
+
+    if doc_type_filter:
+        q = q.filter(StudentDocument.doc_type == doc_type_filter)
+
+    if search:
+        like = f"%{search}%"
+        q = q.filter(
+            db.or_(
+                User.name.ilike(like),
+                Student.admission_no.ilike(like),
+                Student.roll_number.ilike(like),
+                Student.parent_name.ilike(like),
+                Student.father_name.ilike(like),
+            )
+        )
+
+    results = q.order_by(StudentDocument.uploaded_at.desc()).limit(200).all()
+
+    items = []
+    for doc, student, user in results:
+        d = doc.to_dict()
+        d['student_name']     = user.name
+        d['admission_no']     = student.admission_no or '—'
+        d['roll_number']      = student.roll_number or '—'
+        d['parent_name']      = student.parent_name or student.father_name or '—'
+        d['father_name']      = student.father_name or '—'
+        d['mother_name']      = student.mother_name or '—'
+        d['current_class']    = f"{student.class_ref.name} - {student.class_ref.section}".strip(' -') if student.class_ref else '—'
+        items.append(d)
+
+    return jsonify({'documents': items, 'total': len(items)}), 200
 
 
 # ═══════════════════════════════════════════════════════════════════════════

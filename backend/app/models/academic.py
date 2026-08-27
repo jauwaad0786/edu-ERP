@@ -118,32 +118,75 @@ class Student(db.Model):
     mother_name  = db.Column(db.String(120))
     photo_url    = db.Column(db.String(500))
 
+    # Admission & Profile metadata
+    admission_date      = db.Column(db.Date)
+    aadhar_no           = db.Column(db.String(30))
+    parent_aadhar_no    = db.Column(db.String(30))
+    category            = db.Column(db.String(50), default='General')
+    nationality         = db.Column(db.String(50), default='Indian')
+    religion            = db.Column(db.String(50))
+    father_occupation   = db.Column(db.String(100))
+    mother_occupation   = db.Column(db.String(100))
+    guardian_name       = db.Column(db.String(120))
+    guardian_relation   = db.Column(db.String(50))
+    guardian_phone      = db.Column(db.String(20))
+
+    # First School / Previous School Details
+    is_first_school      = db.Column(db.Boolean, default=False)
+    previous_school_name = db.Column(db.String(200))
+    previous_class       = db.Column(db.String(50))
+    previous_tc_no       = db.Column(db.String(100))
+    previous_tc_date     = db.Column(db.Date)
+    previous_reason      = db.Column(db.String(250))
+
     attendance = db.relationship('Attendance', backref='student', lazy='dynamic')
     marks      = db.relationship('Marks', backref='student', lazy='dynamic')
     fees = db.relationship('FeeRecord', backref=db.backref('student_ref', overlaps="fee_records_rel,student"), lazy='dynamic', overlaps="fee_records_rel,student")
+    documents  = db.relationship('StudentDocument', backref='student_ref', lazy='dynamic', cascade='all, delete-orphan')
 
     def to_dict(self):
         c_name = self.class_ref.name if self.class_ref else ''
         c_sec  = self.class_ref.section if self.class_ref else ''
         return {
-            'id':               self.id,
-            'roll_number':      self.roll_number or '',
-            'admission_no':     self.admission_no or '',
-            'admission_number': self.admission_no or '',
-            'class_id':         self.class_id,
-            'class_name':       c_name,
-            'section':          c_sec,
-            'class_display':    f"{c_name} - {c_sec}".strip(' -') if c_name else '',
-            'school_id':        self.school_id,
-            'session':          self.session,
-            'dob':              self.dob.strftime('%Y-%m-%d') if self.dob else '',
-            'name':             self.user.name  if self.user else '',
-            'email':            self.user.email if self.user else '',
-            'parent_name':      self.parent_name or self.father_name or '',
-            'parent_phone':     self.parent_phone or '',
-            'father_name':      self.father_name or '',
-            'mother_name':      self.mother_name or '',
-            'photo_url':        self.photo_url,
+            'id':                   self.id,
+            'roll_number':          self.roll_number or '',
+            'admission_no':         self.admission_no or '',
+            'admission_number':     self.admission_no or '',
+            'admission_date':       self.admission_date.strftime('%Y-%m-%d') if self.admission_date else '',
+            'class_id':             self.class_id,
+            'class_name':           c_name,
+            'section':              c_sec,
+            'class_display':        f"{c_name} - {c_sec}".strip(' -') if c_name else '',
+            'school_id':            self.school_id,
+            'session':              self.session,
+            'dob':                  self.dob.strftime('%Y-%m-%d') if self.dob else '',
+            'gender':               self.gender or '',
+            'blood_group':          self.blood_group or '',
+            'address':              self.address or '',
+            'name':                 self.user.name  if self.user else '',
+            'email':                self.user.email if self.user else '',
+            'parent_name':          self.parent_name or self.father_name or '',
+            'parent_phone':         self.parent_phone or '',
+            'parent_email':         self.parent_email or '',
+            'father_name':          self.father_name or '',
+            'father_occupation':    self.father_occupation or '',
+            'mother_name':          self.mother_name or '',
+            'mother_occupation':    self.mother_occupation or '',
+            'guardian_name':        self.guardian_name or '',
+            'guardian_relation':    self.guardian_relation or '',
+            'guardian_phone':       self.guardian_phone or '',
+            'aadhar_no':            self.aadhar_no or '',
+            'parent_aadhar_no':     self.parent_aadhar_no or '',
+            'category':             self.category or 'General',
+            'nationality':          self.nationality or 'Indian',
+            'religion':             self.religion or '',
+            'is_first_school':      bool(self.is_first_school),
+            'previous_school_name': self.previous_school_name or '',
+            'previous_class':       self.previous_class or '',
+            'previous_tc_no':       self.previous_tc_no or '',
+            'previous_tc_date':     self.previous_tc_date.strftime('%Y-%m-%d') if self.previous_tc_date else '',
+            'previous_reason':      self.previous_reason or '',
+            'photo_url':            self.photo_url,
         }
 
 
