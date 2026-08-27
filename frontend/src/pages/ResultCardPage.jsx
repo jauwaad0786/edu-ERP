@@ -827,133 +827,165 @@ export default function ResultCardPage() {
                     </div>
                   ) : (
                     <div style={{
-                      border: '1.5px solid #16a34a',
-                      borderRadius: 12,
-                      padding: 24,
+                      border: '2px solid #0b3b7b',
+                      borderRadius: 10,
+                      padding: 20,
                       background: '#ffffff',
-                      position: 'relative'
+                      position: 'relative',
+                      boxShadow: 'inset 0 0 0 1.5px #93c5fd'
                     }}>
-                      {/* School Letterhead & Badge */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #16a34a', paddingBottom: 14, marginBottom: 16 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                          {previewData?.school?.logo_url ? (
-                            <img src={previewData.school.logo_url} alt="Logo" style={{ width: 48, height: 48, borderRadius: 8, objectFit: 'contain' }} />
-                          ) : (
-                            <div style={{ width: 48, height: 48, borderRadius: 8, background: '#15803d', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16 }}>
-                              ★
+                      {/* School Letterhead */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 16, borderBottom: '1px solid #cbd5e1', paddingBottom: 12, marginBottom: 12 }}>
+                        {previewData?.school?.logo_url ? (
+                          <img src={previewData.school.logo_url} alt="Logo" style={{ width: 56, height: 56, borderRadius: 8, objectFit: 'contain' }} />
+                        ) : (
+                          <div style={{
+                            width: 56, height: 56, borderRadius: 8,
+                            background: '#0b3b7b', color: '#fff',
+                            display: 'flex', flexDirection: 'column',
+                            alignItems: 'center', justifyContent: 'center',
+                            fontWeight: 800, fontSize: 18,
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                          }}>
+                            <span>★</span>
+                            <span style={{ fontSize: 7, letterSpacing: '0.05em' }}>SCHOOL</span>
+                          </div>
+                        )}
+                        <div style={{ flex: 1, textAlign: 'center' }}>
+                          <h2 style={{ margin: '0 0 2px', fontSize: 20, fontWeight: 900, color: '#0b3b7b', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                            {previewData?.school?.name || user?.school?.name || user?.school_name || 'School Name'}
+                          </h2>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: '#1e293b', marginBottom: 2 }}>
+                            {previewData?.school?.affiliation || 'AFFILIATED TO CBSE, NEW DELHI'} | SCHOOL CODE: {previewData?.school?.code || previewData?.school?.school_code || (previewData?.school?.id ? `SCH${previewData.school.id}` : 'XYZ123')}
+                          </div>
+                          {(previewData?.school?.address || user?.school?.address) && (
+                            <div style={{ fontSize: 10.5, color: '#475569', marginBottom: 2 }}>
+                              📍 {previewData?.school?.address || user?.school?.address}
                             </div>
                           )}
-                          <div>
-                            <h2 style={{ margin: '0 0 2px', fontSize: 19, fontWeight: 900, color: '#14532d', textTransform: 'uppercase' }}>
-                              {previewData?.school?.name || user?.school?.name || user?.school_name || 'School Name'}
-                            </h2>
-                            {(previewData?.school?.address || user?.school?.address) && (
-                              <div style={{ fontSize: 11, color: '#475569' }}>
-                                {previewData?.school?.address || user?.school?.address}
-                              </div>
-                            )}
-                            {(previewData?.school?.phone || user?.school?.phone || previewData?.school?.email || user?.school?.email) && (
-                              <div style={{ fontSize: 10.5, color: '#64748b' }}>
-                                {[
-                                  (previewData?.school?.phone || user?.school?.phone) ? `Phone: ${previewData?.school?.phone || user?.school?.phone}` : null,
-                                  (previewData?.school?.email || user?.school?.email) ? `Email: ${previewData?.school?.email || user?.school?.email}` : null,
-                                ].filter(Boolean).join(' | ')}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        <div style={{ textAlign: 'right' }}>
-                          <div style={{
-                            background: '#15803d',
-                            color: '#ffffff',
-                            padding: '4px 14px',
-                            borderRadius: 4,
-                            fontSize: 10,
-                            fontWeight: 800,
-                            letterSpacing: '0.05em',
-                            display: 'inline-block',
-                            marginBottom: 4
-                          }}>
-                            RESULT CARD
-                          </div>
-                          <div style={{ fontSize: 11.5, fontWeight: 800, color: '#14532d' }}>
-                            {selectedExam?.session || '2024-25'}
-                          </div>
-                          <div style={{ fontSize: 10.5, color: '#64748b' }}>
-                            {selectedExam?.exam_name || 'Annual Examination'}
-                          </div>
+                          {(previewData?.school?.phone || user?.school?.phone || previewData?.school?.email || user?.school?.email) && (
+                            <div style={{ fontSize: 10, color: '#64748b' }}>
+                              {[
+                                (previewData?.school?.phone || user?.school?.phone) ? `📞 ${previewData?.school?.phone || user?.school?.phone}` : null,
+                                (previewData?.school?.email || user?.school?.email) ? `✉ ${previewData?.school?.email || user?.school?.email}` : null,
+                              ].filter(Boolean).join('   |   ')}
+                            </div>
+                          )}
                         </div>
                       </div>
 
-                      {/* Student Info & Photo Row */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 16 }}>
-                        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', fontSize: 11.5 }}>
-                          <div><span style={{ color: '#64748b' }}>Student Name</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.name || '—'}</strong></div>
-                          <div><span style={{ color: '#64748b' }}>Father's Name</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.father_name || previewStudent.parent_name || '—'}</strong></div>
-                          <div><span style={{ color: '#64748b' }}>Class / Section</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.class_display || previewStudent.class_name || '—'} {previewStudent.section || ''}</strong></div>
-                          <div><span style={{ color: '#64748b' }}>Date of Birth</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.dob ? formatDate(previewStudent.dob) : '—'}</strong></div>
-                          <div><span style={{ color: '#64748b' }}>Roll No.</span> : <strong style={{ color: '#15803d' }}>{previewStudent.roll_number || '—'}</strong></div>
-                          <div><span style={{ color: '#64748b' }}>School Code</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.school_code || (selectedExam?.session ? `SPS/${selectedExam.session.slice(0, 4)}` : '—')}</strong></div>
-                          <div><span style={{ color: '#64748b' }}>Admission No.</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.admission_number || previewStudent.admission_no || '—'}</strong></div>
+                      {/* MARK SHEET Ribbon Banner */}
+                      <div style={{ textAlign: 'center', marginBottom: 14 }}>
+                        <div style={{
+                          background: '#0b3b7b',
+                          color: '#ffffff',
+                          padding: '5px 32px',
+                          fontSize: 13,
+                          fontWeight: 900,
+                          letterSpacing: '0.08em',
+                          display: 'inline-block',
+                          borderRadius: 3,
+                          boxShadow: '0 2px 4px rgba(11,59,123,0.2)'
+                        }}>
+                          MARK SHEET
+                        </div>
+                        <div style={{ fontSize: 11.5, fontWeight: 800, color: '#0b3b7b', marginTop: 4 }}>
+                          {selectedExam?.exam_name || 'Annual Examination'} {selectedExam?.session || previewStudent?.session || '2024-25'}
+                        </div>
+                      </div>
+
+                      {/* Student Profile Info Box */}
+                      <div style={{
+                        border: '1px solid #93c5fd',
+                        borderRadius: 8,
+                        padding: '10px 14px',
+                        marginBottom: 14,
+                        display: 'grid',
+                        gridTemplateColumns: '1.2fr 1.1fr auto',
+                        gap: 16,
+                        alignItems: 'center',
+                        background: '#ffffff'
+                      }}>
+                        {/* Column 1 */}
+                        <div style={{ fontSize: 11.5, lineHeight: 1.7 }}>
+                          <div><span style={{ color: '#64748b', display: 'inline-block', width: 95 }}>Student Name</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.name || '—'}</strong></div>
+                          <div><span style={{ color: '#64748b', display: 'inline-block', width: 95 }}>Father's Name</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.father_name || previewStudent.parent_name || '—'}</strong></div>
+                          <div><span style={{ color: '#64748b', display: 'inline-block', width: 95 }}>Mother's Name</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.mother_name || '—'}</strong></div>
+                          <div><span style={{ color: '#64748b', display: 'inline-block', width: 95 }}>Admission No.</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.admission_number || previewStudent.admission_no || '—'}</strong></div>
+                          <div><span style={{ color: '#64748b', display: 'inline-block', width: 95 }}>Roll No.</span> : <strong style={{ color: '#0b3b7b' }}>{previewStudent.roll_number || '—'}</strong></div>
+                          <div><span style={{ color: '#64748b', display: 'inline-block', width: 95 }}>Class / Section</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.class_display || previewStudent.class_name || '—'} {previewStudent.section ? `/ ${previewStudent.section}` : ''}</strong></div>
                         </div>
 
+                        {/* Column 2 */}
+                        <div style={{ fontSize: 11.5, lineHeight: 1.7 }}>
+                          <div><span style={{ color: '#64748b', display: 'inline-block', width: 95 }}>Date of Birth</span> : <strong style={{ color: '#0f172a' }}>{previewStudent.dob ? formatDate(previewStudent.dob) : '—'}</strong></div>
+                          <div><span style={{ color: '#64748b', display: 'inline-block', width: 95 }}>Session</span> : <strong style={{ color: '#0f172a' }}>{selectedExam?.session || previewStudent.session || '2024-25'}</strong></div>
+                          <div><span style={{ color: '#64748b', display: 'inline-block', width: 95 }}>Exam Type</span> : <strong style={{ color: '#0f172a' }}>{selectedExam?.exam_name || 'Annual Examination'}</strong></div>
+                          <div><span style={{ color: '#64748b', display: 'inline-block', width: 95 }}>School Code</span> : <strong style={{ color: '#0f172a' }}>{previewData?.school?.code || previewData?.school?.school_code || (previewData?.school?.id ? `SCH${previewData.school.id}` : '—')}</strong></div>
+                          <div><span style={{ color: '#64748b', display: 'inline-block', width: 95 }}>Date of Result</span> : <strong style={{ color: '#0f172a' }}>{new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-')}</strong></div>
+                        </div>
+
+                        {/* Column 3: Photo */}
                         <div>
                           {previewStudent.photo_url ? (
                             <img
                               src={previewStudent.photo_url}
                               alt="Student"
-                              style={{ width: 74, height: 86, borderRadius: 6, objectFit: 'cover', border: '1px solid #cbd5e1' }}
+                              style={{ width: 72, height: 86, borderRadius: 6, objectFit: 'cover', border: '1px solid #cbd5e1' }}
                             />
                           ) : (
                             <div style={{
-                              width: 74,
+                              width: 72,
                               height: 86,
                               borderRadius: 6,
-                              background: '#f8fafc',
+                              background: '#f1f5f9',
                               border: '1px solid #cbd5e1',
                               display: 'flex',
+                              flexDirection: 'column',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              fontSize: 12,
-                              color: '#64748b',
+                              fontSize: 10,
+                              color: '#94a3b8',
                               fontWeight: 700
                             }}>
+                              <i className="ti ti-user" style={{ fontSize: 24, marginBottom: 2 }} />
                               PHOTO
                             </div>
                           )}
                         </div>
                       </div>
 
-                      {/* Marks Breakdown Table */}
-                      <div style={{ marginBottom: 16 }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, border: '1px solid #cbd5e1' }}>
+                      {/* 5. Marks Breakdown Table */}
+                      <div style={{ marginBottom: 14 }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, border: '1px solid #93c5fd' }}>
                           <thead>
-                            <tr style={{ background: '#15803d', color: '#ffffff' }}>
-                              <th style={{ padding: '7px 10px', textAlign: 'left' }}>Subject</th>
-                              <th style={{ padding: '7px 10px', textAlign: 'center' }}>Max Marks</th>
-                              <th style={{ padding: '7px 10px', textAlign: 'center' }}>Marks Obtained</th>
-                              <th style={{ padding: '7px 10px', textAlign: 'center' }}>Percentage</th>
-                              <th style={{ padding: '7px 10px', textAlign: 'center' }}>Grade</th>
+                            <tr style={{ background: '#0b3b7b', color: '#ffffff' }}>
+                              <th style={{ padding: '6px 8px', textAlign: 'center', width: 45 }}>S.No.</th>
+                              <th style={{ padding: '6px 12px', textAlign: 'left' }}>Subject</th>
+                              <th style={{ padding: '6px 10px', textAlign: 'center', width: 95 }}>Max. Marks</th>
+                              <th style={{ padding: '6px 10px', textAlign: 'center', width: 110 }}>Marks Obtained</th>
+                              <th style={{ padding: '6px 10px', textAlign: 'center', width: 110 }}>Percentage (%)</th>
+                              <th style={{ padding: '6px 10px', textAlign: 'center', width: 70 }}>Grade</th>
                             </tr>
                           </thead>
                           <tbody>
                             {previewData?.marks && previewData.marks.length > 0 ? (
                               previewData.marks.map((m, idx) => {
-                                const pct = m.max_marks ? Math.round((m.marks_obtained / m.max_marks) * 100) : 0;
+                                const pct = m.max_marks ? Number(((m.marks_obtained / m.max_marks) * 100).toFixed(2)) : 0.00;
                                 return (
                                   <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', background: idx % 2 === 1 ? '#f8fafc' : '#ffffff' }}>
-                                    <td style={{ padding: '6px 10px', fontWeight: 600, color: '#1e293b' }}>{m.subject_name}</td>
+                                    <td style={{ padding: '6px 8px', textAlign: 'center', color: '#64748b' }}>{idx + 1}</td>
+                                    <td style={{ padding: '6px 12px', fontWeight: 600, color: '#1e293b' }}>{m.subject_name}</td>
                                     <td style={{ padding: '6px 10px', textAlign: 'center' }}>{m.max_marks}</td>
                                     <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700 }}>{m.marks_obtained}</td>
-                                    <td style={{ padding: '6px 10px', textAlign: 'center' }}>{pct}%</td>
-                                    <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700 }}>{m.grade || getGrade(pct)}</td>
+                                    <td style={{ padding: '6px 10px', textAlign: 'center' }}>{pct.toFixed(2)}</td>
+                                    <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 800, color: '#0b3b7b' }}>{m.grade || getGrade(pct)}</td>
                                   </tr>
                                 );
                               })
                             ) : (
                               <tr>
-                                <td colSpan="5" style={{ padding: 18, textAlign: 'center', color: '#64748b', fontStyle: 'italic' }}>
+                                <td colSpan="6" style={{ padding: 18, textAlign: 'center', color: '#64748b', fontStyle: 'italic' }}>
                                   No marks entered for this student in this exam yet.
                                 </td>
                               </tr>
@@ -961,49 +993,106 @@ export default function ResultCardPage() {
                           </tbody>
                           {previewData?.marks && previewData.marks.length > 0 && (
                             <tfoot>
-                              <tr style={{ background: '#dcfce7', fontWeight: 800, borderTop: '1.5px solid #15803d', color: '#14532d' }}>
-                                <td style={{ padding: '7px 10px' }}>Total</td>
+                              <tr style={{ background: '#eff6ff', fontWeight: 900, borderTop: '1.5px solid #0b3b7b', color: '#0b3b7b' }}>
+                                <td colSpan="2" style={{ padding: '7px 12px', textAlign: 'center', letterSpacing: '0.05em' }}>TOTAL</td>
                                 <td style={{ padding: '7px 10px', textAlign: 'center' }}>{previewData.total_max || 0}</td>
                                 <td style={{ padding: '7px 10px', textAlign: 'center' }}>{previewData.total_obtained || 0}</td>
-                                <td style={{ padding: '7px 10px', textAlign: 'center' }}>{previewData.overall_percentage || 0}%</td>
-                                <td style={{ padding: '7px 10px', textAlign: 'center' }}>{getGrade(previewData.overall_percentage || 0)}</td>
+                                <td style={{ padding: '7px 10px', textAlign: 'center' }}>{Number(previewData.overall_percentage || 0).toFixed(2)}</td>
+                                <td style={{ padding: '7px 10px', textAlign: 'center', fontSize: 12 }}>{getGrade(previewData.overall_percentage || 0)}</td>
                               </tr>
                             </tfoot>
                           )}
                         </table>
                       </div>
 
-                      {/* 3 Summary Pills Bar: Attendance | Position in Class | Result */}
-                      <div style={{
-                        display: 'flex',
-                        justifyContent: 'space-around',
-                        background: '#f0fdf4',
-                        border: '1px solid #86efac',
-                        borderRadius: 8,
-                        padding: '10px 16px',
-                        marginBottom: 18,
-                        fontSize: 12,
-                        fontWeight: 700,
-                        color: '#14532d'
-                      }}>
-                        <div>Attendance: <strong>{previewStudent.attendance_percentage != null ? `${previewStudent.attendance_percentage}%` : (previewData?.attendance_pct != null ? `${previewData.attendance_pct}%` : '—')}</strong></div>
-                        <div>Position in Class: <strong>{previewData?.rank ? `${previewData.rank} / ${previewData.total_students || '—'}` : '—'}</strong></div>
-                        <div>Result: <strong style={{ color: (previewData?.overall_result === 'PASS' || (!previewData?.overall_result && previewData?.overall_percentage >= 33)) ? '#16a34a' : '#ef4444' }}>
-                          {previewData?.marks?.length ? (previewData?.overall_result || (previewData?.overall_percentage >= 33 ? 'PASS' : 'FAIL')) : '—'}
-                        </strong></div>
-                      </div>
-
-                      {/* Date & Signature */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: 10 }}>
-                        <div style={{ fontSize: 11, color: '#475569' }}>
-                          <strong>Date:</strong> {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}
+                      {/* 6. Side-by-Side Cards: Performance Summary & Grade Scale */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+                        
+                        {/* Left Card: Performance Summary */}
+                        <div style={{ border: '1px solid #93c5fd', borderRadius: 6, overflow: 'hidden', background: '#ffffff' }}>
+                          <div style={{ background: '#0b3b7b', color: '#ffffff', padding: '5px 12px', fontSize: 11, fontWeight: 800, textAlign: 'center', letterSpacing: '0.03em' }}>
+                            PERFORMANCE SUMMARY
+                          </div>
+                          <div style={{ padding: '10px 14px', fontSize: 11.5, lineHeight: 1.9 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span style={{ color: '#475569' }}>Total Marks</span>
+                              <strong style={{ color: '#0f172a' }}>{previewData?.total_max || 0}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span style={{ color: '#475569' }}>Marks Obtained</span>
+                              <strong style={{ color: '#0f172a' }}>{previewData?.total_obtained || 0}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span style={{ color: '#475569' }}>Percentage</span>
+                              <strong style={{ color: '#0f172a' }}>{previewData?.marks?.length ? `${Number(previewData.overall_percentage || 0).toFixed(2)} %` : '—'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span style={{ color: '#475569' }}>Overall Grade</span>
+                              <strong style={{ color: '#0b3b7b', fontSize: 12 }}>{previewData?.marks?.length ? getGrade(previewData.overall_percentage || 0) : '—'}</strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e2e8f0', paddingTop: 4, marginTop: 4 }}>
+                              <span style={{ color: '#475569', fontWeight: 700 }}>Result</span>
+                              <strong style={{
+                                color: (previewData?.overall_result === 'PASS' || (!previewData?.overall_result && previewData?.overall_percentage >= 33)) ? '#16a34a' : '#dc2626',
+                                fontSize: 12
+                              }}>
+                                {previewData?.marks?.length ? (previewData?.overall_result || (previewData?.overall_percentage >= 33 ? 'PASS' : 'FAIL')) : '—'}
+                              </strong>
+                            </div>
+                          </div>
                         </div>
 
-                        <div style={{ textAlign: 'center', width: 160 }}>
-                          <div style={{ fontStyle: 'italic', color: '#15803d', fontWeight: 800, fontSize: 13, marginBottom: 2 }}>Authorized</div>
-                          <div style={{ borderTop: '1px solid #64748b', paddingTop: 4, fontSize: 10, fontWeight: 700, color: '#0f172a' }}>
-                            Principal's Signature
+                        {/* Right Card: Grade Scale */}
+                        <div style={{ border: '1px solid #93c5fd', borderRadius: 6, overflow: 'hidden', background: '#ffffff' }}>
+                          <div style={{ background: '#0b3b7b', color: '#ffffff', padding: '5px 12px', fontSize: 11, fontWeight: 800, textAlign: 'center', letterSpacing: '0.03em' }}>
+                            GRADE SCALE
                           </div>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, textAlign: 'center' }}>
+                            <thead>
+                              <tr style={{ background: '#eff6ff', color: '#0b3b7b', fontWeight: 800, borderBottom: '1px solid #cbd5e1' }}>
+                                <th style={{ padding: '3px 8px' }}>Percentage Range</th>
+                                <th style={{ padding: '3px 8px' }}>Grade</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {[
+                                ['91 - 100', 'A+'],
+                                ['81 - 90', 'A'],
+                                ['71 - 80', 'B+'],
+                                ['61 - 70', 'B'],
+                                ['51 - 60', 'C'],
+                                ['33 - 50', 'D'],
+                                ['Below 33', 'E (Fail)'],
+                              ].map((row, i) => (
+                                <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                  <td style={{ padding: '2px 8px', color: '#475569' }}>{row[0]}</td>
+                                  <td style={{ padding: '2px 8px', fontWeight: 700, color: row[1] === 'E (Fail)' ? '#dc2626' : '#0b3b7b' }}>{row[1]}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                      </div>
+
+                      {/* 7. Footer: Date, Place & Signatures (Class Teacher + Principal) */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', alignItems: 'end', paddingTop: 8 }}>
+                        <div style={{ fontSize: 11, lineHeight: 1.8, color: '#0f172a' }}>
+                          <div><strong>Date :</strong> {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-')}</div>
+                          <div><strong>Place :</strong> {previewData?.school?.city || user?.school?.city || 'School Campus'}</div>
+                        </div>
+
+                        <div style={{ textAlign: 'center' }}>
+                          <div style={{ width: 140, margin: '0 auto 4px', borderTop: '1.5px solid #64748b' }}></div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: '#475569' }}>Class Teacher</div>
+                        </div>
+
+                        <div style={{ textAlign: 'center' }}>
+                          <div style={{ width: 140, margin: '0 auto 4px', borderTop: '1.5px solid #0b3b7b' }}></div>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: '#0b3b7b' }}>Principal</div>
+                          {previewData?.school?.principal_name && (
+                            <div style={{ fontSize: 10, color: '#64748b' }}>({previewData.school.principal_name})</div>
+                          )}
                         </div>
                       </div>
 

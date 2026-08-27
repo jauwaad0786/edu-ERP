@@ -712,107 +712,139 @@ def generate_bulk_admit_cards(student_timetable_pairs, school, exam):
 #  3. RESULT CARD PDF (Exact Image 2 Bottom-Left Replica)
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _draw_marksheet_frame(canvas, doc):
+    canvas.saveState()
+    # Outer navy double frame with rounded corners
+    canvas.setStrokeColor(colors.HexColor('#0B3B7B'))
+    canvas.setLineWidth(1.8)
+    canvas.roundRect(0.7 * cm, 0.7 * cm, doc.pagesize[0] - 1.4 * cm, doc.pagesize[1] - 1.4 * cm, 8, stroke=1, fill=0)
+    canvas.setLineWidth(0.6)
+    canvas.roundRect(0.85 * cm, 0.85 * cm, doc.pagesize[0] - 1.7 * cm, doc.pagesize[1] - 1.7 * cm, 6, stroke=1, fill=0)
+    canvas.restoreState()
+
+
 def _build_result_card_elements(student, school, exam, marks_data, prev_marks_data=None, version_number=1):
     elements = []
     
-    school_name = _esc(getattr(school, 'name', None) or 'School')
+    NAVY_THEME = colors.HexColor('#0B3B7B')
+    NAVY_ACCENT = colors.HexColor('#1E3A8A')
+    LIGHT_BG = colors.HexColor('#EFF6FF')
+    BORDER_BLUE = colors.HexColor('#93C5FD')
+
+    school_name = _esc(getattr(school, 'name', None) or 'School Name').upper()
+    school_code = _esc(getattr(school, 'code', None) or getattr(school, 'school_code', None) or f"SCH{getattr(school, 'id', 101)}")
+    affiliation_str = _esc(getattr(school, 'affiliation', None) or 'AFFILIATED TO CBSE, NEW DELHI')
     addr_parts = [p for p in [getattr(school, 'address', None), getattr(school, 'city', None), getattr(school, 'pincode', None)] if p]
     addr_line = _esc(', '.join(addr_parts))
     phone_line = _esc(getattr(school, 'phone', None) or '')
     email_line = _esc(getattr(school, 'email', None) or '')
     exam_title = _esc(exam.exam_name if exam else 'Annual Examination')
-    session_str = _esc(exam.session if exam else '2024-25')
+    session_str = _esc(exam.session if exam else (getattr(student, 'session', None) or '2024-25'))
 
-    logo_img = _fetch_remote_image(getattr(school, 'logo_url', None), 2.0 * cm, 2.0 * cm)
+    # 1. School Logo
+    logo_img = _fetch_remote_image(getattr(school, 'logo_url', None), 2.2 * cm, 2.2 * cm)
     if not logo_img:
-        logo_box = Drawing(2.0 * cm, 2.0 * cm)
-        logo_box.add(Rect(0, 0, 2.0 * cm, 2.0 * cm, rx=4, ry=4, fillColor=GREEN_DARK, strokeColor=None))
-        logo_box.add(String(1.0 * cm, 1.1 * cm, "★ SCHOOL ★", textAnchor='middle', fontSize=6.5, fontName='Helvetica-Bold', fillColor=colors.white))
+        logo_box = Drawing(2.2 * cm, 2.2 * cm)
+        logo_box.add(Rect(0, 0, 2.2 * cm, 2.2 * cm, rx=4, ry=4, fillColor=NAVY_THEME, strokeColor=None))
+        logo_box.add(String(1.1 * cm, 1.3 * cm, "★ SCHOOL ★", textAnchor='middle', fontSize=6.5, fontName='Helvetica-Bold', fillColor=colors.white))
+        logo_box.add(String(1.1 * cm, 0.7 * cm, "KNOWLEDGE", textAnchor='middle', fontSize=5.5, fontName='Helvetica', fillColor=colors.white))
         logo_img = logo_box
 
-    title_p = Paragraph(f"<b><font size='15' color='#14532D'>{school_name}</font></b>", ParagraphStyle('sn', alignment=TA_CENTER, leading=17))
-    addr_p = Paragraph(f"<font size='8' color='#475569'>{addr_line}</font>", ParagraphStyle('sa', alignment=TA_CENTER, leading=10)) if addr_line else Paragraph("", ParagraphStyle('sa'))
+    # 2. Header Information
+    title_p = Paragraph(f"<b><font size='16' color='#0B3B7B'>{school_name}</font></b>", ParagraphStyle('sn', alignment=TA_CENTER, leading=18))
+    affil_p = Paragraph(f"<font size='8' color='#1E293B'><b>{affiliation_str} | SCHOOL CODE: {school_code}</b></font>", ParagraphStyle('sf', alignment=TA_CENTER, leading=10.5))
+    addr_p = Paragraph(f"<font size='7.5' color='#475569'>📍 {addr_line}</font>", ParagraphStyle('sa', alignment=TA_CENTER, leading=10)) if addr_line else Paragraph("", ParagraphStyle('sa'))
     
     contacts = []
-    if phone_line: contacts.append(f"Phone: {phone_line}")
-    if email_line: contacts.append(f"Email: {email_line}")
-    contact_p = Paragraph(f"<font size='7.5' color='#334155'>{'   |   '.join(contacts)}</font>", ParagraphStyle('sc', alignment=TA_CENTER, leading=9)) if contacts else Paragraph("", ParagraphStyle('sc'))
+    if phone_line: contacts.append(f"📞 {phone_line}")
+    if email_line: contacts.append(f"✉ {email_line}")
+    contact_p = Paragraph(f"<font size='7.5' color='#334155'>{'   |   '.join(contacts)}</font>", ParagraphStyle('sc', alignment=TA_CENTER, leading=9.5)) if contacts else Paragraph("", ParagraphStyle('sc'))
 
-    badge_table = Table([['RESULT CARD'], [session_str], [exam_title]], colWidths=[3.8 * cm], rowHeights=[0.55 * cm, 0.45 * cm, 0.45 * cm])
-    badge_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (0, 0), GREEN_DARK),
+    head_rows = [
+        [logo_img, title_p],
+        ['', affil_p],
+        ['', addr_p],
+        ['', contact_p]
+    ]
+    head_table = Table(head_rows, colWidths=[2.3 * cm, 15.0 * cm])
+    head_table.setStyle(TableStyle([
+        ('SPAN', (0, 0), (0, 3)),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 0.5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0.5),
+    ]))
+    elements.append(head_table)
+    elements.append(Spacer(1, 0.15 * cm))
+
+    # 3. MARK SHEET Banner with decorative bar
+    banner_table = Table([
+        ['MARK SHEET'],
+        [f"{exam_title} {session_str}"]
+    ], colWidths=[17.3 * cm], rowHeights=[0.55 * cm, 0.45 * cm])
+    banner_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (0, 0), NAVY_THEME),
         ('TEXTCOLOR', (0, 0), (0, 0), colors.white),
         ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (0, 0), 8.5),
+        ('FONTSIZE', (0, 0), (0, 0), 10.5),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('FONTNAME', (0, 1), (0, 1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 1), (0, 1), 8),
-        ('TEXTCOLOR', (0, 1), (0, 1), colors.HexColor('#14532D')),
-        ('FONTSIZE', (0, 2), (0, 2), 7.5),
-        ('TEXTCOLOR', (0, 2), (0, 2), GREY_TEXT),
+        ('FONTSIZE', (0, 1), (0, 1), 8.5),
+        ('TEXTCOLOR', (0, 1), (0, 1), NAVY_THEME),
     ]))
+    elements.append(banner_table)
+    elements.append(Spacer(1, 0.2 * cm))
 
-    top_rows = [
-        [logo_img, title_p, badge_table],
-        ['', addr_p, ''],
-        ['', contact_p, '']
-    ]
-    top_table = Table(top_rows, colWidths=[2.2 * cm, 11.5 * cm, 4.0 * cm])
-    top_table.setStyle(TableStyle([
-        ('SPAN', (0, 0), (0, 2)),
-        ('SPAN', (2, 0), (2, 2)),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 0), (-1, -1), 1),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
-    ]))
-    elements.append(top_table)
-    elements.append(Spacer(1, 0.3 * cm))
-
-    # Student Details & Photo
+    # 4. Student Details Box
     cls = Class.query.get(student.class_id) if student.class_id else None
-    cls_name = f"{cls.name} {cls.section or ''}".strip() if cls else '—'
+    cls_name = f"{cls.name} / {cls.section}".strip(' /') if cls else '—'
     std_name = student.user.name if student.user else (getattr(student, 'name', '') or '—')
     father_name = student.father_name or student.parent_name or '—'
+    mother_name = getattr(student, 'mother_name', None) or '—'
     dob_str = student.dob.strftime('%d-%m-%Y') if hasattr(student, 'dob') and student.dob else '—'
     adm_no = student.admission_no or '—'
     roll_no = student.roll_number or '—'
+    result_date_str = date.today().strftime('%d-%m-%Y')
 
-    photo_img = _fetch_remote_image(getattr(student, 'photo_url', None), 2.6 * cm, 3.2 * cm)
+    photo_img = _fetch_remote_image(getattr(student, 'photo_url', None), 2.3 * cm, 2.8 * cm)
     if not photo_img:
-        photo_box = Drawing(2.6 * cm, 3.2 * cm)
-        photo_box.add(Rect(0, 0, 2.6 * cm, 3.2 * cm, rx=3, ry=3, fillColor=GREY_LIGHT, strokeColor=GREY_LINE, strokeWidth=0.5))
-        photo_box.add(String(1.3 * cm, 1.6 * cm, "PHOTO", textAnchor='middle', fontSize=7.5, fontName='Helvetica-Bold', fillColor=GREY_MUTED))
+        photo_box = Drawing(2.3 * cm, 2.8 * cm)
+        photo_box.add(Rect(0, 0, 2.3 * cm, 2.8 * cm, rx=3, ry=3, fillColor=colors.HexColor('#F1F5F9'), strokeColor=colors.HexColor('#CBD5E1'), strokeWidth=0.5))
+        photo_box.add(String(1.15 * cm, 1.4 * cm, "PHOTO", textAnchor='middle', fontSize=7.5, fontName='Helvetica-Bold', fillColor=colors.HexColor('#94A3B8')))
         photo_img = photo_box
 
     info_rows = [
-        ['Student Name', ':', std_name, "Father's Name", ':', father_name, photo_img],
-        ['Class / Section', ':', cls_name, 'Date of Birth', ':', dob_str, ''],
-        ['Roll No.', ':', roll_no, 'School Code', ':', f"SPS/{session_str[:4]}", ''],
-        ['Admission No.', ':', adm_no, '', '', '', ''],
+        ['Student Name', ':', std_name, 'Date of Birth', ':', dob_str, photo_img],
+        ["Father's Name", ':', father_name, 'Session', ':', session_str, ''],
+        ["Mother's Name", ':', mother_name, 'Exam Type', ':', exam_title, ''],
+        ['Admission No.', ':', adm_no, 'School Code', ':', school_code, ''],
+        ['Roll No.', ':', roll_no, 'Date of Result', ':', result_date_str, ''],
+        ['Class / Section', ':', cls_name, '', '', '', ''],
     ]
-    info_table = Table(info_rows, colWidths=[2.3 * cm, 0.3 * cm, 4.8 * cm, 2.3 * cm, 0.3 * cm, 4.3 * cm, 3.4 * cm], rowHeights=[0.6 * cm] * 4)
+    info_table = Table(info_rows, colWidths=[2.5 * cm, 0.3 * cm, 4.4 * cm, 2.4 * cm, 0.3 * cm, 4.2 * cm, 2.8 * cm], rowHeights=[0.48 * cm] * 6)
     info_table.setStyle(TableStyle([
         ('SPAN', (6, 0), (6, -1)),
+        ('BOX', (0, 0), (-1, -1), 0.8, BORDER_BLUE),
         ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8.5),
-        ('TEXTCOLOR', (0, 0), (0, -1), GREY_TEXT),
-        ('TEXTCOLOR', (3, 0), (3, -1), GREY_TEXT),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#475569')),
+        ('TEXTCOLOR', (3, 0), (3, -1), colors.HexColor('#475569')),
         ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
         ('FONTNAME', (5, 0), (5, -1), 'Helvetica-Bold'),
         ('TEXTCOLOR', (2, 0), (2, -1), TEXT_MAIN),
         ('TEXTCOLOR', (5, 0), (5, -1), TEXT_MAIN),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (6, 0), (6, -1), 'RIGHT'),
-        ('TOPPADDING', (0, 0), (-1, -1), 1),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+        ('ALIGN', (6, 0), (6, -1), 'CENTER'),
+        ('TOPPADDING', (0, 0), (-1, -1), 0.5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0.5),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
     ]))
     elements.append(info_table)
-    elements.append(Spacer(1, 0.35 * cm))
+    elements.append(Spacer(1, 0.25 * cm))
 
-    # Marks Table (Green Header Theme)
+    # 5. Marks Breakdown Table
     marks_rows = [
-        ['Subject', 'Max Marks', 'Marks Obtained', 'Percentage', 'Grade']
+        ['S.No.', 'Subject', 'Max. Marks', 'Marks Obtained', 'Percentage (%)', 'Grade']
     ]
 
     tot_max = 0
@@ -820,44 +852,49 @@ def _build_result_card_elements(student, school, exam, marks_data, prev_marks_da
     has_marks = bool(marks_data and len(marks_data) > 0)
 
     if has_marks:
-        for m in marks_data:
+        for idx, m in enumerate(marks_data, 1):
             s_name = m.get('subject_name') or 'Subject'
             mm = int(m.get('max_marks') or 100)
-            mo = int(m.get('marks_obtained') or 0)
-            pct = round((mo / mm * 100), 1) if mm else 0
+            mo = float(m.get('marks_obtained') or 0)
+            pct = round((mo / mm * 100), 2) if mm else 0.0
             grd = m.get('grade') or _get_grade(pct)
             tot_max += mm
             tot_obt += mo
-            marks_rows.append([s_name, str(mm), str(mo), f"{pct}%", grd])
-        overall_pct = round((tot_obt / tot_max * 100), 1) if tot_max else 0
+            mo_str = str(int(mo)) if mo.is_integer() else f"{mo:.1f}"
+            marks_rows.append([str(idx), s_name, str(mm), mo_str, f"{pct:.2f}", grd])
+        
+        overall_pct = round((tot_obt / tot_max * 100), 2) if tot_max else 0.0
         overall_grade = _get_grade(overall_pct)
         overall_status = 'PASS' if overall_pct >= 33 else 'FAIL'
-        marks_rows.append(['Total', str(tot_max), str(tot_obt), f"{overall_pct}%", overall_grade])
+        tot_obt_str = str(int(tot_obt)) if isinstance(tot_obt, float) and tot_obt.is_integer() else f"{tot_obt:.1f}"
+        marks_rows.append(['TOTAL', '', str(tot_max), tot_obt_str, f"{overall_pct:.2f}", overall_grade])
     else:
-        marks_rows.append(['No marks entered for this student in this exam.', '', '', '', ''])
+        marks_rows.append(['No marks entered for this student in this exam.', '', '', '', '', ''])
+        overall_pct = 0.0
+        overall_grade = '—'
         overall_status = '—'
 
-    marks_table = Table(marks_rows, colWidths=[6.5 * cm, 2.8 * cm, 3.2 * cm, 2.8 * cm, 2.4 * cm])
+    marks_table = Table(marks_rows, colWidths=[1.2 * cm, 5.4 * cm, 2.6 * cm, 2.7 * cm, 2.9 * cm, 2.5 * cm])
     m_style = [
-        ('BACKGROUND', (0, 0), (-1, 0), GREEN_DARK),
+        ('BACKGROUND', (0, 0), (-1, 0), NAVY_THEME),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8.5),
-        ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-        ('BOX', (0, 0), (-1, -1), 0.5, GREY_LINE),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+        ('ALIGN', (2, 0), (-1, -1), 'CENTER'),
+        ('BOX', (0, 0), (-1, -1), 0.8, BORDER_BLUE),
         ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#E2E8F0')),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 2.5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2.5),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
     ]
     if has_marks:
         m_style.extend([
-            ('FONTNAME', (2, 1), (2, -2), 'Helvetica-Bold'),
-            ('FONTNAME', (4, 1), (4, -2), 'Helvetica-Bold'),
-            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#DCFCE7')),
-            ('TEXTCOLOR', (0, -1), (-1, -1), colors.HexColor('#14532D')),
+            ('SPAN', (0, -1), (1, -1)),
+            ('BACKGROUND', (0, -1), (-1, -1), LIGHT_BG),
+            ('TEXTCOLOR', (0, -1), (-1, -1), NAVY_THEME),
             ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, ZEBRA]),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#F8FAFC')]),
         ])
     else:
         m_style.extend([
@@ -867,48 +904,119 @@ def _build_result_card_elements(student, school, exam, marks_data, prev_marks_da
         ])
     marks_table.setStyle(TableStyle(m_style))
     elements.append(marks_table)
+    elements.append(Spacer(1, 0.25 * cm))
+
+    # 6. Side-by-Side Lower Cards: PERFORMANCE SUMMARY & GRADE SCALE
+    # Left Card: Performance Summary
+    tot_obt_display = str(int(tot_obt)) if isinstance(tot_obt, float) and tot_obt.is_integer() else (f"{tot_obt:.1f}" if has_marks else '0')
+    perf_rows = [
+        ['PERFORMANCE SUMMARY', ''],
+        ['Total Marks', f":  {tot_max}"],
+        ['Marks Obtained', f":  {tot_obt_display}"],
+        ['Percentage', f":  {overall_pct:.2f} %" if has_marks else ':  —'],
+        ['Overall Grade', f":  {overall_grade}"],
+        ['Result', f":  {overall_status}"],
+    ]
+    perf_table = Table(perf_rows, colWidths=[4.2 * cm, 4.0 * cm], rowHeights=[0.45 * cm, 0.42 * cm, 0.42 * cm, 0.42 * cm, 0.42 * cm, 0.42 * cm])
+    perf_table.setStyle(TableStyle([
+        ('SPAN', (0, 0), (1, 0)),
+        ('BACKGROUND', (0, 0), (1, 0), NAVY_THEME),
+        ('TEXTCOLOR', (0, 0), (1, 0), colors.white),
+        ('FONTNAME', (0, 0), (1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (1, 0), 8),
+        ('ALIGN', (0, 0), (1, 0), 'CENTER'),
+        ('BOX', (0, 0), (-1, -1), 0.8, BORDER_BLUE),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('TEXTCOLOR', (0, 1), (0, -1), colors.HexColor('#0F172A')),
+        ('FONTNAME', (1, 1), (1, -1), 'Helvetica-Bold'),
+        ('TEXTCOLOR', (1, -1), (1, -1), colors.HexColor('#16A34A') if overall_status == 'PASS' else (colors.HexColor('#DC2626') if overall_status == 'FAIL' else TEXT_MAIN)),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 1),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+    ]))
+
+    # Right Card: Grade Scale Table
+    scale_rows = [
+        ['GRADE SCALE', ''],
+        ['Percentage Range', 'Grade'],
+        ['91 - 100', 'A+'],
+        ['81 - 90', 'A'],
+        ['71 - 80', 'B+'],
+        ['61 - 70', 'B'],
+        ['51 - 60', 'C'],
+        ['33 - 50', 'D'],
+        ['Below 33', 'E (Fail)'],
+    ]
+    scale_table = Table(scale_rows, colWidths=[5.4 * cm, 2.9 * cm], rowHeights=[0.45 * cm] + [0.32 * cm] * 8)
+    scale_table.setStyle(TableStyle([
+        ('SPAN', (0, 0), (1, 0)),
+        ('BACKGROUND', (0, 0), (1, 0), NAVY_THEME),
+        ('TEXTCOLOR', (0, 0), (1, 0), colors.white),
+        ('FONTNAME', (0, 0), (1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (1, 0), 8),
+        ('ALIGN', (0, 0), (1, 0), 'CENTER'),
+        ('BACKGROUND', (0, 1), (1, 1), LIGHT_BG),
+        ('FONTNAME', (0, 1), (1, 1), 'Helvetica-Bold'),
+        ('TEXTCOLOR', (0, 1), (1, 1), NAVY_THEME),
+        ('FONTSIZE', (0, 1), (-1, -1), 7),
+        ('ALIGN', (0, 1), (-1, -1), 'CENTER'),
+        ('BOX', (0, 0), (-1, -1), 0.8, BORDER_BLUE),
+        ('GRID', (0, 1), (-1, -1), 0.3, colors.HexColor('#E2E8F0')),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 0.5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0.5),
+    ]))
+
+    side_cards = Table([[perf_table, '', scale_table]], colWidths=[8.4 * cm, 0.4 * cm, 8.5 * cm])
+    side_cards.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('TOPPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+    ]))
+    elements.append(side_cards)
     elements.append(Spacer(1, 0.4 * cm))
 
-    # 3 Summary Pills Bar: Attendance | Position in Class | Result
-    att_str = f"Attendance: {getattr(student, 'attendance_percentage', None) or '—'}%" if getattr(student, 'attendance_percentage', None) is not None else "Attendance: —"
-    summary_cells = [
-        att_str,
-        'Position in Class: —',
-        f'Result: {overall_status}'
-    ]
-    summary_bar = Table([summary_cells], colWidths=[5.9 * cm, 5.9 * cm, 5.9 * cm])
-    summary_bar.setStyle(TableStyle([
-        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8.5),
-        ('TEXTCOLOR', (0, 0), (1, 0), TEXT_MAIN),
-        ('TEXTCOLOR', (2, 0), (2, 0), colors.HexColor('#16A34A') if overall_status == 'PASS' else colors.HexColor('#DC2626')),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('BOX', (0, 0), (-1, -1), 0.8, colors.HexColor('#86EFAC')),
-        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F0FDF4')),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+    # 7. Footer: Date, Place & Dual Signatures (Class Teacher + Principal)
+    place_str = _esc(getattr(school, 'city', None) or 'School Campus')
+    foot_para_left = Paragraph(
+        f"<font size='7.5' color='#0F172A'>"
+        f"<b>Date :</b> {result_date_str}<br/>"
+        f"<b>Place :</b> {place_str}"
+        f"</font>",
+        ParagraphStyle('fl', leading=11)
+    )
+
+    teacher_sig = Paragraph(
+        "<font size='7.5' color='#475569'>"
+        "____________________________<br/>"
+        "<b>Class Teacher</b>"
+        "</font>",
+        ParagraphStyle('ts', alignment=TA_CENTER, leading=10)
+    )
+
+    principal_name = _esc(getattr(school, 'principal_name', None) or '')
+    p_name_line = f"<br/>({principal_name})" if principal_name else ""
+    principal_sig = Paragraph(
+        f"<font size='7.5' color='#0B3B7B'>"
+        f"____________________________<br/>"
+        f"<b>Principal</b>{p_name_line}"
+        f"</font>",
+        ParagraphStyle('ps', alignment=TA_CENTER, leading=10)
+    )
+
+    foot_table = Table([[foot_para_left, teacher_sig, principal_sig]], colWidths=[5.5 * cm, 5.8 * cm, 5.8 * cm])
+    foot_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
+        ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+        ('ALIGN', (1, 0), (2, 0), 'CENTER'),
+        ('TOPPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
     ]))
-    elements.append(summary_bar)
-    elements.append(Spacer(1, 0.6 * cm))
-
-    # Date & Principal Signature
-    dt_str = datetime.now().strftime('%d %B %Y')
-    date_para = Paragraph(f"<font size='8' color='#475569'><b>Date:</b> {dt_str}</font>", ParagraphStyle('dt'))
-
-    sig_block = Table([
-        [Paragraph("<i><font size='9' color='#14532D'><b>Authorized</b></font></i>", ParagraphStyle('sg', alignment=TA_CENTER))],
-        [''],
-        [Paragraph("<font size='7.5' color='#475569'>---------------------------------------<br/><b>Principal's Signature</b></font>", ParagraphStyle('sg2', alignment=TA_CENTER, leading=9))]
-    ], colWidths=[5.5 * cm], rowHeights=[0.4 * cm, 0.5 * cm, 0.6 * cm])
-    sig_block.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'CENTER')]))
-
-    foot_row = Table([[date_para, sig_block]], colWidths=[11.7 * cm, 6.0 * cm])
-    foot_row.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (1, 0), (1, -1), 'CENTER'),
-    ]))
-    elements.append(foot_row)
+    elements.append(foot_table)
 
     return elements
 
@@ -917,11 +1025,11 @@ def generate_result_card(student, school, exam, marks_data, prev_marks_data=None
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=A4,
-        rightMargin=1.0 * cm, leftMargin=1.0 * cm,
-        topMargin=1.0 * cm, bottomMargin=1.0 * cm
+        rightMargin=1.1 * cm, leftMargin=1.1 * cm,
+        topMargin=1.1 * cm, bottomMargin=1.1 * cm
     )
     elements = _build_result_card_elements(student, school, exam, marks_data, prev_marks_data=prev_marks_data, version_number=version_number)
-    doc.build(elements)
+    doc.build(elements, onFirstPage=_draw_marksheet_frame)
     buffer.seek(0)
     return buffer
 
@@ -930,8 +1038,8 @@ def generate_bulk_result_cards(student_marks_tuples, school, exam, version_numbe
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=A4,
-        rightMargin=1.0 * cm, leftMargin=1.0 * cm,
-        topMargin=1.0 * cm, bottomMargin=1.0 * cm
+        rightMargin=1.1 * cm, leftMargin=1.1 * cm,
+        topMargin=1.1 * cm, bottomMargin=1.1 * cm
     )
     all_elements = []
     for i, item in enumerate(student_marks_tuples):
@@ -943,7 +1051,7 @@ def generate_bulk_result_cards(student_marks_tuples, school, exam, version_numbe
             all_elements.append(PageBreak())
     if not all_elements:
         all_elements = [Paragraph('No students found for result cards.', ParagraphStyle('none', fontSize=12))]
-    doc.build(all_elements)
+    doc.build(all_elements, onFirstPage=_draw_marksheet_frame, onLaterPages=_draw_marksheet_frame)
     buffer.seek(0)
     return buffer
 

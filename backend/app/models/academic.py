@@ -136,6 +136,7 @@ class Student(db.Model):
             'class_display':    f"{c_name} - {c_sec}".strip(' -') if c_name else '',
             'school_id':        self.school_id,
             'session':          self.session,
+            'dob':              self.dob.strftime('%Y-%m-%d') if self.dob else '',
             'name':             self.user.name  if self.user else '',
             'email':            self.user.email if self.user else '',
             'parent_name':      self.parent_name or self.father_name or '',
