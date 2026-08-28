@@ -3,7 +3,7 @@ from app import db
 from app.utils.decorators import role_required, get_current_user
 from app.models.library import (
     BookCategory, Book, BookCopy, LibraryMember, BookIssue,
-    BookReservation, FineTransaction, LibrarySettings, log_activity
+    BookReservation, FineTransaction, LibrarySettings, LibraryActivityLog, log_activity
 )
 from app.models.academic import Class, Student
 from app.models.user import User, UserRole
