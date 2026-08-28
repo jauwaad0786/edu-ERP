@@ -485,6 +485,11 @@ export default function App() {
                 <Announcements />
               </ProtectedRoute>
             } />
+            <Route path="/support/announcements/create" element={
+              <ProtectedRoute permissions={ROUTE_PERMISSIONS['/support/announcements']}>
+                <Announcements initialShowForm={true} />
+              </ProtectedRoute>
+            } />
             <Route path="/announcements" element={
               <ProtectedRoute permissions={ROUTE_PERMISSIONS['/support/announcements']}>
                 <Announcements />
@@ -505,10 +510,20 @@ export default function App() {
                 <Announcements initialShowForm={true} />
               </ProtectedRoute>
             } />
-            <Route path="/support" element={<Navigate to="/support/announcements" replace />} />
+            <Route path="/support" element={<Navigate to="/support/tickets" replace />} />
+            <Route path="/messages" element={
+              <ProtectedRoute>
+                <ChatWindow />
+              </ProtectedRoute>
+            } />
             <Route path="/support/chat" element={
               <ProtectedRoute>
                 <ChatWindow />
+              </ProtectedRoute>
+            } />
+            <Route path="/help-center" element={
+              <ProtectedRoute>
+                <KnowledgeBase />
               </ProtectedRoute>
             } />
             <Route path="/support/help" element={

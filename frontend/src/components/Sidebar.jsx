@@ -165,14 +165,20 @@ const ROLE_MENUS = {
         },
 
         {
-          icon: 'ti-speakerphone', label: 'Communication', path: '/support/announcements',
+          icon: 'ti-speakerphone', label: 'Communication', path: '/announcements',
           children: [
-            { icon: 'ti-speakerphone', label: 'Announcements & Circulars', path: '/support/announcements' },
-            { icon: 'ti-ticket',      label: 'Help & Support Tickets',     path: '/support/tickets' },
-            { icon: 'ti-plus',        label: 'New Ticket',                 path: '/support/tickets/new' },
-            { icon: 'ti-video',       label: 'Book Meeting',               path: '/support/meetings' },
-            { icon: 'ti-message-2',   label: 'Messages',                   path: '/support/chat' },
-            { icon: 'ti-help-circle', label: 'Help Center',                path: '/support/help' },
+            { icon: 'ti-speakerphone', label: 'Announcements & Circulars', path: '/announcements' },
+            { icon: 'ti-message-2',    label: 'Messages',                   path: '/messages' },
+          ],
+        },
+
+        {
+          icon: 'ti-headset', label: 'ERP Support', path: '/support/tickets',
+          children: [
+            { icon: 'ti-ticket',       label: 'Support Tickets',      path: '/support/tickets' },
+            { icon: 'ti-plus',         label: 'New Support Ticket',   path: '/support/tickets/new' },
+            { icon: 'ti-video',        label: 'Book Support Meeting', path: '/support/meetings' },
+            { icon: 'ti-help-circle',  label: 'Help Center',          path: '/help-center' },
           ],
         },
 
