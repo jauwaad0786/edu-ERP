@@ -3,30 +3,12 @@
 Global exception handler — koi bhi unhandled exception (chahe route me ho,
 service layer me, ya DB query me) yahan aake ErrorLog me capture hoti hai.
 developer_center.py ka `log_error()` / `make_fingerprint()` isi file se
-call hote hain (jaisa developer_center.py ke docstring me already likha tha).
+call hote hain.
 
-Scope (jaan-boojh kar):
-  - Sirf TRUE errors log hote hain: unhandled Python exceptions, aur
-    HTTPException jinka code >= 500. Normal `abort(404)` / `abort(400)`
-    jaisi cheezein yahan SE NAHI aatin — wo route ka expected behaviour
-    hai, developer ka bug nahi. Unhe log karna to sirf noise badhayega.
-  - session.rollback() SABSE PEHLE, ErrorLog insert se bhi pehle. Jis query
-    ne exception throw ki thi wahi session ko dirty chhod jaati hai —
-    rollback ke bina ErrorLog ka apna INSERT bhi usi transaction me fail
-    ho jayega (aur phir dusra exception, is baar humare apne logging code
-    se, jo silently poori request ko 500 loop me daal sakta hai).
-  - Sensitive fields (password/token/otp/secret/card/cvv/authorization)
-    payload aur headers dono se redact hote hain STORE karne se pehle —
-    ErrorLog.payload permanent DB row hai, ismein kabhi bhi raw credential
-    nahi jaani chahiye.
-
-Side-effect worth knowing: is file ke lagne se pehle, unhandled 500s par
-Flask ka after_request (audit_middleware.py) shayad nahi chalta tha (Flask
-un exceptions ko "unhandled" treat karta hai jab tak koi errorhandler na
-ho). Ab errorhandler register hone ke baad, Flask exception ko "handled"
-maanega aur ek response banayega — jisse audit_middleware.py bhi ab in
-requests ko dekh payega aur unhe API_ERROR mark kar payega. Dono middleware
-ab consistent kaam karenge.
+Security Sanitization:
+- Sensitive headers and payload fields (passwords, tokens, cookies, secrets, payment data) are redacted.
+- Exception messages are sanitized against JWT, DB connection passwords, tokens, and OTP codes.
+- Database rollback is executed first to prevent broken transaction cascading.
 """
 
 import re
@@ -39,15 +21,20 @@ from app.models.developer_center import log_error, make_fingerprint
 from app.utils.request_context import capture_request_context
 
 REDACT_KEYS = {
-    'password', 'confirm_password', 'old_password', 'new_password',
-    'token', 'access_token', 'refresh_token', 'authorization',
-    'otp', 'secret', 'api_key', 'card', 'cvv', 'plain_password_temp',
+    'password', 'confirm_password', 'old_password', 'new_password', 'plain_password_temp',
+    'token', 'access_token', 'refresh_token', 'authorization', 'auth', 'bearer',
+    'cookie', 'cookies', 'set-cookie', 'x-csrf-token', 'csrf_token', 'session', 'sessionid',
+    'otp', 'secret', 'app_secret', 'api_key', 'x-api-key', 'encryption_key', 'secret_key',
+    'card', 'cvv', 'cvv2', 'card_number', 'pan', 'pin', 'expiry',
+    'private_key', 'certificate', 'signature', 'message'
 }
 
-# Exception class name (or substring) -> error_type. Checked in order,
-# first match wins. Kept as a simple name-match instead of isinstance
-# checks against optional libraries (sqlalchemy/marshmallow/requests) so
-# this file has zero hard imports beyond what's already a dependency.
+# Regex patterns for sanitizing exception strings and stack messages
+JWT_PATTERN          = re.compile(r'eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]+')
+DB_URI_PWD_PATTERN   = re.compile(r'(://[^:]+:)([^@]+)(@)')
+BEARER_PATTERN       = re.compile(r'(Bearer\s+)[a-zA-Z0-9._~+/-]+=*', re.IGNORECASE)
+OTP_PATTERN          = re.compile(r'(otp\s*[:=]\s*)(\d{4,8})', re.IGNORECASE)
+
 ERROR_TYPE_RULES = [
     ('IntegrityError',        'SQL'),
     ('DataError',             'SQL'),
@@ -57,16 +44,11 @@ ERROR_TYPE_RULES = [
     ('JWTExtendedException',  'AUTH'),
     ('NoAuthorizationError',  'AUTH'),
     ('ExpiredSignatureError', 'AUTH'),
-    ('RequestException',      'EXTERNAL_API'),   # requests library
+    ('RequestException',      'EXTERNAL_API'),
     ('ConnectionError',       'EXTERNAL_API'),
     ('Timeout',               'EXTERNAL_API'),
 ]
 
-# error_type -> severity. SQL issues risk data integrity (CRITICAL).
-# External dependency failures (WhatsApp/Payment/Email/Cloudinary/OTP) are
-# urgent but not data-corrupting (HIGH). Validation reaching this far
-# means a route forgot to catch it itself, usually not user-facing danger
-# (MEDIUM).
 SEVERITY_BY_ERROR_TYPE = {
     'SQL':           'CRITICAL',
     'AUTH':          'HIGH',
@@ -87,19 +69,17 @@ def register_error_middleware(app):
     @app.errorhandler(Exception)
     def _handle_uncaught_exception(exc):
         if isinstance(exc, HTTPException) and exc.code < 500:
-            # Normal HTTP flow (404/400/403/...) — not a developer-facing error.
             return exc
 
         status_code = getattr(exc, 'code', 500) or 500
 
-        # MUST rollback before touching db.session again — see module docstring.
+        # MUST rollback before touching db.session again
         db.session.rollback()
 
         try:
             _capture_error(exc, status_code)
             db.session.commit()
         except Exception as log_failure:
-            # Logging itself must never be why the request fails harder.
             db.session.rollback()
             app.logger.error(f'error_middleware failed to log the original error: {log_failure}')
 
@@ -113,18 +93,32 @@ def register_error_middleware(app):
 
 
 def _redact(data):
-    """Recursively blanks out sensitive keys in a dict. Non-dict input passed through."""
-    if not isinstance(data, dict):
-        return data
-    redacted = {}
-    for key, value in data.items():
-        if key.lower() in REDACT_KEYS:
-            redacted[key] = '***REDACTED***'
-        elif isinstance(value, dict):
-            redacted[key] = _redact(value)
-        else:
-            redacted[key] = value
-    return redacted
+    """Recursively blanks out sensitive keys in a dict or list. Non-dict input passed through."""
+    if isinstance(data, dict):
+        redacted = {}
+        for key, value in data.items():
+            if str(key).lower() in REDACT_KEYS:
+                redacted[key] = '***REDACTED***'
+            elif isinstance(value, (dict, list)):
+                redacted[key] = _redact(value)
+            else:
+                redacted[key] = value
+        return redacted
+    elif isinstance(data, list):
+        return [_redact(item) for item in data]
+    return data
+
+
+def _sanitize_string(text):
+    """Strips JWTs, DB connection credentials, and OTPs from freeform error text."""
+    if not text:
+        return ''
+    cleaned = str(text)
+    cleaned = JWT_PATTERN.sub('[REDACTED_JWT]', cleaned)
+    cleaned = DB_URI_PWD_PATTERN.sub(r'\1***REDACTED***\3', cleaned)
+    cleaned = BEARER_PATTERN.sub(r'\1***REDACTED***', cleaned)
+    cleaned = OTP_PATTERN.sub(r'\1***REDACTED***', cleaned)
+    return cleaned
 
 
 def _classify_error_type(exc):
@@ -137,7 +131,6 @@ def _classify_error_type(exc):
 
 
 def _cause_chain(exc):
-    """Walks __cause__/__context__ so a wrapped exception still classifies correctly."""
     chain = []
     current = exc
     seen = set()
@@ -152,7 +145,6 @@ def _cause_chain(exc):
 
 
 def _top_stack_frame(exc):
-    """Returns a stable 'file.py:line in function' string for fingerprinting."""
     tb = traceback.extract_tb(exc.__traceback__)
     if not tb:
         return 'unknown:0'
@@ -177,9 +169,12 @@ def _capture_error(exc, status_code):
     try:
         if request.is_json:
             payload = _redact(request.get_json(silent=True) or {})
+        elif request.form:
+            payload = _redact(request.form.to_dict())
     except Exception:
         payload = None
 
+    # Sanitize headers
     headers = _redact({k: v for k, v in request.headers.items()})
 
     error_type = _classify_error_type(exc)
@@ -194,8 +189,11 @@ def _capture_error(exc, status_code):
     )
 
     import json
+    sanitized_msg = _sanitize_string(str(exc))[:2000]
+    sanitized_stack = _sanitize_string(traceback.format_exc())[:8000]
+
     log_error(fingerprint, defaults={
-        'product_id':        None,   # SCHOOL_ERP-only today; set once other products exist
+        'product_id':        None,
         'school_id':         getattr(user, 'school_id', None) if user else None,
         'user_id':           user.id if user else None,
         'role_snapshot':     user.role.value if user and getattr(user, 'role', None) else None,
@@ -207,8 +205,8 @@ def _capture_error(exc, status_code):
         'payload':           json.dumps(payload) if payload is not None else None,
         'headers':           json.dumps(headers),
         'exception_type':    type(exc).__name__,
-        'exception_message': str(exc)[:2000],
-        'stack_trace':       traceback.format_exc()[:8000],
+        'exception_message': sanitized_msg,
+        'stack_trace':       sanitized_stack,
         'error_type':        error_type,
         'severity':          severity,
         'status':            'NEW',

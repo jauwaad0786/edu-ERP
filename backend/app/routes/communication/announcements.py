@@ -1,27 +1,68 @@
+# backend/app/routes/communication/announcements.py
+"""
+School Announcements and Platform-wide Broadcast APIs with strict multi-tenant authorization.
+"""
+
+from datetime import datetime
 from flask import Blueprint, request, jsonify
+
 from app import db
 from app.models.user import User, UserRole
-from app.models.communication import Announcement, SupportNotification
+from app.models.communication import Announcement
+from app.services.notification_service import send_notification
 from app.utils.decorators import role_required, get_current_user
-from datetime import datetime
 
 announcements_bp = Blueprint('announcements', __name__)
+
+ROLE_AUDIENCE_MAP = {
+    UserRole.TEACHER:       ['ALL', 'TEACHERS', 'STAFF'],
+    UserRole.VICE_PRINCIPAL:['ALL', 'TEACHERS', 'STAFF'],
+    UserRole.STUDENT:       ['ALL', 'STUDENTS'],
+    UserRole.PARENT:        ['ALL', 'PARENTS'],
+    UserRole.ACCOUNTANT:    ['ALL', 'STAFF'],
+    UserRole.RECEPTIONIST:  ['ALL', 'STAFF'],
+    UserRole.LIBRARIAN:     ['ALL', 'STAFF'],
+    UserRole.HOSTEL:        ['ALL', 'STAFF'],
+    UserRole.TRANSPORT:     ['ALL', 'STAFF'],
+    UserRole.HR:            ['ALL', 'STAFF'],
+    UserRole.PRINCIPAL:     ['ALL', 'TEACHERS', 'STUDENTS', 'PARENTS', 'STAFF'],
+}
 
 
 # ─── Helper ───────────────────────────────────────────────────────────────────
 
-def _notify(user_id, title, message, school_id=None):
-    db.session.add(SupportNotification(
-        user_id    = user_id,
-        school_id  = school_id,
-        title      = title,
-        message    = message,
-        notif_type = 'ANNOUNCEMENT',
-    ))
+def _broadcast_notification(ann, school_id):
+    """
+    Broadcast notification to relevant users based on target audience.
+    school_id = None means platform-wide (SUPER_ADMIN only).
+    """
+    audience = ann.audience  # ALL / TEACHERS / STUDENTS / PARENTS / STAFF
 
+    role_map = {
+        'ALL':      None,   # all active users
+        'TEACHERS': [UserRole.TEACHER, UserRole.VICE_PRINCIPAL],
+        'STUDENTS': [UserRole.STUDENT],
+        'PARENTS':  [UserRole.PARENT],
+        'STAFF':    [UserRole.TEACHER, UserRole.ACCOUNTANT, UserRole.RECEPTIONIST,
+                     UserRole.LIBRARIAN, UserRole.HOSTEL, UserRole.TRANSPORT, UserRole.HR],
+    }
 
-def _get_school_id():
-    return get_current_user().school_id
+    target_roles = role_map.get(audience)
+    q = User.query.filter(User.is_active == True, User.school_id.isnot(None))
+    if school_id is not None:
+        q = q.filter(User.school_id == school_id)
+    if target_roles:
+        q = q.filter(User.role.in_(target_roles))
+
+    users = q.all()
+    for u in users:
+        send_notification(
+            user_id   = u.id,
+            title     = f'📢 {ann.title}',
+            message   = ann.body[:200] + ('...' if len(ann.body) > 200 else ''),
+            school_id = u.school_id,
+            notif_type= 'ANNOUNCEMENT',
+        )
 
 
 # ─── 1. Create Announcement ───────────────────────────────────────────────────
@@ -34,28 +75,25 @@ def create_announcement():
     Body: {
         title, body, audience, priority,
         is_pinned, scheduled_at, expires_at, product_type,
-        target_school_id   # SUPER_ADMIN only. Omit / null / 'ALL' = platform-wide
-                            # (ALL_SCHOOLS). A school id = that one school only.
-                            # Ignored for PRINCIPAL/VICE_PRINCIPAL — unke liye
-                            # school_id hamesha unke apne account se aata hai,
-                            # request body se kabhi trust nahi hota.
+        target_school_id   # SUPER_ADMIN only
     }
-    audience: ALL | TEACHERS | STUDENTS | PARENTS | STAFF
-    scheduled_at: ISO datetime string — NULL means publish now
-    expires_at:   ISO datetime string — NULL means never expire
     """
     user = get_current_user()
     data = request.get_json() or {}
 
+    # Multi-tenant context determination
     if user.role == UserRole.SUPER_ADMIN:
         raw = data.get('target_school_id')
         school_id = int(raw) if raw not in (None, '', 'ALL') else None
         if school_id is not None:
             from app.models.school import School
             if not School.query.get(school_id):
-                return jsonify({'error': 'School nahi mila'}), 400
+                return jsonify({'error': 'Target school not found'}), 400
     else:
+        # Never trust frontend-supplied school_id for school users
         school_id = user.school_id
+        if not school_id:
+            return jsonify({'error': 'User has no associated school'}), 400
 
     title = (data.get('title') or '').strip()
     body  = (data.get('body')  or '').strip()
@@ -72,12 +110,12 @@ def create_announcement():
         if data.get('scheduled_at'):
             scheduled_at = datetime.fromisoformat(data['scheduled_at'])
     except ValueError:
-        return jsonify({'error': 'scheduled_at format galat — ISO datetime chahiye'}), 400
+        return jsonify({'error': 'Invalid scheduled_at format — ISO datetime required'}), 400
     try:
         if data.get('expires_at'):
             expires_at = datetime.fromisoformat(data['expires_at'])
     except ValueError:
-        return jsonify({'error': 'expires_at format galat — ISO datetime chahiye'}), 400
+        return jsonify({'error': 'Invalid expires_at format — ISO datetime required'}), 400
 
     ann = Announcement(
         school_id    = school_id,
@@ -97,46 +135,11 @@ def create_announcement():
     db.session.add(ann)
     db.session.flush()
 
-    # ── Notify users if publishing NOW (no schedule) ──────────────────────────
     if not scheduled_at:
         _broadcast_notification(ann, school_id)
 
     db.session.commit()
     return jsonify(ann.to_dict()), 201
-
-
-def _broadcast_notification(ann, school_id):
-    """
-    Announcement audience ke hisaab se sab relevant users ko notify karo.
-    school_id = None → platform-wide (Super Admin → ALL_SCHOOLS) → har active
-    school ke matching-audience users ko notify karo, apne-apne school_id ke saath.
-    """
-    audience = ann.audience  # ALL / TEACHERS / STUDENTS / PARENTS / STAFF
-
-    role_map = {
-        'ALL':      None,   # sab roles
-        'TEACHERS': [UserRole.TEACHER, UserRole.VICE_PRINCIPAL],
-        'STUDENTS': [UserRole.STUDENT],
-        'PARENTS':  [UserRole.PARENT],
-        'STAFF':    [UserRole.TEACHER, UserRole.ACCOUNTANT, UserRole.RECEPTIONIST,
-                     UserRole.LIBRARIAN, UserRole.HOSTEL, UserRole.TRANSPORT, UserRole.HR],
-    }
-
-    target_roles = role_map.get(audience)
-    q = User.query.filter(User.is_active == True, User.school_id.isnot(None))
-    if school_id is not None:
-        q = q.filter(User.school_id == school_id)
-    if target_roles:
-        q = q.filter(User.role.in_(target_roles))
-
-    users = q.all()
-    for u in users:
-        _notify(
-            user_id   = u.id,
-            title     = f'📢 {ann.title}',
-            message   = ann.body[:200] + ('...' if len(ann.body) > 200 else ''),
-            school_id = u.school_id,
-        )
 
 
 # ─── 2. List Announcements ────────────────────────────────────────────────────
@@ -149,10 +152,7 @@ def _broadcast_notification(ann, school_id):
 def list_announcements():
     """
     GET /api/support/announcements
-    - Sirf active + published (scheduled_at <= now OR scheduled_at is NULL)
-    - Expired announcements automatically hide ho jaati hain
-    - Pinned announcements pehle aati hain
-    Query params: audience, priority, page, per_page
+    Lists published, non-expired announcements scoped to current tenant.
     """
     user      = get_current_user()
     school_id = user.school_id
@@ -160,10 +160,6 @@ def list_announcements():
 
     q = Announcement.query.filter_by(is_active=True)
 
-    # SUPER_ADMIN — default view = sirf platform-wide (ALL_SCHOOLS) announcements.
-    # Kisi ek school ka apna internal announcement yahan kabhi leak nahi hona
-    # chahiye. Explicit ?school_id=<id> se hi ek school specifically inspect
-    # kiya ja sakta hai (support/debug ke liye).
     if user.role == UserRole.SUPER_ADMIN:
         if request.args.get('school_id'):
             q = q.filter_by(school_id=request.args.get('school_id', type=int))
@@ -172,31 +168,16 @@ def list_announcements():
         if request.args.get('product_type'):
             q = q.filter_by(product_type=request.args.get('product_type'))
     else:
-        # School ka apna announcement (school_id match) + platform-wide
-        # (Super Admin → ALL_SCHOOLS, school_id NULL) — dono dikhne chahiye.
+        # School-specific announcements + Platform-wide (school_id is NULL)
         q = q.filter(db.or_(
             Announcement.school_id == school_id,
             Announcement.school_id.is_(None),
         ))
 
-        # Audience filter — TEACHER sirf ALL+TEACHERS dekhega etc.
-        role_audience_map = {
-            UserRole.TEACHER:       ['ALL', 'TEACHERS', 'STAFF'],
-            UserRole.VICE_PRINCIPAL:['ALL', 'TEACHERS', 'STAFF'],
-            UserRole.STUDENT:       ['ALL', 'STUDENTS'],
-            UserRole.PARENT:        ['ALL', 'PARENTS'],
-            UserRole.ACCOUNTANT:    ['ALL', 'STAFF'],
-            UserRole.RECEPTIONIST:  ['ALL', 'STAFF'],
-            UserRole.LIBRARIAN:     ['ALL', 'STAFF'],
-            UserRole.HOSTEL:        ['ALL', 'STAFF'],
-            UserRole.TRANSPORT:     ['ALL', 'STAFF'],
-            UserRole.HR:            ['ALL', 'STAFF'],
-            UserRole.PRINCIPAL:     ['ALL', 'TEACHERS', 'STUDENTS', 'PARENTS', 'STAFF'],
-        }
-        allowed = role_audience_map.get(user.role, ['ALL'])
-        q = q.filter(Announcement.audience.in_(allowed))
+        allowed_audiences = ROLE_AUDIENCE_MAP.get(user.role, ['ALL'])
+        q = q.filter(Announcement.audience.in_(allowed_audiences))
 
-    # Only published announcements (scheduled_at <= now OR null)
+    # Published only
     q = q.filter(
         db.or_(
             Announcement.scheduled_at == None,
@@ -204,7 +185,7 @@ def list_announcements():
         )
     )
 
-    # Hide expired
+    # Non-expired only
     q = q.filter(
         db.or_(
             Announcement.expires_at == None,
@@ -212,13 +193,11 @@ def list_announcements():
         )
     )
 
-    # Optional filters
     if request.args.get('priority'):
         q = q.filter_by(priority=request.args.get('priority').upper())
     if request.args.get('audience'):
         q = q.filter_by(audience=request.args.get('audience').upper())
 
-    # Pinned pehle, phir latest
     page     = request.args.get('page', 1, type=int)
     per_page = min(request.args.get('per_page', 20, type=int), 100)
 
@@ -244,8 +223,23 @@ def list_announcements():
                'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN',
                'HOSTEL', 'TRANSPORT', 'HR')
 def announcement_detail(ann_id):
-    """GET /api/support/announcements/<id>"""
-    ann = Announcement.query.get_or_404(ann_id)
+    """
+    GET /api/support/announcements/<id>
+    Enforces tenant access control: School A cannot view School B internal announcements.
+    """
+    user = get_current_user()
+    ann  = Announcement.query.get_or_404(ann_id)
+
+    if user.role != UserRole.SUPER_ADMIN:
+        # Cross-tenant check
+        if ann.school_id is not None and ann.school_id != user.school_id:
+            return jsonify({'error': 'Unauthorized to view this announcement'}), 403
+
+        # Audience check
+        allowed_audiences = ROLE_AUDIENCE_MAP.get(user.role, ['ALL'])
+        if ann.audience not in allowed_audiences:
+            return jsonify({'error': 'Unauthorized for this audience category'}), 403
+
     return jsonify(ann.to_dict()), 200
 
 
@@ -256,14 +250,14 @@ def announcement_detail(ann_id):
 def update_announcement(ann_id):
     """
     PATCH /api/support/announcements/<id>
-    Edit title, body, audience, priority, pin, schedule, expire.
+    Only creator from same school or SUPER_ADMIN may update.
     """
     user = get_current_user()
     ann  = Announcement.query.get_or_404(ann_id)
 
-    # Only creator ya SUPER_ADMIN edit kar sakta hai
-    if user.role != UserRole.SUPER_ADMIN and ann.created_by != user.id:
-        return jsonify({'error': 'Unauthorized'}), 403
+    if user.role != UserRole.SUPER_ADMIN:
+        if ann.school_id != user.school_id or ann.created_by != user.id:
+            return jsonify({'error': 'Unauthorized to modify this announcement'}), 403
 
     data = request.get_json() or {}
 
@@ -279,14 +273,14 @@ def update_announcement(ann_id):
             ann.scheduled_at = datetime.fromisoformat(data['scheduled_at']) \
                                if data['scheduled_at'] else None
         except ValueError:
-            return jsonify({'error': 'scheduled_at format galat'}), 400
+            return jsonify({'error': 'Invalid scheduled_at format'}), 400
 
     if 'expires_at' in data:
         try:
             ann.expires_at = datetime.fromisoformat(data['expires_at']) \
                              if data['expires_at'] else None
         except ValueError:
-            return jsonify({'error': 'expires_at format galat'}), 400
+            return jsonify({'error': 'Invalid expires_at format'}), 400
 
     ann.updated_at = datetime.utcnow()
     db.session.commit()
@@ -299,8 +293,14 @@ def update_announcement(ann_id):
 @role_required('SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL')
 def toggle_pin(ann_id):
     """POST /api/support/announcements/<id>/pin — toggle pin status."""
-    ann          = Announcement.query.get_or_404(ann_id)
-    ann.is_pinned = not ann.is_pinned
+    user = get_current_user()
+    ann  = Announcement.query.get_or_404(ann_id)
+
+    if user.role != UserRole.SUPER_ADMIN:
+        if ann.school_id != user.school_id or ann.created_by != user.id:
+            return jsonify({'error': 'Unauthorized to pin this announcement'}), 403
+
+    ann.is_pinned  = not ann.is_pinned
     ann.updated_at = datetime.utcnow()
     db.session.commit()
     return jsonify({
@@ -321,8 +321,9 @@ def delete_announcement(ann_id):
     user = get_current_user()
     ann  = Announcement.query.get_or_404(ann_id)
 
-    if user.role != UserRole.SUPER_ADMIN and ann.created_by != user.id:
-        return jsonify({'error': 'Unauthorized'}), 403
+    if user.role != UserRole.SUPER_ADMIN:
+        if ann.school_id != user.school_id or ann.created_by != user.id:
+            return jsonify({'error': 'Unauthorized to remove this announcement'}), 403
 
     ann.is_active  = False
     ann.updated_at = datetime.utcnow()
@@ -330,26 +331,23 @@ def delete_announcement(ann_id):
     return jsonify({'message': 'Announcement removed'}), 200
 
 
-# ─── 7. Broadcast Now (scheduled announcement manually publish karo) ──────────
+# ─── 7. Broadcast Now ─────────────────────────────────────────────────────────
 
 @announcements_bp.route('/<int:ann_id>/broadcast', methods=['POST'])
 @role_required('SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL')
 def broadcast_now(ann_id):
     """
     POST /api/support/announcements/<id>/broadcast
-    Scheduled announcement ko abhi broadcast karo.
-    Notifications sab relevant users ko jaayengi.
+    Immediately broadcasts scheduled announcement to relevant tenant users.
     """
     user = get_current_user()
     ann  = Announcement.query.get_or_404(ann_id)
 
-    if user.role != UserRole.SUPER_ADMIN and ann.created_by != user.id:
-        return jsonify({'error': 'Unauthorized'}), 403
+    if user.role != UserRole.SUPER_ADMIN:
+        if ann.school_id != user.school_id or ann.created_by != user.id:
+            return jsonify({'error': 'Unauthorized to broadcast this announcement'}), 403
 
-    if not ann.school_id:
-        return jsonify({'error': 'school_id missing on announcement'}), 400
-
-    ann.scheduled_at = None   # publish now
+    ann.scheduled_at = None
     ann.is_active    = True
     ann.updated_at   = datetime.utcnow()
 
@@ -359,7 +357,7 @@ def broadcast_now(ann_id):
     return jsonify({'message': 'Announcement broadcasted to all relevant users'}), 200
 
 
-# ─── 8. My School Announcements (dashboard widget ke liye) ───────────────────
+# ─── 8. My School Announcements (widget) ──────────────────────────────────────
 
 @announcements_bp.route('/latest', methods=['GET'])
 @role_required('SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL',
@@ -369,8 +367,7 @@ def broadcast_now(ann_id):
 def latest_announcements():
     """
     GET /api/support/announcements/latest
-    Dashboard widget ke liye — top 5 active announcements.
-    Pinned pehle, phir latest.
+    Top 5 active announcements for dashboard widgets.
     """
     user      = get_current_user()
     school_id = user.school_id

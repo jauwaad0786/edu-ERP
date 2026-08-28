@@ -177,7 +177,10 @@ def log_error(fingerprint, defaults):
     occurrence_count++ aur last_seen_at update, warna naya row.
     `defaults` ek dict hai jisme naya row banane ke liye saari fields hon.
     """
-    existing = ErrorLog.query.filter_by(fingerprint=fingerprint, status='NEW').first()
+    existing = ErrorLog.query.filter(
+        ErrorLog.fingerprint == fingerprint,
+        ErrorLog.status.notin_(['RESOLVED', 'CLOSED', 'ARCHIVED'])
+    ).first()
     if existing:
         existing.occurrence_count += 1
         existing.last_seen_at = datetime.utcnow()

@@ -300,9 +300,39 @@ def _ensure_academic_resource_columns():
 
 
 def _ensure_communication_columns():
+    """
+    Ensure communication table migrations:
+    - support_tickets.linked_error_id column
+    - chat_messages indexes (idx_chat_school_sender, idx_chat_school_receiver)
+    """
+    from sqlalchemy import text, inspect
+    try:
+        inspector = inspect(db.engine)
+        table_names = inspector.get_table_names()
 
-    """New tables ke liye — pehli deploy pe auto-create."""
-    pass
+        # 1. support_tickets.linked_error_id
+        if 'support_tickets' in table_names:
+            existing_cols = {c['name'] for c in inspector.get_columns('support_tickets')}
+            if 'linked_error_id' not in existing_cols:
+                with db.engine.connect() as conn:
+                    try:
+                        conn.execute(text('ALTER TABLE support_tickets ADD COLUMN linked_error_id INTEGER REFERENCES error_logs(id)'))
+                        conn.commit()
+                        print('[OK] Added column support_tickets.linked_error_id')
+                    except Exception as e:
+                        print(f'[WARN] support_tickets.linked_error_id: {e}')
+
+        # 2. chat_messages indexes
+        if 'chat_messages' in table_names:
+            with db.engine.connect() as conn:
+                try:
+                    conn.execute(text('CREATE INDEX IF NOT EXISTS idx_chat_school_sender ON chat_messages (school_id, sender_id)'))
+                    conn.execute(text('CREATE INDEX IF NOT EXISTS idx_chat_school_receiver ON chat_messages (school_id, receiver_id)'))
+                    conn.commit()
+                except Exception as e:
+                    print(f'[WARN] chat_messages index creation: {e}')
+    except Exception as e:
+        print(f'[WARN] _ensure_communication_columns error: {e}')
 
 
 # NEW — add after _ensure_communication_columns()
@@ -422,9 +452,9 @@ def _ensure_salary_acknowledgement_columns():
                     try:
                         conn.execute(text(f'ALTER TABLE {table} ADD COLUMN {col} {defn}'))
                         conn.commit()
-                        print(f'✅ Added column {table}.{col}')
+                        print(f'[OK] Added column {table}.{col}')
                     except Exception as e:
-                        print(f'⚠️  {table}.{col}: {e}')
+                        print(f'[WARN] {table}.{col}: {e}')
 
 
 # ── School columns ────────────────────────────────────────────────────────────
@@ -446,9 +476,9 @@ def _ensure_school_columns():
                 try:
                     conn.execute(text(f'ALTER TABLE schools ADD COLUMN {col} {defn}'))
                     conn.commit()
-                    print(f'✅ Added column schools.{col}')
+                    print(f'[OK] Added column schools.{col}')
                 except Exception as e:
-                    print(f'⚠️  schools.{col}: {e}')
+                    print(f'[WARN] schools.{col}: {e}')
 
 
 # ── User columns ──────────────────────────────────────────────────────────────
@@ -483,9 +513,9 @@ def _ensure_user_columns():
                 try:
                     conn.execute(text(f'ALTER TABLE users ADD COLUMN {col} {defn}'))
                     conn.commit()
-                    print(f'✅ Added column users.{col}')
+                    print(f'[OK] Added column users.{col}')
                 except Exception as e:
-                    print(f'⚠️  users.{col}: {e}')
+                    print(f'[WARN] users.{col}: {e}')
 
         # PostgreSQL: add UNIQUE constraint on username if not present
         
@@ -497,9 +527,9 @@ def _ensure_user_columns():
                     'ALTER TABLE users ADD CONSTRAINT uq_users_employee_id UNIQUE (employee_id)'
                 ))
                 conn.commit()
-                print('✅ Added UNIQUE constraint on users.employee_id')
+                print('[OK] Added UNIQUE constraint on users.employee_id')
             except Exception as e:
-                print(f'⚠️  UNIQUE constraint (employee_id): {e}')
+                print(f'[WARN] UNIQUE constraint (employee_id): {e}')
 
     # PostgreSQL only: add new enum values to userrole type
     _ensure_userrole_enum()
@@ -534,9 +564,9 @@ def _ensure_userrole_enum():
                         f"ALTER TYPE userrole ADD VALUE IF NOT EXISTS '{label}'"
                     ))
                     conn.commit()
-                    print(f'✅ Added enum value userrole.{label}')
+                    print(f'[OK] Added enum value userrole.{label}')
                 except Exception as e:
-                    print(f'⚠️  enum {label}: {e}')
+                    print(f'[WARN] enum {label}: {e}')
 
 
 def _ensure_teacher_columns():
@@ -598,9 +628,9 @@ def _ensure_student_columns():
                 try:
                     conn.execute(text(f'ALTER TABLE students ADD COLUMN {col} {defn}'))
                     conn.commit()
-                    print(f'✅ Added column students.{col}')
+                    print(f'[OK] Added column students.{col}')
                 except Exception as e:
-                    print(f'⚠️  students.{col}: {e}')
+                    print(f'[WARN] students.{col}: {e}')
 
 
 # ── Seed super admin ──────────────────────────────────────────────────────────

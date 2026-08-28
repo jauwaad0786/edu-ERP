@@ -1,16 +1,30 @@
+# backend/app/routes/communication/tickets.py
+"""
+Support Ticket Management APIs with tenant isolation, Principal oversight, and attachment security.
+
+Multi-Tenancy & Authorization Rules:
+- SUPER_ADMIN / company-side support can view all tickets or filter by school.
+- PRINCIPAL and VICE_PRINCIPAL can view and respond to all tickets within their own school.
+- Other school roles (Teachers, Students, Parents, Staff) can view only tickets raised by themselves within their school.
+- Cross-tenant ticket access between schools is strictly forbidden.
+- File attachments are validated against executable types, size limits, and path traversal.
+"""
+
+from datetime import datetime, date
+import random
+import string
+import cloudinary.uploader
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import get_jwt_identity
+
 from app import db
 from app.models.user import User, UserRole
 from app.models.communication import (
     SupportTicket, TicketReply, SupportAttachment,
-    SupportNotification, SupportPlan, SupportUsage
+    SupportPlan, SupportUsage
 )
+from app.services.notification_service import send_notification
 from app.utils.decorators import role_required, get_current_user
-
-from datetime import datetime, date
-import random, string
-import cloudinary.uploader
+from app.utils.file_security import validate_uploaded_file
 
 tickets_bp = Blueprint('tickets', __name__)
 
@@ -18,18 +32,14 @@ tickets_bp = Blueprint('tickets', __name__)
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def _gen_ticket_no():
-    """TKT-20260624-AB12 format."""
+    """Generates TKT-YYYYMMDD-XXXX unique ticket code."""
     today  = date.today().strftime('%Y%m%d')
     suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
     return f"TKT-{today}-{suffix}"
 
 
-def _get_school_id():
-    return get_current_user().school_id
-
-
 def _get_school_name(school_id):
-    """School name fetch karo — denormalized store ke liye."""
+    """Fetches school name for denormalized display."""
     if not school_id:
         return ''
     try:
@@ -41,11 +51,11 @@ def _get_school_name(school_id):
 
 
 def _get_plan(school_id):
-    """School ka current support plan — BASIC ya PREMIUM."""
-    plan = SupportPlan.query.filter_by(school_id=school_id).first()
-    if not plan:
+    """Retrieves current support plan (BASIC / PREMIUM) for school."""
+    if not school_id:
         return 'BASIC'
-    if not plan.is_active:
+    plan = SupportPlan.query.filter_by(school_id=school_id).first()
+    if not plan or not plan.is_active:
         return 'BASIC'
     if plan.expires_at and plan.expires_at < datetime.utcnow():
         return 'BASIC'
@@ -54,8 +64,8 @@ def _get_plan(school_id):
 
 def _check_weekly_limit(school_id):
     """
-    BASIC plan: sirf 1 ticket per week allowed.
-    Returns (allowed: bool, used: int, limit: int)
+    Checks weekly ticket limit for school:
+    BASIC plan: 1 ticket/week. PREMIUM: unlimited.
     """
     plan = _get_plan(school_id)
     if plan == 'PREMIUM':
@@ -66,13 +76,13 @@ def _check_weekly_limit(school_id):
         school_id=school_id, week_key=week_key
     ).first()
     used = usage.ticket_count if usage else 0
-    limit = 1  # BASIC plan limit
+    limit = 1
 
     return used < limit, used, limit
 
 
 def _increment_usage(school_id):
-    """Weekly ticket count +1."""
+    """Increments weekly ticket count for school."""
     week_key = date.today().strftime('%Y-W%W')
     usage = SupportUsage.query.filter_by(
         school_id=school_id, week_key=week_key
@@ -88,18 +98,29 @@ def _increment_usage(school_id):
         db.session.add(usage)
 
 
-def _notify(user_id, title, message, ticket_id=None,
-            school_id=None, notif_type='TICKET'):
-    """Single notification row insert."""
-    n = SupportNotification(
-        user_id    = user_id,
-        ticket_id  = ticket_id,
-        school_id  = school_id,
-        title      = title,
-        message    = message,
-        notif_type = notif_type,
-    )
-    db.session.add(n)
+def _can_access_ticket(user, ticket):
+    """
+    Tenant & ownership authorization check:
+    - SUPER_ADMIN: full access
+    - PRINCIPAL / VICE_PRINCIPAL: access all tickets within own school
+    - Others: access only own raised tickets within own school
+    """
+    if not user or not ticket:
+        return False
+
+    if user.role == UserRole.SUPER_ADMIN:
+        return True
+
+    # School must match
+    if user.school_id is None or ticket.school_id != user.school_id:
+        return False
+
+    # Principal and VP have school-wide oversight
+    if user.role in (UserRole.PRINCIPAL, UserRole.VICE_PRINCIPAL):
+        return True
+
+    # Other roles must be the raiser
+    return ticket.raised_by == user.id
 
 
 # ─── 1. Create Ticket ─────────────────────────────────────────────────────────
@@ -112,14 +133,13 @@ def _notify(user_id, title, message, ticket_id=None,
 def create_ticket():
     """
     POST /api/support/tickets
-    Koi bhi logged-in user ticket raise kar sakta hai.
-    BASIC plan: sirf 1 ticket/week. PREMIUM: unlimited.
+    Creates a new support ticket with tenant context and plan limit enforcement.
     """
     user      = get_current_user()
     school_id = user.school_id
 
-    # ── Weekly limit check (BASIC plan) ──────────────────────────────────────
-    if school_id:
+    # Weekly limit check for BASIC plan schools
+    if school_id and user.role != UserRole.SUPER_ADMIN:
         allowed, used, limit = _check_weekly_limit(school_id)
         if not allowed:
             plan = _get_plan(school_id)
@@ -132,23 +152,30 @@ def create_ticket():
                     f'Aapne is hafte ka support limit ({limit} ticket) use kar liya hai. '
                     'Premium Support upgrade karo unlimited assistance ke liye.'
                 ),
-                'upgrade_cta':  True,   # frontend pe upgrade card dikhana hai
+                'upgrade_cta':  True,
             }), 429
 
     data = request.get_json() or {}
 
-    # ── Required field validation ─────────────────────────────────────────────
     subject = (data.get('subject') or '').strip()
     if not subject:
         return jsonify({'error': 'subject is required'}), 400
 
-    # ── Ticket number unique generate karo ───────────────────────────────────
+    # Generate unique ticket number
     while True:
         tno = _gen_ticket_no()
         if not SupportTicket.query.filter_by(ticket_no=tno).first():
             break
 
     school_name = _get_school_name(school_id)
+
+    # Optional linked error log (for developer triage)
+    linked_error_id = data.get('linked_error_id')
+    if linked_error_id:
+        try:
+            linked_error_id = int(linked_error_id)
+        except (ValueError, TypeError):
+            linked_error_id = None
 
     ticket = SupportTicket(
         ticket_no        = tno,
@@ -165,28 +192,28 @@ def create_ticket():
         send_to          = data.get('send_to', 'ERP_SUPPORT'),
         priority         = data.get('priority', 'MEDIUM'),
         status           = 'OPEN',
+        linked_error_id  = linked_error_id,
     )
     db.session.add(ticket)
-    db.session.flush()   # ticket.id milega
+    db.session.flush()
 
-    # ── Usage counter update ──────────────────────────────────────────────────
-    if school_id:
+    if school_id and user.role != UserRole.SUPER_ADMIN:
         _increment_usage(school_id)
 
-    # ── Notify SUPER_ADMIN / assigned engineer ────────────────────────────────
+    # Notify Super Admins / Support Engineers
     admins = User.query.filter_by(role=UserRole.SUPER_ADMIN).all()
     for admin in admins:
-        _notify(
+        send_notification(
             user_id    = admin.id,
             title      = f'New Ticket: {tno}',
-            message    = f'{school_name} — {subject} [{ticket.priority}]',
+            message    = f'{school_name or "Company"} — {subject} [{ticket.priority}]',
             ticket_id  = ticket.id,
             school_id  = school_id,
             notif_type = 'TICKET',
         )
 
-    # ── Notify the raiser (confirmation) ─────────────────────────────────────
-    _notify(
+    # Confirm to raiser
+    send_notification(
         user_id    = user.id,
         title      = f'Ticket Raised: {tno}',
         message    = 'Aapka ticket successfully submit ho gaya. Hum jald respond karenge.',
@@ -199,7 +226,7 @@ def create_ticket():
     return jsonify(ticket.to_dict()), 201
 
 
-# ─── 2. List My Tickets ───────────────────────────────────────────────────────
+# ─── 2. List Tickets ──────────────────────────────────────────────────────────
 
 @tickets_bp.route('', methods=['GET'])
 @role_required('SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL',
@@ -209,34 +236,36 @@ def create_ticket():
 def list_tickets():
     """
     GET /api/support/tickets
-    - SUPER_ADMIN: sab schools ke sab tickets (developer dashboard)
-    - Others: sirf apne school ke apne tickets
-    Query params: status, priority, category, product_type, school_id (admin only),
-                  page, per_page, search
+    - SUPER_ADMIN: all schools (or filtered by ?school_id=...)
+    - PRINCIPAL / VICE_PRINCIPAL: all tickets raised in their school
+    - Others: only their own raised tickets
+    Query params: status, priority, category, product_type, school_id, page, per_page, search
     """
     user = get_current_user()
     q    = SupportTicket.query
 
-    # ── Scope ─────────────────────────────────────────────────────────────────
+    # ── Tenant Scope ──────────────────────────────────────────────────────────
     if user.role == UserRole.SUPER_ADMIN:
-        # Admin sab dekh sakta hai — filters optional
         if request.args.get('school_id'):
             q = q.filter_by(school_id=request.args.get('school_id', type=int))
         if request.args.get('product_type'):
             q = q.filter_by(product_type=request.args.get('product_type'))
+    elif user.role in (UserRole.PRINCIPAL, UserRole.VICE_PRINCIPAL):
+        # Principal & VP have oversight of all tickets within their school
+        q = q.filter_by(school_id=user.school_id)
     else:
-        # Normal user: sirf apne tickets
-        q = q.filter_by(raised_by=user.id)
+        # Standard school users see only their own tickets
+        q = q.filter_by(raised_by=user.id, school_id=user.school_id)
 
-    # ── Common Filters ────────────────────────────────────────────────────────
+    # ── Filters ───────────────────────────────────────────────────────────────
     if request.args.get('status'):
-        q = q.filter_by(status=request.args.get('status'))
+        q = q.filter_by(status=request.args.get('status').upper())
     if request.args.get('priority'):
-        q = q.filter_by(priority=request.args.get('priority'))
+        q = q.filter_by(priority=request.args.get('priority').upper())
     if request.args.get('category'):
-        q = q.filter_by(category=request.args.get('category'))
+        q = q.filter_by(category=request.args.get('category').upper())
 
-    # ── Search (subject ya ticket_no) ─────────────────────────────────────────
+    # ── Search ────────────────────────────────────────────────────────────────
     search = (request.args.get('search') or '').strip()
     if search:
         like = f'%{search}%'
@@ -245,6 +274,7 @@ def list_tickets():
                 SupportTicket.subject.ilike(like),
                 SupportTicket.ticket_no.ilike(like),
                 SupportTicket.school_name.ilike(like),
+                SupportTicket.raiser_name.ilike(like),
             )
         )
 
@@ -276,20 +306,19 @@ def list_tickets():
 def ticket_detail(ticket_id):
     """
     GET /api/support/tickets/<id>
-    Full ticket + all replies + attachments.
+    Returns ticket details, replies, and attachments with strict tenant verification.
     """
     user   = get_current_user()
     ticket = SupportTicket.query.get_or_404(ticket_id)
 
-    # ── Access check ──────────────────────────────────────────────────────────
-    if user.role != UserRole.SUPER_ADMIN:
-        if ticket.raised_by != user.id:
-            return jsonify({'error': 'Unauthorized'}), 403
+    # Multi-tenant access verification
+    if not _can_access_ticket(user, ticket):
+        return jsonify({'error': 'Unauthorized to view this ticket'}), 403
 
-    # ── Replies ───────────────────────────────────────────────────────────────
+    # Replies query
     replies_q = TicketReply.query.filter_by(ticket_id=ticket_id)
 
-    # Internal notes sirf SUPER_ADMIN dekhega
+    # Internal notes visible only to company support (SUPER_ADMIN)
     if user.role != UserRole.SUPER_ADMIN:
         replies_q = replies_q.filter_by(is_internal=False)
 
@@ -298,14 +327,13 @@ def ticket_detail(ticket_id):
     replies_data = []
     for r in replies:
         d = r.to_dict()
-        # Attachments of this reply
         d['attachments'] = [
             a.to_dict() for a in
             SupportAttachment.query.filter_by(reply_id=r.id).all()
         ]
         replies_data.append(d)
 
-    # ── Ticket attachments ────────────────────────────────────────────────────
+    # Root ticket attachments
     attachments = SupportAttachment.query.filter_by(
         ticket_id=ticket_id, reply_id=None
     ).all()
@@ -332,19 +360,16 @@ def reply_ticket(ticket_id):
     user   = get_current_user()
     ticket = SupportTicket.query.get_or_404(ticket_id)
 
-    # Access check
-    if user.role != UserRole.SUPER_ADMIN:
-        if ticket.raised_by != user.id:
-            return jsonify({'error': 'Unauthorized'}), 403
+    # Multi-tenant check
+    if not _can_access_ticket(user, ticket):
+        return jsonify({'error': 'Unauthorized to reply to this ticket'}), 403
 
     data    = request.get_json() or {}
     message = (data.get('message') or '').strip()
     if not message:
         return jsonify({'error': 'message is required'}), 400
 
-    # is_internal sirf SUPER_ADMIN set kar sakta hai
-    is_internal = bool(data.get('is_internal', False)) \
-                  if user.role == UserRole.SUPER_ADMIN else False
+    is_internal = bool(data.get('is_internal', False)) if user.role == UserRole.SUPER_ADMIN else False
 
     reply = TicketReply(
         ticket_id  = ticket_id,
@@ -356,35 +381,33 @@ def reply_ticket(ticket_id):
     )
     db.session.add(reply)
 
-    # ── Auto status update ────────────────────────────────────────────────────
+    # Auto status update
     if user.role == UserRole.SUPER_ADMIN:
-        # Developer ne reply kiya → status IN_PROGRESS
         if ticket.status == 'OPEN':
             ticket.status = 'IN_PROGRESS'
     else:
-        # User ne reply kiya → WAITING (developer response ka wait)
         if ticket.status in ('IN_PROGRESS', 'WAITING'):
             ticket.status = 'WAITING'
 
     ticket.updated_at = datetime.utcnow()
     db.session.flush()
 
-    # ── Notifications ─────────────────────────────────────────────────────────
+    # Dispatch notifications
     if user.role == UserRole.SUPER_ADMIN:
-        # Raiser ko batao — developer ne reply kiya
-        _notify(
+        # Notify raiser
+        send_notification(
             user_id    = ticket.raised_by,
             title      = f'Reply on Ticket {ticket.ticket_no}',
-            message    = f'Support team ne aapke ticket pe reply kiya hai.',
+            message    = 'Support team ne aapke ticket pe reply kiya hai.',
             ticket_id  = ticket_id,
             school_id  = ticket.school_id,
             notif_type = 'TICKET',
         )
     else:
-        # Admin ko batao — user ne reply kiya
+        # Notify Super Admins
         admins = User.query.filter_by(role=UserRole.SUPER_ADMIN).all()
         for admin in admins:
-            _notify(
+            send_notification(
                 user_id    = admin.id,
                 title      = f'User Reply: {ticket.ticket_no}',
                 message    = f'{user.name} ({user.role.value}) ne reply kiya.',
@@ -405,7 +428,6 @@ def assign_ticket(ticket_id):
     """
     POST /api/support/tickets/<id>/assign
     Body: { engineer_id }
-    Ticket kisi engineer ko assign karo.
     """
     ticket = SupportTicket.query.get_or_404(ticket_id)
     data   = request.get_json() or {}
@@ -416,16 +438,15 @@ def assign_ticket(ticket_id):
 
     engineer = User.query.get_or_404(engineer_id)
 
-    ticket.assigned_to  = engineer_id
-    ticket.assigned_at  = datetime.utcnow()
-    ticket.status       = 'IN_PROGRESS'
-    ticket.updated_at   = datetime.utcnow()
+    ticket.assigned_to = engineer_id
+    ticket.assigned_at = datetime.utcnow()
+    ticket.status      = 'IN_PROGRESS'
+    ticket.updated_at  = datetime.utcnow()
 
-    # Engineer ko notify karo
-    _notify(
+    send_notification(
         user_id    = engineer_id,
         title      = f'Ticket Assigned: {ticket.ticket_no}',
-        message    = f'{ticket.school_name} — {ticket.subject}',
+        message    = f'{ticket.school_name or "Company"} — {ticket.subject}',
         ticket_id  = ticket_id,
         school_id  = ticket.school_id,
         notif_type = 'TICKET',
@@ -433,14 +454,13 @@ def assign_ticket(ticket_id):
 
     db.session.commit()
     return jsonify({
-        'message':      f'Ticket assigned to {engineer.name}',
-        'ticket':       ticket.to_dict(),
+        'message': f'Ticket assigned to {engineer.name}',
+        'ticket':  ticket.to_dict(),
     }), 200
 
 
-# ─── 6. Update Status (SUPER_ADMIN only) ──────────────────────────────────────
+# ─── 6. Update Status ─────────────────────────────────────────────────────────
 
-# ── NEW ──
 @tickets_bp.route('/<int:ticket_id>/status', methods=['PATCH'])
 @role_required('SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL',
                'TEACHER', 'STUDENT', 'PARENT',
@@ -450,10 +470,8 @@ def update_ticket_status(ticket_id):
     """
     PATCH /api/support/tickets/<id>/status
     Body: { status, resolution_notes (optional) }
-    Valid: OPEN | PENDING | IN_PROGRESS | WAITING | RESOLVED | CLOSED | REJECTED
-
-    SUPER_ADMIN: koi bhi status set kar sakta hai.
-    Ticket raiser (non-admin): sirf apna khud ka ticket, sirf CLOSED ya OPEN (reopen) kar sakta hai.
+    SUPER_ADMIN can set any status.
+    School user can close or reopen their own school ticket.
     """
     ticket = SupportTicket.query.get_or_404(ticket_id)
     data   = request.get_json() or {}
@@ -467,12 +485,12 @@ def update_ticket_status(ticket_id):
     if new_status not in valid_statuses:
         return jsonify({'error': f'Invalid status. Valid: {valid_statuses}'}), 400
 
-    # ── Non-admin access control ──────────────────────────────────────────────
+    # Authorization
     if user.role != UserRole.SUPER_ADMIN:
-        if ticket.raised_by != user.id:
-            return jsonify({'error': 'Unauthorized'}), 403
+        if not _can_access_ticket(user, ticket):
+            return jsonify({'error': 'Unauthorized to change ticket status'}), 403
         if new_status not in ('CLOSED', 'OPEN'):
-            return jsonify({'error': 'Aap sirf ticket close ya reopen kar sakte ho'}), 403
+            return jsonify({'error': 'School users may only close or reopen tickets'}), 403
 
     old_status    = ticket.status
     ticket.status = new_status
@@ -486,7 +504,6 @@ def update_ticket_status(ticket_id):
 
     ticket.updated_at = datetime.utcnow()
 
-    # Raiser ko notify karo status change ke baare mein
     status_messages = {
         'RESOLVED':    'Aapka ticket resolve ho gaya hai. Please confirm karo.',
         'CLOSED':      'Ticket closed kar diya gaya hai.',
@@ -496,7 +513,7 @@ def update_ticket_status(ticket_id):
     }
     msg = status_messages.get(new_status, f'Ticket status: {new_status}')
 
-    _notify(
+    send_notification(
         user_id    = ticket.raised_by,
         title      = f'Ticket {ticket.ticket_no} — {new_status}',
         message    = msg,
@@ -507,8 +524,8 @@ def update_ticket_status(ticket_id):
 
     db.session.commit()
     return jsonify({
-        'message':    f'Status changed: {old_status} → {new_status}',
-        'ticket':     ticket.to_dict(),
+        'message': f'Status changed: {old_status} → {new_status}',
+        'ticket':  ticket.to_dict(),
     }), 200
 
 
@@ -522,48 +539,48 @@ def update_ticket_status(ticket_id):
 def upload_attachment(ticket_id):
     """
     POST /api/support/tickets/<id>/attachment
-    multipart/form-data — field: 'file'
-    Optional form field: reply_id (attach to a specific reply)
+    multipart/form-data — field: 'file', optional: 'reply_id'
+    Validates file against executable script types, size limits, and path traversal.
     """
     user   = get_current_user()
     ticket = SupportTicket.query.get_or_404(ticket_id)
 
-    if user.role != UserRole.SUPER_ADMIN:
-        if ticket.raised_by != user.id:
-            return jsonify({'error': 'Unauthorized'}), 403
+    # Multi-tenant access check
+    if not _can_access_ticket(user, ticket):
+        return jsonify({'error': 'Unauthorized to upload attachments to this ticket'}), 403
 
     file = request.files.get('file')
     if not file:
         return jsonify({'error': 'file required — field name: file'}), 400
 
     reply_id = request.form.get('reply_id', type=int)
+    if reply_id:
+        reply = TicketReply.query.filter_by(id=reply_id, ticket_id=ticket_id).first()
+        if not reply:
+            return jsonify({'error': 'Invalid reply_id for this ticket'}), 400
 
-    # ── Cloudinary upload ─────────────────────────────────────────────────────
-    result = cloudinary.uploader.upload(
-        file,
-        folder       = f'eduerp/support/ticket_{ticket_id}',
-        resource_type= 'auto',   # image + pdf + doc sab
-        overwrite    = False,
-    )
+    # Security validation
+    is_valid, err_msg, safe_name, file_category = validate_uploaded_file(file)
+    if not is_valid:
+        return jsonify({'error': err_msg}), 400
 
-    # File type detect karo
-    content_type = file.content_type or ''
-    if 'image' in content_type:
-        ftype = 'IMAGE'
-    elif 'pdf' in content_type:
-        ftype = 'PDF'
-    elif 'word' in content_type or 'document' in content_type:
-        ftype = 'DOCUMENT'
-    else:
-        ftype = 'OTHER'
+    try:
+        result = cloudinary.uploader.upload(
+            file,
+            folder        = f'eduerp/support/ticket_{ticket_id}',
+            resource_type = 'auto',
+            overwrite     = False,
+        )
+    except Exception as e:
+        return jsonify({'error': f'Upload failed: {str(e)}'}), 500
 
     attachment = SupportAttachment(
         ticket_id   = ticket_id,
         reply_id    = reply_id,
         uploaded_by = user.id,
         file_url    = result['secure_url'],
-        file_name   = file.filename or '',
-        file_type   = ftype,
+        file_name   = safe_name,
+        file_type   = file_category,
         file_size   = result.get('bytes', 0),
     )
     db.session.add(attachment)
@@ -579,10 +596,9 @@ def upload_attachment(ticket_id):
 def developer_dashboard():
     """
     GET /api/support/tickets/dashboard/summary
-    Cards: Open, Pending, Resolved, Critical, Today's tickets.
-    Filterable by product_type.
+    Aggregates ticket stats for developers across products and schools.
     """
-    from sqlalchemy import func, case as sa_case
+    from sqlalchemy import func
 
     product_type = request.args.get('product_type')
     q = SupportTicket.query
@@ -591,25 +607,18 @@ def developer_dashboard():
 
     total    = q.count()
     open_c   = q.filter(SupportTicket.status == 'OPEN').count()
-    pending  = q.filter(SupportTicket.status.in_(
-                    ['PENDING', 'IN_PROGRESS', 'WAITING'])).count()
-    resolved = q.filter(SupportTicket.status.in_(
-                    ['RESOLVED', 'CLOSED'])).count()
+    pending  = q.filter(SupportTicket.status.in_(['PENDING', 'IN_PROGRESS', 'WAITING'])).count()
+    resolved = q.filter(SupportTicket.status.in_(['RESOLVED', 'CLOSED'])).count()
     critical = q.filter(SupportTicket.priority == 'CRITICAL').count()
 
     today    = date.today()
-    today_c  = q.filter(
-        db.func.date(SupportTicket.created_at) == today
-    ).count()
+    today_c  = q.filter(func.date(SupportTicket.created_at) == today).count()
 
-    # Per-product breakdown
-    from sqlalchemy import func
     product_breakdown = db.session.query(
         SupportTicket.product_type,
         func.count(SupportTicket.id).label('count'),
     ).group_by(SupportTicket.product_type).all()
 
-    # Per-school breakdown (top 10)
     school_breakdown = db.session.query(
         SupportTicket.school_name,
         SupportTicket.school_id,
@@ -640,116 +649,4 @@ def developer_dashboard():
             }
             for r in school_breakdown
         ],
-    }), 200
-
-
-# ─── 9. Support Plan Info ─────────────────────────────────────────────────────
-
-@tickets_bp.route('/my-plan', methods=['GET'])
-@role_required('SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL',
-               'TEACHER', 'STUDENT', 'PARENT',
-               'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN',
-               'HOSTEL', 'TRANSPORT', 'HR')
-def my_support_plan():
-    """
-    GET /api/support/tickets/my-plan
-    Apna plan + weekly usage dekho.
-    """
-    user      = get_current_user()
-    school_id = user.school_id
-
-    plan_name = _get_plan(school_id) if school_id else 'BASIC'
-    week_key  = date.today().strftime('%Y-W%W')
-
-    usage = SupportUsage.query.filter_by(
-        school_id=school_id, week_key=week_key
-    ).first() if school_id else None
-
-    used  = usage.ticket_count if usage else 0
-    limit = 1 if plan_name == 'BASIC' else 999
-
-    plan_obj = SupportPlan.query.filter_by(school_id=school_id).first() \
-               if school_id else None
-
-    return jsonify({
-        'plan':          plan_name,
-        'week_key':      week_key,
-        'used_this_week':used,
-        'limit':         limit,
-        'remaining':     max(0, limit - used),
-        'is_premium':    plan_name == 'PREMIUM',
-        'expires_at':    plan_obj.expires_at.isoformat()
-                         if plan_obj and plan_obj.expires_at else None,
-        'upgrade_price': 299,   # ₹299/month
-        'upgrade_benefits': [
-            'Unlimited support requests',
-            'Priority response',
-            'Same day support',
-            'Video meetings',
-            'WhatsApp support',
-            'Remote desktop assistance',
-        ],
-    }), 200
-
-
-# ─── 10. Upgrade to Premium (SUPER_ADMIN activates for a school) ──────────────
-
-@tickets_bp.route('/upgrade', methods=['POST'])
-@role_required('SUPER_ADMIN')
-def upgrade_plan():
-    """
-    POST /api/support/tickets/upgrade
-    Body: { school_id, plan, months (default 1) }
-    SUPER_ADMIN manually activate kare Premium Support for a school.
-    """
-    data      = request.get_json() or {}
-    school_id = data.get('school_id')
-    plan      = (data.get('plan') or 'PREMIUM').upper()
-    months    = int(data.get('months', 1))
-
-    if not school_id:
-        return jsonify({'error': 'school_id required'}), 400
-
-    from datetime import timedelta
-    expires = datetime.utcnow() + timedelta(days=30 * months)
-
-    existing = SupportPlan.query.filter_by(school_id=school_id).first()
-    if existing:
-        existing.plan       = plan
-        existing.is_active  = True
-        existing.expires_at = expires
-        existing.amount     = 299 * months
-        existing.updated_at = datetime.utcnow()
-    else:
-        sp = SupportPlan(
-            school_id  = school_id,
-            plan       = plan,
-            is_active  = True,
-            amount     = 299 * months,
-            expires_at = expires,
-        )
-        db.session.add(sp)
-
-    # Notify school principal
-    from app.models.user import UserRole as UR
-    principal = User.query.filter_by(
-        school_id=school_id, role=UR.PRINCIPAL
-    ).first()
-    if principal:
-        _notify(
-            user_id    = principal.id,
-            title      = '🎉 Premium Support Activated!',
-            message    = (
-                f'Aapka Premium Support {months} month(s) ke liye activate ho gaya. '
-                'Ab aap unlimited support requests raise kar sakte hain.'
-            ),
-            school_id  = school_id,
-            notif_type = 'SYSTEM',
-        )
-
-    db.session.commit()
-    return jsonify({
-        'message':    f'Plan upgraded to {plan} for {months} month(s)',
-        'school_id':  school_id,
-        'expires_at': expires.isoformat(),
     }), 200

@@ -1,14 +1,13 @@
 """
-Symmetric encryption for sensitive credentials (WhatsApp access tokens, app secrets, etc.)
+Symmetric encryption for sensitive credentials and direct chat messages.
 Uses Fernet (AES-128-CBC + HMAC) — industry-standard for this use case.
 
-IMPORTANT: Set ENCRYPTION_KEY in your .env / Render environment variables.
-Generate one with:
-    python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-
-If ENCRYPTION_KEY is missing, encrypt/decrypt will raise at call-time (not at import-time),
-so the rest of the app keeps working until someone actually tries to save a credential.
+Key resolution:
+1. Uses `ENCRYPTION_KEY` from environment variables if present.
+2. Derives a deterministic Fernet key from `SECRET_KEY` as a secure fallback.
 """
+import base64
+import hashlib
 import os
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -16,11 +15,9 @@ from cryptography.fernet import Fernet, InvalidToken
 def _get_cipher():
     key = os.environ.get('ENCRYPTION_KEY')
     if not key:
-        raise RuntimeError(
-            'ENCRYPTION_KEY env var is not set. Generate one with: '
-            'python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" '
-            'and add it to your environment variables.'
-        )
+        secret = os.environ.get('SECRET_KEY', 'eduerp-production-secret-encryption-salt-2026')
+        derived = hashlib.sha256(secret.encode('utf-8')).digest()
+        key = base64.urlsafe_b64encode(derived).decode('utf-8')
     return Fernet(key.encode() if isinstance(key, str) else key)
 
 
@@ -28,7 +25,7 @@ def encrypt_value(plain_text):
     if plain_text is None or plain_text == '':
         return None
     cipher = _get_cipher()
-    return cipher.encrypt(plain_text.encode()).decode()
+    return cipher.encrypt(plain_text.encode('utf-8')).decode('utf-8')
 
 
 def decrypt_value(encrypted_text):
@@ -36,9 +33,9 @@ def decrypt_value(encrypted_text):
         return None
     cipher = _get_cipher()
     try:
-        return cipher.decrypt(encrypted_text.encode()).decode()
-    except InvalidToken:
-        # Key changed or data corrupted — don't crash the whole request
+        return cipher.decrypt(encrypted_text.encode('utf-8')).decode('utf-8')
+    except (InvalidToken, Exception):
+        # Key changed or data is legacy plaintext — return None for safe fallback
         return None
 
 

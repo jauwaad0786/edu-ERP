@@ -67,6 +67,9 @@ class SupportTicket(db.Model):
     assigned_to  = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     assigned_at  = db.Column(db.DateTime, nullable=True)
 
+    # ── Technical Linkage (ErrorLog reference for developer triage) ─────────
+    linked_error_id = db.Column(db.Integer, db.ForeignKey('error_logs.id'), nullable=True)
+
     # ── Resolution ───────────────────────────────────────────────────────────
     resolution_notes = db.Column(db.Text, default='')
     resolved_at      = db.Column(db.DateTime, nullable=True)
@@ -82,7 +85,7 @@ class SupportTicket(db.Model):
     attachments  = db.relationship('SupportAttachment', backref='ticket',
                                    lazy='dynamic', cascade='all, delete-orphan')
     notifications = db.relationship('SupportNotification', backref='ticket',
-                                    lazy='dynamic', cascade='all, delete-orphan')
+                                     lazy='dynamic', cascade='all, delete-orphan')
 
     def to_dict(self):
         return {
@@ -103,6 +106,7 @@ class SupportTicket(db.Model):
             'status':           self.status,
             'assigned_to':      self.assigned_to,
             'assigned_at':      self.assigned_at.isoformat()  if self.assigned_at  else None,
+            'linked_error_id':  self.linked_error_id,
             'resolution_notes': self.resolution_notes or '',
             'resolved_at':      self.resolved_at.isoformat()  if self.resolved_at  else None,
             'created_at':       self.created_at.isoformat()   if self.created_at   else None,
@@ -171,7 +175,22 @@ class ChatMessage(db.Model):
     sender   = db.relationship('User', foreign_keys=[sender_id],   backref='sent_messages')
     receiver = db.relationship('User', foreign_keys=[receiver_id],  backref='received_messages')
 
+    __table_args__ = (
+        db.Index('idx_chat_school_sender', 'school_id', 'sender_id'),
+        db.Index('idx_chat_school_receiver', 'school_id', 'receiver_id'),
+    )
+
     def to_dict(self):
+        from app.utils.crypto import decrypt_value
+        decrypted_msg = self.message
+        if self.message:
+            try:
+                dec = decrypt_value(self.message)
+                if dec is not None:
+                    decrypted_msg = dec
+            except Exception:
+                decrypted_msg = self.message
+
         return {
             'id':           self.id,
             'school_id':    self.school_id,
@@ -179,7 +198,7 @@ class ChatMessage(db.Model):
             'sender_name':  self.sender.name  if self.sender   else '',
             'receiver_id':  self.receiver_id,
             'receiver_name':self.receiver.name if self.receiver else '',
-            'message':      self.message,
+            'message':      decrypted_msg,
             'message_type': self.message_type,
             'file_url':     self.file_url  or None,
             'file_name':    self.file_name or None,

@@ -1,7 +1,8 @@
 from flask import Blueprint, request, jsonify
 from app import db
 from app.models.user import User, UserRole
-from app.models.communication import SupportPlan, SupportUsage, SupportNotification
+from app.models.communication import SupportPlan, SupportUsage
+from app.services.notification_service import send_notification
 from app.utils.decorators import role_required, get_current_user
 from datetime import datetime, date, timedelta
 
@@ -11,13 +12,13 @@ support_plans_bp = Blueprint('support_plans', __name__)
 # ─── Helper ───────────────────────────────────────────────────────────────────
 
 def _notify(user_id, title, message, school_id=None):
-    db.session.add(SupportNotification(
+    send_notification(
         user_id    = user_id,
         school_id  = school_id,
         title      = title,
         message    = message,
         notif_type = 'SYSTEM',
-    ))
+    )
 
 
 def _get_active_plan(school_id):
