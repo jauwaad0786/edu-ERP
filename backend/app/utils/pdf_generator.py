@@ -122,21 +122,23 @@ def _fetch_remote_image(url, width, height):
             url,
             headers={'User-Agent': 'Mozilla/5.0'}
         )
-        with urllib.request.urlopen(req, timeout=3) as resp:
+        # Timeout reduced to 2s for faster PDF generation
+        with urllib.request.urlopen(req, timeout=2) as resp:
             data = resp.read()
         
-        # High-performance image compression using PIL:
-        # Scales 5MB+ photos to crisp 350x350 JPEG thumbnails (~25KB in-memory),
-        # making the PDF generation 50x faster and file size drops from 4MB+ to ~40KB!
+        # Compress: scale down + save as JPEG for minimal file size
         from PIL import Image as PILImage
         img = PILImage.open(io.BytesIO(data))
         if img.mode in ('RGBA', 'P', 'LA'):
             img = img.convert('RGB')
+        elif img.mode != 'RGB':
+            img = img.convert('RGB')
         
-        img.thumbnail((350, 350), getattr(PILImage, 'Resampling', PILImage).LANCZOS)
+        # Cap at 200x200 — enough for a thumbnail in a PDF card
+        img.thumbnail((200, 200), getattr(PILImage, 'Resampling', PILImage).LANCZOS)
         
         buf = io.BytesIO()
-        img.save(buf, format='JPEG', quality=85, optimize=True)
+        img.save(buf, format='JPEG', quality=75, optimize=True)
         buf.seek(0)
         
         return RLImage(buf, width=width, height=height)
@@ -145,19 +147,19 @@ def _fetch_remote_image(url, width, height):
 
 
 def _make_qr_code(data_str, size_cm=1.8):
-    """Generate in-memory QR code image for ReportLab."""
+    """Generate in-memory QR code image for ReportLab (JPEG, small box_size)."""
     try:
         qr = qrcode.QRCode(
             version=1,
             error_correction=qrcode.constants.ERROR_CORRECT_L,
-            box_size=4,
+            box_size=2,   # smaller = fewer pixels = smaller file
             border=1
         )
         qr.add_data(data_str or 'EduERP Verified Document')
         qr.make(fit=True)
-        img = qr.make_image(fill_color='black', back_color='white')
+        img = qr.make_image(fill_color='black', back_color='white').convert('RGB')
         buf = io.BytesIO()
-        img.save(buf, format='PNG')
+        img.save(buf, format='JPEG', quality=85, optimize=True)
         buf.seek(0)
         return RLImage(buf, width=size_cm * cm, height=size_cm * cm)
     except Exception:
@@ -165,19 +167,20 @@ def _make_qr_code(data_str, size_cm=1.8):
 
 
 def _make_seal_stamp(text="ADMISSION\nCONFIRMED", width_cm=2.4, height_cm=2.4):
-    """Generates a stylish circular official seal graphic as an in-memory image."""
+    """Generates a circular official seal as a JPEG (smaller file than RGBA PNG)."""
     try:
         from PIL import Image as PILImage, ImageDraw
-        img = PILImage.new('RGBA', (240, 240), (255, 255, 255, 0))
+        # Use RGB with white background — saves as JPEG, much smaller than RGBA PNG
+        img = PILImage.new('RGB', (160, 160), (255, 255, 255))
         draw = ImageDraw.Draw(img)
-        draw.ellipse([8, 8, 232, 232], outline='#1E3A8A', width=5)
-        draw.ellipse([20, 20, 220, 220], outline='#1E3A8A', width=2)
-        draw.text((120, 100), "ADMISSION", fill='#1E3A8A', anchor='mm')
-        draw.text((120, 135), "CONFIRMED", fill='#1E3A8A', anchor='mm')
-        draw.text((120, 68), "★ ★ ★", fill='#1E3A8A', anchor='mm')
-        draw.text((120, 168), "★ ★ ★", fill='#1E3A8A', anchor='mm')
+        draw.ellipse([4, 4, 156, 156], outline='#1E3A8A', width=4)
+        draw.ellipse([12, 12, 148, 148], outline='#1E3A8A', width=2)
+        draw.text((80, 65),  "ADMISSION", fill='#1E3A8A', anchor='mm')
+        draw.text((80, 90),  "CONFIRMED", fill='#1E3A8A', anchor='mm')
+        draw.text((80, 42),  "★ ★ ★",    fill='#1E3A8A', anchor='mm')
+        draw.text((80, 115), "★ ★ ★",    fill='#1E3A8A', anchor='mm')
         buf = io.BytesIO()
-        img.save(buf, format='PNG')
+        img.save(buf, format='JPEG', quality=80, optimize=True)
         buf.seek(0)
         return RLImage(buf, width=width_cm * cm, height=height_cm * cm)
     except Exception:
@@ -797,7 +800,7 @@ def _build_admit_card_elements(student, school, exam, timetable_items):
         ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
     ]))
     elements.append(head_table)
-    elements.append(Spacer(1, 0.3 * cm))
+    elements.append(Spacer(1, 0.2 * cm))
 
     # 3. ADMIT CARD Banner
     banner_table = Table([
@@ -820,7 +823,7 @@ def _build_admit_card_elements(student, school, exam, timetable_items):
         ('TEXTCOLOR', (0, 2), (0, 2), colors.HexColor('#475569')),
     ]))
     elements.append(banner_table)
-    elements.append(Spacer(1, 0.35 * cm))
+    elements.append(Spacer(1, 0.25 * cm))
 
     # 4. Student Details Box
     std_user = getattr(student, 'user', None)
@@ -869,7 +872,7 @@ def _build_admit_card_elements(student, school, exam, timetable_items):
         ('LEFTPADDING', (0, 0), (-1, -1), 6),
     ]))
     elements.append(info_table)
-    elements.append(Spacer(1, 0.35 * cm))
+    elements.append(Spacer(1, 0.25 * cm))
 
     # 5. Examination Timetable Header & Table
     tt_header = Table([['EXAMINATION TIMETABLE']], colWidths=[18.0 * cm], rowHeights=[0.58 * cm])
@@ -911,8 +914,8 @@ def _build_admit_card_elements(student, school, exam, timetable_items):
         ('ALIGN', (2, 0), (-1, -1), 'CENTER'),
         ('BOX', (0, 0), (-1, -1), 0.9, BORDER_BLUE),
         ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#E2E8F0')),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
     ]
     if has_tt:
@@ -928,7 +931,7 @@ def _build_admit_card_elements(student, school, exam, timetable_items):
         ])
     tt_table.setStyle(TableStyle(tt_style))
     elements.append(tt_table)
-    elements.append(Spacer(1, 0.4 * cm))
+    elements.append(Spacer(1, 0.25 * cm))
 
     # 6. Lower Section: Side-by-Side Instructions & Principal Signature Box
     inst_p_style = ParagraphStyle(

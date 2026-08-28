@@ -775,28 +775,6 @@ export default function ResultCardPage() {
                             <i className="ti ti-eye" /> Preview
                           </button>
                           <button
-                            onClick={() => setPreviewStudent(student)}
-                            style={{
-                              flex: 1,
-                              padding: '8px 6px',
-                              borderRadius: 8,
-                              border: '1px solid #e2e8f0',
-                              background: '#ffffff',
-                              color: '#475569',
-                              fontSize: 11.5,
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: 4
-                            }}
-                            onMouseEnter={e => e.currentTarget.style.background = '#f1f5f9'}
-                            onMouseLeave={e => e.currentTarget.style.background = '#ffffff'}
-                          >
-                            <i className="ti ti-eye" /> Preview
-                          </button>
-                          <button
                             onClick={() => handlePrint(student.id, student.name)}
                             style={{
                               flex: 1,
