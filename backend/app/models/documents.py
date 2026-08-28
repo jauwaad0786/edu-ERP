@@ -1,4 +1,4 @@
-﻿from app import db
+from app import db
 from datetime import datetime
 
 
@@ -6,13 +6,14 @@ STUDENT_DOC_TYPE_LABELS = {
     'AADHAR':               'Aadhaar Card',
     'AADHAR_STUDENT':       'Student Aadhaar Card',
     'AADHAR_PARENT':        'Parent / Guardian Aadhaar Card',
-    'RATION_CARD':          'Ration Card',
     'BIRTH_CERTIFICATE':    'Birth Certificate',
-    'CASTE_CERTIFICATE':    'Caste / Category Certificate',
+    'PHOTO':                'Student Passport Photo',
     'TRANSFER_CERTIFICATE': 'Transfer Certificate (TC)',
     'REPORT_CARD':          'Previous Class Report Card',
     'ADDRESS_PROOF':        'Address Proof',
+    'CASTE_CERTIFICATE':    'Caste / Category Certificate',
     'MEDICAL_CERTIFICATE':  'Medical Fitness Certificate',
+    'RATION_CARD':          'Ration Card',
     'OTHER':                'Other Document',
 }
 
@@ -25,6 +26,78 @@ ISSUED_DOC_TYPE_LABELS = {
     'MIGRATION':             'Migration Certificate',
     'OTHER':                 'Other Document',
 }
+
+DEFAULT_DOC_REQUIREMENTS = [
+    {'doc_type': 'AADHAR_STUDENT',       'label': 'Student Aadhaar Card',       'is_required': True,  'order_index': 1},
+    {'doc_type': 'BIRTH_CERTIFICATE',    'label': 'Birth Certificate',          'is_required': True,  'order_index': 2},
+    {'doc_type': 'PHOTO',                'label': 'Student Passport Photo',     'is_required': True,  'order_index': 3},
+    {'doc_type': 'TRANSFER_CERTIFICATE', 'label': 'Transfer Certificate (TC)',  'is_required': False, 'order_index': 4},
+    {'doc_type': 'REPORT_CARD',          'label': 'Previous Class Report Card', 'is_required': False, 'order_index': 5},
+    {'doc_type': 'AADHAR_PARENT',        'label': 'Parent Aadhaar Card',        'is_required': False, 'order_index': 6},
+    {'doc_type': 'CASTE_CERTIFICATE',    'label': 'Caste / Category Cert',      'is_required': False, 'order_index': 7},
+    {'doc_type': 'ADDRESS_PROOF',        'label': 'Address Proof',              'is_required': False, 'order_index': 8},
+    {'doc_type': 'MEDICAL_CERTIFICATE',  'label': 'Medical Certificate',        'is_required': False, 'order_index': 9},
+    {'doc_type': 'RATION_CARD',          'label': 'Ration Card',                'is_required': False, 'order_index': 10},
+    {'doc_type': 'OTHER',                'label': 'Other Document',             'is_required': False, 'order_index': 99},
+]
+
+
+class SchoolDocumentRequirement(db.Model):
+    """
+    Configurable document requirements per school.
+    Allows Principal to set which document types are mandatory for students.
+    """
+    __tablename__ = 'school_document_requirements'
+
+    id          = db.Column(db.Integer, primary_key=True)
+    school_id   = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    doc_type    = db.Column(db.String(50), nullable=False)
+    label       = db.Column(db.String(120), nullable=False)
+    is_required = db.Column(db.Boolean, default=True)
+    is_active   = db.Column(db.Boolean, default=True)
+    order_index = db.Column(db.Integer, default=0)
+
+    def to_dict(self):
+        return {
+            'id':          self.id,
+            'school_id':   self.school_id,
+            'doc_type':    self.doc_type,
+            'label':       self.label or STUDENT_DOC_TYPE_LABELS.get(self.doc_type, self.doc_type),
+            'is_required': self.is_required,
+            'is_active':   self.is_active,
+            'order_index': self.order_index,
+        }
+
+
+def get_school_doc_requirements(school_id):
+    """Fetch active document requirements for a school, initializing defaults if none configured."""
+    reqs = SchoolDocumentRequirement.query.filter_by(
+        school_id=school_id, is_active=True
+    ).order_by(SchoolDocumentRequirement.order_index.asc()).all()
+
+    if not reqs:
+        # Seed defaults for this school
+        created = []
+        for item in DEFAULT_DOC_REQUIREMENTS:
+            obj = SchoolDocumentRequirement(
+                school_id=school_id,
+                doc_type=item['doc_type'],
+                label=item['label'],
+                is_required=item['is_required'],
+                order_index=item['order_index'],
+                is_active=True
+            )
+            db.session.add(obj)
+            created.append(obj)
+        try:
+            db.session.commit()
+            return created
+        except Exception:
+            db.session.rollback()
+            return [SchoolDocumentRequirement(**item, school_id=school_id) for item in DEFAULT_DOC_REQUIREMENTS]
+
+    return reqs
+
 
 
 class StudentDocument(db.Model):

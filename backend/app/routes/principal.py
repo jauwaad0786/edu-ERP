@@ -12,14 +12,15 @@ from app.models.financial import (
     Holiday, Timetable, TimetablePeriod,
     FeeReceiptGroup,
 )
-from app.models.documents import IssuedDocument, StudentDocument
+from app.models.documents import (
+    IssuedDocument, StudentDocument, SchoolDocumentRequirement,
+    get_school_doc_requirements, STUDENT_DOC_TYPE_LABELS, ISSUED_DOC_TYPE_LABELS,
+    DEFAULT_DOC_REQUIREMENTS
+)
 
-STUDENT_DOC_TYPES = [
-    'AADHAR', 'AADHAR_STUDENT', 'AADHAR_PARENT', 'RATION_CARD',
-    'BIRTH_CERTIFICATE', 'CASTE_CERTIFICATE', 'TRANSFER_CERTIFICATE',
-    'REPORT_CARD', 'ADDRESS_PROOF', 'MEDICAL_CERTIFICATE', 'OTHER'
-]
-ISSUED_DOC_TYPES  = ['BONAFIDE', 'TC', 'CHARACTER_CERTIFICATE', 'FEE_RECEIPT', 'OTHER']
+STUDENT_DOC_TYPES = list(STUDENT_DOC_TYPE_LABELS.keys())
+ISSUED_DOC_TYPES  = list(ISSUED_DOC_TYPE_LABELS.keys())
+
 from app.utils.decorators import role_required, get_current_user
 from app.services.permission_resolver import permission_required, role_or_permission_required
 from app.utils.feature_gate import feature_required
@@ -5101,18 +5102,7 @@ def my_teaching_assignments():
     return jsonify(user.to_dict_with_credentials()), 200
 
 
-# ─── Documents (School-Issued + Student-Uploaded KYC) ─────────────────────────
-
-STUDENT_DOC_TYPES = [
-    'AADHAR', 'AADHAR_STUDENT', 'AADHAR_PARENT', 'RATION_CARD',
-    'BIRTH_CERTIFICATE', 'CASTE_CERTIFICATE', 'TRANSFER_CERTIFICATE',
-    'REPORT_CARD', 'ADDRESS_PROOF', 'MEDICAL_CERTIFICATE', 'OTHER'
-]
-ISSUED_DOC_TYPES = [
-    'BONAFIDE', 'TC', 'CHARACTER_CERTIFICATE', 'FEE_RECEIPT',
-    'ID_CARD', 'MIGRATION', 'OTHER'
-]
-
+# ─── Documents (Student KYC + School-Issued + Analytics) ──────────────────────
 
 def _current_academic_year():
     """Auto-detect academic year from school settings, fallback to calendar math."""
@@ -5123,7 +5113,6 @@ def _current_academic_year():
             return school.current_session
     except Exception:
         pass
-    # Fallback: Apr–Mar logic
     from datetime import date
     today = date.today()
     if today.month >= 4:
@@ -5151,6 +5140,303 @@ def _upload_file_to_cloudinary(file, folder):
     return result['secure_url'], file.filename, size
 
 
+# ─── 1. Documents Analytics Dashboard ──────────────────────────────────────────
+
+@principal_bp.route('/documents/analytics', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER')
+def get_documents_analytics():
+    """
+    Overview analytics for Principal dashboard:
+    - Total Students
+    - Students with all required documents (Completed)
+    - Students with pending/missing documents
+    - Total documents uploaded
+    - Document-wise upload / pending breakdown
+    - Class-wise completion percentage
+    - Configured document requirements
+    """
+    sid = _school_id()
+    class_id = request.args.get('class_id', type=int)
+
+    # 1. Fetch active requirements for this school
+    req_configs = get_school_doc_requirements(sid)
+    req_dict = [r.to_dict() for r in req_configs]
+    required_types = [r.doc_type for r in req_configs if r.is_required]
+
+    # Fallback to defaults if required_types empty
+    if not required_types:
+        required_types = ['AADHAR_STUDENT', 'BIRTH_CERTIFICATE', 'PHOTO']
+
+    # 2. Get students
+    student_q = Student.query.filter_by(school_id=sid)
+    if class_id:
+        student_q = student_q.filter_by(class_id=class_id)
+    students = student_q.all()
+    total_students = len(students)
+
+    if total_students == 0:
+        return jsonify({
+            'total_students': 0,
+            'completed_students': 0,
+            'pending_students': 0,
+            'completion_pct': 0,
+            'total_documents_uploaded': 0,
+            'document_wise_stats': [],
+            'class_wise_stats': [],
+            'requirements': req_dict,
+        }), 200
+
+    student_ids = [s.id for s in students]
+
+    # 3. Get all student documents for these students
+    docs = StudentDocument.query.filter(
+        StudentDocument.school_id == sid,
+        StudentDocument.student_id.in_(student_ids)
+    ).all()
+    total_docs_uploaded = len(docs)
+
+    # Map student_id -> set of doc_types
+    student_docs_map = {}
+    doc_type_counts = {}
+    for d in docs:
+        if d.student_id not in student_docs_map:
+            student_docs_map[d.student_id] = set()
+        student_docs_map[d.student_id].add(d.doc_type)
+        doc_type_counts[d.doc_type] = doc_type_counts.get(d.doc_type, 0) + 1
+
+    # 4. Count complete vs pending students
+    completed_students = 0
+    for s in students:
+        s_docs = student_docs_map.get(s.id, set())
+        if all(rt in s_docs for rt in required_types):
+            completed_students += 1
+
+    pending_students = total_students - completed_students
+    overall_pct = round((completed_students / total_students * 100), 1) if total_students else 0
+
+    # 5. Document-wise breakdown
+    doc_wise_stats = []
+    for r in req_configs:
+        up_count = doc_type_counts.get(r.doc_type, 0)
+        # Unique students having this doc
+        unique_students_with_doc = sum(1 for s in students if r.doc_type in student_docs_map.get(s.id, set()))
+        doc_wise_stats.append({
+            'doc_type':       r.doc_type,
+            'label':          r.label or STUDENT_DOC_TYPE_LABELS.get(r.doc_type, r.doc_type),
+            'is_required':    r.is_required,
+            'uploaded_count': unique_students_with_doc,
+            'missing_count':  total_students - unique_students_with_doc,
+            'percentage':     round((unique_students_with_doc / total_students * 100), 1) if total_students else 0,
+        })
+
+    # 6. Class-wise breakdown
+    all_classes = Class.query.filter_by(school_id=sid).order_by(Class.name.asc(), Class.section.asc()).all()
+    class_wise_stats = []
+    for c in all_classes:
+        c_students = [s for s in students if s.class_id == c.id]
+        c_total = len(c_students)
+        if c_total == 0:
+            continue
+        c_complete = 0
+        for cs in c_students:
+            cs_docs = student_docs_map.get(cs.id, set())
+            if all(rt in cs_docs for rt in required_types):
+                c_complete += 1
+        class_wise_stats.append({
+            'class_id':           c.id,
+            'class_name':         f"{c.name} - {c.section}".strip(' -'),
+            'total_students':     c_total,
+            'completed_students': c_complete,
+            'pending_students':   c_total - c_complete,
+            'completion_pct':     round((c_complete / c_total * 100), 1) if c_total else 0,
+        })
+
+    return jsonify({
+        'total_students':           total_students,
+        'completed_students':       completed_students,
+        'pending_students':         pending_students,
+        'completion_pct':           overall_pct,
+        'total_documents_uploaded': total_docs_uploaded,
+        'document_wise_stats':      doc_wise_stats,
+        'class_wise_stats':         class_wise_stats,
+        'requirements':             req_dict,
+    }), 200
+
+
+# ─── 2. Class & Student Document Status Matrix ────────────────────────────────
+
+@principal_bp.route('/documents/students-status', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER')
+def get_students_document_status():
+    """
+    Get students with their complete document status list for in-table actions and quick uploads.
+    Query params: class_id, search, status (ALL / COMPLETE / PARTIAL / MISSING)
+    """
+    sid      = _school_id()
+    class_id = request.args.get('class_id', type=int)
+    search   = request.args.get('search', '').strip()
+    status_f = request.args.get('status', 'ALL').upper()
+
+    # Active requirements
+    req_configs = get_school_doc_requirements(sid)
+    required_types = [r.doc_type for r in req_configs if r.is_required]
+    if not required_types:
+        required_types = ['AADHAR_STUDENT', 'BIRTH_CERTIFICATE', 'PHOTO']
+
+    q = db.session.query(Student, User)\
+        .join(User, Student.user_id == User.id)\
+        .filter(Student.school_id == sid)
+
+    if class_id:
+        q = q.filter(Student.class_id == class_id)
+
+    if search:
+        like = f"%{search}%"
+        q = q.filter(
+            db.or_(
+                User.name.ilike(like),
+                Student.admission_no.ilike(like),
+                Student.roll_number.ilike(like),
+                Student.parent_name.ilike(like),
+                Student.father_name.ilike(like),
+            )
+        )
+
+    results = q.order_by(Student.roll_number.asc(), User.name.asc()).all()
+    if not results:
+        return jsonify({'students': [], 'total': 0}), 200
+
+    student_ids = [s.id for s, u in results]
+
+    # Fetch all documents for these students
+    docs = StudentDocument.query.filter(
+        StudentDocument.school_id == sid,
+        StudentDocument.student_id.in_(student_ids)
+    ).order_by(StudentDocument.uploaded_at.desc()).all()
+
+    docs_by_student = {}
+    for d in docs:
+        if d.student_id not in docs_by_student:
+            docs_by_student[d.student_id] = []
+        docs_by_student[d.student_id].append(d.to_dict())
+
+    student_list = []
+    for student, user in results:
+        uploaded = docs_by_student.get(student.id, [])
+        uploaded_types = {d['doc_type'] for d in uploaded}
+        missing_required = [rt for rt in required_types if rt not in uploaded_types]
+
+        if not uploaded:
+            st = 'MISSING'
+            pct = 0
+        elif not missing_required:
+            st = 'COMPLETE'
+            pct = 100
+        else:
+            st = 'PARTIAL'
+            matched = len(required_types) - len(missing_required)
+            pct = round((matched / len(required_types) * 100), 1) if required_types else 100
+
+        # Filter by status if requested
+        if status_f != 'ALL':
+            if status_f == 'COMPLETE' and st != 'COMPLETE':
+                continue
+            if status_f == 'PENDING' and st == 'COMPLETE':
+                continue
+            if status_f == 'MISSING' and st != 'MISSING':
+                continue
+            if status_f == 'PARTIAL' and st != 'PARTIAL':
+                continue
+
+        cls_name = ''
+        if student.class_ref:
+            cls_name = f"{student.class_ref.name} - {student.class_ref.section}".strip(' -')
+
+        student_list.append({
+            'student_id':             student.id,
+            'name':                   user.name,
+            'email':                  user.email or '',
+            'admission_no':           student.admission_no or '—',
+            'roll_number':            student.roll_number or '—',
+            'parent_name':            student.parent_name or student.father_name or '—',
+            'class_id':               student.class_id,
+            'class_name':             cls_name,
+            'photo_url':              student.photo_url or None,
+            'uploaded_documents':     uploaded,
+            'uploaded_count':         len(uploaded),
+            'uploaded_types':         list(uploaded_types),
+            'missing_required_types': missing_required,
+            'status':                 st,
+            'completion_pct':         pct,
+        })
+
+    return jsonify({
+        'students':     student_list,
+        'total':        len(student_list),
+        'requirements': [r.to_dict() for r in req_configs],
+    }), 200
+
+
+# ─── 3. Configurable Document Requirements API ────────────────────────────────
+
+@principal_bp.route('/documents/config', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER')
+def get_documents_config():
+    """Get active document types and requirements for the school."""
+    sid = _school_id()
+    reqs = get_school_doc_requirements(sid)
+    return jsonify({
+        'requirements': [r.to_dict() for r in reqs],
+        'available_doc_types': [{'value': k, 'label': v} for k, v in STUDENT_DOC_TYPE_LABELS.items()],
+        'issued_doc_types':    [{'value': k, 'label': v} for k, v in ISSUED_DOC_TYPE_LABELS.items()],
+    }), 200
+
+
+@principal_bp.route('/documents/config', methods=['POST'])
+@role_required('PRINCIPAL')
+def update_documents_config():
+    """
+    Principal configures which documents are mandatory.
+    Payload: { "requirements": [ { "doc_type": "...", "label": "...", "is_required": true/false } ] }
+    """
+    sid = _school_id()
+    data = request.get_json() or {}
+    items = data.get('requirements', [])
+
+    if not items:
+        return jsonify({'error': 'Requirements list cannot be empty'}), 400
+
+    # Delete existing configs for this school
+    SchoolDocumentRequirement.query.filter_by(school_id=sid).delete()
+
+    created = []
+    for idx, item in enumerate(items):
+        doc_type = (item.get('doc_type') or '').strip().upper()
+        if not doc_type:
+            continue
+        label = (item.get('label') or STUDENT_DOC_TYPE_LABELS.get(doc_type, doc_type)).strip()
+        is_req = bool(item.get('is_required', False))
+
+        obj = SchoolDocumentRequirement(
+            school_id=sid,
+            doc_type=doc_type,
+            label=label,
+            is_required=is_req,
+            is_active=True,
+            order_index=idx + 1
+        )
+        db.session.add(obj)
+        created.append(obj)
+
+    db.session.commit()
+    return jsonify({
+        'message': 'Document configuration updated successfully',
+        'requirements': [r.to_dict() for r in created]
+    }), 200
+
+
+# ─── 4. Student-Specific Document List & Upload ───────────────────────────────
+
 @principal_bp.route('/students/<int:student_id>/documents', methods=['GET'])
 @role_required('PRINCIPAL', 'TEACHER')
 def list_student_documents(student_id):
@@ -5171,79 +5457,18 @@ def list_student_documents(student_id):
     if student.class_ref:
         current_class = f"{student.class_ref.name} - {student.class_ref.section}".strip(' -')
 
+    reqs = get_school_doc_requirements(_school_id())
+
     return jsonify({
-        'issued_documents':   [d.to_dict() for d in issued],
-        'student_documents':  [d.to_dict() for d in student_docs],
-        'issued_doc_types':   ISSUED_DOC_TYPES,
-        'student_doc_types':  STUDENT_DOC_TYPES,
+        'issued_documents':      [d.to_dict() for d in issued],
+        'student_documents':     [d.to_dict() for d in student_docs],
+        'issued_doc_types':      ISSUED_DOC_TYPES,
+        'student_doc_types':     STUDENT_DOC_TYPES,
         'student_current_class': current_class,
-        'student_class_id':   student.class_id,
+        'student_class_id':      student.class_id,
         'current_academic_year': _current_academic_year(),
+        'requirements':          [r.to_dict() for r in reqs],
     }), 200
-
-
-@principal_bp.route('/students/<int:student_id>/documents/issued', methods=['POST'])
-@role_required('PRINCIPAL', 'TEACHER')
-def upload_issued_document(student_id):
-    """School issues an official document to a student. PRINCIPAL + TEACHER can issue."""
-    student = Student.query.get_or_404(student_id)
-    if student.school_id != _school_id():
-        return jsonify({'error': 'Unauthorized'}), 403
-
-    doc_type = (request.form.get('doc_type') or '').strip().upper()
-    if doc_type not in ISSUED_DOC_TYPES:
-        return jsonify({'error': f'doc_type must be one of {ISSUED_DOC_TYPES}'}), 400
-
-    custom_label = (request.form.get('custom_label') or '').strip()
-    if doc_type == 'OTHER' and not custom_label:
-        return jsonify({'error': 'custom_label zaroori hai jab doc_type OTHER ho'}), 400
-
-    title   = (request.form.get('title') or '').strip()
-    remarks = (request.form.get('remarks') or '').strip()
-    is_visible = request.form.get('is_visible_to_student', 'true').lower() != 'false'
-
-    file = request.files.get('file')
-    if not file:
-        return jsonify({'error': 'File nahi mila — field name: file'}), 400
-
-    try:
-        file_url, file_name, file_size = _upload_file_to_cloudinary(
-            file, f'eduerp/schools/{_school_id()}/students/{student_id}/issued_documents'
-        )
-    except ValueError as e:
-        return jsonify({'error': str(e)}), 400
-
-    curr = get_current_user()
-    doc = IssuedDocument(
-        school_id             = _school_id(),
-        student_id            = student_id,
-        doc_type              = doc_type,
-        custom_label          = custom_label,
-        title                 = title,
-        file_url              = file_url,
-        file_name             = file_name,
-        file_size             = file_size,
-        class_id_at_issue     = student.class_id,
-        academic_year         = _current_academic_year(),
-        issued_by             = curr.id,
-        remarks               = remarks,
-        is_visible_to_student = is_visible,
-    )
-    db.session.add(doc)
-    db.session.commit()
-    return jsonify(doc.to_dict()), 201
-
-
-@principal_bp.route('/documents/issued/<int:doc_id>', methods=['DELETE'])
-@role_required('PRINCIPAL')
-def delete_issued_document(doc_id):
-    """Only PRINCIPAL can delete school-issued documents."""
-    doc = IssuedDocument.query.get_or_404(doc_id)
-    if doc.school_id != _school_id():
-        return jsonify({'error': 'Unauthorized'}), 403
-    db.session.delete(doc)
-    db.session.commit()
-    return jsonify({'message': 'Document deleted'}), 200
 
 
 @principal_bp.route('/students/<int:student_id>/documents/student', methods=['POST'])
@@ -5255,8 +5480,8 @@ def upload_student_document(student_id):
         return jsonify({'error': 'Unauthorized'}), 403
 
     doc_type = (request.form.get('doc_type') or '').strip().upper()
-    if doc_type not in STUDENT_DOC_TYPES:
-        return jsonify({'error': f'doc_type must be one of {STUDENT_DOC_TYPES}'}), 400
+    if not doc_type:
+        return jsonify({'error': 'doc_type is required'}), 400
 
     custom_label = (request.form.get('custom_label') or '').strip()
     if doc_type == 'OTHER' and not custom_label:
@@ -5275,14 +5500,19 @@ def upload_student_document(student_id):
         )
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
+    except Exception as ex:
+        return jsonify({'error': f'Upload failed: {str(ex)}'}), 500
 
     curr = get_current_user()
     curr_role = getattr(curr.role, 'value', str(curr.role))
 
-    # Replace existing document of same doc_type if exists
-    existing = StudentDocument.query.filter_by(
-        school_id=_school_id(), student_id=student_id, doc_type=doc_type
-    ).first()
+    # Replace existing document of same doc_type if exists (except for OTHER)
+    if doc_type != 'OTHER':
+        existing = StudentDocument.query.filter_by(
+            school_id=_school_id(), student_id=student_id, doc_type=doc_type
+        ).first()
+    else:
+        existing = None
 
     if existing:
         existing.file_url          = file_url
@@ -5326,7 +5556,73 @@ def delete_student_document(doc_id):
         return jsonify({'error': 'Unauthorized'}), 403
     db.session.delete(doc)
     db.session.commit()
-    return jsonify({'message': 'Document deleted'}), 200
+    return jsonify({'message': 'Document deleted successfully'}), 200
+
+
+@principal_bp.route('/students/<int:student_id>/documents/issued', methods=['POST'])
+@role_required('PRINCIPAL', 'TEACHER')
+def upload_issued_document(student_id):
+    """School issues an official document to a student. PRINCIPAL + TEACHER can issue."""
+    student = Student.query.get_or_404(student_id)
+    if student.school_id != _school_id():
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    doc_type = (request.form.get('doc_type') or '').strip().upper()
+    if doc_type not in ISSUED_DOC_TYPES:
+        return jsonify({'error': f'doc_type must be one of {ISSUED_DOC_TYPES}'}), 400
+
+    custom_label = (request.form.get('custom_label') or '').strip()
+    if doc_type == 'OTHER' and not custom_label:
+        return jsonify({'error': 'custom_label zaroori hai jab doc_type OTHER ho'}), 400
+
+    title   = (request.form.get('title') or '').strip()
+    remarks = (request.form.get('remarks') or '').strip()
+    is_visible = request.form.get('is_visible_to_student', 'true').lower() != 'false'
+
+    file = request.files.get('file')
+    if not file:
+        return jsonify({'error': 'File nahi mila — field name: file'}), 400
+
+    try:
+        file_url, file_name, file_size = _upload_file_to_cloudinary(
+            file, f'eduerp/schools/{_school_id()}/students/{student_id}/issued_documents'
+        )
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as ex:
+        return jsonify({'error': f'Upload failed: {str(ex)}'}), 500
+
+    curr = get_current_user()
+    doc = IssuedDocument(
+        school_id             = _school_id(),
+        student_id            = student_id,
+        doc_type              = doc_type,
+        custom_label          = custom_label,
+        title                 = title,
+        file_url              = file_url,
+        file_name             = file_name,
+        file_size             = file_size,
+        class_id_at_issue     = student.class_id,
+        academic_year         = _current_academic_year(),
+        issued_by             = curr.id,
+        remarks               = remarks,
+        is_visible_to_student = is_visible,
+    )
+    db.session.add(doc)
+    db.session.commit()
+    return jsonify(doc.to_dict()), 201
+
+
+@principal_bp.route('/documents/issued/<int:doc_id>', methods=['DELETE'])
+@role_required('PRINCIPAL')
+def delete_issued_document(doc_id):
+    """Only PRINCIPAL can delete school-issued documents."""
+    doc = IssuedDocument.query.get_or_404(doc_id)
+    if doc.school_id != _school_id():
+        return jsonify({'error': 'Unauthorized'}), 403
+    db.session.delete(doc)
+    db.session.commit()
+    return jsonify({'message': 'Document deleted successfully'}), 200
 
 
 @principal_bp.route('/documents/students/all', methods=['GET'])
@@ -5341,7 +5637,7 @@ def list_all_students_documents():
     doc_type_filter = request.args.get('doc_type', '').strip().upper()
     class_id_filter = request.args.get('class_id', type=int)
     year_filter     = request.args.get('academic_year', '').strip()
-    category        = request.args.get('category', 'all').lower()  # 'kyc' | 'issued' | 'all'
+    category        = request.args.get('category', 'all').lower()
 
     items = []
 
@@ -5350,7 +5646,7 @@ def list_all_students_documents():
             .join(Student, StudentDocument.student_id == Student.id)\
             .join(User, Student.user_id == User.id)\
             .filter(StudentDocument.school_id == sid)
-        if doc_type_filter and doc_type_filter in STUDENT_DOC_TYPES:
+        if doc_type_filter:
             q = q.filter(StudentDocument.doc_type == doc_type_filter)
         if class_id_filter:
             q = q.filter(Student.class_id == class_id_filter)
@@ -5365,7 +5661,7 @@ def list_all_students_documents():
                 Student.parent_name.ilike(like),
                 Student.father_name.ilike(like),
             ))
-        for doc, student, user in q.order_by(StudentDocument.uploaded_at.desc()).limit(300).all():
+        for doc, student, user in q.order_by(StudentDocument.uploaded_at.desc()).limit(400).all():
             d = doc.to_dict()
             d['category']      = 'kyc'
             d['student_name']  = user.name
@@ -5397,7 +5693,7 @@ def list_all_students_documents():
                 Student.roll_number.ilike(like),
                 Student.parent_name.ilike(like),
             ))
-        for doc, student, user in q2.order_by(IssuedDocument.issued_at.desc()).limit(300).all():
+        for doc, student, user in q2.order_by(IssuedDocument.issued_at.desc()).limit(400).all():
             d = doc.to_dict()
             d['category']      = 'issued'
             d['student_name']  = user.name
@@ -5411,6 +5707,7 @@ def list_all_students_documents():
             items.append(d)
 
     return jsonify({'documents': items, 'total': len(items)}), 200
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  DATA HEALTH — Receipt Reconciliation

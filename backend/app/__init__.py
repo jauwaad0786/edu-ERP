@@ -143,6 +143,7 @@ def create_app(config_name='default'):
             _ensure_salary_acknowledgement_columns()
             _ensure_marks_columns()
             _ensure_exam_columns()
+            _ensure_document_columns()
             db.create_all()
             _seed_super_admin()
         except Exception as e:
@@ -209,15 +210,63 @@ def create_app(config_name='default'):
 
     return app
 
-    
+
+def _ensure_document_columns():
+    """
+    Ensure all columns exist for student_documents and issued_documents in PostgreSQL.
+    Prevents undefined column errors and crashes on Render.
+    """
+    from sqlalchemy import text, inspect
+    inspector = inspect(db.engine)
+    table_names = inspector.get_table_names()
+
+    if 'student_documents' in table_names:
+        existing = {c['name'] for c in inspector.get_columns('student_documents')}
+        to_add = {
+            'custom_label':       'VARCHAR(150)',
+            'title':              'VARCHAR(200)',
+            'file_size':          'INTEGER',
+            'class_id_at_upload': 'INTEGER',
+            'academic_year':      'VARCHAR(20)',
+            'uploaded_by_role':   'VARCHAR(30)',
+            'remarks':            'VARCHAR(300)',
+        }
+        with db.engine.connect() as conn:
+            for col, defn in to_add.items():
+                if col not in existing:
+                    try:
+                        conn.execute(text(f'ALTER TABLE student_documents ADD COLUMN {col} {defn}'))
+                        conn.commit()
+                        print(f'✅ Added column student_documents.{col}')
+                    except Exception as e:
+                        print(f'⚠️ student_documents.{col}: {e}')
+
+    if 'issued_documents' in table_names:
+        existing = {c['name'] for c in inspector.get_columns('issued_documents')}
+        to_add = {
+            'custom_label':          'VARCHAR(150)',
+            'title':                 'VARCHAR(200)',
+            'file_size':             'INTEGER',
+            'class_id_at_issue':     'INTEGER',
+            'academic_year':         'VARCHAR(20)',
+            'remarks':               'VARCHAR(300)',
+            'is_visible_to_student': 'BOOLEAN DEFAULT TRUE',
+        }
+        with db.engine.connect() as conn:
+            for col, defn in to_add.items():
+                if col not in existing:
+                    try:
+                        conn.execute(text(f'ALTER TABLE issued_documents ADD COLUMN {col} {defn}'))
+                        conn.commit()
+                        print(f'✅ Added column issued_documents.{col}')
+                    except Exception as e:
+                        print(f'⚠️ issued_documents.{col}: {e}')
+
 
 def _ensure_communication_columns():
     """New tables ke liye — pehli deploy pe auto-create."""
-    from sqlalchemy import inspect
-    inspector = inspect(db.engine)
-    # Tables db.create_all() se ban jayenge automatically
-    # Yeh function future column additions ke liye placeholder hai
     pass
+
 
 # NEW — add after _ensure_communication_columns()
 
