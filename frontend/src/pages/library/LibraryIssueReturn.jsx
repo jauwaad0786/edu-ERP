@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Sidebar from '../../components/Sidebar';
 import Navbar  from '../../components/Navbar';
 import api     from '../../api/axios';
@@ -6,36 +6,28 @@ import toast   from 'react-hot-toast';
 
 export default function LibraryIssueReturn() {
   const [darkMode, setDarkMode] = useState(localStorage.getItem('ederp_theme') === 'dark');
-  const [tab, setTab] = useState('ISSUE'); // ISSUE | RETURN
+  const [tab, setTab] = useState('ISSUE'); // 'ISSUE' | 'RETURN'
 
-  // ── Issue state ──
+  // ── Issue State ──
   const [memberSearch, setMemberSearch]   = useState('');
   const [memberResults, setMemberResults] = useState([]);
   const [selectedMember, setSelectedMember] = useState(null);
 
-  const [searchMode, setSearchMode]       = useState('TITLE'); // 'TITLE' | 'BARCODE'
-
-  const [barcodeInput, setBarcodeInput]   = useState('');
-  const [scannedCopy, setScannedCopy]     = useState(null);
-
-  const [bookTitleSearch, setBookTitleSearch] = useState('');
-  const [bookTitleResults, setBookTitleResults] = useState([]);
-  const [selectedBookForIssue, setSelectedBookForIssue] = useState(null);
+  const [bookSearch, setBookSearch]       = useState('');
+  const [bookResults, setBookResults]     = useState([]);
+  const [selectedBook, setSelectedBook]   = useState(null);
 
   const [issuing, setIssuing]             = useState(false);
 
-  // ── Return state ──
-  const [returnBarcode, setReturnBarcode] = useState('');
-  const [returnPreview, setReturnPreview] = useState(null);
+  // ── Return State ──
+  const [returnSearch, setReturnSearch]   = useState('');
+  const [selectedIssueToReturn, setSelectedIssueToReturn] = useState(null);
   const [markLost, setMarkLost]           = useState(false);
   const [markDamaged, setMarkDamaged]     = useState(false);
-  const [collectNow, setCollectNow]       = useState(true);
+  const [collectNow, setCollectNow]       = useState(false);
   const [returning, setReturning]         = useState(false);
 
-  const barcodeRef = useRef(null);
-  const returnBarcodeRef = useRef(null);
-
-  // ── Library settings (issue duration due date preview ke liye) ──
+  // ── Settings ──
   const [librarySettings, setLibrarySettings] = useState(null);
   useEffect(() => {
     api.get('/library/settings').then(r => setLibrarySettings(r.data)).catch(() => {});
@@ -48,7 +40,7 @@ export default function LibraryIssueReturn() {
     return { days, dateStr: d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) };
   }
 
-  // ── Currently issued books (niche list — dashboard-style) ──
+  // ── Currently Issued List ──
   const [currentlyIssued, setCurrentlyIssued] = useState([]);
   const [loadingIssued, setLoadingIssued] = useState(true);
 
@@ -62,60 +54,44 @@ export default function LibraryIssueReturn() {
 
   useEffect(() => { loadCurrentlyIssued(); }, [loadCurrentlyIssued]);
 
-  // ── Search member (debounced) ──
+  // ── Search Member (Debounced) ──
   useEffect(() => {
     if (!memberSearch.trim()) { setMemberResults([]); return; }
     const t = setTimeout(() => {
-      api.get('/library/members?search=' + encodeURIComponent(memberSearch))
+      api.get('/library/members?search=' + encodeURIComponent(memberSearch.trim()))
         .then(r => setMemberResults(r.data || []))
         .catch(() => setMemberResults([]));
-    }, 300);
+    }, 250);
     return () => clearTimeout(t);
   }, [memberSearch]);
 
-  // ── Book title search (Issue tab — alternative jab barcode na ho) ──
+  // ── Search Book by Title/Author/Subject (Debounced) ──
   useEffect(() => {
-    if (!bookTitleSearch.trim()) { setBookTitleResults([]); return; }
+    if (!bookSearch.trim()) { setBookResults([]); return; }
     const t = setTimeout(() => {
-      api.get('/library/books?search=' + encodeURIComponent(bookTitleSearch) + '&per_page=8')
-        .then(r => setBookTitleResults(r.data.data || []))
-        .catch(() => setBookTitleResults([]));
-    }, 300);
+      api.get('/library/books?search=' + encodeURIComponent(bookSearch.trim()) + '&per_page=10')
+        .then(r => setBookResults(r.data.data || []))
+        .catch(() => setBookResults([]));
+    }, 250);
     return () => clearTimeout(t);
-  }, [bookTitleSearch]);
+  }, [bookSearch]);
 
-  // ── Barcode lookup (Issue tab) ──
-  async function handleBarcodeLookup() {
-    if (!barcodeInput.trim()) return;
-    try {
-      const r = await api.get('/library/copies/barcode/' + barcodeInput.trim());
-      setScannedCopy(r.data);
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Barcode not found');
-      setScannedCopy(null);
-    }
-  }
-
+  // ── Handle Issue ──
   async function handleIssue() {
-    if (!selectedMember) { toast.error('Pehle member select karo'); return; }
-    if (!scannedCopy && !selectedBookForIssue) { toast.error('Pehle book scan/search karo'); return; }
-
-    const payload = { member_id: selectedMember.id };
-    if (searchMode === 'BARCODE' && scannedCopy) {
-      payload.barcode = scannedCopy.barcode;
-    } else if (selectedBookForIssue) {
-      payload.book_id = selectedBookForIssue.id;
-    }
+    if (!selectedMember) { toast.error('Pehle Student / Member select karo'); return; }
+    if (!selectedBook) { toast.error('Pehle Book select karo'); return; }
 
     setIssuing(true);
     try {
-      const { data } = await api.post('/library/issue', payload);
-      toast.success(`Issued: ${data.book_title} → ${data.member_name} (Due ${data.due_date})`);
-      setScannedCopy(null);
-      setBarcodeInput('');
-      setSelectedBookForIssue(null);
-      setBookTitleSearch('');
-      barcodeRef.current?.focus();
+      const { data } = await api.post('/library/issue', {
+        member_id: selectedMember.id,
+        book_id: selectedBook.id,
+      });
+      toast.success(`Book Issue Successful: "${data.book_title}" → ${data.member_name} (Due ${data.due_date})`);
+      setSelectedBook(null);
+      setBookSearch('');
+      setSelectedMember(null);
+      setMemberSearch('');
       loadCurrentlyIssued();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Issue nahi ho paya');
@@ -123,50 +99,28 @@ export default function LibraryIssueReturn() {
     setIssuing(false);
   }
 
-  // ── Return flow ──
-  async function handleReturnLookup(barcodeOverride) {
-    const bc = (barcodeOverride ?? returnBarcode).trim();
-    if (!bc) return;
-    try {
-      const copy = await api.get('/library/copies/barcode/' + bc);
-      if (copy.data.status !== 'ISSUED') {
-        toast.error('Ye copy currently issued nahi hai');
-        setReturnPreview(null);
-        return;
-      }
-      const issuesRes = await api.get('/library/issues?status=ISSUED&per_page=100');
-      const activeIssue = (issuesRes.data.data || []).find(i => i.barcode === bc);
-      if (!activeIssue) {
-        toast.error('Active issue record nahi mila');
-        return;
-      }
-      setReturnPreview({ ...activeIssue, book: copy.data.book });
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Barcode not found');
-      setReturnPreview(null);
-    }
-  }
-
+  // ── Handle Return ──
   async function handleConfirmReturn() {
-    if (!returnPreview) return;
+    if (!selectedIssueToReturn) return;
     setReturning(true);
     try {
       const { data } = await api.post('/library/return', {
-        issue_id: returnPreview.id,
+        issue_id: selectedIssueToReturn.id,
         mark_lost: markLost,
         mark_damaged: markDamaged,
         collect_fine_now: collectNow,
       });
+
       if (data.fine) {
-        toast.success(`Returned. Fine: ₹${data.fine.amount} (${data.fine.status})`);
+        toast.success(`Book Returned! Fine Generated: ₹${data.fine.amount} (${data.fine.status})`);
       } else {
-        toast.success('Book returned successfully — no fine');
+        toast.success(`"${selectedIssueToReturn.book_title}" successfully returned!`);
       }
-      setReturnPreview(null);
-      setReturnBarcode('');
+
+      setSelectedIssueToReturn(null);
       setMarkLost(false);
       setMarkDamaged(false);
-      returnBarcodeRef.current?.focus();
+      setCollectNow(false);
       loadCurrentlyIssued();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Return nahi ho paya');
@@ -174,381 +128,498 @@ export default function LibraryIssueReturn() {
     setReturning(false);
   }
 
+  // ── Filtered Issues for Return Tab ──
+  const filteredIssues = currentlyIssued.filter(i => {
+    if (!returnSearch.trim()) return true;
+    const q = returnSearch.toLowerCase();
+    return (
+      (i.member_name || '').toLowerCase().includes(q) ||
+      (i.book_title || '').toLowerCase().includes(q) ||
+      (i.class_name || '').toLowerCase().includes(q) ||
+      (i.roll_number || '').toLowerCase().includes(q) ||
+      (i.card_number || '').toLowerCase().includes(q)
+    );
+  });
+
   const cardStyle = {
-    background: darkMode ? '#1e293b' : '#fff',
-    border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
-    borderRadius: 12, padding: 20,
+    background: darkMode ? '#111827' : '#ffffff',
+    border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+    borderRadius: '16px',
+    padding: '24px',
+    boxShadow: darkMode ? '0 10px 25px rgba(0,0,0,0.3)' : '0 4px 20px rgba(0,0,0,0.05)',
   };
+
   const inputStyle = {
-    width: '100%', padding: '10px 12px', fontSize: 13,
-    border: '1px solid #e2e8f0', borderRadius: 8, outline: 'none', boxSizing: 'border-box',
+    width: '100%',
+    padding: '12px 14px',
+    fontSize: '14px',
+    background: darkMode ? '#1e293b' : '#f8fafc',
+    border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`,
+    borderRadius: '10px',
+    color: darkMode ? '#ffffff' : '#0f172a',
+    outline: 'none',
+    boxSizing: 'border-box',
   };
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: darkMode ? '#0f172a' : '#f8fafc' }}>
+    <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
       <Sidebar darkMode={darkMode} />
-      <div style={{ marginLeft: 232, flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <Navbar title="Issue / Return Counter" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
+      <div className="main-content">
+        <Navbar title="Library Issue & Return Counter" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
 
-        <div style={{ padding: 24, maxWidth: 900 }}>
-          {/* Tabs */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
-            {['ISSUE', 'RETURN'].map(t => (
-              <button key={t} onClick={() => setTab(t)} style={{
-                padding: '9px 22px', fontSize: 13, fontWeight: 700, borderRadius: 8,
-                border: 'none', cursor: 'pointer',
-                background: tab === t ? '#4f46e5' : (darkMode ? '#1e293b' : '#e2e8f0'),
-                color: tab === t ? '#fff' : (darkMode ? '#94a3b8' : '#64748b'),
-              }}>
-                {t === 'ISSUE' ? '📤 Issue Book' : '📥 Return Book'}
+        <div className="page-body" style={{ padding: '24px', maxWidth: '1200px' }}>
+
+          {/* ══ Counter Header Banner ══ */}
+          <div style={{
+            background: darkMode
+              ? 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #0f172a 100%)'
+              : 'linear-gradient(135deg, #4338ca 0%, #4f46e5 50%, #6366f1 100%)',
+            borderRadius: '20px', padding: '24px 30px', marginBottom: '24px', color: '#ffffff',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px'
+          }}>
+            <div>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.18)', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 700, marginBottom: '8px' }}>
+                📖 Circulation Desk
+              </div>
+              <h2 style={{ margin: '0 0 6px', fontSize: '24px', fontWeight: 800 }}>
+                Smart Book Issue &amp; Return
+              </h2>
+              <p style={{ margin: 0, fontSize: '13.5px', color: 'rgba(255,255,255,0.85)' }}>
+                Issue and return library books by student name or book title with zero scanner dependency.
+              </p>
+            </div>
+
+            {/* Quick Mode Toggle */}
+            <div style={{ display: 'flex', gap: '10px', background: 'rgba(0,0,0,0.25)', padding: '6px', borderRadius: '14px' }}>
+              <button
+                onClick={() => setTab('ISSUE')}
+                style={{
+                  padding: '10px 22px', fontSize: '14px', fontWeight: 800, borderRadius: '10px', border: 'none', cursor: 'pointer',
+                  background: tab === 'ISSUE' ? '#ffffff' : 'transparent',
+                  color: tab === 'ISSUE' ? '#4338ca' : '#e0e7ff',
+                  transition: 'all 0.2s', boxShadow: tab === 'ISSUE' ? '0 4px 12px rgba(0,0,0,0.15)' : 'none'
+                }}
+              >
+                📤 Issue Book (किताब दें)
               </button>
-            ))}
+              <button
+                onClick={() => setTab('RETURN')}
+                style={{
+                  padding: '10px 22px', fontSize: '14px', fontWeight: 800, borderRadius: '10px', border: 'none', cursor: 'pointer',
+                  background: tab === 'RETURN' ? '#ffffff' : 'transparent',
+                  color: tab === 'RETURN' ? '#047857' : '#e0e7ff',
+                  transition: 'all 0.2s', boxShadow: tab === 'RETURN' ? '0 4px 12px rgba(0,0,0,0.15)' : 'none'
+                }}
+              >
+                📥 Return Book (किताब वापस लें)
+              </button>
+            </div>
           </div>
 
-          {/* ── ISSUE TAB ── */}
+          {/* ══════════════════════════════════════════════════════════════════════
+              TAB 1: ISSUE BOOK (BY NAME & BOOK TITLE)
+             ══════════════════════════════════════════════════════════════════════ */}
           {tab === 'ISSUE' && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-
-              {/* Member search */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '24px' }}>
+              
+              {/* Step 1: Member Search */}
               <div style={cardStyle}>
-                <h4 style={{ margin: '0 0 12px', fontSize: 14, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
-                  1. Select Member
-                </h4>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(99,102,241,0.15)', color: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '15px' }}>
+                    1
+                  </div>
+                  <h4 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                    Student / Member Select Karein
+                  </h4>
+                </div>
+
                 {selectedMember ? (
                   <div style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: 12,
+                    background: darkMode ? 'rgba(16,185,129,0.12)' : '#f0fdf4',
+                    border: '1.5px solid #10b981', borderRadius: '12px', padding: '16px',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center'
                   }}>
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#166534' }}>{selectedMember.name}</div>
-                      <div style={{ fontSize: 11, color: '#16a34a' }}>
-                        {selectedMember.card_number} · {selectedMember.current_issues} issued
+                      <div style={{ fontSize: '15px', fontWeight: 800, color: darkMode ? '#34d399' : '#15803d' }}>
+                        👤 {selectedMember.name}
+                      </div>
+                      <div style={{ fontSize: '12.5px', color: darkMode ? '#94a3b8' : '#475569', marginTop: '4px' }}>
+                        Card: <strong>{selectedMember.card_number}</strong> · Type: <strong>{selectedMember.member_type}</strong>
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#6366f1', fontWeight: 600, marginTop: '2px' }}>
+                        Currently Issued: {selectedMember.current_issues || 0} books
                       </div>
                     </div>
-                    <button onClick={() => setSelectedMember(null)} style={{
-                      background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 12, fontWeight: 700,
-                    }}>
+                    <button
+                      onClick={() => { setSelectedMember(null); setMemberSearch(''); }}
+                      style={{
+                        background: '#ef4444', color: '#fff', border: 'none', borderRadius: '8px',
+                        padding: '6px 12px', fontSize: '12px', fontWeight: 700, cursor: 'pointer'
+                      }}
+                    >
                       Change
                     </button>
                   </div>
                 ) : (
-                  <>
+                  <div>
                     <input
                       value={memberSearch}
                       onChange={e => setMemberSearch(e.target.value)}
-                      placeholder="Search by name or card number..."
+                      placeholder="Type Student / Teacher Name or Card #..."
                       style={inputStyle}
+                      autoFocus
                     />
+
                     {memberResults.length > 0 && (
-                      <div style={{ marginTop: 8, maxHeight: 200, overflowY: 'auto' }}>
+                      <div style={{
+                        marginTop: '8px', maxHeight: '220px', overflowY: 'auto',
+                        background: darkMode ? '#1e293b' : '#ffffff',
+                        border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                        borderRadius: '10px', boxShadow: '0 8px 20px rgba(0,0,0,0.15)'
+                      }}>
                         {memberResults.map(m => (
-                          <div key={m.id} onClick={() => { setSelectedMember(m); setMemberSearch(''); setMemberResults([]); }}
+                          <div
+                            key={m.id}
+                            onClick={() => { setSelectedMember(m); setMemberResults([]); }}
                             style={{
-                              padding: '8px 10px', cursor: 'pointer', borderRadius: 6,
-                              fontSize: 13, borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}`,
+                              padding: '10px 14px', cursor: 'pointer', fontSize: '13px',
+                              borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}`,
+                              display: 'flex', justifyContent: 'space-between', alignItems: 'center'
                             }}
-                            onMouseEnter={e => e.currentTarget.style.background = darkMode ? '#273349' : '#f8fafc'}
-                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                            <strong>{m.name}</strong> — {m.card_number}
-                            {m.status !== 'ACTIVE' && (
-                              <span style={{ color: '#dc2626', marginLeft: 8, fontSize: 11 }}>({m.status})</span>
-                            )}
+                            onMouseEnter={e => e.currentTarget.style.background = darkMode ? '#334155' : '#f1f5f9'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <div>
+                              <strong style={{ color: darkMode ? '#f1f5f9' : '#0f172a' }}>{m.name}</strong>
+                              <span style={{ fontSize: '11.5px', color: '#94a3b8', marginLeft: '8px' }}>({m.member_type})</span>
+                            </div>
+                            <span style={{ fontSize: '11px', color: '#6366f1', fontFamily: 'monospace', fontWeight: 700 }}>
+                              {m.card_number}
+                            </span>
                           </div>
                         ))}
                       </div>
                     )}
-                  </>
+                  </div>
                 )}
               </div>
 
-              {/* Find Book — Title search OR Barcode scan */}
+              {/* Step 2: Book Search */}
               <div style={cardStyle}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <h4 style={{ margin: 0, fontSize: 14, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
-                    2. Find Book
-                  </h4>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    <button onClick={() => { setSearchMode('TITLE'); setScannedCopy(null); setBarcodeInput(''); }} style={{
-                      padding: '5px 12px', fontSize: 11, fontWeight: 700, borderRadius: 6, border: 'none', cursor: 'pointer',
-                      background: searchMode === 'TITLE' ? '#4f46e5' : (darkMode ? '#334155' : '#e2e8f0'),
-                      color: searchMode === 'TITLE' ? '#fff' : (darkMode ? '#94a3b8' : '#64748b'),
-                    }}>
-                      🔤 By Title
-                    </button>
-                    <button onClick={() => { setSearchMode('BARCODE'); setSelectedBookForIssue(null); setBookTitleSearch(''); }} style={{
-                      padding: '5px 12px', fontSize: 11, fontWeight: 700, borderRadius: 6, border: 'none', cursor: 'pointer',
-                      background: searchMode === 'BARCODE' ? '#4f46e5' : (darkMode ? '#334155' : '#e2e8f0'),
-                      color: searchMode === 'BARCODE' ? '#fff' : (darkMode ? '#94a3b8' : '#64748b'),
-                    }}>
-                      📷 By Barcode
-                    </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(99,102,241,0.15)', color: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '15px' }}>
+                    2
                   </div>
+                  <h4 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                    Book Title / Name Search Karein
+                  </h4>
                 </div>
 
-                {searchMode === 'TITLE' ? (
-                  <>
-                    {selectedBookForIssue ? (
-                      <div style={{
-                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: 12,
-                      }}>
-                        <div>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: '#0176d3' }}>{selectedBookForIssue.title}</div>
-                          <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                            {selectedBookForIssue.author} · {selectedBookForIssue.available_copies} available
-                          </div>
-                        </div>
-                        <button onClick={() => setSelectedBookForIssue(null)} style={{
-                          background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: 12, fontWeight: 700,
-                        }}>
-                          Change
-                        </button>
+                {selectedBook ? (
+                  <div style={{
+                    background: darkMode ? 'rgba(59,130,246,0.12)' : '#eff6ff',
+                    border: '1.5px solid #3b82f6', borderRadius: '12px', padding: '16px',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                  }}>
+                    <div>
+                      <div style={{ fontSize: '15px', fontWeight: 800, color: darkMode ? '#60a5fa' : '#1d4ed8' }}>
+                        📚 {selectedBook.title}
                       </div>
-                    ) : (
-                      <>
-                        <input
-                          value={bookTitleSearch}
-                          onChange={e => setBookTitleSearch(e.target.value)}
-                          placeholder="Search book by title, author, or subject..."
-                          style={inputStyle}
-                          autoFocus
-                        />
-                        {bookTitleResults.length > 0 && (
-                          <div style={{ marginTop: 8, maxHeight: 220, overflowY: 'auto' }}>
-                            {bookTitleResults.map(b => {
-                              const unavailable = b.available_copies === 0;
-                              return (
-                                <div key={b.id}
-                                  onClick={() => { if (!unavailable) { setSelectedBookForIssue(b); setBookTitleSearch(''); setBookTitleResults([]); } }}
-                                  style={{
-                                    padding: '8px 10px', borderRadius: 6, fontSize: 13,
-                                    cursor: unavailable ? 'not-allowed' : 'pointer',
-                                    opacity: unavailable ? 0.5 : 1,
-                                    borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}`,
-                                  }}
-                                  onMouseEnter={e => !unavailable && (e.currentTarget.style.background = darkMode ? '#273349' : '#f8fafc')}
-                                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                                  <strong>{b.title}</strong> — {b.author}
-                                  <span style={{
-                                    marginLeft: 8, fontSize: 11, fontWeight: 700,
-                                    color: unavailable ? '#dc2626' : '#16a34a',
-                                  }}>
-                                    {unavailable ? '(0 available — reserve instead)' : `(${b.available_copies} available)`}
-                                  </span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <input
-                        ref={barcodeRef}
-                        value={barcodeInput}
-                        onChange={e => setBarcodeInput(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && handleBarcodeLookup()}
-                        placeholder="Scan barcode or type manually..."
-                        style={inputStyle}
-                        autoFocus
-                      />
-                      <button onClick={handleBarcodeLookup} style={{
-                        background: '#0176d3', color: '#fff', border: 'none', borderRadius: 8,
-                        padding: '0 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                      }}>
-                        Find
-                      </button>
+                      <div style={{ fontSize: '12.5px', color: darkMode ? '#94a3b8' : '#475569', marginTop: '4px' }}>
+                        Author: <strong>{selectedBook.author || 'N/A'}</strong> · Subject: <strong>{selectedBook.subject || 'General'}</strong>
+                      </div>
+                      <div style={{ fontSize: '12px', color: selectedBook.available_copies > 0 ? '#10b981' : '#ef4444', fontWeight: 700, marginTop: '2px' }}>
+                        {selectedBook.available_copies > 0 ? `✅ ${selectedBook.available_copies} Copies Available` : '❌ No Copy Available'}
+                      </div>
                     </div>
+                    <button
+                      onClick={() => { setSelectedBook(null); setBookSearch(''); }}
+                      style={{
+                        background: '#ef4444', color: '#fff', border: 'none', borderRadius: '8px',
+                        padding: '6px 12px', fontSize: '12px', fontWeight: 700, cursor: 'pointer'
+                      }}
+                    >
+                      Change
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <input
+                      value={bookSearch}
+                      onChange={e => setBookSearch(e.target.value)}
+                      placeholder="Type Book Title (e.g. Physics, RD Sharma, Wings of Fire)..."
+                      style={inputStyle}
+                    />
 
-                    {scannedCopy && (
+                    {bookResults.length > 0 && (
                       <div style={{
-                        marginTop: 12, background: '#eff6ff', border: '1px solid #bfdbfe',
-                        borderRadius: 8, padding: 12,
+                        marginTop: '8px', maxHeight: '220px', overflowY: 'auto',
+                        background: darkMode ? '#1e293b' : '#ffffff',
+                        border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                        borderRadius: '10px', boxShadow: '0 8px 20px rgba(0,0,0,0.15)'
                       }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: '#0176d3' }}>
-                          {scannedCopy.book?.title}
-                        </div>
-                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                          {scannedCopy.book?.author} · Copy: {scannedCopy.copy_accession_no} · Status: {scannedCopy.status}
-                        </div>
+                        {bookResults.map(b => {
+                          const isAvail = b.available_copies > 0;
+                          return (
+                            <div
+                              key={b.id}
+                              onClick={() => {
+                                if (!isAvail) { toast.error('Ye book currently out of stock hai'); return; }
+                                setSelectedBook(b);
+                                setBookResults([]);
+                              }}
+                              style={{
+                                padding: '10px 14px', cursor: isAvail ? 'pointer' : 'not-allowed', fontSize: '13px',
+                                borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}`,
+                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                opacity: isAvail ? 1 : 0.5
+                              }}
+                              onMouseEnter={e => isAvail && (e.currentTarget.style.background = darkMode ? '#334155' : '#f1f5f9')}
+                              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                            >
+                              <div>
+                                <strong style={{ color: darkMode ? '#f1f5f9' : '#0f172a' }}>{b.title}</strong>
+                                <span style={{ fontSize: '11.5px', color: '#94a3b8', marginLeft: '8px' }}>by {b.author}</span>
+                              </div>
+                              <span style={{
+                                fontSize: '11px', fontWeight: 800, padding: '3px 8px', borderRadius: '12px',
+                                background: isAvail ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+                                color: isAvail ? '#10b981' : '#ef4444'
+                              }}>
+                                {isAvail ? `${b.available_copies} Available` : '0 Available'}
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
-                  </>
+                  </div>
                 )}
               </div>
 
-              {/* Confirm issue */}
-              <div style={{ ...cardStyle, gridColumn: 'span 2', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontSize: 12, color: darkMode ? '#94a3b8' : '#64748b' }}>
-                  📅 Aaj issue hogi → <strong style={{ color: darkMode ? '#f1f5f9' : '#0f172a' }}>
-                    {previewDueDate().days} din
-                  </strong> ke liye, Return Due: <strong style={{ color: '#dc2626' }}>
-                    {previewDueDate().dateStr}
-                  </strong>
+              {/* Step 3: Confirm Issue Bar */}
+              <div style={{ ...cardStyle, gridColumn: 'span 2', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: darkMode ? '#1e293b' : '#f8fafc' }}>
+                <div style={{ fontSize: '13.5px', color: darkMode ? '#94a3b8' : '#475569' }}>
+                  📅 Issue Duration: <strong style={{ color: darkMode ? '#fff' : '#0f172a' }}>{previewDueDate().days} Days</strong> · Return Due Date: <strong style={{ color: '#ef4444' }}>{previewDueDate().dateStr}</strong>
                 </div>
                 <button
                   onClick={handleIssue}
-                  disabled={issuing || !selectedMember || (!scannedCopy && !selectedBookForIssue)}
+                  disabled={issuing || !selectedMember || !selectedBook}
                   style={{
-                    background: (!selectedMember || (!scannedCopy && !selectedBookForIssue)) ? '#cbd5e1' : '#16a34a',
-                    color: '#fff', border: 'none', borderRadius: 8,
-                    padding: '12px 30px', fontSize: 14, fontWeight: 700,
-                    cursor: (!selectedMember || (!scannedCopy && !selectedBookForIssue)) ? 'not-allowed' : 'pointer',
-                  }}>
-                  {issuing ? 'Issuing...' : '✅ Confirm Issue'}
+                    background: (!selectedMember || !selectedBook) ? (darkMode ? '#334155' : '#cbd5e1') : '#4f46e5',
+                    color: '#ffffff', border: 'none', borderRadius: '12px',
+                    padding: '12px 32px', fontSize: '14.5px', fontWeight: 800,
+                    cursor: (!selectedMember || !selectedBook) ? 'not-allowed' : 'pointer',
+                    boxShadow: (selectedMember && selectedBook) ? '0 6px 18px rgba(79,70,229,0.35)' : 'none',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  {issuing ? '⏳ Processing Issue...' : '✅ Confirm Issue (किताब जारी करें)'}
                 </button>
               </div>
             </div>
           )}
 
-          {/* ── RETURN TAB ── */}
+          {/* ══════════════════════════════════════════════════════════════════════
+              TAB 2: RETURN BOOK (SEARCH BY STUDENT OR BOOK NAME + MODAL)
+             ══════════════════════════════════════════════════════════════════════ */}
           {tab === 'RETURN' && (
-            <div style={cardStyle}>
-              <h4 style={{ margin: '0 0 12px', fontSize: 14, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
-                Scan Book to Return
-              </h4>
-              <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '24px' }}>
+              <div style={cardStyle}>
+                <h4 style={{ margin: '0 0 12px', fontSize: '16px', fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                  🔍 Search Issued Book to Return (Student ya Book ke Naam se Dhundhein)
+                </h4>
                 <input
-                  ref={returnBarcodeRef}
-                  value={returnBarcode}
-                  onChange={e => setReturnBarcode(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleReturnLookup()}
-                  placeholder="Scan barcode or type manually..."
+                  value={returnSearch}
+                  onChange={e => setReturnSearch(e.target.value)}
+                  placeholder="Type Student Name, Class, Roll Number, or Book Title..."
                   style={inputStyle}
                   autoFocus
                 />
-                <button onClick={() => handleReturnLookup()} style={{
-                  background: '#0176d3', color: '#fff', border: 'none', borderRadius: 8,
-                  padding: '0 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                }}>
-                  Find
-                </button>
               </div>
-
-              {returnPreview && (
-                <div style={{ marginTop: 18 }}>
-                  <div style={{
-                    background: darkMode ? '#273349' : '#f8fafc', borderRadius: 8, padding: 14, marginBottom: 14,
-                  }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
-                      {returnPreview.book_title}
-                    </div>
-                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
-                      Issued to: <strong>{returnPreview.member_name}</strong> · Due: {returnPreview.due_date}
-                    </div>
-                    {returnPreview.overdue_days > 0 && (
-                      <div style={{
-                        marginTop: 8, display: 'inline-block', fontSize: 12, fontWeight: 700,
-                        color: '#dc2626', background: '#fef2f2', padding: '4px 10px', borderRadius: 20,
-                      }}>
-                        {returnPreview.overdue_days} days overdue — fine will apply
-                      </div>
-                    )}
-                  </div>
-
-                  <div style={{ display: 'flex', gap: 20, marginBottom: 14, fontSize: 13 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                      <input type="checkbox" checked={markLost} onChange={e => setMarkLost(e.target.checked)} />
-                      Book Lost
-                    </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                      <input type="checkbox" checked={markDamaged} onChange={e => setMarkDamaged(e.target.checked)}
-                        disabled={markLost} />
-                      Book Damaged
-                    </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                      <input type="checkbox" checked={collectNow} onChange={e => setCollectNow(e.target.checked)} />
-                      Collect Fine Now
-                    </label>
-                  </div>
-
-                  <button
-                    onClick={handleConfirmReturn}
-                    disabled={returning}
-                    style={{
-                      background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8,
-                      padding: '11px 26px', fontSize: 14, fontWeight: 700,
-                      cursor: returning ? 'not-allowed' : 'pointer',
-                    }}>
-                    {returning ? 'Processing...' : '✅ Confirm Return'}
-                  </button>
-                </div>
-              )}
             </div>
           )}
 
-          {/* ── Currently Issued Books (hamesha visible, dono tabs ke niche) ── */}
-          <div style={{ ...cardStyle, marginTop: 20 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <h4 style={{ margin: 0, fontSize: 14, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
-                📚 Currently Issued Books ({currentlyIssued.length})
-              </h4>
-              <button onClick={loadCurrentlyIssued} style={{
-                background: 'none', border: 'none', color: '#4f46e5', cursor: 'pointer', fontSize: 12, fontWeight: 700,
-              }}>
+          {/* ══════════════════════════════════════════════════════════════════════
+              CURRENTLY ISSUED BOOKS TABLE (ALWAYS VISIBLE WITH 1-CLICK RETURN)
+             ══════════════════════════════════════════════════════════════════════ */}
+          <div style={cardStyle}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div>
+                <h3 style={{ margin: '0 0 4px', fontSize: '17px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                  📚 Active Issued Books ({filteredIssues.length})
+                </h3>
+                <p style={{ margin: 0, fontSize: '12.5px', color: '#94a3b8' }}>
+                  Click &ldquo;↩ Return Book&rdquo; button next to any entry to process instant return and fine calculation.
+                </p>
+              </div>
+              <button
+                onClick={loadCurrentlyIssued}
+                style={{
+                  background: darkMode ? '#1e293b' : '#f1f5f9', border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`,
+                  borderRadius: '8px', padding: '6px 14px', fontSize: '12.5px', fontWeight: 700,
+                  color: darkMode ? '#e2e8f0' : '#475569', cursor: 'pointer'
+                }}
+              >
                 ⟳ Refresh
               </button>
             </div>
 
             {loadingIssued ? (
-              <div style={{ textAlign: 'center', padding: 24, color: '#94a3b8', fontSize: 13 }}>Loading...</div>
-            ) : currentlyIssued.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 24, color: '#94a3b8', fontSize: 13 }}>Abhi koi book issue nahi hai</div>
+              <div style={{ textAlign: 'center', padding: '36px', color: '#94a3b8', fontSize: '14px' }}>Loading active loans...</div>
+            ) : filteredIssues.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '36px', color: '#94a3b8', fontSize: '14px' }}>
+                Koi active issued book nahi mili
+              </div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                <thead>
-                  <tr style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, textAlign: 'left' }}>
-                    <th style={{ padding: '6px', color: '#94a3b8', fontSize: 10 }}>STUDENT</th>
-                    <th style={{ padding: '6px', color: '#94a3b8', fontSize: 10 }}>CLASS</th>
-                    <th style={{ padding: '6px', color: '#94a3b8', fontSize: 10 }}>ROLL NO</th>
-                    <th style={{ padding: '6px', color: '#94a3b8', fontSize: 10 }}>BOOK</th>
-                    <th style={{ padding: '6px', color: '#94a3b8', fontSize: 10 }}>ISSUE DATE</th>
-                    <th style={{ padding: '6px', color: '#94a3b8', fontSize: 10 }}>DUE DATE</th>
-                    <th style={{ padding: '6px', color: '#94a3b8', fontSize: 10 }}>FINE</th>
-                    <th style={{ padding: '6px', color: '#94a3b8', fontSize: 10 }}>ACTION</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {currentlyIssued.map(i => (
-                    <tr key={i.id} style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}` }}>
-                      <td style={{ padding: '8px 6px', fontWeight: 600, color: darkMode ? '#f1f5f9' : '#0f172a' }}>{i.member_name}</td>
-                      <td style={{ padding: '8px 6px', color: '#64748b' }}>{i.class_name || '—'}</td>
-                      <td style={{ padding: '8px 6px', color: '#64748b' }}>{i.roll_number || '—'}</td>
-                      <td style={{ padding: '8px 6px', color: '#64748b' }}>{i.book_title}</td>
-                      <td style={{ padding: '8px 6px', color: '#64748b' }}>{i.issue_date}</td>
-                      <td style={{ padding: '8px 6px', color: '#64748b' }}>{i.due_date}</td>
-                      <td style={{ padding: '8px 6px' }}>
-                        {i.estimated_fine > 0 ? (
-                          <span style={{ color: '#dc2626', fontWeight: 700 }}>
-                            ₹{i.estimated_fine} ({i.overdue_days}d)
-                          </span>
-                        ) : (
-                          <span style={{ color: '#16a34a' }}>—</span>
-                        )}
-                      </td>
-                      <td style={{ padding: '8px 6px' }}>
-                        <button
-                          onClick={() => {
-                            setTab('RETURN');
-                            setReturnBarcode(i.barcode);
-                            handleReturnLookup(i.barcode);
-                          }}
-                          style={{
-                            background: '#eff6ff', color: '#0176d3', border: 'none', borderRadius: 6,
-                            padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                          }}>
-                          ↩ Return
-                        </button>
-                      </td>
+              <div className="table-container" style={{ border: 'none' }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Student / Member</th>
+                      <th>Class &amp; Roll</th>
+                      <th>Book Title</th>
+                      <th>Issue Date</th>
+                      <th>Due Date</th>
+                      <th>Overdue Status</th>
+                      <th style={{ textAlign: 'right' }}>Action</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {filteredIssues.map(i => (
+                      <tr key={i.id}>
+                        <td>
+                          <div style={{ fontWeight: 700, color: darkMode ? '#fff' : '#0f172a' }}>{i.member_name}</div>
+                          <div style={{ fontSize: '11px', color: '#94a3b8' }}>Card: {i.card_number}</div>
+                        </td>
+                        <td>
+                          <div style={{ fontWeight: 600 }}>{i.class_name || 'Teacher / Staff'}</div>
+                          {i.roll_number && <div style={{ fontSize: '11px', color: '#94a3b8' }}>Roll: {i.roll_number}</div>}
+                        </td>
+                        <td>
+                          <div style={{ fontWeight: 700, color: '#3b82f6' }}>{i.book_title}</div>
+                        </td>
+                        <td style={{ fontSize: '12.5px' }}>{i.issue_date}</td>
+                        <td style={{ fontSize: '12.5px', fontWeight: 700, color: i.overdue_days > 0 ? '#ef4444' : '#10b981' }}>
+                          {i.due_date}
+                        </td>
+                        <td>
+                          {i.overdue_days > 0 ? (
+                            <span className="badge badge-error">
+                              OVERDUE ({i.overdue_days}d) · Est. ₹{i.estimated_fine}
+                            </span>
+                          ) : (
+                            <span className="badge badge-success">ON SCHEDULE</span>
+                          )}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <button
+                            onClick={() => setSelectedIssueToReturn(i)}
+                            style={{
+                              background: '#10b981', color: '#ffffff', border: 'none', borderRadius: '8px',
+                              padding: '8px 16px', fontSize: '12.5px', fontWeight: 800, cursor: 'pointer',
+                              boxShadow: '0 2px 8px rgba(16,185,129,0.3)', transition: 'all 0.2s'
+                            }}
+                          >
+                            ↩ Return Book
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
+
+          {/* ══════════════════════════════════════════════════════════════════════
+              RETURN CONFIRMATION MODAL
+             ══════════════════════════════════════════════════════════════════════ */}
+          {selectedIssueToReturn && (
+            <div
+              style={{
+                position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999,
+                backdropFilter: 'blur(6px)'
+              }}
+              onClick={e => e.target === e.currentTarget && setSelectedIssueToReturn(null)}
+            >
+              <div style={{
+                background: darkMode ? '#111827' : '#ffffff', borderRadius: '20px', padding: '28px',
+                width: '100%', maxWidth: '480px',
+                border: `1px solid ${darkMode ? 'rgba(255,255,255,0.1)' : '#e2e8f0'}`,
+                boxShadow: '0 20px 40px rgba(0,0,0,0.4)'
+              }}>
+                <h3 style={{ margin: '0 0 14px', fontSize: '18px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                  📥 Confirm Book Return
+                </h3>
+
+                <div style={{
+                  background: darkMode ? '#1e293b' : '#f8fafc', borderRadius: '12px', padding: '16px', marginBottom: '18px',
+                  border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`
+                }}>
+                  <div style={{ fontSize: '16px', fontWeight: 800, color: '#3b82f6', marginBottom: '4px' }}>
+                    📖 {selectedIssueToReturn.book_title}
+                  </div>
+                  <div style={{ fontSize: '13px', color: darkMode ? '#e2e8f0' : '#475569' }}>
+                    Borrower: <strong>{selectedIssueToReturn.member_name}</strong>
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
+                    Issue Date: {selectedIssueToReturn.issue_date} · Due Date: {selectedIssueToReturn.due_date}
+                  </div>
+
+                  {selectedIssueToReturn.overdue_days > 0 && (
+                    <div style={{
+                      marginTop: '10px', background: 'rgba(239,68,68,0.12)', color: '#ef4444',
+                      padding: '8px 12px', borderRadius: '8px', fontSize: '12.5px', fontWeight: 700
+                    }}>
+                      ⚠️ {selectedIssueToReturn.overdue_days} Days Overdue — Estimated Fine: ₹{selectedIssueToReturn.estimated_fine}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px', fontSize: '13px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: darkMode ? '#e2e8f0' : '#334155' }}>
+                    <input type="checkbox" checked={markLost} onChange={e => setMarkLost(e.target.checked)} />
+                    <strong>Mark as Lost (किताब खो गई)</strong>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: darkMode ? '#e2e8f0' : '#334155' }}>
+                    <input type="checkbox" checked={markDamaged} onChange={e => setMarkDamaged(e.target.checked)} disabled={markLost} />
+                    <strong>Mark as Damaged (किताब फट/खराब हो गई)</strong>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: darkMode ? '#e2e8f0' : '#334155' }}>
+                    <input type="checkbox" checked={collectNow} onChange={e => setCollectNow(e.target.checked)} />
+                    <strong>Collect Fine Immediately Now (तुरंत फाइन जमा करें)</strong>
+                  </label>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={() => setSelectedIssueToReturn(null)}
+                    style={{
+                      padding: '10px 16px', borderRadius: '10px', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                      background: darkMode ? '#1e293b' : '#f8fafc',
+                      color: darkMode ? '#ffffff' : '#334155', cursor: 'pointer', fontSize: '13px', fontWeight: 600
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    disabled={returning}
+                    onClick={handleConfirmReturn}
+                    style={{
+                      padding: '10px 24px', borderRadius: '10px', border: 'none',
+                      background: '#10b981', color: '#ffffff', cursor: returning ? 'not-allowed' : 'pointer',
+                      fontSize: '13.5px', fontWeight: 800, boxShadow: '0 4px 14px rgba(16,185,129,0.35)'
+                    }}
+                  >
+                    {returning ? '⏳ Processing...' : '✅ Confirm Return'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
     </div>
