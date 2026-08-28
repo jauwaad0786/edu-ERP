@@ -29,6 +29,8 @@ import ClassDetailPage  from './pages/ClassDetailPage';
 import TeacherProfile   from './pages/TeacherProfile';
 import HolidaysPage     from './pages/HolidaysPage';
 import NotesPage        from './pages/NotesPage';
+import AssignmentsPage  from './pages/AssignmentsPage';
+import InternalMarksPage from './pages/InternalMarksPage';
 import SubjectsPage     from './pages/SubjectsPage';
 import TimetablePage    from './pages/TimetablePage';
 import IDCardPage       from './pages/IDCardPage';
@@ -230,10 +232,21 @@ export default function App() {
               </ProtectedRoute>
             } />
             <Route path="/notes" element={
-              <ProtectedRoute roles={['TEACHER', 'PRINCIPAL', 'STUDENT']}>
+              <ProtectedRoute roles={['TEACHER', 'PRINCIPAL', 'STUDENT', 'PARENT', 'SUPER_ADMIN', 'ADMIN']}>
                 <NotesPage />
               </ProtectedRoute>
             } />
+            <Route path="/assignments" element={
+              <ProtectedRoute roles={['TEACHER', 'PRINCIPAL', 'STUDENT', 'PARENT', 'SUPER_ADMIN', 'ADMIN']}>
+                <AssignmentsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/internal-marks" element={
+              <ProtectedRoute roles={['TEACHER', 'PRINCIPAL', 'STUDENT', 'PARENT', 'SUPER_ADMIN', 'ADMIN']}>
+                <InternalMarksPage />
+              </ProtectedRoute>
+            } />
+
             <Route path="/documents" element={
               <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'STUDENT', 'PARENT']} permissions={ROUTE_PERMISSIONS['/documents']}>
                 <DocumentsPage />

@@ -284,27 +284,258 @@ class Marks(db.Model):
 class Note(db.Model):
     __tablename__ = 'notes'
 
-    id          = db.Column(db.Integer, primary_key=True)
-    title       = db.Column(db.String(200), nullable=False)
-    description = db.Column(db.Text)
-    file_url    = db.Column(db.String(500))
-    file_name   = db.Column(db.String(200))
-    subject_id  = db.Column(db.Integer, db.ForeignKey('subjects.id'), nullable=True)
-    class_id    = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=True)
-    school_id   = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False)
-    uploaded_by = db.Column(db.Integer, db.ForeignKey('users.id'))
-    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+    id            = db.Column(db.Integer, primary_key=True)
+    title         = db.Column(db.String(200), nullable=False)
+    description   = db.Column(db.Text, default='')
+    file_url      = db.Column(db.String(500), nullable=False)
+    file_name     = db.Column(db.String(255))
+    file_size     = db.Column(db.Integer, nullable=True)
+    file_type     = db.Column(db.String(50), nullable=True)
+    subject_id    = db.Column(db.Integer, db.ForeignKey('subjects.id'), nullable=True, index=True)
+    class_id      = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=True, index=True)
+    teacher_id    = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=True, index=True)
+    school_id     = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    academic_year = db.Column(db.String(20), default='2026')
+    uploaded_by   = db.Column(db.Integer, db.ForeignKey('users.id'))
+    uploaded_at   = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at   = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    class_ref   = db.relationship('Class', backref='notes', lazy='select')
+    teacher_ref = db.relationship('Teacher', backref='notes', lazy='select')
+    uploader    = db.relationship('User', foreign_keys=[uploaded_by], lazy='select')
 
     def to_dict(self):
+        cls_name = f"{self.class_ref.name} - {self.class_ref.section}" if self.class_ref else 'All Classes'
+        sub_name = self.subject.name if self.subject else 'General'
+        teacher_name = self.teacher_ref.user.name if (self.teacher_ref and self.teacher_ref.user) else (self.uploader.name if self.uploader else 'Teacher/Admin')
         return {
-            'id':          self.id,
-            'title':       self.title,
-            'description': self.description,
-            'file_url':    self.file_url,
-            'file_name':   self.file_name,
-            'subject_id':  self.subject_id,
-            'uploaded_at': self.uploaded_at.isoformat(),
+            'id':            self.id,
+            'title':         self.title,
+            'description':   self.description or '',
+            'file_url':      self.file_url,
+            'file_name':     self.file_name or '',
+            'file_size':     self.file_size,
+            'file_type':     self.file_type or '',
+            'subject_id':    self.subject_id,
+            'subject_name':  sub_name,
+            'class_id':      self.class_id,
+            'class_name':    cls_name,
+            'teacher_id':    self.teacher_id,
+            'teacher_name':  teacher_name,
+            'school_id':     self.school_id,
+            'academic_year': self.academic_year or '2026',
+            'uploaded_by':   self.uploaded_by,
+            'uploaded_at':   self.uploaded_at.isoformat() if self.uploaded_at else None,
         }
+
+
+class Assignment(db.Model):
+    """
+    Dedicated academic assignment given by Teacher or Principal.
+    """
+    __tablename__ = 'assignments'
+
+    id              = db.Column(db.Integer, primary_key=True)
+    assignment_uid  = db.Column(db.String(30), nullable=True, index=True)
+    school_id       = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    class_id        = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=False, index=True)
+    subject_id      = db.Column(db.Integer, db.ForeignKey('subjects.id'), nullable=False, index=True)
+    teacher_id      = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=True, index=True)
+    created_by      = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    title           = db.Column(db.String(250), nullable=False)
+    description     = db.Column(db.Text, default='')
+    attachment_url  = db.Column(db.String(500), nullable=True)
+    attachment_name = db.Column(db.String(255), nullable=True)
+    attachment_size = db.Column(db.Integer, nullable=True)
+    max_marks       = db.Column(db.Float, default=20.0, nullable=False)
+    due_date        = db.Column(db.DateTime, nullable=False)
+    academic_year   = db.Column(db.String(20), default='2026')
+    status          = db.Column(db.String(20), default='ACTIVE')
+    created_at      = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at      = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    class_ref   = db.relationship('Class', backref='assignments', lazy='select')
+    subject     = db.relationship('Subject', backref='assignments', lazy='select')
+    teacher     = db.relationship('Teacher', backref='assignments', lazy='select')
+    creator     = db.relationship('User', foreign_keys=[created_by], lazy='select')
+    submissions = db.relationship('AssignmentSubmission', backref='assignment', lazy='dynamic', cascade='all, delete-orphan')
+
+    def to_dict(self, include_stats=False):
+        cls_name = f"{self.class_ref.name} - {self.class_ref.section}" if self.class_ref else ''
+        sub_name = self.subject.name if self.subject else ''
+        t_name   = self.teacher.user.name if (self.teacher and self.teacher.user) else (self.creator.name if self.creator else 'Teacher')
+
+        data = {
+            'id':              self.id,
+            'assignment_uid':  self.assignment_uid or f"ASN-{self.id:04d}",
+            'school_id':       self.school_id,
+            'class_id':        self.class_id,
+            'class_name':      cls_name,
+            'subject_id':      self.subject_id,
+            'subject_name':    sub_name,
+            'teacher_id':      self.teacher_id,
+            'teacher_name':    t_name,
+            'created_by':      self.created_by,
+            'title':           self.title,
+            'description':     self.description or '',
+            'attachment_url':  self.attachment_url,
+            'attachment_name': self.attachment_name,
+            'attachment_size': self.attachment_size,
+            'max_marks':       self.max_marks,
+            'due_date':        self.due_date.isoformat() if self.due_date else None,
+            'academic_year':   self.academic_year or '2026',
+            'status':          self.status or 'ACTIVE',
+            'created_at':      self.created_at.isoformat() if self.created_at else None,
+            'updated_at':      self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+        if include_stats:
+            total_students = Student.query.filter_by(school_id=self.school_id, class_id=self.class_id).count()
+            subs = self.submissions.all()
+            submitted_count = len(subs)
+            marked_count = sum(1 for s in subs if s.status == 'MARKED' and s.marks_obtained is not None)
+            pending_count = max(0, total_students - submitted_count)
+            avg_marks = round(sum(s.marks_obtained for s in subs if s.marks_obtained is not None) / marked_count, 2) if marked_count > 0 else 0
+            data['stats'] = {
+                'total_students':  total_students,
+                'submitted_count': submitted_count,
+                'marked_count':    marked_count,
+                'pending_count':   pending_count,
+                'average_marks':   avg_marks,
+            }
+        return data
+
+
+class AssignmentSubmission(db.Model):
+    """
+    Student submission strictly linked to one specific assignment_id.
+    """
+    __tablename__ = 'assignment_submissions'
+
+    id              = db.Column(db.Integer, primary_key=True)
+    assignment_id   = db.Column(db.Integer, db.ForeignKey('assignments.id'), nullable=False, index=True)
+    student_id      = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
+    school_id       = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    file_url        = db.Column(db.String(500), nullable=False)
+    file_name       = db.Column(db.String(255), nullable=True)
+    file_size       = db.Column(db.Integer, nullable=True)
+    file_type       = db.Column(db.String(50), nullable=True)
+    student_comment = db.Column(db.Text, default='')
+    submitted_at    = db.Column(db.DateTime, default=datetime.utcnow)
+    status          = db.Column(db.String(20), default='SUBMITTED')
+    marks_obtained  = db.Column(db.Float, nullable=True)
+    teacher_feedback= db.Column(db.Text, nullable=True)
+    marked_by       = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    marked_at       = db.Column(db.DateTime, nullable=True)
+
+    student = db.relationship('Student', backref='assignment_submissions', lazy='select')
+    grader  = db.relationship('User', foreign_keys=[marked_by], lazy='select')
+
+    __table_args__ = (
+        db.UniqueConstraint('assignment_id', 'student_id', name='uq_assignment_student_submission'),
+    )
+
+    def to_dict(self):
+        st_name = self.student.user.name if (self.student and self.student.user) else 'Student'
+        st_roll = self.student.roll_number if self.student else ''
+        st_adm  = self.student.admission_no if self.student else ''
+        grader_name = self.grader.name if self.grader else ''
+
+        return {
+            'id':               self.id,
+            'assignment_id':    self.assignment_id,
+            'student_id':       self.student_id,
+            'student_name':     st_name,
+            'roll_number':      st_roll,
+            'admission_no':     st_adm,
+            'school_id':        self.school_id,
+            'file_url':         self.file_url,
+            'file_name':        self.file_name or '',
+            'file_size':        self.file_size,
+            'file_type':        self.file_type or '',
+            'student_comment':  self.student_comment or '',
+            'submitted_at':     self.submitted_at.isoformat() if self.submitted_at else None,
+            'status':           self.status,
+            'marks_obtained':   self.marks_obtained,
+            'teacher_feedback': self.teacher_feedback or '',
+            'marked_by':        self.marked_by,
+            'marked_by_name':   grader_name,
+            'marked_at':        self.marked_at.isoformat() if self.marked_at else None,
+        }
+
+
+class InternalMarks(db.Model):
+    """
+    Continuous internal assessment marks per subject & academic session.
+    Immediately visible to students without requiring explicit exam publishing.
+    """
+    __tablename__ = 'internal_marks'
+
+    id                  = db.Column(db.Integer, primary_key=True)
+    school_id           = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    student_id          = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
+    class_id            = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=False, index=True)
+    subject_id          = db.Column(db.Integer, db.ForeignKey('subjects.id'), nullable=False, index=True)
+    teacher_id          = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=True, index=True)
+    entered_by          = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    academic_year       = db.Column(db.String(20), default='2026', nullable=False)
+    term                = db.Column(db.String(50), default='Continuous Assessment')
+    marks_obtained      = db.Column(db.Float, default=0.0, nullable=False)
+    max_marks           = db.Column(db.Float, default=20.0, nullable=False)
+    component_breakdown = db.Column(db.Text, default='{}')
+    remarks             = db.Column(db.String(250), default='')
+    created_at          = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at          = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    student = db.relationship('Student', backref='internal_marks_records', lazy='select')
+    subject = db.relationship('Subject', backref='internal_marks_records', lazy='select')
+    class_ref = db.relationship('Class', backref='internal_marks_records', lazy='select')
+    teacher = db.relationship('Teacher', backref='internal_marks_records', lazy='select')
+    evaluator = db.relationship('User', foreign_keys=[entered_by], lazy='select')
+
+    __table_args__ = (
+        db.UniqueConstraint('student_id', 'subject_id', 'academic_year', 'term', name='uq_student_subject_internal_marks'),
+    )
+
+    def to_dict(self):
+        import json
+        pct = round(self.marks_obtained / self.max_marks * 100, 2) if self.max_marks else 0
+        try:
+            breakdown = json.loads(self.component_breakdown) if self.component_breakdown else {}
+        except Exception:
+            breakdown = {}
+
+        st_name = self.student.user.name if (self.student and self.student.user) else ''
+        st_roll = self.student.roll_number if self.student else ''
+        st_adm  = self.student.admission_no if self.student else ''
+        sub_name = self.subject.name if self.subject else ''
+        t_name   = self.teacher.user.name if (self.teacher and self.teacher.user) else (self.evaluator.name if self.evaluator else '')
+
+        return {
+            'id':                  self.id,
+            'school_id':           self.school_id,
+            'student_id':          self.student_id,
+            'student_name':        st_name,
+            'roll_number':         st_roll,
+            'admission_no':        st_adm,
+            'class_id':            self.class_id,
+            'class_name':          f"{self.class_ref.name} - {self.class_ref.section}" if self.class_ref else '',
+            'subject_id':          self.subject_id,
+            'subject_name':        sub_name,
+            'teacher_id':          self.teacher_id,
+            'teacher_name':        t_name,
+            'academic_year':       self.academic_year,
+            'term':                self.term,
+            'marks_obtained':      self.marks_obtained,
+            'max_marks':           self.max_marks,
+            'percentage':          pct,
+            'component_breakdown': breakdown,
+            'remarks':             self.remarks or '',
+            'updated_at':          self.updated_at.isoformat() if self.updated_at else None,
+        }
+
 
 
 class TeacherAttendance(db.Model):

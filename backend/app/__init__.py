@@ -130,6 +130,8 @@ def create_app(config_name='default'):
     app.register_blueprint(teacher_bp,      url_prefix='/api/teacher')
     app.register_blueprint(teacher_self_bp, url_prefix='/api/teacher')
     app.register_blueprint(student_bp,      url_prefix='/api/student')
+    from app.routes.academic_resources import academic_resources_bp
+    app.register_blueprint(academic_resources_bp)
 
     # ── Startup sequence (ORDER IS CRITICAL on PostgreSQL) ──────────────────
     with app.app_context():
@@ -139,6 +141,7 @@ def create_app(config_name='default'):
             _ensure_teacher_columns()
             _ensure_student_columns()
             _ensure_communication_columns()
+            _ensure_academic_resource_columns()
             _ensure_fee_record_columns()
             _ensure_salary_acknowledgement_columns()
             _ensure_marks_columns()
@@ -146,6 +149,7 @@ def create_app(config_name='default'):
             _ensure_document_columns()
             db.create_all()
             _seed_super_admin()
+
         except Exception as e:
             app.logger.error(f'Startup schema initialization error: {e}')
 
@@ -267,7 +271,36 @@ def _ensure_document_columns():
 
 
 
+def _ensure_academic_resource_columns():
+    """
+    Auto-migrate columns for notes, assignments, assignment_submissions, and internal_marks.
+    """
+    from sqlalchemy import text, inspect
+    inspector = inspect(db.engine)
+    table_names = inspector.get_table_names()
+
+    if 'notes' in table_names:
+        existing = {c['name'] for c in inspector.get_columns('notes')}
+        to_add = {
+            'file_size':     'INTEGER',
+            'file_type':     'VARCHAR(50)',
+            'teacher_id':    'INTEGER',
+            'academic_year': 'VARCHAR(20)',
+            'updated_at':    'TIMESTAMP',
+        }
+        with db.engine.connect() as conn:
+            for col, defn in to_add.items():
+                if col not in existing:
+                    try:
+                        conn.execute(text(f'ALTER TABLE notes ADD COLUMN {col} {defn}'))
+                        conn.commit()
+                        print(f'[OK] Added column notes.{col}')
+                    except Exception as e:
+                        print(f'[WARN] notes.{col}: {e}')
+
+
 def _ensure_communication_columns():
+
     """New tables ke liye — pehli deploy pe auto-create."""
     pass
 

@@ -165,22 +165,31 @@ const ROLE_MENUS = {
         },
 
         {
-          icon: 'ti-headset', label: 'Communication', path: '/support/tickets',
+          icon: 'ti-speakerphone', label: 'Communication', path: '/support/announcements',
           children: [
-            { icon: 'ti-ticket',      label: 'My Tickets',   path: '/support/tickets' },
-            { icon: 'ti-plus',        label: 'New Ticket',   path: '/support/tickets/new' },
-            { icon: 'ti-video',       label: 'Book Meeting', path: '/support/meetings' },
-            { icon: 'ti-message-2',   label: 'Messages',     path: '/support/chat' },
-            { icon: 'ti-help-circle', label: 'Help Center',  path: '/support/help' },
+            { icon: 'ti-speakerphone', label: 'Announcements & Circulars', path: '/support/announcements' },
+            { icon: 'ti-ticket',      label: 'Help & Support Tickets',     path: '/support/tickets' },
+            { icon: 'ti-plus',        label: 'New Ticket',                 path: '/support/tickets/new' },
+            { icon: 'ti-video',       label: 'Book Meeting',               path: '/support/meetings' },
+            { icon: 'ti-message-2',   label: 'Messages',                   path: '/support/chat' },
+            { icon: 'ti-help-circle', label: 'Help Center',                path: '/support/help' },
           ],
         },
 
         {
-          icon: 'ti-speakerphone', label: 'Circulars & Notices', path: '/support/announcements',
+          icon: 'ti-books', label: 'Academic Resources', path: '/notes',
           children: [
-            { icon: 'ti-speakerphone', label: 'Announcements', path: '/support/announcements' },
-            { icon: 'ti-file-text',    label: 'Documents',     path: '/documents' },
-            { icon: 'ti-notes',        label: 'Notes',         path: '/notes' },
+            { icon: 'ti-books',          label: 'Notes & Study Material', path: '/notes' },
+            { icon: 'ti-clipboard-list', label: 'Assignments',            path: '/assignments' },
+            { icon: 'ti-chart-dots',     label: 'Internal Marks',         path: '/internal-marks' },
+          ],
+        },
+
+        {
+          icon: 'ti-file-certificate', label: 'Documents & Certificates', path: '/documents',
+          children: [
+            { icon: 'ti-award',        label: 'Issue Certificates', path: '/issue-documents' },
+            { icon: 'ti-file-text',    label: 'Student KYC & Docs', path: '/documents' },
           ],
         },
 
@@ -216,17 +225,21 @@ const ROLE_MENUS = {
     },
     {
       group: 'Academics',
-      items: [{ icon: 'ti-calendar-time', label: 'Timetable', path: '/timetable' }],
+      items: [
+        { icon: 'ti-books',          label: 'Notes & Materials', path: '/notes' },
+        { icon: 'ti-clipboard-list', label: 'Assignments',       path: '/assignments' },
+        { icon: 'ti-chart-dots',     label: 'Internal Marks',    path: '/internal-marks' },
+        { icon: 'ti-calendar-time',  label: 'Timetable',         path: '/timetable' },
+      ],
     },
     {
       group: 'My Work',
       items: [
-        { icon: 'ti-clipboard-check', label: 'Attendance',        path: '/attendance' },
-        { icon: 'ti-pencil',          label: 'Marks Entry',       path: '/marks' },
-        { icon: 'ti-checklist',       label: 'Result Submission', path: '/mark-entry' },
-        { icon: 'ti-upload',          label: 'Upload Notes',      path: '/notes' },
-        { icon: 'ti-file-text',       label: 'Documents',         path: '/documents' },
-        { icon: 'ti-user-graduate',   label: 'My Students',       path: '/students' },
+        { icon: 'ti-clipboard-check', label: 'Attendance',         path: '/attendance' },
+        { icon: 'ti-pencil',          label: 'Exam Marks Entry',   path: '/marks' },
+        { icon: 'ti-checklist',       label: 'Result Submission',  path: '/mark-entry' },
+        { icon: 'ti-file-certificate',label: 'Issue Documents',    path: '/documents' },
+        { icon: 'ti-user-graduate',   label: 'My Students',        path: '/students' },
       ],
     },
     {
@@ -364,16 +377,19 @@ const ROLE_MENUS = {
     {
       group: 'My School',
       items: [
-        { icon: 'ti-calendar-time',   label: 'Timetable',   path: '/timetable' },
-        { icon: 'ti-clipboard-check', label: 'Attendance',  path: '/attendance' },
-        { icon: 'ti-file-certificate',label: 'Result Card', path: '/result-card' },
-        { icon: 'ti-receipt',         label: 'Fees',        path: '/fees' },
-        { icon: 'ti-file-text',       label: 'Documents',   path: '/documents' },
-        { icon: 'ti-notes',           label: 'Notes',       path: '/notes' },
-        { icon: 'ti-book',            label: 'Library',     path: '/library/books' },
-        { icon: 'ti-ticket',          label: 'Admit Card',  path: '/admit-card' },
+        { icon: 'ti-books',           label: 'Notes & Materials', path: '/notes' },
+        { icon: 'ti-clipboard-list',  label: 'Assignments',       path: '/assignments' },
+        { icon: 'ti-chart-dots',      label: 'Internal Marks',    path: '/internal-marks' },
+        { icon: 'ti-calendar-time',   label: 'Timetable',         path: '/timetable' },
+        { icon: 'ti-clipboard-check', label: 'Attendance',        path: '/attendance' },
+        { icon: 'ti-file-certificate',label: 'Result Card',       path: '/result-card' },
+        { icon: 'ti-receipt',         label: 'Fees',              path: '/fees' },
+        { icon: 'ti-file-text',       label: 'Documents',         path: '/documents' },
+        { icon: 'ti-book',            label: 'Library',           path: '/library/books' },
+        { icon: 'ti-ticket',          label: 'Admit Card',        path: '/admit-card' },
       ],
     },
+
     {
       group: 'Customer Service',
       items: [
