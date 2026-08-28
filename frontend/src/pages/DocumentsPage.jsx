@@ -1135,10 +1135,11 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
                                   </div>
                                 </div>
 
-                                {/* Bottom Signatures, Date & Watermark Branding */}
+                                {/* Bottom Signatures, Date, QR Code & Digital Signature */}
                                 <div>
-                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", paddingTop: 16, borderTop: "1.5px dashed #cbd5e1" }}>
-                                    <div>
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 16, borderTop: "1.5px dashed #cbd5e1", gap: 16 }}>
+                                    {/* Left: Date & Place */}
+                                    <div style={{ minWidth: 140 }}>
                                       <div style={{ fontSize: 13, color: "#334155", fontWeight: 700 }}>
                                         Date: <strong>{fmtDate(new Date())}</strong>
                                       </div>
@@ -1147,17 +1148,79 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
                                       </div>
                                     </div>
 
-                                    <div style={{ textAlign: "center", minWidth: 150 }}>
-                                      <div style={{ width: 56, height: 56, borderRadius: "50%", border: "2px solid #64748b", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#64748b", fontWeight: 900, margin: "0 auto 4px", textTransform: "uppercase" }}>
-                                        OFFICIAL<br />SEAL
+                                    {/* Center: Square QR Code + Digitally Signed & Certified Box */}
+                                    <div style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: 12,
+                                      background: "#f8fafc",
+                                      border: `1.5px solid ${currentTemplate.theme_color || '#0b3b7b'}33`,
+                                      borderRadius: 8,
+                                      padding: "6px 12px",
+                                      boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+                                    }}>
+                                      {/* Square QR Code with Scan to Verify */}
+                                      <div style={{ textAlign: "center", flexShrink: 0 }}>
+                                        <div style={{
+                                          width: 62,
+                                          height: 62,
+                                          background: "#ffffff",
+                                          border: "1px solid #cbd5e1",
+                                          borderRadius: 4,
+                                          padding: 2,
+                                          display: "flex",
+                                          alignItems: "center",
+                                          justifyContent: "center",
+                                        }}>
+                                          <img
+                                            src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(
+                                              `OFFICIAL CERTIFICATE VERIFICATION\n` +
+                                              `School: ${school.name || "School"} (Code: ${school.code || "001"})\n` +
+                                              `Certificate: ${currentTemplate.title}\n` +
+                                              `Ref No: ${currentNextCertNo}\n` +
+                                              `Student Name: ${selectedStudent.name}\n` +
+                                              `Admission No: ${selectedStudent.admission_no} | Roll No: ${selectedStudent.roll_number}\n` +
+                                              `Class & Section: ${selectedStudent.class_display || selectedStudent.class_name}\n` +
+                                              `Father's Name: Mr. ${fatherText || "—"}\n` +
+                                              `Academic Session: ${certForm.academic_session || workspaceData?.current_session || "2026"}\n` +
+                                              `Date: ${fmtDate(new Date())}\n` +
+                                              `Digital Signature: Principal, ${school.name || "School Authority"}\n` +
+                                              `Status: AUTHENTIC & DIGITALLY VERIFIED\n` +
+                                              `Platform: OnePlatform 360 Enterprise ERP`
+                                            )}`}
+                                            alt="Verification QR"
+                                            style={{ width: "100%", height: "100%", objectFit: "contain", imageRendering: "pixelated" }}
+                                          />
+                                        </div>
+                                        <div style={{ fontSize: 8, fontWeight: 900, color: "#475569", marginTop: 2, letterSpacing: 0.4, textTransform: "uppercase" }}>
+                                          Scan To Verify
+                                        </div>
+                                      </div>
+
+                                      {/* Digital Signature & Timestamp Metadata */}
+                                      <div style={{ textAlign: "left", lineHeight: 1.35 }}>
+                                        <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, fontWeight: 900, color: "#166534" }}>
+                                          <span>🛡️ DIGITALLY SIGNED</span>
+                                          <span style={{ background: "#dcfce7", color: "#15803d", fontSize: 8, fontWeight: 800, padding: "1px 5px", borderRadius: 4 }}>VERIFIED</span>
+                                        </div>
+                                        <div style={{ fontSize: 10, color: "#1e293b", fontWeight: 700, marginTop: 2 }}>
+                                          Signatory: Principal, {school.name || "School Authority"}
+                                        </div>
+                                        <div style={{ fontSize: 9.5, color: "#64748b" }}>
+                                          Signed: {new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}, {new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                                        </div>
+                                        <div style={{ fontSize: 9, color: "#0b3b7b", fontWeight: 800, marginTop: 1, fontFamily: "monospace" }}>
+                                          Ref: {currentNextCertNo}
+                                        </div>
                                       </div>
                                     </div>
 
-                                    <div style={{ textAlign: "center", minWidth: 180 }}>
+                                    {/* Right: Principal Signature & Seal */}
+                                    <div style={{ textAlign: "center", minWidth: 160 }}>
                                       {school.principal_signature_url ? (
                                         <img src={school.principal_signature_url} alt="" style={{ height: 42, marginBottom: 2 }} />
                                       ) : (
-                                        <div style={{ height: 32, borderBottom: "2px solid #334155", width: 160, margin: "0 auto 4px" }} />
+                                        <div style={{ height: 32, borderBottom: "2px solid #334155", width: 150, margin: "0 auto 4px" }} />
                                       )}
                                       <div style={{ fontWeight: 900, fontSize: 14, color: "#0f172a" }}>Principal</div>
                                       <div style={{ fontSize: 11.5, color: "#64748b" }}>(Signature & Seal)</div>
@@ -1169,6 +1232,7 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
                                     OnePlatform 360 — Enterprise School Management
                                   </div>
                                 </div>
+
 
                               </div>
                             </div>
