@@ -231,23 +231,27 @@ class BookIssue(db.Model):
     def to_dict(self):
         today = date.today()
         overdue_days = (today - self.due_date).days if self.status == 'ISSUED' and today > self.due_date else 0
+        book_mrp = float((self.book.mrp if self.book and self.book.mrp else (self.book.purchase_price if self.book and self.book.purchase_price else 0.0)) or 0.0)
         return {
-            'id':            self.id,
-            'copy_id':       self.copy_id,
-            'book_id':       self.book_id,
-            'book_title':    self.book.title if self.book else '',
-            'barcode':       self.copy.barcode if self.copy else '',
-            'accession_no':  self.copy.copy_accession_no if self.copy else '',
-            'author':        self.book.author if self.book else '',
-            'member_id':     self.member_id,
-            'member_name':   self.member.user.name if self.member and self.member.user else '',
-            'issue_date':    str(self.issue_date),
-            'due_date':      str(self.due_date),
-            'return_date':   str(self.return_date) if self.return_date else None,
-            'status':        self.status,
-            'overdue_days':  overdue_days,
-            'renewal_count': self.renewal_count,
-            'remarks':       self.remarks or '',
+            'id':                  self.id,
+            'copy_id':             self.copy_id,
+            'book_id':             self.book_id,
+            'book_title':          self.book.title if self.book else '',
+            'book_mrp':            book_mrp,
+            'book_price':          book_mrp,
+            'book_purchase_price': float(self.book.purchase_price or 0.0) if self.book else 0.0,
+            'barcode':             self.copy.barcode if self.copy else '',
+            'accession_no':        self.copy.copy_accession_no if self.copy else '',
+            'author':              self.book.author if self.book else '',
+            'member_id':           self.member_id,
+            'member_name':         self.member.user.name if self.member and self.member.user else '',
+            'issue_date':          str(self.issue_date),
+            'due_date':            str(self.due_date),
+            'return_date':         str(self.return_date) if self.return_date else None,
+            'status':              self.status,
+            'overdue_days':        overdue_days,
+            'renewal_count':       self.renewal_count,
+            'remarks':             self.remarks or '',
         }
 
 
