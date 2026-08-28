@@ -246,11 +246,13 @@ def _ensure_document_columns():
         to_add = {
             'custom_label':          'VARCHAR(150)',
             'title':                 'VARCHAR(200)',
+            'certificate_no':        'VARCHAR(100)',
             'file_size':             'INTEGER',
             'class_id_at_issue':     'INTEGER',
             'academic_year':         'VARCHAR(20)',
             'remarks':               'VARCHAR(300)',
             'is_visible_to_student': 'BOOLEAN DEFAULT TRUE',
+            'payload_data':          'TEXT DEFAULT \'{}\'',
         }
         with db.engine.connect() as conn:
             for col, defn in to_add.items():
@@ -261,6 +263,7 @@ def _ensure_document_columns():
                         print(f'✅ Added column issued_documents.{col}')
                     except Exception as e:
                         print(f'⚠️ issued_documents.{col}: {e}')
+
 
 
 def _ensure_communication_columns():

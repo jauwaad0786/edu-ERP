@@ -235,10 +235,21 @@ export default function App() {
               </ProtectedRoute>
             } />
             <Route path="/documents" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']} permissions={ROUTE_PERMISSIONS['/documents']}>
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'STUDENT', 'PARENT']} permissions={ROUTE_PERMISSIONS['/documents']}>
                 <DocumentsPage />
               </ProtectedRoute>
             } />
+            <Route path="/issue-documents" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']}>
+                <DocumentsPage initialTab="issue_workspace" />
+              </ProtectedRoute>
+            } />
+            <Route path="/students/transfer-cert" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']}>
+                <DocumentsPage initialTab="issue_workspace" initialDocType="TRANSFER_CERTIFICATE" />
+              </ProtectedRoute>
+            } />
+
             <Route path="/exams" element={
               <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/exams']}>
                 <ExamsPage />

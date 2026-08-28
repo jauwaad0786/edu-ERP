@@ -15,11 +15,13 @@ from app.models.financial import (
 from app.models.documents import (
     IssuedDocument, StudentDocument, SchoolDocumentRequirement,
     get_school_doc_requirements, STUDENT_DOC_TYPE_LABELS, ISSUED_DOC_TYPE_LABELS,
-    DEFAULT_DOC_REQUIREMENTS
+    DEFAULT_DOC_REQUIREMENTS, CERTIFICATE_TEMPLATES
 )
+import json
 
 STUDENT_DOC_TYPES = list(STUDENT_DOC_TYPE_LABELS.keys())
 ISSUED_DOC_TYPES  = list(ISSUED_DOC_TYPE_LABELS.keys())
+
 
 from app.utils.decorators import role_required, get_current_user
 from app.services.permission_resolver import permission_required, role_or_permission_required
@@ -5707,6 +5709,295 @@ def list_all_students_documents():
             items.append(d)
 
     return jsonify({'documents': items, 'total': len(items)}), 200
+
+
+# ─── 5. Issue Documents Workspace & Certificate Generator ─────────────────────
+
+@principal_bp.route('/documents/templates', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER')
+def get_certificate_templates():
+    """Get all available certificate templates with field configurations."""
+    return jsonify({
+        'templates': CERTIFICATE_TEMPLATES,
+        'issued_doc_types': ISSUED_DOC_TYPES,
+    }), 200
+
+
+@principal_bp.route('/documents/issue-workspace', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER')
+def get_issue_documents_workspace():
+    """
+    Workspace endpoint for Issue Documents UI:
+    - Filters by class_id, section, doc_type, status (ALL / ISSUED / NOT_ISSUED), search
+    - Returns full student details, school branding info, class list, and issued certificates history
+    """
+    sid      = _school_id()
+    class_id = request.args.get('class_id', type=int)
+    section  = request.args.get('section', '').strip()
+    doc_type = request.args.get('doc_type', '').strip().upper()
+    status_f = request.args.get('status', 'ALL').upper()
+    search   = request.args.get('search', '').strip()
+
+    from app.models.school import School
+    school = School.query.get(sid)
+    school_info = school.to_dict() if school else {}
+
+    # Query Classes
+    all_classes = Class.query.filter_by(school_id=sid).order_by(Class.name.asc(), Class.section.asc()).all()
+    classes_list = [{'id': c.id, 'name': c.name, 'section': c.section, 'display': f"{c.name} - {c.section}".strip(' -')} for c in all_classes]
+
+    # Query Students
+    q = db.session.query(Student, User)\
+        .join(User, Student.user_id == User.id)\
+        .filter(Student.school_id == sid)
+
+    if class_id:
+        q = q.filter(Student.class_id == class_id)
+    if section and not class_id:
+        q = q.join(Class, Student.class_id == Class.id).filter(Class.section == section)
+
+    if search:
+        like = f"%{search}%"
+        q = q.filter(
+            db.or_(
+                User.name.ilike(like),
+                Student.admission_no.ilike(like),
+                Student.roll_number.ilike(like),
+                Student.parent_name.ilike(like),
+                Student.father_name.ilike(like),
+                Student.mother_name.ilike(like),
+            )
+        )
+
+    results = q.order_by(Student.roll_number.asc(), User.name.asc()).all()
+    if not results:
+        return jsonify({
+            'students': [],
+            'total': 0,
+            'school': school_info,
+            'classes': classes_list,
+            'templates': CERTIFICATE_TEMPLATES,
+            'current_session': _current_academic_year(),
+        }), 200
+
+    student_ids = [s.id for s, u in results]
+
+    # Fetch all issued documents for these students
+    issued_docs = IssuedDocument.query.filter(
+        IssuedDocument.school_id == sid,
+        IssuedDocument.student_id.in_(student_ids)
+    ).order_by(IssuedDocument.issued_at.desc()).all()
+
+    issued_by_student = {}
+    for d in issued_docs:
+        if d.student_id not in issued_by_student:
+            issued_by_student[d.student_id] = []
+        issued_by_student[d.student_id].append(d.to_dict())
+
+    student_items = []
+    for student, user in results:
+        student_issued = issued_by_student.get(student.id, [])
+        issued_types = {d['doc_type'] for d in student_issued}
+
+        # Status filtering
+        if status_f == 'ISSUED':
+            if doc_type:
+                if doc_type not in issued_types:
+                    continue
+            elif not student_issued:
+                continue
+        elif status_f == 'NOT_ISSUED':
+            if doc_type:
+                if doc_type in issued_types:
+                    continue
+            elif student_issued:
+                continue
+
+        cls_name = ''
+        sec_name = ''
+        if student.class_ref:
+            cls_name = student.class_ref.name or ''
+            sec_name = student.class_ref.section or ''
+
+        student_items.append({
+            'student_id':        student.id,
+            'name':              user.name,
+            'email':             user.email or '',
+            'roll_number':       student.roll_number or '—',
+            'admission_no':      student.admission_no or '—',
+            'admission_date':    student.admission_date.isoformat() if student.admission_date else None,
+            'dob':               student.dob.isoformat() if student.dob else None,
+            'gender':            student.gender or '—',
+            'blood_group':       student.blood_group or '—',
+            'category':          student.category or 'General',
+            'nationality':       student.nationality or 'Indian',
+            'religion':          student.religion or '—',
+            'parent_name':       student.parent_name or student.father_name or '—',
+            'father_name':       student.father_name or student.parent_name or '—',
+            'mother_name':       student.mother_name or '—',
+            'father_occupation': student.father_occupation or '—',
+            'mother_occupation': student.mother_occupation or '—',
+            'parent_phone':      student.parent_phone or student.phone or '—',
+            'address':           student.address or '—',
+            'photo_url':         student.photo_url or None,
+            'class_id':          student.class_id,
+            'class_name':        cls_name,
+            'section':           sec_name,
+            'class_display':     f"{cls_name} - {sec_name}".strip(' -'),
+            'issued_documents':  student_issued,
+            'issued_count':      len(student_issued),
+            'issued_types':      list(issued_types),
+        })
+
+    return jsonify({
+        'students':        student_items,
+        'total':           len(student_items),
+        'school':          school_info,
+        'classes':         classes_list,
+        'templates':       CERTIFICATE_TEMPLATES,
+        'current_session': _current_academic_year(),
+    }), 200
+
+
+@principal_bp.route('/students/<int:student_id>/issue-certificate', methods=['POST'])
+@role_required('PRINCIPAL', 'TEACHER')
+def issue_student_certificate(student_id):
+    """
+    Issue an official certificate with dynamic fields, serial number, and live printable data.
+    """
+    sid = _school_id()
+    student = Student.query.get_or_404(student_id)
+    if student.school_id != sid:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    # Accept either JSON or Form data (with optional file)
+    if request.is_json:
+        data = request.get_json() or {}
+        file = None
+    else:
+        data = request.form.to_dict() or {}
+        # Parse payload if sent as string
+        if 'payload' in data and isinstance(data['payload'], str):
+            try:
+                data['payload'] = json.loads(data['payload'])
+            except Exception:
+                pass
+        file = request.files.get('file')
+
+    doc_type = (data.get('doc_type') or '').strip().upper()
+    if not doc_type:
+        return jsonify({'error': 'doc_type is required'}), 400
+
+    title = (data.get('title') or '').strip()
+    if not title:
+        title = ISSUED_DOC_TYPE_LABELS.get(doc_type, doc_type.replace('_', ' ').title())
+
+    custom_label = (data.get('custom_label') or '').strip()
+    remarks      = (data.get('remarks') or '').strip()
+    is_visible   = str(data.get('is_visible_to_student', 'true')).lower() != 'false'
+    payload      = data.get('payload') or {}
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except Exception:
+            payload = {}
+
+    # Generate unique Certificate Serial Number if not provided
+    cert_no = (data.get('certificate_no') or '').strip()
+    if not cert_no:
+        from app.models.school import School
+        school = School.query.get(sid)
+        scode = (school.code if school and school.code else 'EDU').upper()
+        type_abbr = doc_type.replace('_CERTIFICATE', '').replace('_', '')[:4]
+        year = _current_academic_year().replace('-', '')[:4]
+        seq = IssuedDocument.query.filter_by(school_id=sid, doc_type=doc_type).count() + 1
+        cert_no = f"{scode}/{type_abbr}/{year}/{seq:04d}"
+
+    # Handle file upload if provided
+    file_url = ''
+    file_name = ''
+    file_size = None
+    if file:
+        try:
+            file_url, file_name, file_size = _upload_file_to_cloudinary(
+                file, f'eduerp/schools/{sid}/students/{student_id}/issued_documents'
+            )
+        except Exception as ex:
+            return jsonify({'error': f'File upload failed: {str(ex)}'}), 400
+
+    curr = get_current_user()
+
+    doc = IssuedDocument(
+        school_id             = sid,
+        student_id            = student_id,
+        doc_type              = doc_type,
+        custom_label          = custom_label,
+        title                 = title,
+        certificate_no        = cert_no,
+        file_url              = file_url,
+        file_name             = file_name,
+        file_size             = file_size,
+        class_id_at_issue     = student.class_id,
+        academic_year         = _current_academic_year(),
+        issued_by             = curr.id,
+        remarks               = remarks,
+        is_visible_to_student = is_visible,
+        payload_data          = json.dumps(payload),
+    )
+    db.session.add(doc)
+    db.session.commit()
+
+    return jsonify({
+        'message': f'✅ {title} issued successfully!',
+        'document': doc.to_dict(),
+        'certificate_no': cert_no,
+    }), 201
+
+
+@principal_bp.route('/documents/issued/<int:doc_id>/certificate-data', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER')
+def get_issued_certificate_data(doc_id):
+    """
+    Returns complete printable & downloadable certificate data with school branding and student info.
+    """
+    sid = _school_id()
+    doc = IssuedDocument.query.get_or_404(doc_id)
+    if doc.school_id != sid:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    student = Student.query.get(doc.student_id)
+    user = User.query.get(student.user_id) if student else None
+    from app.models.school import School
+    school = School.query.get(sid)
+
+    # Match template definition
+    template = next((t for t in CERTIFICATE_TEMPLATES if t['key'] == doc.doc_type), None)
+
+    return jsonify({
+        'document': doc.to_dict(),
+        'student': {
+            'id':             student.id,
+            'name':           user.name if user else '',
+            'admission_no':   student.admission_no or '—',
+            'roll_number':    student.roll_number or '—',
+            'dob':            student.dob.isoformat() if student.dob else None,
+            'gender':         student.gender or '—',
+            'parent_name':    student.parent_name or student.father_name or '—',
+            'father_name':    student.father_name or student.parent_name or '—',
+            'mother_name':    student.mother_name or '—',
+            'nationality':    student.nationality or 'Indian',
+            'religion':       student.religion or '—',
+            'class_name':     student.class_ref.name if student.class_ref else '',
+            'section':        student.class_ref.section if student.class_ref else '',
+            'class_display':  f"{student.class_ref.name} - {student.class_ref.section}".strip(' -') if student.class_ref else '',
+            'photo_url':      student.photo_url or None,
+            'admission_date': student.admission_date.isoformat() if student.admission_date else None,
+        },
+        'school': school.to_dict() if school else {},
+        'template': template,
+        'payload': doc.get_payload(),
+    }), 200
+
 
 
 # ═══════════════════════════════════════════════════════════════════════════
