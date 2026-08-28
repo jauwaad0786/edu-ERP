@@ -428,6 +428,74 @@ def _ensure_fee_record_columns():
                 except Exception as e:
                     print(f'[WARN] fee_records.{col}: {e}')
 
+
+def _ensure_library_columns():
+    """
+    Ensure newly added columns exist in library tables:
+    - library_fine_transactions (waived_amount, waived_at, waive_reason, collected_by, collected_at, payment_mode, receipt_no, fee_transaction_id)
+    - library_settings (damaged_book_fine_multiplier, lost_card_fine, missing_pages_fine)
+    - book_copies (condition_note, shelf_location)
+    """
+    from sqlalchemy import text, inspect
+    inspector = inspect(db.engine)
+    tables = inspector.get_table_names()
+
+    if 'library_fine_transactions' in tables:
+        existing = {c['name'] for c in inspector.get_columns('library_fine_transactions')}
+        to_add = {
+            'waived_amount':      'FLOAT DEFAULT 0.0',
+            'waived_at':          'TIMESTAMP',
+            'waive_reason':       'VARCHAR(300)',
+            'collected_by':       'INTEGER',
+            'collected_at':       'TIMESTAMP',
+            'payment_mode':       'VARCHAR(30)',
+            'receipt_no':         'VARCHAR(50)',
+            'fee_transaction_id': 'INTEGER',
+        }
+        with db.engine.connect() as conn:
+            for col, defn in to_add.items():
+                if col not in existing:
+                    try:
+                        conn.execute(text(f'ALTER TABLE library_fine_transactions ADD COLUMN {col} {defn}'))
+                        conn.commit()
+                        print(f'[OK] Added column library_fine_transactions.{col}')
+                    except Exception as e:
+                        print(f'[WARN] library_fine_transactions.{col}: {e}')
+
+    if 'library_settings' in tables:
+        existing = {c['name'] for c in inspector.get_columns('library_settings')}
+        to_add = {
+            'damaged_book_fine_multiplier': 'FLOAT DEFAULT 0.5',
+            'lost_card_fine':               'FLOAT DEFAULT 50.0',
+            'missing_pages_fine':           'FLOAT DEFAULT 100.0',
+        }
+        with db.engine.connect() as conn:
+            for col, defn in to_add.items():
+                if col not in existing:
+                    try:
+                        conn.execute(text(f'ALTER TABLE library_settings ADD COLUMN {col} {defn}'))
+                        conn.commit()
+                        print(f'[OK] Added column library_settings.{col}')
+                    except Exception as e:
+                        print(f'[WARN] library_settings.{col}: {e}')
+
+    if 'book_copies' in tables:
+        existing = {c['name'] for c in inspector.get_columns('book_copies')}
+        to_add = {
+            'condition_note': 'VARCHAR(300)',
+            'shelf_location': 'VARCHAR(50)',
+        }
+        with db.engine.connect() as conn:
+            for col, defn in to_add.items():
+                if col not in existing:
+                    try:
+                        conn.execute(text(f'ALTER TABLE book_copies ADD COLUMN {col} {defn}'))
+                        conn.commit()
+                        print(f'[OK] Added column book_copies.{col}')
+                    except Exception as e:
+                        print(f'[WARN] book_copies.{col}: {e}')
+
+
 def _ensure_marks_columns():
     """
     NEW — Result Management System.

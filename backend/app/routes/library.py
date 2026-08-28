@@ -82,6 +82,69 @@ def _gen_card_number(sid):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+#  Dashboard KPI Summary
+# ═══════════════════════════════════════════════════════════════════════════
+
+@library_bp.route('/dashboard', methods=['GET'])
+@role_required(*LIBRARY_ROLES)
+def get_dashboard():
+    sid = _school_id()
+    today = date.today()
+    first_day_of_month = date(today.year, today.month, 1)
+
+    total_books = Book.query.filter_by(school_id=sid, is_active=True).count()
+    
+    copies = BookCopy.query.filter_by(school_id=sid).all()
+    available_books = sum(1 for c in copies if c.status == 'AVAILABLE')
+    issued_books    = sum(1 for c in copies if c.status == 'ISSUED')
+    reserved_books  = sum(1 for c in copies if c.status == 'RESERVED')
+    lost_books      = sum(1 for c in copies if c.status in ('LOST', 'DAMAGED'))
+
+    overdue_books = BookIssue.query.filter(
+        BookIssue.school_id == sid,
+        BookIssue.status == 'ISSUED',
+        BookIssue.due_date < today
+    ).count()
+
+    total_members = LibraryMember.query.filter_by(school_id=sid, status='ACTIVE').count()
+
+    # Financials
+    fines = FineTransaction.query.filter_by(school_id=sid).all()
+    outstanding_fines = sum(f.outstanding_amount for f in fines if f.outstanding_amount > 0)
+    total_waived = sum(f.waived_amount or 0.0 for f in fines)
+
+    today_fine = sum(
+        f.amount_paid or 0.0 for f in fines
+        if f.collected_at and (f.collected_at.date() if hasattr(f.collected_at, 'date') else f.collected_at) == today
+    )
+
+    month_fine = sum(
+        f.amount_paid or 0.0 for f in fines
+        if f.collected_at and (f.collected_at.date() if hasattr(f.collected_at, 'date') else f.collected_at) >= first_day_of_month
+    )
+
+    new_books_month = Book.query.filter(
+        Book.school_id == sid,
+        Book.created_at >= datetime.combine(first_day_of_month, datetime.min.time())
+    ).count()
+
+    return jsonify({
+        'total_books':       total_books,
+        'available_books':   available_books,
+        'issued_books':      issued_books,
+        'overdue_books':     overdue_books,
+        'reserved_books':    reserved_books,
+        'lost_books':        lost_books,
+        'total_members':     total_members,
+        'outstanding_fines': round(outstanding_fines, 2),
+        'today_fine':        round(today_fine, 2),
+        'month_fine':        round(month_fine, 2),
+        'total_waived':      round(total_waived, 2),
+        'new_books_month':   new_books_month,
+    }), 200
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 #  Categories
 # ═══════════════════════════════════════════════════════════════════════════
 
