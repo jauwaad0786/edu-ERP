@@ -2660,6 +2660,24 @@ def delete_exam(exam_id):
         except Exception:
             pass
 
+        # Fix FK violation: ResultReturnItem → ResultSubjectStatus both reference exam_schedules
+        try:
+            from app.routes.result_management import ResultReturnItem, ResultSubjectStatus
+            # 1. Delete ResultReturnItem rows (child of ResultSubjectStatus) first
+            status_ids = [
+                row.id for row in
+                ResultSubjectStatus.query.filter_by(exam_id=exam_id)
+                .with_entities(ResultSubjectStatus.id).all()
+            ]
+            if status_ids:
+                ResultReturnItem.query.filter(
+                    ResultReturnItem.subject_status_id.in_(status_ids)
+                ).delete(synchronize_session=False)
+            # 2. Now safe to delete ResultSubjectStatus rows
+            ResultSubjectStatus.query.filter_by(exam_id=exam_id).delete(synchronize_session=False)
+        except Exception:
+            pass
+
         try:
             Marks.query.filter_by(exam_id=exam_id).delete()
         except Exception:
@@ -5085,6 +5103,54 @@ def my_teaching_assignments():
 
 # ─── Documents (School-Issued + Student-Uploaded KYC) ─────────────────────────
 
+STUDENT_DOC_TYPES = [
+    'AADHAR', 'AADHAR_STUDENT', 'AADHAR_PARENT', 'RATION_CARD',
+    'BIRTH_CERTIFICATE', 'CASTE_CERTIFICATE', 'TRANSFER_CERTIFICATE',
+    'REPORT_CARD', 'ADDRESS_PROOF', 'MEDICAL_CERTIFICATE', 'OTHER'
+]
+ISSUED_DOC_TYPES = [
+    'BONAFIDE', 'TC', 'CHARACTER_CERTIFICATE', 'FEE_RECEIPT',
+    'ID_CARD', 'MIGRATION', 'OTHER'
+]
+
+
+def _current_academic_year():
+    """Auto-detect academic year from school settings, fallback to calendar math."""
+    try:
+        from app.models.school import School
+        school = School.query.get(_school_id())
+        if school and getattr(school, 'current_session', None):
+            return school.current_session
+    except Exception:
+        pass
+    # Fallback: Apr–Mar logic
+    from datetime import date
+    today = date.today()
+    if today.month >= 4:
+        return f"{today.year}-{str(today.year + 1)[2:]}"
+    return f"{today.year - 1}-{str(today.year)[2:]}"
+
+
+def _upload_file_to_cloudinary(file, folder):
+    """Upload file to cloudinary and return (url, filename, size_bytes)."""
+    try:
+        file.seek(0, os.SEEK_END)
+        size = file.tell()
+        file.seek(0)
+    except Exception:
+        size = None
+    if size and size > 10 * 1024 * 1024:
+        raise ValueError('File size 10 MB se zyada nahi honi chahiye')
+    result = cloudinary.uploader.upload(
+        file,
+        folder=folder,
+        resource_type='auto',
+        use_filename=True,
+        unique_filename=True,
+    )
+    return result['secure_url'], file.filename, size
+
+
 @principal_bp.route('/students/<int:student_id>/documents', methods=['GET'])
 @role_required('PRINCIPAL', 'TEACHER')
 def list_student_documents(student_id):
@@ -5101,21 +5167,25 @@ def list_student_documents(student_id):
         student_id=student_id, school_id=_school_id()
     ).order_by(StudentDocument.uploaded_at.desc()).all()
 
+    current_class = ''
+    if student.class_ref:
+        current_class = f"{student.class_ref.name} - {student.class_ref.section}".strip(' -')
+
     return jsonify({
-        'issued_documents':  [d.to_dict() for d in issued],
-        'student_documents': [d.to_dict() for d in student_docs],
-        'issued_doc_types':  ISSUED_DOC_TYPES,
-        'student_doc_types': STUDENT_DOC_TYPES,
+        'issued_documents':   [d.to_dict() for d in issued],
+        'student_documents':  [d.to_dict() for d in student_docs],
+        'issued_doc_types':   ISSUED_DOC_TYPES,
+        'student_doc_types':  STUDENT_DOC_TYPES,
+        'student_current_class': current_class,
+        'student_class_id':   student.class_id,
+        'current_academic_year': _current_academic_year(),
     }), 200
 
 
 @principal_bp.route('/students/<int:student_id>/documents/issued', methods=['POST'])
 @role_required('PRINCIPAL', 'TEACHER')
 def upload_issued_document(student_id):
-    """
-    School issues an official document to a student.
-    multipart/form-data: doc_type, custom_label (required if OTHER), file
-    """
+    """School issues an official document to a student. PRINCIPAL + TEACHER can issue."""
     student = Student.query.get_or_404(student_id)
     if student.school_id != _school_id():
         return jsonify({'error': 'Unauthorized'}), 403
@@ -5128,26 +5198,36 @@ def upload_issued_document(student_id):
     if doc_type == 'OTHER' and not custom_label:
         return jsonify({'error': 'custom_label zaroori hai jab doc_type OTHER ho'}), 400
 
+    title   = (request.form.get('title') or '').strip()
+    remarks = (request.form.get('remarks') or '').strip()
+    is_visible = request.form.get('is_visible_to_student', 'true').lower() != 'false'
+
     file = request.files.get('file')
     if not file:
         return jsonify({'error': 'File nahi mila — field name: file'}), 400
 
-    result = cloudinary.uploader.upload(
-        file,
-        folder=f'eduerp/schools/{_school_id()}/students/{student_id}/issued_documents',
-        resource_type='auto',
-        use_filename=True,
-        unique_filename=True,
-    )
+    try:
+        file_url, file_name, file_size = _upload_file_to_cloudinary(
+            file, f'eduerp/schools/{_school_id()}/students/{student_id}/issued_documents'
+        )
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
 
+    curr = get_current_user()
     doc = IssuedDocument(
-        school_id    = _school_id(),
-        student_id   = student_id,
-        doc_type     = doc_type,
-        custom_label = custom_label,
-        file_url     = result['secure_url'],
-        file_name    = file.filename,
-        issued_by    = get_current_user().id,
+        school_id             = _school_id(),
+        student_id            = student_id,
+        doc_type              = doc_type,
+        custom_label          = custom_label,
+        title                 = title,
+        file_url              = file_url,
+        file_name             = file_name,
+        file_size             = file_size,
+        class_id_at_issue     = student.class_id,
+        academic_year         = _current_academic_year(),
+        issued_by             = curr.id,
+        remarks               = remarks,
+        is_visible_to_student = is_visible,
     )
     db.session.add(doc)
     db.session.commit()
@@ -5157,6 +5237,7 @@ def upload_issued_document(student_id):
 @principal_bp.route('/documents/issued/<int:doc_id>', methods=['DELETE'])
 @role_required('PRINCIPAL')
 def delete_issued_document(doc_id):
+    """Only PRINCIPAL can delete school-issued documents."""
     doc = IssuedDocument.query.get_or_404(doc_id)
     if doc.school_id != _school_id():
         return jsonify({'error': 'Unauthorized'}), 403
@@ -5168,10 +5249,7 @@ def delete_issued_document(doc_id):
 @principal_bp.route('/students/<int:student_id>/documents/student', methods=['POST'])
 @role_required('PRINCIPAL', 'TEACHER')
 def upload_student_document(student_id):
-    """
-    Student's own KYC document (Aadhar, Ration Card, etc.).
-    multipart/form-data: doc_type, custom_label (required if OTHER), file
-    """
+    """Upload a KYC document for a student. PRINCIPAL + TEACHER can upload."""
     student = Student.query.get_or_404(student_id)
     if student.school_id != _school_id():
         return jsonify({'error': 'Unauthorized'}), 403
@@ -5184,51 +5262,54 @@ def upload_student_document(student_id):
     if doc_type == 'OTHER' and not custom_label:
         return jsonify({'error': 'custom_label zaroori hai jab doc_type OTHER ho'}), 400
 
+    title   = (request.form.get('title') or '').strip()
+    remarks = (request.form.get('remarks') or '').strip()
+
     file = request.files.get('file')
     if not file:
         return jsonify({'error': 'File nahi mila — field name: file'}), 400
 
-    # Max 10MB check
     try:
-        file.seek(0, os.SEEK_END)
-        file_size = file.tell()
-        file.seek(0)
-        if file_size > 10 * 1024 * 1024:
-            return jsonify({'error': 'File size 10 MB se zyada nahi honi chahiye'}), 400
-    except Exception:
-        pass
+        file_url, file_name, file_size = _upload_file_to_cloudinary(
+            file, f'eduerp/schools/{_school_id()}/students/{student_id}/kyc_documents'
+        )
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
 
-    result = cloudinary.uploader.upload(
-        file,
-        folder=f'eduerp/schools/{_school_id()}/students/{student_id}/kyc_documents',
-        resource_type='auto',
-        use_filename=True,
-        unique_filename=True,
-    )
+    curr = get_current_user()
+    curr_role = getattr(curr.role, 'value', str(curr.role))
 
-    # Prevent duplicates: replace existing document of same doc_type if exists
-    existing_doc = StudentDocument.query.filter_by(
-        school_id=_school_id(),
-        student_id=student_id,
-        doc_type=doc_type
+    # Replace existing document of same doc_type if exists
+    existing = StudentDocument.query.filter_by(
+        school_id=_school_id(), student_id=student_id, doc_type=doc_type
     ).first()
 
-    if existing_doc:
-        existing_doc.file_url = result['secure_url']
-        existing_doc.file_name = file.filename
-        existing_doc.custom_label = custom_label
-        existing_doc.uploaded_by = get_current_user().id
-        existing_doc.uploaded_at = datetime.utcnow()
-        doc = existing_doc
+    if existing:
+        existing.file_url          = file_url
+        existing.file_name         = file_name
+        existing.file_size         = file_size
+        existing.custom_label      = custom_label
+        existing.title             = title or existing.title
+        existing.remarks           = remarks or existing.remarks
+        existing.uploaded_by       = curr.id
+        existing.uploaded_by_role  = curr_role
+        existing.uploaded_at       = datetime.utcnow()
+        doc = existing
     else:
         doc = StudentDocument(
-            school_id    = _school_id(),
-            student_id   = student_id,
-            doc_type     = doc_type,
-            custom_label = custom_label,
-            file_url     = result['secure_url'],
-            file_name    = file.filename,
-            uploaded_by  = get_current_user().id,
+            school_id          = _school_id(),
+            student_id         = student_id,
+            doc_type           = doc_type,
+            custom_label       = custom_label,
+            title              = title,
+            file_url           = file_url,
+            file_name          = file_name,
+            file_size          = file_size,
+            class_id_at_upload = student.class_id,
+            academic_year      = _current_academic_year(),
+            uploaded_by        = curr.id,
+            uploaded_by_role   = curr_role,
+            remarks            = remarks,
         )
         db.session.add(doc)
 
@@ -5237,8 +5318,9 @@ def upload_student_document(student_id):
 
 
 @principal_bp.route('/documents/student/<int:doc_id>', methods=['DELETE'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_required('PRINCIPAL')
 def delete_student_document(doc_id):
+    """Only PRINCIPAL can delete student KYC documents."""
     doc = StudentDocument.query.get_or_404(doc_id)
     if doc.school_id != _school_id():
         return jsonify({'error': 'Unauthorized'}), 403
@@ -5251,53 +5333,88 @@ def delete_student_document(doc_id):
 @role_required('PRINCIPAL', 'TEACHER')
 def list_all_students_documents():
     """
-    Search and list permanent KYC documents across all students in the school.
-    Supports query by search text (student name, roll no, admission no, parent name).
-    Documents are permanently attached to students without class restriction.
+    Master repository: all KYC + issued docs across all students.
+    Filters: search, doc_type, class_id, academic_year, category (kyc|issued|all)
     """
-    sid = _school_id()
-    search = request.args.get('search', '').strip()
+    sid             = _school_id()
+    search          = request.args.get('search', '').strip()
     doc_type_filter = request.args.get('doc_type', '').strip().upper()
+    class_id_filter = request.args.get('class_id', type=int)
+    year_filter     = request.args.get('academic_year', '').strip()
+    category        = request.args.get('category', 'all').lower()  # 'kyc' | 'issued' | 'all'
 
-    q = db.session.query(StudentDocument, Student, User)\
-        .join(Student, StudentDocument.student_id == Student.id)\
-        .join(User, Student.user_id == User.id)\
-        .filter(StudentDocument.school_id == sid)
+    items = []
 
-    if doc_type_filter:
-        q = q.filter(StudentDocument.doc_type == doc_type_filter)
-
-    if search:
-        like = f"%{search}%"
-        q = q.filter(
-            db.or_(
+    if category in ('kyc', 'all'):
+        q = db.session.query(StudentDocument, Student, User)\
+            .join(Student, StudentDocument.student_id == Student.id)\
+            .join(User, Student.user_id == User.id)\
+            .filter(StudentDocument.school_id == sid)
+        if doc_type_filter and doc_type_filter in STUDENT_DOC_TYPES:
+            q = q.filter(StudentDocument.doc_type == doc_type_filter)
+        if class_id_filter:
+            q = q.filter(Student.class_id == class_id_filter)
+        if year_filter:
+            q = q.filter(StudentDocument.academic_year == year_filter)
+        if search:
+            like = f"%{search}%"
+            q = q.filter(db.or_(
                 User.name.ilike(like),
                 Student.admission_no.ilike(like),
                 Student.roll_number.ilike(like),
                 Student.parent_name.ilike(like),
                 Student.father_name.ilike(like),
+            ))
+        for doc, student, user in q.order_by(StudentDocument.uploaded_at.desc()).limit(300).all():
+            d = doc.to_dict()
+            d['category']      = 'kyc'
+            d['student_name']  = user.name
+            d['admission_no']  = student.admission_no or '—'
+            d['roll_number']   = student.roll_number or '—'
+            d['parent_name']   = student.parent_name or student.father_name or '—'
+            d['current_class'] = (
+                f"{student.class_ref.name} - {student.class_ref.section}".strip(' -')
+                if student.class_ref else '—'
             )
-        )
+            items.append(d)
 
-    results = q.order_by(StudentDocument.uploaded_at.desc()).limit(200).all()
-
-    items = []
-    for doc, student, user in results:
-        d = doc.to_dict()
-        d['student_name']     = user.name
-        d['admission_no']     = student.admission_no or '—'
-        d['roll_number']      = student.roll_number or '—'
-        d['parent_name']      = student.parent_name or student.father_name or '—'
-        d['father_name']      = student.father_name or '—'
-        d['mother_name']      = student.mother_name or '—'
-        d['current_class']    = f"{student.class_ref.name} - {student.class_ref.section}".strip(' -') if student.class_ref else '—'
-        items.append(d)
+    if category in ('issued', 'all'):
+        q2 = db.session.query(IssuedDocument, Student, User)\
+            .join(Student, IssuedDocument.student_id == Student.id)\
+            .join(User, Student.user_id == User.id)\
+            .filter(IssuedDocument.school_id == sid)
+        if doc_type_filter and doc_type_filter in ISSUED_DOC_TYPES:
+            q2 = q2.filter(IssuedDocument.doc_type == doc_type_filter)
+        if class_id_filter:
+            q2 = q2.filter(Student.class_id == class_id_filter)
+        if year_filter:
+            q2 = q2.filter(IssuedDocument.academic_year == year_filter)
+        if search:
+            like = f"%{search}%"
+            q2 = q2.filter(db.or_(
+                User.name.ilike(like),
+                Student.admission_no.ilike(like),
+                Student.roll_number.ilike(like),
+                Student.parent_name.ilike(like),
+            ))
+        for doc, student, user in q2.order_by(IssuedDocument.issued_at.desc()).limit(300).all():
+            d = doc.to_dict()
+            d['category']      = 'issued'
+            d['student_name']  = user.name
+            d['admission_no']  = student.admission_no or '—'
+            d['roll_number']   = student.roll_number or '—'
+            d['parent_name']   = student.parent_name or student.father_name or '—'
+            d['current_class'] = (
+                f"{student.class_ref.name} - {student.class_ref.section}".strip(' -')
+                if student.class_ref else '—'
+            )
+            items.append(d)
 
     return jsonify({'documents': items, 'total': len(items)}), 200
 
-
 # ═══════════════════════════════════════════════════════════════════════════
 #  DATA HEALTH — Receipt Reconciliation
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Yeh permanent maintenance tool hai — production mein safe hai, idempotent hai
 # (dobara chalane se kuch nahi badalta agar already sahi ho). Purpose: kabhi

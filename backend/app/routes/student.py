@@ -2,10 +2,12 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import get_jwt_identity
 from sqlalchemy import func
 from app import db
-from app.models.academic import Student, Attendance, Marks
+from app.models.academic import Student, Attendance, Marks, Class
 from app.models.financial import FeeRecord, ExamSchedule
+from app.models.documents import StudentDocument, IssuedDocument
 from app.utils.decorators import role_required, get_current_user
 from app.routes.marks import _grade
+
 
 student_bp = Blueprint('student', __name__)
 
@@ -188,3 +190,157 @@ def my_fees():
         'balance': total_due - total_paid,
         'records': [r.to_dict() for r in records]
     }), 200
+
+
+# ─── Student / Parent: My Documents ────────────────────────────────────────────
+
+@student_bp.route('/documents', methods=['GET'])
+@role_required('STUDENT', 'PARENT')
+def my_documents():
+    """
+    Student sees their own KYC documents + school-issued documents.
+    Parent sees documents of their linked child(ren).
+    """
+    user = get_current_user()
+    role = getattr(user.role, 'value', str(user.role))
+
+    if role == 'STUDENT':
+        student = Student.query.filter_by(user_id=user.id).first()
+        if not student:
+            return jsonify({'error': 'Student profile not found'}), 404
+        students = [student]
+    else:  # PARENT
+        student_id = request.args.get('student_id', type=int)
+        if student_id:
+            student = Student.query.get(student_id)
+            if not student or (
+                student.parent_email != user.email and
+                student.parent_phone != user.phone and
+                student.user_id != user.id
+            ):
+                return jsonify({'error': 'Unauthorized'}), 403
+            students = [student]
+        else:
+            students = Student.query.filter(
+                (Student.parent_email == user.email) |
+                (Student.parent_phone == user.phone) |
+                (Student.user_id == user.id)
+            ).all()
+
+    result = []
+    for student in students:
+        kyc_docs = StudentDocument.query.filter_by(student_id=student.id).order_by(StudentDocument.uploaded_at.desc()).all()
+        issued_docs = IssuedDocument.query.filter_by(
+            student_id=student.id, is_visible_to_student=True
+        ).order_by(IssuedDocument.issued_at.desc()).all()
+
+        current_class = ''
+        if student.class_ref:
+            current_class = f"{student.class_ref.name} - {student.class_ref.section}".strip(' -')
+
+        result.append({
+            'student_id':        student.id,
+            'student_name':      student.user.name if student.user else '',
+            'current_class':     current_class,
+            'kyc_documents':     [d.to_dict() for d in kyc_docs],
+            'issued_documents':  [d.to_dict() for d in issued_docs],
+        })
+
+    return jsonify({'data': result, 'count': len(result)}), 200
+
+
+@student_bp.route('/documents/upload', methods=['POST'])
+@role_required('STUDENT')
+def upload_my_document():
+    """Student uploads their own KYC document (Aadhaar, birth cert, etc.)."""
+    import os, cloudinary.uploader
+    from datetime import datetime
+
+    user = get_current_user()
+    student = Student.query.filter_by(user_id=user.id).first()
+    if not student:
+        return jsonify({'error': 'Student profile not found'}), 404
+
+    STUDENT_DOC_TYPES = [
+        'AADHAR', 'AADHAR_STUDENT', 'AADHAR_PARENT', 'RATION_CARD',
+        'BIRTH_CERTIFICATE', 'CASTE_CERTIFICATE', 'TRANSFER_CERTIFICATE',
+        'REPORT_CARD', 'ADDRESS_PROOF', 'MEDICAL_CERTIFICATE', 'OTHER'
+    ]
+
+    doc_type = (request.form.get('doc_type') or '').strip().upper()
+    if doc_type not in STUDENT_DOC_TYPES:
+        return jsonify({'error': f'doc_type must be one of {STUDENT_DOC_TYPES}'}), 400
+
+    custom_label = (request.form.get('custom_label') or '').strip()
+    if doc_type == 'OTHER' and not custom_label:
+        return jsonify({'error': 'custom_label required for OTHER type'}), 400
+
+    title   = (request.form.get('title') or '').strip()
+    remarks = (request.form.get('remarks') or '').strip()
+
+    file = request.files.get('file')
+    if not file:
+        return jsonify({'error': 'File required — field name: file'}), 400
+
+    # 10 MB limit
+    try:
+        file.seek(0, os.SEEK_END)
+        size = file.tell()
+        file.seek(0)
+        if size > 10 * 1024 * 1024:
+            return jsonify({'error': 'File size must be under 10 MB'}), 400
+    except Exception:
+        size = None
+
+    result = cloudinary.uploader.upload(
+        file,
+        folder=f'eduerp/schools/{student.school_id}/students/{student.id}/kyc_self_uploaded',
+        resource_type='auto',
+        use_filename=True,
+        unique_filename=True,
+    )
+
+    # Auto-detect academic year
+    from datetime import date
+    today = date.today()
+    academic_year = (f"{today.year}-{str(today.year+1)[2:]}" if today.month >= 4
+                     else f"{today.year-1}-{str(today.year)[2:]}")
+
+    # Replace if same doc_type already exists
+    existing = StudentDocument.query.filter_by(
+        school_id=student.school_id,
+        student_id=student.id,
+        doc_type=doc_type
+    ).first()
+
+    if existing:
+        existing.file_url        = result['secure_url']
+        existing.file_name       = file.filename
+        existing.file_size       = size
+        existing.custom_label    = custom_label
+        existing.title           = title or existing.title
+        existing.remarks         = remarks or existing.remarks
+        existing.uploaded_by     = user.id
+        existing.uploaded_by_role = 'STUDENT'
+        existing.uploaded_at     = datetime.utcnow()
+        doc = existing
+    else:
+        doc = StudentDocument(
+            school_id          = student.school_id,
+            student_id         = student.id,
+            doc_type           = doc_type,
+            custom_label       = custom_label,
+            title              = title,
+            file_url           = result['secure_url'],
+            file_name          = file.filename,
+            file_size          = size,
+            class_id_at_upload = student.class_id,
+            academic_year      = academic_year,
+            uploaded_by        = user.id,
+            uploaded_by_role   = 'STUDENT',
+            remarks            = remarks,
+        )
+        db.session.add(doc)
+
+    db.session.commit()
+    return jsonify(doc.to_dict()), 201

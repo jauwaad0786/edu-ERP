@@ -225,6 +225,7 @@ const ROLE_MENUS = {
         { icon: 'ti-pencil',          label: 'Marks Entry',       path: '/marks' },
         { icon: 'ti-checklist',       label: 'Result Submission', path: '/mark-entry' },
         { icon: 'ti-upload',          label: 'Upload Notes',      path: '/notes' },
+        { icon: 'ti-file-text',       label: 'Documents',         path: '/documents' },
         { icon: 'ti-user-graduate',   label: 'My Students',       path: '/students' },
       ],
     },
@@ -367,6 +368,7 @@ const ROLE_MENUS = {
         { icon: 'ti-clipboard-check', label: 'Attendance',  path: '/attendance' },
         { icon: 'ti-file-certificate',label: 'Result Card', path: '/result-card' },
         { icon: 'ti-receipt',         label: 'Fees',        path: '/fees' },
+        { icon: 'ti-file-text',       label: 'Documents',   path: '/documents' },
         { icon: 'ti-notes',           label: 'Notes',       path: '/notes' },
         { icon: 'ti-book',            label: 'Library',     path: '/library/books' },
         { icon: 'ti-ticket',          label: 'Admit Card',  path: '/admit-card' },
@@ -393,6 +395,7 @@ const ROLE_MENUS = {
         { icon: 'ti-clipboard-check', label: 'Attendance',  path: '/attendance' },
         { icon: 'ti-file-certificate',label: 'Report Card', path: '/result-card' },
         { icon: 'ti-receipt',         label: 'Fees',        path: '/fees' },
+        { icon: 'ti-file-text',       label: 'Documents',   path: '/documents' },
       ],
     },
     {
