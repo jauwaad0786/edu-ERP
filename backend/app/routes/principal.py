@@ -9,6 +9,7 @@ from app.models.academic import (
 from app.models.financial import (
     FeeRecord, FeeStructure, FeeTransaction, FeeGenerationBatch,
     ExamSchedule, ExamTimetable, ExamClass, ExamSubject, ExamTeacherDelegation, ResultVersion,
+    ResultLock, ResultAuditLog,
     Holiday, Timetable, TimetablePeriod,
     FeeReceiptGroup,
 )
@@ -2652,31 +2653,34 @@ def delete_exam(exam_id):
         return jsonify({'error': 'Published exam delete nahi ho sakta. Pehle reopen/unpublish karo ya delete confirm karo.'}), 400
 
     try:
-        # Cascade delete child relationships safely
-        ExamTimetable.query.filter_by(exam_id=exam_id).delete()
-        ExamClass.query.filter_by(exam_id=exam_id).delete()
-        ExamSubject.query.filter_by(exam_id=exam_id).delete()
-
+        # 1. Delete Marks Audit Logs referencing this exam
         try:
-            ExamTeacherDelegation.query.filter_by(exam_id=exam_id).delete()
+            from app.routes.result_management import MarksAuditLog
+            MarksAuditLog.query.filter_by(exam_id=exam_id).delete(synchronize_session=False)
         except Exception:
             pass
 
+        # 2. Delete Result Audit Logs
         try:
-            ResultVersion.query.filter_by(exam_id=exam_id).delete()
+            ResultAuditLog.query.filter_by(exam_id=exam_id).delete(synchronize_session=False)
         except Exception:
             pass
 
+        # 3. Delete Result Locks
         try:
-            from app.routes.result_management import ClassResultPublication
-            ClassResultPublication.query.filter_by(exam_id=exam_id).delete()
+            ResultLock.query.filter_by(exam_id=exam_id).delete(synchronize_session=False)
         except Exception:
             pass
 
-        # Fix FK violation: ResultReturnItem → ResultSubjectStatus both reference exam_schedules
+        # 4. Delete Result Versions
+        try:
+            ResultVersion.query.filter_by(exam_id=exam_id).delete(synchronize_session=False)
+        except Exception:
+            pass
+
+        # 5. Delete Result Return Items & Result Subject Status
         try:
             from app.routes.result_management import ResultReturnItem, ResultSubjectStatus
-            # 1. Delete ResultReturnItem rows (child of ResultSubjectStatus) first
             status_ids = [
                 row.id for row in
                 ResultSubjectStatus.query.filter_by(exam_id=exam_id)
@@ -2686,15 +2690,48 @@ def delete_exam(exam_id):
                 ResultReturnItem.query.filter(
                     ResultReturnItem.subject_status_id.in_(status_ids)
                 ).delete(synchronize_session=False)
-            # 2. Now safe to delete ResultSubjectStatus rows
             ResultSubjectStatus.query.filter_by(exam_id=exam_id).delete(synchronize_session=False)
         except Exception:
             pass
 
+        # 6. Delete Class Result Publication
         try:
-            Marks.query.filter_by(exam_id=exam_id).delete()
+            from app.routes.result_management import ClassResultPublication
+            ClassResultPublication.query.filter_by(exam_id=exam_id).delete(synchronize_session=False)
         except Exception:
             pass
+
+        # 7. Delete Marks
+        try:
+            Marks.query.filter_by(exam_id=exam_id).delete(synchronize_session=False)
+        except Exception:
+            pass
+
+        # 8. Delete Exam Teacher Delegations
+        try:
+            ExamTeacherDelegation.query.filter_by(exam_id=exam_id).delete(synchronize_session=False)
+        except Exception:
+            pass
+
+        # 9. Delete Timetable, Classes, Subjects
+        try:
+            ExamTimetable.query.filter_by(exam_id=exam_id).delete(synchronize_session=False)
+            ExamClass.query.filter_by(exam_id=exam_id).delete(synchronize_session=False)
+            ExamSubject.query.filter_by(exam_id=exam_id).delete(synchronize_session=False)
+        except Exception:
+            pass
+
+        # 10. Fallback raw SQL cleanup in case any extra FK references exam_id
+        from sqlalchemy import text
+        for table in (
+            'marks_audit_logs', 'result_audit_logs', 'result_locks', 'result_versions',
+            'result_return_items', 'result_subject_status', 'class_result_publication',
+            'marks', 'exam_teacher_delegations', 'exam_timetable', 'exam_classes', 'exam_subjects'
+        ):
+            try:
+                db.session.execute(text(f"DELETE FROM {table} WHERE exam_id = :eid"), {'eid': exam_id})
+            except Exception:
+                pass
 
         db.session.delete(exam)
         db.session.commit()
