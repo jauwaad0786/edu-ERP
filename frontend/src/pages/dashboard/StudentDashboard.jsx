@@ -829,6 +829,10 @@ export default function StudentDashboard() {
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          )}
+
           {/* ══ TAB: MY LIBRARY ══ */}
           {tab === 'library' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
