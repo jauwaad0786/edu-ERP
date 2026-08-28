@@ -5849,14 +5849,55 @@ def get_issue_documents_workspace():
             'issued_types':      list(issued_types),
         })
 
+    curr_yr = _current_academic_year()
+    next_cert_numbers = {
+        t['key']: _generate_next_certificate_no(sid, t['key'], curr_yr)
+        for t in CERTIFICATE_TEMPLATES
+    }
+
     return jsonify({
-        'students':        student_items,
-        'total':           len(student_items),
-        'school':          school_info,
-        'classes':         classes_list,
-        'templates':       CERTIFICATE_TEMPLATES,
-        'current_session': _current_academic_year(),
+        'students':          student_items,
+        'total':             len(student_items),
+        'school':            school_info,
+        'classes':           classes_list,
+        'templates':         CERTIFICATE_TEMPLATES,
+        'current_session':   curr_yr,
+        'next_cert_numbers': next_cert_numbers,
     }), 200
+
+
+
+def _generate_next_certificate_no(school_id, doc_type, academic_year=None):
+    """
+    Generate next auto-incrementing certificate number strictly scoped to school_id (multi-tenant).
+    Format: {SCHOOL_CODE}/{TYPE_ABBR}/{YEAR}/{SEQ:04d}
+    Monotonically increments based on highest sequence number issued so far, preventing duplicates.
+    """
+    from app.models.school import School
+    school = School.query.get(school_id)
+    scode = (school.code if school and school.code else f"{school_id:03d}").upper()
+    type_abbr = doc_type.replace('_CERTIFICATE', '').replace('_', '')[:4]
+    year = (academic_year or _current_academic_year() or '2026').replace('-', '')[:4]
+    prefix = f"{scode}/{type_abbr}/{year}/"
+
+    existing_docs = IssuedDocument.query.filter(
+        IssuedDocument.school_id == school_id,
+        IssuedDocument.certificate_no.like(f"{prefix}%")
+    ).all()
+
+    max_num = 0
+    for d in existing_docs:
+        if d.certificate_no and d.certificate_no.startswith(prefix):
+            try:
+                num_str = d.certificate_no[len(prefix):]
+                num = int(num_str)
+                if num > max_num:
+                    max_num = num
+            except Exception:
+                pass
+
+    next_seq = max_num + 1
+    return f"{prefix}{next_seq:04d}"
 
 
 @principal_bp.route('/students/<int:student_id>/issue-certificate', methods=['POST'])
@@ -5902,16 +5943,8 @@ def issue_student_certificate(student_id):
         except Exception:
             payload = {}
 
-    # Generate unique Certificate Serial Number if not provided
-    cert_no = (data.get('certificate_no') or '').strip()
-    if not cert_no:
-        from app.models.school import School
-        school = School.query.get(sid)
-        scode = (school.code if school and school.code else 'EDU').upper()
-        type_abbr = doc_type.replace('_CERTIFICATE', '').replace('_', '')[:4]
-        year = _current_academic_year().replace('-', '')[:4]
-        seq = IssuedDocument.query.filter_by(school_id=sid, doc_type=doc_type).count() + 1
-        cert_no = f"{scode}/{type_abbr}/{year}/{seq:04d}"
+    academic_year = _current_academic_year()
+    cert_no = _generate_next_certificate_no(sid, doc_type, academic_year)
 
     # Handle file upload if provided
     file_url = ''
@@ -5938,7 +5971,7 @@ def issue_student_certificate(student_id):
         file_name             = file_name,
         file_size             = file_size,
         class_id_at_issue     = student.class_id,
-        academic_year         = _current_academic_year(),
+        academic_year         = academic_year,
         issued_by             = curr.id,
         remarks               = remarks,
         is_visible_to_student = is_visible,
@@ -5952,6 +5985,7 @@ def issue_student_certificate(student_id):
         'document': doc.to_dict(),
         'certificate_no': cert_no,
     }), 201
+
 
 
 @principal_bp.route('/documents/issued/<int:doc_id>/certificate-data', methods=['GET'])

@@ -58,7 +58,6 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
   const [certForm, setCertForm] = useState({});
   const [certRemarks, setCertRemarks] = useState("");
   const [certVisibleToStudent, setCertVisibleToStudent] = useState(true);
-  const [certManualSerial, setCertManualSerial] = useState("");
   const [certAttachedFile, setCertAttachedFile] = useState(null);
   const [issuingCert, setIssuingCert] = useState(false);
 
@@ -196,13 +195,20 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
     return tList.find(t => t.key === activeTemplateKey) || tList[0] || null;
   }, [workspaceData, activeTemplateKey]);
 
+  // Auto-calculated next certificate number for current template
+  const currentNextCertNo = useMemo(() => {
+    if (!workspaceData) return "";
+    const map = workspaceData.next_cert_numbers || {};
+    return map[activeTemplateKey] || `${(workspaceData.school?.code || '001').toUpperCase()}/${activeTemplateKey.slice(0, 4)}/${(workspaceData.current_session || '2026').slice(0, 4)}/0001`;
+  }, [workspaceData, activeTemplateKey]);
+
   // Set default form values when active template changes or student changes
   useEffect(() => {
     if (currentTemplate && selectedStudent) {
       const init = {};
       (currentTemplate.default_fields || []).forEach(f => {
         if (f.key === "academic_session") {
-          init[f.key] = workspaceData?.current_session || "2024-25";
+          init[f.key] = workspaceData?.current_session || "2026";
         } else if (f.key === "last_class_studied") {
           init[f.key] = selectedStudent.class_display || selectedStudent.class_name || "";
         } else {
@@ -210,7 +216,6 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
         }
       });
       setCertForm(init);
-      setCertManualSerial("");
     }
   }, [currentTemplate, selectedStudent, workspaceData]);
 
@@ -225,7 +230,6 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
       const payload = {
         doc_type: currentTemplate.key,
         title: currentTemplate.title,
-        certificate_no: certManualSerial.trim(),
         remarks: certRemarks.trim(),
         is_visible_to_student: certVisibleToStudent,
         payload: certForm,
@@ -236,7 +240,6 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
         const fd = new FormData();
         fd.append("doc_type", currentTemplate.key);
         fd.append("title", currentTemplate.title);
-        fd.append("certificate_no", certManualSerial.trim());
         fd.append("remarks", certRemarks.trim());
         fd.append("is_visible_to_student", certVisibleToStudent ? "true" : "false");
         fd.append("payload", JSON.stringify(certForm));
@@ -367,12 +370,32 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
 
   const school = workspaceData?.school || {};
 
+  // Formatted Parent Names (Mr. & Mrs.)
+  const fatherText = selectedStudent?.father_name || selectedStudent?.parent_name;
+  const motherText = selectedStudent?.mother_name && selectedStudent.mother_name !== "—" ? selectedStudent.mother_name : "";
+
   return (
     <div className="app-shell">
-      {/* PRINT CSS STYLES */}
+      {/* ─── EXACT 1-PAGE A4 LANDSCAPE PRINT CSS ─────────────────────────────── */}
       <style>{`
+        @page {
+          size: 297mm 210mm;
+          margin: 0mm;
+        }
         @media print {
-          body * { visibility: hidden !important; }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 297mm !important;
+            height: 210mm !important;
+            overflow: hidden !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            background: #ffffff !important;
+          }
+          body * {
+            visibility: hidden !important;
+          }
           #printable-certificate-container, #printable-certificate-container * {
             visibility: visible !important;
           }
@@ -380,18 +403,23 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
             position: fixed !important;
             left: 0 !important;
             top: 0 !important;
-            width: 100vw !important;
-            height: 100vh !important;
+            width: 297mm !important;
+            height: 210mm !important;
+            max-width: 297mm !important;
+            max-height: 210mm !important;
+            box-sizing: border-box !important;
             margin: 0 !important;
-            padding: 20px !important;
-            background: #fff !important;
+            padding: 12mm 16mm 8mm 16mm !important;
+            page-break-after: avoid !important;
+            page-break-before: avoid !important;
+            page-break-inside: avoid !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: space-between !important;
+            background: #ffffff !important;
+            border: 6px double #0b3b7b !important;
             box-shadow: none !important;
-            border: none !important;
-            z-index: 999999 !important;
-          }
-          @page {
-            size: A4 landscape;
-            margin: 10mm;
+            z-index: 9999999 !important;
           }
         }
       `}</style>
@@ -683,13 +711,13 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
                             <span>🎂 DOB: <strong>{fmtDate(selectedStudent.dob)}</strong></span>
                           </div>
                           <div style={{ fontSize: 11.5, color: "#e2e8f0", marginTop: 3 }}>
-                            Parents: <strong>{selectedStudent.father_name || selectedStudent.parent_name}</strong> &nbsp;|&nbsp; Mother: <strong>{selectedStudent.mother_name || "—"}</strong>
+                            Parents: <strong>Mr. {fatherText}</strong> {motherText && <> &nbsp;|&nbsp; Mother: <strong>Mrs. {motherText}</strong></>}
                           </div>
                         </div>
 
                         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
                           <span style={{ background: "rgba(255,255,255,0.2)", padding: "4px 12px", borderRadius: 20, fontSize: 11.5, fontWeight: 700 }}>
-                            Session: {workspaceData?.current_session || "2024-25"}
+                            Session: {workspaceData?.current_session || "2026"}
                           </span>
                           <span style={{ background: "rgba(255,255,255,0.15)", padding: "3px 10px", borderRadius: 20, fontSize: 11 }}>
                             🏆 {selectedStudent.issued_count || 0} Certificates on Record
@@ -776,6 +804,9 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
                                   Fill specific parameters below — the live certificate preview updates instantly.
                                 </span>
                               </div>
+                              <div style={{ background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: 8, padding: "6px 12px", fontSize: 12, color: "#0b3b7b", fontWeight: 800 }}>
+                                Auto Ref: <code>{currentNextCertNo}</code>
+                              </div>
                             </div>
 
                             <form onSubmit={handleIssueCertificate}>
@@ -819,19 +850,18 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
 
                               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14, paddingTop: 8, borderTop: "1px dashed #e2e8f0" }}>
                                 <div>
-                                  <label style={S.label}>Certificate Ref / Serial No. (Optional)</label>
+                                  <label style={S.label}>Certificate Number (Auto-Incremented per School)</label>
                                   <input
-                                    style={S.input}
-                                    placeholder="Leave blank for auto-generated number"
-                                    value={certManualSerial}
-                                    onChange={e => setCertManualSerial(e.target.value)}
+                                    style={{ ...S.input, background: "#f8fafc", fontWeight: 800, color: "#0b3b7b", cursor: "not-allowed" }}
+                                    value={currentNextCertNo}
+                                    readOnly
                                   />
                                 </div>
                                 <div>
                                   <label style={S.label}>Internal Remarks / Note</label>
                                   <input
                                     style={S.input}
-                                    placeholder="e.g. Issued as duplicate / On parent request"
+                                    placeholder="e.g. Issued on parent request / Relocation"
                                     value={certRemarks}
                                     onChange={e => setCertRemarks(e.target.value)}
                                   />
@@ -856,7 +886,7 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
                                     style={{ ...S.btnOutline, background: "#f8fafc" }}
                                     title="Print Certificate"
                                   >
-                                    <i className="ti ti-printer" /> Print Preview
+                                    <i className="ti ti-printer" /> Print Preview (1 Page A4)
                                   </button>
                                   <button
                                     type="submit"
@@ -873,14 +903,14 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
 
                         {/* 4. LIVE CERTIFICATE PREVIEW CONTAINER */}
                         {currentTemplate && (
-                          <div style={{ ...S.card, padding: "20px 24px", background: "#f1f5f9" }}>
+                          <div style={{ ...S.card, padding: "20px 24px", background: "#e2e8f0" }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
                               <span style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", textTransform: "uppercase", letterSpacing: 0.5 }}>
-                                🖨️ Live Certificate Print Preview
+                                🖨️ Official Certificate Live Canvas (Exact 1-Page A4)
                               </span>
-                              <span style={{ fontSize: 11.5, color: "#64748b" }}>
-                                A4 Landscape Format with Official School Seal & Signatures
-                              </span>
+                              <button onClick={handlePrintCertificate} style={{ ...S.btnPrimary, padding: "6px 14px", fontSize: 12 }}>
+                                <i className="ti ti-printer" /> Print / Save as PDF
+                              </button>
                             </div>
 
                             {/* THE PRINTABLE CERTIFICATE FRAME */}
@@ -891,12 +921,16 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
                                 background: "#ffffff",
                                 border: `6px double ${currentTemplate.theme_color || '#0b3b7b'}`,
                                 borderRadius: 12,
-                                padding: "28px 36px",
-                                boxShadow: "0 10px 25px -5px rgba(0,0,0,0.1)",
+                                padding: "28px 36px 14px 36px",
+                                boxShadow: "0 10px 25px -5px rgba(0,0,0,0.15)",
                                 color: "#0f172a",
                                 fontFamily: "'Inter', sans-serif",
                                 position: "relative",
                                 overflow: "hidden",
+                                minHeight: "520px",
+                                display: "flex",
+                                flexDirection: "column",
+                                justifyContent: "space-between",
                               }}
                             >
                               {/* Background Watermark Seal */}
@@ -905,8 +939,8 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
                                 left: "50%",
                                 top: "50%",
                                 transform: "translate(-50%, -50%)",
-                                opacity: 0.04,
-                                fontSize: 240,
+                                opacity: 0.035,
+                                fontSize: 260,
                                 color: currentTemplate.theme_color || "#0b3b7b",
                                 pointerEvents: "none",
                                 zIndex: 0,
@@ -914,190 +948,228 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
                                 <i className="ti ti-school" />
                               </div>
 
-                              <div style={{ position: "relative", zIndex: 1 }}>
-                                {/* Top Certificate Header */}
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `2px solid ${currentTemplate.theme_color || '#0b3b7b'}`, paddingBottom: 14, marginBottom: 16 }}>
-                                  <div style={{ width: 64, height: 64, flexShrink: 0 }}>
-                                    {school.logo_url ? (
-                                      <img src={school.logo_url} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
-                                    ) : (
-                                      <div style={{ width: 64, height: 64, borderRadius: 10, background: currentTemplate.theme_color || "#0b3b7b", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 900 }}>
-                                        {school.name?.charAt(0) || "S"}
+                              <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", height: "100%", justifyContent: "space-between" }}>
+                                
+                                <div>
+                                  {/* Top Certificate Header */}
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `2.5px solid ${currentTemplate.theme_color || '#0b3b7b'}`, paddingBottom: 14, marginBottom: 14 }}>
+                                    <div style={{ width: 72, height: 72, flexShrink: 0 }}>
+                                      {school.logo_url ? (
+                                        <img src={school.logo_url} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                                      ) : (
+                                        <div style={{ width: 72, height: 72, borderRadius: 12, background: currentTemplate.theme_color || "#0b3b7b", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, fontWeight: 900 }}>
+                                          {school.name?.charAt(0) || "S"}
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    <div style={{ textAlign: "center", flex: 1, padding: "0 16px" }}>
+                                      <h1 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: currentTemplate.theme_color || "#0b3b7b", textTransform: "uppercase", letterSpacing: 1.2 }}>
+                                        {school.name || "ABC PUBLIC SCHOOL"}
+                                      </h1>
+                                      <div style={{ fontSize: 13, fontWeight: 600, color: "#334155", marginTop: 4 }}>
+                                        {school.address || "Sector 15, City Campus"} {school.city ? `, ${school.city}` : ""} {school.state ? `(${school.state})` : ""} {school.pincode ? `- ${school.pincode}` : ""}
+                                      </div>
+                                      <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", marginTop: 3 }}>
+                                        {school.code ? `School Code: ${school.code}` : "Affiliated to State / CBSE Board"} &nbsp;·&nbsp; Academic Session: {workspaceData?.current_session || "2026"}
+                                      </div>
+                                    </div>
+
+                                    <div style={{ width: 72, height: 72, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                      <div style={{ width: 62, height: 62, borderRadius: "50%", border: `2.5px dashed ${currentTemplate.accent_color || '#3b82f6'}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, color: currentTemplate.theme_color || "#0b3b7b" }}>
+                                        <i className={`ti ${currentTemplate.icon || 'ti-award'}`} />
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Certificate Title Banner */}
+                                  <div style={{ textAlign: "center", margin: "14px 0 10px" }}>
+                                    <div style={{
+                                      display: "inline-block",
+                                      padding: "7px 32px",
+                                      background: currentTemplate.theme_color || "#0b3b7b",
+                                      color: "#ffffff",
+                                      fontWeight: 900,
+                                      fontSize: 18,
+                                      letterSpacing: 2,
+                                      borderRadius: 4,
+                                      textTransform: "uppercase"
+                                    }}>
+                                      {currentTemplate.title}
+                                    </div>
+                                    <div style={{ fontSize: 12.5, fontWeight: 800, color: "#475569", marginTop: 6, fontFamily: "monospace" }}>
+                                      Certificate Ref: <strong>{currentNextCertNo}</strong>
+                                    </div>
+                                  </div>
+
+                                  {/* Personalized Certificate Body Content */}
+                                  <div style={{ fontSize: 15.5, lineHeight: 2.1, color: "#1e293b", margin: "16px 0", textAlign: "justify", fontWeight: 500 }}>
+                                    This is to certify that &nbsp;
+                                    <strong style={{ fontSize: 17, color: currentTemplate.theme_color || "#0b3b7b", borderBottom: "2px solid #64748b", padding: "0 8px", fontWeight: 900 }}>
+                                      {selectedStudent.name}
+                                    </strong>,&nbsp;
+                                    Son/Daughter of &nbsp;
+                                    <strong style={{ borderBottom: "2px solid #64748b", padding: "0 8px", fontWeight: 800 }}>
+                                      Mr. {fatherText}
+                                    </strong>
+                                    {motherText && (
+                                      <>
+                                        &nbsp;and &nbsp;
+                                        <strong style={{ borderBottom: "2px solid #64748b", padding: "0 8px", fontWeight: 800 }}>
+                                          Mrs. {motherText}
+                                        </strong>
+                                      </>
+                                    )}
+                                    ,&nbsp;bearing Admission No. &nbsp;
+                                    <strong style={{ borderBottom: "2px solid #64748b", padding: "0 6px", fontWeight: 800 }}>
+                                      {selectedStudent.admission_no}
+                                    </strong>&nbsp;
+                                    and Roll No. &nbsp;
+                                    <strong style={{ borderBottom: "2px solid #64748b", padding: "0 6px", fontWeight: 800 }}>
+                                      {selectedStudent.roll_number}
+                                    </strong>,&nbsp;
+                                    is / was a bona fide student of Class & Section &nbsp;
+                                    <strong style={{ borderBottom: "2px solid #64748b", padding: "0 8px", fontWeight: 800 }}>
+                                      {selectedStudent.class_display || selectedStudent.class_name}
+                                    </strong>&nbsp;
+                                    during the academic session &nbsp;
+                                    <strong style={{ borderBottom: "2px solid #64748b", padding: "0 6px", fontWeight: 800 }}>
+                                      {certForm.academic_session || workspaceData?.current_session || "2026"}
+                                    </strong>.
+
+                                    {/* Rich Template Specific Body Statements */}
+                                    {currentTemplate.key === "BEST_STUDENT" && (
+                                      <div style={{ marginTop: 10 }}>
+                                        In recognition of exemplary academic brilliance, steadfast discipline, outstanding moral character, and distinguished leadership across all curricular and co-curricular activities, he/she is hereby honored with the prestigious <strong>{certForm.award_title || "Best Student of the Year Award"}</strong>. {certForm.citation || "His/Her unwavering dedication, integrity, and positive influence set a benchmark of excellence for the entire institution."}
+                                      </div>
+                                    )}
+
+                                    {currentTemplate.key === "TRANSFER_CERTIFICATE" && (
+                                      <div style={{ marginTop: 10 }}>
+                                        His/Her date of birth according to the Admission Register is <strong>{fmtDate(selectedStudent.dob)}</strong>.
+                                        The student is leaving the school on account of <strong>{certForm.reason_for_leaving || "family relocation"}</strong>.
+                                        All school dues have been <strong>{certForm.dues_paid || "cleared"}</strong>. General conduct has been <strong>{certForm.conduct || "Good"}</strong>. Total attendance record: <strong>{certForm.attended_meetings || "195"}</strong> days present out of <strong>{certForm.total_meetings || "210"}</strong> working days. We wish him/her all the best in future pursuits.
+                                      </div>
+                                    )}
+
+                                    {currentTemplate.key === "SCHOOL_LEAVING_CERTIFICATE" && (
+                                      <div style={{ marginTop: 10 }}>
+                                        Date of Birth: <strong>{fmtDate(selectedStudent.dob)}</strong>.
+                                        Reason for leaving: <strong>{certForm.reason_for_leaving || "On parent's own accord"}</strong>.
+                                        Promotion status: <strong>{certForm.promoted_to_next || "Yes, Promoted to next higher class"}</strong>.
+                                        General conduct: <strong>{certForm.conduct || "Good"}</strong>. Dues status: <strong>{certForm.dues_paid || "All dues cleared"}</strong>. We extend our warmest wishes for a bright future.
+                                      </div>
+                                    )}
+
+                                    {currentTemplate.key === "SPORTS_ACHIEVEMENT" && (
+                                      <div style={{ marginTop: 10 }}>
+                                        In proud recognition of outstanding athletic prowess, sportsmanship, and commendable performance in the discipline of <strong>{certForm.sport_name || "Athletics"}</strong> at the <strong>{certForm.event_name || "Annual Inter-School Sports Meet"}</strong> where he/she secured <strong>{certForm.position_rank || "First Position (Gold Medal)"}</strong>. The school administration commends his/her dedication and sportsmanship.
+                                      </div>
+                                    )}
+
+                                    {currentTemplate.key === "ACADEMIC_EXCELLENCE" && (
+                                      <div style={{ marginTop: 10 }}>
+                                        In commendation of extraordinary academic excellence, scholastic diligence, and highest honors. Having achieved <strong>{certForm.achievement_title || "Top Rank"}</strong> with score/rank <strong>{certForm.position_rank || "First Rank"}</strong> in {certForm.subject_name || "Overall Academics"}, the school proudly confers this Certificate of Academic Merit.
+                                      </div>
+                                    )}
+
+                                    {currentTemplate.key === "COMPETITION_CERTIFICATE" && (
+                                      <div style={{ marginTop: 10 }}>
+                                        He/She actively participated in <strong>{certForm.competition_name || "Inter-House Science Exhibition"}</strong> organized by <strong>{certForm.organized_by || "Department of Co-Curricular Activities"}</strong> and secured <strong>{certForm.position_rank || "Winner - First Prize"}</strong>.
+                                      </div>
+                                    )}
+
+                                    {currentTemplate.key === "CHARACTER_CERTIFICATE" && (
+                                      <div style={{ marginTop: 10 }}>
+                                        During his/her tenure at this school, he/she consistently bore an <strong>{certForm.conduct || "Exemplary"}</strong> character and conduct. {certForm.remarks || "He/She demonstrated keen discipline, moral integrity, and active participation in school life."}
+                                      </div>
+                                    )}
+
+                                    {currentTemplate.key === "ATTENDANCE_CERTIFICATE" && (
+                                      <div style={{ marginTop: 10 }}>
+                                        In recognition of exceptional punctuality and dedication, achieving a remarkable record of <strong>{certForm.attendance_pct || "100% Attendance"}</strong> during the session. Keep up the good work!
+                                      </div>
+                                    )}
+
+                                    {currentTemplate.key === "LEADERSHIP_CERTIFICATE" && (
+                                      <div style={{ marginTop: 10 }}>
+                                        Conferred in recognition of distinguished service and leadership as <strong>{certForm.designation_role || "House Captain"}</strong>. {certForm.citation || "Demonstrated excellent leadership qualities, proactive initiative, and guided fellow students with honor."}
+                                      </div>
+                                    )}
+
+                                    {currentTemplate.key === "CULTURAL_ACTIVITY" && (
+                                      <div style={{ marginTop: 10 }}>
+                                        He/She participated enthusiastically in <strong>{certForm.activity_name || "Annual Cultural Fest"}</strong> showcasing <strong>{certForm.contribution_role || "Lead Performance"}</strong> with commendable artistic talent.
+                                      </div>
+                                    )}
+
+                                    {currentTemplate.key === "DEBATE_OLYMPIAD" && (
+                                      <div style={{ marginTop: 10 }}>
+                                        For demonstrating intellectual brilliance and analytical excellence in <strong>{certForm.event_name || "Inter-School Debate Championship"}</strong> securing <strong>{certForm.position_rank || "First Place"}</strong>.
+                                      </div>
+                                    )}
+
+                                    {currentTemplate.key === "PARTICIPATION_CERTIFICATE" && (
+                                      <div style={{ marginTop: 10 }}>
+                                        In recognition of enthusiastic participation in <strong>{certForm.event_name || "Annual School Event"}</strong> organized by <strong>{certForm.organized_by || "Event Committee"}</strong>. {certForm.remarks || "We appreciate the dedication and active involvement shown."}
+                                      </div>
+                                    )}
+
+                                    {currentTemplate.key === "APPRECIATION_CERTIFICATE" && (
+                                      <div style={{ marginTop: 10 }}>
+                                        In sincere appreciation of <strong>{certForm.reason || "Exemplary Service & Positive Contribution"}</strong>. {certForm.citation || "The school leadership values his/her positive attitude and sincere efforts."}
+                                      </div>
+                                    )}
+
+                                    {currentTemplate.key === "BONAFIDE" && (
+                                      <div style={{ marginTop: 10 }}>
+                                        This certificate is issued for <strong>{certForm.purpose || "Official / Verification Purpose"}</strong> on the request of his/her parent. {certForm.remarks || ""}
+                                      </div>
+                                    )}
+
+                                    {currentTemplate.key === "OTHER" && (
+                                      <div style={{ marginTop: 10 }}>
+                                        {certForm.custom_body || "This certificate is issued on official school record."}
                                       </div>
                                     )}
                                   </div>
+                                </div>
 
-                                  <div style={{ textAlign: "center", flex: 1, padding: "0 16px" }}>
-                                    <h1 style={{ margin: 0, fontSize: 24, fontWeight: 900, color: currentTemplate.theme_color || "#0b3b7b", textTransform: "uppercase", letterSpacing: 1 }}>
-                                      {school.name || "SCHOOL ERP ACADEMY"}
-                                    </h1>
-                                    <div style={{ fontSize: 11.5, color: "#475569", marginTop: 3 }}>
-                                      {school.address || "Sector 15, City Campus"} {school.city ? `, ${school.city}` : ""} {school.state ? `(${school.state})` : ""} {school.pincode ? `- ${school.pincode}` : ""}
+                                {/* Bottom Signatures, Date & Watermark Branding */}
+                                <div>
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", paddingTop: 16, borderTop: "1.5px dashed #cbd5e1" }}>
+                                    <div>
+                                      <div style={{ fontSize: 13, color: "#334155", fontWeight: 700 }}>
+                                        Date: <strong>{fmtDate(new Date())}</strong>
+                                      </div>
+                                      <div style={{ fontSize: 13, color: "#334155", fontWeight: 700, marginTop: 3 }}>
+                                        Place: <strong>{school.city || "School Campus"}</strong>
+                                      </div>
                                     </div>
-                                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
-                                      {school.code ? `School Code: ${school.code}` : "Affiliated to State / CBSE Board"} · Session: {workspaceData?.current_session || "2024-25"}
+
+                                    <div style={{ textAlign: "center", minWidth: 150 }}>
+                                      <div style={{ width: 56, height: 56, borderRadius: "50%", border: "2px solid #64748b", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#64748b", fontWeight: 900, margin: "0 auto 4px", textTransform: "uppercase" }}>
+                                        OFFICIAL<br />SEAL
+                                      </div>
+                                    </div>
+
+                                    <div style={{ textAlign: "center", minWidth: 180 }}>
+                                      {school.principal_signature_url ? (
+                                        <img src={school.principal_signature_url} alt="" style={{ height: 42, marginBottom: 2 }} />
+                                      ) : (
+                                        <div style={{ height: 32, borderBottom: "2px solid #334155", width: 160, margin: "0 auto 4px" }} />
+                                      )}
+                                      <div style={{ fontWeight: 900, fontSize: 14, color: "#0f172a" }}>Principal</div>
+                                      <div style={{ fontSize: 11.5, color: "#64748b" }}>(Signature & Seal)</div>
                                     </div>
                                   </div>
 
-                                  <div style={{ width: 64, height: 64, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                                    <div style={{ width: 56, height: 56, borderRadius: "50%", border: `2px dashed ${currentTemplate.accent_color || '#3b82f6'}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, color: currentTemplate.theme_color || "#0b3b7b" }}>
-                                      <i className={`ti ${currentTemplate.icon || 'ti-award'}`} />
-                                    </div>
+                                  {/* Enterprise Footer Tagline */}
+                                  <div style={{ textAlign: "center", marginTop: 10, fontSize: 10.5, color: "#94a3b8", fontWeight: 600, letterSpacing: 0.5 }}>
+                                    OnePlatform 360 — Enterprise School Management
                                   </div>
                                 </div>
 
-                                {/* Certificate Title Banner */}
-                                <div style={{ textAlign: "center", margin: "14px 0" }}>
-                                  <div style={{
-                                    display: "inline-block",
-                                    padding: "6px 28px",
-                                    background: currentTemplate.theme_color || "#0b3b7b",
-                                    color: "#ffffff",
-                                    fontWeight: 900,
-                                    fontSize: 16,
-                                    letterSpacing: 1.5,
-                                    borderRadius: 4,
-                                    textTransform: "uppercase"
-                                  }}>
-                                    {currentTemplate.title}
-                                  </div>
-                                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
-                                    Certificate Ref: <strong>{certManualSerial || `${school.code || 'EDU'}/${currentTemplate.key.slice(0, 4)}/${(workspaceData?.current_session || '2024').slice(0, 4)}/0001`}</strong>
-                                  </div>
-                                </div>
-
-                                {/* Personalized Certificate Body Content */}
-                                <div style={{ fontSize: 13.5, lineHeight: 2, color: "#1e293b", margin: "18px 0", textAlign: "justify" }}>
-                                  This is to certify that &nbsp;
-                                  <strong style={{ fontSize: 15, color: currentTemplate.theme_color || "#0b3b7b", borderBottom: "1.5px solid #94a3b8", padding: "0 8px" }}>
-                                    {selectedStudent.name}
-                                  </strong>,&nbsp;
-                                  Son/Daughter of Shri &nbsp;
-                                  <strong style={{ borderBottom: "1.5px solid #94a3b8", padding: "0 8px" }}>
-                                    {selectedStudent.father_name || selectedStudent.parent_name || "—"}
-                                  </strong>&nbsp;
-                                  and Smt. &nbsp;
-                                  <strong style={{ borderBottom: "1.5px solid #94a3b8", padding: "0 8px" }}>
-                                    {selectedStudent.mother_name || "—"}
-                                  </strong>,&nbsp;
-                                  bearing Admission No. &nbsp;
-                                  <strong style={{ borderBottom: "1.5px solid #94a3b8", padding: "0 6px" }}>
-                                    {selectedStudent.admission_no}
-                                  </strong>&nbsp;
-                                  and Roll No. &nbsp;
-                                  <strong style={{ borderBottom: "1.5px solid #94a3b8", padding: "0 6px" }}>
-                                    {selectedStudent.roll_number}
-                                  </strong>,&nbsp;
-                                  is / was a student of Class & Section &nbsp;
-                                  <strong style={{ borderBottom: "1.5px solid #94a3b8", padding: "0 8px" }}>
-                                    {selectedStudent.class_display || selectedStudent.class_name}
-                                  </strong>&nbsp;
-                                  during the academic session &nbsp;
-                                  <strong style={{ borderBottom: "1.5px solid #94a3b8", padding: "0 6px" }}>
-                                    {certForm.academic_session || workspaceData?.current_session || "2024-25"}
-                                  </strong>.
-
-                                  {/* Template Specific Sentences */}
-                                  {currentTemplate.key === "TRANSFER_CERTIFICATE" && (
-                                    <div style={{ marginTop: 8 }}>
-                                      His/Her date of birth according to the Admission Register is <strong>{fmtDate(selectedStudent.dob)}</strong>.
-                                      The student is leaving the school due to <strong>{certForm.reason_for_leaving || "relocation"}</strong>.
-                                      All school dues have been <strong>{certForm.dues_paid || "cleared"}</strong>. General conduct has been <strong>{certForm.conduct || "Good"}</strong>.
-                                    </div>
-                                  )}
-
-                                  {currentTemplate.key === "SCHOOL_LEAVING_CERTIFICATE" && (
-                                    <div style={{ marginTop: 8 }}>
-                                      Date of Birth: <strong>{fmtDate(selectedStudent.dob)}</strong>.
-                                      Reason for leaving: <strong>{certForm.reason_for_leaving || "On parent's own accord"}</strong>.
-                                      Promotion status: <strong>{certForm.promoted_to_next || "Yes"}</strong>.
-                                      General conduct: <strong>{certForm.conduct || "Good"}</strong>.
-                                      We wish him/her all the best for future endeavours.
-                                    </div>
-                                  )}
-
-                                  {currentTemplate.key === "SPORTS_ACHIEVEMENT" && (
-                                    <div style={{ marginTop: 8 }}>
-                                      He/She has actively participated in the sport of <strong>{certForm.sport_name || "Athletics"}</strong> at <strong>{certForm.event_name || "Annual Sports Meet"}</strong> and secured <strong>{certForm.position_rank || "First Position"}</strong>. His/Her performance, discipline, and sportsmanship are highly appreciated.
-                                    </div>
-                                  )}
-
-                                  {currentTemplate.key === "ACADEMIC_EXCELLENCE" && (
-                                    <div style={{ marginTop: 8 }}>
-                                      He/She has demonstrated exceptional academic brilliance and achieved <strong>{certForm.achievement_title || "Top Rank"}</strong> with score/rank <strong>{certForm.position_rank || "First Rank"}</strong>. The school commends his/her diligence and hard work.
-                                    </div>
-                                  )}
-
-                                  {currentTemplate.key === "COMPETITION_CERTIFICATE" && (
-                                    <div style={{ marginTop: 8 }}>
-                                      He/She participated in <strong>{certForm.competition_name || "Inter-House Competition"}</strong> organized by <strong>{certForm.organized_by || "School Activities Committee"}</strong> and secured <strong>{certForm.position_rank || "Winner"}</strong>.
-                                    </div>
-                                  )}
-
-                                  {currentTemplate.key === "CHARACTER_CERTIFICATE" && (
-                                    <div style={{ marginTop: 8 }}>
-                                      During his/her tenure in the school, he/she bore a <strong>{certForm.conduct || "Very Good"}</strong> character and conduct. He/She demonstrated high moral integrity and discipline.
-                                    </div>
-                                  )}
-
-                                  {currentTemplate.key === "ATTENDANCE_CERTIFICATE" && (
-                                    <div style={{ marginTop: 8 }}>
-                                      He/She achieved a remarkable record of <strong>{certForm.attendance_pct || "100% Attendance"}</strong> during the session. Keep it up!
-                                    </div>
-                                  )}
-
-                                  {currentTemplate.key === "BEST_STUDENT" && (
-                                    <div style={{ marginTop: 8 }}>
-                                      He/She is awarded <strong>{certForm.award_title || "Best Student of the Year"}</strong> in recognition of all-round excellence, integrity, and leadership.
-                                    </div>
-                                  )}
-
-                                  {currentTemplate.key === "LEADERSHIP_CERTIFICATE" && (
-                                    <div style={{ marginTop: 8 }}>
-                                      He/She served with distinction as <strong>{certForm.designation_role || "House Captain"}</strong>. {certForm.citation || "Demonstrated excellent leadership qualities and dedication."}
-                                    </div>
-                                  )}
-
-                                  {currentTemplate.key === "APPRECIATION_CERTIFICATE" && (
-                                    <div style={{ marginTop: 8 }}>
-                                      In appreciation of <strong>{certForm.reason || "Exemplary Contribution"}</strong>. {certForm.citation || "The school values his/her sincere efforts and positive attitude."}
-                                    </div>
-                                  )}
-
-                                  {currentTemplate.key === "OTHER" && (
-                                    <div style={{ marginTop: 8 }}>
-                                      {certForm.custom_body || "This certificate is issued on student request."}
-                                    </div>
-                                  )}
-                                </div>
-
-                                {/* Bottom Signatures & Date Row */}
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: 32, paddingTop: 16, borderTop: "1px dashed #cbd5e1" }}>
-                                  <div>
-                                    <div style={{ fontSize: 11.5, color: "#475569" }}>
-                                      Date: <strong>{fmtDate(new Date())}</strong>
-                                    </div>
-                                    <div style={{ fontSize: 11.5, color: "#475569", marginTop: 2 }}>
-                                      Place: <strong>{school.city || "School Campus"}</strong>
-                                    </div>
-                                  </div>
-
-                                  <div style={{ textAlign: "center", minWidth: 150 }}>
-                                    <div style={{ width: 50, height: 50, borderRadius: "50%", border: "2px solid #94a3b8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "#94a3b8", fontWeight: 800, margin: "0 auto 4px", textTransform: "uppercase" }}>
-                                      OFFICIAL<br />SEAL
-                                    </div>
-                                  </div>
-
-                                  <div style={{ textAlign: "center", minWidth: 160 }}>
-                                    {school.principal_signature_url ? (
-                                      <img src={school.principal_signature_url} alt="" style={{ height: 38, marginBottom: 2 }} />
-                                    ) : (
-                                      <div style={{ height: 28, borderBottom: "1.5px solid #334155", width: 140, margin: "0 auto 4px" }} />
-                                    )}
-                                    <div style={{ fontWeight: 800, fontSize: 13, color: "#0f172a" }}>Principal</div>
-                                    <div style={{ fontSize: 10.5, color: "#64748b" }}>(Signature & Seal)</div>
-                                  </div>
-                                </div>
                               </div>
                             </div>
                           </div>
@@ -1151,8 +1223,7 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
                                             onClick={() => {
                                               setActiveTemplateKey(doc.doc_type);
                                               if (doc.payload) setCertForm(doc.payload);
-                                              if (doc.certificate_no) setCertManualSerial(doc.certificate_no);
-                                              toast("Preview loaded below");
+                                              toast("Preview loaded above");
                                             }}
                                             style={{ ...S.btnOutline, padding: "4px 8px", fontSize: 11 }}
                                           >
@@ -1383,7 +1454,7 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
                   </div>
                   <div style={{ flex: "1 1 110px" }}>
                     <label style={S.label}>Year</label>
-                    <input style={S.input} placeholder="2024-25" value={repoYear} onChange={e => setRepoYear(e.target.value)} />
+                    <input style={S.input} placeholder="2026" value={repoYear} onChange={e => setRepoYear(e.target.value)} />
                   </div>
                   <button onClick={loadRepo} style={S.btnPrimary}>
                     <i className="ti ti-search" /> Search
