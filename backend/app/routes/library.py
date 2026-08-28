@@ -723,13 +723,14 @@ def return_book():
         issue.returned_by = get_current_user().id
         copy.status       = 'LOST'
 
-        lost_fine = (copy.book.mrp or copy.book.purchase_price or 0.0) * (settings.lost_book_fine_multiplier or 1.0)
+        default_lost_fine = (copy.book.mrp or copy.book.purchase_price or 0.0) * (settings.lost_book_fine_multiplier or 1.0)
+        lost_fine = float(data.get('fine_amount')) if data.get('fine_amount') is not None and str(data.get('fine_amount')).strip() != '' else default_lost_fine
         fine_created = FineTransaction(
             school_id     = sid,
             issue_id      = issue.id,
             member_id     = issue.member_id,
             reason        = 'LOST',
-            amount        = lost_fine,
+            amount        = max(0.0, lost_fine),
             amount_paid   = 0.0,
             waived_amount = 0.0,
             status        = 'OUTSTANDING',
@@ -745,13 +746,14 @@ def return_book():
         if mark_damaged:
             copy.status = 'DAMAGED'
             copy.condition_note = data.get('condition_note', 'Marked damaged upon return')
-            damage_fine = (copy.book.mrp or copy.book.purchase_price or 0.0) * (settings.damaged_book_fine_multiplier or 0.5)
+            default_damage_fine = (copy.book.mrp or copy.book.purchase_price or 0.0) * (settings.damaged_book_fine_multiplier or 0.5)
+            damage_fine = float(data.get('fine_amount')) if data.get('fine_amount') is not None and str(data.get('fine_amount')).strip() != '' else default_damage_fine
             fine_created = FineTransaction(
                 school_id     = sid,
                 issue_id      = issue.id,
                 member_id     = issue.member_id,
                 reason        = 'DAMAGED',
-                amount        = damage_fine,
+                amount        = max(0.0, damage_fine),
                 amount_paid   = 0.0,
                 waived_amount = 0.0,
                 status        = 'OUTSTANDING',

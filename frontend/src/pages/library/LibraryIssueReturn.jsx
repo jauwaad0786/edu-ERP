@@ -24,7 +24,10 @@ export default function LibraryIssueReturn() {
   const [selectedIssueToReturn, setSelectedIssueToReturn] = useState(null);
   const [markLost, setMarkLost]           = useState(false);
   const [markDamaged, setMarkDamaged]     = useState(false);
+  const [penaltyAmount, setPenaltyAmount] = useState('');
+  const [damageNote, setDamageNote]       = useState('');
   const [collectNow, setCollectNow]       = useState(false);
+  const [paymentMode, setPaymentMode]     = useState('CASH');
   const [returning, setReturning]         = useState(false);
 
   // ── Settings ──
@@ -37,7 +40,7 @@ export default function LibraryIssueReturn() {
     const days = librarySettings?.issue_duration_days || 14;
     const d = new Date();
     d.setDate(d.getDate() + days);
-    return { days, dateStr: d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) };
+    return { days, dateStr: d.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }) };
   }
 
   // ── Currently Issued List ──
@@ -76,10 +79,27 @@ export default function LibraryIssueReturn() {
     return () => clearTimeout(t);
   }, [bookSearch]);
 
+  // ── When opening Return Modal, calculate suggested penalty ──
+  useEffect(() => {
+    if (!selectedIssueToReturn) return;
+    const mrp = selectedIssueToReturn.book_mrp || selectedIssueToReturn.book_price || 0;
+    if (markLost) {
+      const mult = librarySettings?.lost_book_fine_multiplier || 1.0;
+      setPenaltyAmount(String(Math.round(mrp * mult) || 0));
+    } else if (markDamaged) {
+      const mult = librarySettings?.damaged_book_fine_multiplier || 0.5;
+      setPenaltyAmount(String(Math.round(mrp * mult) || 0));
+    } else if (selectedIssueToReturn.overdue_days > 0) {
+      setPenaltyAmount(String(selectedIssueToReturn.estimated_fine || 0));
+    } else {
+      setPenaltyAmount('0');
+    }
+  }, [selectedIssueToReturn, markLost, markDamaged, librarySettings]);
+
   // ── Handle Issue ──
   async function handleIssue() {
-    if (!selectedMember) { toast.error('Pehle Student / Member select karo'); return; }
-    if (!selectedBook) { toast.error('Pehle Book select karo'); return; }
+    if (!selectedMember) { toast.error('Please select a student or staff member'); return; }
+    if (!selectedBook) { toast.error('Please select a book title'); return; }
 
     setIssuing(true);
     try {
@@ -87,14 +107,14 @@ export default function LibraryIssueReturn() {
         member_id: selectedMember.id,
         book_id: selectedBook.id,
       });
-      toast.success(`Book Issue Successful: "${data.book_title}" → ${data.member_name} (Due ${data.due_date})`);
+      toast.success(`Book issued: "${data.book_title}" to ${data.member_name} (Due: ${data.due_date})`);
       setSelectedBook(null);
       setBookSearch('');
       setSelectedMember(null);
       setMemberSearch('');
       loadCurrentlyIssued();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Issue nahi ho paya');
+      toast.error(err.response?.data?.error || 'Failed to issue book');
     }
     setIssuing(false);
   }
@@ -104,31 +124,42 @@ export default function LibraryIssueReturn() {
     if (!selectedIssueToReturn) return;
     setReturning(true);
     try {
-      const { data } = await api.post('/library/return', {
+      const payload = {
         issue_id: selectedIssueToReturn.id,
         mark_lost: markLost,
         mark_damaged: markDamaged,
+        fine_amount: (markLost || markDamaged) ? parseFloat(penaltyAmount || 0) : undefined,
+        condition_note: markDamaged ? damageNote : undefined,
         collect_fine_now: collectNow,
-      });
+        payment_mode: collectNow ? paymentMode : undefined,
+      };
+
+      const { data } = await api.post('/library/return', payload);
 
       if (data.fine) {
-        toast.success(`Book Returned! Fine Generated: ₹${data.fine.amount} (${data.fine.status})`);
+        if (collectNow) {
+          toast.success(`Book returned & fine of ₹${data.fine.amount} settled as PAID`);
+        } else {
+          toast.success(`Book returned. Outstanding fine of ₹${data.fine.amount} added to Fee Management (Pending)`);
+        }
       } else {
-        toast.success(`"${selectedIssueToReturn.book_title}" successfully returned!`);
+        toast.success(`"${selectedIssueToReturn.book_title}" returned successfully with no fines.`);
       }
 
       setSelectedIssueToReturn(null);
       setMarkLost(false);
       setMarkDamaged(false);
+      setPenaltyAmount('');
+      setDamageNote('');
       setCollectNow(false);
       loadCurrentlyIssued();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Return nahi ho paya');
+      toast.error(err.response?.data?.error || 'Failed to return book');
     }
     setReturning(false);
   }
 
-  // ── Filtered Issues for Return Tab ──
+  // ── Filtered Issues for Return Search ──
   const filteredIssues = currentlyIssued.filter(i => {
     if (!returnSearch.trim()) return true;
     const q = returnSearch.toLowerCase();
@@ -182,14 +213,14 @@ export default function LibraryIssueReturn() {
                 📖 Circulation Desk
               </div>
               <h2 style={{ margin: '0 0 6px', fontSize: '24px', fontWeight: 800 }}>
-                Smart Book Issue &amp; Return
+                Library Issue &amp; Return Counter
               </h2>
               <p style={{ margin: 0, fontSize: '13.5px', color: 'rgba(255,255,255,0.85)' }}>
-                Issue and return library books by student name or book title with zero scanner dependency.
+                Search by member name, roll number, or book title to manage book lending and returns.
               </p>
             </div>
 
-            {/* Quick Mode Toggle */}
+            {/* Mode Switcher */}
             <div style={{ display: 'flex', gap: '10px', background: 'rgba(0,0,0,0.25)', padding: '6px', borderRadius: '14px' }}>
               <button
                 onClick={() => setTab('ISSUE')}
@@ -200,7 +231,7 @@ export default function LibraryIssueReturn() {
                   transition: 'all 0.2s', boxShadow: tab === 'ISSUE' ? '0 4px 12px rgba(0,0,0,0.15)' : 'none'
                 }}
               >
-                📤 Issue Book (किताब दें)
+                📤 Issue Book
               </button>
               <button
                 onClick={() => setTab('RETURN')}
@@ -211,13 +242,13 @@ export default function LibraryIssueReturn() {
                   transition: 'all 0.2s', boxShadow: tab === 'RETURN' ? '0 4px 12px rgba(0,0,0,0.15)' : 'none'
                 }}
               >
-                📥 Return Book (किताब वापस लें)
+                📥 Return Book
               </button>
             </div>
           </div>
 
           {/* ══════════════════════════════════════════════════════════════════════
-              TAB 1: ISSUE BOOK (BY NAME & BOOK TITLE)
+              TAB 1: ISSUE BOOK
              ══════════════════════════════════════════════════════════════════════ */}
           {tab === 'ISSUE' && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '24px' }}>
@@ -229,7 +260,7 @@ export default function LibraryIssueReturn() {
                     1
                   </div>
                   <h4 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a' }}>
-                    Student / Member Select Karein
+                    Select Student / Member
                   </h4>
                 </div>
 
@@ -247,7 +278,7 @@ export default function LibraryIssueReturn() {
                         Card: <strong>{selectedMember.card_number}</strong> · Type: <strong>{selectedMember.member_type}</strong>
                       </div>
                       <div style={{ fontSize: '12px', color: '#6366f1', fontWeight: 600, marginTop: '2px' }}>
-                        Currently Issued: {selectedMember.current_issues || 0} books
+                        Currently Borrowed: {selectedMember.current_issues || 0} books
                       </div>
                     </div>
                     <button
@@ -265,7 +296,7 @@ export default function LibraryIssueReturn() {
                     <input
                       value={memberSearch}
                       onChange={e => setMemberSearch(e.target.value)}
-                      placeholder="Type Student / Teacher Name or Card #..."
+                      placeholder="Search student or teacher by name, card #, or roll..."
                       style={inputStyle}
                       autoFocus
                     />
@@ -311,7 +342,7 @@ export default function LibraryIssueReturn() {
                     2
                   </div>
                   <h4 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a' }}>
-                    Book Title / Name Search Karein
+                    Search Book Title
                   </h4>
                 </div>
 
@@ -329,7 +360,7 @@ export default function LibraryIssueReturn() {
                         Author: <strong>{selectedBook.author || 'N/A'}</strong> · Subject: <strong>{selectedBook.subject || 'General'}</strong>
                       </div>
                       <div style={{ fontSize: '12px', color: selectedBook.available_copies > 0 ? '#10b981' : '#ef4444', fontWeight: 700, marginTop: '2px' }}>
-                        {selectedBook.available_copies > 0 ? `✅ ${selectedBook.available_copies} Copies Available` : '❌ No Copy Available'}
+                        {selectedBook.available_copies > 0 ? `✅ ${selectedBook.available_copies} Copies Available` : '❌ Out of Stock'}
                       </div>
                     </div>
                     <button
@@ -347,7 +378,7 @@ export default function LibraryIssueReturn() {
                     <input
                       value={bookSearch}
                       onChange={e => setBookSearch(e.target.value)}
-                      placeholder="Type Book Title (e.g. Physics, RD Sharma, Wings of Fire)..."
+                      placeholder="Search by title, author, or subject (e.g. Physics, RD Sharma)..."
                       style={inputStyle}
                     />
 
@@ -364,7 +395,7 @@ export default function LibraryIssueReturn() {
                             <div
                               key={b.id}
                               onClick={() => {
-                                if (!isAvail) { toast.error('Ye book currently out of stock hai'); return; }
+                                if (!isAvail) { toast.error('This book is currently out of stock'); return; }
                                 setSelectedBook(b);
                                 setBookResults([]);
                               }}
@@ -400,7 +431,7 @@ export default function LibraryIssueReturn() {
               {/* Step 3: Confirm Issue Bar */}
               <div style={{ ...cardStyle, gridColumn: 'span 2', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: darkMode ? '#1e293b' : '#f8fafc' }}>
                 <div style={{ fontSize: '13.5px', color: darkMode ? '#94a3b8' : '#475569' }}>
-                  📅 Issue Duration: <strong style={{ color: darkMode ? '#fff' : '#0f172a' }}>{previewDueDate().days} Days</strong> · Return Due Date: <strong style={{ color: '#ef4444' }}>{previewDueDate().dateStr}</strong>
+                  📅 Issue Period: <strong style={{ color: darkMode ? '#fff' : '#0f172a' }}>{previewDueDate().days} Days</strong> · Return Due Date: <strong style={{ color: '#ef4444' }}>{previewDueDate().dateStr}</strong>
                 </div>
                 <button
                   onClick={handleIssue}
@@ -414,25 +445,25 @@ export default function LibraryIssueReturn() {
                     transition: 'all 0.2s'
                   }}
                 >
-                  {issuing ? '⏳ Processing Issue...' : '✅ Confirm Issue (किताब जारी करें)'}
+                  {issuing ? '⏳ Processing Issue...' : '✅ Confirm Issue'}
                 </button>
               </div>
             </div>
           )}
 
           {/* ══════════════════════════════════════════════════════════════════════
-              TAB 2: RETURN BOOK (SEARCH BY STUDENT OR BOOK NAME + MODAL)
+              TAB 2: RETURN BOOK (SEARCH BY STUDENT OR BOOK NAME)
              ══════════════════════════════════════════════════════════════════════ */}
           {tab === 'RETURN' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '24px' }}>
               <div style={cardStyle}>
                 <h4 style={{ margin: '0 0 12px', fontSize: '16px', fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a' }}>
-                  🔍 Search Issued Book to Return (Student ya Book ke Naam se Dhundhein)
+                  🔍 Search Borrowed Books to Return
                 </h4>
                 <input
                   value={returnSearch}
                   onChange={e => setReturnSearch(e.target.value)}
-                  placeholder="Type Student Name, Class, Roll Number, or Book Title..."
+                  placeholder="Filter by student name, roll number, class, or book title..."
                   style={inputStyle}
                   autoFocus
                 />
@@ -441,16 +472,16 @@ export default function LibraryIssueReturn() {
           )}
 
           {/* ══════════════════════════════════════════════════════════════════════
-              CURRENTLY ISSUED BOOKS TABLE (ALWAYS VISIBLE WITH 1-CLICK RETURN)
+              CURRENTLY ISSUED BOOKS TABLE (WITH 1-CLICK RETURN)
              ══════════════════════════════════════════════════════════════════════ */}
           <div style={cardStyle}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div>
                 <h3 style={{ margin: '0 0 4px', fontSize: '17px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
-                  📚 Active Issued Books ({filteredIssues.length})
+                  📚 Active Borrowed Books ({filteredIssues.length})
                 </h3>
                 <p style={{ margin: 0, fontSize: '12.5px', color: '#94a3b8' }}>
-                  Click &ldquo;↩ Return Book&rdquo; button next to any entry to process instant return and fine calculation.
+                  Click &ldquo;↩ Return Book&rdquo; next to any borrower to initiate return and assess penalties.
                 </p>
               </div>
               <button
@@ -469,7 +500,7 @@ export default function LibraryIssueReturn() {
               <div style={{ textAlign: 'center', padding: '36px', color: '#94a3b8', fontSize: '14px' }}>Loading active loans...</div>
             ) : filteredIssues.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '36px', color: '#94a3b8', fontSize: '14px' }}>
-                Koi active issued book nahi mili
+                No active borrowed books found
               </div>
             ) : (
               <div className="table-container" style={{ border: 'none' }}>
@@ -481,7 +512,7 @@ export default function LibraryIssueReturn() {
                       <th>Book Title</th>
                       <th>Issue Date</th>
                       <th>Due Date</th>
-                      <th>Overdue Status</th>
+                      <th>Status</th>
                       <th style={{ textAlign: 'right' }}>Action</th>
                     </tr>
                   </thead>
@@ -493,7 +524,7 @@ export default function LibraryIssueReturn() {
                           <div style={{ fontSize: '11px', color: '#94a3b8' }}>Card: {i.card_number}</div>
                         </td>
                         <td>
-                          <div style={{ fontWeight: 600 }}>{i.class_name || 'Teacher / Staff'}</div>
+                          <div style={{ fontWeight: 600 }}>{i.class_name || 'Staff'}</div>
                           {i.roll_number && <div style={{ fontSize: '11px', color: '#94a3b8' }}>Roll: {i.roll_number}</div>}
                         </td>
                         <td>
@@ -514,7 +545,12 @@ export default function LibraryIssueReturn() {
                         </td>
                         <td style={{ textAlign: 'right' }}>
                           <button
-                            onClick={() => setSelectedIssueToReturn(i)}
+                            onClick={() => {
+                              setSelectedIssueToReturn(i);
+                              setMarkLost(false);
+                              setMarkDamaged(false);
+                              setCollectNow(false);
+                            }}
                             style={{
                               background: '#10b981', color: '#ffffff', border: 'none', borderRadius: '8px',
                               padding: '8px 16px', fontSize: '12.5px', fontWeight: 800, cursor: 'pointer',
@@ -533,12 +569,12 @@ export default function LibraryIssueReturn() {
           </div>
 
           {/* ══════════════════════════════════════════════════════════════════════
-              RETURN CONFIRMATION MODAL
+              RETURN & PENALTY CALCULATION MODAL
              ══════════════════════════════════════════════════════════════════════ */}
           {selectedIssueToReturn && (
             <div
               style={{
-                position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+                position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999,
                 backdropFilter: 'blur(6px)'
               }}
@@ -546,14 +582,23 @@ export default function LibraryIssueReturn() {
             >
               <div style={{
                 background: darkMode ? '#111827' : '#ffffff', borderRadius: '20px', padding: '28px',
-                width: '100%', maxWidth: '480px',
+                width: '100%', maxWidth: '520px',
                 border: `1px solid ${darkMode ? 'rgba(255,255,255,0.1)' : '#e2e8f0'}`,
                 boxShadow: '0 20px 40px rgba(0,0,0,0.4)'
               }}>
-                <h3 style={{ margin: '0 0 14px', fontSize: '18px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
-                  📥 Confirm Book Return
-                </h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                    📥 Process Book Return
+                  </h3>
+                  <button
+                    onClick={() => setSelectedIssueToReturn(null)}
+                    style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '20px', cursor: 'pointer' }}
+                  >
+                    ×
+                  </button>
+                </div>
 
+                {/* Book & Borrower Summary Card */}
                 <div style={{
                   background: darkMode ? '#1e293b' : '#f8fafc', borderRadius: '12px', padding: '16px', marginBottom: '18px',
                   border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`
@@ -562,42 +607,155 @@ export default function LibraryIssueReturn() {
                     📖 {selectedIssueToReturn.book_title}
                   </div>
                   <div style={{ fontSize: '13px', color: darkMode ? '#e2e8f0' : '#475569' }}>
-                    Borrower: <strong>{selectedIssueToReturn.member_name}</strong>
+                    Borrower: <strong>{selectedIssueToReturn.member_name}</strong> {selectedIssueToReturn.class_name ? `(${selectedIssueToReturn.class_name})` : ''}
                   </div>
                   <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
                     Issue Date: {selectedIssueToReturn.issue_date} · Due Date: {selectedIssueToReturn.due_date}
                   </div>
 
-                  {selectedIssueToReturn.overdue_days > 0 && (
+                  {selectedIssueToReturn.overdue_days > 0 && !markLost && !markDamaged && (
                     <div style={{
                       marginTop: '10px', background: 'rgba(239,68,68,0.12)', color: '#ef4444',
                       padding: '8px 12px', borderRadius: '8px', fontSize: '12.5px', fontWeight: 700
                     }}>
-                      ⚠️ {selectedIssueToReturn.overdue_days} Days Overdue — Estimated Fine: ₹{selectedIssueToReturn.estimated_fine}
+                      ⚠️ {selectedIssueToReturn.overdue_days} Days Overdue — Standard Late Fine: ₹{selectedIssueToReturn.estimated_fine}
                     </div>
                   )}
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px', fontSize: '13px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: darkMode ? '#e2e8f0' : '#334155' }}>
-                    <input type="checkbox" checked={markLost} onChange={e => setMarkLost(e.target.checked)} />
-                    <strong>Mark as Lost (किताब खो गई)</strong>
+                {/* Condition & Loss Checkboxes */}
+                <div style={{ display: 'flex', gap: '16px', marginBottom: '16px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13.5px', color: darkMode ? '#e2e8f0' : '#334155' }}>
+                    <input
+                      type="checkbox"
+                      checked={markLost}
+                      onChange={e => {
+                        setMarkLost(e.target.checked);
+                        if (e.target.checked) setMarkDamaged(false);
+                      }}
+                    />
+                    <strong>Book Lost</strong>
                   </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: darkMode ? '#e2e8f0' : '#334155' }}>
-                    <input type="checkbox" checked={markDamaged} onChange={e => setMarkDamaged(e.target.checked)} disabled={markLost} />
-                    <strong>Mark as Damaged (किताब फट/खराब हो गई)</strong>
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: darkMode ? '#e2e8f0' : '#334155' }}>
-                    <input type="checkbox" checked={collectNow} onChange={e => setCollectNow(e.target.checked)} />
-                    <strong>Collect Fine Immediately Now (तुरंत फाइन जमा करें)</strong>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13.5px', color: darkMode ? '#e2e8f0' : '#334155' }}>
+                    <input
+                      type="checkbox"
+                      checked={markDamaged}
+                      disabled={markLost}
+                      onChange={e => setMarkDamaged(e.target.checked)}
+                    />
+                    <strong>Book Damaged</strong>
                   </label>
                 </div>
 
+                {/* Penalty & Valuation Breakdown */}
+                {(markLost || markDamaged) && (
+                  <div style={{
+                    background: darkMode ? 'rgba(245,158,11,0.1)' : '#fffbeb',
+                    border: '1.5px solid #f59e0b', borderRadius: '12px', padding: '16px', marginBottom: '18px'
+                  }}>
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: '#b45309', marginBottom: '10px' }}>
+                      {markLost ? '⚠️ Book Lost Penalty Assessment' : '⚠️ Book Damage Penalty Assessment'}
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '10px' }}>
+                      <div>
+                        <label style={{ fontSize: '11.5px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>
+                          Book MRP / Valuation:
+                        </label>
+                        <div style={{ fontSize: '15px', fontWeight: 800, color: darkMode ? '#fff' : '#0f172a' }}>
+                          ₹{selectedIssueToReturn.book_mrp || selectedIssueToReturn.book_price || 0}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: '11.5px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>
+                          Penalty to Charge (₹):
+                        </label>
+                        <input
+                          type="number"
+                          value={penaltyAmount}
+                          onChange={e => setPenaltyAmount(e.target.value)}
+                          placeholder="Amount in ₹"
+                          style={{
+                            ...inputStyle, padding: '8px 10px', fontSize: '14px', fontWeight: 800,
+                            borderColor: '#f59e0b'
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {markDamaged && (
+                      <div style={{ marginTop: '8px' }}>
+                        <label style={{ fontSize: '11.5px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>
+                          Damage Description / Condition Note:
+                        </label>
+                        <input
+                          value={damageNote}
+                          onChange={e => setDamageNote(e.target.value)}
+                          placeholder="e.g. Pages torn, water damage, cover missing..."
+                          style={{ ...inputStyle, padding: '8px 10px', fontSize: '12.5px' }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Payment Collection & Fee Management Status Notice */}
+                <div style={{
+                  background: darkMode ? '#1e293b' : '#f8fafc',
+                  border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                  borderRadius: '12px', padding: '14px', marginBottom: '20px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: collectNow ? '10px' : '0' }}>
+                    <div>
+                      <div style={{ fontSize: '12.5px', fontWeight: 700, color: darkMode ? '#fff' : '#0f172a' }}>
+                        Fee Record Status: <span style={{ color: collectNow ? '#10b981' : '#f59e0b' }}>{collectNow ? 'PAID (Settled)' : 'PENDING (Outstanding Due)'}</span>
+                      </div>
+                      <div style={{ fontSize: '11.5px', color: '#94a3b8', marginTop: '2px' }}>
+                        {collectNow
+                          ? 'Payment will be marked as paid and logged in ledger.'
+                          : 'Fine will be logged as UNPAID in Fee Management until explicitly collected.'}
+                      </div>
+                    </div>
+
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12.5px', fontWeight: 700, color: '#6366f1' }}>
+                      <input
+                        type="checkbox"
+                        checked={collectNow}
+                        onChange={e => setCollectNow(e.target.checked)}
+                      />
+                      Collect Now
+                    </label>
+                  </div>
+
+                  {collectNow && (
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+                      <span style={{ fontSize: '12px', fontWeight: 700, color: '#94a3b8' }}>Payment Mode:</span>
+                      {['CASH', 'UPI', 'CARD', 'CHEQUE'].map(mode => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => setPaymentMode(mode)}
+                          style={{
+                            padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, border: 'none', cursor: 'pointer',
+                            background: paymentMode === mode ? '#6366f1' : (darkMode ? '#334155' : '#e2e8f0'),
+                            color: paymentMode === mode ? '#fff' : (darkMode ? '#cbd5e1' : '#475569')
+                          }}
+                        >
+                          {mode}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Modal Footer Actions */}
                 <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
                   <button
                     onClick={() => setSelectedIssueToReturn(null)}
                     style={{
-                      padding: '10px 16px', borderRadius: '10px', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                      padding: '10px 18px', borderRadius: '10px', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
                       background: darkMode ? '#1e293b' : '#f8fafc',
                       color: darkMode ? '#ffffff' : '#334155', cursor: 'pointer', fontSize: '13px', fontWeight: 600
                     }}
@@ -613,7 +771,7 @@ export default function LibraryIssueReturn() {
                       fontSize: '13.5px', fontWeight: 800, boxShadow: '0 4px 14px rgba(16,185,129,0.35)'
                     }}
                   >
-                    {returning ? '⏳ Processing...' : '✅ Confirm Return'}
+                    {returning ? '⏳ Processing Return...' : '✅ Confirm Return'}
                   </button>
                 </div>
               </div>
