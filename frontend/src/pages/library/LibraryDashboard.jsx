@@ -10,18 +10,18 @@ function fmt(n) {
 }
 
 const CARD_DEFS = [
-  { key: 'total_books',     label: 'Total Books',       icon: 'ti-books',           color: '#6366f1', gradient: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)' },
-  { key: 'available_books', label: 'Available in Stack', icon: 'ti-book-2',          color: '#10b981', gradient: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' },
-  { key: 'issued_books',    label: 'Currently Issued',  icon: 'ti-arrows-exchange', color: '#06b6d4', gradient: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)' },
-  { key: 'overdue_books',   label: 'Overdue Returns',   icon: 'ti-alert-triangle',  color: '#ef4444', gradient: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' },
-  { key: 'reserved_books',  label: 'Reserved Books',    icon: 'ti-clock',           color: '#f59e0b', gradient: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' },
-  { key: 'lost_books',      label: 'Lost / Damaged',    icon: 'ti-file-x',         color: '#991b1b', gradient: 'linear-gradient(135deg, #b91c1c 0%, #7f1d1d 100%)' },
-  { key: 'total_members',   label: 'Registered Members',icon: 'ti-users',           color: '#8b5cf6', gradient: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)' },
-  { key: 'today_issued',    label: "Today's Issues",    icon: 'ti-plus',            color: '#3b82f6', gradient: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)' },
-  { key: 'today_returned',  label: "Today's Returns",   icon: 'ti-corner-down-left',color: '#059669', gradient: 'linear-gradient(135deg, #059669 0%, #047857 100%)' },
-  { key: 'today_fine',      label: "Today's Fines",     icon: 'ti-cash',            color: '#ea580c', gradient: 'linear-gradient(135deg, #ea580c 0%, #c2410c 100%)', money: true },
-  { key: 'month_fine',      label: 'Monthly Fine Total',icon: 'ti-report-money',    color: '#b45309', gradient: 'linear-gradient(135deg, #b45309 0%, #78350f 100%)', money: true },
-  { key: 'new_books_month', label: 'New Catalog Added', icon: 'ti-sparkles',        color: '#4f46e5', gradient: 'linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)' },
+  { key: 'total_books',       label: 'Total Titles',        icon: 'ti-books',           color: '#6366f1', gradient: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)' },
+  { key: 'available_books',   label: 'Available in Stack',  icon: 'ti-book-2',          color: '#10b981', gradient: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' },
+  { key: 'issued_books',      label: 'Currently Issued',    icon: 'ti-arrows-exchange', color: '#06b6d4', gradient: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)' },
+  { key: 'overdue_books',     label: 'Overdue Returns',     icon: 'ti-alert-triangle',  color: '#ef4444', gradient: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' },
+  { key: 'reserved_books',    label: 'Reserved Books',      icon: 'ti-clock',           color: '#f59e0b', gradient: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' },
+  { key: 'lost_books',        label: 'Lost / Damaged',      icon: 'ti-file-x',          color: '#991b1b', gradient: 'linear-gradient(135deg, #b91c1c 0%, #7f1d1d 100%)' },
+  { key: 'total_members',     label: 'Registered Members',  icon: 'ti-users',           color: '#8b5cf6', gradient: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)' },
+  { key: 'outstanding_fines', label: 'Outstanding Fines',   icon: 'ti-alert-circle',    color: '#dc2626', gradient: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)', money: true },
+  { key: 'today_fine',        label: "Today's Fine Coll.",  icon: 'ti-cash',            color: '#ea580c', gradient: 'linear-gradient(135deg, #ea580c 0%, #c2410c 100%)', money: true },
+  { key: 'month_fine',        label: 'Monthly Fine Coll.',  icon: 'ti-report-money',    color: '#b45309', gradient: 'linear-gradient(135deg, #b45309 0%, #78350f 100%)', money: true },
+  { key: 'total_waived',      label: 'Total Waived Fines',  icon: 'ti-receipt-refund',  color: '#7c3aed', gradient: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)', money: true },
+  { key: 'new_books_month',   label: 'New Catalog Added',   icon: 'ti-sparkles',        color: '#4f46e5', gradient: 'linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)' },
 ];
 
 export default function LibraryDashboard() {

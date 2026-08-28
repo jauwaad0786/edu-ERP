@@ -344,3 +344,12 @@ def upload_my_document():
 
     db.session.commit()
     return jsonify(doc.to_dict()), 201
+
+
+@student_bp.route('/library', methods=['GET'])
+@role_required('STUDENT', 'PARENT')
+def my_student_library():
+    """Returns the student's active library loans, overdue books, penalties, and history."""
+    from app.routes.library import my_library
+    return my_library()
+

@@ -5,23 +5,27 @@ from app.models.library import (
     BookCategory, Book, BookCopy, LibraryMember, BookIssue,
     BookReservation, FineTransaction, LibrarySettings, log_activity
 )
-
-# NEW
 from app.models.academic import Class, Student
-from app.models.user import User
+from app.models.user import User, UserRole
+from app.services.library_fee_service import (
+    generate_library_fine_fee_record, record_library_fine_payment
+)
 from datetime import datetime, date
 import random
 import string
-import io
 
 library_bp = Blueprint('library', __name__)
 
-LIBRARY_ROLES = ('PRINCIPAL', 'LIBRARIAN', 'TEACHER')
-LIBRARY_ADMIN_ROLES = ('PRINCIPAL', 'LIBRARIAN')
+LIBRARY_ROLES = ('PRINCIPAL', 'DIRECTOR', 'VICE_PRINCIPAL', 'LIBRARIAN', 'TEACHER', 'SUPER_ADMIN')
+LIBRARY_ADMIN_ROLES = ('PRINCIPAL', 'DIRECTOR', 'VICE_PRINCIPAL', 'LIBRARIAN', 'SUPER_ADMIN')
+WAIVER_ROLES = ('PRINCIPAL', 'DIRECTOR', 'VICE_PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN')
 
 
 def _school_id():
-    return get_current_user().school_id
+    user = get_current_user()
+    if not user:
+        return None
+    return user.school_id
 
 
 def _get_or_create_settings(sid):
@@ -57,39 +61,35 @@ def _gen_barcode():
         code = ''.join(random.choices(string.digits, k=13))
         if not BookCopy.query.filter_by(barcode=code).first():
             return code
-# NEW
 
-def _sync_fine_to_fee_record(fine, sid):
-    """
-    Library fine ko centralized Fees Management (FeeRecord) mein reflect karta hai —
-    source='LIBRARY', source_ref_id=FineTransaction.id. Sirf STUDENT members ke liye
-    (teacher fines abhi FeeRecord mein nahi jaati).
-    """
-    from app.models.financial import FeeRecord
 
-    member = LibraryMember.query.get(fine.member_id)
-    if not member or member.member_type != 'STUDENT':
-        return None
-    student = Student.query.filter_by(user_id=member.user_id, school_id=sid).first()
-    if not student:
-        return None
+def _gen_card_number(sid):
+    """LIB-2026-001234 style card number."""
+    year = date.today().year
+    prefix = f"LIB-{year}-"
+    last = LibraryMember.query.filter(
+        LibraryMember.school_id == sid,
+        LibraryMember.card_number.like(f'{prefix}%')
+    ).order_by(LibraryMember.id.desc()).first()
+    if last and last.card_number:
+        try:
+            n = int(last.card_number.split('-')[-1]) + 1
+        except (ValueError, IndexError):
+            n = 1
+    else:
+        n = 1
+    return f"{prefix}{n:06d}"
 
-    rec = FeeRecord(
-        school_id=sid, student_id=student.id, fee_type='LIBRARY',
-        amount_due=fine.amount, amount_paid=0, status='PENDING',
-        month=date.today().strftime('%Y-%m'), due_date=date.today(),
-        source='LIBRARY', source_ref_id=fine.id,
-        remarks=f'Library fine — {fine.reason}',
-    )
-    db.session.add(rec)
-    return rec
 
-# ─── Categories ───────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════
+#  Categories
+# ═══════════════════════════════════════════════════════════════════════════
 
 @library_bp.route('/categories', methods=['GET'])
 @role_required(*LIBRARY_ROLES, 'STUDENT', 'PARENT')
 def list_categories():
-    cats = BookCategory.query.filter_by(school_id=_school_id()).order_by(BookCategory.name).all()
+    sid = _school_id()
+    cats = BookCategory.query.filter_by(school_id=sid).order_by(BookCategory.name).all()
     return jsonify([c.to_dict() for c in cats]), 200
 
 
@@ -137,66 +137,59 @@ def delete_category(cat_id):
     if cat.school_id != _school_id():
         return jsonify({'error': 'Unauthorized'}), 403
     if cat.books.count() > 0:
-        return jsonify({'error': f'{cat.books.count()} books is category mein hain — pehle unhe reassign karo'}), 400
+        return jsonify({'error': f'{cat.books.count()} books are linked to this category — reassign them first'}), 400
     db.session.delete(cat)
     db.session.commit()
-    return jsonify({'message': 'Category deleted'}), 200
+    return jsonify({'message': 'Category deleted successfully'}), 200
 
 
-# ─── Books (Master) ───────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════
+#  Books (Master) & Copies (Inventory)
+# ═══════════════════════════════════════════════════════════════════════════
 
 @library_bp.route('/books', methods=['GET'])
 @role_required(*LIBRARY_ROLES, 'STUDENT', 'PARENT')
 def list_books():
-    """
-    Search + filter + pagination.
-    Query params: search, category_id, class_id, language, status(available/all), page, per_page
-    """
-    sid = _school_id()
-    q = Book.query.filter_by(school_id=sid, is_active=True)
-
-    search = (request.args.get('search') or '').strip()
-    if search:
-        like = f'%{search}%'
-        q = q.filter(db.or_(
-            Book.title.ilike(like),
-            Book.author.ilike(like),
-            Book.isbn.ilike(like),
-            Book.publisher.ilike(like),
-            Book.keywords.ilike(like),
-            Book.rack.ilike(like),
-            Book.subject.ilike(like),
-        ))
-
-    category_id = request.args.get('category_id')
-    if category_id:
-        q = q.filter_by(category_id=category_id)
-
+    sid      = _school_id()
+    search   = (request.args.get('search') or '').strip()
+    cat_id   = request.args.get('category_id')
+    subject  = request.args.get('subject')
+    rack     = request.args.get('rack')
     class_id = request.args.get('class_id')
+    active   = request.args.get('is_active')
+
+    q = Book.query.filter_by(school_id=sid)
+    if active is not None:
+        q = q.filter_by(is_active=(active.lower() == 'true' or active == '1'))
+    if cat_id:
+        q = q.filter_by(category_id=cat_id)
+    if subject:
+        q = q.filter_by(subject=subject)
+    if rack:
+        q = q.filter_by(rack=rack)
     if class_id:
         q = q.filter_by(class_id=class_id)
-
-    language = request.args.get('language')
-    if language:
-        q = q.filter_by(language=language)
+    if search:
+        like = f'%{search}%'
+        q = q.filter(
+            db.or_(
+                Book.title.ilike(like),
+                Book.author.ilike(like),
+                Book.isbn.ilike(like),
+                Book.publisher.ilike(like),
+                Book.keywords.ilike(like),
+            )
+        )
 
     page     = request.args.get('page', 1, type=int)
-    per_page = min(request.args.get('per_page', 24, type=int), 100)
-    paginated = q.order_by(Book.title).paginate(page=page, per_page=per_page, error_out=False)
-
-    result = [b.to_dict() for b in paginated.items]
-
-    # Optional: filter only-available in Python (counts are derived, not a DB column)
-    only_available = request.args.get('available_only') == '1'
-    if only_available:
-        result = [b for b in result if b['available_copies'] > 0]
+    per_page = min(request.args.get('per_page', 50, type=int), 200)
+    paginated = q.order_by(Book.title.asc()).paginate(page=page, per_page=per_page, error_out=False)
 
     return jsonify({
-        'data':     result,
-        'total':    paginated.total,
-        'page':     paginated.page,
-        'pages':    paginated.pages,
-        'has_next': paginated.has_next,
+        'data':  [b.to_dict() for b in paginated.items],
+        'total': paginated.total,
+        'page':  paginated.page,
+        'pages': paginated.pages,
     }), 200
 
 
@@ -215,65 +208,67 @@ def get_book(book_id):
 @role_required(*LIBRARY_ADMIN_ROLES)
 def create_book():
     """
-    Create book master + auto-generate N physical copies (BookCopy rows),
-    each with its own accession number + barcode.
-    Body: { ...book fields..., total_copies: 5 }
+    Creates Book Master and optionally creates N initial physical copies (BookCopy).
     """
-    data = request.get_json() or {}
-    sid  = _school_id()
-
+    data  = request.get_json() or {}
     title = (data.get('title') or '').strip()
     if not title:
-        return jsonify({'error': 'title is required'}), 400
+        return jsonify({'error': 'Title is required'}), 400
 
-    total_copies = int(data.get('total_copies', 1))
-    if total_copies < 1:
-        return jsonify({'error': 'total_copies must be at least 1'}), 400
+    sid = _school_id()
+    user_id = get_current_user().id
+
+    purchase_date = None
+    if data.get('purchase_date'):
+        try:
+            purchase_date = date.fromisoformat(data['purchase_date'])
+        except ValueError:
+            pass
 
     book = Book(
-        school_id    = sid,
-        title        = title,
-        subtitle     = (data.get('subtitle') or '').strip(),
-        isbn         = (data.get('isbn') or '').strip(),
-        accession_no = (data.get('accession_no') or '').strip(),
-        category_id  = data.get('category_id') or None,
-        subject      = (data.get('subject') or '').strip(),
-        author       = (data.get('author') or '').strip(),
-        publisher    = (data.get('publisher') or '').strip(),
-        edition      = (data.get('edition') or '').strip(),
-        language     = data.get('language', 'English'),
-        class_id     = data.get('class_id') or None,
-        rack         = (data.get('rack') or '').strip(),
-        shelf        = (data.get('shelf') or '').strip(),
-        purchase_date= date.fromisoformat(data['purchase_date']) if data.get('purchase_date') else None,
-        vendor_name  = (data.get('vendor_name') or '').strip(),
-        purchase_price = float(data.get('purchase_price', 0) or 0),
-        mrp          = float(data.get('mrp', 0) or 0),
-        cover_url    = data.get('cover_url'),
-        description  = (data.get('description') or '').strip(),
-        keywords     = (data.get('keywords') or '').strip(),
-        created_by   = get_current_user().id,
+        school_id     = sid,
+        title         = title,
+        subtitle      = (data.get('subtitle') or '').strip(),
+        isbn          = (data.get('isbn') or '').strip(),
+        accession_no  = (data.get('accession_no') or '').strip(),
+        category_id   = data.get('category_id'),
+        subject       = (data.get('subject') or '').strip(),
+        author        = (data.get('author') or '').strip(),
+        publisher     = (data.get('publisher') or '').strip(),
+        edition       = (data.get('edition') or '').strip(),
+        language      = (data.get('language') or 'English').strip(),
+        class_id      = data.get('class_id'),
+        rack          = (data.get('rack') or '').strip(),
+        shelf         = (data.get('shelf') or '').strip(),
+        purchase_date = purchase_date,
+        vendor_name   = (data.get('vendor_name') or '').strip(),
+        purchase_price= float(data.get('purchase_price') or 0.0),
+        mrp           = float(data.get('mrp') or 0.0),
+        cover_url     = data.get('cover_url'),
+        description   = (data.get('description') or '').strip(),
+        keywords      = (data.get('keywords') or '').strip(),
+        created_by    = user_id,
     )
     db.session.add(book)
-    db.session.flush()  # book.id chahiye copies banane ke liye
+    db.session.flush()
 
-    for _ in range(total_copies):
+    # Initial physical copies creation
+    copies_to_add = int(data.get('initial_copies') or 0)
+    for _ in range(copies_to_add):
         copy = BookCopy(
-            book_id           = book.id,
-            school_id         = sid,
-            copy_accession_no = _gen_accession_no(sid),
-            barcode           = _gen_barcode(),
-            status            = 'AVAILABLE',
+            book_id=book.id,
+            school_id=sid,
+            copy_accession_no=_gen_accession_no(sid),
+            barcode=_gen_barcode(),
+            status='AVAILABLE',
+            condition_note='Brand new on registration',
         )
         db.session.add(copy)
 
     db.session.commit()
-    log_activity(sid, get_current_user().id, 'BOOK_ADDED', f'{title} ({total_copies} copies)')
+    log_activity(sid, user_id, 'BOOK_ADDED', f'{title} ({copies_to_add} copies)')
     db.session.commit()
-
-    d = book.to_dict()
-    d['copies'] = [c.to_dict() for c in book.copies.all()]
-    return jsonify(d), 201
+    return jsonify(book.to_dict()), 201
 
 
 @library_bp.route('/books/<int:book_id>', methods=['PATCH'])
@@ -284,164 +279,102 @@ def update_book(book_id):
         return jsonify({'error': 'Unauthorized'}), 403
 
     data = request.get_json() or {}
-    text_fields = ['title', 'subtitle', 'isbn', 'accession_no', 'subject', 'author',
-                   'publisher', 'edition', 'language', 'rack', 'shelf', 'vendor_name',
-                   'description', 'keywords', 'cover_url']
-    for f in text_fields:
+    for f in ('title', 'subtitle', 'isbn', 'accession_no', 'subject', 'author',
+              'publisher', 'edition', 'language', 'rack', 'shelf',
+              'vendor_name', 'cover_url', 'description', 'keywords'):
         if f in data:
-            setattr(book, f, (data[f] or '').strip() if isinstance(data[f], str) else data[f])
+            setattr(book, f, (data[f] or '').strip())
 
-    if 'category_id' in data: book.category_id = data['category_id'] or None
-    if 'class_id' in data:    book.class_id     = data['class_id'] or None
-    if 'purchase_date' in data:
-        book.purchase_date = date.fromisoformat(data['purchase_date']) if data['purchase_date'] else None
-    if 'purchase_price' in data: book.purchase_price = float(data['purchase_price'] or 0)
-    if 'mrp' in data:            book.mrp            = float(data['mrp'] or 0)
+    if 'category_id' in data:    book.category_id    = data['category_id']
+    if 'class_id' in data:       book.class_id       = data['class_id']
+    if 'purchase_price' in data: book.purchase_price = float(data['purchase_price'] or 0.0)
+    if 'mrp' in data:            book.mrp            = float(data['mrp'] or 0.0)
     if 'is_active' in data:      book.is_active      = bool(data['is_active'])
+
+    if data.get('purchase_date'):
+        try:
+            book.purchase_date = date.fromisoformat(data['purchase_date'])
+        except ValueError:
+            pass
 
     db.session.commit()
     return jsonify(book.to_dict()), 200
 
 
 @library_bp.route('/books/<int:book_id>', methods=['DELETE'])
-@role_required('PRINCIPAL')
+@role_required(*LIBRARY_ADMIN_ROLES)
 def delete_book(book_id):
-    """Soft delete only if no active issues; otherwise block."""
     book = Book.query.get_or_404(book_id)
     if book.school_id != _school_id():
         return jsonify({'error': 'Unauthorized'}), 403
 
-    active_issues = BookIssue.query.filter_by(book_id=book_id, status='ISSUED').count()
-    if active_issues > 0:
-        return jsonify({'error': f'{active_issues} copies abhi issued hain — pehle return karwao'}), 400
+    # Check if any copies are currently issued
+    issued_count = BookIssue.query.filter_by(book_id=book.id, status='ISSUED').count()
+    if issued_count > 0:
+        return jsonify({'error': f'Cannot delete book: {issued_count} copies are currently issued out.'}), 400
 
-    book.is_active = False
+    db.session.delete(book)
     db.session.commit()
     log_activity(_school_id(), get_current_user().id, 'BOOK_DELETED', book.title)
     db.session.commit()
-    return jsonify({'message': 'Book deactivated'}), 200
+    return jsonify({'message': 'Book deleted successfully'}), 200
 
 
-# ─── Book Copies (add more copies to existing title, mark lost/damaged) ──────
+# ── Copies / Physical Inventory ──
 
 @library_bp.route('/books/<int:book_id>/copies', methods=['POST'])
 @role_required(*LIBRARY_ADMIN_ROLES)
-def add_copies(book_id):
-    """Add more physical copies to an existing book title."""
+def add_book_copies(book_id):
     book = Book.query.get_or_404(book_id)
-    if book.school_id != _school_id():
+    sid  = _school_id()
+    if book.school_id != sid:
         return jsonify({'error': 'Unauthorized'}), 403
 
     data  = request.get_json() or {}
-    count = int(data.get('count', 1))
-    if count < 1:
-        return jsonify({'error': 'count must be at least 1'}), 400
+    count = int(data.get('count') or 1)
+    condition_note = (data.get('condition_note') or 'New physical copy').strip()
 
-    sid = _school_id()
-    new_copies = []
+    created_copies = []
     for _ in range(count):
         copy = BookCopy(
-            book_id=book.id, school_id=sid,
+            book_id=book.id,
+            school_id=sid,
             copy_accession_no=_gen_accession_no(sid),
-            barcode=_gen_barcode(), status='AVAILABLE',
+            barcode=_gen_barcode(),
+            status='AVAILABLE',
+            condition_note=condition_note,
         )
         db.session.add(copy)
-        new_copies.append(copy)
+        created_copies.append(copy)
 
     db.session.commit()
-    log_activity(sid, get_current_user().id, 'COPIES_ADDED', f'{book.title} +{count}')
+    log_activity(sid, get_current_user().id, 'COPIES_ADDED', f'{book.title} (+{count} copies)')
     db.session.commit()
-    return jsonify([c.to_dict() for c in new_copies]), 201
+    return jsonify([c.to_dict() for c in created_copies]), 201
 
 
-@library_bp.route('/copies/<int:copy_id>/status', methods=['PATCH'])
+@library_bp.route('/copies/<int:copy_id>', methods=['PATCH'])
 @role_required(*LIBRARY_ADMIN_ROLES)
-def update_copy_status(copy_id):
-    """Mark a specific copy LOST / DAMAGED / WITHDRAWN / AVAILABLE."""
+def update_copy(copy_id):
     copy = BookCopy.query.get_or_404(copy_id)
     if copy.school_id != _school_id():
         return jsonify({'error': 'Unauthorized'}), 403
 
     data = request.get_json() or {}
-    new_status = data.get('status')
-    if new_status not in ('AVAILABLE', 'LOST', 'DAMAGED', 'WITHDRAWN'):
-        return jsonify({'error': 'Invalid status'}), 400
+    if 'status' in data and data['status'] in ('AVAILABLE', 'ISSUED', 'RESERVED', 'LOST', 'DAMAGED', 'MAINTENANCE', 'REMOVED'):
+        copy.status = data['status']
+    if 'condition_note' in data:
+        copy.condition_note = (data['condition_note'] or '').strip()
+    if 'shelf_location' in data:
+        copy.shelf_location = (data['shelf_location'] or '').strip()
 
-    if copy.status == 'ISSUED' and new_status != 'AVAILABLE':
-        return jsonify({'error': 'Copy currently issued hai — pehle return/lost-process se guzaro'}), 400
-
-    copy.status = new_status
-    copy.condition_note = (data.get('condition_note') or '').strip()
-    db.session.commit()
-    log_activity(_school_id(), get_current_user().id, 'COPY_STATUS_CHANGED',
-                 f'{copy.barcode} → {new_status}')
     db.session.commit()
     return jsonify(copy.to_dict()), 200
-
-@library_bp.route('/classes', methods=['GET'])
-@role_required(*LIBRARY_ROLES)
-def library_list_classes():
-    classes = Class.query.filter_by(school_id=_school_id()).order_by(Class.name).all()
-    return jsonify([{'id': c.id, 'name': c.name, 'section': c.section} for c in classes]), 200
-
-# ─── Barcode / QR lookup (used by Issue & Return scanner) ────────────────────
-
-@library_bp.route('/copies/barcode/<string:barcode>', methods=['GET'])
-@role_required(*LIBRARY_ROLES)
-def lookup_by_barcode(barcode):
-    copy = BookCopy.query.filter_by(barcode=barcode, school_id=_school_id()).first()
-    if not copy:
-        return jsonify({'error': 'Barcode not found'}), 404
-    d = copy.to_dict()
-    d['book'] = copy.book.to_dict() if copy.book else None
-    return jsonify(d), 200
-
-
-# ─── Settings ─────────────────────────────────────────────────────────────────
-
-@library_bp.route('/settings', methods=['GET'])
-@role_required(*LIBRARY_ROLES)
-def get_settings():
-    settings = _get_or_create_settings(_school_id())
-    return jsonify(settings.to_dict()), 200
-
-
-@library_bp.route('/settings', methods=['PATCH'])
-@role_required('PRINCIPAL')
-def update_settings():
-    settings = _get_or_create_settings(_school_id())
-    data = request.get_json() or {}
-    numeric_fields = [
-        'max_books_student', 'max_books_teacher', 'issue_duration_days',
-        'fine_per_day', 'max_fine_cap', 'lost_book_fine_multiplier',
-        'max_renewals', 'reservation_limit_per_member',
-    ]
-    for f in numeric_fields:
-        if f in data:
-            setattr(settings, f, float(data[f]) if 'fine' in f or 'multiplier' in f else int(data[f]))
-    db.session.commit()
-    return jsonify(settings.to_dict()), 200
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  Library Members
 # ═══════════════════════════════════════════════════════════════════════════
-
-def _gen_card_number(sid):
-    prefix = f"LIB-{sid}-"
-    last = LibraryMember.query.filter(
-        LibraryMember.school_id == sid,
-        LibraryMember.card_number.like(f'{prefix}%')
-    ).order_by(LibraryMember.id.desc()).first()
-    if last and last.card_number:
-        try:
-            n = int(last.card_number.split('-')[-1]) + 1
-        except (ValueError, IndexError):
-            n = 1
-    else:
-        n = 1
-    return f"{prefix}{n:05d}"
-
 
 @library_bp.route('/members', methods=['GET'])
 @role_required(*LIBRARY_ROLES)
@@ -449,29 +382,30 @@ def list_members():
     sid    = _school_id()
     search = (request.args.get('search') or '').strip()
     m_type = request.args.get('member_type')
+    status = request.args.get('status')
 
     q = LibraryMember.query.filter_by(school_id=sid)
     if m_type:
         q = q.filter_by(member_type=m_type)
-
-    members = q.all()
-    result = [m.to_dict() for m in members]
+    if status:
+        q = q.filter_by(status=status)
 
     if search:
-        s = search.lower()
-        result = [r for r in result if s in r['name'].lower() or s in r['card_number'].lower()]
+        like = f'%{search}%'
+        q = q.join(User, LibraryMember.user_id == User.id).filter(
+            db.or_(User.name.ilike(like), User.email.ilike(like), LibraryMember.card_number.ilike(like))
+        )
 
-    return jsonify(result), 200
+    members = q.all()
+    return jsonify([m.to_dict() for m in members]), 200
 
 
 @library_bp.route('/members/search-eligible', methods=['GET'])
 @role_required(*LIBRARY_ROLES)
 def search_eligible_users():
     """
-    Search Students/Teachers who are NOT yet library members, to onboard them.
-    Query: search, type (STUDENT/TEACHER)
+    Search Students/Teachers who are NOT yet library members, to enroll them.
     """
-    from app.models.user import User, UserRole
     sid    = _school_id()
     search = (request.args.get('search') or '').strip()
     u_type = request.args.get('type', 'STUDENT')
@@ -487,7 +421,7 @@ def search_eligible_users():
     users = User.query.filter(
         User.school_id == sid, User.role == role_enum,
         db.or_(User.name.ilike(like), User.email.ilike(like))
-    ).limit(15).all()
+    ).limit(20).all()
 
     return jsonify([
         {'user_id': u.id, 'name': u.name, 'email': u.email, 'is_member': u.id in existing_user_ids}
@@ -498,12 +432,6 @@ def search_eligible_users():
 @library_bp.route('/members', methods=['POST'])
 @role_required(*LIBRARY_ADMIN_ROLES)
 def create_member():
-    """
-    Enroll an existing Student/Teacher as a library member.
-    Body: { user_id, member_type }
-    """
-    from app.models.user import User
-
     data    = request.get_json() or {}
     user_id = data.get('user_id')
     m_type  = data.get('member_type', 'STUDENT')
@@ -517,12 +445,14 @@ def create_member():
         return jsonify({'error': 'Unauthorized'}), 403
 
     if LibraryMember.query.filter_by(school_id=sid, user_id=user_id).first():
-        return jsonify({'error': 'User already a library member'}), 409
+        return jsonify({'error': 'User is already enrolled as a library member'}), 409
 
     member = LibraryMember(
-        school_id=sid, user_id=user_id,
-        card_number=_gen_card_number(sid),
-        member_type=m_type, status='ACTIVE',
+        school_id   = sid,
+        user_id     = user_id,
+        card_number = _gen_card_number(sid),
+        member_type = m_type,
+        status      = 'ACTIVE',
     )
     db.session.add(member)
     db.session.commit()
@@ -552,13 +482,12 @@ def update_member(member_id):
 @role_required(*LIBRARY_ROLES)
 def member_history(member_id):
     member = LibraryMember.query.get_or_404(member_id)
-    if member.school_id != _school_id():
+    sid = _school_id()
+    if member.school_id != sid:
         return jsonify({'error': 'Unauthorized'}), 403
 
-    issues = BookIssue.query.filter_by(member_id=member_id)\
-                 .order_by(BookIssue.issue_date.desc()).all()
-    fines  = FineTransaction.query.filter_by(member_id=member_id)\
-                 .order_by(FineTransaction.created_at.desc()).all()
+    issues = BookIssue.query.filter_by(member_id=member_id).order_by(BookIssue.issue_date.desc()).all()
+    fines  = FineTransaction.query.filter_by(member_id=member_id).order_by(FineTransaction.created_at.desc()).all()
 
     return jsonify({
         'member': member.to_dict(),
@@ -581,7 +510,8 @@ def _max_books_for(member, settings):
 @role_required(*LIBRARY_ADMIN_ROLES)
 def issue_book():
     """
-    Body: { member_id, barcode }  OR  { member_id, book_id }  (auto-picks an available copy)
+    Issues a book copy to an active library member.
+    Body: { member_id, barcode } OR { member_id, book_id }
     """
     data      = request.get_json() or {}
     member_id = data.get('member_id')
@@ -589,7 +519,7 @@ def issue_book():
     book_id   = data.get('book_id')
 
     if not member_id or (not barcode and not book_id):
-        return jsonify({'error': 'member_id and (barcode or book_id) required'}), 400
+        return jsonify({'error': 'member_id and (barcode or book_id) are required'}), 400
 
     sid    = _school_id()
     member = LibraryMember.query.get_or_404(member_id)
@@ -597,98 +527,102 @@ def issue_book():
         return jsonify({'error': 'Unauthorized'}), 403
 
     if member.status != 'ACTIVE':
-        return jsonify({'error': f'Member is {member.status} — issue nahi ho sakta'}), 400
+        return jsonify({'error': f'Member account is {member.status} — cannot issue books'}), 400
 
     settings = _get_or_create_settings(sid)
 
-    # ── Pending fine check ──
-    pending_fine = db.session.query(db.func.coalesce(db.func.sum(FineTransaction.amount - FineTransaction.amount_paid), 0))\
-        .filter_by(member_id=member_id).filter(FineTransaction.status.in_(['PENDING', 'PARTIAL'])).scalar() or 0
-    if pending_fine > 0 and pending_fine >= settings.max_fine_cap:
+    # 1. Pending Fine Check
+    pending_fines = FineTransaction.query.filter_by(member_id=member_id).filter(
+        FineTransaction.status.in_(['OUTSTANDING', 'PARTIALLY_PAID', 'PENDING', 'PARTIAL'])
+    ).all()
+    pending_fine_amt = sum(f.outstanding_amount for f in pending_fines)
+    if pending_fine_amt > 0 and pending_fine_amt >= settings.max_fine_cap:
         return jsonify({
-            'error': f'Member ka pending fine ₹{pending_fine:.0f} hai (max cap ₹{settings.max_fine_cap:.0f} tak pahunch gaya) — pehle fine clear karo'
+            'error': f'Member has outstanding fines of ₹{pending_fine_amt:.0f} (exceeds cap ₹{settings.max_fine_cap:.0f}) — please clear dues before issuing new books'
         }), 400
 
-    # ── Max books limit check ──
+    # 2. Max Books Limit Check
     current_issued = BookIssue.query.filter_by(member_id=member_id, status='ISSUED').count()
     max_allowed = _max_books_for(member, settings)
     if current_issued >= max_allowed:
         return jsonify({
-            'error': f'Member already {current_issued} books issued hai (max limit {max_allowed})'
+            'error': f'Member already has {current_issued} books issued (maximum limit: {max_allowed})'
         }), 400
 
-    # ── Find the copy ──
+    # 3. Find Physical Copy
     if barcode:
         copy = BookCopy.query.filter_by(barcode=barcode, school_id=sid).first()
         if not copy:
-            return jsonify({'error': 'Barcode not found'}), 404
+            return jsonify({'error': 'Physical copy barcode not found in school catalog'}), 404
         if copy.status != 'AVAILABLE':
-            return jsonify({'error': f'Copy currently {copy.status} — available nahi hai'}), 400
+            return jsonify({'error': f'Physical copy is currently {copy.status} and not available for issue'}), 400
     else:
         copy = BookCopy.query.filter_by(book_id=book_id, school_id=sid, status='AVAILABLE').first()
         if not copy:
-            return jsonify({'error': 'Is book ki koi copy available nahi hai — Reserve karo'}), 400
+            return jsonify({'error': 'No physical copy of this title is currently available — please reserve it.'}), 400
 
-    # ── Reservation priority check ──
-    # Agar kisi aur member ne is book ko reserve kar rakha hai aur queue mein aage hai,
-    # to normal walk-in issue block karo (unless issuing to that same reserving member).
+    # 4. Reservation Queue Check
     top_reservation = BookReservation.query.filter_by(
         book_id=copy.book_id, status='WAITING'
     ).order_by(BookReservation.queue_position.asc()).first()
     if top_reservation and top_reservation.member_id != member_id:
+        reserver_name = top_reservation.member.user.name if top_reservation.member and top_reservation.member.user else "another member"
         return jsonify({
-            'error': f'Is book pe reservation queue hai ({top_reservation.member.user.name if top_reservation.member.user else "another member"} first in line) — unhe pehle issue karo'
+            'error': f'This book is currently reserved by {reserver_name} (position #1 in queue).'
         }), 409
 
-    # ── Issue ──
+    # 5. Issue Book
     issue_date = date.today()
     due_date   = date.fromordinal(issue_date.toordinal() + settings.issue_duration_days)
 
     issue = BookIssue(
-        school_id=sid, copy_id=copy.id, book_id=copy.book_id, member_id=member_id,
-        issue_date=issue_date, due_date=due_date, status='ISSUED',
-        issued_by=get_current_user().id,
-        remarks=data.get('remarks', ''),
+        school_id  = sid,
+        copy_id    = copy.id,
+        book_id    = copy.book_id,
+        member_id  = member_id,
+        issue_date = issue_date,
+        due_date   = due_date,
+        status     = 'ISSUED',
+        issued_by  = get_current_user().id,
+        remarks    = data.get('remarks', ''),
     )
     copy.status = 'ISSUED'
     db.session.add(issue)
 
-    # If this member had a fulfilled reservation for this book, mark it fulfilled
+    # Fulfill reservation if this issue is for the reserving member
     if top_reservation and top_reservation.member_id == member_id:
         top_reservation.status = 'FULFILLED'
-        # shift queue positions down for remaining
-        remaining = BookReservation.query.filter_by(
-            book_id=copy.book_id, status='WAITING'
-        ).order_by(BookReservation.queue_position.asc()).all()
+        remaining = BookReservation.query.filter_by(book_id=copy.book_id, status='WAITING').order_by(BookReservation.queue_position.asc()).all()
         for idx, r in enumerate(remaining, start=1):
             r.queue_position = idx
 
     db.session.commit()
     log_activity(sid, get_current_user().id, 'BOOK_ISSUED',
-                 f'{copy.book.title} → {member.user.name if member.user else ""} (due {due_date})')
+                 f'{copy.book.title} → {member.user.name if member.user else ""} (Due: {due_date})')
     db.session.commit()
 
     return jsonify(issue.to_dict()), 201
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  Book Return + Fine calculation
+#  Book Return + Fine Calculation
 # ═══════════════════════════════════════════════════════════════════════════
 
 def _calc_overdue_fine(issue, settings, return_date):
     if return_date <= issue.due_date:
-        return 0
+        return 0.0
     overdue_days = (return_date - issue.due_date).days
-    fine = overdue_days * settings.fine_per_day
-    return min(fine, settings.max_fine_cap)
+    fine = overdue_days * (settings.fine_per_day or 2.0)
+    return min(fine, settings.max_fine_cap or 200.0)
 
 
 @library_bp.route('/return', methods=['POST'])
 @role_required(*LIBRARY_ADMIN_ROLES)
 def return_book():
     """
-    Body: { issue_id } OR { barcode }
-    Optional: { mark_lost: bool, mark_damaged: bool, collect_fine_now: bool }
+    Returns a book copy.
+    Calculates overdue/lost/damage fines. Fines are created as OUTSTANDING (never auto-paid).
+    If collect_fine_now is true, generates a real financial payment transaction atomically.
     """
     data = request.get_json() or {}
     sid  = _school_id()
@@ -702,14 +636,14 @@ def return_book():
             return jsonify({'error': 'Barcode not found'}), 404
         issue = BookIssue.query.filter_by(copy_id=copy.id, status='ISSUED').first()
         if not issue:
-            return jsonify({'error': 'Ye copy currently issued nahi hai'}), 400
+            return jsonify({'error': 'This copy is not currently issued out'}), 400
     else:
-        return jsonify({'error': 'issue_id or barcode required'}), 400
+        return jsonify({'error': 'issue_id or barcode is required'}), 400
 
     if issue.school_id != sid:
         return jsonify({'error': 'Unauthorized'}), 403
     if issue.status != 'ISSUED':
-        return jsonify({'error': f'Ye issue already {issue.status} hai'}), 400
+        return jsonify({'error': f'Issue record is already marked as {issue.status}'}), 400
 
     settings    = _get_or_create_settings(sid)
     return_date = date.today()
@@ -723,15 +657,22 @@ def return_book():
     if mark_lost:
         issue.status      = 'LOST'
         issue.return_date = return_date
-        copy.status        = 'LOST'
-        lost_fine = (copy.book.mrp or 0) * settings.lost_book_fine_multiplier
+        issue.returned_by = get_current_user().id
+        copy.status       = 'LOST'
+
+        lost_fine = (copy.book.mrp or copy.book.purchase_price or 0.0) * (settings.lost_book_fine_multiplier or 1.0)
         fine_created = FineTransaction(
-            school_id=sid, issue_id=issue.id, member_id=issue.member_id,
-            reason='LOST', amount=lost_fine, status='PENDING',
+            school_id     = sid,
+            issue_id      = issue.id,
+            member_id     = issue.member_id,
+            reason        = 'LOST',
+            amount        = lost_fine,
+            amount_paid   = 0.0,
+            waived_amount = 0.0,
+            status        = 'OUTSTANDING',
         )
         db.session.add(fine_created)
-        log_activity(sid, get_current_user().id, 'BOOK_LOST',
-                     f'{copy.book.title} — fine ₹{lost_fine:.0f}')
+        log_activity(sid, get_current_user().id, 'BOOK_LOST', f'{copy.book.title} (Fine: ₹{lost_fine:.0f})')
 
     else:
         issue.status      = 'RETURNED'
@@ -740,56 +681,61 @@ def return_book():
 
         if mark_damaged:
             copy.status = 'DAMAGED'
-            copy.condition_note = data.get('condition_note', 'Marked damaged on return')
-            damage_fine = (copy.book.mrp or 0) * 0.5  # 50% of MRP — configurable later if needed
+            copy.condition_note = data.get('condition_note', 'Marked damaged upon return')
+            damage_fine = (copy.book.mrp or copy.book.purchase_price or 0.0) * (settings.damaged_book_fine_multiplier or 0.5)
             fine_created = FineTransaction(
-                school_id=sid, issue_id=issue.id, member_id=issue.member_id,
-                reason='DAMAGED', amount=damage_fine, status='PENDING',
+                school_id     = sid,
+                issue_id      = issue.id,
+                member_id     = issue.member_id,
+                reason        = 'DAMAGED',
+                amount        = damage_fine,
+                amount_paid   = 0.0,
+                waived_amount = 0.0,
+                status        = 'OUTSTANDING',
             )
             db.session.add(fine_created)
         else:
             copy.status = 'AVAILABLE'
 
-        # Overdue fine (separate from damage fine, both can apply)
         overdue_fine = _calc_overdue_fine(issue, settings, return_date)
         if overdue_fine > 0:
             fine_created = FineTransaction(
-                school_id=sid, issue_id=issue.id, member_id=issue.member_id,
-                reason='OVERDUE', amount=overdue_fine, status='PENDING',
+                school_id     = sid,
+                issue_id      = issue.id,
+                member_id     = issue.member_id,
+                reason        = 'OVERDUE',
+                amount        = overdue_fine,
+                amount_paid   = 0.0,
+                waived_amount = 0.0,
+                status        = 'OUTSTANDING',
             )
             db.session.add(fine_created)
 
-        log_activity(sid, get_current_user().id, 'BOOK_RETURNED',
-                     f'{copy.book.title} (overdue fine: ₹{overdue_fine:.0f})')
+        log_activity(sid, get_current_user().id, 'BOOK_RETURNED', f'{copy.book.title} (Status: {copy.status})')
 
     db.session.flush()
 
-    # ── Optional: collect fine immediately at return counter ──
-    # NEW
-    # ── Optional: collect fine immediately at return counter ──
-    if fine_created and data.get('collect_fine_now'):
-        fine_created.amount_paid = fine_created.amount
-        fine_created.status      = 'PAID'
-        fine_created.collected_by = get_current_user().id
-        fine_created.collected_at = datetime.utcnow()
-
-    # ── Sync to centralized Fees Management ──
+    # Create / Sync FeeRecord in Fee Management
     if fine_created:
-        db.session.flush()   # fine_created.id chahiye FeeRecord link karne ke liye
-        fee_rec = _sync_fine_to_fee_record(fine_created, sid)
-        if fee_rec and fine_created.status == 'PAID':
-            fee_rec.amount_paid = fee_rec.amount_due
-            fee_rec.status      = 'PAID'
-            fee_rec.paid_date   = date.today()
+        generate_library_fine_fee_record(fine_created, created_by=get_current_user().id)
+        db.session.flush()
 
-    # ── If book becomes available again, notify top reservation ──
+        # If Librarian collected payment right at return counter, record the financial transaction
+        if data.get('collect_fine_now'):
+            payment_mode = data.get('payment_mode', 'CASH')
+            record_library_fine_payment(
+                fine_created,
+                payment_amount=fine_created.amount,
+                payment_mode=payment_mode,
+                collected_by_user_id=get_current_user().id,
+                remarks='Collected at library return counter'
+            )
+
+    # Notify top reservation if copy became available
     if copy.status == 'AVAILABLE':
-        top_reservation = BookReservation.query.filter_by(
-            book_id=copy.book_id, status='WAITING'
-        ).order_by(BookReservation.queue_position.asc()).first()
-        if top_reservation:
-            top_reservation.status = 'NOTIFIED'
-            # TODO: hook into notification system (email/SMS/push) here in a later phase
+        top_res = BookReservation.query.filter_by(book_id=copy.book_id, status='WAITING').order_by(BookReservation.queue_position.asc()).first()
+        if top_res:
+            top_res.status = 'NOTIFIED'
 
     db.session.commit()
 
@@ -811,53 +757,51 @@ def renew_issue(issue_id):
     if issue.school_id != sid:
         return jsonify({'error': 'Unauthorized'}), 403
     if issue.status != 'ISSUED':
-        return jsonify({'error': 'Sirf currently-issued book hi renew ho sakti hai'}), 400
+        return jsonify({'error': 'Only currently-issued books can be renewed'}), 400
 
     settings = _get_or_create_settings(sid)
 
     if issue.renewal_count >= settings.max_renewals:
-        return jsonify({'error': f'Max renewal limit ({settings.max_renewals}) already reach ho chuka hai'}), 400
+        return jsonify({'error': f'Maximum renewal limit ({settings.max_renewals}) reached'}), 400
 
-    # Block renewal if someone else is waiting for this book
-    waiting = BookReservation.query.filter_by(
-        book_id=issue.book_id, status='WAITING'
-    ).first()
+    # Block renewal if someone else is waiting for this book in reservation queue
+    waiting = BookReservation.query.filter_by(book_id=issue.book_id, status='WAITING').first()
     if waiting:
-        return jsonify({'error': 'Is book pe reservation queue hai — renewal allow nahi'}), 409
+        return jsonify({'error': 'Cannot renew: this book is reserved by another reader.'}), 409
 
     issue.due_date = date.fromordinal(issue.due_date.toordinal() + settings.issue_duration_days)
     issue.renewal_count += 1
     db.session.commit()
 
-    log_activity(sid, get_current_user().id, 'BOOK_RENEWED',
-                 f'{issue.book.title} → new due {issue.due_date}')
+    log_activity(sid, get_current_user().id, 'BOOK_RENEWED', f'{issue.book.title} (New Due: {issue.due_date})')
     db.session.commit()
     return jsonify(issue.to_dict()), 200
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  Fine Management
+#  Fine / Penalty Lifecycle Management
 # ═══════════════════════════════════════════════════════════════════════════
 
-# NEW
 @library_bp.route('/fines', methods=['GET'])
 @role_required(*LIBRARY_ROLES)
 def list_fines():
-    """
-    Query: status, member_id
-    Enriched with book_title/book_mrp/class_name/roll_number/overdue_days —
-    Fine Center page ko ye context chahiye taaki manually amount decide karna
-    aasaan ho (book kitne ki thi, kitne din late hui).
-    """
-    sid    = _school_id()
-    status = request.args.get('status')
+    sid       = _school_id()
+    status    = request.args.get('status')
     member_id = request.args.get('member_id')
+    reason    = request.args.get('reason')
 
     q = FineTransaction.query.filter_by(school_id=sid)
     if status:
-        q = q.filter_by(status=status)
+        if status == 'OUTSTANDING':
+            q = q.filter(FineTransaction.status.in_(['OUTSTANDING', 'PENDING']))
+        elif status == 'PARTIALLY_PAID':
+            q = q.filter(FineTransaction.status.in_(['PARTIALLY_PAID', 'PARTIAL']))
+        else:
+            q = q.filter_by(status=status)
     if member_id:
         q = q.filter_by(member_id=member_id)
+    if reason:
+        q = q.filter_by(reason=reason.upper())
 
     fines = q.order_by(FineTransaction.created_at.desc()).limit(500).all()
 
@@ -871,7 +815,7 @@ def list_fines():
             d['due_date']      = str(issue.due_date)
             d['return_date']   = str(issue.return_date) if issue.return_date else None
             d['overdue_days']  = issue.to_dict()['overdue_days']
-            d['issue_status']  = issue.status   # ISSUED / RETURNED / LOST
+            d['issue_status']  = issue.status
         else:
             d['book_title'] = d['book_mrp'] = d['due_date'] = d['return_date'] = d['overdue_days'] = None
             d['issue_status'] = None
@@ -883,6 +827,7 @@ def list_fines():
                 cls = Class.query.get(student.class_id) if student.class_id else None
                 d['class_name']  = f"{cls.name} - {cls.section}" if cls else ''
                 d['roll_number'] = student.roll_number or ''
+                d['student_id']  = student.id
         else:
             d['class_name'] = d['roll_number'] = ''
         result.append(d)
@@ -894,23 +839,23 @@ def list_fines():
 @role_required(*LIBRARY_ADMIN_ROLES)
 def create_manual_fine():
     """
-    Librarian/Principal seedha kisi member pe fine lagaye — bina overdue/lost/
-    damaged trigger ke. Issue optional link kiya ja sakta hai (context ke liye).
-    Body: { member_id, issue_id (optional), reason, amount, remarks }
+    Creates a manual penalty (e.g. Lost Library Card, Missing Pages, Damaged Spine, etc.).
+    Fine is created as OUTSTANDING.
     """
     data      = request.get_json() or {}
     member_id = data.get('member_id')
     amount    = data.get('amount')
-    reason    = (data.get('reason') or 'MANUAL').strip().upper()[:30]
+    reason    = (data.get('reason') or 'MANUAL').strip().upper()[:50]
+    remarks   = (data.get('remarks') or '').strip()
 
     if not member_id or amount is None:
-        return jsonify({'error': 'member_id aur amount zaroori hai'}), 400
+        return jsonify({'error': 'member_id and amount are required'}), 400
     try:
         amount = float(amount)
     except (TypeError, ValueError):
-        return jsonify({'error': 'amount number honi chahiye'}), 400
+        return jsonify({'error': 'amount must be a valid number'}), 400
     if amount <= 0:
-        return jsonify({'error': 'amount 0 se zyada honi chahiye'}), 400
+        return jsonify({'error': 'amount must be greater than 0'}), 400
 
     sid    = _school_id()
     member = LibraryMember.query.get_or_404(member_id)
@@ -924,56 +869,152 @@ def create_manual_fine():
             return jsonify({'error': 'Invalid issue_id'}), 400
 
     fine = FineTransaction(
-        school_id=sid, issue_id=issue_id, member_id=member_id,
-        reason=reason, amount=amount, status='PENDING',
-        collected_by=None,
+        school_id     = sid,
+        issue_id      = issue_id,
+        member_id     = member_id,
+        reason        = reason,
+        amount        = amount,
+        amount_paid   = 0.0,
+        waived_amount = 0.0,
+        status        = 'OUTSTANDING',
     )
     db.session.add(fine)
     db.session.flush()
 
-    fee_rec = _sync_fine_to_fee_record(fine, sid)
+    generate_library_fine_fee_record(fine, created_by=get_current_user().id)
 
     db.session.commit()
     log_activity(sid, get_current_user().id, 'FINE_MANUAL_ADDED',
                  f'{member.user.name if member.user else ""} — ₹{amount:.0f} ({reason})')
     db.session.commit()
 
-    d = fine.to_dict()
-    d['fee_record_created'] = bool(fee_rec)
-    return jsonify(d), 201
+    return jsonify(fine.to_dict()), 201
+
+
+@library_bp.route('/fines/<int:fine_id>/collect', methods=['POST'])
+@role_required(*LIBRARY_ADMIN_ROLES)
+def collect_fine(fine_id):
+    """
+    Collect payment for a library penalty.
+    Uses centralized finance service: updates FeeRecord, creates FeeTransaction,
+    and updates FineTransaction with double-payment protection.
+    """
+    fine = FineTransaction.query.get_or_404(fine_id)
+    if fine.school_id != _school_id():
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    if fine.outstanding_amount <= 0 or fine.status in ('PAID', 'WAIVED', 'CANCELLED'):
+        return jsonify({'error': 'Fine is already settled. Outstanding balance is ₹0.'}), 400
+
+    data         = request.get_json() or {}
+    amount       = float(data.get('amount', fine.outstanding_amount))
+    payment_mode = data.get('payment_mode', 'CASH')
+    remarks      = data.get('remarks', '')
+
+    try:
+        res = record_library_fine_payment(
+            fine_txn=fine,
+            payment_amount=amount,
+            payment_mode=payment_mode,
+            collected_by_user_id=get_current_user().id,
+            remarks=remarks
+        )
+        db.session.commit()
+        log_activity(_school_id(), get_current_user().id, 'FINE_COLLECTED', f'₹{amount:.0f} (Fine #{fine.id})')
+        db.session.commit()
+        return jsonify(fine.to_dict()), 200
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+
+
+@library_bp.route('/fines/<int:fine_id>/waive', methods=['POST'])
+@role_required(*WAIVER_ROLES)
+def waive_fine(fine_id):
+    """
+    Waive or forgive a library fine.
+    Allows partial or full waiver. Records waiver reason and authorized user without deleting history.
+    """
+    fine = FineTransaction.query.get_or_404(fine_id)
+    if fine.school_id != _school_id():
+        return jsonify({'error': 'Unauthorized'}), 403
+    if fine.outstanding_amount <= 0 or fine.status in ('PAID', 'WAIVED', 'CANCELLED'):
+        return jsonify({'error': f'Fine is already {fine.canonical_status}'}), 400
+
+    data = request.get_json() or {}
+    requested_waive_amt = data.get('waived_amount')
+    if requested_waive_amt is not None:
+        try:
+            waive_amt = min(float(requested_waive_amt), fine.outstanding_amount)
+        except (TypeError, ValueError):
+            waive_amt = fine.outstanding_amount
+    else:
+        waive_amt = fine.outstanding_amount
+
+    if waive_amt <= 0:
+        return jsonify({'error': 'Waiver amount must be greater than 0'}), 400
+
+    reason = (data.get('reason') or 'Approved by Principal/Admin').strip()
+
+    fine.waived_amount = round((fine.waived_amount or 0.0) + waive_amt, 2)
+    fine.waived_by     = get_current_user().id
+    fine.waived_at     = datetime.utcnow()
+    fine.waive_reason  = reason
+
+    if fine.outstanding_amount <= 0:
+        fine.status = 'WAIVED'
+    else:
+        fine.status = 'PARTIALLY_PAID'
+
+    # Sync to FeeRecord
+    from app.models.financial import FeeRecord
+    linked_rec = FeeRecord.query.filter_by(source='LIBRARY', source_ref_id=fine.id).first()
+    if linked_rec:
+        linked_rec.discount = fine.waived_amount
+        linked_rec.discount_reason = reason
+        if linked_rec.amount_paid >= linked_rec.effective_due():
+            linked_rec.status = 'PAID' if linked_rec.amount_paid > 0 else 'CANCELLED'
+            linked_rec.remarks = (linked_rec.remarks or '') + f' [Waiver: ₹{waive_amt:.0f} - {reason}]'
+
+    db.session.commit()
+    log_activity(_school_id(), get_current_user().id, 'FINE_WAIVED',
+                 f'Fine #{fine.id} — Waived ₹{waive_amt:.0f} ({reason})')
+    db.session.commit()
+    return jsonify(fine.to_dict()), 200
 
 
 @library_bp.route('/fines/<int:fine_id>/resolve-replacement', methods=['POST'])
 @role_required(*LIBRARY_ADMIN_ROLES)
 def resolve_fine_with_replacement(fine_id):
     """
-    Student ne khoyi hui book ki jagah cash ki bajaye ek naya physical copy
-    la kar de diya. Fine WAIVED ho jaati hai, aur (agar chaha to) library
-    stock mein ek naya AVAILABLE copy add ho jaata hai.
-    Body: { add_replacement_copy: bool (default true), remarks }
+    Student brings a replacement physical copy for a lost book.
+    Fine is marked WAIVED, and a new physical copy is inventoried into the system.
     """
     fine = FineTransaction.query.get_or_404(fine_id)
     sid  = _school_id()
     if fine.school_id != sid:
         return jsonify({'error': 'Unauthorized'}), 403
-    if fine.status in ('PAID', 'WAIVED'):
-        return jsonify({'error': f'Fine already {fine.status}'}), 400
+    if fine.status in ('PAID', 'WAIVED', 'CANCELLED'):
+        return jsonify({'error': f'Fine already {fine.canonical_status}'}), 400
     if fine.reason != 'LOST':
-        return jsonify({'error': 'Ye option sirf LOST book fines ke liye hai'}), 400
+        return jsonify({'error': 'Replacement is only applicable for LOST book penalties'}), 400
 
     data     = request.get_json() or {}
     add_copy = data.get('add_replacement_copy', True)
     remarks  = (data.get('remarks') or 'Replaced with new physical copy').strip()
 
-    fine.status       = 'WAIVED'
-    fine.waived_by    = get_current_user().id
-    fine.waive_reason = remarks
+    fine.waived_amount = fine.amount
+    fine.status        = 'WAIVED'
+    fine.waived_by     = get_current_user().id
+    fine.waived_at     = datetime.utcnow()
+    fine.waive_reason  = remarks
 
     from app.models.financial import FeeRecord
     linked_rec = FeeRecord.query.filter_by(source='LIBRARY', source_ref_id=fine.id).first()
-    if linked_rec and linked_rec.amount_paid == 0:
-        linked_rec.status  = 'CANCELLED'
-        linked_rec.remarks = (linked_rec.remarks or '') + f' [Replaced with book: {remarks}]'
+    if linked_rec:
+        linked_rec.discount = fine.amount
+        linked_rec.status   = 'CANCELLED'
+        linked_rec.remarks  = (linked_rec.remarks or '') + f' [Replaced with copy: {remarks}]'
 
     new_copy = None
     if add_copy and fine.issue_id:
@@ -983,13 +1024,12 @@ def resolve_fine_with_replacement(fine_id):
                 book_id=issue.book_id, school_id=sid,
                 copy_accession_no=_gen_accession_no(sid),
                 barcode=_gen_barcode(), status='AVAILABLE',
-                condition_note='Replacement copy — original marked LOST',
+                condition_note=f'Replacement copy for lost book (Issue #{issue.id})',
             )
             db.session.add(new_copy)
 
     db.session.commit()
-    log_activity(sid, get_current_user().id, 'FINE_RESOLVED_REPLACEMENT',
-                 f'Fine #{fine.id} — {remarks}')
+    log_activity(sid, get_current_user().id, 'FINE_RESOLVED_REPLACEMENT', f'Fine #{fine.id} — {remarks}')
     db.session.commit()
 
     result = fine.to_dict()
@@ -998,83 +1038,202 @@ def resolve_fine_with_replacement(fine_id):
     return jsonify(result), 200
 
 
-@library_bp.route('/fines/<int:fine_id>/collect', methods=['POST'])
-@role_required(*LIBRARY_ADMIN_ROLES)
-def collect_fine(fine_id):
-    fine = FineTransaction.query.get_or_404(fine_id)
-    if fine.school_id != _school_id():
+# ═══════════════════════════════════════════════════════════════════════════
+#  Reservations
+# ═══════════════════════════════════════════════════════════════════════════
+
+@library_bp.route('/reservations', methods=['GET'])
+@role_required(*LIBRARY_ROLES)
+def list_reservations():
+    sid     = _school_id()
+    status  = request.args.get('status', 'WAITING')
+    book_id = request.args.get('book_id')
+
+    q = BookReservation.query.filter_by(school_id=sid)
+    if status and status != 'ALL':
+        q = q.filter_by(status=status)
+    if book_id:
+        q = q.filter_by(book_id=book_id)
+
+    reservations = q.order_by(BookReservation.queue_position.asc()).all()
+    return jsonify([r.to_dict() for r in reservations]), 200
+
+
+@library_bp.route('/reservations', methods=['POST'])
+@role_required(*LIBRARY_ROLES, 'STUDENT')
+def create_reservation():
+    data      = request.get_json() or {}
+    book_id   = data.get('book_id')
+    member_id = data.get('member_id')
+
+    sid = _school_id()
+    current_user = get_current_user()
+
+    # Self-service member resolution for Students/Teachers
+    if not member_id and current_user.role.value in ('STUDENT', 'TEACHER'):
+        mem = LibraryMember.query.filter_by(school_id=sid, user_id=current_user.id).first()
+        if not mem:
+            mem = LibraryMember(
+                school_id=sid, user_id=current_user.id,
+                card_number=_gen_card_number(sid),
+                member_type=current_user.role.value,
+                status='ACTIVE'
+            )
+            db.session.add(mem)
+            db.session.flush()
+        member_id = mem.id
+
+    if not book_id or not member_id:
+        return jsonify({'error': 'book_id and member_id are required'}), 400
+
+    book   = Book.query.get_or_404(book_id)
+    member = LibraryMember.query.get_or_404(member_id)
+    if book.school_id != sid or member.school_id != sid:
         return jsonify({'error': 'Unauthorized'}), 403
-    if fine.status in ('PAID', 'WAIVED'):
-        return jsonify({'error': f'Fine already {fine.status}'}), 400
 
-    data   = request.get_json() or {}
-    amount = float(data.get('amount', fine.amount - fine.amount_paid))
+    if current_user.role.value == 'STUDENT' and member.user_id != current_user.id:
+        return jsonify({'error': 'You can only reserve books for yourself'}), 403
 
-    fine.amount_paid += amount
-    if fine.amount_paid >= fine.amount:
-        fine.status = 'PAID'
-    else:
-        fine.status = 'PARTIAL'
+    if member.status != 'ACTIVE':
+        return jsonify({'error': f'Member status is {member.status}'}), 400
 
-     # NEW
-    fine.collected_by = get_current_user().id
-    fine.collected_at  = datetime.utcnow()
+    # Prevent duplicate reservation in WAITING queue
+    existing = BookReservation.query.filter_by(
+        book_id=book_id, member_id=member_id, status='WAITING'
+    ).first()
+    if existing:
+        return jsonify({'error': 'You already have an active reservation for this book'}), 409
 
-    # ── Keep linked FeeRecord in sync ──
-    from app.models.financial import FeeRecord
-    linked_rec = FeeRecord.query.filter_by(source='LIBRARY', source_ref_id=fine.id).first()
-    if linked_rec:
-        linked_rec.amount_paid = fine.amount_paid
-        linked_rec.status      = fine.status  # PAID / PARTIAL
-        linked_rec.paid_date   = date.today()
+    settings = _get_or_create_settings(sid)
+    active_count = BookReservation.query.filter_by(member_id=member_id, status='WAITING').count()
+    if active_count >= settings.reservation_limit_per_member:
+        return jsonify({'error': f'Maximum reservation limit ({settings.reservation_limit_per_member}) reached'}), 400
 
+    last_position = db.session.query(db.func.max(BookReservation.queue_position))\
+        .filter_by(book_id=book_id, status='WAITING').scalar() or 0
+
+    reservation = BookReservation(
+        school_id      = sid,
+        book_id        = book_id,
+        member_id      = member_id,
+        status         = 'WAITING',
+        queue_position = last_position + 1,
+    )
+    db.session.add(reservation)
     db.session.commit()
 
-    log_activity(_school_id(), get_current_user().id, 'FINE_COLLECTED', f'₹{amount:.0f} (fine #{fine.id})')
+    log_activity(sid, current_user.id, 'BOOK_RESERVED',
+                 f'{book.title} — {member.user.name if member.user else ""} (Queue #{reservation.queue_position})')
     db.session.commit()
-    return jsonify(fine.to_dict()), 200
+    return jsonify(reservation.to_dict()), 201
 
 
-@library_bp.route('/fines/<int:fine_id>/waive', methods=['POST'])
-@role_required('PRINCIPAL', 'LIBRARIAN')
-def waive_fine(fine_id):
-    fine = FineTransaction.query.get_or_404(fine_id)
-    if fine.school_id != _school_id():
+@library_bp.route('/reservations/<int:res_id>/cancel', methods=['POST'])
+@role_required(*LIBRARY_ROLES, 'STUDENT')
+def cancel_reservation(res_id):
+    reservation = BookReservation.query.get_or_404(res_id)
+    sid = _school_id()
+    if reservation.school_id != sid:
         return jsonify({'error': 'Unauthorized'}), 403
-    if fine.status in ('PAID', 'WAIVED'):
-        return jsonify({'error': f'Fine already {fine.status}'}), 400
 
-    # NEW
-    data = request.get_json() or {}
-    fine.status       = 'WAIVED'
-    fine.waived_by    = get_current_user().id
-    fine.waive_reason = (data.get('reason') or '').strip()
+    current_user = get_current_user()
+    if current_user.role.value == 'STUDENT' and reservation.member.user_id != current_user.id:
+        return jsonify({'error': 'You can only cancel your own reservation'}), 403
 
-    from app.models.financial import FeeRecord
-    linked_rec = FeeRecord.query.filter_by(source='LIBRARY', source_ref_id=fine.id).first()
-    if linked_rec and linked_rec.amount_paid == 0:
-        linked_rec.status  = 'CANCELLED'
-        linked_rec.remarks = (linked_rec.remarks or '') + f' [Waived: {fine.waive_reason}]'
+    if reservation.status not in ('WAITING', 'NOTIFIED'):
+        return jsonify({'error': f'Reservation is already {reservation.status}'}), 400
+
+    reservation.status = 'CANCELLED'
+    db.session.flush()
+
+    # Re-sequence remaining queue positions
+    remaining = BookReservation.query.filter_by(book_id=reservation.book_id, status='WAITING').order_by(BookReservation.queue_position.asc()).all()
+    for idx, r in enumerate(remaining, start=1):
+        r.queue_position = idx
 
     db.session.commit()
-
-    log_activity(_school_id(), get_current_user().id, 'FINE_WAIVED',
-                 f'Fine #{fine.id} — {fine.waive_reason}')
-    db.session.commit()
-    return jsonify(fine.to_dict()), 200
+    return jsonify({'message': 'Reservation cancelled successfully'}), 200
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  Currently-Issued / Overdue lists (used by dashboard + return screen)
+#  Student / Teacher Self-Service My Library
 # ═══════════════════════════════════════════════════════════════════════════
-# NEW
+
+@library_bp.route('/my-library', methods=['GET'])
+@role_required('STUDENT', 'TEACHER', 'PARENT')
+def my_library():
+    """
+    Self-service hub for Students and Teachers.
+    Returns currently issued books, overdue status, fine summary, and reservations.
+    """
+    user = get_current_user()
+    sid  = user.school_id
+
+    member = LibraryMember.query.filter_by(school_id=sid, user_id=user.id).first()
+    if not member:
+        return jsonify({
+            'member': None,
+            'currently_issued': [],
+            'history': [],
+            'fines': [],
+            'reservations': [],
+            'summary': {
+                'issued_count': 0,
+                'overdue_count': 0,
+                'total_fines': 0.0,
+                'paid_fines': 0.0,
+                'waived_fines': 0.0,
+                'outstanding_fines': 0.0,
+            }
+        }), 200
+
+    settings = _get_or_create_settings(sid)
+    today = date.today()
+
+    all_issues = BookIssue.query.filter_by(member_id=member.id).order_by(BookIssue.issue_date.desc()).all()
+    currently_issued = []
+    history = []
+
+    for issue in all_issues:
+        d = issue.to_dict()
+        d['estimated_fine'] = _calc_overdue_fine(issue, settings, today) if d['overdue_days'] > 0 else 0.0
+        if issue.status == 'ISSUED':
+            currently_issued.append(d)
+        else:
+            history.append(d)
+
+    all_fines = FineTransaction.query.filter_by(member_id=member.id).order_by(FineTransaction.created_at.desc()).all()
+    fines_data = [f.to_dict() for f in all_fines]
+
+    tot_fine = sum(float(f.amount or 0.0) for f in all_fines)
+    tot_paid = sum(float(f.amount_paid or 0.0) for f in all_fines)
+    tot_waived = sum(float(f.waived_amount or 0.0) for f in all_fines)
+    tot_outstanding = sum(f.outstanding_amount for f in all_fines)
+
+    reservations = BookReservation.query.filter_by(member_id=member.id).order_by(BookReservation.reserved_at.desc()).all()
+
+    return jsonify({
+        'member': member.to_dict(),
+        'currently_issued': currently_issued,
+        'history': history,
+        'fines': fines_data,
+        'reservations': [r.to_dict() for r in reservations],
+        'summary': {
+            'issued_count': len(currently_issued),
+            'overdue_count': sum(1 for i in currently_issued if i['overdue_days'] > 0),
+            'total_fines': round(tot_fine, 2),
+            'paid_fines': round(tot_paid, 2),
+            'waived_fines': round(tot_waived, 2),
+            'outstanding_fines': round(tot_outstanding, 2),
+        }
+    }), 200
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Issues / Loan History
+# ═══════════════════════════════════════════════════════════════════════════
+
 def _enrich_issue_dict(issue, settings):
-    """
-    BookIssue.to_dict() mein class_name/roll_number nahi hota (wo Student
-    table mein hai, member ke through). Issue/Return screen ko dono chahiye
-    — isliye yahan enrich karte hain. estimated_fine bhi yahin nikalte hain
-    taaki frontend ko khud calculate na karna pade.
-    """
     d = issue.to_dict()
     member = issue.member
     d['class_name']  = ''
@@ -1085,22 +1244,13 @@ def _enrich_issue_dict(issue, settings):
             cls = Class.query.get(student.class_id) if student.class_id else None
             d['class_name']  = f"{cls.name} - {cls.section}" if cls else ''
             d['roll_number'] = student.roll_number or ''
-    d['estimated_fine'] = (
-        min(d['overdue_days'] * settings.fine_per_day, settings.max_fine_cap)
-        if d['overdue_days'] > 0 else 0
-    )
+    d['estimated_fine'] = _calc_overdue_fine(issue, settings, date.today()) if d['overdue_days'] > 0 else 0.0
     return d
 
 
-# NEW
 @library_bp.route('/issues', methods=['GET'])
 @role_required(*LIBRARY_ROLES)
 def list_issues():
-    """
-    History page ke liye. Query:
-      status (ISSUED/RETURNED/LOST/ALL — ALL ya empty = sab), overdue_only=1,
-      member_id, class_id, month (YYYY-MM), page, per_page
-    """
     sid = _school_id()
     q = BookIssue.query.filter_by(school_id=sid)
 
@@ -1115,19 +1265,6 @@ def list_issues():
     if request.args.get('overdue_only') == '1':
         q = q.filter(BookIssue.status == 'ISSUED', BookIssue.due_date < date.today())
 
-    # NEW — month filter (issue_date usi mahine ke andar ho)
-    month = request.args.get('month')
-    if month:
-        try:
-            y, m = map(int, month.split('-'))
-            from calendar import monthrange
-            start = date(y, m, 1)
-            end   = date(y, m, monthrange(y, m)[1])
-            q = q.filter(BookIssue.issue_date >= start, BookIssue.issue_date <= end)
-        except (ValueError, TypeError):
-            pass
-
-    # NEW — class filter (Student → LibraryMember → BookIssue.member_id)
     class_id = request.args.get('class_id')
     if class_id:
         students   = Student.query.filter_by(school_id=sid, class_id=class_id).all()
@@ -1151,126 +1288,8 @@ def list_issues():
     }), 200
 
 
-
-
 # ═══════════════════════════════════════════════════════════════════════════
-#  Reservations
-# ═══════════════════════════════════════════════════════════════════════════
-
-@library_bp.route('/reservations', methods=['GET'])
-@role_required(*LIBRARY_ROLES)
-def list_reservations():
-    sid    = _school_id()
-    status = request.args.get('status', 'WAITING')
-    book_id = request.args.get('book_id')
-
-    q = BookReservation.query.filter_by(school_id=sid)
-    if status:
-        q = q.filter_by(status=status)
-    if book_id:
-        q = q.filter_by(book_id=book_id)
-
-    reservations = q.order_by(BookReservation.queue_position.asc()).all()
-    return jsonify([r.to_dict() for r in reservations]), 200
-
-
-@library_bp.route('/reservations', methods=['POST'])
-@role_required(*LIBRARY_ROLES, 'STUDENT')
-def create_reservation():
-    """
-    A member reserves a book (typically because all copies are currently issued).
-    Body: { book_id, member_id }
-    Students can self-reserve for themselves; librarian can reserve on behalf of anyone.
-    """
-    data      = request.get_json() or {}
-    book_id   = data.get('book_id')
-    member_id = data.get('member_id')
-
-    if not book_id or not member_id:
-        return jsonify({'error': 'book_id and member_id required'}), 400
-
-    sid    = _school_id()
-    book   = Book.query.get_or_404(book_id)
-    member = LibraryMember.query.get_or_404(member_id)
-    if book.school_id != sid or member.school_id != sid:
-        return jsonify({'error': 'Unauthorized'}), 403
-
-    current_user = get_current_user()
-    # Students can only reserve for themselves
-    if current_user.role.value == 'STUDENT' and member.user_id != current_user.id:
-        return jsonify({'error': 'Apne liye hi reserve kar sakte ho'}), 403
-
-    if member.status != 'ACTIVE':
-        return jsonify({'error': f'Member is {member.status}'}), 400
-
-    # Don't allow reserving a book that has an available copy right now
-    available_copy = BookCopy.query.filter_by(book_id=book_id, status='AVAILABLE').first()
-    if available_copy:
-        return jsonify({'error': 'Book abhi available hai — seedha issue karwao, reserve karne ki zaroorat nahi'}), 400
-
-    # Prevent duplicate reservation by same member for same book
-    existing = BookReservation.query.filter_by(
-        book_id=book_id, member_id=member_id, status='WAITING'
-    ).first()
-    if existing:
-        return jsonify({'error': 'Already is book ke liye reservation queue mein ho'}), 409
-
-    settings = _get_or_create_settings(sid)
-    active_reservation_count = BookReservation.query.filter_by(
-        member_id=member_id, status='WAITING'
-    ).count()
-    if active_reservation_count >= settings.reservation_limit_per_member:
-        return jsonify({
-            'error': f'Max reservation limit ({settings.reservation_limit_per_member}) reach ho chuka hai'
-        }), 400
-
-    last_position = db.session.query(db.func.max(BookReservation.queue_position))\
-        .filter_by(book_id=book_id, status='WAITING').scalar() or 0
-
-    reservation = BookReservation(
-        school_id=sid, book_id=book_id, member_id=member_id,
-        status='WAITING', queue_position=last_position + 1,
-    )
-    db.session.add(reservation)
-    db.session.commit()
-
-    log_activity(sid, current_user.id, 'BOOK_RESERVED',
-                 f'{book.title} — {member.user.name if member.user else ""} (position {reservation.queue_position})')
-    db.session.commit()
-    return jsonify(reservation.to_dict()), 201
-
-
-@library_bp.route('/reservations/<int:res_id>/cancel', methods=['POST'])
-@role_required(*LIBRARY_ROLES, 'STUDENT')
-def cancel_reservation(res_id):
-    reservation = BookReservation.query.get_or_404(res_id)
-    sid = _school_id()
-    if reservation.school_id != sid:
-        return jsonify({'error': 'Unauthorized'}), 403
-
-    current_user = get_current_user()
-    if current_user.role.value == 'STUDENT' and reservation.member.user_id != current_user.id:
-        return jsonify({'error': 'Sirf apna reservation cancel kar sakte ho'}), 403
-
-    if reservation.status != 'WAITING':
-        return jsonify({'error': f'Reservation already {reservation.status}'}), 400
-
-    reservation.status = 'CANCELLED'
-    db.session.flush()
-
-    # Re-sequence remaining queue positions
-    remaining = BookReservation.query.filter_by(
-        book_id=reservation.book_id, status='WAITING'
-    ).order_by(BookReservation.queue_position.asc()).all()
-    for idx, r in enumerate(remaining, start=1):
-        r.queue_position = idx
-
-    db.session.commit()
-    return jsonify({'message': 'Reservation cancelled'}), 200
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-#  Dashboard
+#  Dashboard (Librarian & Principal)
 # ═══════════════════════════════════════════════════════════════════════════
 
 @library_bp.route('/dashboard', methods=['GET'])
@@ -1285,6 +1304,7 @@ def library_dashboard():
     available      = sum(1 for c in all_copies if c.status == 'AVAILABLE')
     issued         = sum(1 for c in all_copies if c.status == 'ISSUED')
     lost           = sum(1 for c in all_copies if c.status == 'LOST')
+    damaged        = sum(1 for c in all_copies if c.status == 'DAMAGED')
 
     overdue_count  = BookIssue.query.filter(
         BookIssue.school_id == sid, BookIssue.status == 'ISSUED',
@@ -1299,78 +1319,197 @@ def library_dashboard():
         BookIssue.school_id == sid, BookIssue.return_date == today
     ).count()
 
+    # Financial Stats
+    all_fines = FineTransaction.query.filter_by(school_id=sid).all()
+    outstanding_fines = sum(f.outstanding_amount for f in all_fines)
+    total_waived = sum(float(f.waived_amount or 0.0) for f in all_fines)
+
     today_fine = db.session.query(db.func.coalesce(db.func.sum(FineTransaction.amount_paid), 0)).filter(
         FineTransaction.school_id == sid,
         db.func.date(FineTransaction.collected_at) == today
-    ).scalar() or 0
+    ).scalar() or 0.0
 
     month_fine = db.session.query(db.func.coalesce(db.func.sum(FineTransaction.amount_paid), 0)).filter(
         FineTransaction.school_id == sid,
         FineTransaction.collected_at >= month_start
-    ).scalar() or 0
+    ).scalar() or 0.0
 
     new_books_month = Book.query.filter(
         Book.school_id == sid, Book.created_at >= month_start
     ).count()
 
     return jsonify({
-        'total_books':       total_books,
-        'available_books':   available,
-        'issued_books':      issued,
-        'overdue_books':     overdue_count,
-        'reserved_books':    reserved_count,
-        'lost_books':        lost,
-        'total_members':     total_members,
-        'today_issued':      today_issued,
-        'today_returned':    today_returned,
-        'today_fine':        today_fine,
-        'month_fine':        month_fine,
-        'new_books_month':   new_books_month,
+        'total_books':        total_books,
+        'total_copies':       len(all_copies),
+        'available_books':    available,
+        'issued_books':       issued,
+        'overdue_books':      overdue_count,
+        'reserved_books':     reserved_count,
+        'lost_books':         lost,
+        'damaged_books':      damaged,
+        'total_members':      total_members,
+        'today_issued':       today_issued,
+        'today_returned':     today_returned,
+        'today_fine':         today_fine,
+        'month_fine':         month_fine,
+        'outstanding_fines':  round(outstanding_fines, 2),
+        'total_waived':       round(total_waived, 2),
+        'new_books_month':    new_books_month,
     }), 200
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  Global Search (books + members combined — used by top search bar)
+#  Settings & Fine Rules Master
 # ═══════════════════════════════════════════════════════════════════════════
 
-@library_bp.route('/search', methods=['GET'])
+@library_bp.route('/settings', methods=['GET'])
 @role_required(*LIBRARY_ROLES)
-def global_search():
-    q = (request.args.get('q') or '').strip()
-    if not q or len(q) < 2:
-        return jsonify({'books': [], 'members': []}), 200
+def get_library_settings():
+    sid = _school_id()
+    settings = _get_or_create_settings(sid)
+    return jsonify(settings.to_dict()), 200
 
-    sid  = _school_id()
-    like = f'%{q}%'
 
-    books = Book.query.filter(
-        Book.school_id == sid, Book.is_active == True,
-        db.or_(
-            Book.title.ilike(like), Book.isbn.ilike(like),
-            Book.author.ilike(like), Book.publisher.ilike(like),
-            Book.rack.ilike(like), Book.subject.ilike(like),
-        )
-    ).limit(10).all()
+@library_bp.route('/settings', methods=['PATCH'])
+@role_required('PRINCIPAL', 'DIRECTOR', 'VICE_PRINCIPAL', 'SUPER_ADMIN')
+def update_library_settings():
+    sid = _school_id()
+    settings = _get_or_create_settings(sid)
+    data = request.get_json() or {}
 
-    # Barcode exact match (fast path for scanner input)
-    copy_match = BookCopy.query.filter_by(barcode=q, school_id=sid).first()
+    if 'max_books_student' in data:            settings.max_books_student            = int(data['max_books_student'])
+    if 'max_books_teacher' in data:            settings.max_books_teacher            = int(data['max_books_teacher'])
+    if 'issue_duration_days' in data:          settings.issue_duration_days          = int(data['issue_duration_days'])
+    if 'fine_per_day' in data:                 settings.fine_per_day                 = float(data['fine_per_day'])
+    if 'max_fine_cap' in data:                 settings.max_fine_cap                 = float(data['max_fine_cap'])
+    if 'lost_book_fine_multiplier' in data:    settings.lost_book_fine_multiplier    = float(data['lost_book_fine_multiplier'])
+    if 'damaged_book_fine_multiplier' in data: settings.damaged_book_fine_multiplier = float(data['damaged_book_fine_multiplier'])
+    if 'lost_card_fine' in data:               settings.lost_card_fine               = float(data['lost_card_fine'])
+    if 'missing_pages_fine' in data:           settings.missing_pages_fine           = float(data['missing_pages_fine'])
+    if 'max_renewals' in data:                 settings.max_renewals                 = int(data['max_renewals'])
+    if 'reservation_limit_per_member' in data: settings.reservation_limit_per_member = int(data['reservation_limit_per_member'])
 
-    members = LibraryMember.query.filter_by(school_id=sid).join(
-        User, LibraryMember.user_id == User.id
-    ).filter(
-        db.or_(User.name.ilike(like), LibraryMember.card_number.ilike(like))
-    ).limit(10).all()
+    db.session.commit()
+    log_activity(sid, get_current_user().id, 'SETTINGS_UPDATED', 'Library policy settings updated')
+    db.session.commit()
+    return jsonify(settings.to_dict()), 200
 
-    return jsonify({
-        'books':        [b.to_dict() for b in books],
-        'members':      [m.to_dict() for m in members],
-        'barcode_hit':  copy_match.to_dict() if copy_match else None,
-    }), 200
+
+@library_bp.route('/fine-types', methods=['GET'])
+@role_required(*LIBRARY_ROLES)
+def get_fine_types():
+    """Returns configurable fine/penalty types with current default rates."""
+    sid = _school_id()
+    s = _get_or_create_settings(sid)
+    types = [
+        {'code': 'OVERDUE',       'label': 'Late Return Overdue Fine',  'type': 'PER_DAY', 'rate': s.fine_per_day, 'max_cap': s.max_fine_cap},
+        {'code': 'LOST',          'label': 'Lost Book Penalty',         'type': 'MULTIPLIER', 'rate': s.lost_book_fine_multiplier, 'description': f'{s.lost_book_fine_multiplier}x Book MRP'},
+        {'code': 'DAMAGED',       'label': 'Damaged Book Penalty',      'type': 'MULTIPLIER', 'rate': s.damaged_book_fine_multiplier, 'description': f'{s.damaged_book_fine_multiplier}x Book MRP'},
+        {'code': 'LOST_CARD',     'label': 'Lost Library Card Re-issue','type': 'FIXED', 'rate': s.lost_card_fine},
+        {'code': 'MISSING_PAGES', 'label': 'Missing / Torn Pages Fine', 'type': 'FIXED', 'rate': s.missing_pages_fine},
+        {'code': 'MANUAL',        'label': 'Other Library Fine',        'type': 'CUSTOM', 'rate': 0.0},
+    ]
+    return jsonify(types), 200
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  Reports
 # ═══════════════════════════════════════════════════════════════════════════
+
+@library_bp.route('/reports/inventory', methods=['GET'])
+@role_required(*LIBRARY_ROLES)
+def report_inventory():
+    sid = _school_id()
+    books = Book.query.filter_by(school_id=sid, is_active=True).all()
+    return jsonify([b.to_dict(include_counts=True) for b in books]), 200
+
+
+@library_bp.route('/reports/currently-issued', methods=['GET'])
+@role_required(*LIBRARY_ROLES)
+def report_currently_issued():
+    sid = _school_id()
+    settings = _get_or_create_settings(sid)
+    issues = BookIssue.query.filter_by(school_id=sid, status='ISSUED').order_by(BookIssue.due_date.asc()).all()
+    return jsonify([_enrich_issue_dict(i, settings) for i in issues]), 200
+
+
+@library_bp.route('/reports/overdue', methods=['GET'])
+@role_required(*LIBRARY_ROLES)
+def report_overdue():
+    sid = _school_id()
+    settings = _get_or_create_settings(sid)
+    issues = BookIssue.query.filter(
+        BookIssue.school_id == sid, BookIssue.status == 'ISSUED',
+        BookIssue.due_date < date.today()
+    ).order_by(BookIssue.due_date.asc()).all()
+    return jsonify([_enrich_issue_dict(i, settings) for i in issues]), 200
+
+
+@library_bp.route('/reports/lost-damaged', methods=['GET'])
+@role_required(*LIBRARY_ROLES)
+def report_lost_damaged():
+    sid = _school_id()
+    copies = BookCopy.query.filter(
+        BookCopy.school_id == sid,
+        BookCopy.status.in_(['LOST', 'DAMAGED'])
+    ).all()
+    return jsonify([c.to_dict() for c in copies]), 200
+
+
+@library_bp.route('/reports/fine-collection', methods=['GET'])
+@role_required(*LIBRARY_ROLES)
+def report_fine_collection():
+    sid       = _school_id()
+    from_date = request.args.get('from_date')
+    to_date   = request.args.get('to_date')
+
+    q = FineTransaction.query.filter(FineTransaction.school_id == sid, FineTransaction.amount_paid > 0)
+    if from_date:
+        q = q.filter(FineTransaction.collected_at >= date.fromisoformat(from_date))
+    if to_date:
+        q = q.filter(FineTransaction.collected_at <= date.fromisoformat(to_date))
+
+    fines = q.order_by(FineTransaction.collected_at.desc()).all()
+    total = sum(f.amount_paid for f in fines)
+    return jsonify({
+        'total_collected': total,
+        'count':           len(fines),
+        'data':            [f.to_dict() for f in fines],
+    }), 200
+
+
+@library_bp.route('/reports/outstanding-fines', methods=['GET'])
+@role_required(*LIBRARY_ROLES)
+def report_outstanding_fines():
+    sid = _school_id()
+    fines = FineTransaction.query.filter(
+        FineTransaction.school_id == sid,
+        FineTransaction.status.in_(['OUTSTANDING', 'PARTIALLY_PAID', 'PENDING', 'PARTIAL'])
+    ).order_by(FineTransaction.created_at.desc()).all()
+    outstanding_fines = [f for f in fines if f.outstanding_amount > 0]
+    total = sum(f.outstanding_amount for f in outstanding_fines)
+    return jsonify({
+        'total_outstanding': round(total, 2),
+        'count':             len(outstanding_fines),
+        'data':              [f.to_dict() for f in outstanding_fines],
+    }), 200
+
+
+@library_bp.route('/reports/waived-fines', methods=['GET'])
+@role_required(*LIBRARY_ROLES)
+def report_waived_fines():
+    sid = _school_id()
+    fines = FineTransaction.query.filter(
+        FineTransaction.school_id == sid,
+        FineTransaction.waived_amount > 0
+    ).order_by(FineTransaction.waived_at.desc()).all()
+    total = sum(f.waived_amount for f in fines)
+    return jsonify({
+        'total_waived': round(total, 2),
+        'count':        len(fines),
+        'data':         [f.to_dict() for f in fines],
+    }), 200
+
 
 @library_bp.route('/reports/popular-books', methods=['GET'])
 @role_required(*LIBRARY_ROLES)
@@ -1392,47 +1531,45 @@ def report_popular_books():
     return jsonify(result), 200
 
 
-@library_bp.route('/reports/overdue', methods=['GET'])
-@role_required(*LIBRARY_ROLES)
-def report_overdue():
-    sid = _school_id()
-    issues = BookIssue.query.filter(
-        BookIssue.school_id == sid, BookIssue.status == 'ISSUED',
-        BookIssue.due_date < date.today()
-    ).order_by(BookIssue.due_date.asc()).all()
-    return jsonify([i.to_dict() for i in issues]), 200
-
-
-@library_bp.route('/reports/fine-collection', methods=['GET'])
-@role_required(*LIBRARY_ROLES)
-def report_fine_collection():
-    """Query: from_date, to_date (YYYY-MM-DD)"""
-    sid = _school_id()
-    q = FineTransaction.query.filter_by(school_id=sid, status='PAID')
-
-    from_date = request.args.get('from_date')
-    to_date   = request.args.get('to_date')
-    if from_date:
-        q = q.filter(FineTransaction.collected_at >= date.fromisoformat(from_date))
-    if to_date:
-        q = q.filter(FineTransaction.collected_at <= date.fromisoformat(to_date))
-
-    fines = q.order_by(FineTransaction.collected_at.desc()).all()
-    total = sum(f.amount_paid for f in fines)
-
-    return jsonify({
-        'total_collected': total,
-        'count':           len(fines),
-        'data':            [f.to_dict() for f in fines],
-    }), 200
-
-
 @library_bp.route('/reports/activity-log', methods=['GET'])
 @role_required(*LIBRARY_ADMIN_ROLES)
 def report_activity_log():
-    from app.models.library import LibraryActivityLog
     sid   = _school_id()
     limit = request.args.get('limit', 100, type=int)
     logs  = LibraryActivityLog.query.filter_by(school_id=sid)\
                 .order_by(LibraryActivityLog.created_at.desc()).limit(limit).all()
     return jsonify([l.to_dict() for l in logs]), 200
+
+
+@library_bp.route('/search', methods=['GET'])
+@role_required(*LIBRARY_ROLES)
+def global_search():
+    q = (request.args.get('q') or '').strip()
+    if not q or len(q) < 2:
+        return jsonify({'books': [], 'members': []}), 200
+
+    sid  = _school_id()
+    like = f'%{q}%'
+
+    books = Book.query.filter(
+        Book.school_id == sid, Book.is_active == True,
+        db.or_(
+            Book.title.ilike(like), Book.isbn.ilike(like),
+            Book.author.ilike(like), Book.publisher.ilike(like),
+            Book.rack.ilike(like), Book.subject.ilike(like),
+        )
+    ).limit(10).all()
+
+    copy_match = BookCopy.query.filter_by(barcode=q, school_id=sid).first()
+
+    members = LibraryMember.query.filter_by(school_id=sid).join(
+        User, LibraryMember.user_id == User.id
+    ).filter(
+        db.or_(User.name.ilike(like), LibraryMember.card_number.ilike(like))
+    ).limit(10).all()
+
+    return jsonify({
+        'books':       [b.to_dict() for b in books],
+        'members':     [m.to_dict() for m in members],
+        'barcode_hit': copy_match.to_dict() if copy_match else None,
+    }), 200

@@ -99,6 +99,10 @@ def permission_required(*permission_keys):
             if not user:
                 return jsonify({'error': 'Authentication required'}), 401
 
+            role_val = getattr(getattr(user, 'role', None), 'value', str(getattr(user, 'role', '')))
+            if role_val in ('PRINCIPAL', 'DIRECTOR', 'SUPER_ADMIN', 'VICE_PRINCIPAL'):
+                return fn(*args, **kwargs)
+
             school_id = getattr(user, 'school_id', None)
             if any(has_platform_permission_cached(user, key, school_id=school_id)
                    for key in permission_keys):

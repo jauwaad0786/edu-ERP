@@ -5,12 +5,12 @@ from datetime import datetime, date
 class BookCategory(db.Model):
     __tablename__ = 'book_categories'
 
-    id         = db.Column(db.Integer, primary_key=True)
-    school_id  = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False)
-    name       = db.Column(db.String(100), nullable=False)
-    description= db.Column(db.String(300))
-    is_active  = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    id          = db.Column(db.Integer, primary_key=True)
+    school_id   = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    name        = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.String(300))
+    is_active   = db.Column(db.Boolean, default=True)
+    created_at  = db.Column(db.DateTime, default=datetime.utcnow)
 
     books = db.relationship('Book', backref='category_ref', lazy='dynamic')
 
@@ -31,19 +31,17 @@ class BookCategory(db.Model):
 class Book(db.Model):
     """
     Book Master — one row per title.
-    Actual physical copies are tracked separately in BookCopy
-    (so 'available_copies' is always derived, never trusted as a raw counter
-    that can drift out of sync).
+    Physical copies are tracked separately in BookCopy.
     """
     __tablename__ = 'books'
 
     id            = db.Column(db.Integer, primary_key=True)
-    school_id     = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False)
+    school_id     = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
 
     title         = db.Column(db.String(300), nullable=False)
     subtitle      = db.Column(db.String(300))
-    isbn          = db.Column(db.String(20), index=True)
-    accession_no  = db.Column(db.String(30))  # prefix; per-copy accession stored on BookCopy
+    isbn          = db.Column(db.String(30), index=True)
+    accession_no  = db.Column(db.String(50))  # Master prefix
 
     category_id   = db.Column(db.Integer, db.ForeignKey('book_categories.id'), nullable=True)
     subject       = db.Column(db.String(100))
@@ -52,19 +50,19 @@ class Book(db.Model):
     edition       = db.Column(db.String(50))
     language      = db.Column(db.String(50), default='English')
 
-    class_id      = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=True)  # optional class-level relevance
+    class_id      = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=True)
 
     rack          = db.Column(db.String(30))
     shelf         = db.Column(db.String(30))
 
     purchase_date = db.Column(db.Date)
     vendor_name   = db.Column(db.String(150))
-    purchase_price= db.Column(db.Float, default=0)
-    mrp           = db.Column(db.Float, default=0)
+    purchase_price= db.Column(db.Float, default=0.0)
+    mrp           = db.Column(db.Float, default=0.0)
 
     cover_url     = db.Column(db.String(500))
     description   = db.Column(db.Text)
-    keywords      = db.Column(db.String(300))  # comma-separated, used for search
+    keywords      = db.Column(db.String(300))
 
     is_active     = db.Column(db.Boolean, default=True)
     created_by    = db.Column(db.Integer, db.ForeignKey('users.id'))
@@ -74,19 +72,21 @@ class Book(db.Model):
     copies = db.relationship('BookCopy', backref='book', lazy='dynamic', cascade='all, delete-orphan')
 
     def counts(self):
-        """Live counts derived from BookCopy — never stale."""
+        """Live counts derived from physical copies in BookCopy."""
         all_copies = self.copies.all()
-        total    = len(all_copies)
+        total     = len(all_copies)
         available = sum(1 for c in all_copies if c.status == 'AVAILABLE')
         issued    = sum(1 for c in all_copies if c.status == 'ISSUED')
         lost      = sum(1 for c in all_copies if c.status == 'LOST')
         damaged   = sum(1 for c in all_copies if c.status == 'DAMAGED')
+        reserved  = sum(1 for c in all_copies if c.status == 'RESERVED')
         return {
             'total_copies':     total,
             'available_copies': available,
             'issued_copies':    issued,
             'lost_copies':      lost,
             'damaged_copies':   damaged,
+            'reserved_copies':  reserved,
         }
 
     def to_dict(self, include_counts=True):
@@ -108,8 +108,8 @@ class Book(db.Model):
             'shelf':         self.shelf or '',
             'purchase_date': str(self.purchase_date) if self.purchase_date else None,
             'vendor_name':   self.vendor_name or '',
-            'purchase_price':self.purchase_price or 0,
-            'mrp':           self.mrp or 0,
+            'purchase_price':self.purchase_price or 0.0,
+            'mrp':           self.mrp or 0.0,
             'cover_url':     self.cover_url,
             'description':   self.description or '',
             'keywords':      self.keywords or '',
@@ -122,23 +122,22 @@ class Book(db.Model):
 
 class BookCopy(db.Model):
     """
-    One row per physical copy — this is what actually gets issued/returned.
-    Barcode lives here (each physical copy has its own barcode), not on Book.
+    Physical Copy Inventory — tracks each physical unit with barcode and accession number.
+    Statuses: AVAILABLE / ISSUED / RESERVED / LOST / DAMAGED / MAINTENANCE / REMOVED
     """
     __tablename__ = 'book_copies'
 
-    id           = db.Column(db.Integer, primary_key=True)
-    book_id      = db.Column(db.Integer, db.ForeignKey('books.id'), nullable=False)
-    school_id    = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False)
+    id                = db.Column(db.Integer, primary_key=True)
+    book_id           = db.Column(db.Integer, db.ForeignKey('books.id'), nullable=False, index=True)
+    school_id         = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
 
-    copy_accession_no = db.Column(db.String(30), unique=True)   # e.g. ACC-2026-000123
+    copy_accession_no = db.Column(db.String(50), unique=True)
     barcode           = db.Column(db.String(50), unique=True, index=True)
 
-    status       = db.Column(db.String(20), default='AVAILABLE')
-    # AVAILABLE / ISSUED / LOST / DAMAGED / WITHDRAWN
-
-    condition_note = db.Column(db.String(300))
-    added_at       = db.Column(db.DateTime, default=datetime.utcnow)
+    status            = db.Column(db.String(20), default='AVAILABLE')
+    condition_note    = db.Column(db.String(300))
+    shelf_location    = db.Column(db.String(50))
+    added_at          = db.Column(db.DateTime, default=datetime.utcnow)
 
     def to_dict(self):
         return {
@@ -149,27 +148,27 @@ class BookCopy(db.Model):
             'barcode':           self.barcode or '',
             'status':            self.status,
             'condition_note':    self.condition_note or '',
+            'shelf_location':    self.shelf_location or (f"{self.book.rack}/{self.book.shelf}" if self.book and (self.book.rack or self.book.shelf) else ''),
+            'added_at':          self.added_at.isoformat() if self.added_at else None,
         }
 
 
 class LibraryMember(db.Model):
     """
-    Library-specific membership wrapper. Reuses existing User/Student/Teacher
-    records (no duplicate name/phone/email) — this table only stores
-    library-specific state: card number, status, per-member limit override.
+    Library Member Profile. Reuses existing User records.
     """
     __tablename__ = 'library_members'
 
-    id            = db.Column(db.Integer, primary_key=True)
-    school_id     = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False)
-    user_id       = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    id                 = db.Column(db.Integer, primary_key=True)
+    school_id          = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    user_id            = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
 
-    card_number   = db.Column(db.String(30), unique=True)
-    member_type   = db.Column(db.String(20))  # STUDENT / TEACHER / STAFF
-    max_books_override = db.Column(db.Integer, nullable=True)  # null → use LibrarySettings default
+    card_number        = db.Column(db.String(50), unique=True)
+    member_type        = db.Column(db.String(20))  # STUDENT / TEACHER / STAFF
+    max_books_override = db.Column(db.Integer, nullable=True)
 
-    status        = db.Column(db.String(20), default='ACTIVE')  # ACTIVE / BLOCKED / SUSPENDED
-    joined_at     = db.Column(db.DateTime, default=datetime.utcnow)
+    status             = db.Column(db.String(20), default='ACTIVE')  # ACTIVE / BLOCKED / SUSPENDED
+    joined_at          = db.Column(db.DateTime, default=datetime.utcnow)
 
     __table_args__ = (
         db.UniqueConstraint('school_id', 'user_id', name='uq_library_member_user'),
@@ -177,46 +176,48 @@ class LibraryMember(db.Model):
 
     user   = db.relationship('User', foreign_keys=[user_id])
     issues = db.relationship('BookIssue', backref='member', lazy='dynamic')
+    fines  = db.relationship('FineTransaction', backref='member_ref', lazy='dynamic')
 
     def to_dict(self):
         u = self.user
         current_issues = self.issues.filter_by(status='ISSUED').count()
-        pending_fine = db.session.query(db.func.coalesce(db.func.sum(FineTransaction.amount), 0))\
-            .filter_by(member_id=self.id, status='PENDING').scalar() or 0
+        # Outstanding fines calculation
+        pending_fines = self.fines.filter(FineTransaction.status.in_(['OUTSTANDING', 'PARTIALLY_PAID', 'PENDING', 'PARTIAL'])).all()
+        pending_fine_amt = sum(f.outstanding_amount for f in pending_fines)
+
         return {
-            'id':              self.id,
-            'user_id':         self.user_id,
-            'name':            u.name if u else '',
-            'email':           u.email if u else '',
-            'phone':           u.phone if u else '',
-            'card_number':     self.card_number or '',
-            'member_type':     self.member_type,
-            'status':          self.status,
-            'current_issues':  current_issues,
-            'pending_fine':    pending_fine,
+            'id':                 self.id,
+            'user_id':            self.user_id,
+            'name':               u.name if u else '',
+            'email':              u.email if u else '',
+            'phone':              u.phone if u else '',
+            'card_number':        self.card_number or '',
+            'member_type':        self.member_type,
+            'status':             self.status,
+            'current_issues':     current_issues,
+            'pending_fine':       round(pending_fine_amt, 2),
             'max_books_override': self.max_books_override,
+            'joined_at':          self.joined_at.isoformat() if self.joined_at else None,
         }
 
 
 class BookIssue(db.Model):
     """
-    One row per issue transaction (also covers the eventual return —
-    a return is an UPDATE on this row, not a separate table, since
-    issue/return is always a 1:1 pair for a given loan).
+    Loan & Return record for a specific copy and member.
     """
     __tablename__ = 'book_issues'
 
     id           = db.Column(db.Integer, primary_key=True)
-    school_id    = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False)
-    copy_id      = db.Column(db.Integer, db.ForeignKey('book_copies.id'), nullable=False)
-    book_id      = db.Column(db.Integer, db.ForeignKey('books.id'), nullable=False)
-    member_id    = db.Column(db.Integer, db.ForeignKey('library_members.id'), nullable=False)
+    school_id    = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    copy_id      = db.Column(db.Integer, db.ForeignKey('book_copies.id'), nullable=False, index=True)
+    book_id      = db.Column(db.Integer, db.ForeignKey('books.id'), nullable=False, index=True)
+    member_id    = db.Column(db.Integer, db.ForeignKey('library_members.id'), nullable=False, index=True)
 
     issue_date   = db.Column(db.Date, nullable=False, default=date.today)
     due_date     = db.Column(db.Date, nullable=False)
     return_date  = db.Column(db.Date, nullable=True)
 
-    status       = db.Column(db.String(20), default='ISSUED')  # ISSUED / RETURNED / LOST
+    status       = db.Column(db.String(20), default='ISSUED')  # ISSUED / RETURNED / LOST / DAMAGED
     renewal_count= db.Column(db.Integer, default=0)
 
     issued_by    = db.Column(db.Integer, db.ForeignKey('users.id'))
@@ -236,6 +237,8 @@ class BookIssue(db.Model):
             'book_id':       self.book_id,
             'book_title':    self.book.title if self.book else '',
             'barcode':       self.copy.barcode if self.copy else '',
+            'accession_no':  self.copy.copy_accession_no if self.copy else '',
+            'author':        self.book.author if self.book else '',
             'member_id':     self.member_id,
             'member_name':   self.member.user.name if self.member and self.member.user else '',
             'issue_date':    str(self.issue_date),
@@ -251,13 +254,13 @@ class BookIssue(db.Model):
 class BookReservation(db.Model):
     __tablename__ = 'book_reservations'
 
-    id          = db.Column(db.Integer, primary_key=True)
-    school_id   = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False)
-    book_id     = db.Column(db.Integer, db.ForeignKey('books.id'), nullable=False)
-    member_id   = db.Column(db.Integer, db.ForeignKey('library_members.id'), nullable=False)
+    id             = db.Column(db.Integer, primary_key=True)
+    school_id      = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    book_id        = db.Column(db.Integer, db.ForeignKey('books.id'), nullable=False, index=True)
+    member_id      = db.Column(db.Integer, db.ForeignKey('library_members.id'), nullable=False, index=True)
 
-    reserved_at = db.Column(db.DateTime, default=datetime.utcnow)
-    status      = db.Column(db.String(20), default='WAITING')  # WAITING / NOTIFIED / FULFILLED / CANCELLED
+    reserved_at    = db.Column(db.DateTime, default=datetime.utcnow)
+    status         = db.Column(db.String(20), default='WAITING')  # WAITING / NOTIFIED / FULFILLED / CANCELLED / EXPIRED
     queue_position = db.Column(db.Integer, default=1)
 
     book   = db.relationship('Book')
@@ -270,77 +273,122 @@ class BookReservation(db.Model):
             'book_title':     self.book.title if self.book else '',
             'member_id':      self.member_id,
             'member_name':    self.member.user.name if self.member and self.member.user else '',
-            'reserved_at':    self.reserved_at.isoformat(),
+            'reserved_at':    self.reserved_at.isoformat() if self.reserved_at else None,
             'status':         self.status,
             'queue_position': self.queue_position,
         }
 
 
-
 class FineTransaction(db.Model):
+    """
+    Library Fine / Penalty Ledger.
+    Single financial source of truth:
+    - On creation: status = OUTSTANDING, paid_amount = 0, waived_amount = 0.
+    - Linked to FeeRecord in Fee Management.
+    - Status lifecycle: OUTSTANDING, PARTIALLY_PAID, PAID, WAIVED, CANCELLED.
+    """
     __tablename__ = 'library_fine_transactions'
 
-    id          = db.Column(db.Integer, primary_key=True)
-    school_id   = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False)
-    issue_id    = db.Column(db.Integer, db.ForeignKey('book_issues.id'), nullable=True)
-    member_id   = db.Column(db.Integer, db.ForeignKey('library_members.id'), nullable=False)
+    id                 = db.Column(db.Integer, primary_key=True)
+    school_id          = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    issue_id           = db.Column(db.Integer, db.ForeignKey('book_issues.id'), nullable=True, index=True)
+    member_id          = db.Column(db.Integer, db.ForeignKey('library_members.id'), nullable=False, index=True)
 
-    reason      = db.Column(db.String(30))  # OVERDUE / LOST / DAMAGED
-    amount      = db.Column(db.Float, default=0)
-    amount_paid = db.Column(db.Float, default=0)
-    status      = db.Column(db.String(20), default='PENDING')  # PENDING / PAID / WAIVED / PARTIAL
+    reason             = db.Column(db.String(50))  # OVERDUE / LOST / DAMAGED / MANUAL / MISSING_PAGES / LOST_CARD
+    amount             = db.Column(db.Float, default=0.0)
+    amount_paid        = db.Column(db.Float, default=0.0)
+    waived_amount      = db.Column(db.Float, default=0.0)
+    status             = db.Column(db.String(30), default='OUTSTANDING')  # OUTSTANDING / PARTIALLY_PAID / PAID / WAIVED / CANCELLED
 
-    waived_by   = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
-    waive_reason= db.Column(db.String(300))
+    waived_by          = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    waived_at          = db.Column(db.DateTime, nullable=True)
+    waive_reason       = db.Column(db.String(300))
 
-    collected_by= db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
-    collected_at= db.Column(db.DateTime, nullable=True)
+    collected_by       = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    collected_at       = db.Column(db.DateTime, nullable=True)
+    payment_mode       = db.Column(db.String(30))  # CASH / ONLINE / UPI / CHEQUE
+    receipt_no         = db.Column(db.String(50))
+    fee_transaction_id = db.Column(db.Integer, nullable=True)
 
-    created_at  = db.Column(db.DateTime, default=datetime.utcnow)
-    member = db.relationship('LibraryMember')
+    created_at         = db.Column(db.DateTime, default=datetime.utcnow)
 
-    member = db.relationship('LibraryMember')   # NEW — to_dict() mein self.member.user.name chahiye, relationship missing thi
+    member             = db.relationship('LibraryMember', foreign_keys=[member_id], overlaps="fines,member_ref")
+    issue              = db.relationship('BookIssue', foreign_keys=[issue_id])
+
+    @property
+    def outstanding_amount(self):
+        """Calculates current unpaid and non-waived balance."""
+        tot = float(self.amount or 0.0)
+        pd  = float(self.amount_paid or 0.0)
+        wv  = float(self.waived_amount or 0.0)
+        return max(0.0, round(tot - pd - wv, 2))
+
+    @property
+    def canonical_status(self):
+        """Maps legacy status codes (PENDING/PARTIAL) to canonical enterprise statuses."""
+        if self.status in ('PENDING',):
+            return 'OUTSTANDING'
+        if self.status in ('PARTIAL',):
+            return 'PARTIALLY_PAID'
+        return self.status
 
     def to_dict(self):
         return {
-            'id':           self.id,
-            'issue_id':     self.issue_id,
-            'member_id':    self.member_id,
-            'member_name':  self.member.user.name if self.member and self.member.user else '',
-            'reason':       self.reason,
-            'amount':       self.amount,
-            'amount_paid':  self.amount_paid,
-            'status':       self.status,
-            'waive_reason': self.waive_reason or '',
-            'collected_at': self.collected_at.isoformat() if self.collected_at else None,
-            'created_at':   self.created_at.isoformat(),
+            'id':                 self.id,
+            'issue_id':           self.issue_id,
+            'member_id':          self.member_id,
+            'member_name':        self.member.user.name if self.member and self.member.user else '',
+            'card_number':        self.member.card_number if self.member else '',
+            'reason':             self.reason,
+            'fine_amount':        self.amount,
+            'amount':             self.amount,
+            'paid_amount':        self.amount_paid or 0.0,
+            'amount_paid':        self.amount_paid or 0.0,
+            'waived_amount':      self.waived_amount or 0.0,
+            'outstanding_amount': self.outstanding_amount,
+            'status':             self.canonical_status,
+            'waived_by':          self.waived_by,
+            'waived_at':          self.waived_at.isoformat() if self.waived_at else None,
+            'waive_reason':       self.waive_reason or '',
+            'collected_by':       self.collected_by,
+            'collected_at':       self.collected_at.isoformat() if self.collected_at else None,
+            'payment_mode':       self.payment_mode or '',
+            'receipt_no':         self.receipt_no or '',
+            'fee_transaction_id': self.fee_transaction_id,
+            'created_at':         self.created_at.isoformat() if self.created_at else None,
         }
 
 
 class LibrarySettings(db.Model):
     __tablename__ = 'library_settings'
 
-    id                  = db.Column(db.Integer, primary_key=True)
-    school_id           = db.Column(db.Integer, db.ForeignKey('schools.id'), unique=True, nullable=False)
+    id                           = db.Column(db.Integer, primary_key=True)
+    school_id                    = db.Column(db.Integer, db.ForeignKey('schools.id'), unique=True, nullable=False, index=True)
 
-    max_books_student   = db.Column(db.Integer, default=2)
-    max_books_teacher   = db.Column(db.Integer, default=5)
-    issue_duration_days = db.Column(db.Integer, default=14)
-    fine_per_day        = db.Column(db.Float, default=2.0)
-    max_fine_cap        = db.Column(db.Float, default=200.0)
-    lost_book_fine_multiplier = db.Column(db.Float, default=1.0)  # x MRP
-    max_renewals        = db.Column(db.Integer, default=1)
+    max_books_student            = db.Column(db.Integer, default=2)
+    max_books_teacher            = db.Column(db.Integer, default=5)
+    issue_duration_days          = db.Column(db.Integer, default=14)
+    fine_per_day                 = db.Column(db.Float, default=2.0)
+    max_fine_cap                 = db.Column(db.Float, default=200.0)
+    lost_book_fine_multiplier    = db.Column(db.Float, default=1.0)  # x MRP
+    damaged_book_fine_multiplier = db.Column(db.Float, default=0.5)  # x MRP
+    lost_card_fine               = db.Column(db.Float, default=50.0)
+    missing_pages_fine           = db.Column(db.Float, default=20.0)
+    max_renewals                 = db.Column(db.Integer, default=1)
     reservation_limit_per_member = db.Column(db.Integer, default=2)
 
     def to_dict(self):
         return {
-            'max_books_student':   self.max_books_student,
-            'max_books_teacher':   self.max_books_teacher,
-            'issue_duration_days': self.issue_duration_days,
-            'fine_per_day':        self.fine_per_day,
-            'max_fine_cap':        self.max_fine_cap,
-            'lost_book_fine_multiplier': self.lost_book_fine_multiplier,
-            'max_renewals':        self.max_renewals,
+            'max_books_student':            self.max_books_student,
+            'max_books_teacher':            self.max_books_teacher,
+            'issue_duration_days':          self.issue_duration_days,
+            'fine_per_day':                 self.fine_per_day,
+            'max_fine_cap':                 self.max_fine_cap,
+            'lost_book_fine_multiplier':    self.lost_book_fine_multiplier,
+            'damaged_book_fine_multiplier': self.damaged_book_fine_multiplier or 0.5,
+            'lost_card_fine':               self.lost_card_fine or 50.0,
+            'missing_pages_fine':           self.missing_pages_fine or 20.0,
+            'max_renewals':                 self.max_renewals,
             'reservation_limit_per_member': self.reservation_limit_per_member,
         }
 
@@ -349,9 +397,9 @@ class LibraryActivityLog(db.Model):
     __tablename__ = 'library_activity_logs'
 
     id         = db.Column(db.Integer, primary_key=True)
-    school_id  = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False)
-    user_id    = db.Column(db.Integer, db.ForeignKey('users.id'))
-    action     = db.Column(db.String(50))   # BOOK_ADDED / ISSUED / RETURNED / FINE_COLLECTED / ...
+    school_id  = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    user_id    = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
+    action     = db.Column(db.String(50))
     details    = db.Column(db.String(500))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -361,7 +409,7 @@ class LibraryActivityLog(db.Model):
             'user_id':    self.user_id,
             'action':     self.action,
             'details':    self.details or '',
-            'created_at': self.created_at.isoformat(),
+            'created_at': self.created_at.isoformat() if self.created_at else None,
         }
 
 

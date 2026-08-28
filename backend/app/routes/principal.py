@@ -1037,75 +1037,80 @@ def collect_fee():
     Collect fee for a student.
     Body: record_id, amount_paid, payment_mode
     """
-    data      = request.get_json() or {}
-    record_id = data.get('record_id')
-    if not record_id:
-        return jsonify({'error': 'record_id is required'}), 400
-
-    record = FeeRecord.query.get_or_404(record_id)
-    if record.school_id != _school_id():
-        return jsonify({'error': 'Unauthorized'}), 403
-
     try:
-        new_payment = float(data.get('amount_paid'))
-    except (TypeError, ValueError):
-        return jsonify({'error': 'amount_paid must be a number'}), 400
-    if new_payment <= 0:
-        return jsonify({'error': 'amount_paid must be greater than 0'}), 400
+        data      = request.get_json() or {}
+        record_id = data.get('record_id')
+        if not record_id:
+            return jsonify({'error': 'record_id is required'}), 400
 
-    # Accumulate — this is a new installment, not the new total
-    # Accumulate — this is a new installment, not the new total
-    record.amount_paid  = (record.amount_paid or 0) + new_payment
-    record.payment_mode = data.get('payment_mode', 'CASH')
-    record.paid_date    = date.today()
-    record.collected_by = get_current_user().id
-    record.remarks      = data.get('remarks', '')
+        record = FeeRecord.query.get_or_404(record_id)
+        if record.school_id != _school_id():
+            return jsonify({'error': 'Unauthorized'}), 403
 
-    # Auto status
-    if record.amount_paid >= record.effective_due():
-        record.status = 'PAID'
-    elif record.amount_paid > 0:
-        record.status = 'PARTIAL'
+        try:
+            new_payment = float(data.get('amount_paid'))
+        except (TypeError, ValueError):
+            return jsonify({'error': 'amount_paid must be a number'}), 400
+        if new_payment <= 0:
+            return jsonify({'error': 'amount_paid must be greater than 0'}), 400
 
-    # Auto receipt number if not already set
-    if not record.receipt_no:
-        while True:
-            rno = _gen_receipt()
-            if not FeeRecord.query.filter_by(receipt_no=rno).first():
-                record.receipt_no = rno
-                break
+        # Accumulate — this is a new installment, not the new total
+        record.amount_paid  = (record.amount_paid or 0) + new_payment
+        record.payment_mode = data.get('payment_mode', 'CASH')
+        record.paid_date    = date.today()
+        record.collected_by = get_current_user().id
+        record.remarks      = data.get('remarks', '')
 
-    # ── FeeTransaction ledger entry ──
-    # NEW — txn ka receipt_no ab record.receipt_no ke SAME rakha jaata hai,
-    # taaki frontend jo record.receipt_no dikhata/download karta hai, wahi
-    # FeeTransaction row bhi match kare. Pehle dono alag-alag random number
-    # generate hote the isliye receipt PDF hamesha 404 deta tha.
-    today = date.today()
-    txn = FeeTransaction(
-        fee_record_id    = record.id,
-        student_id       = record.student_id,
-        school_id        = _school_id(),
-        amount           = new_payment,
-        payment_mode     = record.payment_mode,
-        transaction_date = today,
-        txn_month        = today.strftime('%B %Y'),
-        receipt_no       = record.receipt_no,
-        remarks          = data.get('remarks', ''),
-        collected_by     = get_current_user().id,
-    )
-    db.session.add(txn)
+        # Auto status
+        if record.amount_paid >= record.effective_due():
+            record.status = 'PAID'
+        elif record.amount_paid > 0:
+            record.status = 'PARTIAL'
 
-    db.session.commit()
+        # Auto receipt number if not already set
+        if not record.receipt_no:
+            while True:
+                rno = _gen_receipt()
+                if not FeeRecord.query.filter_by(receipt_no=rno).first():
+                    record.receipt_no = rno
+                    break
 
-    # Return full record with student info
-    d = record.to_dict()
-    student = Student.query.get(record.student_id)
-    if student:
-        cls = Class.query.get(student.class_id)
-        d['student_name'] = student.user.name if student.user else ''
-        d['father_name']  = student.parent_name or ''
-        d['class_name']   = f"{cls.name} - {cls.section}" if cls else ''
-    return jsonify(d), 200
+        today = date.today()
+        txn = FeeTransaction(
+            fee_record_id    = record.id,
+            student_id       = record.student_id,
+            school_id        = _school_id(),
+            amount           = new_payment,
+            payment_mode     = record.payment_mode,
+            transaction_date = today,
+            txn_month        = today.strftime('%B %Y'),
+            receipt_no       = record.receipt_no,
+            remarks          = data.get('remarks', ''),
+            collected_by     = get_current_user().id,
+        )
+        db.session.add(txn)
+        db.session.flush()
+
+        if record.source == 'LIBRARY':
+            from app.services.library_fee_service import sync_library_fine_from_fee_record
+            sync_library_fine_from_fee_record(record, txn)
+
+        db.session.commit()
+
+        # Return full record with student info
+        d = record.to_dict()
+        student = Student.query.get(record.student_id)
+        if student:
+            cls = Class.query.get(student.class_id)
+            d['student_name'] = student.user.name if student.user else ''
+            d['father_name']  = student.parent_name or ''
+            d['class_name']   = f"{cls.name} - {cls.section}" if cls else ''
+        return jsonify(d), 200
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 
 # NEW — paste right after existing collect_fee() function
 
@@ -1177,14 +1182,19 @@ def collect_fee_multiple():
             record.collected_by = get_current_user().id
             record.remarks      = remarks
             record.status       = 'PAID' if record.amount_paid >= record.effective_due() else 'PARTIAL'
-            if not record.receipt_no:
-                record.receipt_no = receipt_no
-            db.session.add(FeeTransaction(
+            txn = FeeTransaction(
                 fee_record_id=record.id, student_id=record.student_id, school_id=sid,
                 amount=amount, payment_mode=payment_mode, transaction_date=today,
                 txn_month=today.strftime('%B %Y'), receipt_no=receipt_no,
                 remarks=remarks, collected_by=get_current_user().id,
-            ))
+            )
+            db.session.add(txn)
+            db.session.flush()
+
+            if record.source == 'LIBRARY':
+                from app.services.library_fee_service import sync_library_fine_from_fee_record
+                sync_library_fine_from_fee_record(record, txn)
+
             total += amount
 
         db.session.add(FeeReceiptGroup(

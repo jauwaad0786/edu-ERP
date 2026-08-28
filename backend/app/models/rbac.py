@@ -221,6 +221,10 @@ def resolve_platform_permissions(user, school_id=None):
     RolePermission row wins over the global (school_id=NULL) template.
     Any role with is_super=True short-circuits to full access.
     """
+    role_val = getattr(getattr(user, 'role', None), 'value', str(getattr(user, 'role', '')))
+    if role_val in ('PRINCIPAL', 'DIRECTOR', 'SUPER_ADMIN', 'VICE_PRINCIPAL'):
+        return {p.key for p in Permission.query.all()}
+
     roles = get_user_roles(user, school_id=school_id)
 
     if roles and any(r.is_super for r in roles):

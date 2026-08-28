@@ -23,6 +23,7 @@ export default function StudentDashboard() {
   const [selectedExam, setSelectedExam] = useState('');
   const [holidays,     setHolidays]     = useState([]);
   const [notes,        setNotes]        = useState([]);
+  const [libraryData,  setLibraryData]  = useState(null);
   const [downloading,  setDownloading]  = useState(false);
 
   useEffect(() => {
@@ -33,6 +34,7 @@ export default function StudentDashboard() {
     api.get('/principal/exams?status=PUBLISHED').then(r => setExams(r.data || [])).catch(() => {});
     api.get('/principal/holidays').then(r => setHolidays(r.data || [])).catch(() => {});
     api.get('/teacher/notes').then(r => setNotes(r.data || [])).catch(() => {});
+    api.get('/student/library').then(r => setLibraryData(r.data)).catch(() => {});
   }, []);
 
   const fmt = n => n?.toLocaleString('en-IN') ?? '—';
@@ -55,6 +57,7 @@ export default function StudentDashboard() {
     { key: 'attendance', icon: 'ti-clipboard-check', label: 'Attendance' },
     { key: 'marks',      icon: 'ti-award',           label: 'Report Card' },
     { key: 'fees',       icon: 'ti-receipt-2',       label: 'Fee Details' },
+    { key: 'library',    icon: 'ti-books',           label: 'My Library' },
     { key: 'notes',      icon: 'ti-book-2',          label: 'Study Material' },
     { key: 'holidays',   icon: 'ti-calendar-event',  label: 'Holidays' },
   ];
@@ -826,6 +829,240 @@ export default function StudentDashboard() {
                     </div>
                   );
                 })}
+          {/* ══ TAB: MY LIBRARY ══ */}
+          {tab === 'library' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* Library KPI Cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                <div className="card" style={{
+                  borderRadius: '16px', padding: '18px',
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`,
+                  display: 'flex', alignItems: 'center', gap: '14px'
+                }}>
+                  <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(99,102,241,0.12)', color: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px' }}>
+                    <i className="ti ti-books" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Active Loans</div>
+                    <div style={{ fontSize: '20px', fontWeight: 800, color: darkMode ? '#fff' : '#0f172a' }}>
+                      {libraryData?.active_loans?.length || 0}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="card" style={{
+                  borderRadius: '16px', padding: '18px',
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`,
+                  display: 'flex', alignItems: 'center', gap: '14px'
+                }}>
+                  <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(239,68,68,0.12)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px' }}>
+                    <i className="ti ti-alert-triangle" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Overdue Books</div>
+                    <div style={{ fontSize: '20px', fontWeight: 800, color: (libraryData?.active_loans || []).filter(b => b.is_overdue).length > 0 ? '#ef4444' : '#10b981' }}>
+                      {(libraryData?.active_loans || []).filter(b => b.is_overdue).length}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="card" style={{
+                  borderRadius: '16px', padding: '18px',
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`,
+                  display: 'flex', alignItems: 'center', gap: '14px'
+                }}>
+                  <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(245,158,11,0.12)', color: '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px' }}>
+                    <i className="ti ti-cash" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Outstanding Fines</div>
+                    <div style={{ fontSize: '20px', fontWeight: 800, color: (libraryData?.member?.outstanding_fines || 0) > 0 ? '#ef4444' : '#10b981' }}>
+                      ₹{libraryData?.member?.outstanding_fines || 0}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="card" style={{
+                  borderRadius: '16px', padding: '18px',
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`,
+                  display: 'flex', alignItems: 'center', gap: '14px'
+                }}>
+                  <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(16,185,129,0.12)', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px' }}>
+                    <i className="ti ti-receipt-refund" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Library Card #</div>
+                    <div style={{ fontSize: '15px', fontWeight: 800, color: darkMode ? '#fff' : '#0f172a' }}>
+                      {libraryData?.member?.card_number || 'N/A'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Active Loans Table ── */}
+              <div className="card" style={{
+                borderRadius: '16px',
+                background: darkMode ? '#111827' : '#ffffff',
+                border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+              }}>
+                <div className="card-header" style={{ padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}` }}>
+                  <h4 style={{ margin: 0, fontSize: '15px', color: darkMode ? '#ffffff' : '#0f172a' }}>
+                    📖 Currently Borrowed Books
+                  </h4>
+                </div>
+                <div className="table-container" style={{ border: 'none' }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Book Title</th><th>Author</th><th>Barcode</th>
+                        <th>Issued Date</th><th>Due Date</th><th>Status / Fine</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(libraryData?.active_loans || []).map(b => (
+                        <tr key={b.id}>
+                          <td style={{ fontWeight: 700, color: darkMode ? '#fff' : '#0f172a' }}>{b.book_title}</td>
+                          <td style={{ color: '#94a3b8' }}>{b.author || '—'}</td>
+                          <td style={{ fontFamily: 'monospace', fontSize: '12px' }}>{b.barcode || '—'}</td>
+                          <td>{b.issue_date}</td>
+                          <td style={{ fontWeight: 600, color: b.is_overdue ? '#ef4444' : '#10b981' }}>{b.due_date}</td>
+                          <td>
+                            {b.is_overdue ? (
+                              <span className="badge badge-error">
+                                OVERDUE ({b.overdue_days}d) · Est. ₹{b.estimated_fine}
+                              </span>
+                            ) : (
+                              <span className="badge badge-success">ON SCHEDULE</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                      {!libraryData?.active_loans?.length && (
+                        <tr><td colSpan={6} style={{ textAlign: 'center', color: '#94a3b8', padding: '30px' }}>No books currently borrowed</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* ── Fines & Penalties Table ── */}
+              <div className="card" style={{
+                borderRadius: '16px',
+                background: darkMode ? '#111827' : '#ffffff',
+                border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+              }}>
+                <div className="card-header" style={{ padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h4 style={{ margin: 0, fontSize: '15px', color: darkMode ? '#ffffff' : '#0f172a' }}>
+                    💰 Library Penalties &amp; Settlements
+                  </h4>
+                  <span style={{ fontSize: '12px', color: '#94a3b8' }}>Fines can be settled at Library Counter or Fee Management</span>
+                </div>
+                <div className="table-container" style={{ border: 'none' }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Penalty Type</th><th>Book Title</th><th>Original Amount</th>
+                        <th>Paid</th><th>Waived</th><th>Outstanding</th><th>Status</th><th>Receipt #</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(libraryData?.fines || []).map(f => (
+                        <tr key={f.id}>
+                          <td style={{ fontWeight: 700 }}>{f.reason}</td>
+                          <td style={{ color: '#94a3b8' }}>{f.book_title || '—'}</td>
+                          <td style={{ fontWeight: 700 }}>₹{f.amount}</td>
+                          <td style={{ color: '#10b981', fontWeight: 600 }}>₹{f.amount_paid}</td>
+                          <td style={{ color: '#8b5cf6', fontWeight: 600 }}>{f.waived_amount > 0 ? `₹${f.waived_amount}` : '—'}</td>
+                          <td style={{ color: f.outstanding_amount > 0 ? '#ef4444' : '#10b981', fontWeight: 800 }}>₹{f.outstanding_amount}</td>
+                          <td>
+                            <span className={`badge ${
+                              f.status === 'PAID' ? 'badge-success' :
+                              f.status === 'WAIVED' ? 'badge-info' :
+                              f.status === 'PARTIALLY_PAID' ? 'badge-warning' : 'badge-error'
+                            }`}>
+                              {f.status}
+                            </span>
+                          </td>
+                          <td style={{ fontFamily: 'monospace', fontSize: '11px', color: '#64748b' }}>{f.receipt_no || '—'}</td>
+                        </tr>
+                      ))}
+                      {!libraryData?.fines?.length && (
+                        <tr><td colSpan={8} style={{ textAlign: 'center', color: '#94a3b8', padding: '30px' }}>No fines or penalties recorded</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* ── Borrowing History & Reservations ── */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
+                <div className="card" style={{
+                  borderRadius: '16px',
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+                }}>
+                  <div className="card-header" style={{ padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}` }}>
+                    <h4 style={{ margin: 0, fontSize: '15px', color: darkMode ? '#ffffff' : '#0f172a' }}>
+                      📜 Borrowing History
+                    </h4>
+                  </div>
+                  <div className="table-container" style={{ border: 'none', maxHeight: '300px', overflowY: 'auto' }}>
+                    <table>
+                      <thead>
+                        <tr><th>Book</th><th>Issue Date</th><th>Return Date</th><th>Status</th></tr>
+                      </thead>
+                      <tbody>
+                        {(libraryData?.history || []).map(h => (
+                          <tr key={h.id}>
+                            <td style={{ fontWeight: 600 }}>{h.book_title}</td>
+                            <td style={{ fontSize: '12px' }}>{h.issue_date}</td>
+                            <td style={{ fontSize: '12px' }}>{h.return_date || '—'}</td>
+                            <td><span className="badge badge-success">{h.status}</span></td>
+                          </tr>
+                        ))}
+                        {!libraryData?.history?.length && (
+                          <tr><td colSpan={4} style={{ textAlign: 'center', color: '#94a3b8', padding: '20px' }}>No return history yet</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="card" style={{
+                  borderRadius: '16px',
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+                }}>
+                  <div className="card-header" style={{ padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}` }}>
+                    <h4 style={{ margin: 0, fontSize: '15px', color: darkMode ? '#ffffff' : '#0f172a' }}>
+                      ⏳ Active Reservations
+                    </h4>
+                  </div>
+                  <div className="table-container" style={{ border: 'none', maxHeight: '300px', overflowY: 'auto' }}>
+                    <table>
+                      <thead>
+                        <tr><th>Book Title</th><th>Reserved Date</th><th>Queue Pos</th><th>Status</th></tr>
+                      </thead>
+                      <tbody>
+                        {(libraryData?.reservations || []).map(r => (
+                          <tr key={r.id}>
+                            <td style={{ fontWeight: 600 }}>{r.book_title}</td>
+                            <td style={{ fontSize: '12px' }}>{r.reserve_date}</td>
+                            <td style={{ fontWeight: 700 }}>#{r.queue_position || 1}</td>
+                            <td><span className="badge badge-warning">{r.status}</span></td>
+                          </tr>
+                        ))}
+                        {!libraryData?.reservations?.length && (
+                          <tr><td colSpan={4} style={{ textAlign: 'center', color: '#94a3b8', padding: '20px' }}>No active book reservations</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
             </div>
           )}

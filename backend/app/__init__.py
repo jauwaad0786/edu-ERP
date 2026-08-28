@@ -147,6 +147,7 @@ def create_app(config_name='default'):
             _ensure_marks_columns()
             _ensure_exam_columns()
             _ensure_document_columns()
+            _ensure_library_columns()
             db.create_all()
             _seed_super_admin()
 
@@ -294,9 +295,72 @@ def _ensure_academic_resource_columns():
                     try:
                         conn.execute(text(f'ALTER TABLE notes ADD COLUMN {col} {defn}'))
                         conn.commit()
-                        print(f'[OK] Added column notes.{col}')
                     except Exception as e:
                         print(f'[WARN] notes.{col}: {e}')
+
+
+def _ensure_library_columns():
+    """Ensure newly added columns exist in library tables."""
+    from sqlalchemy import text, inspect
+    try:
+        inspector = inspect(db.engine)
+        table_names = inspector.get_table_names()
+
+        # 1. library_fine_transactions
+        if 'library_fine_transactions' in table_names:
+            existing = {c['name'] for c in inspector.get_columns('library_fine_transactions')}
+            to_add = {
+                'waived_amount':      'FLOAT DEFAULT 0.0',
+                'waived_at':          'DATETIME',
+                'payment_mode':       'VARCHAR(30)',
+                'receipt_no':         'VARCHAR(50)',
+                'fee_transaction_id': 'INTEGER',
+            }
+            with db.engine.connect() as conn:
+                for col, defn in to_add.items():
+                    if col not in existing:
+                        try:
+                            conn.execute(text(f'ALTER TABLE library_fine_transactions ADD COLUMN {col} {defn}'))
+                            conn.commit()
+                            print(f'[OK] Added column library_fine_transactions.{col}')
+                        except Exception as e:
+                            print(f'[WARN] library_fine_transactions.{col}: {e}')
+
+        # 2. library_settings
+        if 'library_settings' in table_names:
+            existing = {c['name'] for c in inspector.get_columns('library_settings')}
+            to_add = {
+                'damaged_book_fine_multiplier': 'FLOAT DEFAULT 0.5',
+                'lost_card_fine':               'FLOAT DEFAULT 50.0',
+                'missing_pages_fine':           'FLOAT DEFAULT 20.0',
+            }
+            with db.engine.connect() as conn:
+                for col, defn in to_add.items():
+                    if col not in existing:
+                        try:
+                            conn.execute(text(f'ALTER TABLE library_settings ADD COLUMN {col} {defn}'))
+                            conn.commit()
+                            print(f'[OK] Added column library_settings.{col}')
+                        except Exception as e:
+                            print(f'[WARN] library_settings.{col}: {e}')
+
+        # 3. book_copies
+        if 'book_copies' in table_names:
+            existing = {c['name'] for c in inspector.get_columns('book_copies')}
+            to_add = {
+                'shelf_location': 'VARCHAR(50)',
+            }
+            with db.engine.connect() as conn:
+                for col, defn in to_add.items():
+                    if col not in existing:
+                        try:
+                            conn.execute(text(f'ALTER TABLE book_copies ADD COLUMN {col} {defn}'))
+                            conn.commit()
+                            print(f'[OK] Added column book_copies.{col}')
+                        except Exception as e:
+                            print(f'[WARN] book_copies.{col}: {e}')
+    except Exception as e:
+        print(f'[WARN] _ensure_library_columns error: {e}')
 
 
 def _ensure_communication_columns():
