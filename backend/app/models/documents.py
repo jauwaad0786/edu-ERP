@@ -268,8 +268,24 @@ CERTIFICATE_TEMPLATES = [
     }
 ]
 
+DEFAULT_DOC_REQUIREMENTS = [
+    {'doc_type': 'AADHAR_STUDENT',       'label': 'Student Aadhaar Card',       'is_required': True,  'order_index': 1},
+    {'doc_type': 'BIRTH_CERTIFICATE',    'label': 'Birth Certificate',          'is_required': True,  'order_index': 2},
+    {'doc_type': 'PHOTO',                'label': 'Student Passport Photo',     'is_required': True,  'order_index': 3},
+    {'doc_type': 'TRANSFER_CERTIFICATE', 'label': 'Transfer Certificate (TC)',  'is_required': False, 'order_index': 4},
+    {'doc_type': 'REPORT_CARD',          'label': 'Previous Class Report Card', 'is_required': False, 'order_index': 5},
+    {'doc_type': 'AADHAR_PARENT',        'label': 'Parent Aadhaar Card',        'is_required': False, 'order_index': 6},
+    {'doc_type': 'CASTE_CERTIFICATE',    'label': 'Caste / Category Cert',      'is_required': False, 'order_index': 7},
+    {'doc_type': 'ADDRESS_PROOF',        'label': 'Address Proof',              'is_required': False, 'order_index': 8},
+    {'doc_type': 'MEDICAL_CERTIFICATE',  'label': 'Medical Certificate',        'is_required': False, 'order_index': 9},
+    {'doc_type': 'RATION_CARD',          'label': 'Ration Card',                'is_required': False, 'order_index': 10},
+    {'doc_type': 'OTHER',                'label': 'Other Document',             'is_required': False, 'order_index': 99},
+]
+
+
 
 class SchoolDocumentRequirement(db.Model):
+
     """
     Configurable document requirements per school.
     Allows Principal to set which document types are mandatory for students.

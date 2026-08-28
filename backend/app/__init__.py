@@ -237,9 +237,9 @@ def _ensure_document_columns():
                     try:
                         conn.execute(text(f'ALTER TABLE student_documents ADD COLUMN {col} {defn}'))
                         conn.commit()
-                        print(f'✅ Added column student_documents.{col}')
+                        print(f'[OK] Added column student_documents.{col}')
                     except Exception as e:
-                        print(f'⚠️ student_documents.{col}: {e}')
+                        print(f'[WARN] student_documents.{col}: {e}')
 
     if 'issued_documents' in table_names:
         existing = {c['name'] for c in inspector.get_columns('issued_documents')}
@@ -260,9 +260,10 @@ def _ensure_document_columns():
                     try:
                         conn.execute(text(f'ALTER TABLE issued_documents ADD COLUMN {col} {defn}'))
                         conn.commit()
-                        print(f'✅ Added column issued_documents.{col}')
+                        print(f'[OK] Added column issued_documents.{col}')
                     except Exception as e:
-                        print(f'⚠️ issued_documents.{col}: {e}')
+                        print(f'[WARN] issued_documents.{col}: {e}')
+
 
 
 
@@ -296,9 +297,10 @@ def _ensure_fee_record_columns():
                 try:
                     conn.execute(text(f'ALTER TABLE fee_records ADD COLUMN {col} {defn}'))
                     conn.commit()
-                    print(f'✅ Added column fee_records.{col}')
+                    print(f'[OK] Added column fee_records.{col}')
                 except Exception as e:
-                    print(f'⚠️  fee_records.{col}: {e}')
+                    print(f'[WARN] fee_records.{col}: {e}')
+
 def _ensure_marks_columns():
     """
     NEW — Result Management System.
@@ -318,12 +320,12 @@ def _ensure_marks_columns():
     with db.engine.connect() as conn:
         for col, defn in to_add.items():
             if col not in existing:
-                try:
-                    conn.execute(text(f'ALTER TABLE marks ADD COLUMN {col} {defn}'))
-                    conn.commit()
-                    print(f'✅ Added column marks.{col}')
-                except Exception as e:
-                    print(f'⚠️  marks.{col}: {e}')
+                    try:
+                        conn.execute(text(f'ALTER TABLE marks ADD COLUMN {col} {defn}'))
+                        conn.commit()
+                        print(f'[OK] Added column marks.{col}')
+                    except Exception as e:
+                        print(f'[WARN] marks.{col}: {e}')
 
 
 def _ensure_exam_columns():
