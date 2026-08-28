@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import Sidebar from '../../components/Sidebar';
 import Navbar  from '../../components/Navbar';
 import api from '../../api/axios';
@@ -17,17 +18,30 @@ function timeAgo(dateStr) {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-export default function Announcements() {
+export default function Announcements({ initialShowForm }) {
+  const location = useLocation();
   const [darkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
   const { user } = useAuth();
   const canCreate = expandRole(user?.role).some(r => CAN_CREATE_ROLES.includes(r));
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
+  const shouldOpenForm = Boolean(
+    initialShowForm ||
+    (location.search && location.search.includes('create=true')) ||
+    (location.pathname && location.pathname.endsWith('/create'))
+  );
+
   const [list,     setList]     = useState([]);
   const [loading,  setLoading]  = useState(true);
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useState(shouldOpenForm);
   const [schools,  setSchools]  = useState([]);
   const [form, setForm] = useState({ title: '', body: '', audience: 'ALL', priority: 'MEDIUM', is_pinned: false, target_school_id: 'ALL' });
+
+  useEffect(() => {
+    if (shouldOpenForm) {
+      setShowForm(true);
+    }
+  }, [shouldOpenForm]);
 
   useEffect(() => {
     if (!isSuperAdmin) return;

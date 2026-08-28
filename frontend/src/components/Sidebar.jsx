@@ -186,10 +186,10 @@ const ROLE_MENUS = {
         },
 
         {
-          icon: 'ti-file-certificate', label: 'Documents & Certificates', path: '/documents',
+          icon: 'ti-file-certificate', label: 'Student Documents', path: '/documents',
           children: [
             { icon: 'ti-award',        label: 'Issue Certificates', path: '/issue-documents' },
-            { icon: 'ti-file-text',    label: 'Student KYC & Docs', path: '/documents' },
+            { icon: 'ti-file-text',    label: 'Student Documents & KYC', path: '/documents' },
           ],
         },
 
@@ -238,7 +238,8 @@ const ROLE_MENUS = {
         { icon: 'ti-clipboard-check', label: 'Attendance',         path: '/attendance' },
         { icon: 'ti-pencil',          label: 'Exam Marks Entry',   path: '/marks' },
         { icon: 'ti-checklist',       label: 'Result Submission',  path: '/mark-entry' },
-        { icon: 'ti-file-certificate',label: 'Issue Documents',    path: '/documents' },
+        { icon: 'ti-award',           label: 'Issue Certificates', path: '/issue-documents' },
+        { icon: 'ti-file-text',        label: 'Student KYC Docs',   path: '/documents' },
         { icon: 'ti-user-graduate',   label: 'My Students',        path: '/students' },
       ],
     },

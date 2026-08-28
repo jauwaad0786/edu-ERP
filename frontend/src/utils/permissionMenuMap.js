@@ -54,10 +54,10 @@ export const PERMISSION_MENU_ITEMS = {
   'staff.payroll.view':        { group: 'Finance', item: { icon: 'ti-cash',      label: 'Payroll',    path: '/finance/payroll' } },
   'staff.payroll.manage':      { group: 'Finance', item: { icon: 'ti-cash',      label: 'Payroll',    path: '/finance/payroll' } },
 
-  'documents.issue':           { group: 'Resources', item: { icon: 'ti-file-text', label: 'Documents', path: '/documents' } },
-  'documents.view':            { group: 'Resources', item: { icon: 'ti-file-text', label: 'Documents', path: '/documents' } },
+  'documents.issue':           { group: 'Student Documents', item: { icon: 'ti-award', label: 'Issue Certificates', path: '/issue-documents' } },
+  'documents.view':            { group: 'Student Documents', item: { icon: 'ti-file-text', label: 'Student Documents & KYC', path: '/documents' } },
 
-  'communication.announcement.post': { group: 'Customer Service', item: { icon: 'ti-speakerphone', label: 'Announcements', path: '/support/announcements' } },
+  'communication.announcement.post': { group: 'Communication', item: { icon: 'ti-speakerphone', label: 'Announcements', path: '/support/announcements' } },
 
   'audit.logs.view':           { group: 'Access Control', item: { icon: 'ti-history', label: 'Audit Logs', path: '/audit/school/logs' } },
 

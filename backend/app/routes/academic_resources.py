@@ -70,15 +70,36 @@ def list_notes():
         return jsonify({'error': 'School context not found'}), 400
 
     class_id      = request.args.get('class_id', type=int)
+    section       = (request.args.get('section') or '').strip()
     subject_id    = request.args.get('subject_id', type=int)
     teacher_id    = request.args.get('teacher_id', type=int)
+    file_type     = (request.args.get('file_type') or '').strip().lower()
+    date_from     = (request.args.get('date_from') or '').strip()
+    date_to       = (request.args.get('date_to') or '').strip()
     academic_year = request.args.get('academic_year')
     search        = (request.args.get('search') or '').strip()
 
     q = Note.query.filter_by(school_id=sid)
 
-    # Student / Parent filtering: restrict to student's enrolled class
-    if curr.role in ['STUDENT', 'PARENT']:
+    # 1. Teacher permission: Teacher should see school records or teacher's assigned classes/subjects / own uploads
+    if curr.role == 'TEACHER':
+        teacher = Teacher.query.filter_by(user_id=curr.id).first()
+        if teacher:
+            assigned_subject_ids = [s.id for s in Subject.query.filter_by(teacher_id=teacher.id).all()]
+            assigned_class_ids = [c.id for c in Class.query.filter_by(teacher_id=teacher.id).all()]
+            conditions = [
+                Note.uploaded_by == curr.id,
+                Note.teacher_id == teacher.id
+            ]
+            if assigned_subject_ids:
+                conditions.append(Note.subject_id.in_(assigned_subject_ids))
+            if assigned_class_ids:
+                conditions.append(Note.class_id.in_(assigned_class_ids))
+            q = q.filter(db.or_(*conditions))
+        else:
+            q = q.filter_by(uploaded_by=curr.id)
+    # 2. Student / Parent filtering: restrict to student's enrolled class
+    elif curr.role in ['STUDENT', 'PARENT']:
         student = Student.query.filter_by(user_id=curr.id).first()
         if not student and curr.role == 'PARENT':
             student = Student.query.filter(
@@ -88,14 +109,37 @@ def list_notes():
             q = q.filter(db.or_(Note.class_id == student.class_id, Note.class_id.is_(None)))
         else:
             return jsonify({'notes': [], 'total': 0}), 200
-    else:
-        if class_id:
-            q = q.filter_by(class_id=class_id)
+    # 3. Principal / SUPER_ADMIN / ADMIN / VICE_PRINCIPAL / DIRECTOR has complete school visibility
+
+    if class_id:
+        q = q.filter(Note.class_id == class_id)
+
+    if section:
+        q = q.join(Class, Note.class_id == Class.id).filter(Class.section == section)
 
     if subject_id:
-        q = q.filter_by(subject_id=subject_id)
+        q = q.filter(Note.subject_id == subject_id)
+
     if teacher_id:
-        q = q.filter_by(teacher_id=teacher_id)
+        q = q.filter(Note.teacher_id == teacher_id)
+
+    if file_type:
+        q = q.filter(Note.file_type.ilike(f"%{file_type}%"))
+
+    if date_from:
+        try:
+            df = datetime.fromisoformat(date_from)
+            q = q.filter(Note.uploaded_at >= df)
+        except Exception:
+            pass
+
+    if date_to:
+        try:
+            dt = datetime.fromisoformat(date_to)
+            q = q.filter(Note.uploaded_at <= dt)
+        except Exception:
+            pass
+
     if academic_year:
         q = q.filter_by(academic_year=academic_year)
 
@@ -126,6 +170,7 @@ def upload_note():
     description = (request.form.get('description') or '').strip()
     class_id    = request.form.get('class_id', type=int)
     subject_id  = request.form.get('subject_id', type=int)
+    teacher_id_req = request.form.get('teacher_id', type=int)
     academic_yr = (request.form.get('academic_year') or '2026').strip()
     file        = request.files.get('file')
 
@@ -137,9 +182,17 @@ def upload_note():
     teacher = Teacher.query.filter_by(user_id=curr.id).first()
     teacher_id = teacher.id if teacher else None
 
-    # If teacher uploaded, verify class/subject if assigned
+    # If teacher uploaded, verify profile
     if curr.role == 'TEACHER' and not teacher_id:
         return jsonify({'error': 'Teacher profile not found'}), 403
+
+    # If principal/admin uploaded, allow specifying teacher_id or resolve from subject's assigned teacher
+    if not teacher_id and teacher_id_req:
+        teacher_id = teacher_id_req
+    elif not teacher_id and subject_id:
+        sub = Subject.query.get(subject_id)
+        if sub and sub.teacher_id:
+            teacher_id = sub.teacher_id
 
     try:
         folder = f"eduerp/schools/{sid}/notes"

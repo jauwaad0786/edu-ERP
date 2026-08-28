@@ -303,30 +303,83 @@ class Note(db.Model):
     # Relationships
     class_ref   = db.relationship('Class', backref='notes', lazy='select')
     teacher_ref = db.relationship('Teacher', backref='notes', lazy='select')
+    subject_ref = db.relationship('Subject', foreign_keys=[subject_id], lazy='select', overlaps="notes,subject")
     uploader    = db.relationship('User', foreign_keys=[uploaded_by], lazy='select')
 
     def to_dict(self):
-        cls_name = f"{self.class_ref.name} - {self.class_ref.section}" if self.class_ref else 'All Classes'
-        sub_name = self.subject.name if self.subject else 'General'
-        teacher_name = self.teacher_ref.user.name if (self.teacher_ref and self.teacher_ref.user) else (self.uploader.name if self.uploader else 'Teacher/Admin')
+        # Subject nested info
+        sub_obj = self.subject_ref
+        if not sub_obj and self.subject_id:
+            try:
+                sub_obj = Subject.query.get(self.subject_id)
+            except Exception:
+                sub_obj = None
+
+        sub_dict = {
+            'id': sub_obj.id,
+            'name': sub_obj.name,
+            'code': getattr(sub_obj, 'code', '') or ''
+        } if sub_obj else None
+
+        # Class nested info
+        cls_obj = self.class_ref
+        if not cls_obj and self.class_id:
+            try:
+                cls_obj = Class.query.get(self.class_id)
+            except Exception:
+                cls_obj = None
+
+        cls_dict = {
+            'id': cls_obj.id,
+            'name': cls_obj.name,
+            'section': getattr(cls_obj, 'section', '') or ''
+        } if cls_obj else None
+
+        # Teacher / Uploader nested info
+        teacher_dict = None
+        if self.teacher_ref and self.teacher_ref.user:
+            teacher_dict = {
+                'id': self.teacher_ref.id,
+                'name': self.teacher_ref.user.name,
+                'email': self.teacher_ref.user.email,
+                'phone': getattr(self.teacher_ref.user, 'phone', '') or '',
+                'designation': getattr(self.teacher_ref, 'designation', 'Teacher') or 'Teacher',
+            }
+        elif self.uploader:
+            teacher_dict = {
+                'id': None,
+                'name': self.uploader.name,
+                'email': self.uploader.email,
+                'phone': getattr(self.uploader, 'phone', '') or '',
+                'designation': getattr(self.uploader, 'role', 'Staff') or 'Staff',
+            }
+
+        class_name_str = f"{cls_dict['name']} - {cls_dict['section']}" if (cls_dict and cls_dict.get('section')) else (cls_dict['name'] if cls_dict else 'All Classes')
+        subject_name_str = sub_dict['name'] if sub_dict else 'General'
+        teacher_name_str = teacher_dict['name'] if teacher_dict else 'School Staff'
+
         return {
             'id':            self.id,
             'title':         self.title,
             'description':   self.description or '',
             'file_url':      self.file_url,
             'file_name':     self.file_name or '',
-            'file_size':     self.file_size,
+            'file_size':     self.file_size or 0,
             'file_type':     self.file_type or '',
             'subject_id':    self.subject_id,
-            'subject_name':  sub_name,
+            'subject_name':  subject_name_str,
+            'subject':       sub_dict,
             'class_id':      self.class_id,
-            'class_name':    cls_name,
+            'class_name':    class_name_str,
+            'class':         cls_dict,
             'teacher_id':    self.teacher_id,
-            'teacher_name':  teacher_name,
+            'teacher_name':  teacher_name_str,
+            'teacher':       teacher_dict,
             'school_id':     self.school_id,
             'academic_year': self.academic_year or '2026',
             'uploaded_by':   self.uploaded_by,
             'uploaded_at':   self.uploaded_at.isoformat() if self.uploaded_at else None,
+            'updated_at':   self.updated_at.isoformat() if self.updated_at else None,
         }
 
 

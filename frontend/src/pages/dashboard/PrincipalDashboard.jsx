@@ -1137,7 +1137,7 @@ export default function PrincipalDashboard() {
                   <h4 style={{ margin: 0, fontSize: '14.5px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <i className="ti ti-speakerphone" style={{ color: '#2563eb' }} /> Latest Announcements
                   </h4>
-                  <button onClick={() => navigate('/support')} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+                  <button onClick={() => navigate('/support/announcements')} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
                     View All
                   </button>
                 </div>
@@ -1167,7 +1167,7 @@ export default function PrincipalDashboard() {
 
               <div style={{ textAlign: 'center', marginTop: '16px' }}>
                 <button
-                  onClick={() => navigate('/support')}
+                  onClick={() => navigate('/announcements/create')}
                   style={{
                     background: 'none', border: 'none', color: '#2563eb',
                     fontSize: '12.5px', fontWeight: 700, cursor: 'pointer'

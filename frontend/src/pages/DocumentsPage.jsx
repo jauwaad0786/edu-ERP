@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import api from "../api/axios";
@@ -32,16 +33,29 @@ function fmtDate(d) {
 
 export default function DocumentsPage({ initialTab, initialDocType }) {
   const { user } = useAuth();
+  const location = useLocation();
   const role      = user?.role || "";
   const isAdmin   = ["PRINCIPAL", "SUPER_ADMIN", "ADMIN", "VICE_PRINCIPAL", "DIRECTOR"].includes(role);
   const isTeacher = role === "TEACHER";
   const isStudent = role === "STUDENT" || role === "PARENT";
   const canDelete = ["PRINCIPAL", "SUPER_ADMIN", "ADMIN"].includes(role);
 
+  // Compute default active tab according to route and props
+  const resolveDefaultTab = useCallback(() => {
+    if (isStudent) return "my_docs";
+    if (initialTab) return initialTab;
+    if (location.pathname === "/issue-documents") return "issue_workspace";
+    if (location.pathname === "/documents") return "class_matrix";
+    return "class_matrix";
+  }, [isStudent, initialTab, location.pathname]);
+
   // Active Main Tab
-  const [activeTab, setActiveTab] = useState(
-    isStudent ? "my_docs" : (initialTab || "issue_workspace")
-  );
+  const [activeTab, setActiveTab] = useState(resolveDefaultTab);
+
+  // Synchronize when route or initialTab changes
+  useEffect(() => {
+    setActiveTab(resolveDefaultTab());
+  }, [resolveDefaultTab]);
 
   // ─── ISSUE WORKSPACE STATE ────────────────────────────────────────────────
   const [workspaceData, setWorkspaceData] = useState(null);
@@ -426,7 +440,7 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
 
       <Sidebar />
       <div className="main-content">
-        <Navbar title="Documents & Certificates" />
+        <Navbar title={activeTab === 'issue_workspace' ? "Issue Documents & Certificates" : "Student Documents & KYC"} />
         <div className="page-body">
 
           {/* HEADER */}
@@ -439,16 +453,22 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
                   display: "flex", alignItems: "center", justifyContent: "center",
                   fontSize: 24, color: "#fff", boxShadow: "0 4px 14px rgba(11,59,123,0.25)"
                 }}>
-                  <i className="ti ti-certificate" />
+                  <i className={`ti ${activeTab === 'issue_workspace' ? 'ti-award' : 'ti-file-text'}`} />
                 </div>
                 <div>
                   <h2 style={{ margin: 0, fontSize: 21, fontWeight: 800, color: "#0f172a" }}>
-                    Documents & Certificates Management
+                    {isStudent
+                      ? "My Documents & Certificates"
+                      : activeTab === 'issue_workspace'
+                      ? "Issue Documents & Official Certificates"
+                      : "Student Documents & KYC Verification"}
                   </h2>
                   <p style={{ margin: "2px 0 0", fontSize: 13, color: "#64748b" }}>
                     {isStudent
                       ? "View your KYC records and school-issued official certificates"
-                      : "Generate & issue official certificates, manage student KYC, and track completion"}
+                      : activeTab === 'issue_workspace'
+                      ? "Generate, verify, and issue Transfer Certificates, Bonafide, and custom official documents"
+                      : "Track mandatory student KYC submission, verify digital uploads, and inspect document repository"}
                   </p>
                 </div>
               </div>
