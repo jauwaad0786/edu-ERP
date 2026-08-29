@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, Response
+from flask import Blueprint, request, jsonify, Response, send_file
 from app import db
 from app.models.user import User, UserRole
 from app.models.academic import Student, Class
@@ -80,7 +80,7 @@ def create_hostel():
     return jsonify(h.to_dict()), 201
 
 
-@hostel_bp.route('/hostels/<int:hostel_id>', methods=['PATCH'])
+@hostel_bp.route('/hostels/<int:hostel_id>', methods=['PUT', 'PATCH'])
 @role_required('PRINCIPAL')
 def update_hostel(hostel_id):
     h = Hostel.query.get_or_404(hostel_id)
@@ -692,6 +692,7 @@ def quick_create_student_for_hostel():
 
 
 @hostel_bp.route('/admission', methods=['POST'])
+@hostel_bp.route('/admissions', methods=['POST'])
 @role_required('PRINCIPAL', 'HOSTEL')
 def create_admission():
     """
@@ -792,12 +793,19 @@ def vacate_bed(allocation_id):
 
 
 @hostel_bp.route('/admission/<int:allocation_id>/transfer', methods=['POST'])
+@hostel_bp.route('/transfers', methods=['POST'])
 @role_required('PRINCIPAL', 'HOSTEL')
-def transfer_student(allocation_id):
+def transfer_student(allocation_id=None):
     """
-    Body: { new_bed_id, transfer_type, reason }
+    Body: { allocation_id (optional if in URL), new_bed_id, transfer_type, reason }
     Closes current allocation (status=TRANSFERRED), opens new one on new bed.
     """
+    data = request.get_json() or {}
+    if allocation_id is None:
+        allocation_id = data.get('allocation_id')
+    if not allocation_id:
+        return jsonify({'error': 'allocation_id is required'}), 400
+
     old = HostelBedAllocation.query.get_or_404(allocation_id)
     sid = _school_id()
     if old.school_id != sid:

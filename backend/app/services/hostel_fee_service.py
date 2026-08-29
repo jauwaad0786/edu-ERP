@@ -97,6 +97,11 @@ def _generate_receipt_no():
     return 'RCP-' + date.today().strftime('%Y%m%d') + '-' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
 
 
+import threading
+
+_hostel_payment_mutex = threading.Lock()
+
+
 def record_hostel_fee_payment(record, amount, payment_mode='CASH', remarks='', collected_by_user=None):
     """
     Centralized payment collection function for Hostel charges.
@@ -105,63 +110,74 @@ def record_hostel_fee_payment(record, amount, payment_mode='CASH', remarks='', c
     if not record:
         raise ValueError("Fee record not found")
 
-    effective_due = record.effective_due()
-    paid_so_far   = record.amount_paid or 0.0
-    remaining     = max(0.0, round(effective_due - paid_so_far, 2))
+    with _hostel_payment_mutex:
+        # Fetch fresh row with lock where supported
+        try:
+            db.session.refresh(record)
+        except Exception:
+            pass
 
-    if remaining <= 0 or record.status == 'PAID':
-        raise ValueError("This fee record has already been fully settled (Outstanding is ₹0)")
+        # Compute actual paid so far directly from ledger transactions
+        total_txns_paid = db.session.query(db.func.coalesce(db.func.sum(FeeTransaction.amount), 0.0))\
+                                    .filter(FeeTransaction.fee_record_id == record.id).scalar()
 
-    amount = float(amount)
-    if amount <= 0:
-        raise ValueError("Payment amount must be greater than 0")
+        effective_due = record.effective_due()
+        paid_so_far   = max(record.amount_paid or 0.0, float(total_txns_paid or 0.0))
+        remaining     = max(0.0, round(effective_due - paid_so_far, 2))
 
-    if amount > remaining:
-        raise ValueError(f"Payment amount ₹{amount} exceeds outstanding balance of ₹{remaining}")
+        if remaining <= 0 or record.status == 'PAID':
+            raise ValueError("This fee record has already been fully settled (Outstanding is ₹0)")
 
-    user_id = collected_by_user.id if collected_by_user else None
-    sid = record.school_id
+        amount = float(amount)
+        if amount <= 0:
+            raise ValueError("Payment amount must be greater than 0")
 
-    record.amount_paid = round(paid_so_far + amount, 2)
-    record.payment_mode = payment_mode
-    record.paid_date = date.today()
-    record.collected_by = user_id
-    if remarks:
-        record.remarks = (record.remarks or '') + f" | {remarks}"
+        if amount > remaining:
+            raise ValueError(f"Payment amount ₹{amount} exceeds outstanding balance of ₹{remaining}")
 
-    if record.amount_paid >= record.effective_due():
-        record.status = 'PAID'
-    else:
-        record.status = 'PARTIAL'
+        user_id = collected_by_user.id if collected_by_user else None
+        sid = record.school_id
 
-    if not record.receipt_no:
-        while True:
-            rno = _generate_receipt_no()
-            if not FeeRecord.query.filter_by(receipt_no=rno).first():
-                record.receipt_no = rno
-                break
+        record.amount_paid = round(paid_so_far + amount, 2)
+        record.payment_mode = payment_mode
+        record.paid_date = date.today()
+        record.collected_by = user_id
+        if remarks:
+            record.remarks = (record.remarks or '') + f" | {remarks}"
 
-    txn = FeeTransaction(
-        fee_record_id    = record.id,
-        student_id       = record.student_id,
-        school_id        = sid,
-        amount           = amount,
-        payment_mode     = payment_mode,
-        transaction_date = date.today(),
-        txn_month        = date.today().strftime('%B %Y'),
-        receipt_no       = record.receipt_no,
-        remarks          = remarks,
-        collected_by     = user_id,
-    )
-    db.session.add(txn)
-    db.session.flush()
+        if record.amount_paid >= record.effective_due():
+            record.status = 'PAID'
+        else:
+            record.status = 'PARTIAL'
 
-    log_hostel_activity(
-        sid, user_id, 'FEE_COLLECTED',
-        f"₹{amount} collected for student #{record.student_id} (FeeRecord #{record.id})"
-    )
+        if not record.receipt_no:
+            while True:
+                rno = _generate_receipt_no()
+                if not FeeRecord.query.filter_by(receipt_no=rno).first():
+                    record.receipt_no = rno
+                    break
 
-    return record, txn
+        txn = FeeTransaction(
+            fee_record_id    = record.id,
+            student_id       = record.student_id,
+            school_id        = sid,
+            amount           = amount,
+            payment_mode     = payment_mode,
+            transaction_date = date.today(),
+            txn_month        = date.today().strftime('%B %Y'),
+            receipt_no       = record.receipt_no,
+            remarks          = remarks,
+            collected_by     = user_id,
+        )
+        db.session.add(txn)
+        db.session.commit()
+
+        log_hostel_activity(
+            sid, user_id, 'FEE_COLLECTED',
+            f"₹{amount} collected for student #{record.student_id} (FeeRecord #{record.id})"
+        )
+
+        return record, txn
 
 
 def sync_hostel_fine_from_fee_record(fee_record, txn):
