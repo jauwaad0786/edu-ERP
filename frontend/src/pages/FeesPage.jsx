@@ -79,11 +79,34 @@ export default function FeesPage() {
   const [multiPayMode, setMultiPayMode] = useState('CASH');
   const [multiRemarks, setMultiRemarks] = useState('');
   const [multiSaving, setMultiSaving] = useState(false);
+  const [exportingPDF, setExportingPDF] = useState(false);
 
   /* bulk class notice */
   const [bulkNoticeModal, setBulkNoticeModal] = useState(false);
   const [bulkNoticeClass, setBulkNoticeClass] = useState('');
   const [bulkNoticeMonth, setBulkNoticeMonth] = useState('');
+
+  const exportPDFReport = async () => {
+    setExportingPDF(true);
+    try {
+      const params = new URLSearchParams();
+      if (filterMonth) params.append('month', filterMonth);
+      if (filterClass) params.append('class_id', filterClass);
+      if (filterFeeType) params.append('fee_type', filterFeeType);
+      if (filterStatus) params.append('status', filterStatus);
+
+      const res = await api.get('/principal/fees/collection-report/pdf?' + params.toString(), { responseType: 'blob' });
+      const link = document.createElement('a');
+      link.href = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      link.download = `Fee_Collection_Report_${filterMonth || 'Filtered'}.pdf`;
+      link.click();
+      toast.success('Fee Collection Report PDF downloaded!');
+    } catch (e) {
+      toast.error('Failed to export PDF report');
+    } finally {
+      setExportingPDF(false);
+    }
+  };
 
   /* ── load data ── */
   const load = useCallback(() => {
@@ -613,6 +636,21 @@ export default function FeesPage() {
                   value={filterMonth}
                   onChange={e => setFilterMonth(e.target.value)}
                 />
+                <button
+                  type="button"
+                  onClick={exportPDFReport}
+                  disabled={exportingPDF}
+                  style={{
+                    background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6,
+                    padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: exportingPDF ? 'not-allowed' : 'pointer',
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    boxShadow: '0 2px 6px rgba(220, 38, 38, 0.25)'
+                  }}
+                  title="Download Fee Collection Report (PDF)"
+                >
+                  <i className="ti ti-file-type-pdf" style={{ fontSize: 15 }} />
+                  {exportingPDF ? 'Exporting...' : 'Export PDF'}
+                </button>
               </div>
             </div>
 

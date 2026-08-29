@@ -29,6 +29,8 @@ export default function PrincipalDashboard() {
   const [recentFeeCollections, setRecentFeeCollections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [classViewMode, setClassViewMode] = useState('GRAPH'); // 'GRAPH' or 'GRID'
+  const [feePeriod, setFeePeriod] = useState('MONTH'); // 'MONTH', 'YEAR', 'ALL'
+  const [downloadingFeeReport, setDownloadingFeeReport] = useState(false);
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'GOOD MORNING' : hour < 17 ? 'GOOD AFTERNOON' : 'GOOD EVENING';
@@ -103,6 +105,60 @@ export default function PrincipalDashboard() {
   const collectionPct = (totalFeeCollected + totalFeePending) > 0
     ? Math.round((totalFeeCollected / (totalFeeCollected + totalFeePending)) * 100)
     : 0;
+
+  // Fee Intelligence (Month / Year / All Time)
+  const feeIntel = stats?.fee_intelligence || {};
+  const activeFeeGenerated = feePeriod === 'MONTH'
+    ? (feeIntel.month_generated ?? (totalFeeCollected + totalFeePending))
+    : feePeriod === 'YEAR'
+    ? (feeIntel.year_generated ?? (totalFeeCollected + totalFeePending))
+    : (feeIntel.all_time_generated ?? (totalFeeCollected + totalFeePending));
+
+  const activeFeeCollected = feePeriod === 'MONTH'
+    ? (feeIntel.month_collected ?? totalFeeCollected)
+    : feePeriod === 'YEAR'
+    ? (feeIntel.year_collected ?? totalFeeCollected)
+    : (feeIntel.all_time_collected ?? totalFeeCollected);
+
+  const activeFeePending = feePeriod === 'MONTH'
+    ? (feeIntel.month_pending ?? totalFeePending)
+    : feePeriod === 'YEAR'
+    ? (feeIntel.year_pending ?? totalFeePending)
+    : (feeIntel.all_time_pending ?? totalFeePending);
+
+  const activeCollectionPct = feePeriod === 'MONTH'
+    ? (feeIntel.month_percentage ?? (activeFeeGenerated > 0 ? Math.round((activeFeeCollected / activeFeeGenerated) * 100) : 0))
+    : feePeriod === 'YEAR'
+    ? (feeIntel.year_percentage ?? (activeFeeGenerated > 0 ? Math.round((activeFeeCollected / activeFeeGenerated) * 100) : 0))
+    : (feeIntel.all_time_percentage ?? collectionPct);
+
+  const activePeriodLabel = feePeriod === 'MONTH'
+    ? `This Month (${feeIntel.current_month_label || 'Current'})`
+    : feePeriod === 'YEAR'
+    ? `This Academic Year (Session ${feeIntel.current_session || '2024-25'})`
+    : 'All Time (Total History)';
+
+  const handleDownloadFeeReport = async () => {
+    setDownloadingFeeReport(true);
+    try {
+      const params = new URLSearchParams();
+      if (feePeriod === 'MONTH') {
+        params.append('month', new Date().toISOString().slice(0, 7));
+      } else if (feePeriod === 'YEAR') {
+        params.append('session', feeIntel.current_session || '2024-25');
+      }
+      const res = await api.get('/principal/fees/collection-report/pdf?' + params.toString(), { responseType: 'blob' });
+      const link = document.createElement('a');
+      link.href = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      link.download = `Fee_Collection_Report_${feePeriod}.pdf`;
+      link.click();
+      toast.success('Fee Collection Report PDF downloaded!');
+    } catch (e) {
+      toast.error('Failed to download fee collection PDF report');
+    } finally {
+      setDownloadingFeeReport(false);
+    }
+  };
 
   // Class-wise attendance list
   const classAttendanceList = (stats?.class_attendance_today && stats.class_attendance_today.length > 0)
@@ -471,15 +527,15 @@ export default function PrincipalDashboard() {
                 <i className="ti ti-currency-rupee" style={{ fontSize: '18px' }} />
               </div>
               <div style={{ fontSize: '11px', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.04em' }}>
-                FEE COLLECTED
+                FEE COLLECTED ({feePeriod === 'MONTH' ? 'MONTH' : feePeriod === 'YEAR' ? 'SESSION' : 'ALL'})
               </div>
               <div style={{ fontSize: '26px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a', margin: '4px 0 2px' }}>
-                {fmtK(totalFeeCollected)}
+                {fmtK(activeFeeCollected)}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '12px', color: '#94a3b8' }}>This session</span>
+                <span style={{ fontSize: '12px', color: '#94a3b8' }}>Of {fmtK(activeFeeGenerated)} generated</span>
                 <span style={{ fontSize: '11px', fontWeight: 800, color: '#10b981', background: '#ecfdf5', padding: '2px 6px', borderRadius: '6px' }}>
-                  {collectionPct}%
+                  {activeCollectionPct}%
                 </span>
               </div>
             </div>
@@ -499,10 +555,10 @@ export default function PrincipalDashboard() {
                 <i className="ti ti-alert-triangle" style={{ fontSize: '18px' }} />
               </div>
               <div style={{ fontSize: '11px', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.04em' }}>
-                FEE PENDING
+                FEE PENDING ({feePeriod === 'MONTH' ? 'MONTH' : feePeriod === 'YEAR' ? 'SESSION' : 'ALL'})
               </div>
               <div style={{ fontSize: '26px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a', margin: '4px 0 2px' }}>
-                {fmtK(totalFeePending)}
+                {fmtK(activeFeePending)}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '12px', color: '#94a3b8' }}>Outstanding</span>
@@ -570,6 +626,159 @@ export default function PrincipalDashboard() {
               </div>
             </div>
           )}
+
+          {/* ══ 4. FEE INTELLIGENCE & REVENUE TRACKER (USER REQUESTED) ══ */}
+          <div style={{
+            background: darkMode ? '#111827' : '#ffffff',
+            border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+            borderRadius: '20px', padding: '22px 24px', marginBottom: '24px',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.03)'
+          }}>
+            {/* Header with Title and Filter Switcher */}
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              flexWrap: 'wrap', gap: '14px', marginBottom: '20px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{
+                  width: '38px', height: '38px', borderRadius: '10px',
+                  background: '#eff6ff', color: '#2563eb',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px'
+                }}>
+                  <i className="ti ti-receipt-2" />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                    Fee Generation &amp; Collection Intelligence
+                  </h3>
+                  <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>
+                    Track billed school dues vs actual collected revenue for <strong>{activePeriodLabel}</strong>
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                {/* Filter Pills */}
+                <div style={{
+                  background: darkMode ? '#1e293b' : '#f1f5f9',
+                  padding: '4px', borderRadius: '10px', display: 'inline-flex', gap: '4px'
+                }}>
+                  {[
+                    { key: 'MONTH', label: '📅 This Month' },
+                    { key: 'YEAR', label: '🎓 Academic Year' },
+                    { key: 'ALL', label: '🏛️ All Time' },
+                  ].map(tab => (
+                    <button
+                      key={tab.key}
+                      onClick={() => setFeePeriod(tab.key)}
+                      style={{
+                        padding: '6px 14px', borderRadius: '7px', fontSize: '12px', fontWeight: 800,
+                        border: 'none', cursor: 'pointer',
+                        background: feePeriod === tab.key ? '#2563eb' : 'transparent',
+                        color: feePeriod === tab.key ? '#ffffff' : (darkMode ? '#94a3b8' : '#64748b'),
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* PDF Export Button */}
+                <button
+                  onClick={handleDownloadFeeReport}
+                  disabled={downloadingFeeReport}
+                  style={{
+                    background: '#dc2626', color: '#ffffff', border: 'none',
+                    borderRadius: '10px', padding: '8px 16px', fontSize: '12.5px', fontWeight: 800,
+                    cursor: downloadingFeeReport ? 'not-allowed' : 'pointer',
+                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                    boxShadow: '0 2px 8px rgba(220, 38, 38, 0.25)'
+                  }}
+                >
+                  <i className="ti ti-file-type-pdf" style={{ fontSize: '16px' }} />
+                  {downloadingFeeReport ? 'Exporting PDF...' : 'Download PDF Report'}
+                </button>
+              </div>
+            </div>
+
+            {/* Metrics Breakdown Grid */}
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: '16px'
+            }}>
+              {/* Metric 1: Generated Fees */}
+              <div style={{
+                background: darkMode ? '#1e293b' : '#f8fafc',
+                border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                borderRadius: '14px', padding: '16px 18px'
+              }}>
+                <div style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  TOTAL FEES GENERATED
+                </div>
+                <div style={{ fontSize: '24px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a', margin: '4px 0 2px' }}>
+                  ₹{fmt(activeFeeGenerated)}
+                </div>
+                <div style={{ fontSize: '11.5px', color: '#64748b' }}>
+                  Total billed ({feePeriod === 'MONTH' ? 'Month' : feePeriod === 'YEAR' ? 'Session' : 'All-time'})
+                </div>
+              </div>
+
+              {/* Metric 2: Collected Fees */}
+              <div style={{
+                background: darkMode ? '#064e3b22' : '#f0fdf4',
+                border: `1px solid ${darkMode ? '#065f46' : '#bbf7d0'}`,
+                borderRadius: '14px', padding: '16px 18px'
+              }}>
+                <div style={{ fontSize: '11px', fontWeight: 800, color: '#16a34a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  COLLECTED REVENUE
+                </div>
+                <div style={{ fontSize: '24px', fontWeight: 900, color: '#16a34a', margin: '4px 0 2px' }}>
+                  ₹{fmt(activeFeeCollected)}
+                </div>
+                <div style={{ fontSize: '11.5px', color: '#16a34a', fontWeight: 600 }}>
+                  Realized in bank / counter
+                </div>
+              </div>
+
+              {/* Metric 3: Pending Dues */}
+              <div style={{
+                background: darkMode ? '#7f1d1d22' : '#fef2f2',
+                border: `1px solid ${darkMode ? '#991b1b' : '#fecaca'}`,
+                borderRadius: '14px', padding: '16px 18px'
+              }}>
+                <div style={{ fontSize: '11px', fontWeight: 800, color: '#dc2626', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  OUTSTANDING DUES
+                </div>
+                <div style={{ fontSize: '24px', fontWeight: 900, color: '#dc2626', margin: '4px 0 2px' }}>
+                  ₹{fmt(activeFeePending)}
+                </div>
+                <div style={{ fontSize: '11.5px', color: '#dc2626', fontWeight: 600 }}>
+                  Pending from students
+                </div>
+              </div>
+
+              {/* Metric 4: Recovery / Collection Rate */}
+              <div style={{
+                background: darkMode ? '#1e293b' : '#f8fafc',
+                border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                borderRadius: '14px', padding: '16px 18px',
+                display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
+              }}>
+                <div>
+                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#0891b2', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    COLLECTION RATE
+                  </div>
+                  <div style={{ fontSize: '24px', fontWeight: 900, color: '#0891b2', margin: '4px 0 2px' }}>
+                    {activeCollectionPct}%
+                  </div>
+                </div>
+                <div style={{ width: '100%', background: darkMode ? '#334155' : '#e2e8f0', borderRadius: '100px', height: '6px', overflow: 'hidden' }}>
+                  <div style={{ width: `${Math.min(100, Math.max(0, activeCollectionPct))}%`, background: '#0891b2', height: '100%', borderRadius: '100px', transition: 'width 0.4s ease' }} />
+                </div>
+              </div>
+            </div>
+          </div>
 
           {/* ══ 4. QUICK ACTION LAUNCHPAD BAR ══ */}
           <div style={{

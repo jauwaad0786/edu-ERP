@@ -1340,6 +1340,60 @@ def export_fee_collection_csv():
     })
 
 
+@hostel_bp.route('/reports/fee-collection/pdf', methods=['GET'])
+@role_required('PRINCIPAL', 'HOSTEL', 'SUPER_ADMIN')
+def export_fee_collection_pdf():
+    """PDF export of hostel fee collection report with summary & ledger."""
+    sid = _school_id()
+    status_filter = request.args.get('status', 'ALL')
+
+    from app.models.school import School
+    from app.utils.pdf_generator import generate_fee_collection_report_pdf
+
+    school = School.query.get(sid)
+    q = FeeRecord.query.filter_by(school_id=sid, fee_type='HOSTEL', source='HOSTEL')
+    if status_filter and status_filter != 'ALL':
+        q = q.filter_by(status=status_filter)
+
+    records = q.order_by(FeeRecord.created_at.desc()).all()
+
+    total_due = sum(r.amount_due or 0 for r in records)
+    total_paid = sum(r.amount_paid or 0 for r in records)
+    total_pending = max(0, total_due - total_paid)
+
+    summary = {
+        'total_billed': total_due,
+        'total_collected': total_paid,
+        'total_pending': total_pending,
+    }
+
+    formatted_records = []
+    for r in records:
+        student = Student.query.get(r.student_id) if r.student_id else None
+        st_name = student.user.name if (student and student.user) else 'Resident'
+        adm_no = student.admission_no if student else '—'
+
+        formatted_records.append({
+            'receipt_no': r.receipt_no or f"HSTL/{r.id:04d}",
+            'student_name': st_name,
+            'class_name': f"Adm: {adm_no}",
+            'fee_type': f"Hostel ({r.month or 'Monthly'})",
+            'payment_mode': r.payment_mode or 'CASH',
+            'paid_date': r.paid_date.strftime('%d-%m-%Y') if r.paid_date else '—',
+            'amount': float(r.amount_paid or 0),
+        })
+
+    buf = generate_fee_collection_report_pdf(
+        school=school,
+        summary=summary,
+        transactions_or_records=formatted_records,
+        report_title="Hostel Fee Collection & Revenue Statement",
+        subtitle=f"Hostel Residency Dues & Collections | Status: {status_filter}"
+    )
+
+    return send_file(buf, mimetype='application/pdf', as_attachment=True, download_name='Hostel_Fee_Collection_Report.pdf')
+
+
 @hostel_bp.route('/reports/history', methods=['GET'])
 @role_required('PRINCIPAL', 'HOSTEL')
 def report_history():

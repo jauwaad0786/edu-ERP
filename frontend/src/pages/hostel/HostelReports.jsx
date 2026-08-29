@@ -154,7 +154,7 @@ function FeeCollectionReport({ darkMode, cardStyle }) {
     const params = status !== 'ALL' ? `?status=${status}` : '';
     api.get('/hostel/reports/fee-collection' + params)
       .then(r => setData(r.data))
-      .catch(() => toast.error('Fee report load nahi hua'))
+      .catch(() => toast.error('Failed to load fee report'))
       .finally(() => setLoading(false));
   }, [status]);
 
@@ -169,34 +169,62 @@ function FeeCollectionReport({ darkMode, cardStyle }) {
       link.download = 'hostel_fee_collection.csv';
       link.click();
     } catch {
-      toast.error('Export fail hua');
+      toast.error('CSV export failed');
     }
     setDownloading(false);
   }
 
-  if (loading) return <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>Loading...</div>;
-  if (!data) return <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>Data nahi mila</div>;
+  async function downloadPDF() {
+    setDownloading(true);
+    try {
+      const params = status !== 'ALL' ? `?status=${status}` : '';
+      const res = await api.get('/hostel/reports/fee-collection/pdf' + params, { responseType: 'blob' });
+      const link = document.createElement('a');
+      link.href = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      link.download = 'Hostel_Fee_Collection_Report.pdf';
+      link.click();
+    } catch {
+      toast.error('PDF report export failed');
+    }
+    setDownloading(false);
+  }
+
+  async function downloadReceipt(receiptNo) {
+    if (!receiptNo) return;
+    try {
+      const res = await api.get(`/principal/fees/receipt/${receiptNo}/pdf`, { responseType: 'blob' });
+      const link = document.createElement('a');
+      link.href = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      link.download = `Receipt_${receiptNo}.pdf`;
+      link.click();
+    } catch {
+      toast.error('Failed to download receipt PDF');
+    }
+  }
+
+  if (loading) return <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>Loading fee report...</div>;
+  if (!data) return <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>No fee records found</div>;
 
   const { summary, records } = data;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Summary cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
         {[
-          { label: 'Total Due',   value: `₹${summary.total_due}`,     color: '#4f46e5' },
-          { label: 'Total Paid',  value: `₹${summary.total_paid}`,    color: '#16a34a' },
-          { label: 'Pending',     value: `₹${summary.total_pending}`, color: '#dc2626' },
+          { label: 'Total Due',   value: `₹${summary.total_due?.toLocaleString()}`,     color: '#4f46e5' },
+          { label: 'Total Paid',  value: `₹${summary.total_paid?.toLocaleString()}`,    color: '#16a34a' },
+          { label: 'Pending',     value: `₹${summary.total_pending?.toLocaleString()}`, color: '#dc2626' },
           { label: 'Collection %',value: `${summary.collection_pct}%`,color: '#0891b2' },
         ].map(s => (
           <div key={s.label} style={cardStyle}>
             <div style={{ fontSize: 20, fontWeight: 800, color: s.color }}>{s.value}</div>
-            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>{s.label}</div>
+            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4, textTransform: 'uppercase', fontWeight: 600 }}>{s.label}</div>
           </div>
         ))}
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <select value={status} onChange={e => setStatus(e.target.value)} style={{
           padding: '8px 14px', fontSize: 13, fontWeight: 600, borderRadius: 8,
           border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
@@ -207,42 +235,78 @@ function FeeCollectionReport({ darkMode, cardStyle }) {
           <option value="PARTIAL">Partial</option>
           <option value="PENDING">Pending</option>
         </select>
-        <button onClick={downloadCSV} disabled={downloading} style={{
-          background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 8,
-          padding: '8px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-        }}>
-          {downloading ? 'Exporting...' : '⬇️ Export CSV'}
-        </button>
+        
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={downloadPDF} disabled={downloading} style={{
+            background: '#dc2626', color: '#fff', border: 'none', borderRadius: 8,
+            padding: '8px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 6,
+            boxShadow: '0 2px 8px rgba(220, 38, 38, 0.25)'
+          }}>
+            <i className="ti ti-file-type-pdf" style={{ fontSize: 16 }}></i>
+            {downloading ? 'Exporting...' : 'Export PDF Report'}
+          </button>
+          <button onClick={downloadCSV} disabled={downloading} style={{
+            background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 8,
+            padding: '8px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            <i className="ti ti-file-spreadsheet" style={{ fontSize: 16 }}></i>
+            {downloading ? 'Exporting...' : 'Export CSV'}
+          </button>
+        </div>
       </div>
 
-      <div style={cardStyle}>
+      <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
           <thead>
-            <tr style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, textAlign: 'left' }}>
-              {['Student', 'Admission No', 'Month', 'Due', 'Paid', 'Pending', 'Status', 'Receipt'].map(h => (
-                <th key={h} style={{ padding: '8px 6px', color: '#94a3b8', fontSize: 10 }}>{h}</th>
+            <tr style={{ background: darkMode ? '#0f172a' : '#f8fafc', borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, textAlign: 'left' }}>
+              {['Student', 'Admission No', 'Month', 'Due', 'Paid', 'Pending', 'Status', 'Receipt / PDF'].map(h => (
+                <th key={h} style={{ padding: '10px 12px', color: '#94a3b8', fontSize: 11, fontWeight: 600 }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {records.length === 0 ? (
-              <tr><td colSpan={8} style={{ textAlign: 'center', padding: 20, color: '#94a3b8' }}>Koi record nahi mila</td></tr>
+              <tr><td colSpan={8} style={{ textAlign: 'center', padding: 30, color: '#94a3b8' }}>No records found for this filter</td></tr>
             ) : records.map((r, i) => (
               <tr key={i} style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}` }}>
-                <td style={{ padding: '9px 6px', fontWeight: 600 }}>{r.student_name}</td>
-                <td style={{ padding: '9px 6px' }}>{r.admission_no}</td>
-                <td style={{ padding: '9px 6px' }}>{r.month}</td>
-                <td style={{ padding: '9px 6px' }}>₹{r.amount_due}</td>
-                <td style={{ padding: '9px 6px', color: '#16a34a' }}>₹{r.amount_paid}</td>
-                <td style={{ padding: '9px 6px', color: r.pending > 0 ? '#dc2626' : '#16a34a' }}>₹{r.pending}</td>
-                <td style={{ padding: '9px 6px' }}>
+                <td style={{ padding: '10px 12px', fontWeight: 600, color: darkMode ? '#f8fafc' : '#0f172a' }}>{r.student_name}</td>
+                <td style={{ padding: '10px 12px', color: '#64748b' }}>{r.admission_no}</td>
+                <td style={{ padding: '10px 12px' }}>
+                  <span style={{ background: darkMode ? '#334155' : '#f1f5f9', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>
+                    {r.month}
+                  </span>
+                </td>
+                <td style={{ padding: '10px 12px', fontWeight: 600 }}>₹{r.amount_due}</td>
+                <td style={{ padding: '10px 12px', color: '#16a34a', fontWeight: 600 }}>₹{r.amount_paid}</td>
+                <td style={{ padding: '10px 12px', color: r.pending > 0 ? '#dc2626' : '#16a34a', fontWeight: 700 }}>₹{r.pending}</td>
+                <td style={{ padding: '10px 12px' }}>
                   <span style={{
                     fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 20,
                     background: r.status === 'PAID' ? '#f0fdf4' : r.status === 'PARTIAL' ? '#fefce8' : '#fef2f2',
                     color: r.status === 'PAID' ? '#16a34a' : r.status === 'PARTIAL' ? '#ca8a04' : '#dc2626',
+                    border: `1px solid ${r.status === 'PAID' ? '#bbf7d0' : r.status === 'PARTIAL' ? '#fef08a' : '#fecaca'}`
                   }}>{r.status}</span>
                 </td>
-                <td style={{ padding: '9px 6px', fontFamily: 'monospace', fontSize: 10 }}>{r.receipt_no || '—'}</td>
+                <td style={{ padding: '10px 12px' }}>
+                  {r.receipt_no ? (
+                    <button
+                      onClick={() => downloadReceipt(r.receipt_no)}
+                      style={{
+                        background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe',
+                        padding: '3px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                        display: 'inline-flex', alignItems: 'center', gap: 4
+                      }}
+                      title="Download PDF Receipt"
+                    >
+                      <i className="ti ti-file-type-pdf"></i>
+                      {r.receipt_no}
+                    </button>
+                  ) : (
+                    <span style={{ color: '#94a3b8', fontSize: 11 }}>—</span>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

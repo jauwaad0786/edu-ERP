@@ -1254,6 +1254,99 @@ def bulk_fee_notice_pdf():
     return send_file(buf, mimetype='application/pdf', as_attachment=True,
                       download_name=f'FeeNotices_{label}_{month}.pdf')
 
+
+@principal_bp.route('/fees/collection-report/pdf', methods=['GET'])
+@role_required('PRINCIPAL', 'ACCOUNTANT', 'SUPER_ADMIN', 'TEACHER')
+def fee_collection_report_pdf():
+    """
+    Generates and downloads or streams a Fee Collection Report PDF.
+    Filters supported: month (YYYY-MM), session (e.g. 2024-25), class_id, fee_type, status.
+    """
+    sid = _school_id()
+    month = request.args.get('month')
+    session_param = request.args.get('session')
+    class_id = request.args.get('class_id')
+    fee_type = request.args.get('fee_type')
+    status = request.args.get('status')
+
+    from app.models.school import School
+    from app.utils.pdf_generator import generate_fee_collection_report_pdf
+
+    school = School.query.get(sid)
+    q = FeeRecord.query.filter(FeeRecord.school_id == sid, FeeRecord.status != 'DRAFT')
+
+    if month:
+        # Match 'YYYY-MM' or 'Month YYYY'
+        try:
+            y, m = map(int, month.split('-'))
+            month_name = date(y, m, 1).strftime('%B %Y')
+            q = q.filter(db.or_(FeeRecord.month == month, FeeRecord.month == month_name))
+        except Exception:
+            q = q.filter(FeeRecord.month == month)
+
+    if session_param:
+        q = q.filter(FeeRecord.session == session_param)
+    if class_id:
+        q = q.join(Student, FeeRecord.student_id == Student.id).filter(Student.class_id == class_id)
+    if fee_type:
+        q = q.filter(FeeRecord.fee_type == fee_type)
+    if status and status != 'ALL':
+        q = q.filter(FeeRecord.status == status)
+
+    records = q.order_by(FeeRecord.paid_date.desc(), FeeRecord.id.desc()).all()
+
+    total_billed = sum(r.effective_due() for r in records)
+    total_paid = sum(r.amount_paid or 0 for r in records)
+    total_pending = max(0.0, total_billed - total_paid)
+
+    summary = {
+        'total_billed': total_billed,
+        'total_collected': total_paid,
+        'total_pending': total_pending,
+    }
+
+    formatted_records = []
+    for r in records:
+        st = Student.query.get(r.student_id) if r.student_id else None
+        cls = Class.query.get(st.class_id) if (st and st.class_id) else None
+        cls_name = f"{cls.name}{' - ' + cls.section if cls.section else ''}" if cls else '—'
+        st_name = st.user.name if (st and st.user) else 'Student'
+        p_date = r.paid_date.strftime('%d-%m-%Y') if r.paid_date else (r.created_at.strftime('%d-%m-%Y') if getattr(r, 'created_at', None) else '—')
+
+        formatted_records.append({
+            'receipt_no': r.receipt_no or f"REC/{r.id:04d}",
+            'student_name': st_name,
+            'class_name': cls_name,
+            'fee_type': r.fee_type or 'General Fee',
+            'payment_mode': r.payment_mode or 'CASH',
+            'paid_date': p_date,
+            'amount': float(r.amount_paid or 0),
+        })
+
+    title = "Fee Collection & Revenue Report"
+    subtitle_parts = []
+    if month:
+        subtitle_parts.append(f"Month: {month}")
+    if session_param:
+        subtitle_parts.append(f"Session: {session_param}")
+    if fee_type:
+        subtitle_parts.append(f"Category: {fee_type}")
+    if not subtitle_parts:
+        subtitle_parts.append(f"Generated on {date.today().strftime('%d %B %Y')}")
+
+    subtitle = " | ".join(subtitle_parts)
+
+    buf = generate_fee_collection_report_pdf(
+        school=school,
+        summary=summary,
+        transactions_or_records=formatted_records,
+        report_title=title,
+        subtitle=subtitle
+    )
+
+    filename = f"Fee_Collection_Report_{month or session_param or 'All'}.pdf"
+    return send_file(buf, mimetype='application/pdf', as_attachment=True, download_name=filename)
+
 # NEW
 @principal_bp.route('/fees/generate', methods=['POST'])
 @permission_required('fees.structure.manage')
@@ -3688,10 +3781,75 @@ def dashboard():
                     'message': f"Happy {years}{'st' if years==1 else 'nd' if years==2 else 'rd' if years==3 else 'th'} Work Anniversary to {t_name}! 🌟"
                 })
 
-    fee_collected_total = db.session.query(func.sum(FeeRecord.amount_paid)).filter_by(school_id=sid).scalar() or 0
-    fee_pending_total = db.session.query(
-                            func.sum(FeeRecord.amount_due - FeeRecord.amount_paid)
-                        ).filter(FeeRecord.school_id == sid, FeeRecord.status != 'PAID').scalar() or 0
+    # ── Fee Intelligence Metrics (This Month, This Year/Session, All Time) ─────
+    curr_month_str = today.strftime('%Y-%m')
+    curr_month_name = today.strftime('%B %Y')
+    curr_session = '2024-25'
+    school_obj = School.query.get(sid)
+    if school_obj and hasattr(school_obj, 'session') and school_obj.session:
+        curr_session = school_obj.session
+
+    # This Month
+    # Match both '2026-08' and 'August 2026' or paid_date in current month
+    m_start = date(today.year, today.month, 1)
+    if today.month == 12:
+        m_end = date(today.year + 1, 1, 1) - timedelta(days=1)
+    else:
+        m_end = date(today.year, today.month + 1, 1) - timedelta(days=1)
+
+    month_fee_records = FeeRecord.query.filter(
+        FeeRecord.school_id == sid,
+        FeeRecord.status != 'DRAFT',
+        db.or_(
+            FeeRecord.month == curr_month_str,
+            FeeRecord.month == curr_month_name,
+            db.and_(FeeRecord.due_date >= m_start, FeeRecord.due_date <= m_end)
+        )
+    ).all()
+
+    month_fees_generated = sum(r.effective_due() for r in month_fee_records)
+    # Month collection from transactions or records
+    month_fees_collected = db.session.query(func.sum(FeeTransaction.amount)).filter(
+        FeeTransaction.school_id == sid,
+        FeeTransaction.transaction_date >= m_start,
+        FeeTransaction.transaction_date <= m_end
+    ).scalar() or 0
+    if not month_fees_collected:
+        month_fees_collected = sum(r.amount_paid or 0 for r in month_fee_records)
+
+    month_fees_pending = max(0.0, round(float(month_fees_generated) - float(month_fees_collected), 2))
+    month_col_pct = round((float(month_fees_collected) / float(month_fees_generated) * 100), 1) if month_fees_generated > 0 else 0.0
+
+    # This Year / Academic Session
+    session_fee_records = FeeRecord.query.filter(
+        FeeRecord.school_id == sid,
+        FeeRecord.status != 'DRAFT',
+        FeeRecord.session == curr_session
+    ).all()
+
+    if not session_fee_records:
+        # Fallback to all records in current year
+        y_start = date(today.year if today.month >= 4 else today.year - 1, 4, 1)
+        session_fee_records = FeeRecord.query.filter(
+            FeeRecord.school_id == sid,
+            FeeRecord.status != 'DRAFT',
+            FeeRecord.created_at >= y_start
+        ).all()
+
+    year_fees_generated = sum(r.effective_due() for r in session_fee_records)
+    year_fees_collected = sum(r.amount_paid or 0 for r in session_fee_records)
+    year_fees_pending = max(0.0, round(float(year_fees_generated) - float(year_fees_collected), 2))
+    year_col_pct = round((float(year_fees_collected) / float(year_fees_generated) * 100), 1) if year_fees_generated > 0 else 0.0
+
+    # All-Time
+    all_time_generated = db.session.query(func.sum(FeeRecord.amount_due + func.coalesce(FeeRecord.fine, 0) - func.coalesce(FeeRecord.discount, 0))).filter(
+        FeeRecord.school_id == sid, FeeRecord.status != 'DRAFT'
+    ).scalar() or 0
+    fee_collected_total = db.session.query(func.sum(FeeRecord.amount_paid)).filter(
+        FeeRecord.school_id == sid, FeeRecord.status != 'DRAFT'
+    ).scalar() or 0
+    fee_pending_total = max(0.0, round(float(all_time_generated) - float(fee_collected_total), 2))
+    all_time_col_pct = round((float(fee_collected_total) / float(all_time_generated) * 100), 1) if all_time_generated > 0 else 0.0
 
     teachers_marked_count = len(t_att_today)
     teachers_pct = round((t_present / total_teachers * 100), 1) if total_teachers > 0 else 0
@@ -3700,8 +3858,31 @@ def dashboard():
         'total_students':          total_students,
         'total_teachers':          total_teachers,
         'total_classes':           len(classes),
+
+        # Comprehensive Fee Intelligence Breakdown
+        'fee_intelligence': {
+            'current_month_label':   curr_month_name,
+            'current_session':       curr_session,
+            # Month
+            'month_generated':       round(float(month_fees_generated), 2),
+            'month_collected':       round(float(month_fees_collected), 2),
+            'month_pending':         round(float(month_fees_pending), 2),
+            'month_percentage':      month_col_pct,
+            # Year / Session
+            'year_generated':        round(float(year_fees_generated), 2),
+            'year_collected':        round(float(year_fees_collected), 2),
+            'year_pending':          round(float(year_fees_pending), 2),
+            'year_percentage':       year_col_pct,
+            # All Time
+            'all_time_generated':    round(float(all_time_generated), 2),
+            'all_time_collected':    round(float(fee_collected_total), 2),
+            'all_time_pending':      round(float(fee_pending_total), 2),
+            'all_time_percentage':   all_time_col_pct,
+        },
+
         'fee_collected':           float(fee_collected_total),
         'fee_pending':             float(fee_pending_total),
+        'fee_generated':           float(all_time_generated),
         'attendance_trend':        attendance_trend,
         'fee_trend':               fee_trend,
         'class_distribution':      class_distribution,
