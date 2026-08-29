@@ -5,7 +5,7 @@ import api     from '../../api/axios';
 import toast   from 'react-hot-toast';
 
 export default function HostelVisitors() {
-  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
+  const [darkMode, setDarkMode] = useState(localStorage.getItem('ederp_theme') === 'dark');
   const [loading, setLoading]   = useState(true);
   const [visitors, setVisitors] = useState([]);
   const [visitDate, setVisitDate] = useState(new Date().toISOString().slice(0, 10));
@@ -27,7 +27,7 @@ export default function HostelVisitors() {
     try {
       setLoading(true);
       const res = await api.get('/hostel/visitors', { params: { visit_date: visitDate } });
-      setVisitors(res.data);
+      setVisitors(res.data || []);
     } catch (err) {
       toast.error('Failed to load visitor register');
     } finally {
@@ -44,7 +44,7 @@ export default function HostelVisitors() {
     if (query.trim().length < 2) return;
     try {
       const res = await api.get('/hostel/admissions', { params: { search: query } });
-      setStudents(res.data);
+      setStudents(res.data || []);
     } catch (err) {
       // ignore
     }
@@ -96,121 +96,162 @@ export default function HostelVisitors() {
     }
   };
 
+  const cardStyle = {
+    background: darkMode ? '#1e293b' : '#fff',
+    border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+    borderRadius: 12, padding: 20,
+  };
+  const inputStyle = {
+    width: '100%', padding: '9px 12px', fontSize: 13,
+    border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`, borderRadius: 8, outline: 'none', boxSizing: 'border-box',
+    background: darkMode ? '#0f172a' : '#ffffff', color: darkMode ? '#ffffff' : '#0f172a',
+    marginBottom: 12,
+  };
+  const labelStyle = { fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4, display: 'block' };
+
   return (
-    <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: darkMode ? '#0f172a' : '#f8fafc' }}>
       <Sidebar darkMode={darkMode} />
-      <div className="main-content">
+      <div style={{ marginLeft: 232, flex: 1, display: 'flex', flexDirection: 'column' }}>
         <Navbar title="Visitor Register &amp; Gate Security" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
 
-        <div className="page-body">
+        <div style={{ padding: '24px 28px' }}>
           {/* Header */}
-          <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
             <div>
-              <h2 className="fw-bold mb-1" style={{ color: darkMode ? '#f8fafc' : '#1e293b' }}>Hostel Visitor Register</h2>
-              <p className="text-muted mb-0">Record parent and guardian visits, verify identity proof, and track entry/exit timestamps.</p>
+              <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: darkMode ? '#f8fafc' : '#0f172a' }}>
+                Hostel Visitor Register &amp; Gate Security
+              </h2>
+              <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
+                Record parent &amp; guardian campus visits, verify identity documentation, and log departure times.
+              </p>
             </div>
             <button
-              className="btn btn-primary d-flex align-items-center gap-2"
               onClick={() => {
                 setSelectedStudent(null);
                 setStudents([]);
                 setStudentSearch('');
                 setCreateModal(true);
               }}
-              style={{ borderRadius: '10px', padding: '10px 18px', fontWeight: 600 }}
+              style={{
+                background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 8,
+                padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 6,
+                boxShadow: '0 4px 12px rgba(79, 70, 229, 0.25)'
+              }}
             >
-              <i className="ti ti-user-plus fs-5"></i>
+              <i className="ti ti-user-plus" style={{ fontSize: 16 }}></i>
               New Visitor Entry
             </button>
           </div>
 
           {/* Date Selector Bar */}
-          <div className="card border-0 shadow-sm p-3 mb-4" style={{ borderRadius: '16px', background: darkMode ? '#1e293b' : '#ffffff' }}>
-            <div className="d-flex align-items-center gap-3">
-              <label className="form-label mb-0 fw-semibold text-muted small">SELECT VISIT DATE:</label>
-              <input
-                type="date"
-                className="form-control"
-                style={{ maxWidth: '200px' }}
-                value={visitDate}
-                onChange={(e) => setVisitDate(e.target.value)}
-              />
-            </div>
+          <div style={{ ...cardStyle, padding: 14, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 14 }}>
+            <label style={{ ...labelStyle, marginBottom: 0, fontSize: 12 }}>SELECT VISIT DATE:</label>
+            <input
+              type="date"
+              style={{ ...inputStyle, width: 'auto', minWidth: 180, marginBottom: 0 }}
+              value={visitDate}
+              onChange={(e) => setVisitDate(e.target.value)}
+            />
           </div>
 
-          {/* Table */}
-          <div className="card border-0 shadow-sm" style={{ borderRadius: '16px', background: darkMode ? '#1e293b' : '#ffffff', overflow: 'hidden' }}>
-            <div className="table-responsive">
-              <table className="table table-hover align-middle mb-0">
-                <thead style={{ background: darkMode ? '#0f172a' : '#f8fafc', color: darkMode ? '#cbd5e1' : '#64748b' }}>
-                  <tr>
-                    <th className="py-3 px-4">Visitor Details</th>
-                    <th className="py-3">Visiting Resident</th>
-                    <th className="py-3">Relation &amp; Purpose</th>
-                    <th className="py-3">ID Proof</th>
-                    <th className="py-3">In-Time</th>
-                    <th className="py-3">Out-Time</th>
-                    <th className="py-3 text-end px-4">Action</th>
+          {/* Table Card */}
+          <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: darkMode ? '#0f172a' : '#f8fafc', borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, textAlign: 'left' }}>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>VISITOR DETAILS</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>VISITING RESIDENT</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>RELATION &amp; PURPOSE</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>ID PROOF</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>IN-TIME</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>OUT-TIME</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11, textAlign: 'right' }}>ACTION</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan="7" className="text-center py-5 text-muted">
-                        <div className="spinner-border spinner-border-sm me-2 text-primary" role="status"></div>
+                      <td colSpan="7" style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
                         Loading visitor log...
                       </td>
                     </tr>
                   ) : visitors.length === 0 ? (
                     <tr>
-                      <td colSpan="7" className="text-center py-5 text-muted">
-                        No visitor entries recorded for this date.
+                      <td colSpan="7" style={{ textAlign: 'center', padding: '50px 0', color: '#94a3b8' }}>
+                        <i className="ti ti-users" style={{ fontSize: 36, display: 'block', marginBottom: 8, opacity: 0.5 }}></i>
+                        No visitor entries recorded for {visitDate}.
                       </td>
                     </tr>
                   ) : (
                     visitors.map((v) => (
-                      <tr key={v.id}>
-                        <td className="px-4">
-                          <div className="fw-bold" style={{ color: darkMode ? '#f8fafc' : '#0f172a' }}>{v.visitor_name}</div>
-                          <small className="text-muted"><i className="ti ti-phone me-1"></i>{v.visitor_phone}</small>
+                      <tr key={v.id} style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}` }}>
+                        <td style={{ padding: '12px 16px' }}>
+                          <div style={{ fontWeight: 700, color: darkMode ? '#f8fafc' : '#0f172a' }}>{v.visitor_name}</div>
+                          <div style={{ fontSize: 12, color: '#64748b' }}><i className="ti ti-phone me-1"></i>{v.visitor_phone}</div>
                         </td>
-                        <td>
-                          <div className="fw-semibold">{v.student_name}</div>
-                          <small className="text-muted">{v.hostel_name}</small>
+                        <td style={{ padding: '12px 16px' }}>
+                          <div style={{ fontWeight: 600 }}>{v.student_name}</div>
+                          <div style={{ fontSize: 11, color: '#94a3b8' }}>{v.hostel_name}</div>
                         </td>
-                        <td>
-                          <span className="badge bg-info-subtle text-info border px-2 py-0 mb-1 d-inline-block">{v.relation}</span>
-                          <div className="small text-muted">{v.purpose || '—'}</div>
+                        <td style={{ padding: '12px 16px' }}>
+                          <span style={{
+                            background: darkMode ? '#1e1b4b' : '#eff6ff', color: '#3b82f6',
+                            padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700
+                          }}>
+                            {v.relation}
+                          </span>
+                          <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{v.purpose || '—'}</div>
                         </td>
-                        <td>
-                          <span className="badge bg-light text-dark border">{v.id_proof_type}</span>
-                          {v.id_proof_no && <div className="small text-muted font-monospace">{v.id_proof_no}</div>}
+                        <td style={{ padding: '12px 16px' }}>
+                          <span style={{
+                            background: darkMode ? '#334155' : '#f1f5f9', color: darkMode ? '#cbd5e1' : '#475569',
+                            padding: '2px 6px', borderRadius: 4, fontSize: 11
+                          }}>
+                            {v.id_proof_type}
+                          </span>
+                          {v.id_proof_no && <div style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'monospace' }}>{v.id_proof_no}</div>}
                         </td>
-                        <td>
-                          <span className="badge bg-success-subtle text-success border">
+                        <td style={{ padding: '12px 16px' }}>
+                          <span style={{
+                            background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0',
+                            padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600
+                          }}>
                             {v.in_time ? new Date(v.in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
                           </span>
                         </td>
-                        <td>
+                        <td style={{ padding: '12px 16px' }}>
                           {v.out_time ? (
-                            <span className="badge bg-secondary-subtle text-secondary border">
+                            <span style={{
+                              background: '#f1f5f9', color: '#64748b',
+                              padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600
+                            }}>
                               {new Date(v.out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>
                           ) : (
-                            <span className="badge bg-warning-subtle text-warning border">ON CAMPUS</span>
+                            <span style={{
+                              background: '#fefce8', color: '#ca8a04', border: '1px solid #fef08a',
+                              padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700
+                            }}>
+                              ON CAMPUS
+                            </span>
                           )}
                         </td>
-                        <td className="text-end px-4">
+                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                           {!v.out_time ? (
                             <button
-                              className="btn btn-sm btn-outline-danger px-3 fw-semibold"
-                              style={{ borderRadius: '6px' }}
                               onClick={() => handleCheckout(v.id)}
+                              style={{
+                                background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca',
+                                padding: '5px 12px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer'
+                              }}
                             >
                               Check-Out
                             </button>
                           ) : (
-                            <span className="text-muted small">Completed</span>
+                            <span style={{ fontSize: 12, color: '#94a3b8' }}>Departed</span>
                           )}
                         </td>
                       </tr>
@@ -225,85 +266,102 @@ export default function HostelVisitors() {
 
       {/* Visitor Modal */}
       {createModal && (
-        <div className="modal show d-block" tabIndex="-1" style={{ background: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <form onSubmit={handleCreateVisitor} className="modal-content" style={{ borderRadius: '16px', background: darkMode ? '#1e293b' : '#ffffff', color: darkMode ? '#fff' : '#000' }}>
-              <div className="modal-header border-0 pb-0">
-                <h5 className="modal-title fw-bold">Record Visitor Entry</h5>
-                <button type="button" className="btn-close" onClick={() => setCreateModal(false)}></button>
-              </div>
-              <div className="modal-body py-3">
-                <div className="mb-3">
-                  <label className="form-label fw-semibold">Resident Visited</label>
+        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setCreateModal(false)}>
+          <div className="modal" style={{ maxWidth: 500, background: darkMode ? '#1e293b' : '#ffffff', color: darkMode ? '#ffffff' : '#0f172a' }}>
+            <div className="modal-header" style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Record Visitor Entry</h3>
+              <button className="modal-close" onClick={() => setCreateModal(false)}>✕</button>
+            </div>
+            <form onSubmit={handleCreateVisitor}>
+              <div className="modal-body">
+                {/* Search resident */}
+                <div style={{ marginBottom: 12 }}>
+                  <label style={labelStyle}>Visiting Resident *</label>
                   <input
                     type="text"
-                    className="form-control"
-                    placeholder="Search resident..."
+                    placeholder="Search resident by name or admission no..."
                     value={studentSearch}
                     onChange={(e) => searchStudents(e.target.value)}
+                    style={inputStyle}
                   />
                   {students.length > 0 && !selectedStudent && (
-                    <div className="list-group mt-2 border" style={{ maxHeight: '140px', overflowY: 'auto' }}>
+                    <div style={{
+                      maxHeight: 140, overflowY: 'auto', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                      borderRadius: 8, background: darkMode ? '#0f172a' : '#fff', marginTop: -6, marginBottom: 10
+                    }}>
                       {students.map((st) => (
-                        <button
+                        <div
                           key={st.student_id}
-                          type="button"
-                          className="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
                           onClick={() => {
                             setSelectedStudent(st);
                             setStudents([]);
                             setStudentSearch(st.student_name);
                           }}
+                          style={{
+                            padding: '8px 12px', borderBottom: `1px solid ${darkMode ? '#1e293b' : '#f1f5f9'}`,
+                            cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                          }}
                         >
                           <div>
-                            <div className="fw-semibold">{st.student_name}</div>
-                            <small className="text-muted">Room {st.room_number}</small>
+                            <div style={{ fontWeight: 600, fontSize: 12 }}>{st.student_name}</div>
+                            <div style={{ fontSize: 11, color: '#94a3b8' }}>{st.admission_no} &bull; Room {st.room_number}</div>
                           </div>
-                          <span className="badge bg-primary">Select</span>
-                        </button>
+                          <span style={{ fontSize: 11, color: '#4f46e5', fontWeight: 700 }}>Select</span>
+                        </div>
                       ))}
                     </div>
                   )}
                   {selectedStudent && (
-                    <div className="alert alert-info py-2 px-3 mt-2 d-flex justify-content-between align-items-center mb-0">
-                      <div><strong>{selectedStudent.student_name}</strong> &bull; Room {selectedStudent.room_number}</div>
-                      <button type="button" className="btn btn-sm btn-link text-danger p-0" onClick={() => setSelectedStudent(null)}>Change</button>
+                    <div style={{
+                      background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8,
+                      padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: -6, marginBottom: 10
+                    }}>
+                      <div style={{ fontSize: 12, color: '#1e40af' }}>
+                        <strong>{selectedStudent.student_name}</strong> &bull; Room {selectedStudent.room_number} ({selectedStudent.hostel_name})
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedStudent(null)}
+                        style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        Change
+                      </button>
                     </div>
                   )}
                 </div>
 
-                <div className="row g-2 mb-3">
-                  <div className="col-md-6">
-                    <label className="form-label fw-semibold">Visitor Name *</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={labelStyle}>Visitor Full Name *</label>
                     <input
                       type="text"
-                      className="form-control"
-                      placeholder="Full name"
+                      placeholder="Full Name"
                       value={visitorName}
                       onChange={(e) => setVisitorName(e.target.value)}
+                      style={inputStyle}
                       required
                     />
                   </div>
-                  <div className="col-md-6">
-                    <label className="form-label fw-semibold">Phone Number *</label>
+                  <div>
+                    <label style={labelStyle}>Phone Number *</label>
                     <input
                       type="tel"
-                      className="form-control"
                       placeholder="10-digit mobile"
                       value={visitorPhone}
                       onChange={(e) => setVisitorPhone(e.target.value)}
+                      style={inputStyle}
                       required
                     />
                   </div>
                 </div>
 
-                <div className="row g-2 mb-3">
-                  <div className="col-md-4">
-                    <label className="form-label fw-semibold">Relation</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                  <div>
+                    <label style={labelStyle}>Relation</label>
                     <select
-                      className="form-select"
                       value={relation}
                       onChange={(e) => setRelation(e.target.value)}
+                      style={inputStyle}
                     >
                       <option value="FATHER">Father</option>
                       <option value="MOTHER">Mother</option>
@@ -313,46 +371,53 @@ export default function HostelVisitors() {
                       <option value="FRIEND">Friend</option>
                     </select>
                   </div>
-                  <div className="col-md-4">
-                    <label className="form-label fw-semibold">ID Proof Type</label>
+                  <div>
+                    <label style={labelStyle}>ID Proof Type</label>
                     <select
-                      className="form-select"
                       value={idProofType}
                       onChange={(e) => setIdProofType(e.target.value)}
+                      style={inputStyle}
                     >
-                      <option value="AADHAAR">Aadhaar Card</option>
+                      <option value="AADHAAR">Aadhaar</option>
                       <option value="PAN">PAN Card</option>
-                      <option value="DRIVING_LICENSE">Driving License</option>
+                      <option value="DRIVING_LICENSE">License</option>
                       <option value="PASSPORT">Passport</option>
                       <option value="VOTER_ID">Voter ID</option>
                     </select>
                   </div>
-                  <div className="col-md-4">
-                    <label className="form-label fw-semibold">ID Number</label>
+                  <div>
+                    <label style={labelStyle}>ID Number</label>
                     <input
                       type="text"
-                      className="form-control"
-                      placeholder="Optional ID no"
+                      placeholder="Optional"
                       value={idProofNo}
                       onChange={(e) => setIdProofNo(e.target.value)}
+                      style={inputStyle}
                     />
                   </div>
                 </div>
 
-                <div className="mb-3">
-                  <label className="form-label fw-semibold">Purpose of Visit</label>
+                <div>
+                  <label style={labelStyle}>Purpose of Visit</label>
                   <input
                     type="text"
-                    className="form-control"
                     placeholder="e.g. Delivering clothes, fee payment, weekend visit..."
                     value={purpose}
                     onChange={(e) => setPurpose(e.target.value)}
+                    style={inputStyle}
                   />
                 </div>
               </div>
-              <div className="modal-footer border-0 pt-0">
-                <button type="button" className="btn btn-light" onClick={() => setCreateModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary px-4 fw-semibold" disabled={submitting}>
+              <div className="modal-footer" style={{ borderTop: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+                <button type="button" className="btn btn-neutral" onClick={() => setCreateModal(false)}>Cancel</button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  style={{
+                    background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 6,
+                    padding: '8px 18px', fontSize: 13, fontWeight: 700, cursor: submitting ? 'not-allowed' : 'pointer',
+                  }}
+                >
                   {submitting ? 'Recording...' : 'Record Gate Entry'}
                 </button>
               </div>

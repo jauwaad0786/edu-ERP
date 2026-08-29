@@ -5,7 +5,7 @@ import api     from '../../api/axios';
 import toast   from 'react-hot-toast';
 
 export default function HostelInventory() {
-  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
+  const [darkMode, setDarkMode] = useState(localStorage.getItem('ederp_theme') === 'dark');
   const [loading, setLoading]   = useState(true);
   const [items, setItems]       = useState([]);
   const [hostels, setHostels]   = useState([]);
@@ -23,11 +23,11 @@ export default function HostelInventory() {
 
   useEffect(() => {
     api.get('/hostel/hostels').then((res) => {
-      setHostels(res.data);
-      if (res.data.length > 0) {
+      setHostels(res.data || []);
+      if (res.data && res.data.length > 0) {
         setSelectedHostel(res.data[0].id);
       }
-    });
+    }).catch(() => {});
   }, []);
 
   const fetchInventory = async () => {
@@ -35,7 +35,7 @@ export default function HostelInventory() {
     try {
       setLoading(true);
       const res = await api.get('/hostel/inventory', { params: { hostel_id: selectedHostel } });
-      setItems(res.data);
+      setItems(res.data || []);
     } catch (err) {
       toast.error('Failed to load inventory assets');
     } finally {
@@ -88,7 +88,7 @@ export default function HostelInventory() {
   };
 
   const handleDeleteItem = async (itemId) => {
-    if (!window.confirm('Delete this asset entry?')) return;
+    if (!window.confirm('Are you sure you want to delete this asset entry?')) return;
     try {
       await api.delete(`/hostel/inventory/${itemId}`);
       toast.success('Asset deleted');
@@ -98,104 +98,134 @@ export default function HostelInventory() {
     }
   };
 
+  const cardStyle = {
+    background: darkMode ? '#1e293b' : '#fff',
+    border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+    borderRadius: 12, padding: 20,
+  };
+  const inputStyle = {
+    width: '100%', padding: '9px 12px', fontSize: 13,
+    border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`, borderRadius: 8, outline: 'none', boxSizing: 'border-box',
+    background: darkMode ? '#0f172a' : '#ffffff', color: darkMode ? '#ffffff' : '#0f172a',
+    marginBottom: 12,
+  };
+  const labelStyle = { fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4, display: 'block' };
+
   return (
-    <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: darkMode ? '#0f172a' : '#f8fafc' }}>
       <Sidebar darkMode={darkMode} />
-      <div className="main-content">
+      <div style={{ marginLeft: 232, flex: 1, display: 'flex', flexDirection: 'column' }}>
         <Navbar title="Room Assets &amp; Inventory Tracker" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
 
-        <div className="page-body">
+        <div style={{ padding: '24px 28px' }}>
           {/* Header */}
-          <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
             <div>
-              <h2 className="fw-bold mb-1" style={{ color: darkMode ? '#f8fafc' : '#1e293b' }}>Hostel Inventory &amp; Assets</h2>
-              <p className="text-muted mb-0">Track furniture, electrical equipment, mattresses, cupboards, and asset conditions.</p>
+              <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: darkMode ? '#f8fafc' : '#0f172a' }}>
+                Hostel Inventory &amp; Room Assets
+              </h2>
+              <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
+                Track room furniture, electrical fixtures, mattresses, and asset conditions across hostels.
+              </p>
             </div>
             <button
-              className="btn btn-primary d-flex align-items-center gap-2"
               onClick={() => setAddModal(true)}
-              style={{ borderRadius: '10px', padding: '10px 18px', fontWeight: 600 }}
+              style={{
+                background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 8,
+                padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 6,
+                boxShadow: '0 4px 12px rgba(79, 70, 229, 0.25)'
+              }}
             >
-              <i className="ti ti-plus fs-5"></i>
+              <i className="ti ti-plus" style={{ fontSize: 16 }}></i>
               Add New Asset
             </button>
           </div>
 
           {/* Controls Bar */}
-          <div className="card border-0 shadow-sm p-3 mb-4" style={{ borderRadius: '16px', background: darkMode ? '#1e293b' : '#ffffff' }}>
-            <div className="d-flex align-items-center gap-3">
-              <label className="form-label mb-0 fw-semibold text-muted small">SELECT HOSTEL:</label>
-              <select
-                className="form-select"
-                style={{ maxWidth: '280px' }}
-                value={selectedHostel}
-                onChange={(e) => setSelectedHostel(e.target.value)}
-              >
-                {hostels.map((h) => (
-                  <option key={h.id} value={h.id}>{h.name}</option>
-                ))}
-              </select>
-            </div>
+          <div style={{ ...cardStyle, padding: 14, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 14 }}>
+            <label style={{ ...labelStyle, marginBottom: 0, fontSize: 12 }}>SELECT HOSTEL:</label>
+            <select
+              style={{ ...inputStyle, width: 'auto', minWidth: 240, marginBottom: 0 }}
+              value={selectedHostel}
+              onChange={(e) => setSelectedHostel(e.target.value)}
+            >
+              {hostels.map((h) => (
+                <option key={h.id} value={h.id}>{h.name}</option>
+              ))}
+            </select>
           </div>
 
-          {/* Table */}
-          <div className="card border-0 shadow-sm" style={{ borderRadius: '16px', background: darkMode ? '#1e293b' : '#ffffff', overflow: 'hidden' }}>
-            <div className="table-responsive">
-              <table className="table table-hover align-middle mb-0">
-                <thead style={{ background: darkMode ? '#0f172a' : '#f8fafc', color: darkMode ? '#cbd5e1' : '#64748b' }}>
-                  <tr>
-                    <th className="py-3 px-4">Asset Name &amp; Code</th>
-                    <th className="py-3">Category</th>
-                    <th className="py-3 text-center">Quantity</th>
-                    <th className="py-3">Room / Assigned Resident</th>
-                    <th className="py-3 text-center">Condition</th>
-                    <th className="py-3">Remarks</th>
-                    <th className="py-3 text-end px-4">Action</th>
+          {/* Table Card */}
+          <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: darkMode ? '#0f172a' : '#f8fafc', borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, textAlign: 'left' }}>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>ASSET NAME &amp; CODE</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>CATEGORY</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11, textAlign: 'center' }}>QUANTITY</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>LOCATION / ROOM</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11, textAlign: 'center' }}>CONDITION</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>REMARKS</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11, textAlign: 'right' }}>ACTION</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan="7" className="text-center py-5 text-muted">
-                        <div className="spinner-border spinner-border-sm me-2 text-primary" role="status"></div>
-                        Loading inventory...
+                      <td colSpan="7" style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
+                        Loading assets...
                       </td>
                     </tr>
                   ) : items.length === 0 ? (
                     <tr>
-                      <td colSpan="7" className="text-center py-5 text-muted">
-                        No asset records found in this hostel.
+                      <td colSpan="7" style={{ textAlign: 'center', padding: '50px 0', color: '#94a3b8' }}>
+                        <i className="ti ti-box" style={{ fontSize: 36, display: 'block', marginBottom: 8, opacity: 0.5 }}></i>
+                        No asset records found in this hostel. Click "Add New Asset" to register items.
                       </td>
                     </tr>
                   ) : (
                     items.map((i) => (
-                      <tr key={i.id}>
-                        <td className="px-4">
-                          <div className="fw-bold" style={{ color: darkMode ? '#f8fafc' : '#0f172a' }}>{i.item_name}</div>
-                          {i.item_code && <small className="text-muted font-monospace">{i.item_code}</small>}
+                      <tr key={i.id} style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}` }}>
+                        <td style={{ padding: '12px 16px' }}>
+                          <div style={{ fontWeight: 700, color: darkMode ? '#f8fafc' : '#0f172a' }}>{i.item_name}</div>
+                          {i.item_code && <div style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'monospace' }}>{i.item_code}</div>}
                         </td>
-                        <td>
-                          <span className="badge bg-light text-dark border px-2 py-1">{i.category}</span>
+                        <td style={{ padding: '12px 16px' }}>
+                          <span style={{
+                            background: darkMode ? '#334155' : '#f1f5f9', color: darkMode ? '#cbd5e1' : '#475569',
+                            padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600
+                          }}>
+                            {i.category}
+                          </span>
                         </td>
-                        <td className="text-center fw-bold">{i.quantity}</td>
-                        <td>
+                        <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 700 }}>
+                          {i.quantity}
+                        </td>
+                        <td style={{ padding: '12px 16px' }}>
                           {i.room_number ? (
-                            <div>Room {i.room_number}</div>
+                            <div style={{ fontWeight: 600 }}>Room {i.room_number}</div>
                           ) : (
-                            <span className="text-muted small">Hostel General</span>
+                            <span style={{ color: '#94a3b8', fontSize: 12 }}>Hostel General</span>
                           )}
-                          {i.assigned_student_name && <small className="text-primary d-block">{i.assigned_student_name}</small>}
+                          {i.assigned_student_name && <div style={{ fontSize: 11, color: '#4f46e5' }}>{i.assigned_student_name}</div>}
                         </td>
-                        <td className="text-center">
+                        <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                           <select
-                            className={`form-select form-select-sm fw-semibold ${
-                              i.condition === 'GOOD' ? 'text-success border-success-subtle' :
-                              i.condition === 'DAMAGED' ? 'text-danger border-danger-subtle' :
-                              i.condition === 'LOST' ? 'text-dark border-secondary' : 'text-warning'
-                            }`}
+                            style={{
+                              padding: '5px 10px', fontSize: 12, fontWeight: 600, borderRadius: 6,
+                              border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`,
+                              background: i.condition === 'GOOD' ? (darkMode ? '#064e3b' : '#f0fdf4') :
+                                          i.condition === 'DAMAGED' ? (darkMode ? '#7f1d1d' : '#fef2f2') :
+                                          i.condition === 'LOST' ? (darkMode ? '#1e293b' : '#f1f5f9') : (darkMode ? '#78350f' : '#fefce8'),
+                              color: i.condition === 'GOOD' ? '#16a34a' :
+                                     i.condition === 'DAMAGED' ? '#dc2626' :
+                                     i.condition === 'LOST' ? '#64748b' : '#d97706',
+                              outline: 'none', cursor: 'pointer'
+                            }}
                             value={i.condition}
                             onChange={(e) => handleConditionChange(i.id, e.target.value)}
-                            style={{ minWidth: '130px' }}
                           >
                             <option value="GOOD">Good Condition</option>
                             <option value="REPAIR_NEEDED">Repair Needed</option>
@@ -203,16 +233,19 @@ export default function HostelInventory() {
                             <option value="LOST">Lost</option>
                           </select>
                         </td>
-                        <td>
-                          <small className="text-muted">{i.remarks || '—'}</small>
+                        <td style={{ padding: '12px 16px', color: '#64748b', fontSize: 12 }}>
+                          {i.remarks || '—'}
                         </td>
-                        <td className="text-end px-4">
+                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                           <button
-                            className="btn btn-sm btn-outline-danger p-1"
                             onClick={() => handleDeleteItem(i.id)}
+                            style={{
+                              background: 'none', border: 'none', color: '#ef4444',
+                              cursor: 'pointer', padding: 6, borderRadius: 4
+                            }}
                             title="Delete Asset"
                           >
-                            <i className="ti ti-trash"></i>
+                            <i className="ti ti-trash" style={{ fontSize: 16 }}></i>
                           </button>
                         </td>
                       </tr>
@@ -227,91 +260,98 @@ export default function HostelInventory() {
 
       {/* Add Modal */}
       {addModal && (
-        <div className="modal show d-block" tabIndex="-1" style={{ background: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <form onSubmit={handleAddItem} className="modal-content" style={{ borderRadius: '16px', background: darkMode ? '#1e293b' : '#ffffff', color: darkMode ? '#fff' : '#000' }}>
-              <div className="modal-header border-0 pb-0">
-                <h5 className="modal-title fw-bold">Add Hostel Asset / Inventory</h5>
-                <button type="button" className="btn-close" onClick={() => setAddModal(false)}></button>
-              </div>
-              <div className="modal-body py-3">
-                <div className="row g-2 mb-3">
-                  <div className="col-md-7">
-                    <label className="form-label fw-semibold">Item Name *</label>
+        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setAddModal(false)}>
+          <div className="modal" style={{ maxWidth: 480, background: darkMode ? '#1e293b' : '#ffffff', color: darkMode ? '#ffffff' : '#0f172a' }}>
+            <div className="modal-header" style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Add Hostel Asset / Inventory</h3>
+              <button className="modal-close" onClick={() => setAddModal(false)}>✕</button>
+            </div>
+            <form onSubmit={handleAddItem}>
+              <div className="modal-body">
+                <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={labelStyle}>Item Name *</label>
                     <input
                       type="text"
-                      className="form-control"
-                      placeholder="e.g. Wooden Study Table / Ceiling Fan"
+                      placeholder="e.g. Wooden Study Table"
                       value={itemName}
                       onChange={(e) => setItemName(e.target.value)}
+                      style={inputStyle}
                       required
                     />
                   </div>
-                  <div className="col-md-5">
-                    <label className="form-label fw-semibold">Asset / Tag Code</label>
+                  <div>
+                    <label style={labelStyle}>Asset / Tag Code</label>
                     <input
                       type="text"
-                      className="form-control"
                       placeholder="e.g. AST-101-A"
                       value={itemCode}
                       onChange={(e) => setItemCode(e.target.value)}
+                      style={inputStyle}
                     />
                   </div>
                 </div>
 
-                <div className="row g-2 mb-3">
-                  <div className="col-md-4">
-                    <label className="form-label fw-semibold">Category</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                  <div>
+                    <label style={labelStyle}>Category</label>
                     <select
-                      className="form-select"
                       value={category}
                       onChange={(e) => setCategory(e.target.value)}
+                      style={inputStyle}
                     >
                       <option value="FURNITURE">Furniture</option>
                       <option value="ELECTRICAL">Electrical</option>
-                      <option value="BEDDING">Bedding / Mattress</option>
-                      <option value="FIXTURE">Bathroom / Fixture</option>
+                      <option value="BEDDING">Bedding</option>
+                      <option value="FIXTURE">Fixture</option>
                       <option value="OTHER">Other</option>
                     </select>
                   </div>
-                  <div className="col-md-4">
-                    <label className="form-label fw-semibold">Quantity</label>
+                  <div>
+                    <label style={labelStyle}>Quantity</label>
                     <input
                       type="number"
                       min="1"
-                      className="form-control"
                       value={quantity}
                       onChange={(e) => setQuantity(e.target.value)}
+                      style={inputStyle}
                     />
                   </div>
-                  <div className="col-md-4">
-                    <label className="form-label fw-semibold">Initial State</label>
+                  <div>
+                    <label style={labelStyle}>Condition</label>
                     <select
-                      className="form-select"
                       value={condition}
                       onChange={(e) => setCondition(e.target.value)}
+                      style={inputStyle}
                     >
                       <option value="GOOD">Good</option>
-                      <option value="REPAIR_NEEDED">Repair Needed</option>
+                      <option value="REPAIR_NEEDED">Repair</option>
                       <option value="DAMAGED">Damaged</option>
                     </select>
                   </div>
                 </div>
 
-                <div className="mb-3">
-                  <label className="form-label fw-semibold">Remarks</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    placeholder="Manufacturer, purchase note or initial condition..."
+                <div>
+                  <label style={labelStyle}>Remarks / Notes</label>
+                  <textarea
+                    rows="3"
+                    placeholder="Manufacturer, purchase note or room location..."
                     value={remarks}
                     onChange={(e) => setRemarks(e.target.value)}
-                  />
+                    style={{ ...inputStyle, minHeight: 60, resize: 'vertical' }}
+                  ></textarea>
                 </div>
               </div>
-              <div className="modal-footer border-0 pt-0">
-                <button type="button" className="btn btn-light" onClick={() => setAddModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary px-4 fw-semibold" disabled={submitting}>
+              <div className="modal-footer" style={{ borderTop: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+                <button type="button" className="btn btn-neutral" onClick={() => setAddModal(false)}>Cancel</button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  style={{
+                    background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 6,
+                    padding: '8px 18px', fontSize: 13, fontWeight: 700, cursor: submitting ? 'not-allowed' : 'pointer',
+                  }}
+                >
                   {submitting ? 'Adding...' : 'Save Asset'}
                 </button>
               </div>

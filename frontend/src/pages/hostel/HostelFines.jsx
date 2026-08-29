@@ -5,7 +5,7 @@ import api     from '../../api/axios';
 import toast   from 'react-hot-toast';
 
 export default function HostelFines() {
-  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
+  const [darkMode, setDarkMode] = useState(localStorage.getItem('ederp_theme') === 'dark');
   const [loading, setLoading]   = useState(true);
   const [fines, setFines]       = useState([]);
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -36,7 +36,7 @@ export default function HostelFines() {
     try {
       setLoading(true);
       const res = await api.get('/hostel/fines', { params: { status: statusFilter } });
-      setFines(res.data);
+      setFines(res.data || []);
     } catch (err) {
       toast.error('Failed to load hostel fine records');
     } finally {
@@ -53,7 +53,7 @@ export default function HostelFines() {
     if (query.trim().length < 2) return;
     try {
       const res = await api.get('/hostel/admissions', { params: { search: query } });
-      setStudents(res.data);
+      setStudents(res.data || []);
     } catch (err) {
       // ignore
     }
@@ -146,134 +146,172 @@ export default function HostelFines() {
     }
   };
 
+  const cardStyle = {
+    background: darkMode ? '#1e293b' : '#fff',
+    border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+    borderRadius: 12, padding: 20,
+  };
+  const inputStyle = {
+    width: '100%', padding: '9px 12px', fontSize: 13,
+    border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`, borderRadius: 8, outline: 'none', boxSizing: 'border-box',
+    background: darkMode ? '#0f172a' : '#ffffff', color: darkMode ? '#ffffff' : '#0f172a',
+    marginBottom: 12,
+  };
+  const labelStyle = { fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4, display: 'block' };
+
   return (
-    <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: darkMode ? '#0f172a' : '#f8fafc' }}>
       <Sidebar darkMode={darkMode} />
-      <div className="main-content">
+      <div style={{ marginLeft: 232, flex: 1, display: 'flex', flexDirection: 'column' }}>
         <Navbar title="Hostel Fines &amp; Penalties" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
 
-        <div className="page-body">
+        <div style={{ padding: '24px 28px' }}>
           {/* Header */}
-          <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
             <div>
-              <h2 className="fw-bold mb-1" style={{ color: darkMode ? '#f8fafc' : '#1e293b' }}>Hostel Fines &amp; Damage Ledger</h2>
-              <p className="text-muted mb-0">Assess room damage, rule violation penalties, collect payments, and manage waivers.</p>
+              <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: darkMode ? '#f8fafc' : '#0f172a' }}>
+                Hostel Fines &amp; Damage Ledger
+              </h2>
+              <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
+                Assess room property damages, curfew violations, record payments, and manage auditable waivers.
+              </p>
             </div>
             <button
-              className="btn btn-danger d-flex align-items-center gap-2"
               onClick={() => {
                 setSelectedStudent(null);
                 setStudents([]);
                 setStudentSearch('');
                 setCreateModal(true);
               }}
-              style={{ borderRadius: '10px', padding: '10px 18px', fontWeight: 600 }}
+              style={{
+                background: '#dc2626', color: '#fff', border: 'none', borderRadius: 8,
+                padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 6,
+                boxShadow: '0 4px 12px rgba(220, 38, 38, 0.25)'
+              }}
             >
-              <i className="ti ti-plus fs-5"></i>
+              <i className="ti ti-plus" style={{ fontSize: 16 }}></i>
               Assess New Fine
             </button>
           </div>
 
           {/* Filter Bar */}
-          <div className="card border-0 shadow-sm p-3 mb-4" style={{ borderRadius: '16px', background: darkMode ? '#1e293b' : '#ffffff' }}>
-            <div className="d-flex gap-2 align-items-center">
-              <span className="text-muted small fw-semibold me-2">STATUS FILTER:</span>
-              {['ALL', 'OUTSTANDING', 'PARTIALLY_PAID', 'PAID', 'WAIVED'].map((st) => (
-                <button
-                  key={st}
-                  onClick={() => setStatusFilter(st)}
-                  className={`btn btn-sm px-3 fw-semibold ${statusFilter === st ? 'btn-primary' : 'btn-outline-secondary'}`}
-                  style={{ borderRadius: '8px' }}
-                >
-                  {st.replace('_', ' ')}
-                </button>
-              ))}
-            </div>
+          <div style={{ ...cardStyle, padding: 14, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ ...labelStyle, marginBottom: 0, fontSize: 12, marginRight: 6 }}>STATUS:</span>
+            {['ALL', 'OUTSTANDING', 'PARTIALLY_PAID', 'PAID', 'WAIVED'].map((st) => (
+              <button
+                key={st}
+                onClick={() => setStatusFilter(st)}
+                style={{
+                  padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                  border: statusFilter === st ? 'none' : `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                  background: statusFilter === st ? '#4f46e5' : (darkMode ? '#1e293b' : '#fff'),
+                  color: statusFilter === st ? '#fff' : (darkMode ? '#94a3b8' : '#64748b'),
+                }}
+              >
+                {st.replace('_', ' ')}
+              </button>
+            ))}
           </div>
 
-          {/* Fines Table */}
-          <div className="card border-0 shadow-sm" style={{ borderRadius: '16px', background: darkMode ? '#1e293b' : '#ffffff', overflow: 'hidden' }}>
-            <div className="table-responsive">
-              <table className="table table-hover align-middle mb-0">
-                <thead style={{ background: darkMode ? '#0f172a' : '#f8fafc', color: darkMode ? '#cbd5e1' : '#64748b' }}>
-                  <tr>
-                    <th className="py-3 px-4">Resident</th>
-                    <th className="py-3">Violation Reason</th>
-                    <th className="py-3">Raised Date</th>
-                    <th className="py-3 text-end">Amount</th>
-                    <th className="py-3 text-end">Paid</th>
-                    <th className="py-3 text-end">Waived</th>
-                    <th className="py-3 text-end">Outstanding</th>
-                    <th className="py-3 text-center">Status</th>
-                    <th className="py-3 text-end px-4">Actions</th>
+          {/* Fines Table Card */}
+          <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: darkMode ? '#0f172a' : '#f8fafc', borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, textAlign: 'left' }}>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>RESIDENT</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>VIOLATION REASON</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>RAISED DATE</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11, textAlign: 'right' }}>AMOUNT (₹)</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11, textAlign: 'right' }}>PAID (₹)</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11, textAlign: 'right' }}>WAIVED (₹)</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11, textAlign: 'right' }}>OUTSTANDING</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11, textAlign: 'center' }}>STATUS</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11, textAlign: 'right' }}>ACTIONS</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan="9" className="text-center py-5 text-muted">
-                        <div className="spinner-border spinner-border-sm me-2 text-primary" role="status"></div>
-                        Loading hostel fines...
+                      <td colSpan="9" style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
+                        Loading fines...
                       </td>
                     </tr>
                   ) : fines.length === 0 ? (
                     <tr>
-                      <td colSpan="9" className="text-center py-5 text-muted">
-                        <i className="ti ti-check-circle fs-1 d-block mb-2 text-success opacity-50"></i>
+                      <td colSpan="9" style={{ textAlign: 'center', padding: '50px 0', color: '#94a3b8' }}>
+                        <i className="ti ti-check-circle" style={{ fontSize: 36, display: 'block', marginBottom: 8, color: '#16a34a', opacity: 0.6 }}></i>
                         No fine records found.
                       </td>
                     </tr>
                   ) : (
                     fines.map((f) => (
-                      <tr key={f.id}>
-                        <td className="px-4">
-                          <div className="fw-bold" style={{ color: darkMode ? '#f8fafc' : '#0f172a' }}>{f.student_name}</div>
-                          <small className="text-muted">{f.hostel_name}</small>
+                      <tr key={f.id} style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}` }}>
+                        <td style={{ padding: '12px 16px' }}>
+                          <div style={{ fontWeight: 700, color: darkMode ? '#f8fafc' : '#0f172a' }}>{f.student_name}</div>
+                          <div style={{ fontSize: 11, color: '#94a3b8' }}>{f.hostel_name}</div>
                         </td>
-                        <td>
-                          <span className="badge bg-secondary-subtle text-secondary border px-2 py-1 mb-1 d-inline-block">
+                        <td style={{ padding: '12px 16px' }}>
+                          <span style={{
+                            background: darkMode ? '#334155' : '#f1f5f9', color: darkMode ? '#cbd5e1' : '#475569',
+                            padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700
+                          }}>
                             {f.reason.replace('_', ' ')}
                           </span>
-                          <div className="small text-muted text-truncate" style={{ maxWidth: '220px' }}>{f.description || '—'}</div>
+                          <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, maxWidth: 220 }} className="truncate">
+                            {f.description || '—'}
+                          </div>
                         </td>
-                        <td>{f.raised_date}</td>
-                        <td className="text-end fw-semibold">₹{f.amount}</td>
-                        <td className="text-end text-success fw-semibold">₹{f.amount_paid}</td>
-                        <td className="text-end text-muted fw-semibold">₹{f.waived_amount}</td>
-                        <td className="text-end fw-bold" style={{ color: f.outstanding_amount > 0 ? '#ef4444' : '#10b981' }}>
+                        <td style={{ padding: '12px 16px', color: '#64748b', fontSize: 12 }}>{f.raised_date}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600 }}>₹{f.amount}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, color: '#16a34a' }}>₹{f.amount_paid}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, color: '#64748b' }}>₹{f.waived_amount}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 800, color: f.outstanding_amount > 0 ? '#dc2626' : '#16a34a' }}>
                           ₹{f.outstanding_amount}
                         </td>
-                        <td className="text-center">
-                          {f.status === 'PAID' ? (
-                            <span className="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">PAID</span>
-                          ) : f.status === 'WAIVED' ? (
-                            <span className="badge bg-secondary-subtle text-secondary border px-2 py-1">WAIVED</span>
-                          ) : f.status === 'PARTIALLY_PAID' ? (
-                            <span className="badge bg-warning-subtle text-warning border border-warning-subtle px-2 py-1">PARTIAL</span>
-                          ) : (
-                            <span className="badge bg-danger-subtle text-danger border border-danger-subtle px-2 py-1">OUTSTANDING</span>
-                          )}
+                        <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                          <span style={{
+                            background: f.status === 'PAID' ? '#f0fdf4' :
+                                        f.status === 'WAIVED' ? '#eff6ff' :
+                                        f.status === 'PARTIALLY_PAID' ? '#fefce8' : '#fef2f2',
+                            color: f.status === 'PAID' ? '#16a34a' :
+                                   f.status === 'WAIVED' ? '#2563eb' :
+                                   f.status === 'PARTIALLY_PAID' ? '#ca8a04' : '#dc2626',
+                            border: `1px solid ${
+                              f.status === 'PAID' ? '#bbf7d0' :
+                              f.status === 'WAIVED' ? '#bfdbfe' :
+                              f.status === 'PARTIALLY_PAID' ? '#fef08a' : '#fecaca'
+                            }`,
+                            padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700
+                          }}>
+                            {f.status.replace('_', ' ')}
+                          </span>
                         </td>
-                        <td className="text-end px-4">
+                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                           {f.outstanding_amount > 0 ? (
-                            <div className="d-flex gap-2 justify-content-end">
+                            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                               <button
-                                className="btn btn-sm btn-success px-2 py-1 fw-semibold"
-                                style={{ borderRadius: '6px' }}
                                 onClick={() => openCollect(f)}
+                                style={{
+                                  background: '#16a34a', color: '#fff', border: 'none',
+                                  padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer'
+                                }}
                               >
                                 Pay
                               </button>
                               <button
-                                className="btn btn-sm btn-outline-warning px-2 py-1 fw-semibold"
-                                style={{ borderRadius: '6px' }}
                                 onClick={() => openWaive(f)}
+                                style={{
+                                  background: '#fefce8', color: '#ca8a04', border: '1px solid #fef08a',
+                                  padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer'
+                                }}
                               >
                                 Waive
                               </button>
                             </div>
                           ) : (
-                            <span className="text-muted small">Settled</span>
+                            <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 600 }}>Settled</span>
                           )}
                         </td>
                       </tr>
@@ -288,63 +326,77 @@ export default function HostelFines() {
 
       {/* Assess Fine Modal */}
       {createModal && (
-        <div className="modal show d-block" tabIndex="-1" style={{ background: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <form onSubmit={handleCreateFine} className="modal-content" style={{ borderRadius: '16px', background: darkMode ? '#1e293b' : '#ffffff', color: darkMode ? '#fff' : '#000' }}>
-              <div className="modal-header border-0 pb-0">
-                <h5 className="modal-title fw-bold">Assess Hostel Fine / Penalty</h5>
-                <button type="button" className="btn-close" onClick={() => setCreateModal(false)}></button>
-              </div>
-              <div className="modal-body py-3">
-                {/* Search Student */}
-                <div className="mb-3">
-                  <label className="form-label fw-semibold">Select Resident</label>
+        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setCreateModal(false)}>
+          <div className="modal" style={{ maxWidth: 500, background: darkMode ? '#1e293b' : '#ffffff', color: darkMode ? '#ffffff' : '#0f172a' }}>
+            <div className="modal-header" style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Assess Hostel Fine / Penalty</h3>
+              <button className="modal-close" onClick={() => setCreateModal(false)}>✕</button>
+            </div>
+            <form onSubmit={handleCreateFine}>
+              <div className="modal-body">
+                {/* Search resident */}
+                <div style={{ marginBottom: 12 }}>
+                  <label style={labelStyle}>Resident *</label>
                   <input
                     type="text"
-                    className="form-control"
                     placeholder="Search resident by name or admission no..."
                     value={studentSearch}
                     onChange={(e) => searchStudents(e.target.value)}
+                    style={inputStyle}
                   />
                   {students.length > 0 && !selectedStudent && (
-                    <div className="list-group mt-2 border" style={{ maxHeight: '150px', overflowY: 'auto' }}>
+                    <div style={{
+                      maxHeight: 140, overflowY: 'auto', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                      borderRadius: 8, background: darkMode ? '#0f172a' : '#fff', marginTop: -6, marginBottom: 10
+                    }}>
                       {students.map((st) => (
-                        <button
+                        <div
                           key={st.student_id}
-                          type="button"
-                          className="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
                           onClick={() => {
                             setSelectedStudent(st);
                             setStudents([]);
                             setStudentSearch(st.student_name);
                           }}
+                          style={{
+                            padding: '8px 12px', borderBottom: `1px solid ${darkMode ? '#1e293b' : '#f1f5f9'}`,
+                            cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                          }}
                         >
                           <div>
-                            <div className="fw-semibold">{st.student_name}</div>
-                            <small className="text-muted">{st.admission_no} &bull; Room {st.room_number}</small>
+                            <div style={{ fontWeight: 600, fontSize: 12 }}>{st.student_name}</div>
+                            <div style={{ fontSize: 11, color: '#94a3b8' }}>{st.admission_no} &bull; Room {st.room_number}</div>
                           </div>
-                          <span className="badge bg-primary">Select</span>
-                        </button>
+                          <span style={{ fontSize: 11, color: '#4f46e5', fontWeight: 700 }}>Select</span>
+                        </div>
                       ))}
                     </div>
                   )}
                   {selectedStudent && (
-                    <div className="alert alert-info py-2 px-3 mt-2 d-flex justify-content-between align-items-center mb-0">
-                      <div>
+                    <div style={{
+                      background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8,
+                      padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: -6, marginBottom: 10
+                    }}>
+                      <div style={{ fontSize: 12, color: '#1e40af' }}>
                         <strong>{selectedStudent.student_name}</strong> ({selectedStudent.admission_no}) &bull; Room {selectedStudent.room_number}
                       </div>
-                      <button type="button" className="btn btn-sm btn-link text-danger p-0" onClick={() => setSelectedStudent(null)}>Change</button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedStudent(null)}
+                        style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        Change
+                      </button>
                     </div>
                   )}
                 </div>
 
-                <div className="row g-2 mb-3">
-                  <div className="col-md-6">
-                    <label className="form-label fw-semibold">Violation Reason</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={labelStyle}>Violation Reason</label>
                     <select
-                      className="form-select"
                       value={fineReason}
                       onChange={(e) => setFineReason(e.target.value)}
+                      style={inputStyle}
                     >
                       <option value="FURNITURE_DAMAGE">Furniture Damage</option>
                       <option value="PROPERTY_LOSS">Property Loss</option>
@@ -355,34 +407,41 @@ export default function HostelFines() {
                       <option value="OTHER">Other</option>
                     </select>
                   </div>
-                  <div className="col-md-6">
-                    <label className="form-label fw-semibold">Fine Amount (₹)</label>
+                  <div>
+                    <label style={labelStyle}>Fine Amount (₹) *</label>
                     <input
                       type="number"
                       step="0.01"
-                      className="form-control fw-bold"
                       placeholder="e.g. 500"
                       value={fineAmount}
                       onChange={(e) => setFineAmount(e.target.value)}
+                      style={{ ...inputStyle, fontWeight: 700 }}
                       required
                     />
                   </div>
                 </div>
 
-                <div className="mb-3">
-                  <label className="form-label fw-semibold">Description / Remarks</label>
+                <div>
+                  <label style={labelStyle}>Description / Assessment Remarks</label>
                   <textarea
                     rows="3"
-                    className="form-control"
                     placeholder="Specific item damaged, date of occurrence, or warden notes..."
                     value={fineDesc}
                     onChange={(e) => setFineDesc(e.target.value)}
+                    style={{ ...inputStyle, minHeight: 60, resize: 'vertical' }}
                   ></textarea>
                 </div>
               </div>
-              <div className="modal-footer border-0 pt-0">
-                <button type="button" className="btn btn-light" onClick={() => setCreateModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-danger px-4 fw-semibold" disabled={creating}>
+              <div className="modal-footer" style={{ borderTop: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+                <button type="button" className="btn btn-neutral" onClick={() => setCreateModal(false)}>Cancel</button>
+                <button
+                  type="submit"
+                  disabled={creating}
+                  style={{
+                    background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6,
+                    padding: '8px 18px', fontSize: 13, fontWeight: 700, cursor: creating ? 'not-allowed' : 'pointer',
+                  }}
+                >
                   {creating ? 'Assessing...' : 'Confirm Assessment'}
                 </button>
               </div>
@@ -393,44 +452,53 @@ export default function HostelFines() {
 
       {/* Waive Modal */}
       {waiveModal && selectedFine && (
-        <div className="modal show d-block" tabIndex="-1" style={{ background: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <form onSubmit={handleWaiveSubmit} className="modal-content" style={{ borderRadius: '16px', background: darkMode ? '#1e293b' : '#ffffff', color: darkMode ? '#fff' : '#000' }}>
-              <div className="modal-header border-0 pb-0">
-                <h5 className="modal-title fw-bold">Waive Fine</h5>
-                <button type="button" className="btn-close" onClick={() => setWaiveModal(false)}></button>
-              </div>
-              <div className="modal-body py-3">
-                <p className="text-muted small">
-                  Waiving a fine adjusts the outstanding obligation with an auditable justification record.
+        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setWaiveModal(false)}>
+          <div className="modal" style={{ maxWidth: 460, background: darkMode ? '#1e293b' : '#ffffff', color: darkMode ? '#ffffff' : '#0f172a' }}>
+            <div className="modal-header" style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Waive Fine</h3>
+              <button className="modal-close" onClick={() => setWaiveModal(false)}>✕</button>
+            </div>
+            <form onSubmit={handleWaiveSubmit}>
+              <div className="modal-body">
+                <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 12px' }}>
+                  Waiving a fine adjusts the resident's balance with an auditable justification record.
                 </p>
-                <div className="mb-3">
-                  <label className="form-label fw-semibold">Waive Amount (₹)</label>
+
+                <div>
+                  <label style={labelStyle}>Waive Amount (₹) *</label>
                   <input
                     type="number"
                     step="0.01"
                     max={selectedFine.outstanding_amount}
-                    className="form-control fw-bold"
                     value={waiveAmount}
                     onChange={(e) => setWaiveAmount(e.target.value)}
+                    style={{ ...inputStyle, fontWeight: 700, color: '#ca8a04' }}
                     required
                   />
                 </div>
-                <div className="mb-3">
-                  <label className="form-label fw-semibold">Waiver Justification Reason *</label>
+
+                <div>
+                  <label style={labelStyle}>Waiver Justification Reason *</label>
                   <textarea
                     rows="3"
-                    className="form-control"
                     placeholder="Approved by Principal / First warning / Repair cost adjusted..."
                     value={waiveReason}
                     onChange={(e) => setWaiveReason(e.target.value)}
+                    style={{ ...inputStyle, minHeight: 60, resize: 'vertical' }}
                     required
                   ></textarea>
                 </div>
               </div>
-              <div className="modal-footer border-0 pt-0">
-                <button type="button" className="btn btn-light" onClick={() => setWaiveModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-warning px-4 fw-semibold" disabled={waiving}>
+              <div className="modal-footer" style={{ borderTop: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+                <button type="button" className="btn btn-neutral" onClick={() => setWaiveModal(false)}>Cancel</button>
+                <button
+                  type="submit"
+                  disabled={waiving}
+                  style={{
+                    background: '#ca8a04', color: '#fff', border: 'none', borderRadius: 6,
+                    padding: '8px 18px', fontSize: 13, fontWeight: 700, cursor: waiving ? 'not-allowed' : 'pointer',
+                  }}
+                >
                   {waiving ? 'Waiving...' : 'Confirm Waiver'}
                 </button>
               </div>
@@ -441,39 +509,46 @@ export default function HostelFines() {
 
       {/* Collect Modal */}
       {collectModal && selectedFine && (
-        <div className="modal show d-block" tabIndex="-1" style={{ background: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <form onSubmit={handleCollectSubmit} className="modal-content" style={{ borderRadius: '16px', background: darkMode ? '#1e293b' : '#ffffff', color: darkMode ? '#fff' : '#000' }}>
-              <div className="modal-header border-0 pb-0">
-                <h5 className="modal-title fw-bold">Collect Fine Payment</h5>
-                <button type="button" className="btn-close" onClick={() => setCollectModal(false)}></button>
-              </div>
-              <div className="modal-body py-3">
-                <div className="p-3 mb-3 rounded-3" style={{ background: darkMode ? '#0f172a' : '#f1f5f9' }}>
-                  <div className="fw-bold">{selectedFine.student_name}</div>
-                  <div className="small text-muted">{selectedFine.reason.replace('_', ' ')} &bull; Total: ₹{selectedFine.amount}</div>
-                  <div className="fw-bold text-danger mt-1">Outstanding: ₹{selectedFine.outstanding_amount}</div>
+        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setCollectModal(false)}>
+          <div className="modal" style={{ maxWidth: 460, background: darkMode ? '#1e293b' : '#ffffff', color: darkMode ? '#ffffff' : '#0f172a' }}>
+            <div className="modal-header" style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Collect Fine Payment</h3>
+              <button className="modal-close" onClick={() => setCollectModal(false)}>✕</button>
+            </div>
+            <form onSubmit={handleCollectSubmit}>
+              <div className="modal-body">
+                <div style={{
+                  background: darkMode ? '#0f172a' : '#f8fafc', padding: 12, borderRadius: 8,
+                  marginBottom: 14, border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`
+                }}>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>{selectedFine.student_name}</div>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>
+                    {selectedFine.reason.replace('_', ' ')} &bull; Total Fine: ₹{selectedFine.amount}
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#dc2626', marginTop: 4 }}>
+                    Outstanding: ₹{selectedFine.outstanding_amount}
+                  </div>
                 </div>
 
-                <div className="mb-3">
-                  <label className="form-label fw-semibold">Amount to Collect (₹)</label>
+                <div>
+                  <label style={labelStyle}>Amount to Collect (₹) *</label>
                   <input
                     type="number"
                     step="0.01"
                     max={selectedFine.outstanding_amount}
-                    className="form-control fw-bold text-success"
                     value={collectAmount}
                     onChange={(e) => setCollectAmount(e.target.value)}
+                    style={{ ...inputStyle, fontWeight: 700, fontSize: 15, color: '#16a34a' }}
                     required
                   />
                 </div>
 
-                <div className="mb-3">
-                  <label className="form-label fw-semibold">Payment Mode</label>
+                <div>
+                  <label style={labelStyle}>Payment Mode</label>
                   <select
-                    className="form-select"
                     value={collectMode}
                     onChange={(e) => setCollectMode(e.target.value)}
+                    style={inputStyle}
                   >
                     <option value="CASH">Cash</option>
                     <option value="UPI">UPI / Online</option>
@@ -481,20 +556,27 @@ export default function HostelFines() {
                   </select>
                 </div>
 
-                <div className="mb-3">
-                  <label className="form-label fw-semibold">Remarks</label>
+                <div>
+                  <label style={labelStyle}>Transaction Remarks</label>
                   <input
                     type="text"
-                    className="form-control"
                     placeholder="Optional remarks..."
                     value={collectRemarks}
                     onChange={(e) => setCollectRemarks(e.target.value)}
+                    style={inputStyle}
                   />
                 </div>
               </div>
-              <div className="modal-footer border-0 pt-0">
-                <button type="button" className="btn btn-light" onClick={() => setCollectModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-success px-4 fw-semibold" disabled={collecting}>
+              <div className="modal-footer" style={{ borderTop: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+                <button type="button" className="btn btn-neutral" onClick={() => setCollectModal(false)}>Cancel</button>
+                <button
+                  type="submit"
+                  disabled={collecting}
+                  style={{
+                    background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6,
+                    padding: '8px 18px', fontSize: 13, fontWeight: 700, cursor: collecting ? 'not-allowed' : 'pointer',
+                  }}
+                >
                   {collecting ? 'Recording...' : `Collect ₹${collectAmount}`}
                 </button>
               </div>

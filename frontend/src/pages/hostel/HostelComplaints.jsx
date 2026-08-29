@@ -5,7 +5,7 @@ import api     from '../../api/axios';
 import toast   from 'react-hot-toast';
 
 export default function HostelComplaints() {
-  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
+  const [darkMode, setDarkMode] = useState(localStorage.getItem('ederp_theme') === 'dark');
   const [loading, setLoading]   = useState(true);
   const [complaints, setComplaints] = useState([]);
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -34,7 +34,7 @@ export default function HostelComplaints() {
       const res = await api.get('/hostel/complaints', {
         params: { status: statusFilter, category: catFilter !== 'ALL' ? catFilter : undefined }
       });
-      setComplaints(res.data);
+      setComplaints(res.data || []);
     } catch (err) {
       toast.error('Failed to load complaints');
     } finally {
@@ -51,7 +51,7 @@ export default function HostelComplaints() {
     if (query.trim().length < 2) return;
     try {
       const res = await api.get('/hostel/admissions', { params: { search: query } });
-      setStudents(res.data);
+      setStudents(res.data || []);
     } catch (err) {
       // ignore
     }
@@ -114,143 +114,182 @@ export default function HostelComplaints() {
     }
   };
 
+  const cardStyle = {
+    background: darkMode ? '#1e293b' : '#fff',
+    border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+    borderRadius: 12, padding: 20,
+  };
+  const inputStyle = {
+    width: '100%', padding: '9px 12px', fontSize: 13,
+    border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`, borderRadius: 8, outline: 'none', boxSizing: 'border-box',
+    background: darkMode ? '#0f172a' : '#ffffff', color: darkMode ? '#ffffff' : '#0f172a',
+    marginBottom: 12,
+  };
+  const labelStyle = { fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4, display: 'block' };
+
   return (
-    <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: darkMode ? '#0f172a' : '#f8fafc' }}>
       <Sidebar darkMode={darkMode} />
-      <div className="main-content">
+      <div style={{ marginLeft: 232, flex: 1, display: 'flex', flexDirection: 'column' }}>
         <Navbar title="Complaints &amp; Maintenance Requests" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
 
-        <div className="page-body">
+        <div style={{ padding: '24px 28px' }}>
           {/* Header */}
-          <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
             <div>
-              <h2 className="fw-bold mb-1" style={{ color: darkMode ? '#f8fafc' : '#1e293b' }}>Hostel Complaints &amp; Requests</h2>
-              <p className="text-muted mb-0">Track maintenance tickets, electrical issues, plumbing repairs, and resident requests.</p>
+              <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: darkMode ? '#f8fafc' : '#0f172a' }}>
+                Hostel Complaints &amp; Maintenance Requests
+              </h2>
+              <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
+                Track room maintenance tickets, electrical &amp; plumbing issues, warden resolutions, and repair logs.
+              </p>
             </div>
             <button
-              className="btn btn-primary d-flex align-items-center gap-2"
               onClick={() => {
                 setSelectedStudent(null);
                 setStudents([]);
                 setStudentSearch('');
                 setCreateModal(true);
               }}
-              style={{ borderRadius: '10px', padding: '10px 18px', fontWeight: 600 }}
+              style={{
+                background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 8,
+                padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 6,
+                boxShadow: '0 4px 12px rgba(79, 70, 229, 0.25)'
+              }}
             >
-              <i className="ti ti-plus fs-5"></i>
+              <i className="ti ti-plus" style={{ fontSize: 16 }}></i>
               Log Complaint
             </button>
           </div>
 
-          {/* Filters */}
-          <div className="card border-0 shadow-sm p-3 mb-4" style={{ borderRadius: '16px', background: darkMode ? '#1e293b' : '#ffffff' }}>
-            <div className="row g-2 align-items-center">
-              <div className="col-md-6 d-flex gap-1 flex-wrap">
-                {['ALL', 'OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'].map((st) => (
-                  <button
-                    key={st}
-                    onClick={() => setStatusFilter(st)}
-                    className={`btn btn-sm px-3 fw-semibold ${statusFilter === st ? 'btn-primary' : 'btn-outline-secondary'}`}
-                    style={{ borderRadius: '8px' }}
-                  >
-                    {st.replace('_', ' ')}
-                  </button>
-                ))}
-              </div>
-              <div className="col-md-6 d-flex justify-content-md-end">
-                <select
-                  className="form-select form-select-sm"
-                  style={{ maxWidth: '220px' }}
-                  value={catFilter}
-                  onChange={(e) => setCatFilter(e.target.value)}
+          {/* Filters Bar */}
+          <div style={{ ...cardStyle, padding: 14, marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ ...labelStyle, marginBottom: 0, fontSize: 12, marginRight: 4 }}>STATUS:</span>
+              {['ALL', 'OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'].map((st) => (
+                <button
+                  key={st}
+                  onClick={() => setStatusFilter(st)}
+                  style={{
+                    padding: '5px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                    border: statusFilter === st ? 'none' : `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                    background: statusFilter === st ? '#4f46e5' : (darkMode ? '#1e293b' : '#fff'),
+                    color: statusFilter === st ? '#fff' : (darkMode ? '#94a3b8' : '#64748b'),
+                  }}
                 >
-                  <option value="ALL">All Categories</option>
-                  <option value="MAINTENANCE">Maintenance</option>
-                  <option value="ELECTRICAL">Electrical</option>
-                  <option value="PLUMBING">Plumbing</option>
-                  <option value="CLEANING">Cleaning</option>
-                  <option value="FOOD">Food / Mess</option>
-                  <option value="SAFETY">Safety</option>
-                  <option value="WIFI">WiFi / Internet</option>
-                  <option value="OTHER">Other</option>
-                </select>
-              </div>
+                  {st.replace('_', ' ')}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <label style={{ ...labelStyle, marginBottom: 0, fontSize: 12 }}>CATEGORY:</label>
+              <select
+                style={{ ...inputStyle, width: 'auto', minWidth: 160, marginBottom: 0 }}
+                value={catFilter}
+                onChange={(e) => setCatFilter(e.target.value)}
+              >
+                <option value="ALL">All Categories</option>
+                <option value="MAINTENANCE">Maintenance</option>
+                <option value="ELECTRICAL">Electrical</option>
+                <option value="PLUMBING">Plumbing</option>
+                <option value="CLEANING">Cleaning</option>
+                <option value="FOOD">Food / Mess</option>
+                <option value="SAFETY">Safety</option>
+                <option value="WIFI">WiFi / Net</option>
+                <option value="OTHER">Other</option>
+              </select>
             </div>
           </div>
 
-          {/* Complaints Table */}
-          <div className="card border-0 shadow-sm" style={{ borderRadius: '16px', background: darkMode ? '#1e293b' : '#ffffff', overflow: 'hidden' }}>
-            <div className="table-responsive">
-              <table className="table table-hover align-middle mb-0">
-                <thead style={{ background: darkMode ? '#0f172a' : '#f8fafc', color: darkMode ? '#cbd5e1' : '#64748b' }}>
-                  <tr>
-                    <th className="py-3 px-4">Resident &amp; Room</th>
-                    <th className="py-3">Issue Title &amp; Category</th>
-                    <th className="py-3 text-center">Priority</th>
-                    <th className="py-3">Reported At</th>
-                    <th className="py-3 text-center">Status</th>
-                    <th className="py-3">Resolution Details</th>
-                    <th className="py-3 text-end px-4">Action</th>
+          {/* Table Card */}
+          <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: darkMode ? '#0f172a' : '#f8fafc', borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, textAlign: 'left' }}>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>RESIDENT &amp; ROOM</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>ISSUE TITLE &amp; CATEGORY</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11, textAlign: 'center' }}>PRIORITY</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>REPORTED AT</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11, textAlign: 'center' }}>STATUS</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>RESOLUTION DETAILS</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11, textAlign: 'right' }}>ACTION</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan="7" className="text-center py-5 text-muted">
-                        <div className="spinner-border spinner-border-sm me-2 text-primary" role="status"></div>
+                      <td colSpan="7" style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
                         Loading complaints...
                       </td>
                     </tr>
                   ) : complaints.length === 0 ? (
                     <tr>
-                      <td colSpan="7" className="text-center py-5 text-muted">
-                        <i className="ti ti-check-circle fs-1 d-block mb-2 text-success opacity-50"></i>
+                      <td colSpan="7" style={{ textAlign: 'center', padding: '50px 0', color: '#94a3b8' }}>
+                        <i className="ti ti-check-circle" style={{ fontSize: 36, display: 'block', marginBottom: 8, color: '#16a34a', opacity: 0.6 }}></i>
                         No complaints logged for this filter.
                       </td>
                     </tr>
                   ) : (
                     complaints.map((c) => (
-                      <tr key={c.id}>
-                        <td className="px-4">
-                          <div className="fw-bold" style={{ color: darkMode ? '#f8fafc' : '#0f172a' }}>{c.student_name}</div>
-                          <small className="text-muted">{c.hostel_name} &bull; Room {c.room_number}</small>
+                      <tr key={c.id} style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}` }}>
+                        <td style={{ padding: '12px 16px' }}>
+                          <div style={{ fontWeight: 700, color: darkMode ? '#f8fafc' : '#0f172a' }}>{c.student_name}</div>
+                          <div style={{ fontSize: 11, color: '#94a3b8' }}>{c.hostel_name} &bull; Room {c.room_number}</div>
                         </td>
-                        <td>
-                          <div className="fw-semibold">{c.title}</div>
-                          <span className="badge bg-secondary-subtle text-secondary border px-2 py-0 small">{c.category}</span>
-                          <div className="small text-muted text-truncate" style={{ maxWidth: '240px' }}>{c.description}</div>
+                        <td style={{ padding: '12px 16px' }}>
+                          <div style={{ fontWeight: 600 }}>{c.title}</div>
+                          <span style={{
+                            background: darkMode ? '#334155' : '#f1f5f9', color: darkMode ? '#cbd5e1' : '#475569',
+                            padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600, display: 'inline-block', marginTop: 2
+                          }}>
+                            {c.category}
+                          </span>
+                          <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, maxWidth: 260 }} className="truncate">{c.description}</div>
                         </td>
-                        <td className="text-center">
-                          {c.priority === 'URGENT' ? (
-                            <span className="badge bg-danger">URGENT</span>
-                          ) : c.priority === 'HIGH' ? (
-                            <span className="badge bg-warning text-dark">HIGH</span>
-                          ) : (
-                            <span className="badge bg-light text-dark border">MEDIUM</span>
-                          )}
+                        <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                          <span style={{
+                            background: c.priority === 'URGENT' ? '#fef2f2' : c.priority === 'HIGH' ? '#fefce8' : '#f1f5f9',
+                            color: c.priority === 'URGENT' ? '#dc2626' : c.priority === 'HIGH' ? '#ca8a04' : '#64748b',
+                            border: `1px solid ${c.priority === 'URGENT' ? '#fecaca' : c.priority === 'HIGH' ? '#fef08a' : '#cbd5e1'}`,
+                            padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700
+                          }}>
+                            {c.priority}
+                          </span>
                         </td>
-                        <td>
-                          <small className="text-muted">{c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}</small>
+                        <td style={{ padding: '12px 16px', color: '#64748b', fontSize: 12 }}>
+                          {c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}
                         </td>
-                        <td className="text-center">
-                          {c.status === 'RESOLVED' ? (
-                            <span className="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">RESOLVED</span>
-                          ) : c.status === 'IN_PROGRESS' ? (
-                            <span className="badge bg-warning-subtle text-warning border border-warning-subtle px-2 py-1">IN PROGRESS</span>
-                          ) : c.status === 'CLOSED' ? (
-                            <span className="badge bg-secondary-subtle text-secondary border px-2 py-1">CLOSED</span>
-                          ) : (
-                            <span className="badge bg-danger-subtle text-danger border border-danger-subtle px-2 py-1">OPEN</span>
-                          )}
+                        <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                          <span style={{
+                            background: c.status === 'RESOLVED' ? '#f0fdf4' :
+                                        c.status === 'IN_PROGRESS' ? '#fefce8' :
+                                        c.status === 'CLOSED' ? '#f1f5f9' : '#fef2f2',
+                            color: c.status === 'RESOLVED' ? '#16a34a' :
+                                   c.status === 'IN_PROGRESS' ? '#ca8a04' :
+                                   c.status === 'CLOSED' ? '#64748b' : '#dc2626',
+                            border: `1px solid ${
+                              c.status === 'RESOLVED' ? '#bbf7d0' :
+                              c.status === 'IN_PROGRESS' ? '#fef08a' :
+                              c.status === 'CLOSED' ? '#cbd5e1' : '#fecaca'
+                            }`,
+                            padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700
+                          }}>
+                            {c.status.replace('_', ' ')}
+                          </span>
                         </td>
-                        <td>
-                          <div className="small text-muted text-truncate" style={{ maxWidth: '200px' }}>{c.resolution || 'Pending repair...'}</div>
+                        <td style={{ padding: '12px 16px', color: '#64748b', fontSize: 12, maxWidth: 200 }} className="truncate">
+                          {c.resolution || 'Pending repair...'}
                         </td>
-                        <td className="text-end px-4">
+                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                           <button
-                            className="btn btn-sm btn-outline-primary px-3 fw-semibold"
-                            style={{ borderRadius: '6px' }}
                             onClick={() => openResolve(c)}
+                            style={{
+                              background: '#eef2ff', color: '#4f46e5', border: '1px solid #c7d2fe',
+                              padding: '5px 12px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer'
+                            }}
                           >
                             Update
                           </button>
@@ -267,60 +306,77 @@ export default function HostelComplaints() {
 
       {/* Log Modal */}
       {createModal && (
-        <div className="modal show d-block" tabIndex="-1" style={{ background: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <form onSubmit={handleCreateComplaint} className="modal-content" style={{ borderRadius: '16px', background: darkMode ? '#1e293b' : '#ffffff', color: darkMode ? '#fff' : '#000' }}>
-              <div className="modal-header border-0 pb-0">
-                <h5 className="modal-title fw-bold">Log Maintenance / Request Ticket</h5>
-                <button type="button" className="btn-close" onClick={() => setCreateModal(false)}></button>
-              </div>
-              <div className="modal-body py-3">
-                <div className="mb-3">
-                  <label className="form-label fw-semibold">Resident</label>
+        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setCreateModal(false)}>
+          <div className="modal" style={{ maxWidth: 500, background: darkMode ? '#1e293b' : '#ffffff', color: darkMode ? '#ffffff' : '#0f172a' }}>
+            <div className="modal-header" style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Log Maintenance / Request Ticket</h3>
+              <button className="modal-close" onClick={() => setCreateModal(false)}>✕</button>
+            </div>
+            <form onSubmit={handleCreateComplaint}>
+              <div className="modal-body">
+                {/* Search resident */}
+                <div style={{ marginBottom: 12 }}>
+                  <label style={labelStyle}>Resident *</label>
                   <input
                     type="text"
-                    className="form-control"
                     placeholder="Search resident..."
                     value={studentSearch}
                     onChange={(e) => searchStudents(e.target.value)}
+                    style={inputStyle}
                   />
                   {students.length > 0 && !selectedStudent && (
-                    <div className="list-group mt-2 border" style={{ maxHeight: '140px', overflowY: 'auto' }}>
+                    <div style={{
+                      maxHeight: 140, overflowY: 'auto', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                      borderRadius: 8, background: darkMode ? '#0f172a' : '#fff', marginTop: -6, marginBottom: 10
+                    }}>
                       {students.map((st) => (
-                        <button
+                        <div
                           key={st.student_id}
-                          type="button"
-                          className="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
                           onClick={() => {
                             setSelectedStudent(st);
                             setStudents([]);
                             setStudentSearch(st.student_name);
                           }}
+                          style={{
+                            padding: '8px 12px', borderBottom: `1px solid ${darkMode ? '#1e293b' : '#f1f5f9'}`,
+                            cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                          }}
                         >
                           <div>
-                            <div className="fw-semibold">{st.student_name}</div>
-                            <small className="text-muted">Room {st.room_number}</small>
+                            <div style={{ fontWeight: 600, fontSize: 12 }}>{st.student_name}</div>
+                            <div style={{ fontSize: 11, color: '#94a3b8' }}>Room {st.room_number}</div>
                           </div>
-                          <span className="badge bg-primary">Select</span>
-                        </button>
+                          <span style={{ fontSize: 11, color: '#4f46e5', fontWeight: 700 }}>Select</span>
+                        </div>
                       ))}
                     </div>
                   )}
                   {selectedStudent && (
-                    <div className="alert alert-info py-2 px-3 mt-2 d-flex justify-content-between align-items-center mb-0">
-                      <div><strong>{selectedStudent.student_name}</strong> &bull; Room {selectedStudent.room_number}</div>
-                      <button type="button" className="btn btn-sm btn-link text-danger p-0" onClick={() => setSelectedStudent(null)}>Change</button>
+                    <div style={{
+                      background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8,
+                      padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: -6, marginBottom: 10
+                    }}>
+                      <div style={{ fontSize: 12, color: '#1e40af' }}>
+                        <strong>{selectedStudent.student_name}</strong> &bull; Room {selectedStudent.room_number}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedStudent(null)}
+                        style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        Change
+                      </button>
                     </div>
                   )}
                 </div>
 
-                <div className="row g-2 mb-3">
-                  <div className="col-md-6">
-                    <label className="form-label fw-semibold">Category</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={labelStyle}>Category</label>
                     <select
-                      className="form-select"
                       value={category}
                       onChange={(e) => setCategory(e.target.value)}
+                      style={inputStyle}
                     >
                       <option value="MAINTENANCE">Maintenance</option>
                       <option value="ELECTRICAL">Electrical</option>
@@ -332,12 +388,12 @@ export default function HostelComplaints() {
                       <option value="OTHER">Other</option>
                     </select>
                   </div>
-                  <div className="col-md-6">
-                    <label className="form-label fw-semibold">Priority</label>
+                  <div>
+                    <label style={labelStyle}>Priority</label>
                     <select
-                      className="form-select"
                       value={priority}
                       onChange={(e) => setPriority(e.target.value)}
+                      style={inputStyle}
                     >
                       <option value="LOW">Low</option>
                       <option value="MEDIUM">Medium</option>
@@ -347,32 +403,39 @@ export default function HostelComplaints() {
                   </div>
                 </div>
 
-                <div className="mb-3">
-                  <label className="form-label fw-semibold">Issue Title *</label>
+                <div>
+                  <label style={labelStyle}>Issue Title *</label>
                   <input
                     type="text"
-                    className="form-control"
                     placeholder="e.g. Geyser not heating / Tap leaking"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
+                    style={inputStyle}
                     required
                   />
                 </div>
 
-                <div className="mb-3">
-                  <label className="form-label fw-semibold">Description</label>
+                <div>
+                  <label style={labelStyle}>Description Details</label>
                   <textarea
                     rows="3"
-                    className="form-control"
-                    placeholder="Specific details about location, room or equipment..."
+                    placeholder="Specific details about room location or broken equipment..."
                     value={desc}
                     onChange={(e) => setDesc(e.target.value)}
+                    style={{ ...inputStyle, minHeight: 60, resize: 'vertical' }}
                   ></textarea>
                 </div>
               </div>
-              <div className="modal-footer border-0 pt-0">
-                <button type="button" className="btn btn-light" onClick={() => setCreateModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary px-4 fw-semibold" disabled={submitting}>
+              <div className="modal-footer" style={{ borderTop: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+                <button type="button" className="btn btn-neutral" onClick={() => setCreateModal(false)}>Cancel</button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  style={{
+                    background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 6,
+                    padding: '8px 18px', fontSize: 13, fontWeight: 700, cursor: submitting ? 'not-allowed' : 'pointer',
+                  }}
+                >
                   {submitting ? 'Logging...' : 'Submit Ticket'}
                 </button>
               </div>
@@ -383,25 +446,30 @@ export default function HostelComplaints() {
 
       {/* Resolve / Update Status Modal */}
       {resolveModal && selectedComp && (
-        <div className="modal show d-block" tabIndex="-1" style={{ background: 'rgba(0,0,0,0.5)' }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <form onSubmit={handleResolveSubmit} className="modal-content" style={{ borderRadius: '16px', background: darkMode ? '#1e293b' : '#ffffff', color: darkMode ? '#fff' : '#000' }}>
-              <div className="modal-header border-0 pb-0">
-                <h5 className="modal-title fw-bold">Update Complaint Status</h5>
-                <button type="button" className="btn-close" onClick={() => setResolveModal(false)}></button>
-              </div>
-              <div className="modal-body py-3">
-                <div className="p-3 mb-3 rounded-3" style={{ background: darkMode ? '#0f172a' : '#f1f5f9' }}>
-                  <div className="fw-bold">{selectedComp.title}</div>
-                  <div className="small text-muted">{selectedComp.student_name} &bull; Room {selectedComp.room_number} &bull; {selectedComp.category}</div>
+        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setResolveModal(false)}>
+          <div className="modal" style={{ maxWidth: 480, background: darkMode ? '#1e293b' : '#ffffff', color: darkMode ? '#ffffff' : '#0f172a' }}>
+            <div className="modal-header" style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Update Complaint Status</h3>
+              <button className="modal-close" onClick={() => setResolveModal(false)}>✕</button>
+            </div>
+            <form onSubmit={handleResolveSubmit}>
+              <div className="modal-body">
+                <div style={{
+                  background: darkMode ? '#0f172a' : '#f8fafc', padding: 12, borderRadius: 8,
+                  marginBottom: 14, border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`
+                }}>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>{selectedComp.title}</div>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>
+                    {selectedComp.student_name} &bull; Room {selectedComp.room_number} &bull; {selectedComp.category}
+                  </div>
                 </div>
 
-                <div className="mb-3">
-                  <label className="form-label fw-semibold">New Status</label>
+                <div>
+                  <label style={labelStyle}>Status</label>
                   <select
-                    className="form-select"
                     value={resStatus}
                     onChange={(e) => setResStatus(e.target.value)}
+                    style={inputStyle}
                   >
                     <option value="OPEN">Open</option>
                     <option value="IN_PROGRESS">In Progress</option>
@@ -410,20 +478,27 @@ export default function HostelComplaints() {
                   </select>
                 </div>
 
-                <div className="mb-3">
-                  <label className="form-label fw-semibold">Resolution / Action Taken Notes</label>
+                <div>
+                  <label style={labelStyle}>Resolution / Action Taken Notes</label>
                   <textarea
                     rows="3"
-                    className="form-control"
                     placeholder="Describe how the issue was fixed, electrician notes, parts replaced..."
                     value={resolutionText}
                     onChange={(e) => setResolutionText(e.target.value)}
+                    style={{ ...inputStyle, minHeight: 60, resize: 'vertical' }}
                   ></textarea>
                 </div>
               </div>
-              <div className="modal-footer border-0 pt-0">
-                <button type="button" className="btn btn-light" onClick={() => setResolveModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary px-4 fw-semibold" disabled={resolving}>
+              <div className="modal-footer" style={{ borderTop: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+                <button type="button" className="btn btn-neutral" onClick={() => setResolveModal(false)}>Cancel</button>
+                <button
+                  type="submit"
+                  disabled={resolving}
+                  style={{
+                    background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 6,
+                    padding: '8px 18px', fontSize: 13, fontWeight: 700, cursor: resolving ? 'not-allowed' : 'pointer',
+                  }}
+                >
                   {resolving ? 'Saving...' : 'Update Ticket'}
                 </button>
               </div>

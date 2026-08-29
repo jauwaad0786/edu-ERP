@@ -5,7 +5,7 @@ import api     from '../../api/axios';
 import toast   from 'react-hot-toast';
 
 export default function HostelAttendance() {
-  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
+  const [darkMode, setDarkMode] = useState(localStorage.getItem('ederp_theme') === 'dark');
   const [loading, setLoading]   = useState(true);
   const [hostels, setHostels]   = useState([]);
   const [selectedHostel, setSelectedHostel] = useState('');
@@ -15,11 +15,11 @@ export default function HostelAttendance() {
 
   useEffect(() => {
     api.get('/hostel/hostels').then((res) => {
-      setHostels(res.data);
-      if (res.data.length > 0) {
+      setHostels(res.data || []);
+      if (res.data && res.data.length > 0) {
         setSelectedHostel(res.data[0].id);
       }
-    });
+    }).catch(() => {});
   }, []);
 
   const fetchAttendance = async () => {
@@ -29,7 +29,7 @@ export default function HostelAttendance() {
       const res = await api.get('/hostel/attendance', {
         params: { hostel_id: selectedHostel, date: selectedDate }
       });
-      setResidents(res.data);
+      setResidents(res.data || []);
     } catch (err) {
       toast.error('Failed to load roll call records');
     } finally {
@@ -83,171 +83,192 @@ export default function HostelAttendance() {
   const absentCount  = residents.filter((r) => r.status === 'ABSENT').length;
   const leaveCount   = residents.filter((r) => r.status === 'ON_LEAVE' || r.status === 'OUT_PASS').length;
 
+  const cardStyle = {
+    background: darkMode ? '#1e293b' : '#fff',
+    border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+    borderRadius: 12, padding: 20,
+  };
+  const inputStyle = {
+    width: '100%', padding: '9px 12px', fontSize: 13,
+    border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`, borderRadius: 8, outline: 'none', boxSizing: 'border-box',
+    background: darkMode ? '#0f172a' : '#ffffff', color: darkMode ? '#ffffff' : '#0f172a',
+    marginBottom: 0,
+  };
+  const labelStyle = { fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4, display: 'block' };
+
   return (
-    <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: darkMode ? '#0f172a' : '#f8fafc' }}>
       <Sidebar darkMode={darkMode} />
-      <div className="main-content">
+      <div style={{ marginLeft: 232, flex: 1, display: 'flex', flexDirection: 'column' }}>
         <Navbar title="Night Roll Call &amp; Attendance" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
 
-        <div className="page-body">
+        <div style={{ padding: '24px 28px' }}>
           {/* Header */}
-          <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
             <div>
-              <h2 className="fw-bold mb-1" style={{ color: darkMode ? '#f8fafc' : '#1e293b' }}>Hostel Night Attendance</h2>
-              <p className="text-muted mb-0">Record night roll call presence, track leaves, and out-pass status for all active residents.</p>
+              <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: darkMode ? '#f8fafc' : '#0f172a' }}>
+                Hostel Night Roll Call &amp; Attendance
+              </h2>
+              <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
+                Conduct night curfew roll calls, mark present / absent / leaves, and track out-pass residents.
+              </p>
             </div>
             <button
-              className="btn btn-primary d-flex align-items-center gap-2"
               onClick={handleSaveAttendance}
               disabled={saving || residents.length === 0}
-              style={{ borderRadius: '10px', padding: '10px 20px', fontWeight: 600 }}
+              style={{
+                background: '#10b981', color: '#fff', border: 'none', borderRadius: 8,
+                padding: '9px 20px', fontSize: 13, fontWeight: 600, cursor: saving || residents.length === 0 ? 'not-allowed' : 'pointer',
+                display: 'flex', alignItems: 'center', gap: 6,
+                boxShadow: '0 4px 12px rgba(16, 185, 129, 0.25)'
+              }}
             >
-              <i className="ti ti-device-floppy fs-5"></i>
+              <i className="ti ti-device-floppy" style={{ fontSize: 16 }}></i>
               {saving ? 'Saving...' : 'Save Roll Call'}
             </button>
           </div>
 
-          {/* Quick Metrics */}
-          <div className="row g-3 mb-4">
-            <div className="col-md-3">
-              <div className="card border-0 shadow-sm p-3" style={{ borderRadius: '16px', background: darkMode ? '#1e293b' : '#ffffff' }}>
-                <span className="text-muted small fw-semibold">TOTAL RESIDENTS</span>
-                <h3 className="fw-bold mb-0 mt-1" style={{ color: '#6366f1' }}>{residents.length}</h3>
-              </div>
+          {/* Metric Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 20 }}>
+            <div style={cardStyle}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>TOTAL RESIDENTS</div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: '#4f46e5', marginTop: 4 }}>{residents.length}</div>
             </div>
-            <div className="col-md-3">
-              <div className="card border-0 shadow-sm p-3" style={{ borderRadius: '16px', background: darkMode ? '#1e293b' : '#ffffff' }}>
-                <span className="text-muted small fw-semibold">PRESENT</span>
-                <h3 className="fw-bold mb-0 mt-1 text-success">{presentCount}</h3>
-              </div>
+            <div style={cardStyle}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>PRESENT</div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: '#16a34a', marginTop: 4 }}>{presentCount}</div>
             </div>
-            <div className="col-md-3">
-              <div className="card border-0 shadow-sm p-3" style={{ borderRadius: '16px', background: darkMode ? '#1e293b' : '#ffffff' }}>
-                <span className="text-muted small fw-semibold">ABSENT</span>
-                <h3 className="fw-bold mb-0 mt-1 text-danger">{absentCount}</h3>
-              </div>
+            <div style={cardStyle}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>ABSENT</div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: '#dc2626', marginTop: 4 }}>{absentCount}</div>
             </div>
-            <div className="col-md-3">
-              <div className="card border-0 shadow-sm p-3" style={{ borderRadius: '16px', background: darkMode ? '#1e293b' : '#ffffff' }}>
-                <span className="text-muted small fw-semibold">ON LEAVE / OUT-PASS</span>
-                <h3 className="fw-bold mb-0 mt-1 text-warning">{leaveCount}</h3>
-              </div>
+            <div style={cardStyle}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' }}>ON LEAVE / OUT-PASS</div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: '#d97706', marginTop: 4 }}>{leaveCount}</div>
             </div>
           </div>
 
           {/* Controls Bar */}
-          <div className="card border-0 shadow-sm p-3 mb-4" style={{ borderRadius: '16px', background: darkMode ? '#1e293b' : '#ffffff' }}>
-            <div className="row g-3 align-items-center">
-              <div className="col-md-4">
-                <label className="form-label small fw-semibold text-muted mb-1">SELECT HOSTEL</label>
+          <div style={{ ...cardStyle, padding: 14, marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <label style={{ ...labelStyle, marginBottom: 0, fontSize: 12 }}>HOSTEL:</label>
                 <select
-                  className="form-select"
+                  style={{ ...inputStyle, width: 'auto', minWidth: 200 }}
                   value={selectedHostel}
                   onChange={(e) => setSelectedHostel(e.target.value)}
                 >
                   {hostels.map((h) => (
-                    <option key={h.id} value={h.id}>{h.name} ({h.gender})</option>
+                    <option key={h.id} value={h.id}>{h.name}</option>
                   ))}
                 </select>
               </div>
-              <div className="col-md-3">
-                <label className="form-label small fw-semibold text-muted mb-1">DATE</label>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <label style={{ ...labelStyle, marginBottom: 0, fontSize: 12 }}>DATE:</label>
                 <input
                   type="date"
-                  className="form-control"
+                  style={{ ...inputStyle, width: 'auto' }}
                   value={selectedDate}
                   onChange={(e) => setSelectedDate(e.target.value)}
                 />
               </div>
-              <div className="col-md-5 d-flex gap-2 align-items-end justify-content-md-end">
-                <button className="btn btn-sm btn-outline-success px-3" onClick={() => markAll('PRESENT')}>
-                  Mark All Present
-                </button>
-                <button className="btn btn-sm btn-outline-danger px-3" onClick={() => markAll('ABSENT')}>
-                  Mark All Absent
-                </button>
-              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => markAll('PRESENT')}
+                style={{
+                  background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0',
+                  padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer'
+                }}
+              >
+                Mark All Present
+              </button>
+              <button
+                onClick={() => markAll('ABSENT')}
+                style={{
+                  background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca',
+                  padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer'
+                }}
+              >
+                Mark All Absent
+              </button>
             </div>
           </div>
 
-          {/* Roll Call Table */}
-          <div className="card border-0 shadow-sm" style={{ borderRadius: '16px', background: darkMode ? '#1e293b' : '#ffffff', overflow: 'hidden' }}>
-            <div className="table-responsive">
-              <table className="table table-hover align-middle mb-0">
-                <thead style={{ background: darkMode ? '#0f172a' : '#f8fafc', color: darkMode ? '#cbd5e1' : '#64748b' }}>
-                  <tr>
-                    <th className="py-3 px-4">Resident</th>
-                    <th className="py-3">Room &amp; Bed</th>
-                    <th className="py-3 text-center">Status</th>
-                    <th className="py-3">Remarks / Reason</th>
+          {/* Roll Call Table Card */}
+          <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: darkMode ? '#0f172a' : '#f8fafc', borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, textAlign: 'left' }}>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>RESIDENT</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>ROOM &amp; BED</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11, textAlign: 'center' }}>ROLL CALL STATUS</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>WARDEN REMARKS</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan="4" className="text-center py-5 text-muted">
-                        <div className="spinner-border spinner-border-sm me-2 text-primary" role="status"></div>
+                      <td colSpan="4" style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
                         Loading residents...
                       </td>
                     </tr>
                   ) : residents.length === 0 ? (
                     <tr>
-                      <td colSpan="4" className="text-center py-5 text-muted">
+                      <td colSpan="4" style={{ textAlign: 'center', padding: '50px 0', color: '#94a3b8' }}>
                         No active residents found in this hostel.
                       </td>
                     </tr>
                   ) : (
                     residents.map((r, idx) => (
-                      <tr key={r.student_id}>
-                        <td className="px-4">
-                          <div className="fw-bold" style={{ color: darkMode ? '#f8fafc' : '#0f172a' }}>{r.student_name}</div>
-                          <small className="text-muted">{r.admission_no}</small>
+                      <tr key={r.student_id} style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}` }}>
+                        <td style={{ padding: '12px 16px' }}>
+                          <div style={{ fontWeight: 700, color: darkMode ? '#f8fafc' : '#0f172a' }}>{r.student_name}</div>
+                          <div style={{ fontSize: 11, color: '#94a3b8' }}>{r.admission_no}</div>
                         </td>
-                        <td>
-                          <span className="badge bg-light text-dark border px-2 py-1">
+                        <td style={{ padding: '12px 16px' }}>
+                          <span style={{
+                            background: darkMode ? '#334155' : '#f1f5f9', color: darkMode ? '#cbd5e1' : '#475569',
+                            padding: '3px 8px', borderRadius: 6, fontSize: 12, fontWeight: 600
+                          }}>
                             Room {r.room_number} &bull; Bed {r.bed_number}
                           </span>
                         </td>
-                        <td className="text-center">
-                          <div className="btn-group btn-group-sm" role="group">
-                            <button
-                              type="button"
-                              className={`btn ${r.status === 'PRESENT' ? 'btn-success fw-bold' : 'btn-outline-secondary'}`}
-                              onClick={() => setStatusForResident(idx, 'PRESENT')}
-                            >
-                              Present
-                            </button>
-                            <button
-                              type="button"
-                              className={`btn ${r.status === 'ABSENT' ? 'btn-danger fw-bold' : 'btn-outline-secondary'}`}
-                              onClick={() => setStatusForResident(idx, 'ABSENT')}
-                            >
-                              Absent
-                            </button>
-                            <button
-                              type="button"
-                              className={`btn ${r.status === 'ON_LEAVE' ? 'btn-warning fw-bold' : 'btn-outline-secondary'}`}
-                              onClick={() => setStatusForResident(idx, 'ON_LEAVE')}
-                            >
-                              Leave
-                            </button>
-                            <button
-                              type="button"
-                              className={`btn ${r.status === 'OUT_PASS' ? 'btn-info fw-bold' : 'btn-outline-secondary'}`}
-                              onClick={() => setStatusForResident(idx, 'OUT_PASS')}
-                            >
-                              Out-Pass
-                            </button>
+                        <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                          <div style={{ display: 'inline-flex', borderRadius: 6, overflow: 'hidden', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+                            {[
+                              { label: 'Present', val: 'PRESENT', bg: '#16a34a' },
+                              { label: 'Absent', val: 'ABSENT', bg: '#dc2626' },
+                              { label: 'Leave', val: 'ON_LEAVE', bg: '#d97706' },
+                              { label: 'Out-Pass', val: 'OUT_PASS', bg: '#2563eb' },
+                            ].map((btn) => (
+                              <button
+                                key={btn.val}
+                                type="button"
+                                onClick={() => setStatusForResident(idx, btn.val)}
+                                style={{
+                                  padding: '5px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                                  border: 'none',
+                                  background: r.status === btn.val ? btn.bg : (darkMode ? '#1e293b' : '#fff'),
+                                  color: r.status === btn.val ? '#fff' : (darkMode ? '#94a3b8' : '#64748b'),
+                                  borderRight: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`
+                                }}
+                              >
+                                {btn.label}
+                              </button>
+                            ))}
                           </div>
                         </td>
-                        <td>
+                        <td style={{ padding: '12px 16px' }}>
                           <input
                             type="text"
-                            className="form-control form-control-sm"
-                            placeholder="Optional note..."
+                            placeholder="Optional note / reason..."
                             value={r.remarks || ''}
                             onChange={(e) => setRemarksForResident(idx, e.target.value)}
-                            style={{ maxWidth: '280px' }}
+                            style={{ ...inputStyle, maxWidth: 280, padding: '6px 10px', fontSize: 12 }}
                           />
                         </td>
                       </tr>
