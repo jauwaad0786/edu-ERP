@@ -9,7 +9,6 @@ from app.models.academic import (
 from app.models.financial import (
     FeeRecord, FeeStructure, FeeTransaction, FeeGenerationBatch,
     ExamSchedule, ExamTimetable, ExamClass, ExamSubject, ExamTeacherDelegation, ResultVersion,
-    ResultLock, ResultAuditLog,
     Holiday, Timetable, TimetablePeriod,
     FeeReceiptGroup,
 )
@@ -1095,6 +1094,9 @@ def collect_fee():
         if record.source == 'LIBRARY':
             from app.services.library_fee_service import sync_library_fine_from_fee_record
             sync_library_fine_from_fee_record(record, txn)
+        elif record.source == 'HOSTEL_FINE':
+            from app.services.hostel_fee_service import sync_hostel_fine_from_fee_record
+            sync_hostel_fine_from_fee_record(record, txn)
 
         db.session.commit()
 
@@ -1195,6 +1197,9 @@ def collect_fee_multiple():
             if record.source == 'LIBRARY':
                 from app.services.library_fee_service import sync_library_fine_from_fee_record
                 sync_library_fine_from_fee_record(record, txn)
+            elif record.source == 'HOSTEL_FINE':
+                from app.services.hostel_fee_service import sync_hostel_fine_from_fee_record
+                sync_hostel_fine_from_fee_record(record, txn)
 
             total += amount
 

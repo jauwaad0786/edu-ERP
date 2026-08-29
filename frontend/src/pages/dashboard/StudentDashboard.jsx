@@ -24,7 +24,27 @@ export default function StudentDashboard() {
   const [holidays,     setHolidays]     = useState([]);
   const [notes,        setNotes]        = useState([]);
   const [libraryData,  setLibraryData]  = useState(null);
+  const [hostelData,   setHostelData]   = useState(null);
   const [downloading,  setDownloading]  = useState(false);
+
+  // Hostel Student Modals
+  const [studentPassModal, setStudentPassModal] = useState(false);
+  const [passType, setPassType]         = useState('DAY_OUTING');
+  const [passReason, setPassReason]     = useState('');
+  const [passDest, setPassDest]         = useState('');
+  const [passOutTime, setPassOutTime]   = useState('');
+  const [passReturnTime, setPassReturnTime] = useState('');
+  const [submittingPass, setSubmittingPass] = useState(false);
+
+  const [studentCompModal, setStudentCompModal] = useState(false);
+  const [compCategory, setCompCategory] = useState('MAINTENANCE');
+  const [compTitle, setCompTitle]       = useState('');
+  const [compDesc, setCompDesc]         = useState('');
+  const [submittingComp, setSubmittingComp] = useState(false);
+
+  const fetchHostelData = () => {
+    api.get('/student/hostel').then(r => setHostelData(r.data)).catch(() => {});
+  };
 
   useEffect(() => {
     api.get('/student/profile').then(r => setProfile(r.data)).catch(() => {});
@@ -35,6 +55,7 @@ export default function StudentDashboard() {
     api.get('/principal/holidays').then(r => setHolidays(r.data || [])).catch(() => {});
     api.get('/teacher/notes').then(r => setNotes(r.data || [])).catch(() => {});
     api.get('/student/library').then(r => setLibraryData(r.data)).catch(() => {});
+    fetchHostelData();
   }, []);
 
   const fmt = n => n?.toLocaleString('en-IN') ?? '—';
@@ -58,6 +79,7 @@ export default function StudentDashboard() {
     { key: 'marks',      icon: 'ti-award',           label: 'Report Card' },
     { key: 'fees',       icon: 'ti-receipt-2',       label: 'Fee Details' },
     { key: 'library',    icon: 'ti-books',           label: 'My Library' },
+    { key: 'hostel',     icon: 'ti-building',        label: 'My Hostel' },
     { key: 'notes',      icon: 'ti-book-2',          label: 'Study Material' },
     { key: 'holidays',   icon: 'ti-calendar-event',  label: 'Holidays' },
   ];
@@ -1068,6 +1090,506 @@ export default function StudentDashboard() {
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* ══ MY HOSTEL TAB ══ */}
+          {tab === 'hostel' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {!hostelData?.has_hostel ? (
+                <div className="card text-center" style={{
+                  borderRadius: '20px', padding: '50px 20px',
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+                }}>
+                  <div style={{
+                    width: '70px', height: '70px', borderRadius: '50%',
+                    background: 'rgba(99, 102, 241, 0.1)', color: '#6366f1',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    margin: '0 auto 16px', fontSize: '32px'
+                  }}>
+                    <i className="ti ti-building"></i>
+                  </div>
+                  <h3 style={{ margin: '0 0 8px', color: darkMode ? '#ffffff' : '#0f172a', fontWeight: 800 }}>No Active Hostel Allocation</h3>
+                  <p style={{ color: '#94a3b8', maxWidth: '460px', margin: '0 auto', fontSize: '14px' }}>
+                    You are currently registered as a Day Scholar. If you have applied for hostel accommodation, please contact the Hostel Administration or Warden office.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* ── Room & Warden Command Card ── */}
+                  <div style={{
+                    borderRadius: '20px', padding: '24px 28px',
+                    background: darkMode
+                      ? 'linear-gradient(135deg, #1e1b4b 0%, #172554 100%)'
+                      : 'linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%)',
+                    color: '#ffffff', boxShadow: '0 10px 25px -5px rgba(59, 130, 246, 0.3)',
+                    position: 'relative', overflow: 'hidden'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+                      <div>
+                        <span style={{
+                          background: 'rgba(255,255,255,0.2)', padding: '4px 12px', borderRadius: '20px',
+                          fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px'
+                        }}>
+                          {hostelData.current_allocation?.hostel_name} &bull; {hostelData.current_allocation?.building_name}
+                        </span>
+                        <h2 style={{ margin: '12px 0 6px', fontSize: '28px', fontWeight: 800 }}>
+                          Room {hostelData.current_allocation?.room_number} &bull; Bed {hostelData.current_allocation?.bed_number}
+                        </h2>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
+                          <span style={{ background: 'rgba(255,255,255,0.15)', padding: '3px 10px', borderRadius: '6px', fontSize: '12px' }}>
+                            {hostelData.current_allocation?.room_type} SHARING
+                          </span>
+                          <span style={{ background: 'rgba(255,255,255,0.15)', padding: '3px 10px', borderRadius: '6px', fontSize: '12px' }}>
+                            {hostelData.current_allocation?.is_ac ? '❄️ AC' : 'Non-AC'}
+                          </span>
+                          {hostelData.current_allocation?.has_attached_bath && (
+                            <span style={{ background: 'rgba(255,255,255,0.15)', padding: '3px 10px', borderRadius: '6px', fontSize: '12px' }}>
+                              🚿 Attached Bath
+                            </span>
+                          )}
+                          {hostelData.current_allocation?.has_wifi && (
+                            <span style={{ background: 'rgba(255,255,255,0.15)', padding: '3px 10px', borderRadius: '6px', fontSize: '12px' }}>
+                              📶 WiFi
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Warden Info Box */}
+                      <div style={{
+                        background: 'rgba(0,0,0,0.25)', padding: '14px 18px', borderRadius: '14px',
+                        backdropFilter: 'blur(10px)', minWidth: '220px'
+                      }}>
+                        <div style={{ fontSize: '11px', textTransform: 'uppercase', opacity: 0.8, fontWeight: 700 }}>Hostel Warden</div>
+                        <div style={{ fontSize: '15px', fontWeight: 700, marginTop: '2px' }}>{hostelData.current_allocation?.warden_name}</div>
+                        {hostelData.current_allocation?.warden_contact && (
+                          <div style={{ fontSize: '12px', marginTop: '4px', opacity: 0.9 }}>
+                            <i className="ti ti-phone me-1"></i>{hostelData.current_allocation?.warden_contact}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Roommates */}
+                    {hostelData.roommates?.length > 0 && (
+                      <div style={{ marginTop: '18px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.15)' }}>
+                        <div style={{ fontSize: '12px', opacity: 0.8, fontWeight: 600, marginBottom: '6px' }}>Roommates in Room:</div>
+                        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                          {hostelData.roommates.map((m, idx) => (
+                            <span key={idx} style={{
+                              background: 'rgba(255,255,255,0.15)', padding: '4px 12px', borderRadius: '8px',
+                              fontSize: '12px', fontWeight: 600
+                            }}>
+                              Bed {m.bed_number}: {m.name} ({m.class_name})
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ── Financial Status & Quick Actions ── */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                    <div className="card p-3" style={{
+                      borderRadius: '16px', background: darkMode ? '#111827' : '#ffffff',
+                      border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+                    }}>
+                      <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>TOTAL HOSTEL DUES</div>
+                      <div style={{ fontSize: '24px', fontWeight: 800, color: hostelData.total_outstanding_dues > 0 ? '#ef4444' : '#10b981', marginTop: '4px' }}>
+                        ₹{hostelData.total_outstanding_dues}
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
+                        Rent Dues: ₹{hostelData.total_fee_dues} &bull; Fines: ₹{hostelData.total_fine_dues}
+                      </div>
+                    </div>
+
+                    <div className="card p-3" style={{
+                      borderRadius: '16px', background: darkMode ? '#111827' : '#ffffff',
+                      border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+                    }}>
+                      <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>NIGHT ROLL CALL ATTENDANCE</div>
+                      <div style={{ fontSize: '24px', fontWeight: 800, color: '#10b981', marginTop: '4px' }}>
+                        {hostelData.attendance?.percentage}%
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
+                        Present: {hostelData.attendance?.present_count} / {hostelData.attendance?.total_nights} Nights
+                      </div>
+                    </div>
+
+                    <div className="card p-3 d-flex flex-column justify-content-center gap-2" style={{
+                      borderRadius: '16px', background: darkMode ? '#111827' : '#ffffff',
+                      border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+                    }}>
+                      <button
+                        className="btn btn-sm btn-primary w-100 fw-bold"
+                        onClick={() => setStudentPassModal(true)}
+                        style={{ borderRadius: '8px', padding: '8px' }}
+                      >
+                        <i className="ti ti-ticket me-1"></i> Request Gate Pass
+                      </button>
+                      <button
+                        className="btn btn-sm btn-outline-warning w-100 fw-bold"
+                        onClick={() => setStudentCompModal(true)}
+                        style={{ borderRadius: '8px', padding: '8px' }}
+                      >
+                        <i className="ti ti-tool me-1"></i> Log Room Complaint
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* ── Monthly Fees Ledger ── */}
+                  <div className="card" style={{
+                    borderRadius: '16px', background: darkMode ? '#111827' : '#ffffff',
+                    border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+                  }}>
+                    <div className="card-header" style={{ padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}` }}>
+                      <h4 style={{ margin: 0, fontSize: '15px', color: darkMode ? '#ffffff' : '#0f172a' }}>
+                        💳 Monthly Room Billing Ledger
+                      </h4>
+                    </div>
+                    <div className="table-container" style={{ border: 'none' }}>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Month</th><th>Billed Due</th><th>Paid</th><th>Outstanding</th><th>Status</th><th>Receipt #</th><th>Paid Date</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(hostelData.monthly_fees || []).map(f => (
+                            <tr key={f.id}>
+                              <td style={{ fontWeight: 700 }}>{f.month}</td>
+                              <td>₹{f.amount_due}</td>
+                              <td style={{ color: '#10b981', fontWeight: 600 }}>₹{f.amount_paid}</td>
+                              <td style={{ color: f.pending > 0 ? '#ef4444' : '#10b981', fontWeight: 800 }}>₹{f.pending}</td>
+                              <td>
+                                <span className={`badge ${f.status === 'PAID' ? 'badge-success' : f.status === 'PARTIAL' ? 'badge-warning' : 'badge-error'}`}>
+                                  {f.status}
+                                </span>
+                              </td>
+                              <td style={{ fontFamily: 'monospace', fontSize: '11px' }}>{f.receipt_no || '—'}</td>
+                              <td>{f.paid_date || '—'}</td>
+                            </tr>
+                          ))}
+                          {!hostelData.monthly_fees?.length && (
+                            <tr><td colSpan={7} style={{ textAlign: 'center', color: '#94a3b8', padding: '24px' }}>No monthly fee records</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* ── Fines & Penalties ── */}
+                  {hostelData.fines?.length > 0 && (
+                    <div className="card" style={{
+                      borderRadius: '16px', background: darkMode ? '#111827' : '#ffffff',
+                      border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+                    }}>
+                      <div className="card-header" style={{ padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}` }}>
+                        <h4 style={{ margin: 0, fontSize: '15px', color: darkMode ? '#ffffff' : '#0f172a' }}>
+                          ⚠️ Damage &amp; Penalty History
+                        </h4>
+                      </div>
+                      <div className="table-container" style={{ border: 'none' }}>
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Reason</th><th>Description</th><th>Amount</th><th>Paid</th><th>Waived</th><th>Outstanding</th><th>Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {hostelData.fines.map(f => (
+                              <tr key={f.id}>
+                                <td style={{ fontWeight: 700 }}>{f.reason.replace('_', ' ')}</td>
+                                <td style={{ color: '#94a3b8' }}>{f.description || '—'}</td>
+                                <td>₹{f.amount}</td>
+                                <td style={{ color: '#10b981' }}>₹{f.amount_paid}</td>
+                                <td style={{ color: '#8b5cf6' }}>{f.waived_amount > 0 ? `₹${f.waived_amount}` : '—'}</td>
+                                <td style={{ color: f.outstanding_amount > 0 ? '#ef4444' : '#10b981', fontWeight: 800 }}>₹{f.outstanding_amount}</td>
+                                <td><span className="badge badge-warning">{f.status}</span></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Out-Pass & Complaints Two Columns ── */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
+                    <div className="card" style={{
+                      borderRadius: '16px', background: darkMode ? '#111827' : '#ffffff',
+                      border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+                    }}>
+                      <div className="card-header" style={{ padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}` }}>
+                        <h4 style={{ margin: 0, fontSize: '15px', color: darkMode ? '#ffffff' : '#0f172a' }}>
+                          🎫 Gate Pass History
+                        </h4>
+                      </div>
+                      <div className="table-container" style={{ border: 'none', maxHeight: '260px', overflowY: 'auto' }}>
+                        <table>
+                          <thead>
+                            <tr><th>Type</th><th>Departure</th><th>Expected Return</th><th>Status</th></tr>
+                          </thead>
+                          <tbody>
+                            {(hostelData.out_passes || []).map(p => (
+                              <tr key={p.id}>
+                                <td style={{ fontWeight: 600 }}>{p.pass_type.replace('_', ' ')}</td>
+                                <td style={{ fontSize: '12px' }}>{p.out_time ? new Date(p.out_time).toLocaleDateString() : '—'}</td>
+                                <td style={{ fontSize: '12px' }}>{p.expected_return ? new Date(p.expected_return).toLocaleDateString() : '—'}</td>
+                                <td><span className="badge badge-info">{p.status}</span></td>
+                              </tr>
+                            ))}
+                            {!hostelData.out_passes?.length && (
+                              <tr><td colSpan={4} style={{ textAlign: 'center', color: '#94a3b8', padding: '20px' }}>No gate pass requests yet</td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    <div className="card" style={{
+                      borderRadius: '16px', background: darkMode ? '#111827' : '#ffffff',
+                      border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+                    }}>
+                      <div className="card-header" style={{ padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}` }}>
+                        <h4 style={{ margin: 0, fontSize: '15px', color: darkMode ? '#ffffff' : '#0f172a' }}>
+                          🛠️ Room Complaints &amp; Requests
+                        </h4>
+                      </div>
+                      <div className="table-container" style={{ border: 'none', maxHeight: '260px', overflowY: 'auto' }}>
+                        <table>
+                          <thead>
+                            <tr><th>Issue</th><th>Category</th><th>Reported</th><th>Status</th></tr>
+                          </thead>
+                          <tbody>
+                            {(hostelData.complaints || []).map(c => (
+                              <tr key={c.id}>
+                                <td style={{ fontWeight: 600 }}>{c.title}</td>
+                                <td><span className="badge badge-secondary">{c.category}</span></td>
+                                <td style={{ fontSize: '12px' }}>{c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}</td>
+                                <td><span className="badge badge-warning">{c.status}</span></td>
+                              </tr>
+                            ))}
+                            {!hostelData.complaints?.length && (
+                              <tr><td colSpan={4} style={{ textAlign: 'center', color: '#94a3b8', padding: '20px' }}>No maintenance complaints logged</td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ══ STUDENT OUT-PASS MODAL ══ */}
+          {studentPassModal && (
+            <div
+              style={{
+                position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999,
+                backdropFilter: 'blur(6px)'
+              }}
+              onClick={e => e.target === e.currentTarget && setStudentPassModal(false)}
+            >
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!passOutTime || !passReturnTime) {
+                    toast.error('Departure and expected return times are required');
+                    return;
+                  }
+                  try {
+                    setSubmittingPass(true);
+                    await api.post('/hostel/out-passes', {
+                      pass_type: passType,
+                      reason: passReason,
+                      destination: passDest,
+                      out_time: passOutTime,
+                      expected_return: passReturnTime,
+                    });
+                    toast.success('Gate pass requested successfully! Awaiting Warden approval.');
+                    setStudentPassModal(false);
+                    fetchHostelData();
+                  } catch (err) {
+                    toast.error(err.response?.data?.error || 'Failed to submit gate pass request');
+                  } finally {
+                    setSubmittingPass(false);
+                  }
+                }}
+                style={{
+                  background: darkMode ? '#111827' : '#ffffff', borderRadius: '20px', padding: '28px',
+                  width: '100%', maxWidth: '440px',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.1)' : '#e2e8f0'}`,
+                  boxShadow: '0 20px 40px rgba(0,0,0,0.4)'
+                }}
+              >
+                <h3 style={{ margin: '0 0 14px', fontSize: '18px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                  🎫 Request Hostel Gate Pass
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '4px' }}>Pass Type</label>
+                    <select
+                      className="form-select form-select-sm"
+                      value={passType}
+                      onChange={e => setPassType(e.target.value)}
+                    >
+                      <option value="DAY_OUTING">Day Outing</option>
+                      <option value="NIGHT_STAY">Night Stay</option>
+                      <option value="HOME_LEAVE">Home Leave</option>
+                      <option value="EMERGENCY">Emergency</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '4px' }}>Destination</label>
+                    <input
+                      type="text"
+                      className="form-control form-control-sm"
+                      placeholder="Home / City Market"
+                      value={passDest}
+                      onChange={e => setPassDest(e.target.value)}
+                    />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '4px' }}>Out Time *</label>
+                      <input
+                        type="datetime-local"
+                        className="form-control form-control-sm"
+                        value={passOutTime}
+                        onChange={e => setPassOutTime(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '12px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '4px' }}>Expected Return *</label>
+                      <input
+                        type="datetime-local"
+                        className="form-control form-control-sm"
+                        value={passReturnTime}
+                        onChange={e => setPassReturnTime(e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '4px' }}>Reason *</label>
+                    <textarea
+                      rows="2"
+                      className="form-control form-control-sm"
+                      placeholder="Reason for outing..."
+                      value={passReason}
+                      onChange={e => setPassReason(e.target.value)}
+                      required
+                    ></textarea>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
+                  <button type="button" className="btn btn-sm btn-light" onClick={() => setStudentPassModal(false)}>Cancel</button>
+                  <button type="submit" className="btn btn-sm btn-primary fw-bold" disabled={submittingPass}>
+                    {submittingPass ? 'Submitting...' : 'Submit Request'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* ══ STUDENT COMPLAINT MODAL ══ */}
+          {studentCompModal && (
+            <div
+              style={{
+                position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999,
+                backdropFilter: 'blur(6px)'
+              }}
+              onClick={e => e.target === e.currentTarget && setStudentCompModal(false)}
+            >
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!compTitle.trim()) {
+                    toast.error('Title is required');
+                    return;
+                  }
+                  try {
+                    setSubmittingComp(true);
+                    await api.post('/hostel/complaints', {
+                      category: compCategory,
+                      title: compTitle,
+                      description: compDesc,
+                      priority: 'MEDIUM',
+                    });
+                    toast.success('Complaint ticket logged with Hostel Warden');
+                    setStudentCompModal(false);
+                    setCompTitle('');
+                    setCompDesc('');
+                    fetchHostelData();
+                  } catch (err) {
+                    toast.error(err.response?.data?.error || 'Failed to submit complaint');
+                  } finally {
+                    setSubmittingComp(false);
+                  }
+                }}
+                style={{
+                  background: darkMode ? '#111827' : '#ffffff', borderRadius: '20px', padding: '28px',
+                  width: '100%', maxWidth: '440px',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.1)' : '#e2e8f0'}`,
+                  boxShadow: '0 20px 40px rgba(0,0,0,0.4)'
+                }}
+              >
+                <h3 style={{ margin: '0 0 14px', fontSize: '18px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                  🛠️ Log Room Complaint / Maintenance
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '4px' }}>Category</label>
+                    <select
+                      className="form-select form-select-sm"
+                      value={compCategory}
+                      onChange={e => setCompCategory(e.target.value)}
+                    >
+                      <option value="MAINTENANCE">Maintenance</option>
+                      <option value="ELECTRICAL">Electrical</option>
+                      <option value="PLUMBING">Plumbing</option>
+                      <option value="CLEANING">Cleaning</option>
+                      <option value="FOOD">Food / Mess</option>
+                      <option value="WIFI">WiFi / Internet</option>
+                      <option value="OTHER">Other</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '4px' }}>Issue Title *</label>
+                    <input
+                      type="text"
+                      className="form-control form-control-sm"
+                      placeholder="e.g. Geyser water not heating"
+                      value={compTitle}
+                      onChange={e => setCompTitle(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '4px' }}>Description</label>
+                    <textarea
+                      rows="3"
+                      className="form-control form-control-sm"
+                      placeholder="Details of the problem..."
+                      value={compDesc}
+                      onChange={e => setCompDesc(e.target.value)}
+                    ></textarea>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
+                  <button type="button" className="btn btn-sm btn-light" onClick={() => setStudentCompModal(false)}>Cancel</button>
+                  <button type="submit" className="btn btn-sm btn-warning fw-bold" disabled={submittingComp}>
+                    {submittingComp ? 'Submitting...' : 'Log Ticket'}
+                  </button>
+                </div>
+              </form>
             </div>
           )}
 

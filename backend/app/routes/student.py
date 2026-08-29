@@ -353,3 +353,161 @@ def my_student_library():
     from app.routes.library import my_library
     return my_library()
 
+
+@student_bp.route('/hostel', methods=['GET'])
+@role_required('STUDENT', 'PARENT')
+def my_student_hostel():
+    """
+    Returns the student's active hostel allocation, room info, roommates,
+    monthly fee ledger, fines, out-passes, complaints, and attendance summary.
+    """
+    from app.models.hostel import (
+        Hostel, HostelBuilding, HostelFloor, HostelRoom, HostelBed,
+        HostelBedAllocation, HostelFineRecord, HostelComplaint,
+        HostelOutPass, HostelAttendance
+    )
+    user = get_current_user()
+    student_id = request.args.get('student_id')
+
+    if user.role.value == 'PARENT':
+        if not student_id:
+            return jsonify({'error': 'student_id is required for parent'}), 400
+        student = Student.query.get_or_404(student_id)
+        if student.school_id != user.school_id:
+            return jsonify({'error': 'Unauthorized'}), 403
+    else:
+        student = Student.query.filter_by(user_id=user.id).first()
+        if not student:
+            return jsonify({'error': 'Student record not found'}), 404
+
+    sid = student.school_id
+    active_alloc = HostelBedAllocation.query.filter_by(
+        student_id=student.id, status='ACTIVE'
+    ).first()
+
+    current_allocation = None
+    roommates = []
+
+    if active_alloc:
+        h = Hostel.query.get(active_alloc.hostel_id)
+        b = HostelBuilding.query.get(active_alloc.building_id)
+        f = HostelFloor.query.get(active_alloc.floor_id)
+        r = HostelRoom.query.get(active_alloc.room_id)
+        bd = HostelBed.query.get(active_alloc.bed_id)
+
+        warden = h.warden if h else None
+
+        current_allocation = {
+            'allocation_id':          active_alloc.id,
+            'hostel_id':              h.id if h else None,
+            'hostel_name':            h.name if h else '',
+            'hostel_type':            h.hostel_type if h else '',
+            'building_name':          b.name if b else '',
+            'floor_name':             f.name if f else '',
+            'room_id':                r.id if r else None,
+            'room_number':            r.room_number if r else '',
+            'room_type':              r.room_type if r else '',
+            'is_ac':                  r.is_ac if r else False,
+            'has_attached_bath':      r.has_attached_bath if r else False,
+            'has_wifi':               r.has_wifi if r else False,
+            'has_study_table':        r.has_study_table if r else False,
+            'has_cupboard':           r.has_cupboard if r else False,
+            'has_balcony':            r.has_balcony if r else False,
+            'bed_number':             bd.bed_number if bd else '',
+            'admission_date':         str(active_alloc.admission_date) if active_alloc.admission_date else None,
+            'checkin_date':           str(active_alloc.checkin_date) if active_alloc.checkin_date else None,
+            'expected_checkout_date': str(active_alloc.expected_checkout_date) if active_alloc.expected_checkout_date else None,
+            'warden_name':            warden.name if warden else (h.warden_id or 'Assigned Warden'),
+            'warden_contact':         h.contact_number if h else '',
+            'warden_email':           h.contact_email if h else '',
+        }
+
+        # Room mates in the same room
+        if r:
+            other_beds = HostelBed.query.filter(
+                HostelBed.room_id == r.id,
+                HostelBed.current_student_id.isnot(None),
+                HostelBed.current_student_id != student.id
+            ).all()
+            for ob in other_beds:
+                mate_student = Student.query.get(ob.current_student_id)
+                if mate_student and mate_student.user:
+                    mate_cls = Class.query.get(mate_student.class_id) if mate_student.class_id else None
+                    roommates.append({
+                        'name':        mate_student.user.name,
+                        'roll_number': mate_student.roll_number or '',
+                        'class_name':  f"{mate_cls.name} - {mate_cls.section}" if mate_cls else '',
+                        'bed_number':  ob.bed_number,
+                    })
+
+    # Monthly fee records
+    fee_records = FeeRecord.query.filter_by(
+        school_id=sid, student_id=student.id, fee_type='HOSTEL', source='HOSTEL'
+    ).order_by(FeeRecord.created_at.desc()).all()
+
+    fees_list = []
+    total_fee_dues = 0.0
+    for fr in fee_records:
+        eff_due = fr.effective_due()
+        paid = fr.amount_paid or 0.0
+        pending = max(0.0, round(eff_due - paid, 2))
+        if fr.status in ('PENDING', 'PARTIAL'):
+            total_fee_dues += pending
+        fees_list.append({
+            'id':           fr.id,
+            'month':        fr.month,
+            'amount_due':   eff_due,
+            'amount_paid':  paid,
+            'pending':      pending,
+            'status':       fr.status,
+            'due_date':     str(fr.due_date) if fr.due_date else '',
+            'paid_date':    str(fr.paid_date) if fr.paid_date else '',
+            'receipt_no':   fr.receipt_no or '',
+            'payment_mode': fr.payment_mode or '',
+        })
+
+    # Fines & Penalties
+    fines = HostelFineRecord.query.filter_by(
+        school_id=sid, student_id=student.id
+    ).order_by(HostelFineRecord.raised_date.desc()).all()
+
+    fines_list = [f.to_dict() for f in fines]
+    total_fine_dues = sum(f.outstanding_amount for f in fines)
+
+    # Out-passes
+    out_passes = HostelOutPass.query.filter_by(
+        school_id=sid, student_id=student.id
+    ).order_by(HostelOutPass.created_at.desc()).limit(30).all()
+
+    # Complaints
+    complaints = HostelComplaint.query.filter_by(
+        school_id=sid, student_id=student.id
+    ).order_by(HostelComplaint.created_at.desc()).limit(30).all()
+
+    # Attendance
+    att_records = HostelAttendance.query.filter_by(
+        school_id=sid, student_id=student.id
+    ).order_by(HostelAttendance.attendance_date.desc()).limit(60).all()
+
+    att_total = len(att_records)
+    att_present = sum(1 for a in att_records if a.status == 'PRESENT')
+
+    return jsonify({
+        'has_hostel':             bool(active_alloc),
+        'current_allocation':     current_allocation,
+        'roommates':              roommates,
+        'total_outstanding_dues': round(total_fee_dues + total_fine_dues, 2),
+        'total_fee_dues':         round(total_fee_dues, 2),
+        'total_fine_dues':        round(total_fine_dues, 2),
+        'monthly_fees':           fees_list,
+        'fines':                  fines_list,
+        'out_passes':             [op.to_dict() for op in out_passes],
+        'complaints':             [c.to_dict() for c in complaints],
+        'attendance': {
+            'total_nights':  att_total,
+            'present_count': att_present,
+            'percentage':    round((att_present / att_total) * 100, 1) if att_total else 100.0,
+            'recent_records': [a.to_dict() for a in att_records[:15]],
+        }
+    }), 200
+

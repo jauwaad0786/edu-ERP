@@ -148,6 +148,7 @@ def create_app(config_name='default'):
             _ensure_exam_columns()
             _ensure_document_columns()
             _ensure_library_columns()
+            _ensure_hostel_columns()
             db.create_all()
             _seed_super_admin()
 
@@ -361,6 +362,60 @@ def _ensure_library_columns():
                             print(f'[WARN] book_copies.{col}: {e}')
     except Exception as e:
         print(f'[WARN] _ensure_library_columns error: {e}')
+
+
+def _ensure_hostel_columns():
+    """Ensure newly added columns exist in hostel tables."""
+    from sqlalchemy import text, inspect
+    try:
+        inspector = inspect(db.engine)
+        table_names = inspector.get_table_names()
+
+        # 1. hostel_bed_allocations
+        if 'hostel_bed_allocations' in table_names:
+            existing = {c['name'] for c in inspector.get_columns('hostel_bed_allocations')}
+            to_add = {
+                'checkin_date':           'DATE',
+                'expected_checkout_date': 'DATE',
+                'checkout_remarks':       'VARCHAR(300)',
+                'checkout_approved_by':   'INTEGER',
+            }
+            with db.engine.connect() as conn:
+                for col, defn in to_add.items():
+                    if col not in existing:
+                        try:
+                            conn.execute(text(f'ALTER TABLE hostel_bed_allocations ADD COLUMN {col} {defn}'))
+                            conn.commit()
+                            print(f'[OK] Added column hostel_bed_allocations.{col}')
+                        except Exception as e:
+                            print(f'[WARN] hostel_bed_allocations.{col}: {e}')
+
+        # 2. hostel_fine_records
+        if 'hostel_fine_records' in table_names:
+            existing = {c['name'] for c in inspector.get_columns('hostel_fine_records')}
+            to_add = {
+                'amount_paid':        'FLOAT DEFAULT 0.0',
+                'waived_amount':      'FLOAT DEFAULT 0.0',
+                'waived_by':          'INTEGER',
+                'waived_at':          'TIMESTAMP',
+                'waive_reason':       'VARCHAR(300)',
+                'collected_by':       'INTEGER',
+                'collected_at':       'TIMESTAMP',
+                'payment_mode':       'VARCHAR(30)',
+                'receipt_no':         'VARCHAR(50)',
+                'fee_transaction_id': 'INTEGER',
+            }
+            with db.engine.connect() as conn:
+                for col, defn in to_add.items():
+                    if col not in existing:
+                        try:
+                            conn.execute(text(f'ALTER TABLE hostel_fine_records ADD COLUMN {col} {defn}'))
+                            conn.commit()
+                            print(f'[OK] Added column hostel_fine_records.{col}')
+                        except Exception as e:
+                            print(f'[WARN] hostel_fine_records.{col}: {e}')
+    except Exception as e:
+        print(f'[WARN] _ensure_hostel_columns error: {e}')
 
 
 def _ensure_communication_columns():

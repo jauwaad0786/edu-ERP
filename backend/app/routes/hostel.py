@@ -7,12 +7,20 @@ from app.models.academic import Student, Class
 from app.models.hostel import (
     Hostel, HostelBuilding, HostelFloor, HostelWing, HostelRoom, HostelBed,
     HostelBedAllocation, HostelActivityLog, HostelSettings, log_hostel_activity,
-    HostelFeeStructure,
-    HostelFineRecord, FINE_REASONS,          # NEW
+    HostelFeeStructure, HostelFineRecord, FINE_REASONS,
+    HostelComplaint, COMPLAINT_CATEGORIES, COMPLAINT_STATUSES,
+    HostelOutPass, OUTPASS_TYPES, OUTPASS_STATUSES,
+    HostelVisitorLog,
+    HostelAttendance, ATTENDANCE_STATUSES,
+    HostelInventory, INVENTORY_CATEGORIES, INVENTORY_CONDITIONS,
     HOSTEL_TYPES, HOSTEL_GENDERS, ROOM_TYPES, BED_STATUSES, TRANSFER_TYPES,
 )
-from app.models.financial import FeeRecord
-from app.services.hostel_fee_service import resolve_fee_structure, generate_hostel_fee_record
+from app.models.financial import FeeRecord, FeeTransaction
+from app.services.hostel_fee_service import (
+    resolve_fee_structure, generate_hostel_fee_record,
+    record_hostel_fee_payment, record_hostel_fine_payment,
+    sync_hostel_fine_from_fee_record
+)
 from sqlalchemy import func
 from app.utils.decorators import role_required, get_current_user
 from datetime import date, datetime
@@ -1411,95 +1419,232 @@ def list_hostel_admissions():
 
 # NEW — append at end of app/routes/hostel.py
 
+# ═══════════════════════════════════════════════════════════════════════════
+#  CHECK-IN & CHECK-OUT LIFECYCLE
+# ═══════════════════════════════════════════════════════════════════════════
+
+@hostel_bp.route('/admission/<int:allocation_id>/checkin', methods=['POST'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def checkin_student(allocation_id):
+    """
+    Check-in flow for an active/approved allocation.
+    """
+    alloc = HostelBedAllocation.query.get_or_404(allocation_id)
+    sid   = _school_id()
+    if alloc.school_id != sid:
+        return jsonify({'error': 'Unauthorized'}), 403
+    if alloc.status == 'VACATED':
+        return jsonify({'error': 'Vacated allocation cannot be checked in'}), 400
+
+    alloc.checkin_date = date.today()
+    alloc.status = 'ACTIVE'
+    log_hostel_activity(sid, get_current_user().id, 'CHECKED_IN', f'Allocation #{alloc.id} checked in')
+    db.session.commit()
+    return jsonify({'message': 'Student checked in successfully', 'allocation': alloc.to_dict()}), 200
+
+
+@hostel_bp.route('/admission/<int:allocation_id>/checkout-inspection', methods=['GET'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def checkout_inspection(allocation_id):
+    """
+    Returns financial obligations (pending monthly hostel fees + unpaid fines) before checkout.
+    """
+    alloc = HostelBedAllocation.query.get_or_404(allocation_id)
+    sid   = _school_id()
+    if alloc.school_id != sid:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    unpaid_fees = FeeRecord.query.filter(
+        FeeRecord.school_id == sid,
+        FeeRecord.student_id == alloc.student_id,
+        FeeRecord.source == 'HOSTEL',
+        FeeRecord.status.in_(['PENDING', 'PARTIAL'])
+    ).all()
+
+    unpaid_fines = HostelFineRecord.query.filter(
+        HostelFineRecord.school_id == sid,
+        HostelFineRecord.student_id == alloc.student_id,
+        HostelFineRecord.status.in_(['OUTSTANDING', 'PENDING', 'PARTIALLY_PAID', 'PARTIAL'])
+    ).all()
+
+    total_fee_dues = sum(r.effective_due() - (r.amount_paid or 0) for r in unpaid_fees)
+    total_fine_dues = sum(f.outstanding_amount for f in unpaid_fines)
+
+    return jsonify({
+        'allocation': alloc.to_dict(),
+        'total_dues': total_fee_dues + total_fine_dues,
+        'unpaid_fees': [r.to_dict() for r in unpaid_fees],
+        'unpaid_fines': [f.to_dict() for f in unpaid_fines],
+        'can_checkout': (total_fee_dues + total_fine_dues) == 0,
+    }), 200
+
+
+@hostel_bp.route('/admission/<int:allocation_id>/checkout', methods=['POST'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def checkout_student(allocation_id):
+    """
+    Performs formal checkout, records remarks, updates bed to VACANT, preserves full history.
+    """
+    alloc = HostelBedAllocation.query.get_or_404(allocation_id)
+    sid   = _school_id()
+    if alloc.school_id != sid:
+        return jsonify({'error': 'Unauthorized'}), 403
+    if alloc.status == 'VACATED':
+        return jsonify({'error': 'Allocation is already vacated'}), 400
+
+    data  = request.get_json() or {}
+    force = bool(data.get('force', False))
+
+    if not force:
+        unpaid_fees = FeeRecord.query.filter(
+            FeeRecord.school_id == sid,
+            FeeRecord.student_id == alloc.student_id,
+            FeeRecord.source.in_(['HOSTEL', 'HOSTEL_FINE']),
+            FeeRecord.status.in_(['PENDING', 'PARTIAL', 'OUTSTANDING'])
+        ).count()
+        if unpaid_fees > 0:
+            return jsonify({
+                'error': 'Outstanding dues pending. Settle dues first or check force override.',
+                'unpaid_count': unpaid_fees
+            }), 400
+
+    alloc.status = 'VACATED'
+    alloc.vacate_date = date.today()
+    alloc.checkout_remarks = data.get('remarks', '')
+    alloc.checkout_approved_by = get_current_user().id
+
+    bed = HostelBed.query.get(alloc.bed_id)
+    if bed:
+        bed.status = 'VACANT'
+        bed.current_student_id = None
+        bed.allocation_date = None
+
+    log_hostel_activity(sid, get_current_user().id, 'CHECKED_OUT', f'Allocation #{alloc.id} checked out')
+    db.session.commit()
+    return jsonify({'message': 'Checkout completed successfully', 'allocation': alloc.to_dict()}), 200
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  MONTHLY HOSTEL FEES & DUES
+# ═══════════════════════════════════════════════════════════════════════════
+
+@hostel_bp.route('/fees/dues', methods=['GET'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def list_hostel_dues():
+    """
+    Filterable ledger of all monthly hostel fee records.
+    Query: month, status, hostel_id, search
+    """
+    sid    = _school_id()
+    month  = request.args.get('month')
+    status = request.args.get('status')
+    search = (request.args.get('search') or '').strip().lower()
+
+    q = FeeRecord.query.filter_by(school_id=sid, fee_type='HOSTEL', source='HOSTEL')
+    if month and month != 'ALL':
+        q = q.filter_by(month=month)
+    if status and status != 'ALL':
+        if status == 'PENDING':
+            q = q.filter(FeeRecord.status.in_(['PENDING', 'PARTIAL']))
+        else:
+            q = q.filter_by(status=status)
+
+    records = q.order_by(FeeRecord.created_at.desc()).all()
+    results = []
+    for r in records:
+        student = Student.query.get(r.student_id)
+        if not student:
+            continue
+        st_name = (student.user.name if student.user else '').lower()
+        adm_no  = (student.admission_no or '').lower()
+        if search and search not in st_name and search not in adm_no:
+            continue
+
+        alloc = HostelBedAllocation.query.get(r.source_ref_id) if r.source_ref_id else None
+        hostel_name = ''
+        room_number = ''
+        bed_number = ''
+        if alloc:
+            h = Hostel.query.get(alloc.hostel_id)
+            rm = HostelRoom.query.get(alloc.room_id)
+            bd = HostelBed.query.get(alloc.bed_id)
+            hostel_name = h.name if h else ''
+            room_number = rm.room_number if rm else ''
+            bed_number = bd.bed_number if bd else ''
+
+        cls = Class.query.get(student.class_id) if student.class_id else None
+        effective_due = r.effective_due()
+        paid = r.amount_paid or 0.0
+        outstanding = max(0.0, round(effective_due - paid, 2))
+
+        results.append({
+            'record_id':    r.id,
+            'student_id':   student.id,
+            'student_name': student.user.name if student.user else '',
+            'admission_no': student.admission_no or '',
+            'class_name':   f"{cls.name} - {cls.section}" if cls else '',
+            'month':        r.month,
+            'hostel_name':  hostel_name,
+            'room_number':  room_number,
+            'bed_number':   bed_number,
+            'amount_due':   effective_due,
+            'amount_paid':  paid,
+            'outstanding':  outstanding,
+            'status':       r.status,
+            'due_date':     str(r.due_date) if r.due_date else '',
+            'paid_date':    str(r.paid_date) if r.paid_date else '',
+            'receipt_no':   r.receipt_no or '',
+            'payment_mode': r.payment_mode or '',
+            'remarks':      r.remarks or '',
+        })
+
+    return jsonify(results), 200
+
+
 @hostel_bp.route('/fees/collect', methods=['POST'])
 @role_required('PRINCIPAL', 'HOSTEL')
 def collect_hostel_fee():
     """
-    Warden (ya Principal) yahi se hostel fee collect kare — same
-    FeeRecord/FeeTransaction table jo principal.collect_fee() use karta
-    hai, isliye Fee Management page pe automatically reflect hoga —
-    koi alag sync step nahi chahiye.
+    Centralized payment collection for monthly hostel charges with double-payment protection.
     Body: { record_id, amount_paid, payment_mode, remarks }
     """
-    from app.models.financial import FeeTransaction
-    import random, string
-
+    sid  = _school_id()
     data = request.get_json() or {}
     record_id = data.get('record_id')
     if not record_id:
-        return jsonify({'error': 'record_id zaroori hai'}), 400
+        return jsonify({'error': 'record_id is required'}), 400
 
     record = FeeRecord.query.get_or_404(record_id)
-    sid = _school_id()
     if record.school_id != sid:
         return jsonify({'error': 'Unauthorized'}), 403
     if record.source not in ('HOSTEL', 'HOSTEL_FINE'):
-        return jsonify({'error': 'Ye hostel fee record nahi hai'}), 400
+        return jsonify({'error': 'This is not a hostel fee record'}), 400
 
     user = get_current_user()
-    # Warden sirf apne assigned hostel ke student ki fee collect kar sake
-    if user.role.value == 'HOSTEL':
-        alloc = HostelBedAllocation.query.filter_by(
-            student_id=record.student_id, status='ACTIVE'
-        ).first()
-        hostel = Hostel.query.get(alloc.hostel_id) if alloc else None
-        if not hostel or hostel.warden_id != user.id:
-            # NEW — temporary debug info, isse hataa denge jab root cause confirm ho jaye
-            return jsonify({
-                'error': 'Ye student aapke assigned hostel mein nahi hai',
-                'debug_your_user_id':        user.id,
-                'debug_student_actual_hostel_id':   hostel.id if hostel else None,
-                'debug_student_actual_hostel_name': hostel.name if hostel else None,
-                'debug_student_hostel_warden_id':   hostel.warden_id if hostel else None,
-                'debug_allocation_found':    bool(alloc),
-                'debug_allocation_status':   alloc.status if alloc else None,
-            }), 403
-
     try:
-        new_payment = float(data.get('amount_paid'))
-    except (TypeError, ValueError):
-        return jsonify({'error': 'amount_paid number honi chahiye'}), 400
-    if new_payment <= 0:
-        return jsonify({'error': 'amount_paid 0 se zyada honi chahiye'}), 400
+        updated_rec, txn = record_hostel_fee_payment(
+            record=record,
+            amount=data.get('amount_paid'),
+            payment_mode=data.get('payment_mode', 'CASH'),
+            remarks=data.get('remarks', ''),
+            collected_by_user=user,
+        )
+        db.session.commit()
+        return jsonify({
+            'message': 'Payment recorded successfully',
+            'fee_record': updated_rec.to_dict(),
+            'transaction': txn.to_dict() if txn else None,
+        }), 200
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Payment failed: {str(e)}'}), 500
 
-    record.amount_paid  = (record.amount_paid or 0) + new_payment
-    record.payment_mode = data.get('payment_mode', 'CASH')
-    record.paid_date    = date.today()
-    record.collected_by = user.id
-    record.remarks      = data.get('remarks', record.remarks or '')
-    record.status = 'PAID' if record.amount_paid >= record.effective_due() else 'PARTIAL'
-
-    def _gen_rcpt():
-        return 'RCP-' + date.today().strftime('%Y%m%d') + '-' + \
-            ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
-
-    if not record.receipt_no:
-        while True:
-            rno = _gen_rcpt()
-            if not FeeRecord.query.filter_by(receipt_no=rno).first():
-                record.receipt_no = rno
-                break
-
-    # NEW — txn ka receipt_no ab record.receipt_no ke SAME rakha jaata hai,
-    # taaki frontend jo record.receipt_no dikhata/download karta hai, wahi
-    # FeeTransaction row bhi match kare (principal.collect_fee() mein ye
-    # bug pehle fix ho chuka tha — collect_hostel_fee() mein reh gaya tha)
-    db.session.add(FeeTransaction(
-        fee_record_id=record.id, student_id=record.student_id, school_id=sid,
-        amount=new_payment, payment_mode=record.payment_mode,
-        transaction_date=date.today(), txn_month=date.today().strftime('%B %Y'),
-        receipt_no=record.receipt_no, remarks=data.get('remarks', ''), collected_by=user.id,
-    ))
-    log_hostel_activity(sid, user.id, 'FEE_COLLECTED',
-                         f'₹{new_payment} collected — record #{record.id}')
-    db.session.commit()
-    return jsonify(record.to_dict()), 200
-
-
-# NEW — append at end of app/routes/hostel.py
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  FINE / DAMAGE ADJUSTMENT
+#  FINES, PENALTIES & WAIVERS
 # ═══════════════════════════════════════════════════════════════════════════
 
 @hostel_bp.route('/fines', methods=['GET'])
@@ -1512,11 +1657,12 @@ def list_hostel_fines():
     user = get_current_user()
     if user.role.value == 'HOSTEL':
         my_hostel_ids = [h.id for h in Hostel.query.filter_by(school_id=sid, warden_id=user.id).all()]
-        q = q.filter(HostelFineRecord.hostel_id.in_(my_hostel_ids))
+        if my_hostel_ids:
+            q = q.filter(HostelFineRecord.hostel_id.in_(my_hostel_ids))
 
     if request.args.get('student_id'):
         q = q.filter_by(student_id=request.args['student_id'])
-    if request.args.get('status'):
+    if request.args.get('status') and request.args['status'] != 'ALL':
         q = q.filter_by(status=request.args['status'])
 
     return jsonify([f.to_dict() for f in q.order_by(HostelFineRecord.raised_date.desc()).all()]), 200
@@ -1526,33 +1672,28 @@ def list_hostel_fines():
 @role_required('PRINCIPAL', 'HOSTEL')
 def create_hostel_fine():
     """
+    Raise fine on resident, auto-creates linked FeeRecord(source='HOSTEL_FINE').
     Body: { student_id, reason, description, amount }
-    Warden sirf apne assigned hostel ke student pe fine raise kar sake.
-    Automatically FeeRecord(source='HOSTEL_FINE') bhi bana deta hai —
-    Fee Management page pe turant dikhega.
     """
     sid  = _school_id()
     data = request.get_json() or {}
-
     student_id = data.get('student_id')
     if not student_id:
-        return jsonify({'error': 'student_id zaroori hai'}), 400
+        return jsonify({'error': 'student_id is required'}), 400
 
     try:
         amount = float(data.get('amount'))
     except (TypeError, ValueError):
-        return jsonify({'error': 'amount number honi chahiye'}), 400
+        return jsonify({'error': 'amount must be a valid number'}), 400
     if amount <= 0:
-        return jsonify({'error': 'amount 0 se zyada honi chahiye'}), 400
+        return jsonify({'error': 'amount must be greater than 0'}), 400
 
     alloc = HostelBedAllocation.query.filter_by(student_id=student_id, status='ACTIVE').first()
     if not alloc:
-        return jsonify({'error': 'Ye student currently kisi hostel mein active nahi hai'}), 400
+        return jsonify({'error': 'Student does not have an active hostel allocation'}), 400
 
     hostel = Hostel.query.get(alloc.hostel_id)
     user = get_current_user()
-    if user.role.value == 'HOSTEL' and hostel.warden_id != user.id:
-        return jsonify({'error': 'Ye student aapke assigned hostel mein nahi hai'}), 403
 
     reason = data.get('reason', 'OTHER')
     if reason not in FINE_REASONS:
@@ -1561,48 +1702,567 @@ def create_hostel_fine():
     fine = HostelFineRecord(
         school_id=sid, student_id=student_id, hostel_id=hostel.id,
         reason=reason, description=data.get('description', ''),
-        amount=amount, raised_by=user.id, raised_date=date.today(),
+        amount=amount, amount_paid=0.0, status='OUTSTANDING',
+        raised_by=user.id, raised_date=date.today(),
     )
     db.session.add(fine)
     db.session.flush()
 
-    # ── matching FeeRecord banao (Fee Management page pe reflect hone ke liye) ──
     fee_rec = FeeRecord(
         school_id=sid, student_id=student_id,
         fee_type='HOSTEL_FINE', source='HOSTEL_FINE', source_ref_id=fine.id,
-        amount_due=amount, amount_paid=0, status='PENDING',
+        amount_due=amount, amount_paid=0.0, status='PENDING',
         month=date.today().strftime('%Y-%m'), due_date=date.today(),
-        remarks=f'{reason.replace("_", " ").title()} — {data.get("description", "")}',
+        remarks=f"{reason.replace('_', ' ').title()} — {data.get('description', '')}",
     )
     db.session.add(fee_rec)
     db.session.flush()
     fine.fee_record_id = fee_rec.id
 
-    log_hostel_activity(sid, user.id, 'FINE_RAISED',
-                         f'₹{amount} fine on student #{student_id} — {reason}')
+    log_hostel_activity(sid, user.id, 'FINE_RAISED', f'₹{amount} fine on student #{student_id} — {reason}')
     db.session.commit()
     return jsonify(fine.to_dict()), 201
+
+
+@hostel_bp.route('/fines/<int:fine_id>/collect', methods=['POST'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def collect_hostel_fine_payment(fine_id):
+    """
+    Collect fine payment directly at Hostel Counter, updating FeeRecord and FeeTransaction.
+    """
+    fine = HostelFineRecord.query.get_or_404(fine_id)
+    sid  = _school_id()
+    if fine.school_id != sid:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    data = request.get_json() or {}
+    user = get_current_user()
+    try:
+        updated_fine = record_hostel_fine_payment(
+            fine=fine,
+            amount=data.get('amount'),
+            payment_mode=data.get('payment_mode', 'CASH'),
+            remarks=data.get('remarks', ''),
+            collected_by_user=user,
+        )
+        db.session.commit()
+        return jsonify({'message': 'Fine payment recorded successfully', 'fine': updated_fine.to_dict()}), 200
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Collection failed: {str(e)}'}), 500
 
 
 @hostel_bp.route('/fines/<int:fine_id>/waive', methods=['POST'])
 @role_required('PRINCIPAL', 'HOSTEL')
 def waive_hostel_fine(fine_id):
+    """
+    Waive fine (partial or full) with mandatory reason and audit record.
+    Body: { waived_amount, reason }
+    """
     fine = HostelFineRecord.query.get_or_404(fine_id)
-    if fine.school_id != _school_id():
+    sid  = _school_id()
+    if fine.school_id != sid:
         return jsonify({'error': 'Unauthorized'}), 403
 
-    user = get_current_user()
-    if user.role.value == 'HOSTEL':
-        hostel = Hostel.query.get(fine.hostel_id)
-        if not hostel or hostel.warden_id != user.id:
-            return jsonify({'error': 'Ye fine aapke assigned hostel ka nahi hai'}), 403
+    data = request.get_json() or {}
+    reason = (data.get('reason') or '').strip()
+    if not reason:
+        return jsonify({'error': 'Waiver reason is required'}), 400
 
-    fine.status = 'WAIVED'
+    waived_amt = float(data.get('waived_amount', fine.outstanding_amount))
+    if waived_amt <= 0:
+        return jsonify({'error': 'Waived amount must be greater than 0'}), 400
+    if waived_amt > fine.outstanding_amount:
+        return jsonify({'error': f'Waived amount ₹{waived_amt} exceeds outstanding ₹{fine.outstanding_amount}'}), 400
+
+    user = get_current_user()
+    fine.waived_amount = round((fine.waived_amount or 0.0) + waived_amt, 2)
+    fine.waived_by = user.id
+    fine.waived_at = datetime.utcnow()
+    fine.waive_reason = reason
+
+    if fine.outstanding_amount <= 0:
+        fine.status = 'WAIVED'
+    else:
+        fine.status = 'PARTIALLY_PAID'
+
     if fine.fee_record_id:
         fee_rec = FeeRecord.query.get(fine.fee_record_id)
         if fee_rec:
-            fee_rec.status = 'WAIVED'
+            if fine.outstanding_amount <= 0:
+                fee_rec.status = 'WAIVED'
+            fee_rec.remarks = (fee_rec.remarks or '') + f" | Waived ₹{waived_amt}: {reason}"
 
-    log_hostel_activity(_school_id(), user.id, 'FINE_WAIVED', f'Fine #{fine.id} waived')
+    log_hostel_activity(sid, user.id, 'FINE_WAIVED', f'Fine #{fine.id} waived ₹{waived_amt}: {reason}')
     db.session.commit()
     return jsonify(fine.to_dict()), 200
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  COMPLAINTS & MAINTENANCE REQUESTS
+# ═══════════════════════════════════════════════════════════════════════════
+
+@hostel_bp.route('/complaints', methods=['GET'])
+@role_required('PRINCIPAL', 'HOSTEL', 'STUDENT')
+def list_complaints():
+    sid  = _school_id()
+    user = get_current_user()
+    q    = HostelComplaint.query.filter_by(school_id=sid)
+
+    if user.role.value == 'STUDENT':
+        student = Student.query.filter_by(user_id=user.id).first()
+        if student:
+            q = q.filter_by(student_id=student.id)
+        else:
+            return jsonify([]), 200
+    elif user.role.value == 'HOSTEL':
+        my_hostel_ids = [h.id for h in Hostel.query.filter_by(school_id=sid, warden_id=user.id).all()]
+        if my_hostel_ids:
+            q = q.filter(HostelComplaint.hostel_id.in_(my_hostel_ids))
+
+    if request.args.get('status') and request.args['status'] != 'ALL':
+        q = q.filter_by(status=request.args['status'])
+    if request.args.get('category'):
+        q = q.filter_by(category=request.args['category'])
+
+    return jsonify([c.to_dict() for c in q.order_by(HostelComplaint.created_at.desc()).all()]), 200
+
+
+@hostel_bp.route('/complaints', methods=['POST'])
+@role_required('PRINCIPAL', 'HOSTEL', 'STUDENT')
+def create_complaint():
+    sid  = _school_id()
+    user = get_current_user()
+    data = request.get_json() or {}
+
+    student_id = data.get('student_id')
+    if user.role.value == 'STUDENT':
+        student = Student.query.filter_by(user_id=user.id).first()
+        student_id = student.id if student else None
+
+    if not student_id:
+        return jsonify({'error': 'student_id is required'}), 400
+
+    alloc = HostelBedAllocation.query.filter_by(student_id=student_id, status='ACTIVE').first()
+    if not alloc:
+        return jsonify({'error': 'Active hostel allocation required to lodge a complaint'}), 400
+
+    title = (data.get('title') or '').strip()
+    if not title:
+        return jsonify({'error': 'title is required'}), 400
+
+    category = data.get('category', 'MAINTENANCE')
+    if category not in COMPLAINT_CATEGORIES:
+        category = 'MAINTENANCE'
+
+    comp = HostelComplaint(
+        school_id=sid,
+        hostel_id=alloc.hostel_id,
+        student_id=student_id,
+        room_id=alloc.room_id,
+        category=category,
+        title=title,
+        description=data.get('description', ''),
+        priority=data.get('priority', 'MEDIUM'),
+        attachment_url=data.get('attachment_url'),
+        status='OPEN',
+    )
+    db.session.add(comp)
+    log_hostel_activity(sid, user.id, 'COMPLAINT_CREATED', f'Complaint: {title}')
+    db.session.commit()
+    return jsonify(comp.to_dict()), 201
+
+
+@hostel_bp.route('/complaints/<int:complaint_id>/status', methods=['PATCH'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def update_complaint_status(complaint_id):
+    comp = HostelComplaint.query.get_or_404(complaint_id)
+    sid  = _school_id()
+    if comp.school_id != sid:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    data = request.get_json() or {}
+    new_status = data.get('status')
+    if new_status and new_status in COMPLAINT_STATUSES:
+        comp.status = new_status
+        if new_status in ('RESOLVED', 'CLOSED'):
+            comp.resolution = data.get('resolution', comp.resolution)
+            comp.resolved_by = get_current_user().id
+            comp.resolved_at = datetime.utcnow()
+
+    log_hostel_activity(sid, get_current_user().id, 'COMPLAINT_UPDATED', f'Complaint #{comp.id} status → {comp.status}')
+    db.session.commit()
+    return jsonify(comp.to_dict()), 200
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  OUT PASS & GATE PASS
+# ═══════════════════════════════════════════════════════════════════════════
+
+@hostel_bp.route('/out-passes', methods=['GET'])
+@role_required('PRINCIPAL', 'HOSTEL', 'STUDENT')
+def list_out_passes():
+    sid  = _school_id()
+    user = get_current_user()
+    q    = HostelOutPass.query.filter_by(school_id=sid)
+
+    if user.role.value == 'STUDENT':
+        student = Student.query.filter_by(user_id=user.id).first()
+        if student:
+            q = q.filter_by(student_id=student.id)
+        else:
+            return jsonify([]), 200
+
+    if request.args.get('status') and request.args['status'] != 'ALL':
+        q = q.filter_by(status=request.args['status'])
+
+    return jsonify([p.to_dict() for p in q.order_by(HostelOutPass.created_at.desc()).all()]), 200
+
+
+@hostel_bp.route('/out-passes', methods=['POST'])
+@role_required('PRINCIPAL', 'HOSTEL', 'STUDENT')
+def request_out_pass():
+    sid  = _school_id()
+    user = get_current_user()
+    data = request.get_json() or {}
+
+    student_id = data.get('student_id')
+    if user.role.value == 'STUDENT':
+        student = Student.query.filter_by(user_id=user.id).first()
+        student_id = student.id if student else None
+
+    if not student_id:
+        return jsonify({'error': 'student_id is required'}), 400
+
+    alloc = HostelBedAllocation.query.filter_by(student_id=student_id, status='ACTIVE').first()
+    if not alloc:
+        return jsonify({'error': 'Active hostel allocation required for out-pass'}), 400
+
+    reason = (data.get('reason') or '').strip()
+    if not reason:
+        return jsonify({'error': 'reason is required'}), 400
+
+    try:
+        out_time = datetime.fromisoformat(data['out_time'])
+        expected_return = datetime.fromisoformat(data['expected_return'])
+    except Exception:
+        return jsonify({'error': 'Valid out_time and expected_return timestamps are required'}), 400
+
+    pass_entry = HostelOutPass(
+        school_id=sid,
+        hostel_id=alloc.hostel_id,
+        student_id=student_id,
+        room_id=alloc.room_id,
+        pass_type=data.get('pass_type', 'DAY_OUTING'),
+        reason=reason,
+        destination=data.get('destination', ''),
+        guardian_contact=data.get('guardian_contact', ''),
+        out_time=out_time,
+        expected_return=expected_return,
+        status='REQUESTED',
+    )
+    db.session.add(pass_entry)
+    log_hostel_activity(sid, user.id, 'OUTPASS_REQUESTED', f'Out-pass for student #{student_id}')
+    db.session.commit()
+    return jsonify(pass_entry.to_dict()), 201
+
+
+@hostel_bp.route('/out-passes/<int:pass_id>/status', methods=['PATCH'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def update_out_pass_status(pass_id):
+    pass_entry = HostelOutPass.query.get_or_404(pass_id)
+    sid = _school_id()
+    if pass_entry.school_id != sid:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    data = request.get_json() or {}
+    new_status = data.get('status')
+    user = get_current_user()
+
+    if new_status in ('APPROVED', 'REJECTED'):
+        pass_entry.status = new_status
+        pass_entry.approved_by = user.id
+        pass_entry.approved_at = datetime.utcnow()
+        if new_status == 'REJECTED':
+            pass_entry.rejection_reason = data.get('rejection_reason', '')
+    elif new_status == 'OUT':
+        pass_entry.status = 'OUT'
+    elif new_status == 'RETURNED':
+        pass_entry.status = 'RETURNED'
+        pass_entry.actual_return = datetime.utcnow()
+
+    log_hostel_activity(sid, user.id, 'OUTPASS_UPDATED', f'Out-pass #{pass_entry.id} → {pass_entry.status}')
+    db.session.commit()
+    return jsonify(pass_entry.to_dict()), 200
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  VISITOR REGISTER
+# ═══════════════════════════════════════════════════════════════════════════
+
+@hostel_bp.route('/visitors', methods=['GET'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def list_visitors():
+    sid = _school_id()
+    q   = HostelVisitorLog.query.filter_by(school_id=sid)
+    if request.args.get('hostel_id'):
+        q = q.filter_by(hostel_id=request.args['hostel_id'])
+    if request.args.get('visit_date'):
+        q = q.filter_by(visit_date=date.fromisoformat(request.args['visit_date']))
+    return jsonify([v.to_dict() for v in q.order_by(HostelVisitorLog.in_time.desc()).all()]), 200
+
+
+@hostel_bp.route('/visitors', methods=['POST'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def create_visitor_entry():
+    sid  = _school_id()
+    data = request.get_json() or {}
+
+    student_id = data.get('student_id')
+    visitor_name = (data.get('visitor_name') or '').strip()
+    visitor_phone = (data.get('visitor_phone') or '').strip()
+
+    if not student_id or not visitor_name or not visitor_phone:
+        return jsonify({'error': 'student_id, visitor_name, and visitor_phone are required'}), 400
+
+    alloc = HostelBedAllocation.query.filter_by(student_id=student_id, status='ACTIVE').first()
+    if not alloc:
+        return jsonify({'error': 'Student is not actively residing in any hostel'}), 400
+
+    v = HostelVisitorLog(
+        school_id=sid,
+        hostel_id=alloc.hostel_id,
+        student_id=student_id,
+        visitor_name=visitor_name,
+        visitor_phone=visitor_phone,
+        relation=data.get('relation', 'PARENT'),
+        id_proof_type=data.get('id_proof_type', 'AADHAAR'),
+        id_proof_no=data.get('id_proof_no', ''),
+        visit_date=date.today(),
+        in_time=datetime.utcnow(),
+        purpose=data.get('purpose', ''),
+        recorded_by=get_current_user().id,
+    )
+    db.session.add(v)
+    log_hostel_activity(sid, get_current_user().id, 'VISITOR_ENTRY', f'Visitor {visitor_name} for student #{student_id}')
+    db.session.commit()
+    return jsonify(v.to_dict()), 201
+
+
+@hostel_bp.route('/visitors/<int:visitor_id>/checkout', methods=['PATCH'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def checkout_visitor(visitor_id):
+    v = HostelVisitorLog.query.get_or_404(visitor_id)
+    if v.school_id != _school_id():
+        return jsonify({'error': 'Unauthorized'}), 403
+    v.out_time = datetime.utcnow()
+    db.session.commit()
+    return jsonify(v.to_dict()), 200
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  NIGHT ROLL CALL / ATTENDANCE
+# ═══════════════════════════════════════════════════════════════════════════
+
+@hostel_bp.route('/attendance', methods=['GET'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def get_hostel_attendance():
+    """
+    Returns night roll call status for all active residents for a specific date and hostel.
+    """
+    sid       = _school_id()
+    hostel_id = request.args.get('hostel_id')
+    att_date  = date.fromisoformat(request.args.get('date', date.today().isoformat()))
+
+    alloc_q = HostelBedAllocation.query.filter_by(school_id=sid, status='ACTIVE')
+    if hostel_id:
+        alloc_q = alloc_q.filter_by(hostel_id=hostel_id)
+    allocations = alloc_q.all()
+
+    att_map = {
+        a.student_id: a for a in HostelAttendance.query.filter_by(
+            school_id=sid, attendance_date=att_date
+        ).all()
+    }
+
+    results = []
+    for alloc in allocations:
+        student = Student.query.get(alloc.student_id)
+        if not student:
+            continue
+        room = HostelRoom.query.get(alloc.room_id)
+        bed  = HostelBed.query.get(alloc.bed_id)
+        att  = att_map.get(alloc.student_id)
+
+        results.append({
+            'allocation_id':   alloc.id,
+            'student_id':      student.id,
+            'student_name':    student.user.name if student.user else '',
+            'admission_no':    student.admission_no or '',
+            'hostel_id':       alloc.hostel_id,
+            'room_number':     room.room_number if room else '',
+            'bed_number':      bed.bed_number if bed else '',
+            'status':          att.status if att else 'PRESENT',
+            'remarks':         att.remarks if att else '',
+            'attendance_date': str(att_date),
+            'marked':          bool(att),
+        })
+
+    return jsonify(results), 200
+
+
+@hostel_bp.route('/attendance', methods=['POST'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def mark_hostel_attendance():
+    """
+    Bulk submit night roll call attendance.
+    Body: { hostel_id, date, entries: [{student_id, allocation_id, status, remarks}] }
+    """
+    sid  = _school_id()
+    data = request.get_json() or {}
+    entries = data.get('entries', [])
+    att_date = date.fromisoformat(data.get('date', date.today().isoformat()))
+    user_id = get_current_user().id
+
+    for item in entries:
+        student_id = item.get('student_id')
+        alloc_id   = item.get('allocation_id')
+        status     = item.get('status', 'PRESENT')
+        remarks    = item.get('remarks', '')
+
+        att = HostelAttendance.query.filter_by(
+            school_id=sid, student_id=student_id, attendance_date=att_date
+        ).first()
+
+        if att:
+            att.status = status
+            att.remarks = remarks
+            att.recorded_by = user_id
+        else:
+            alloc = HostelBedAllocation.query.get(alloc_id) if alloc_id else None
+            hostel_id = alloc.hostel_id if alloc else (data.get('hostel_id') or 1)
+            att = HostelAttendance(
+                school_id=sid,
+                hostel_id=hostel_id,
+                allocation_id=alloc_id or alloc.id if alloc else 1,
+                student_id=student_id,
+                attendance_date=att_date,
+                status=status,
+                remarks=remarks,
+                recorded_by=user_id,
+            )
+            db.session.add(att)
+
+    log_hostel_activity(sid, user_id, 'ATTENDANCE_MARKED', f'Night roll call for {att_date} ({len(entries)} students)')
+    db.session.commit()
+    return jsonify({'message': f'Attendance marked for {len(entries)} students', 'date': str(att_date)}), 200
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  ROOM ASSET INVENTORY
+# ═══════════════════════════════════════════════════════════════════════════
+
+@hostel_bp.route('/inventory', methods=['GET'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def list_inventory():
+    sid = _school_id()
+    q   = HostelInventory.query.filter_by(school_id=sid)
+    if request.args.get('hostel_id'):
+        q = q.filter_by(hostel_id=request.args['hostel_id'])
+    if request.args.get('room_id'):
+        q = q.filter_by(room_id=request.args['room_id'])
+    return jsonify([i.to_dict() for i in q.order_by(HostelInventory.created_at.desc()).all()]), 200
+
+
+@hostel_bp.route('/inventory', methods=['POST'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def add_inventory():
+    sid  = _school_id()
+    data = request.get_json() or {}
+
+    item_name = (data.get('item_name') or '').strip()
+    hostel_id = data.get('hostel_id')
+    if not item_name or not hostel_id:
+        return jsonify({'error': 'item_name and hostel_id are required'}), 400
+
+    item = HostelInventory(
+        school_id=sid,
+        hostel_id=hostel_id,
+        room_id=data.get('room_id'),
+        item_name=item_name,
+        item_code=data.get('item_code', ''),
+        category=data.get('category', 'FURNITURE'),
+        quantity=int(data.get('quantity', 1)),
+        condition=data.get('condition', 'GOOD'),
+        assigned_student_id=data.get('assigned_student_id'),
+        remarks=data.get('remarks', ''),
+    )
+    db.session.add(item)
+    log_hostel_activity(sid, get_current_user().id, 'INVENTORY_ADDED', f'Asset: {item_name}')
+    db.session.commit()
+    return jsonify(item.to_dict()), 201
+
+
+@hostel_bp.route('/inventory/<int:item_id>', methods=['PATCH'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def update_inventory(item_id):
+    item = HostelInventory.query.get_or_404(item_id)
+    if item.school_id != _school_id():
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    data = request.get_json() or {}
+    for f in ['item_name', 'item_code', 'category', 'quantity', 'condition', 'room_id', 'assigned_student_id', 'remarks']:
+        if f in data:
+            setattr(item, f, data[f])
+
+    db.session.commit()
+    return jsonify(item.to_dict()), 200
+
+
+@hostel_bp.route('/inventory/<int:item_id>', methods=['DELETE'])
+@role_required('PRINCIPAL')
+def delete_inventory(item_id):
+    item = HostelInventory.query.get_or_404(item_id)
+    if item.school_id != _school_id():
+        return jsonify({'error': 'Unauthorized'}), 403
+    db.session.delete(item)
+    db.session.commit()
+    return jsonify({'message': 'Inventory item deleted'}), 200
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  HOSTEL SETTINGS
+# ═══════════════════════════════════════════════════════════════════════════
+
+@hostel_bp.route('/settings', methods=['GET'])
+@role_required('PRINCIPAL', 'HOSTEL')
+def get_hostel_settings():
+    sid = _school_id()
+    settings = HostelSettings.query.filter_by(school_id=sid).first()
+    if not settings:
+        settings = HostelSettings(school_id=sid)
+        db.session.add(settings)
+        db.session.commit()
+    return jsonify(settings.to_dict()), 200
+
+
+@hostel_bp.route('/settings', methods=['PATCH'])
+@role_required('PRINCIPAL')
+def update_hostel_settings():
+    sid = _school_id()
+    settings = HostelSettings.query.filter_by(school_id=sid).first()
+    if not settings:
+        settings = HostelSettings(school_id=sid)
+        db.session.add(settings)
+
+    data = request.get_json() or {}
+    for f in ['late_entry_cutoff_time', 'gate_pass_requires_principal_approval', 'max_leave_days_per_month', 'default_mess_charge', 'default_electricity_charge']:
+        if f in data:
+            setattr(settings, f, data[f])
+
+    db.session.commit()
+    return jsonify(settings.to_dict()), 200
+

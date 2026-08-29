@@ -66,7 +66,14 @@ import HostelAdmission   from './pages/hostel/HostelAdmission';
 import HostelRoomDetail  from './pages/hostel/HostelRoomDetail';
 import HostelTransfers   from './pages/hostel/HostelTransfers';
 import HostelFeeStructures from './pages/hostel/HostelFeeStructures';
-import HostelReports       from './pages/hostel/HostelReports';
+import HostelFees        from './pages/hostel/HostelFees';
+import HostelFines       from './pages/hostel/HostelFines';
+import HostelAttendance  from './pages/hostel/HostelAttendance';
+import HostelOutPass     from './pages/hostel/HostelOutPass';
+import HostelComplaints  from './pages/hostel/HostelComplaints';
+import HostelVisitors    from './pages/hostel/HostelVisitors';
+import HostelInventory   from './pages/hostel/HostelInventory';
+import HostelReports     from './pages/hostel/HostelReports';
 
 // ── Transport Management ──────────────────────────────────────────────────
 import TransportDashboard    from './pages/transport/TransportDashboard';
@@ -406,6 +413,41 @@ export default function App() {
             <Route path="/hostel/fee-structures" element={
               <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
                 <HostelFeeStructures />
+              </ProtectedRoute>
+            } />
+            <Route path="/hostel/fees" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL', 'ACCOUNTANT']}>
+                <HostelFees />
+              </ProtectedRoute>
+            } />
+            <Route path="/hostel/fines" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL', 'ACCOUNTANT']}>
+                <HostelFines />
+              </ProtectedRoute>
+            } />
+            <Route path="/hostel/attendance" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
+                <HostelAttendance />
+              </ProtectedRoute>
+            } />
+            <Route path="/hostel/out-pass" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
+                <HostelOutPass />
+              </ProtectedRoute>
+            } />
+            <Route path="/hostel/complaints" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
+                <HostelComplaints />
+              </ProtectedRoute>
+            } />
+            <Route path="/hostel/visitors" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
+                <HostelVisitors />
+              </ProtectedRoute>
+            } />
+            <Route path="/hostel/inventory" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
+                <HostelInventory />
               </ProtectedRoute>
             } />
             <Route path="/hostel/reports" element={

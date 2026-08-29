@@ -311,7 +311,12 @@ class HostelBedAllocation(db.Model):
     admission_date = db.Column(db.Date, default=date.today)
     vacate_date    = db.Column(db.Date, nullable=True)
 
-    status         = db.Column(db.String(20), default='ACTIVE')  # ACTIVE / TRANSFERRED / VACATED
+    checkin_date           = db.Column(db.Date, nullable=True)
+    expected_checkout_date = db.Column(db.Date, nullable=True)
+    checkout_remarks       = db.Column(db.String(300), default='')
+    checkout_approved_by   = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+
+    status         = db.Column(db.String(20), default='ACTIVE')  # ACTIVE / TRANSFERRED / VACATED / CHECKED_IN
     transfer_type  = db.Column(db.String(20), nullable=True)      # BED/ROOM/FLOOR/BUILDING/HOSTEL (set on close)
     transfer_reason= db.Column(db.String(300), default='')
 
@@ -328,27 +333,30 @@ class HostelBedAllocation(db.Model):
         hostel   = Hostel.query.get(self.hostel_id)
         bed      = HostelBed.query.get(self.bed_id)
         return {
-            'id':              self.id,
-            'student_id':      self.student_id,
-            'student_name':    student.user.name if student and student.user else '',
-            'hostel_id':       self.hostel_id,
-            'hostel_name':     hostel.name if hostel else '',
-            'building_id':     self.building_id,
-            'building_name':   building.name if building else '',
-            'floor_id':        self.floor_id,
-            'floor_name':      floor.name if floor else '',
-            'room_id':         self.room_id,
-            'room_number':     room.room_number if room else '',
-            'room_type':       room.room_type if room else '',
-            'is_ac':           room.is_ac if room else False,
-            'bed_id':          self.bed_id,
-            'bed_number':      bed.bed_number if bed else '',
-            'admission_date':  str(self.admission_date) if self.admission_date else None,
-            'vacate_date':     str(self.vacate_date) if self.vacate_date else None,
-            'status':          self.status,
-            'transfer_type':   self.transfer_type,
-            'transfer_reason': self.transfer_reason or '',
-            'created_at':      self.created_at.isoformat() if self.created_at else None,
+            'id':                     self.id,
+            'student_id':             self.student_id,
+            'student_name':           student.user.name if student and student.user else '',
+            'hostel_id':              self.hostel_id,
+            'hostel_name':            hostel.name if hostel else '',
+            'building_id':            self.building_id,
+            'building_name':          building.name if building else '',
+            'floor_id':               self.floor_id,
+            'floor_name':             floor.name if floor else '',
+            'room_id':                self.room_id,
+            'room_number':            room.room_number if room else '',
+            'room_type':              room.room_type if room else '',
+            'is_ac':                  room.is_ac if room else False,
+            'bed_id':                 self.bed_id,
+            'bed_number':             bed.bed_number if bed else '',
+            'admission_date':         str(self.admission_date) if self.admission_date else None,
+            'checkin_date':           str(self.checkin_date) if self.checkin_date else None,
+            'expected_checkout_date': str(self.expected_checkout_date) if self.expected_checkout_date else None,
+            'vacate_date':            str(self.vacate_date) if self.vacate_date else None,
+            'status':                 self.status,
+            'transfer_type':          self.transfer_type,
+            'transfer_reason':        self.transfer_reason or '',
+            'checkout_remarks':       self.checkout_remarks or '',
+            'created_at':             self.created_at.isoformat() if self.created_at else None,
         }
 
 
@@ -385,23 +393,21 @@ class HostelSettings(db.Model):
     id        = db.Column(db.Integer, primary_key=True)
     school_id = db.Column(db.Integer, db.ForeignKey('schools.id'), unique=True, nullable=False)
 
-    late_entry_cutoff_time = db.Column(db.String(10), default='21:00')   # "HH:MM"
+    late_entry_cutoff_time                = db.Column(db.String(10), default='21:00')   # "HH:MM"
     gate_pass_requires_principal_approval = db.Column(db.Boolean, default=False)
-    max_leave_days_per_month = db.Column(db.Integer, default=4)
-    default_mess_charge      = db.Column(db.Float, default=0.0)
-    default_electricity_charge = db.Column(db.Float, default=0.0)
+    max_leave_days_per_month              = db.Column(db.Integer, default=4)
+    default_mess_charge                   = db.Column(db.Float, default=0.0)
+    default_electricity_charge            = db.Column(db.Float, default=0.0)
 
     def to_dict(self):
         return {
-            'late_entry_cutoff_time': self.late_entry_cutoff_time,
+            'late_entry_cutoff_time':                self.late_entry_cutoff_time,
             'gate_pass_requires_principal_approval': self.gate_pass_requires_principal_approval,
-            'max_leave_days_per_month': self.max_leave_days_per_month,
-            'default_mess_charge':      self.default_mess_charge,
-            'default_electricity_charge': self.default_electricity_charge,
+            'max_leave_days_per_month':              self.max_leave_days_per_month,
+            'default_mess_charge':                   self.default_mess_charge,
+            'default_electricity_charge':            self.default_electricity_charge,
         }
 
-
-# NEW — add at the end of app/models/hostel.py
 
 FEE_ROOM_TYPES = ['AC', 'NON_AC']  # maps to HostelRoom.is_ac True/False
 
@@ -474,10 +480,10 @@ class HostelFeeStructure(db.Model):
             'total_monthly':       self.total_monthly(),
             'status':              self.status,
         }
-# NEW — add at the very end of app/models/hostel.py
 
-FINE_REASONS = ['FURNITURE_DAMAGE', 'PROPERTY_LOSS', 'RULE_VIOLATION', 'ROOM_DAMAGE', 'OTHER']
-FINE_STATUSES = ['PENDING', 'PAID', 'WAIVED']
+
+FINE_REASONS = ['FURNITURE_DAMAGE', 'PROPERTY_LOSS', 'RULE_VIOLATION', 'ROOM_DAMAGE', 'LATE_ENTRY', 'CLEANLINESS', 'OTHER']
+FINE_STATUSES = ['OUTSTANDING', 'PENDING', 'PARTIALLY_PAID', 'PARTIAL', 'PAID', 'WAIVED', 'CANCELLED']
 
 
 class HostelFineRecord(db.Model):
@@ -493,29 +499,342 @@ class HostelFineRecord(db.Model):
     student_id  = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
     hostel_id   = db.Column(db.Integer, db.ForeignKey('hostels.id'), nullable=False)
 
-    reason      = db.Column(db.String(30), nullable=False, default='OTHER')  # FURNITURE_DAMAGE / PROPERTY_LOSS / ...
+    reason      = db.Column(db.String(30), nullable=False, default='OTHER')
     description = db.Column(db.String(300), default='')
-    amount      = db.Column(db.Float, nullable=False, default=0)
+    amount      = db.Column(db.Float, nullable=False, default=0.0)
+    amount_paid = db.Column(db.Float, default=0.0)
 
-    status      = db.Column(db.String(20), default='PENDING')  # PENDING / PAID / WAIVED
+    waived_amount = db.Column(db.Float, default=0.0)
+    waived_by     = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    waived_at     = db.Column(db.DateTime, nullable=True)
+    waive_reason  = db.Column(db.String(300), nullable=True)
+
+    collected_by       = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    collected_at       = db.Column(db.DateTime, nullable=True)
+    payment_mode       = db.Column(db.String(30), nullable=True)
+    receipt_no         = db.Column(db.String(50), nullable=True)
+    fee_transaction_id = db.Column(db.Integer, nullable=True)
+
+    status      = db.Column(db.String(20), default='OUTSTANDING')  # OUTSTANDING / PARTIALLY_PAID / PAID / WAIVED
     raised_by   = db.Column(db.Integer, db.ForeignKey('users.id'))
     raised_date = db.Column(db.Date, default=date.today)
 
-    fee_record_id = db.Column(db.Integer, db.ForeignKey('fee_records.id'), nullable=True)  # link to FeeRecord
+    fee_record_id = db.Column(db.Integer, db.ForeignKey('fee_records.id'), nullable=True)
+
+    student = db.relationship('Student', foreign_keys=[student_id])
+    hostel  = db.relationship('Hostel', foreign_keys=[hostel_id])
+
+    @property
+    def outstanding_amount(self):
+        return max(0.0, round((self.amount or 0.0) - (self.amount_paid or 0.0) - (self.waived_amount or 0.0), 2))
+
+    @property
+    def canonical_status(self):
+        if self.status == 'WAIVED' or (self.waived_amount and self.waived_amount >= self.amount):
+            return 'WAIVED'
+        if self.outstanding_amount <= 0:
+            return 'PAID'
+        if self.amount_paid and self.amount_paid > 0:
+            return 'PARTIALLY_PAID'
+        return 'OUTSTANDING'
 
     def to_dict(self):
         student = self.student
         return {
-            'id':           self.id,
-            'student_id':   self.student_id,
-            'student_name': student.user.name if student and student.user else '',
-            'hostel_id':    self.hostel_id,
-            'reason':       self.reason,
-            'description':  self.description or '',
-            'amount':       self.amount,
-            'status':       self.status,
-            'raised_date':  str(self.raised_date) if self.raised_date else None,
-            'fee_record_id':self.fee_record_id,
+            'id':                 self.id,
+            'student_id':         self.student_id,
+            'student_name':       student.user.name if student and student.user else '',
+            'hostel_id':          self.hostel_id,
+            'hostel_name':        self.hostel.name if self.hostel else '',
+            'reason':             self.reason,
+            'description':        self.description or '',
+            'amount':             self.amount,
+            'amount_paid':        self.amount_paid or 0.0,
+            'waived_amount':      self.waived_amount or 0.0,
+            'outstanding_amount': self.outstanding_amount,
+            'waive_reason':       self.waive_reason or '',
+            'waived_at':          self.waived_at.isoformat() if self.waived_at else None,
+            'status':             self.canonical_status,
+            'payment_mode':       self.payment_mode or '',
+            'receipt_no':         self.receipt_no or '',
+            'collected_at':       self.collected_at.isoformat() if self.collected_at else None,
+            'raised_date':        str(self.raised_date) if self.raised_date else None,
+            'fee_record_id':      self.fee_record_id,
         }
 
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  COMPLAINTS & MAINTENANCE REQUESTS
+# ═══════════════════════════════════════════════════════════════════════════
+
+COMPLAINT_CATEGORIES = ['MAINTENANCE', 'ELECTRICAL', 'PLUMBING', 'CLEANING', 'FOOD', 'SAFETY', 'WIFI', 'OTHER']
+COMPLAINT_STATUSES = ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED']
+
+
+class HostelComplaint(db.Model):
+    """
+    Resident / Warden maintenance requests and complaints.
+    """
+    __tablename__ = 'hostel_complaints'
+
+    id          = db.Column(db.Integer, primary_key=True)
+    school_id   = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    hostel_id   = db.Column(db.Integer, db.ForeignKey('hostels.id'), nullable=False, index=True)
+    student_id  = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
+    room_id     = db.Column(db.Integer, db.ForeignKey('hostel_rooms.id'), nullable=True)
+
+    category    = db.Column(db.String(30), default='MAINTENANCE')  # MAINTENANCE, ELECTRICAL, etc.
+    title       = db.Column(db.String(150), nullable=False)
+    description = db.Column(db.Text, default='')
+    priority    = db.Column(db.String(20), default='MEDIUM')       # LOW / MEDIUM / HIGH / URGENT
+    status      = db.Column(db.String(20), default='OPEN')         # OPEN / IN_PROGRESS / RESOLVED / CLOSED
+
+    attachment_url = db.Column(db.String(500), nullable=True)
+    resolution     = db.Column(db.Text, default='')
+    resolved_by    = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    resolved_at    = db.Column(db.DateTime, nullable=True)
+
+    created_at  = db.Column(db.DateTime, default=datetime.utcnow)
+
     student = db.relationship('Student', foreign_keys=[student_id])
+    hostel  = db.relationship('Hostel', foreign_keys=[hostel_id])
+    room    = db.relationship('HostelRoom', foreign_keys=[room_id])
+
+    def to_dict(self):
+        student = self.student
+        return {
+            'id':             self.id,
+            'school_id':      self.school_id,
+            'hostel_id':      self.hostel_id,
+            'hostel_name':    self.hostel.name if self.hostel else '',
+            'student_id':     self.student_id,
+            'student_name':   student.user.name if student and student.user else '',
+            'room_id':        self.room_id,
+            'room_number':    self.room.room_number if self.room else '',
+            'category':       self.category,
+            'title':          self.title,
+            'description':    self.description,
+            'priority':       self.priority,
+            'status':         self.status,
+            'attachment_url': self.attachment_url,
+            'resolution':     self.resolution,
+            'resolved_at':    self.resolved_at.isoformat() if self.resolved_at else None,
+            'created_at':     self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  OUT PASS & GATE PASS
+# ═══════════════════════════════════════════════════════════════════════════
+
+OUTPASS_TYPES = ['DAY_OUTING', 'NIGHT_STAY', 'HOME_LEAVE', 'EMERGENCY']
+OUTPASS_STATUSES = ['REQUESTED', 'APPROVED', 'REJECTED', 'OUT', 'RETURNED', 'OVERDUE']
+
+
+class HostelOutPass(db.Model):
+    """
+    Hostel Out-Pass / Gate-Pass for day outings, night stays, and home leave.
+    """
+    __tablename__ = 'hostel_out_passes'
+
+    id          = db.Column(db.Integer, primary_key=True)
+    school_id   = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    hostel_id   = db.Column(db.Integer, db.ForeignKey('hostels.id'), nullable=False, index=True)
+    student_id  = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
+    room_id     = db.Column(db.Integer, db.ForeignKey('hostel_rooms.id'), nullable=True)
+
+    pass_type   = db.Column(db.String(30), default='DAY_OUTING')  # DAY_OUTING / NIGHT_STAY / HOME_LEAVE / EMERGENCY
+    reason      = db.Column(db.String(300), nullable=False)
+    destination = db.Column(db.String(200), default='')
+    guardian_contact = db.Column(db.String(30), default='')
+
+    out_time        = db.Column(db.DateTime, nullable=False)
+    expected_return = db.Column(db.DateTime, nullable=False)
+    actual_return   = db.Column(db.DateTime, nullable=True)
+
+    status      = db.Column(db.String(20), default='REQUESTED')  # REQUESTED / APPROVED / REJECTED / OUT / RETURNED / OVERDUE
+    approved_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    approved_at = db.Column(db.DateTime, nullable=True)
+    rejection_reason = db.Column(db.String(300), default='')
+
+    created_at  = db.Column(db.DateTime, default=datetime.utcnow)
+
+    student = db.relationship('Student', foreign_keys=[student_id])
+    hostel  = db.relationship('Hostel', foreign_keys=[hostel_id])
+
+    def to_dict(self):
+        student = self.student
+        return {
+            'id':               self.id,
+            'school_id':        self.school_id,
+            'hostel_id':        self.hostel_id,
+            'hostel_name':      self.hostel.name if self.hostel else '',
+            'student_id':       self.student_id,
+            'student_name':     student.user.name if student and student.user else '',
+            'pass_type':        self.pass_type,
+            'reason':           self.reason,
+            'destination':      self.destination,
+            'guardian_contact': self.guardian_contact,
+            'out_time':         self.out_time.isoformat() if self.out_time else None,
+            'expected_return':  self.expected_return.isoformat() if self.expected_return else None,
+            'actual_return':    self.actual_return.isoformat() if self.actual_return else None,
+            'status':           self.status,
+            'approved_at':      self.approved_at.isoformat() if self.approved_at else None,
+            'rejection_reason': self.rejection_reason,
+            'created_at':       self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  VISITOR LOG
+# ═══════════════════════════════════════════════════════════════════════════
+
+class HostelVisitorLog(db.Model):
+    """
+    Hostel visitor gate entry register.
+    """
+    __tablename__ = 'hostel_visitor_logs'
+
+    id          = db.Column(db.Integer, primary_key=True)
+    school_id   = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    hostel_id   = db.Column(db.Integer, db.ForeignKey('hostels.id'), nullable=False, index=True)
+    student_id  = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
+
+    visitor_name  = db.Column(db.String(120), nullable=False)
+    visitor_phone = db.Column(db.String(30), nullable=False)
+    relation      = db.Column(db.String(50), default='PARENT')  # FATHER / MOTHER / GUARDIAN / SIBLING / OTHER
+    id_proof_type = db.Column(db.String(50), default='AADHAAR')
+    id_proof_no   = db.Column(db.String(50), default='')
+
+    visit_date    = db.Column(db.Date, default=date.today)
+    in_time       = db.Column(db.DateTime, default=datetime.utcnow)
+    out_time      = db.Column(db.DateTime, nullable=True)
+    purpose       = db.Column(db.String(300), default='')
+
+    recorded_by   = db.Column(db.Integer, db.ForeignKey('users.id'))
+    created_at    = db.Column(db.DateTime, default=datetime.utcnow)
+
+    student = db.relationship('Student', foreign_keys=[student_id])
+    hostel  = db.relationship('Hostel', foreign_keys=[hostel_id])
+
+    def to_dict(self):
+        student = self.student
+        return {
+            'id':            self.id,
+            'school_id':     self.school_id,
+            'hostel_id':     self.hostel_id,
+            'hostel_name':   self.hostel.name if self.hostel else '',
+            'student_id':    self.student_id,
+            'student_name':  student.user.name if student and student.user else '',
+            'visitor_name':  self.visitor_name,
+            'visitor_phone': self.visitor_phone,
+            'relation':      self.relation,
+            'id_proof_type': self.id_proof_type,
+            'id_proof_no':   self.id_proof_no,
+            'visit_date':    str(self.visit_date),
+            'in_time':       self.in_time.isoformat() if self.in_time else None,
+            'out_time':      self.out_time.isoformat() if self.out_time else None,
+            'purpose':       self.purpose,
+            'created_at':    self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  NIGHT ATTENDANCE / ROLL CALL
+# ═══════════════════════════════════════════════════════════════════════════
+
+ATTENDANCE_STATUSES = ['PRESENT', 'ABSENT', 'ON_LEAVE', 'OUT_PASS']
+
+
+class HostelAttendance(db.Model):
+    """
+    Daily / Night Roll Call Attendance for active hostel residents.
+    """
+    __tablename__ = 'hostel_attendance'
+
+    id             = db.Column(db.Integer, primary_key=True)
+    school_id      = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    hostel_id      = db.Column(db.Integer, db.ForeignKey('hostels.id'), nullable=False, index=True)
+    allocation_id  = db.Column(db.Integer, db.ForeignKey('hostel_bed_allocations.id'), nullable=False)
+    student_id     = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
+
+    attendance_date = db.Column(db.Date, nullable=False, default=date.today)
+    status          = db.Column(db.String(20), default='PRESENT')  # PRESENT / ABSENT / ON_LEAVE / OUT_PASS
+    remarks         = db.Column(db.String(200), default='')
+    recorded_by     = db.Column(db.Integer, db.ForeignKey('users.id'))
+    created_at      = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('hostel_id', 'student_id', 'attendance_date', name='uq_hostel_student_date_attendance'),
+    )
+
+    student = db.relationship('Student', foreign_keys=[student_id])
+
+    def to_dict(self):
+        student = self.student
+        return {
+            'id':              self.id,
+            'school_id':       self.school_id,
+            'hostel_id':       self.hostel_id,
+            'allocation_id':   self.allocation_id,
+            'student_id':      self.student_id,
+            'student_name':    student.user.name if student and student.user else '',
+            'attendance_date': str(self.attendance_date),
+            'status':          self.status,
+            'remarks':         self.remarks,
+            'created_at':      self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  ROOM ASSET & INVENTORY TRACKING
+# ═══════════════════════════════════════════════════════════════════════════
+
+INVENTORY_CATEGORIES = ['FURNITURE', 'ELECTRICAL', 'FIXTURE', 'BEDDING', 'OTHER']
+INVENTORY_CONDITIONS = ['GOOD', 'DAMAGED', 'REPAIR_NEEDED', 'LOST']
+
+
+class HostelInventory(db.Model):
+    """
+    Room asset and furniture inventory tracker.
+    """
+    __tablename__ = 'hostel_inventory'
+
+    id          = db.Column(db.Integer, primary_key=True)
+    school_id   = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    hostel_id   = db.Column(db.Integer, db.ForeignKey('hostels.id'), nullable=False, index=True)
+    room_id     = db.Column(db.Integer, db.ForeignKey('hostel_rooms.id'), nullable=True)
+
+    item_name   = db.Column(db.String(100), nullable=False)
+    item_code   = db.Column(db.String(50), nullable=True)
+    category    = db.Column(db.String(30), default='FURNITURE')
+    quantity    = db.Column(db.Integer, default=1)
+    condition   = db.Column(db.String(30), default='GOOD')  # GOOD / DAMAGED / REPAIR_NEEDED / LOST
+
+    assigned_student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=True)
+    remarks             = db.Column(db.String(300), default='')
+    created_at          = db.Column(db.DateTime, default=datetime.utcnow)
+
+    hostel  = db.relationship('Hostel', foreign_keys=[hostel_id])
+    room    = db.relationship('HostelRoom', foreign_keys=[room_id])
+    student = db.relationship('Student', foreign_keys=[assigned_student_id])
+
+    def to_dict(self):
+        return {
+            'id':                  self.id,
+            'school_id':           self.school_id,
+            'hostel_id':           self.hostel_id,
+            'hostel_name':         self.hostel.name if self.hostel else '',
+            'room_id':             self.room_id,
+            'room_number':         self.room.room_number if self.room else '',
+            'item_name':           self.item_name,
+            'item_code':           self.item_code or '',
+            'category':            self.category,
+            'quantity':            self.quantity,
+            'condition':           self.condition,
+            'assigned_student_id': self.assigned_student_id,
+            'assigned_student_name': self.student.user.name if self.student and self.student.user else '',
+            'remarks':             self.remarks or '',
+            'created_at':          self.created_at.isoformat() if self.created_at else None,
+        }
+
