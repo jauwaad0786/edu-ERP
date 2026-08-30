@@ -311,13 +311,14 @@ export default function AIChat() {
             <div className="ai-welcome">
               <div className="ai-welcome-logo">🤖</div>
               <div style={{ textAlign: 'center' }}>
-                <h2>Welcome to 1P360 BOT</h2>
+                <h2>How can I assist you today?</h2>
                 <p>
                   {isTeacher
-                    ? 'Your intelligent teaching assistant. Create lesson plans, generate questions, and get teaching help.'
-                    : 'Your school analytics assistant. Ask about fees, attendance, academics, hostel, transport and more.'}
+                    ? 'Your intelligent teaching assistant. Generate structured lesson plans, practice questions, and analyze student academic records.'
+                    : 'Your enterprise school analytics assistant. Query fees, daily attendance, student performance, hostel, and transport in real time.'}
                 </p>
               </div>
+
               <div className="ai-suggested-grid">
                 {suggestions.map((s, i) => (
                   <div key={i} className="ai-suggest-card" onClick={() => handleSend(s.text)}>

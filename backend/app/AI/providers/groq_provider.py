@@ -85,8 +85,24 @@ class GroqProvider(AIProvider):
             'latency_ms':        latency_ms,
         }
 
+    def list_available_models(self) -> list:
+        """Fetch active models from Groq account."""
+        try:
+            client = self._get_client()
+            models_res = client.models.list()
+            chat_models = []
+            for m in getattr(models_res, 'data', []):
+                mid = getattr(m, 'id', str(m))
+                if not any(x in mid.lower() for x in ['whisper', 'embed', 'guard', 'tts', 'audio']):
+                    chat_models.append({'id': mid, 'label': mid})
+            return sorted(chat_models, key=lambda x: x['id'])
+        except Exception:
+            return []
+
     def test_connection(self) -> dict:
         t_start = time.monotonic()
+        
+        # 1. First try configured model
         try:
             result = self.generate(
                 system_prompt='You are a test assistant.',
@@ -95,25 +111,47 @@ class GroqProvider(AIProvider):
                 temperature=0,
             )
             latency_ms = int((time.monotonic() - t_start) * 1000)
+            avail_models = self.list_available_models()
             return {
-                'success':    True,
-                'latency_ms': latency_ms,
-                'message':    f"Connected ✓ | Model: {self._model} | Response: {result['content'][:30].strip()}",
-                'model':      self._model,
-                'provider':   'GROQ',
+                'success':          True,
+                'latency_ms':       latency_ms,
+                'message':          f"Connected ✓ | Model: {self._model} | Response: {result['content'][:30].strip()}",
+                'model':            self._model,
+                'provider':         'GROQ',
+                'available_models': avail_models,
             }
-        except AIProviderError as e:
+        except Exception as initial_err:
+            # 2. If model not found or decommissioned, discover available models from Groq
+            avail_models = self.list_available_models()
+            if avail_models:
+                # Try testing with the first discovered active model
+                for cand in avail_models:
+                    try:
+                        self._model = cand['id']
+                        result = self.generate(
+                            system_prompt='You are a test assistant.',
+                            user_message='Reply with exactly: OK',
+                            max_tokens=10,
+                            temperature=0,
+                        )
+                        latency_ms = int((time.monotonic() - t_start) * 1000)
+                        return {
+                            'success':          True,
+                            'latency_ms':       latency_ms,
+                            'message':          f"Connected ✓ (Switched to active model: {cand['id']})",
+                            'model':            cand['id'],
+                            'provider':         'GROQ',
+                            'available_models': avail_models,
+                        }
+                    except Exception:
+                        continue
+
             return {
-                'success':    False,
-                'latency_ms': int((time.monotonic() - t_start) * 1000),
-                'message':    str(e),
-                'provider':   'GROQ',
+                'success':          False,
+                'latency_ms':       int((time.monotonic() - t_start) * 1000),
+                'message':          str(initial_err),
+                'provider':         'GROQ',
+                'available_models': avail_models,
             }
-        except Exception as e:
-            return {
-                'success':    False,
-                'latency_ms': int((time.monotonic() - t_start) * 1000),
-                'message':    f"Connection failed: {str(e)}",
-                'provider':   'GROQ',
-            }
+
 

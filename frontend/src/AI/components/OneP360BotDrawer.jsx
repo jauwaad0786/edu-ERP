@@ -5,30 +5,31 @@ import { sendMessage, getUsage } from '../services/aiApi';
 import '../styles/ai.css';
 
 const PRINCIPAL_QUICK_CHIPS = [
-  'February me kitni fees collect hui?',
-  'Kitni fees outstanding hai?',
-  'Aaj kitna attendance hua?',
-  'Top 10 students kaun hain?',
-  'Class-wise attendance',
-  'Transport summary batao',
-  'Hostel me kitne students hain?',
-  'Library ki books kitni issued hain?',
+  'How much fee was collected in February?',
+  'What is the total outstanding fee amount?',
+  'What is today’s attendance status?',
+  'Who are the top 10 academic students?',
+  'Show class-wise attendance breakdown',
+  'Show school transport summary',
+  'What is the current hostel occupancy?',
+  'How many library books are currently issued?',
 ];
 
 const DEVELOPER_QUICK_CHIPS = [
-  'Kitne schools enroll hue hain?',
-  'Kis school ne service pay ki hai?',
-  'Kitne active users hain?',
-  'System health status kaisa hai?',
+  'How many schools are enrolled?',
+  'Which schools have active paid subscriptions?',
+  'Show platform active users by role',
+  'What is the system health status?',
 ];
 
 const TEACHER_QUICK_CHIPS = [
-  'Aaj kya padhau? Lesson plan banao',
-  'Class 8 Maths practice questions',
-  'Meri class ka performance kaisa hai?',
+  'Create today’s lesson plan',
+  'Generate Class 8 Maths practice questions',
+  'How is my class performing academically?',
 ];
 
 export default function OneP360BotDrawer({ position = 'right' }) {
+
   const { user } = useAuth();
   const navigate = useNavigate();
   const role = user?.role?.value || user?.role || '';
@@ -255,36 +256,64 @@ export default function OneP360BotDrawer({ position = 'right' }) {
                 {messages.length === 0 && (
                   <div>
                     <div style={{
-                      padding: '14px', borderRadius: '12px',
-                      background: 'rgba(30,41,59,0.7)', border: '1px solid rgba(99,179,237,0.12)',
-                      fontSize: '12.5px', color: '#cbd5e1', lineHeight: '1.5', marginBottom: '12px',
+                      padding: '16px', borderRadius: '14px',
+                      background: 'linear-gradient(135deg, rgba(37,99,235,0.18), rgba(124,58,237,0.14))',
+                      border: '1px solid rgba(99,179,237,0.22)',
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+                      marginBottom: '14px',
                     }}>
-                      👋 <strong>Namaste!</strong> I am your 1P360 ERP Assistant. Ask me anything using real school records.
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                        <span style={{ fontSize: '20px' }}>👋</span>
+                        <div>
+                          <div style={{ fontSize: '13.5px', fontWeight: 800, color: '#f8fafc', letterSpacing: '0.2px' }}>
+                            How can I help you today?
+                          </div>
+                          <div style={{ fontSize: '10.5px', color: '#93c5fd' }}>
+                            1P360 AI Assistant • Powered by School ERP Data
+                          </div>
+                        </div>
+                      </div>
+                      <p style={{ fontSize: '11.5px', color: '#cbd5e1', margin: '6px 0 0', lineHeight: '1.5' }}>
+                        Ask any question about your school’s fees, attendance, academic records, transport, or operations.
+                      </p>
                     </div>
 
-                    <div style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>
-                      ⚡ Quick ERP Questions
+                    <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: '8px' }}>
+                      ⚡ Suggested Inquiries
                     </div>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '7px' }}>
                       {quickChips.map((chip, idx) => (
                         <button
                           key={idx}
                           onClick={() => handleSend(chip)}
                           style={{
-                            textAlign: 'left', padding: '9px 12px', borderRadius: '8px',
-                            background: 'rgba(30,41,59,0.5)', border: '1px solid rgba(99,179,237,0.12)',
-                            color: '#93c5fd', fontSize: '12px', cursor: 'pointer', transition: 'all 0.15s',
+                            textAlign: 'left', padding: '10px 14px', borderRadius: '10px',
+                            background: 'rgba(30,41,59,0.6)', border: '1px solid rgba(99,179,237,0.14)',
+                            color: '#e2e8f0', fontSize: '12px', cursor: 'pointer', transition: 'all 0.15s ease',
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                           }}
-                          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(59,130,246,0.15)'; e.currentTarget.style.borderColor = '#3b82f6'; }}
-                          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(30,41,59,0.5)'; e.currentTarget.style.borderColor = 'rgba(99,179,237,0.12)'; }}
+                          onMouseEnter={e => {
+                            e.currentTarget.style.background = 'rgba(59,130,246,0.18)';
+                            e.currentTarget.style.borderColor = 'rgba(59,130,246,0.5)';
+                            e.currentTarget.style.color = '#93c5fd';
+                            e.currentTarget.style.transform = 'translateX(3px)';
+                          }}
+                          onMouseLeave={e => {
+                            e.currentTarget.style.background = 'rgba(30,41,59,0.6)';
+                            e.currentTarget.style.borderColor = 'rgba(99,179,237,0.14)';
+                            e.currentTarget.style.color = '#e2e8f0';
+                            e.currentTarget.style.transform = 'translateX(0)';
+                          }}
                         >
-                          {chip}
+                          <span>{chip}</span>
+                          <span style={{ fontSize: '11px', opacity: 0.6 }}>→</span>
                         </button>
                       ))}
                     </div>
                   </div>
                 )}
+
 
                 {/* Messages */}
                 {messages.map(m => (

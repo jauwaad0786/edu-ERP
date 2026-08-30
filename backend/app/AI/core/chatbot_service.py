@@ -434,19 +434,23 @@ def process_chat(user_id: int, role: str, school_id: int,
 
 def _generate_followups(intent: str, params: dict) -> list:
     """Generate context-aware follow-up suggestions without another LLM call."""
-    month = params.get('month')
-
     FOLLOWUPS = {
-        Intent.FEE_COLLECTION:    ['Outstanding fees?', 'Compare with last month', 'Pending students ki list'],
-        Intent.FEE_OUTSTANDING:   ['Class-wise outstanding?', 'Pending students kaun hain?'],
-        Intent.ATTENDANCE_TODAY:  ['Class-wise attendance?', 'Attendance trend last 7 days?', 'Low attendance students?'],
-        Intent.ATTENDANCE_CLASSWISE: ['Today overall attendance?', 'Low attendance students?'],
-        Intent.TOP_STUDENTS:      ['Weak students?', 'Class-wise average?'],
-        Intent.WEAK_STUDENTS:     ['Top students?', 'Class performance comparison?'],
-        Intent.CLASS_PERFORMANCE: ['Top students?', 'Subject-wise average?'],
-        Intent.TRANSPORT_SUMMARY: ['Transport fee collection?', 'Kitne students transport use kar rahe hain?'],
-        Intent.HOSTEL_SUMMARY:    ['Hostel fee collection?', 'Hostel occupancy rate?'],
-        Intent.LIBRARY_SUMMARY:   ['Library fines outstanding?', 'Overdue books?'],
+        Intent.FEE_COLLECTION:       ['What is the outstanding fee amount?', 'Compare collection with last month', 'List students with pending fees'],
+        Intent.FEE_OUTSTANDING:      ['Show class-wise outstanding fees', 'List students with pending fees', 'Show fee collection summary'],
+        Intent.ATTENDANCE_TODAY:     ['Show class-wise attendance', 'Show last 7 days attendance trend', 'List students with low attendance'],
+        Intent.ATTENDANCE_CLASSWISE: ['Show overall school attendance', 'List students with low attendance'],
+        Intent.TOP_STUDENTS:         ['Show students needing academic support', 'Show class performance averages'],
+        Intent.WEAK_STUDENTS:        ['Show top performing students', 'Compare performance by class'],
+        Intent.CLASS_PERFORMANCE:    ['Show top performing students', 'Show subject-wise average marks'],
+        Intent.TRANSPORT_SUMMARY:    ['Show transport fee collection', 'Show vehicle & route details'],
+        Intent.HOSTEL_SUMMARY:       ['Show hostel fee collection', 'What is the hostel occupancy rate?'],
+        Intent.LIBRARY_SUMMARY:      ['Show outstanding library fines', 'List overdue issued books'],
+        Intent.PLATFORM_SCHOOLS_COUNT: ['Show schools with active paid plans', 'Show platform active users by role'],
+        Intent.PLATFORM_PAID_SCHOOLS:  ['Show total enrolled schools', 'Show platform system health status'],
+        Intent.PLATFORM_USER_STATS:    ['Show total enrolled schools', 'Show platform paid subscriptions'],
+        Intent.PLATFORM_HEALTH:        ['Show total enrolled schools', 'Show platform user statistics'],
     }
 
     return FOLLOWUPS.get(intent, [])
+
+

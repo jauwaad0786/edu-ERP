@@ -92,6 +92,8 @@ export default function AIManagement() {
     }
   };
 
+  const [discoveredModels, setDiscoveredModels] = useState([]);
+
   const handleTest = async () => {
     setTesting(true);
     setTestResult(null);
@@ -102,12 +104,21 @@ export default function AIManagement() {
         api_key:  form.api_key || undefined,
       });
       setTestResult(result);
+      if (result.success) {
+        if (result.model && result.model !== form.model) {
+          setForm(prev => ({ ...prev, model: result.model }));
+        }
+        if (result.available_models && result.available_models.length > 0) {
+          setDiscoveredModels(result.available_models);
+        }
+      }
     } catch (err) {
       setTestResult({ success: false, message: err?.response?.data?.error || 'Connection test failed' });
     } finally {
       setTesting(false);
     }
   };
+
 
   const handleSetQuota = async (e) => {
     e.preventDefault();
@@ -287,9 +298,17 @@ export default function AIManagement() {
 
                 {/* Model Selector */}
                 <div style={{ marginBottom: '18px' }}>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: darkMode ? '#94a3b8' : '#64748b', marginBottom: '8px', textTransform: 'uppercase' }}>
-                    Model
-                  </label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <label style={{ fontSize: '12px', fontWeight: 600, color: darkMode ? '#94a3b8' : '#64748b', textTransform: 'uppercase' }}>
+                      Model ({form.model || 'Select Model'})
+                    </label>
+                    {discoveredModels.length > 0 && (
+                      <span style={{ fontSize: '11px', color: '#22c55e', fontWeight: 600 }}>
+                        ✓ {discoveredModels.length} active models loaded from your account
+                      </span>
+                    )}
+                  </div>
+
                   <select
                     value={form.model}
                     onChange={e => setForm(prev => ({ ...prev, model: e.target.value }))}
@@ -300,11 +319,21 @@ export default function AIManagement() {
                       color: darkMode ? '#f1f5f9' : '#0f172a', fontSize: '13.5px', outline: 'none',
                     }}
                   >
-                    {models.map(m => (
-                      <option key={m.id} value={m.id}>{m.label}</option>
-                    ))}
+                    {/* Discovered models if any */}
+                    {discoveredModels.length > 0 ? (
+                      discoveredModels.map(m => (
+                        <option key={m.id} value={m.id}>
+                          {m.label || m.id} {m.id === form.model ? ' (Selected)' : ''}
+                        </option>
+                      ))
+                    ) : (
+                      models.map(m => (
+                        <option key={m.id} value={m.id}>{m.label}</option>
+                      ))
+                    )}
                   </select>
                 </div>
+
 
                 {/* API Key */}
                 <div style={{ marginBottom: '18px' }}>
