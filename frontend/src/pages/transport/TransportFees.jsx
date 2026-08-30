@@ -225,6 +225,11 @@ export default function TransportFees() {
   }
 
   // ── Generate Records ──
+  function openGenerate() {
+    setGenerateForm(EMPTY_GENERATE);
+    setShowGenerate(true);
+  }
+
   async function handleGenerate(e) {
     e.preventDefault();
     if (!generateForm.fee_structure_id) { toast.error('Fee structure select karein'); return; }
