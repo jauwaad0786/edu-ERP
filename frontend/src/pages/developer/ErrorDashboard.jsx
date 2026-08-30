@@ -410,10 +410,11 @@ export default function ErrorDashboard() {
         </div>
       )}
       <OneP360BotDrawer />
-    </div>
           </div>
         </div>
       </div>
+    </div>
   );
 }
+
 
