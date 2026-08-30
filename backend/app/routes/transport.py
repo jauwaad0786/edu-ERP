@@ -118,7 +118,8 @@ def get_vehicle_students(vehicle_id):
     if not v:
         return not_found('Vehicle not found')
 
-    from app.models.transport_student import StudentTransport
+    from app.models.transport_student import StudentTransport, TransportFeeRecord
+    from app.models.academic import Student
     from app.models.financial import FeeRecord
 
     assignments = StudentTransport.query.filter_by(
@@ -127,39 +128,49 @@ def get_vehicle_students(vehicle_id):
 
     student_list = []
     for a in assignments:
-        student = a.student
+        student = getattr(a, 'student', None) or (Student.query.get(a.student_id) if getattr(a, 'student_id', None) else None)
         if not student:
             continue
 
-        cls_name = f"{student.class_ref.name} {student.class_ref.section or ''}".strip() if student.class_ref else ''
+        cls_name = f"{student.class_ref.name} {student.class_ref.section or ''}".strip() if getattr(student, 'class_ref', None) else ''
 
-        # Fetch latest transport fee record status
-        latest_fee = FeeRecord.query.filter(
-            FeeRecord.school_id == school_id,
-            FeeRecord.student_id == student.id,
-            FeeRecord.source.in_(['TRANSPORT', 'TRANSPORT_FINE'])
-        ).order_by(FeeRecord.created_at.desc()).first()
+        # Fetch latest transport fee record status safely
+        fee_status = 'NO_FEES'
+        try:
+            latest_transport_fee = TransportFeeRecord.query.filter_by(
+                school_id=school_id, student_id=student.id
+            ).order_by(TransportFeeRecord.created_at.desc()).first()
+            if latest_transport_fee:
+                fee_status = latest_transport_fee.status or 'PENDING'
+            else:
+                latest_fee = FeeRecord.query.filter(
+                    FeeRecord.school_id == school_id,
+                    FeeRecord.student_id == student.id,
+                    FeeRecord.source.in_(['TRANSPORT', 'TRANSPORT_FINE'])
+                ).order_by(FeeRecord.created_at.desc()).first()
+                if latest_fee:
+                    fee_status = latest_fee.status or 'PENDING'
+        except Exception:
+            fee_status = 'PENDING'
 
-        fee_status = latest_fee.status if latest_fee else 'NO_FEES'
-
-        pickup_name = a.pickup_stop.name if a.pickup_stop else (a.stop.name if a.stop else '')
-        drop_name = a.drop_stop.name if a.drop_stop else (a.stop.name if a.stop else '')
+        pickup_name = a.pickup_stop.name if getattr(a, 'pickup_stop', None) else (a.stop.name if getattr(a, 'stop', None) else '')
+        drop_name = a.drop_stop.name if getattr(a, 'drop_stop', None) else (a.stop.name if getattr(a, 'stop', None) else '')
 
         student_list.append({
             'student_id':       student.id,
             'admission_no':     student.admission_no or '',
-            'student_name':     student.user.name if student.user else '',
+            'student_name':     student.user.name if getattr(student, 'user', None) else '',
             'class_name':       cls_name,
             'father_name':      student.father_name or '',
             'father_mobile':    student.parent_phone or '',
             'photo_url':        student.photo_url or '',
-            'pickup_stop_id':   a.pickup_stop_id or a.stop_id,
+            'pickup_stop_id':   getattr(a, 'pickup_stop_id', None) or getattr(a, 'stop_id', None),
             'pickup_stop_name': pickup_name,
-            'drop_stop_id':     a.drop_stop_id or a.stop_id,
+            'drop_stop_id':     getattr(a, 'drop_stop_id', None) or getattr(a, 'stop_id', None),
             'drop_stop_name':   drop_name,
-            'transport_status': a.status,
+            'transport_status': getattr(a, 'status', 'ACTIVE'),
             'fee_status':       fee_status,
-            'assigned_date':    a.assigned_date.isoformat() if a.assigned_date else None,
+            'assigned_date':    a.assigned_date.isoformat() if getattr(a, 'assigned_date', None) else None,
         })
 
     capacity = v.capacity or 0
@@ -418,6 +429,16 @@ def update_driver(driver_id):
                 d.license_photo_url = data['license_photo_url']
         else:
             d.license_number, d.license_expiry, d.license_photo_url = '', None, ''
+
+    if 'assign_vehicle_id' in data:
+        raw_vid = data.get('assign_vehicle_id')
+        new_vid = int(raw_vid) if raw_vid not in (None, '', 'null') else None
+        # Clear previous vehicle assignment for this driver in this school
+        Vehicle.query.filter_by(school_id=school_id, driver_id=d.id).update({'driver_id': None})
+        if new_vid:
+            v = Vehicle.query.filter_by(id=new_vid, school_id=school_id).first()
+            if v:
+                v.driver_id = d.id
 
     d.updated_at = datetime.utcnow()
     db.session.commit()

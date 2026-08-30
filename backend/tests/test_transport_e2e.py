@@ -329,6 +329,46 @@ class TransportE2ETestCase(unittest.TestCase):
         })
         self.assertEqual(res2.status_code, 200)
 
+    def test_08_vehicle_students_endpoint(self):
+        """Test GET /api/transport/vehicles/<id>/students works without 500 error"""
+        login_res = self.client.post('/api/auth/login', json={
+            'identifier': 'principal@dpa.edu',
+            'password': 'pass123'
+        })
+        token = login_res.get_json()['access_token']
+
+        res = self.client.get(
+            f'/api/transport/vehicles/{self.vehicle.id}/students',
+            headers={'Authorization': f'Bearer {token}'}
+        )
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertTrue(data.get('success'))
+        self.assertEqual(data['data']['assigned_count'], 1)
+        self.assertEqual(len(data['data']['students']), 1)
+        self.assertEqual(data['data']['students'][0]['student_name'], 'Aarav Sharma')
+
+    def test_09_driver_today_with_assigned_vehicle(self):
+        """Test GET /api/transport/driver/today returns has_vehicle: True and stop students"""
+        # Login as driver
+        res = self.client.post('/api/auth/login', json={
+            'identifier': '9898989898',
+            'password': 'driver123'
+        })
+        token = res.get_json()['access_token']
+
+        res2 = self.client.get(
+            '/api/transport/driver/today',
+            headers={'Authorization': f'Bearer {token}'}
+        )
+        self.assertEqual(res2.status_code, 200)
+        data = res2.get_json()
+        self.assertTrue(data.get('success'))
+        self.assertTrue(data['data']['has_vehicle'])
+        self.assertEqual(data['data']['vehicle_number'], self.vehicle.vehicle_number)
+        self.assertTrue(len(data['data']['stops']) > 0)
+
 
 if __name__ == '__main__':
     unittest.main()
+

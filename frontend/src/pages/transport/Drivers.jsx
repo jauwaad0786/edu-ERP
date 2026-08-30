@@ -78,13 +78,14 @@ export default function Drivers() {
       license_expiry: form.has_license ? (form.license_expiry || null) : null,
       license_photo_url: form.has_license ? form.license_photo_url : '',
       emergency_contact: form.emergency_contact, remarks: form.remarks,
+      assign_vehicle_id: form.assign_vehicle_id ? Number(form.assign_vehicle_id) : null,
     };
     try {
       if (editingId) {
         await api.put(`/transport/drivers/${editingId}`, payload);
         toast.success('Driver updated');
       } else {
-        await api.post('/transport/drivers', { ...payload, assign_vehicle_id: form.assign_vehicle_id || null });
+        await api.post('/transport/drivers', payload);
         toast.success('Driver added');
       }
       setShowForm(false);

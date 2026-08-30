@@ -244,25 +244,26 @@ def driver_today():
                 assigned_students = []
                 for a in assignments:
                     is_stop_match = (
-                        a.stop_id == stop.id or
-                        a.pickup_stop_id == stop.id or
-                        a.drop_stop_id == stop.id
+                        getattr(a, 'stop_id', None) == stop.id or
+                        getattr(a, 'pickup_stop_id', None) == stop.id or
+                        getattr(a, 'drop_stop_id', None) == stop.id
                     )
-                    if is_stop_match and a.student:
-                        st_name = a.student.user.name if (a.student and a.student.user) else (a.student.father_name or 'Student')
+                    st = getattr(a, 'student', None) or (Student.query.get(a.student_id) if getattr(a, 'student_id', None) else None)
+                    if is_stop_match and st:
+                        st_name = st.user.name if (st and getattr(st, 'user', None)) else (getattr(st, 'father_name', '') or 'Student')
                         cls_name = ''
-                        if getattr(a.student, 'class_ref', None):
-                            c_ref = a.student.class_ref
+                        if getattr(st, 'class_ref', None):
+                            c_ref = st.class_ref
                             cls_name = f"{c_ref.name or ''} {c_ref.section or ''}".strip()
 
                         assigned_students.append({
-                            'student_id':     a.student.id,
+                            'student_id':     st.id,
                             'student_name':   st_name,
-                            'admission_no':   a.student.admission_no or '',
+                            'admission_no':   st.admission_no or '',
                             'class_name':     cls_name,
-                            'father_name':    a.student.father_name or '',
-                            'father_mobile':  a.student.parent_phone or '',
-                            'photo_url':      a.student.photo_url or '',
+                            'father_name':    st.father_name or '',
+                            'father_mobile':  st.parent_phone or '',
+                            'photo_url':      st.photo_url or '',
                             'event_status':   None,
                         })
                 stops_data.append({
@@ -530,30 +531,31 @@ def driver_trip_stops(trip_id):
             if not stop:
                 continue
 
-            assigned_students = []
-            for a in assignments:
-                is_stop_match = (
-                    a.stop_id == stop.id or
-                    a.pickup_stop_id == stop.id or
-                    a.drop_stop_id == stop.id
-                )
-                if is_stop_match and a.student:
-                    st_name = a.student.user.name if (a.student and a.student.user) else (a.student.father_name or 'Student')
-                    cls_name = ''
-                    if getattr(a.student, 'class_ref', None):
-                        c_ref = a.student.class_ref
-                        cls_name = f"{c_ref.name or ''} {c_ref.section or ''}".strip()
+                assigned_students = []
+                for a in assignments:
+                    is_stop_match = (
+                        getattr(a, 'stop_id', None) == stop.id or
+                        getattr(a, 'pickup_stop_id', None) == stop.id or
+                        getattr(a, 'drop_stop_id', None) == stop.id
+                    )
+                    st = getattr(a, 'student', None) or (Student.query.get(a.student_id) if getattr(a, 'student_id', None) else None)
+                    if is_stop_match and st:
+                        st_name = st.user.name if (st and getattr(st, 'user', None)) else (getattr(st, 'father_name', '') or 'Student')
+                        cls_name = ''
+                        if getattr(st, 'class_ref', None):
+                            c_ref = st.class_ref
+                            cls_name = f"{c_ref.name or ''} {c_ref.section or ''}".strip()
 
-                    assigned_students.append({
-                        'student_id':     a.student.id,
-                        'student_name':   st_name,
-                        'admission_no':   a.student.admission_no or '',
-                        'class_name':     cls_name,
-                        'father_name':    a.student.father_name or '',
-                        'father_mobile':  a.student.parent_phone or '',
-                        'photo_url':      a.student.photo_url or '',
-                        'event_status':   event_map.get(a.student.id, None),
-                    })
+                        assigned_students.append({
+                            'student_id':     st.id,
+                            'student_name':   st_name,
+                            'admission_no':   st.admission_no or '',
+                            'class_name':     cls_name,
+                            'father_name':    st.father_name or '',
+                            'father_mobile':  st.parent_phone or '',
+                            'photo_url':      st.photo_url or '',
+                            'event_status':   event_map.get(st.id, None),
+                        })
 
             stops_data.append({
                 'stop_id':        stop.id,
@@ -640,25 +642,26 @@ def driver_detect_stop(trip_id):
     assigned_students = []
     for a in assignments:
         is_stop_match = (
-            a.stop_id == stop.id or
-            a.pickup_stop_id == stop.id or
-            a.drop_stop_id == stop.id
+            getattr(a, 'stop_id', None) == stop.id or
+            getattr(a, 'pickup_stop_id', None) == stop.id or
+            getattr(a, 'drop_stop_id', None) == stop.id
         )
-        if is_stop_match and a.student:
-            st_name = a.student.user.name if (a.student and a.student.user) else (a.student.father_name or 'Student')
+        st = getattr(a, 'student', None) or (Student.query.get(a.student_id) if getattr(a, 'student_id', None) else None)
+        if is_stop_match and st:
+            st_name = st.user.name if (st and getattr(st, 'user', None)) else (getattr(st, 'father_name', '') or 'Student')
             cls_name = ''
-            if getattr(a.student, 'class_ref', None):
-                c_ref = a.student.class_ref
+            if getattr(st, 'class_ref', None):
+                c_ref = st.class_ref
                 cls_name = f"{c_ref.name or ''} {c_ref.section or ''}".strip()
             assigned_students.append({
-                'student_id':     a.student.id,
+                'student_id':     st.id,
                 'student_name':   st_name,
-                'admission_no':   a.student.admission_no or '',
+                'admission_no':   st.admission_no or '',
                 'class_name':     cls_name,
-                'father_name':    a.student.father_name or '',
-                'father_mobile':  a.student.parent_phone or '',
-                'photo_url':      a.student.photo_url or '',
-                'event_status':   event_map.get(a.student.id, None),
+                'father_name':    st.father_name or '',
+                'father_mobile':  st.parent_phone or '',
+                'photo_url':      st.photo_url or '',
+                'event_status':   event_map.get(st.id, None),
             })
 
     return jsonify({

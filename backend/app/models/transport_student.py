@@ -42,6 +42,7 @@ class StudentTransport(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    student     = db.relationship('Student', foreign_keys=[student_id])
     vehicle     = db.relationship('Vehicle', foreign_keys=[vehicle_id])
     route       = db.relationship('Route', foreign_keys=[route_id])
     stop        = db.relationship('Stop', foreign_keys=[stop_id])
@@ -50,7 +51,7 @@ class StudentTransport(db.Model):
 
     def to_dict(self):
         from app.models.academic import Student
-        student = Student.query.get(self.student_id)
+        student = self.student or (Student.query.get(self.student_id) if self.student_id else None)
         effective_pickup = self.pickup_stop or self.stop
         effective_drop = self.drop_stop or self.stop
         return {
