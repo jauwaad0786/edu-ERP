@@ -54,6 +54,7 @@ class GroqProvider(AIProvider):
         messages.append({'role': 'user', 'content': user_message})
 
         t_start = time.monotonic()
+        resp = None
         try:
             resp = client.chat.completions.create(
                 model=self._model,
@@ -63,13 +64,32 @@ class GroqProvider(AIProvider):
             )
         except Exception as e:
             err_str = str(e).lower()
-            if 'api_key' in err_str or 'authentication' in err_str or 'unauthorized' in err_str or '401' in err_str:
-                raise AIProviderError(f'Invalid Groq API key: {str(e)}', 'INVALID_API_KEY')
-            if 'rate_limit' in err_str or 'rate limit' in err_str or '429' in err_str:
-                raise AIProviderError('Groq rate limit exceeded. Please wait a moment.', 'RATE_LIMIT', retryable=True)
-            if 'timeout' in err_str or 'timed out' in err_str:
-                raise AIProviderError('Groq connection timed out. Please try again.', 'TIMEOUT', retryable=True)
-            raise AIProviderError(f'Groq provider error: {str(e)}', 'PROVIDER_ERROR')
+            # If model not found or decommissioned, auto-discover working models and retry
+            if 'model_not_found' in err_str or 'model_decommissioned' in err_str or 'does not exist' in err_str:
+                active_models = self.list_available_models()
+                for cand in active_models:
+                    if cand['id'] != self._model:
+                        try:
+                            resp = client.chat.completions.create(
+                                model=cand['id'],
+                                messages=messages,
+                                temperature=temp,
+                                max_tokens=mtok,
+                            )
+                            self._model = cand['id']
+                            break
+                        except Exception:
+                            continue
+
+            if resp is None:
+                if 'api_key' in err_str or 'authentication' in err_str or 'unauthorized' in err_str or '401' in err_str:
+                    raise AIProviderError(f'Invalid Groq API key: {str(e)}', 'INVALID_API_KEY')
+                if 'rate_limit' in err_str or 'rate limit' in err_str or '429' in err_str:
+                    raise AIProviderError('Groq rate limit exceeded. Please wait a moment.', 'RATE_LIMIT', retryable=True)
+                if 'timeout' in err_str or 'timed out' in err_str:
+                    raise AIProviderError('Groq connection timed out. Please try again.', 'TIMEOUT', retryable=True)
+                raise AIProviderError(f'Groq provider error: {str(e)}', 'PROVIDER_ERROR')
+
 
         latency_ms = int((time.monotonic() - t_start) * 1000)
         choice     = resp.choices[0]

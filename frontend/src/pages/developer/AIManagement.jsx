@@ -83,14 +83,16 @@ export default function AIManagement() {
     try {
       const result = await saveAIConfig(form);
       setConfig(result.config);
-      setMsg({ type: 'success', text: result.message || 'Configuration saved ✓' });
+      setMsg({ type: 'success', text: 'Configuration saved ✓ 1P360 BOT is now active and ready to answer queries!' });
       setForm(prev => ({ ...prev, api_key: '' }));
+      await loadAll();
     } catch (err) {
       setMsg({ type: 'error', text: err?.response?.data?.error || 'Save failed' });
     } finally {
       setSaving(false);
     }
   };
+
 
   const [discoveredModels, setDiscoveredModels] = useState([]);
 

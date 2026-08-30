@@ -40,9 +40,14 @@ def _get_user() -> User:
 
 def _require_super_admin():
     user = _get_user()
-    if not user or user.role != UserRole.SUPER_ADMIN:
+    if not user or not user.is_active:
+        return None, jsonify({'error': 'Authentication required'}), 401
+    role = user.role.value if hasattr(user.role, 'value') else str(user.role)
+    is_super = getattr(user, 'is_super', False)
+    if role != 'SUPER_ADMIN' and not is_super:
         return None, jsonify({'error': 'Super Admin access required'}), 403
     return user, None, None
+
 
 
 # ─── /api/ai/chat ─────────────────────────────────────────────────────────
