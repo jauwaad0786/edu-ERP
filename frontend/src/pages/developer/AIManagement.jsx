@@ -341,15 +341,24 @@ export default function AIManagement() {
                 <div style={{ marginBottom: '18px' }}>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: darkMode ? '#94a3b8' : '#64748b', marginBottom: '8px', textTransform: 'uppercase' }}>
                     API Key
-                    {config?.key_configured && (
-                      <span style={{ color: '#22c55e', fontSize: '11px', marginLeft: '10px', fontWeight: 'normal' }}>
-                        ✓ Key already encrypted & saved
-                      </span>
-                    )}
                   </label>
+
+                  {config?.key_configured && (
+                    <div style={{
+                      padding: '10px 14px', borderRadius: '8px', marginBottom: '10px',
+                      background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)',
+                      color: '#22c55e', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                    }}>
+                      <span><strong>✓ Active Saved Key:</strong> {config.masked_key || '•••••••••••••••• (Encrypted)'}</span>
+                      <span style={{ fontSize: '10.5px', color: '#15803d', background: '#bbf7d0', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                        SAVED IN DB
+                      </span>
+                    </div>
+                  )}
+
                   <input
                     type="password"
-                    placeholder={config?.key_configured ? '•••••••••••••••• (Leave blank to keep existing key)' : `Enter ${form.provider} API key...`}
+                    placeholder={config?.key_configured ? 'Enter new API key to replace current key...' : `Enter ${form.provider} API key...`}
                     value={form.api_key}
                     onChange={e => setForm(prev => ({ ...prev, api_key: e.target.value }))}
                     autoComplete="new-password"
@@ -361,9 +370,10 @@ export default function AIManagement() {
                     }}
                   />
                   <span style={{ fontSize: '11px', color: darkMode ? '#64748b' : '#94a3b8', display: 'block', marginTop: '6px' }}>
-                    🔒 Key is encrypted with AES-256 at rest. It is never logged or exposed to users.
+                    🔒 Key is encrypted with AES-256 at rest. It is never logged or exposed in plaintext.
                   </span>
                 </div>
+
 
                 {/* Temperature & Max Tokens */}
                 <div style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>
@@ -453,11 +463,11 @@ export default function AIManagement() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                   <StatusRow label="Status" value={config?.is_active ? 'Active & Ready' : 'Inactive'} green={config?.is_active} darkMode={darkMode} />
                   <StatusRow label="Active Provider" value={config?.provider || 'None'} darkMode={darkMode} />
-                  <StatusRow label="Active Model" value={config?.model || 'None'} darkMode={darkMode} />
-                  <StatusRow label="API Key Stored" value={config?.key_configured ? 'Yes (Encrypted)' : 'No'} green={config?.key_configured} darkMode={darkMode} />
+                  <StatusRow label="API Key Stored" value={config?.key_configured ? (config.masked_key ? `Saved (${config.masked_key})` : 'Yes (Encrypted)') : 'No (API Key Required)'} green={config?.key_configured} darkMode={darkMode} />
                   <StatusRow label="Default Temperature" value={config?.temperature ?? 0.3} darkMode={darkMode} />
                   <StatusRow label="Max Tokens per Query" value={config?.max_tokens ?? 800} darkMode={darkMode} />
                   <StatusRow label="Last Updated" value={config?.updated_at ? new Date(config.updated_at).toLocaleString() : 'Never'} darkMode={darkMode} />
+
                 </div>
               </div>
             </div>

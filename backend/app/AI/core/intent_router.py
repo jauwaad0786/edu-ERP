@@ -84,9 +84,11 @@ CURRENT_SESSION  = f"{CURRENT_YEAR}-{str(CURRENT_YEAR+1)[-2:]}"
 
 
 def _normalize(text: str) -> str:
-    """Lowercase, strip extra whitespace, normalize Hindi shortcuts."""
+    """Lowercase, strip punctuation/apostrophes, normalize Hindi shortcuts."""
     t = text.lower().strip()
-    t = re.sub(r'\s+', ' ', t)
+    t = t.replace("’", "'").replace("'", "").replace("-", " ")
+    t = re.sub(r'[^\w\s]', ' ', t)
+    t = re.sub(r'\s+', ' ', t).strip()
     # Common Hindi/Hinglish shortcuts
     t = t.replace('kitna', 'how much').replace('kitni', 'how many')
     t = t.replace('hua', 'today').replace('hai', 'is')
@@ -143,16 +145,10 @@ def _extract_class(text: str) -> str:
 
 def classify_intent(message: str) -> dict:
     """
-    Fast rule-based intent classification.
-    Returns: {
-        'intent': str,
-        'params': dict,
-        'confidence': float,  # 0-1, 1 = rule match
-        'normalized': str,
-    }
+    Fast rule-based intent classification for both School & Platform Super Admin queries.
     """
     norm = _normalize(message)
-    low  = message.lower()
+    low  = message.lower().replace("’", "'").replace("'", "")
 
     month, year  = _extract_month(message)
     class_filter = _extract_class(message)
@@ -163,18 +159,48 @@ def classify_intent(message: str) -> dict:
 
     # ── LESSON PLAN (Teacher) ──
     if any(p in low for p in ['lesson plan', 'lesson banao', 'kya padhau', 'kya padhna', 'padhaun',
-                                'aaj padhao', 'padhaao', 'syllabus', 'topic banao', 'padhana hai']):
+                              'aaj padhao', 'padhaao', 'syllabus', 'topic banao', 'padhana hai']):
         return _result(Intent.TEACHER_LESSON_PLAN, {'class': class_filter}, 0.95, norm)
 
     # ── PRACTICE QUESTIONS (Teacher) ──
     if any(p in low for p in ['practice question', 'mcq', 'quiz', 'questions banao', 'test paper',
-                                'worksheet', 'practice ke liye', 'weak students ke liye question']):
+                              'worksheet', 'practice ke liye', 'weak students ke liye question']):
         return _result(Intent.TEACHER_PRACTICE_QA, {'class': class_filter}, 0.92, norm)
 
+    # ── PLATFORM SCHOOLS / DEVELOPER QUERIES (SUPER ADMIN) ──
+    if any(p in low for p in [
+        'how many schools', 'schools are enrolled', 'enrolled schools', 'total schools',
+        'kitne school', 'total school', 'enrolled school', 'schools enroll', 'active school',
+        'kitni school', 'schools count', 'all schools', 'saare school'
+    ]):
+        return _result(Intent.PLATFORM_SCHOOLS_COUNT, {}, 0.95, norm)
+
+    if any(p in low for p in [
+        'paid plan', 'paid subscription', 'paid school', 'paid service',
+        'which schools have active paid', 'active paid subscriptions', 'active paid plans',
+        'pay kiya', 'subscription', 'kis school ne pay', 'kaunse school ne pay',
+        'service pay', 'enterprise school'
+    ]):
+        return _result(Intent.PLATFORM_PAID_SCHOOLS, {}, 0.95, norm)
+
+    if any(p in low for p in [
+        'active users', 'platform active users', 'users by role', 'total users',
+        'kitne user', 'total user', 'user stats', 'users use kar rahe',
+        'system users', 'all users'
+    ]):
+        return _result(Intent.PLATFORM_USER_STATS, {}, 0.95, norm)
+
+    if any(p in low for p in [
+        'system health', 'server status', 'error status', 'health status', 'system status'
+    ]):
+        return _result(Intent.PLATFORM_HEALTH, {}, 0.95, norm)
+
     # ── FEE COLLECTION ──
-    if any(p in low for p in ['fee collect', 'kitni fees aayi', 'fees aayi', 'collection hua',
-                                'paise aaye', 'fees aaye', 'fee aaya', 'kitna collect',
-                                'fee jama', 'kitna revenue', 'fees collect']):
+    if any(p in low for p in [
+        'fee collect', 'how much fee was collected', 'fees collect', 'kitni fees aayi',
+        'fees aayi', 'collection hua', 'paise aaye', 'fees aaye', 'fee aaya',
+        'kitna collect', 'fee jama', 'kitna revenue', 'total collection'
+    ]):
         if any(p in low for p in ['transport', 'bus']):
             return _result(Intent.TRANSPORT_FEE, {'month': month, 'year': year}, 0.95, norm)
         if any(p in low for p in ['hostel']):
@@ -182,105 +208,101 @@ def classify_intent(message: str) -> dict:
         return _result(Intent.FEE_COLLECTION, {'month': month, 'year': year}, 0.95, norm)
 
     # ── FEE OUTSTANDING / PENDING ──
-    if any(p in low for p in ['outstanding', 'pending fee', 'baaki fee', 'due fee',
-                                'nahi bhari', 'fee nahi di', 'unpaid', 'baki hai', 'dues']):
+    if any(p in low for p in [
+        'outstanding', 'pending fee', 'baaki fee', 'due fee', 'total outstanding',
+        'nahi bhari', 'fee nahi di', 'unpaid', 'baki hai', 'dues', 'unpaid fee'
+    ]):
         if any(p in low for p in ['student', 'kaun', 'kaunse', 'list', 'naam']):
             return _result(Intent.FEE_PENDING_STUDENTS, {'month': month, 'year': year}, 0.9, norm)
         return _result(Intent.FEE_OUTSTANDING, {'month': month, 'year': year}, 0.92, norm)
 
     # ── FEE COMPARISON ──
-    if any(p in low for p in ['compare', 'comparison', 'aur', 'vs', 'pichle se', 'difference',
-                                'badha', 'ghata', 'increase', 'decrease']):
+    if any(p in low for p in ['compare', 'comparison', 'vs', 'pichle se', 'difference',
+                              'badha', 'ghata', 'increase', 'decrease']):
         if any(p in low for p in ['fee', 'collection', 'paise', 'revenue']):
             return _result(Intent.FEE_COMPARISON, {'month': month, 'year': year}, 0.88, norm)
 
     # ── LIBRARY FINES ──
     if any(p in low for p in ['library fine', 'book fine', 'fine outstanding', 'overdue fine',
-                                'library outstanding', 'kitni fine']):
+                              'library outstanding', 'kitni fine']):
         return _result(Intent.LIBRARY_FINES, {}, 0.93, norm)
 
     # ── ATTENDANCE TODAY ──
-    if any(p in low for p in ['aaj attendance', 'today attendance', 'aaj kitne student', 'aaj haaziri',
-                                'attendance today', 'kitne aaye aaj', 'present today', 'absent today',
-                                'aaj ka attendance', 'attendance hua']):
+    if any(p in low for p in [
+        'today attendance', 'todays attendance', 'attendance status', 'aaj attendance',
+        'aaj kitne student', 'aaj haaziri', 'attendance today', 'kitne aaye aaj',
+        'present today', 'absent today', 'aaj ka attendance', 'attendance hua'
+    ]):
         return _result(Intent.ATTENDANCE_TODAY, {'class': class_filter}, 0.95, norm)
 
     # ── ATTENDANCE CLASSWISE / CLASSWISE ABSENTEE ──
-    if any(p in low for p in ['classwise attendance', 'class attendance', 'kis class me', 'sabse jyada absent',
-                                'sabse zyada absent', 'lowest attendance', 'attendance classwise', 'haaziri classwise']):
+    if any(p in low for p in [
+        'class wise attendance', 'classwise attendance', 'class attendance', 'kis class me',
+        'sabse jyada absent', 'sabse zyada absent', 'lowest attendance', 'attendance breakdown',
+        'attendance classwise', 'haaziri classwise'
+    ]):
         return _result(Intent.ATTENDANCE_CLASSWISE, {}, 0.92, norm)
 
     # ── ATTENDANCE TREND ──
     if any(p in low for p in ['attendance trend', 'last week attendance', '7 days attendance', 'monthly attendance',
-                                'pichle hafte', 'trend attendance', '6 month attendance', 'attendance pattern']):
+                              'pichle hafte', 'trend attendance', '6 month attendance', 'attendance pattern']):
         return _result(Intent.ATTENDANCE_TREND, {'month': month, 'year': year}, 0.88, norm)
 
     # ── LOW ATTENDANCE STUDENTS ──
     if any(p in low for p in ['low attendance student', 'kam attendance wale', 'poor attendance',
-                                'attendance problem', 'frequent absent', 'zyada absent student']):
+                              'attendance problem', 'frequent absent', 'zyada absent student']):
         return _result(Intent.LOW_ATTENDANCE_STUDENTS, {'class': class_filter}, 0.88, norm)
 
     # ── TOP STUDENTS ──
-    if any(p in low for p in ['top student', 'best student', 'topper', 'highest marks', 'sabse acche student',
-                                'rank 1', 'merit list', 'sabse zyada marks', 'brightest']):
+    if any(p in low for p in [
+        'top 10', 'top student', 'best student', 'topper', 'highest marks', 'academic students',
+        'sabse acche student', 'rank 1', 'merit list', 'sabse zyada marks', 'brightest'
+    ]):
         return _result(Intent.TOP_STUDENTS, {'class': class_filter}, 0.93, norm)
 
     # ── WEAK STUDENTS ──
-    if any(p in low for p in ['weak student', 'fail student', 'low marks student', 'bacche fail',
-                                'sabse kam marks', 'consistently weak', 'poor performance', 'failing student',
-                                'nahi padhte', 'mehnat nahi karte']):
+    if any(p in low for p in [
+        'weak student', 'weak in academic', 'weak in academics', 'fail student', 'low marks student',
+        'bacche fail', 'sabse kam marks', 'consistently weak', 'poor performance', 'failing student',
+        'nahi padhte', 'mehnat nahi karte'
+    ]):
         return _result(Intent.WEAK_STUDENTS, {'class': class_filter}, 0.92, norm)
 
     # ── CLASS PERFORMANCE ──
     if any(p in low for p in ['class performance', 'class average', 'class marks', 'kaisi hai class',
-                                'lowest class', 'worst class', 'class ka result', 'class ka average',
-                                'class 8', 'class 9', 'class 10', 'pass percentage', 'pass rate']):
+                              'lowest class', 'worst class', 'class ka result', 'class ka average',
+                              'class 8', 'class 9', 'class 10', 'pass percentage', 'pass rate']):
         return _result(Intent.CLASS_PERFORMANCE, {'class': class_filter}, 0.88, norm)
 
     # ── EXAM RESULTS ──
     if any(p in low for p in ['exam result', 'result kab aayega', 'result published', 'kitne pass',
-                                'kitne fail', 'pass fail', 'result aaya', 'exam kaisa raha']):
+                              'kitne fail', 'pass fail', 'result aaya', 'exam kaisa raha']):
         return _result(Intent.EXAM_RESULTS, {'class': class_filter}, 0.88, norm)
 
     # ── TRANSPORT ──
     if any(p in low for p in ['transport', 'bus', 'vehicle', 'kitne student bus', 'bus me kitne',
-                                'transport student', 'driver', 'route']):
+                              'transport student', 'driver', 'route', 'transport summary']):
         return _result(Intent.TRANSPORT_SUMMARY, {}, 0.92, norm)
 
     # ── HOSTEL ──
     if any(p in low for p in ['hostel', 'hostel me kitne', 'hostel student', 'boarding', 'hostel occupancy',
-                                'hostel bed', 'warden']):
+                              'hostel bed', 'warden', 'hostel summary']):
         return _result(Intent.HOSTEL_SUMMARY, {}, 0.92, norm)
 
     # ── LIBRARY ──
     if any(p in low for p in ['library', 'book issue', 'kitni book', 'issued book', 'overdue book',
-                                'library me', 'book return', 'library summary']):
+                              'library me', 'book return', 'library summary', 'library books are currently issued']):
         return _result(Intent.LIBRARY_SUMMARY, {}, 0.92, norm)
 
     # ── SCHOOL OVERVIEW ──
     if any(p in low for p in ['school me kitne', 'total student', 'school overview', 'school summary',
-                                'overall', 'school stats', 'school ka overview', 'how many student',
-                                'student count', 'kitne student hain']):
+                              'overall', 'school stats', 'school ka overview', 'how many student',
+                              'student count', 'kitne student hain']):
         return _result(Intent.SCHOOL_SUMMARY, {}, 0.85, norm)
-
-    # ── PLATFORM SCHOOLS / DEVELOPER QUERIES ──
-    if any(p in low for p in ['kitne school', 'total school', 'enrolled school', 'schools enroll', 'active school',
-                              'kitni school', 'schools count', 'all schools', 'saare school']):
-        return _result(Intent.PLATFORM_SCHOOLS_COUNT, {}, 0.95, norm)
-
-    if any(p in low for p in ['pay kiya', 'paid school', 'paid service', 'subscription', 'kis school ne pay',
-                              'kaunse school ne pay', 'service pay', 'paid plan', 'enterprise school']):
-        return _result(Intent.PLATFORM_PAID_SCHOOLS, {}, 0.95, norm)
-
-    if any(p in low for p in ['kitne user', 'total user', 'active user', 'user stats', 'users use kar rahe',
-                              'system users', 'all users']):
-        return _result(Intent.PLATFORM_USER_STATS, {}, 0.95, norm)
-
-    if any(p in low for p in ['system health', 'server status', 'error status', 'health status', 'system status']):
-        return _result(Intent.PLATFORM_HEALTH, {}, 0.95, norm)
 
     # ── No confident match → fallback to GENERAL (LLM will handle) ──
     return _result(Intent.GENERAL, {'month': month, 'year': year, 'class': class_filter}, 0.0, norm)
+
 
 
 

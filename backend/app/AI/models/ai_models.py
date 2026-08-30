@@ -44,13 +44,26 @@ class AIProviderConfig(db.Model):
     updated_by     = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
 
     def to_dict_safe(self):
-        """Return config WITHOUT any key material — safe for frontend."""
+        """Return config with masked key info — safe for frontend."""
+        masked = ''
+        if self.encrypted_api_key:
+            try:
+                from app.AI.utils.encryption import decrypt_secret
+                raw = decrypt_secret(self.encrypted_api_key)
+                if raw and len(raw) > 8:
+                    masked = f"{raw[:4]}••••••••••••{raw[-4:]}"
+                elif raw:
+                    masked = "••••••••••••"
+            except Exception:
+                masked = "•••••••••••• (Saved)"
+
         return {
             'id':               self.id,
             'is_active':        self.is_active,
             'provider':         self.provider,
             'model':            self.model,
             'key_configured':   bool(self.key_configured),
+            'masked_key':       masked,
             'temperature':      self.temperature,
             'max_tokens':       self.max_tokens,
             'fallback_provider': self.fallback_provider,
@@ -58,6 +71,7 @@ class AIProviderConfig(db.Model):
             'fallback_enabled':  bool(self.fallback_enabled),
             'updated_at':       self.updated_at.isoformat() if self.updated_at else None,
         }
+
 
 
 class AIRoleQuota(db.Model):
