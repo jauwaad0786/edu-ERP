@@ -51,8 +51,15 @@ class Intent:
     TEACHER_CLASS_PERF   = 'TEACHER_CLASS_PERF'
     DOCUMENT_QA          = 'DOCUMENT_QA'
 
+    # Super Admin / Platform
+    PLATFORM_SCHOOLS_COUNT = 'PLATFORM_SCHOOLS_COUNT'
+    PLATFORM_PAID_SCHOOLS  = 'PLATFORM_PAID_SCHOOLS'
+    PLATFORM_USER_STATS    = 'PLATFORM_USER_STATS'
+    PLATFORM_HEALTH        = 'PLATFORM_HEALTH'
+
     GENERAL              = 'GENERAL'
     CLARIFICATION_NEEDED = 'CLARIFICATION_NEEDED'
+
 
 
 # ─── Month name → number mapping (Hindi + English) ──────────────────────────
@@ -256,8 +263,25 @@ def classify_intent(message: str) -> dict:
                                 'student count', 'kitne student hain']):
         return _result(Intent.SCHOOL_SUMMARY, {}, 0.85, norm)
 
+    # ── PLATFORM SCHOOLS / DEVELOPER QUERIES ──
+    if any(p in low for p in ['kitne school', 'total school', 'enrolled school', 'schools enroll', 'active school',
+                              'kitni school', 'schools count', 'all schools', 'saare school']):
+        return _result(Intent.PLATFORM_SCHOOLS_COUNT, {}, 0.95, norm)
+
+    if any(p in low for p in ['pay kiya', 'paid school', 'paid service', 'subscription', 'kis school ne pay',
+                              'kaunse school ne pay', 'service pay', 'paid plan', 'enterprise school']):
+        return _result(Intent.PLATFORM_PAID_SCHOOLS, {}, 0.95, norm)
+
+    if any(p in low for p in ['kitne user', 'total user', 'active user', 'user stats', 'users use kar rahe',
+                              'system users', 'all users']):
+        return _result(Intent.PLATFORM_USER_STATS, {}, 0.95, norm)
+
+    if any(p in low for p in ['system health', 'server status', 'error status', 'health status', 'system status']):
+        return _result(Intent.PLATFORM_HEALTH, {}, 0.95, norm)
+
     # ── No confident match → fallback to GENERAL (LLM will handle) ──
     return _result(Intent.GENERAL, {'month': month, 'year': year, 'class': class_filter}, 0.0, norm)
+
 
 
 def _result(intent: str, params: dict, confidence: float, normalized: str) -> dict:

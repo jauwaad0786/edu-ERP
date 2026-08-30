@@ -4,6 +4,8 @@ import Navbar  from '../../components/Navbar';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
+import OneP360BotDrawer from '../../AI/components/OneP360BotDrawer';
+
 
 export default function TeacherDashboard() {
   const { user } = useAuth();
@@ -1129,9 +1131,11 @@ export default function TeacherDashboard() {
 
         </div>
       </div>
+      <OneP360BotDrawer />
     </div>
   );
 }
+
 
 function NotesUpload({ selectedClass, darkMode }) {
   const [form, setForm] = useState({ title: '', description: '' });

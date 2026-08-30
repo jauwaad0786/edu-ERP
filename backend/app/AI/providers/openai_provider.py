@@ -62,13 +62,13 @@ class OpenAIProvider(AIProvider):
             )
         except Exception as e:
             err_str = str(e).lower()
-            if 'api_key' in err_str or 'authentication' in err_str or 'incorrect api key' in err_str:
-                raise AIProviderError('Invalid OpenAI API key.', 'INVALID_API_KEY')
-            if 'rate_limit' in err_str:
-                raise AIProviderError('OpenAI rate limit.', 'RATE_LIMIT', retryable=True)
+            if 'api_key' in err_str or 'authentication' in err_str or 'incorrect api key' in err_str or '401' in err_str:
+                raise AIProviderError(f'Invalid OpenAI API key: {str(e)}', 'INVALID_API_KEY')
+            if 'rate_limit' in err_str or '429' in err_str:
+                raise AIProviderError('OpenAI rate limit exceeded. Please wait a moment.', 'RATE_LIMIT', retryable=True)
             if 'timeout' in err_str:
-                raise AIProviderError('OpenAI timeout.', 'TIMEOUT', retryable=True)
-            raise AIProviderError(f'OpenAI error: {type(e).__name__}', 'PROVIDER_ERROR')
+                raise AIProviderError('OpenAI connection timed out. Please try again.', 'TIMEOUT', retryable=True)
+            raise AIProviderError(f'OpenAI provider error: {str(e)}', 'PROVIDER_ERROR')
 
         latency_ms = int((time.monotonic() - t_start) * 1000)
         choice     = resp.choices[0]
@@ -97,7 +97,7 @@ class OpenAIProvider(AIProvider):
             return {
                 'success':    True,
                 'latency_ms': latency_ms,
-                'message':    f"Connected ✓ | Model: {self._model} | Response: {result['content'][:30]}",
+                'message':    f"Connected ✓ | Model: {self._model} | Response: {result['content'][:30].strip()}",
                 'model':      self._model,
                 'provider':   'OPENAI',
             }
@@ -105,13 +105,14 @@ class OpenAIProvider(AIProvider):
             return {
                 'success':    False,
                 'latency_ms': int((time.monotonic() - t_start) * 1000),
-                'message':    e.to_user_message(),
+                'message':    str(e),
                 'provider':   'OPENAI',
             }
-        except Exception:
+        except Exception as e:
             return {
                 'success':    False,
                 'latency_ms': int((time.monotonic() - t_start) * 1000),
-                'message':    'Connection failed.',
+                'message':    f"Connection failed: {str(e)}",
                 'provider':   'OPENAI',
             }
+

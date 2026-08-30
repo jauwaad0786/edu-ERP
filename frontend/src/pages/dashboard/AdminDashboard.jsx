@@ -5,6 +5,8 @@ import { useNavigate } from 'react-router-dom';
 import Sidebar from '../../components/Sidebar';
 import Navbar  from '../../components/Navbar';
 import api     from '../../api/axios';
+import OneP360BotDrawer from '../../AI/components/OneP360BotDrawer';
+
 
 const MONTHS  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const CUR_YR  = new Date().getFullYear();
@@ -1025,6 +1027,8 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      <OneP360BotDrawer />
     </div>
   );
 }
+

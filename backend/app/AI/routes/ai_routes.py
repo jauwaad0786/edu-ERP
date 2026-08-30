@@ -81,13 +81,16 @@ def chat():
     role      = user.role.value if hasattr(user.role, 'value') else str(user.role)
 
     # Only allow AI for supported roles
-    ALLOWED_ROLES = {'PRINCIPAL', 'VICE_PRINCIPAL', 'TEACHER', 'ACCOUNTANT',
+    ALLOWED_ROLES = {'SUPER_ADMIN', 'PRINCIPAL', 'DIRECTOR', 'VICE_PRINCIPAL', 'TEACHER', 'ACCOUNTANT',
                      'LIBRARIAN', 'HOSTEL', 'TRANSPORT'}
     if role not in ALLOWED_ROLES:
         return jsonify({'error': f'AI assistant is not available for role: {role}'}), 403
 
-    if not school_id:
+    if not school_id and role != 'SUPER_ADMIN':
         return jsonify({'error': 'No school associated with your account'}), 400
+
+    school_id = school_id or 0
+
 
     data     = request.get_json() or {}
     message  = (data.get('message') or '').strip()

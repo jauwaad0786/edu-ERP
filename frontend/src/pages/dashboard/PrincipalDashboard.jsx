@@ -10,8 +10,10 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
 import StudentTravelHistoryWidget from '../../components/transport/StudentTravelHistoryWidget';
+import OneP360BotDrawer from '../../AI/components/OneP360BotDrawer';
 
 export default function PrincipalDashboard() {
+
   const navigate = useNavigate();
   const { user } = useAuth();
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
@@ -1490,6 +1492,8 @@ export default function PrincipalDashboard() {
 
         </div>
       </div>
+      <OneP360BotDrawer />
     </div>
   );
 }
+

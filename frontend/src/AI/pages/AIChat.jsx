@@ -39,11 +39,15 @@ const SOURCE_LABELS = {
   GENERAL: { label: 'AI', cls: 'erp' },
 };
 
-// ─── Component ────────────────────────────────────────────────────────────
+import Sidebar from '../../components/Sidebar';
+import Navbar  from '../../components/Navbar';
 
 export default function AIChat() {
   const { user } = useAuth();
   const role = user?.role || '';
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
+  useEffect(() => { localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
+
 
   // Chat state
   const [messages, setMessages] = useState([]);
@@ -225,7 +229,16 @@ export default function AIChat() {
   const activeDoc = documents.find(d => d.id === activeDocId);
 
   return (
-    <div className="ai-chat-page">
+    <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
+      <Sidebar darkMode={darkMode} />
+      <div className="main-content" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: darkMode ? '#0b132b' : '#f8fafc' }}>
+        <Navbar
+          title="1P360 BOT — AI Assistant"
+          darkMode={darkMode}
+          onToggleDark={() => setDarkMode(d => !d)}
+        />
+        <div className="ai-chat-page" style={{ flex: 1, height: 'calc(100vh - 64px)' }}>
+
 
       {/* ── Sidebar: Conversations ─────────────────────────────────────── */}
       <div className="ai-sidebar">
@@ -458,7 +471,8 @@ export default function AIChat() {
             </div>
           )}
         </div>
-      )}
+        </div>
+      </div>
     </div>
   );
 }

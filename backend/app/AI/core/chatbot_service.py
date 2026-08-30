@@ -31,7 +31,8 @@ from app.AI.usage.quota_service import enforce_quota, log_usage, check_quota
 from app.AI.cache.ai_cache import lookup_cache, write_cache, build_normalized_key
 from app.AI.providers.provider_factory import get_active_provider
 from app.AI.providers.base_provider import AIProviderError
-from app.AI.config.ai_config import PRINCIPAL_SYSTEM_PROMPT, TEACHER_SYSTEM_PROMPT
+from app.AI.config.ai_config import PRINCIPAL_SYSTEM_PROMPT, TEACHER_SYSTEM_PROMPT, DEVELOPER_SYSTEM_PROMPT
+
 
 
 def _get_analytics_data(intent: str, params: dict, school_id: int,
@@ -127,17 +128,28 @@ def _get_analytics_data(intent: str, params: dict, school_id: int,
             from app.AI.school_data.infra_analytics import get_library_summary
             return {'library': get_library_summary(school_id)}
 
-        elif intent == Intent.SCHOOL_SUMMARY:
-            from app.AI.school_data.academic_analytics import get_school_student_count
-            from app.AI.school_data.attendance_analytics import get_attendance_today
-            from app.AI.school_data.fee_analytics import get_fee_outstanding_summary
+        elif intent == Intent.PLATFORM_SCHOOLS_COUNT:
+            from app.AI.school_data.platform_analytics import get_platform_schools_summary
+            return {'schools_summary': get_platform_schools_summary()}
+
+        elif intent == Intent.PLATFORM_PAID_SCHOOLS:
+            from app.AI.school_data.platform_analytics import get_platform_paid_schools
+            return {'paid_schools': get_platform_paid_schools()}
+
+        elif intent == Intent.PLATFORM_USER_STATS:
+            from app.AI.school_data.platform_analytics import get_platform_user_stats
+            return {'user_stats': get_platform_user_stats()}
+
+        elif intent == Intent.PLATFORM_HEALTH:
+            from app.AI.school_data.platform_analytics import get_platform_schools_summary, get_platform_user_stats
             return {
-                'students':    get_school_student_count(school_id),
-                'attendance':  get_attendance_today(school_id),
-                'outstanding': get_fee_outstanding_summary(school_id),
+                'schools': get_platform_schools_summary(),
+                'users': get_platform_user_stats(),
+                'system_status': 'ONLINE',
             }
 
     except Exception as e:
+
         return {'error': str(type(e).__name__), 'data_unavailable': True}
 
     return {}
@@ -323,7 +335,13 @@ def process_chat(user_id: int, role: str, school_id: int,
         }
 
     # Build system prompt based on role
-    system_prompt = TEACHER_SYSTEM_PROMPT if role in ('TEACHER',) else PRINCIPAL_SYSTEM_PROMPT
+    if role == 'SUPER_ADMIN':
+        system_prompt = DEVELOPER_SYSTEM_PROMPT
+    elif role in ('TEACHER',):
+        system_prompt = TEACHER_SYSTEM_PROMPT
+    else:
+        system_prompt = PRINCIPAL_SYSTEM_PROMPT
+
 
     # Build user message for LLM
     if role in ('TEACHER',):
