@@ -1,8 +1,10 @@
 """
 Transport, Hostel, Library Analytics
 """
+from datetime import date
 from sqlalchemy import func
 from app import db
+
 
 
 # ─── Transport ──────────────────────────────────────────────────────────────
@@ -105,6 +107,36 @@ def get_library_summary(school_id: int) -> dict:
     }
 
 
+def get_hostel_visitors(school_id: int, visit_date: date = None) -> dict:
+    """Get visitor gate logs for hostel."""
+    from datetime import date
+    from app.models.hostel import HostelVisitorLog
+
+    if not visit_date:
+        visit_date = date.today()
+
+    q = HostelVisitorLog.query
+    if school_id > 0:
+        q = q.filter(HostelVisitorLog.school_id == school_id)
+    q = q.filter(HostelVisitorLog.visit_date == visit_date)
+    logs = q.order_by(HostelVisitorLog.in_time.desc()).all()
+
+    visitors = [{
+        'visitor_name': l.visitor_name,
+        'relation':     l.relation,
+        'student_name': l.student.user.name if l.student and l.student.user else 'N/A',
+        'purpose':      l.purpose,
+        'in_time':      l.in_time.strftime('%I:%M %p') if l.in_time else 'N/A',
+        'out_time':     l.out_time.strftime('%I:%M %p') if l.out_time else 'Inside',
+    } for l in logs]
+
+    return {
+        'visit_date':     str(visit_date),
+        'total_visitors': len(visitors),
+        'visitors':       visitors,
+    }
+
+
 def get_school_summary(school_id: int) -> dict:
     """Get high-level school overview metrics."""
     from app.models.academic import Student, Teacher, Class
@@ -122,10 +154,10 @@ def get_school_summary(school_id: int) -> dict:
         usr_q = usr_q.filter(User.school_id == school_id)
 
     total_students  = stu_q.count()
-    active_students = stu_q.filter(Student.status == 'ACTIVE').count()
-    total_teachers  = tea_q.count()
+    active_students = stu_q.join(User, Student.user_id == User.id).filter(User.is_active == True).count()
+    total_teachers  = tea_q.join(User, Teacher.user_id == User.id).filter(User.is_active == True).count()
     total_classes   = cls_q.count()
-    total_staff     = usr_q.count()
+    total_staff     = usr_q.filter(User.is_active == True).count()
 
     return {
         'total_students':   total_students,
@@ -134,5 +166,6 @@ def get_school_summary(school_id: int) -> dict:
         'total_classes':    total_classes,
         'total_staff':      total_staff,
     }
+
 
 

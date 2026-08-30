@@ -129,10 +129,20 @@ def _get_analytics_data(intent: str, params: dict, school_id: int,
             from app.AI.school_data.infra_analytics import get_hostel_summary
             return {'hostel': get_hostel_summary(school_id, params.get('check_visitors', False))}
 
+        elif intent == Intent.HOSTEL_VISITORS:
+            from app.AI.school_data.infra_analytics import get_hostel_visitors
+            return {'hostel_visitors': get_hostel_visitors(school_id)}
 
         elif intent == Intent.LIBRARY_SUMMARY:
             from app.AI.school_data.infra_analytics import get_library_summary
             return {'library': get_library_summary(school_id)}
+
+        elif intent == Intent.ASSIGNMENTS_SUMMARY:
+            from app.models.academic import Assignment, Student
+            total_asns = Assignment.query.filter_by(school_id=school_id).count()
+            active_asns = Assignment.query.filter_by(school_id=school_id, status='ACTIVE').count()
+            return {'assignments': {'total_assignments': total_asns, 'active_assignments': active_asns}}
+
 
         elif intent == Intent.STUDENT_FEE_STATUS:
             from app.AI.school_data.fee_analytics import get_student_fee_status
@@ -339,7 +349,53 @@ def process_chat(user_id: int, role: str, school_id: int,
         analytics_data = _get_analytics_data(intent, params, school_id, user_id, role)
         db_ms = int((time.monotonic() - t_db) * 1000)
 
-    # ─── STEP 5: LLM Generation ──────────────────────────────────────────────
+        # ── Deterministic Response Fast-Path (Guarantees zero hallucination and 100% accurate currency/numbers) ──
+        from app.AI.core.deterministic_responder import format_deterministic_response, validate_and_sanitize_response
+        det_answer = format_deterministic_response(intent, analytics_data, message)
+        if det_answer:
+            total_ms = int((time.monotonic() - t_total_start) * 1000)
+            quota    = check_quota(user_id, role, school_id)
+            suggested_followups = _generate_followups(intent, params)
+
+            cache_payload = {
+                'answer':              det_answer,
+                'source':              source,
+                'data':                analytics_data,
+                'suggested_followups': suggested_followups,
+            }
+            write_cache(
+                school_id=school_id,
+                normalized_query=norm_key,
+                intent=intent,
+                response_json=cache_payload,
+                answer_text=det_answer,
+                params=params,
+                permission_scope=perm_scope,
+                scope_user_id=scope_uid,
+            )
+
+            log_usage(
+                user_id=user_id, role=role, school_id=school_id,
+                intent=intent,
+                provider='DETERMINISTIC_ENGINE',
+                model='rule-based-v2',
+                intent_ms=intent_ms, db_ms=db_ms, llm_ms=0, total_ms=total_ms,
+                prompt_tokens=0, completion_tokens=0, total_tokens=0,
+                cache_hit=False, success=True,
+            )
+
+            return {
+                'answer':              det_answer,
+                'intent':              intent,
+                'cached':              False,
+                'source':              source,
+                'data':                analytics_data,
+                'suggested_followups': suggested_followups,
+                'usage':               quota,
+                'latency':             {'total_ms': total_ms, 'intent_ms': intent_ms, 'db_ms': db_ms, 'llm_ms': 0},
+            }
+
+    # ─── STEP 5: LLM Generation (For Complex/Open-ended queries) ───────────────
     try:
         provider = get_active_provider()
     except AIProviderError as e:
@@ -355,6 +411,7 @@ def process_chat(user_id: int, role: str, school_id: int,
             'error':  e.error_type,
             'usage':  quota,
         }
+
 
     # Build system prompt based on role
     if role == 'SUPER_ADMIN':
@@ -394,9 +451,12 @@ def process_chat(user_id: int, role: str, school_id: int,
 
     llm_ms   = int((time.monotonic() - t_llm_start) * 1000)
     total_ms = int((time.monotonic() - t_total_start) * 1000)
-    answer   = llm_result['content']
+    raw_answer = llm_result['content']
+    from app.AI.core.deterministic_responder import validate_and_sanitize_response
+    answer   = validate_and_sanitize_response(raw_answer, analytics_data, raw_answer)
 
     # ─── STEP 6: Generate follow-up suggestions (no LLM call) ───────────────
+
     suggested_followups = _generate_followups(intent, params)
 
     # ─── STEP 7: Cache write ─────────────────────────────────────────────────

@@ -3,6 +3,8 @@ import React, { useState, useEffect } from 'react';
 import Sidebar from '../../components/Sidebar';
 import Navbar  from '../../components/Navbar';
 import api from '../../api/axios';
+import OneP360BotDrawer from '../../AI/components/OneP360BotDrawer';
+
 
 export default function SystemHealthDashboard() {
   // Self-managed darkMode + Sidebar/Navbar — same fix as ErrorDashboard.jsx
@@ -289,9 +291,7 @@ export default function SystemHealthDashboard() {
           </div>
         </div>
       </div>
+      <OneP360BotDrawer />
     </div>
-          </div>
-        </div>
-      </div>
   );
 }

@@ -6,6 +6,8 @@ import Sidebar from '../../components/Sidebar';
 import Navbar  from '../../components/Navbar';
 import api from '../../api/axios';
 import { usePermission } from '../../hooks/usePermission';
+import OneP360BotDrawer from '../../AI/components/OneP360BotDrawer';
+
 
 // Mirrors backend/app/models/developer_center.py exactly — assign_error()
 // 400s if these don't match (case-sensitive).
@@ -407,9 +409,11 @@ export default function ErrorDashboard() {
           </div>
         </div>
       )}
+      <OneP360BotDrawer />
     </div>
           </div>
         </div>
       </div>
   );
 }
+
