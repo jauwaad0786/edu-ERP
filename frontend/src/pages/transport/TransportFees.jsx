@@ -412,7 +412,7 @@ export default function TransportFees() {
                 </table>
               )}
             </div>
-          ) : (
+          ) : tab === 'records' ? (
             <>
               {/* Filters + Generate */}
               <div style={{ ...cardStyle, marginBottom: 16, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
