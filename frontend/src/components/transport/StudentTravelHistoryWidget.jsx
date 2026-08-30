@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import transportApi from '../../api/transportApi';
 import toast from 'react-hot-toast';
 
 export default function StudentTravelHistoryWidget({ darkMode = false, title = "Student Transport & Daily Travel History" }) {
+  const navigate = useNavigate();
   // Mode: 'DATE' (everyday single date) or 'MONTH' (month-wise)
   const [viewMode, setViewMode] = useState('DATE');
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -498,9 +500,32 @@ export default function StudentTravelHistoryWidget({ darkMode = false, title = "
           <h4 style={{ margin: '0 0 6px', fontSize: '16px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
             Koi Travel Record Nahi Mila
           </h4>
-          <p style={{ margin: 0, fontSize: '13px', color: '#94a3b8' }}>
-            {viewMode === 'DATE' ? `Date ${selectedDate} ke liye koi live trip ya travel history nahi hai.` : `Month ${selectedMonth} ke liye koi data nahi hai.`}
+          <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#94a3b8' }}>
+            {viewMode === 'DATE' ? `Date ${selectedDate} ke liye koi travel ya trip history nahi hai.` : `Month ${selectedMonth} ke liye koi travel records nahi hain.`}
           </p>
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => navigate('/transport/students')}
+              style={{
+                background: '#0284c7', color: '#ffffff', border: 'none',
+                borderRadius: '10px', padding: '8px 16px', fontSize: '12.5px',
+                fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
+              }}
+            >
+              👥 View Enrolled Students
+            </button>
+            <button
+              onClick={() => navigate('/transport/live')}
+              style={{
+                background: darkMode ? '#334155' : '#e2e8f0',
+                color: darkMode ? '#ffffff' : '#0f172a',
+                border: 'none', borderRadius: '10px', padding: '8px 16px', fontSize: '12.5px',
+                fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
+              }}
+            >
+              🛰️ Live Fleet Tracking
+            </button>
+          </div>
         </div>
       ) : (
         <div style={{ overflowX: 'auto', borderRadius: '14px', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>

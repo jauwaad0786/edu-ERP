@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, send_file
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
+from app.models.school import School
 from app.models.user import User, UserRole
 from app.models.academic import (
     Class, Teacher, Student, Subject, Marks,

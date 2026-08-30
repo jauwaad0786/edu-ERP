@@ -161,17 +161,18 @@ const ROLE_MENUS = {
         {
           icon: 'ti-bus', label: 'Transport', path: '/transport',
           children: [
-            { icon: 'ti-layout-dashboard', label: 'Dashboard',         path: '/transport' },
-            { icon: 'ti-bus',              label: 'Vehicles & Fleet',  path: '/transport/vehicles' },
-            { icon: 'ti-steering-wheel',   label: 'Drivers',           path: '/transport/drivers' },
-            { icon: 'ti-user-check',       label: 'Conductors',        path: '/transport/conductors' },
-            { icon: 'ti-route',            label: 'Routes',            path: '/transport/routes' },
-            { icon: 'ti-map-pin',          label: 'Stops',             path: '/transport/stops' },
-            { icon: 'ti-users',            label: 'Student Roster',    path: '/transport/students' },
-            { icon: 'ti-currency-rupee',   label: 'Fees & Fines',      path: '/transport/fees' },
-            { icon: 'ti-tool',             label: 'Maintenance',       path: '/transport/maintenance' },
-            { icon: 'ti-map-pin-filled',   label: 'Live Tracking',     path: '/transport/live' },
-            { icon: 'ti-report',           label: 'Reports',           path: '/transport/reports' },
+            { icon: 'ti-layout-dashboard', label: 'Dashboard',              path: '/transport' },
+            { icon: 'ti-history',          label: 'Student Travel History', path: '/transport/travel-history' },
+            { icon: 'ti-bus',              label: 'Vehicles & Fleet',       path: '/transport/vehicles' },
+            { icon: 'ti-steering-wheel',   label: 'Drivers',                path: '/transport/drivers' },
+            { icon: 'ti-user-check',       label: 'Conductors',             path: '/transport/conductors' },
+            { icon: 'ti-route',            label: 'Routes',                 path: '/transport/routes' },
+            { icon: 'ti-map-pin',          label: 'Stops',                  path: '/transport/stops' },
+            { icon: 'ti-users',            label: 'Student Roster',         path: '/transport/students' },
+            { icon: 'ti-currency-rupee',   label: 'Fees & Fines',           path: '/transport/fees' },
+            { icon: 'ti-tool',             label: 'Maintenance',            path: '/transport/maintenance' },
+            { icon: 'ti-map-pin-filled',   label: 'Live Tracking',          path: '/transport/live' },
+            { icon: 'ti-report',           label: 'Reports',                path: '/transport/reports' },
           ],
         },
 
@@ -355,6 +356,7 @@ const ROLE_MENUS = {
     {
       group: 'Transport Management',
       items: [
+        { icon: 'ti-history',          label: 'Student Travel History', path: '/transport/travel-history' },
         { icon: 'ti-bus',              label: 'Vehicles & Fleet', path: '/transport/vehicles' },
         { icon: 'ti-steering-wheel',   label: 'Drivers',          path: '/transport/drivers' },
         { icon: 'ti-user-check',       label: 'Conductors',       path: '/transport/conductors' },

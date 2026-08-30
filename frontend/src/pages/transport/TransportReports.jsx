@@ -155,6 +155,10 @@ export default function TransportReports() {
   const report = REPORTS[activeKey];
 
   const load = useCallback(() => {
+    if (!report || typeof report.fetch !== 'function') {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const params = {};
     if (report.paginated) params.page = page;

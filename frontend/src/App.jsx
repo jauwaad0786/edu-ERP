@@ -88,6 +88,7 @@ import VehicleMaintenance    from './pages/transport/VehicleMaintenance';
 import LiveTracking          from './pages/transport/LiveTracking';
 import ParentTransportView   from './pages/transport/ParentTransportView';
 import TransportReports      from './pages/transport/TransportReports';
+import StudentTravelHistory  from './pages/transport/StudentTravelHistory';
 import DriverMobileApp       from './pages/transport/DriverMobileApp';
 
 import StaffAttendanceDashboard from './pages/staff-attendance/StaffAttendanceDashboard';
@@ -512,6 +513,16 @@ export default function App() {
             <Route path="/transport/reports" element={
               <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
                 <TransportReports />
+              </ProtectedRoute>
+            } />
+            <Route path="/transport/travel-history" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT', 'STAFF', 'TEACHER']}>
+                <StudentTravelHistory />
+              </ProtectedRoute>
+            } />
+            <Route path="/transport/student-travel-history" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT', 'STAFF', 'TEACHER']}>
+                <StudentTravelHistory />
               </ProtectedRoute>
             } />
             <Route path="/transport/parent" element={
