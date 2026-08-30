@@ -26,6 +26,8 @@ export default function DriverMobileApp() {
   const [selectedStopId, setSelectedStopId] = useState(null);
   const [studentEvents, setStudentEvents] = useState({}); // { student_id: 'PICKED_UP' | 'DROPPED_OFF' | 'ABSENT' }
   const [manualStopOverride, setManualStopOverride] = useState(false);
+  const [manifestFilter, setManifestFilter] = useState('CURRENT_STOP'); // 'CURRENT_STOP' | 'ONBOARD' | 'DROPPED' | 'ALL'
+  const [searchQuery, setSearchQuery] = useState('');
   const [tripTab, setTripTab] = useState('CURRENT_STOP'); // 'CURRENT_STOP' | 'ALL_PASSENGERS' | 'ROUTE_MAP'
 
   const watchIdRef = useRef(null);
@@ -42,7 +44,7 @@ export default function DriverMobileApp() {
     setLoading(true);
     transportApi.driver.today()
       .then(r => {
-        const data = r.data.data;
+        const data = r.data?.data || r.data || {};
         setHome(data);
         const activeTrip = data?.current_trip || null;
         setTrip(activeTrip);
@@ -60,7 +62,10 @@ export default function DriverMobileApp() {
           setStudentEvents(evMap);
         }
       })
-      .catch(() => toast.error('Data load nahi hua — dobara try karo'))
+      .catch(err => {
+        console.error('Failed to load driver home:', err);
+        toast.error(err.response?.data?.message || 'Data load nahi hua — dobara try karo');
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -368,10 +373,6 @@ export default function DriverMobileApp() {
   const droppedOffCount = droppedOffList.length;
   const absentCount = absentList.length;
   const pendingCount = pendingList.length;
-
-  // Filter students based on active tab and search query
-  const [manifestFilter, setManifestFilter] = useState('CURRENT_STOP'); // 'CURRENT_STOP' | 'ONBOARD' | 'DROPPED' | 'ALL'
-  const [searchQuery, setSearchQuery] = useState('');
 
   let displayedStudents = [];
   if (manifestFilter === 'CURRENT_STOP') {

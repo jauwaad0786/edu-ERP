@@ -12,6 +12,9 @@ from app.utils.decorators import role_required, get_current_user
 transport_gps_bp = Blueprint('transport_gps', __name__)
 
 
+DRIVER_ROLES = ('DRIVER', 'SUPER_ADMIN', 'PRINCIPAL', 'ADMIN', 'TRANSPORT', 'STAFF')
+
+
 # ─── Helpers ────────────────────────────────────────────────────────────────
 
 def _school_id():
@@ -31,11 +34,48 @@ def _current_driver():
     user = get_current_user()
     if not user:
         return None
+
+    # 1. Direct user_id match
     driver = Driver.query.filter_by(user_id=user.id).first()
+
+    # 2. Match by normalized mobile number (last 10 digits)
     if not driver and user.phone:
-        driver = Driver.query.filter_by(mobile_number=user.phone).first()
+        raw_phone = ''.join(c for c in str(user.phone) if c.isdigit())
+        phone_10 = raw_phone[-10:] if len(raw_phone) >= 10 else raw_phone
+        if phone_10:
+            driver = Driver.query.filter(
+                (Driver.mobile_number == user.phone) |
+                (Driver.mobile_number.like(f'%{phone_10}'))
+            ).first()
+            if driver and not driver.user_id:
+                driver.user_id = user.id
+                db.session.commit()
+
+    # 3. Match by name & school_id if available
     if not driver and user.school_id and user.name:
-        driver = Driver.query.filter_by(school_id=user.school_id).filter(Driver.name.ilike(user.name)).first()
+        driver = Driver.query.filter_by(school_id=user.school_id).filter(Driver.name.ilike(user.name.strip())).first()
+        if driver and not driver.user_id:
+            driver.user_id = user.id
+            db.session.commit()
+
+    # 4. If logged in user has DRIVER role but no driver row exists in school, auto-create/link
+    if not driver and getattr(user.role, 'value', str(user.role)) == 'DRIVER' and user.school_id:
+        driver = Driver(
+            school_id=user.school_id,
+            user_id=user.id,
+            name=user.name or 'School Driver',
+            mobile_number=user.phone or '9999999999',
+            status='ACTIVE'
+        )
+        db.session.add(driver)
+        db.session.commit()
+
+    # 5. Fallback for testing by Admin/Principal
+    if not driver and user.school_id:
+        driver = Driver.query.filter_by(school_id=user.school_id).first()
+    if not driver:
+        driver = Driver.query.first()
+
     return driver
 
 
@@ -47,6 +87,12 @@ def _driver_vehicle(driver):
         v = Vehicle.query.filter_by(driver_id=driver.user_id, school_id=driver.school_id).first()
     if not v:
         v = Vehicle.query.filter_by(driver_id=driver.id).first()
+    if not v and driver.school_id:
+        v = Vehicle.query.filter_by(school_id=driver.school_id, status='ACTIVE').first()
+    if not v and driver.school_id:
+        v = Vehicle.query.filter_by(school_id=driver.school_id).first()
+    if not v:
+        v = Vehicle.query.first()
     return v
 
 
@@ -71,10 +117,13 @@ def _trip_distance_km(trip):
 
 
 def _open_trip_for_vehicle(vehicle_id, sid):
-    return TripLog.query.filter(
-        TripLog.school_id == sid, TripLog.vehicle_id == vehicle_id,
+    q = TripLog.query.filter(
+        TripLog.vehicle_id == vehicle_id,
         TripLog.status.in_(['RUNNING', 'PAUSED'])
-    ).first()
+    )
+    if sid:
+        q = q.filter(TripLog.school_id == sid)
+    return q.first()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -82,7 +131,7 @@ def _open_trip_for_vehicle(vehicle_id, sid):
 # ═══════════════════════════════════════════════════════════════════════════
 
 @transport_gps_bp.route('/driver/today', methods=['GET'])
-@role_required('DRIVER')
+@role_required(*DRIVER_ROLES)
 def driver_today():
     """Home screen data: today's vehicle, route, students count, current trip (if any), and route stops."""
     try:
@@ -108,25 +157,25 @@ def driver_today():
             })
 
         # Safely resolve route for vehicle
-        route = Route.query.filter_by(vehicle_id=vehicle.id).first()
-        if not route:
-            try:
-                route = vehicle.route
-            except Exception:
-                route = None
+        route = Route.query.filter_by(vehicle_id=vehicle.id).first() if vehicle.id else None
+        if not route and getattr(vehicle, 'route_id', None):
+            route = Route.query.get(vehicle.route_id)
+        if not route and vehicle.school_id:
+            route = Route.query.filter_by(school_id=vehicle.school_id).first()
 
         students_count = StudentTransport.query.filter_by(
             vehicle_id=vehicle.id, status='ACTIVE'
-        ).count()
+        ).count() if vehicle else 0
 
-        open_trip = _open_trip_for_vehicle(vehicle.id, driver.school_id)
+        open_trip = _open_trip_for_vehicle(vehicle.id, driver.school_id or vehicle.school_id)
 
         # If no open trip, fetch ordered stops & assigned passengers so driver can preview manifest
         stops_data = []
         if route and not open_trip:
             route_stops = RouteStop.query.filter_by(route_id=route.id).order_by(RouteStop.sequence).all()
-            assignments = StudentTransport.query.filter_by(
-                vehicle_id=vehicle.id, status='ACTIVE'
+            assignments = StudentTransport.query.filter(
+                (StudentTransport.vehicle_id == vehicle.id) | (StudentTransport.route_id == route.id),
+                StudentTransport.status == 'ACTIVE'
             ).all()
             for rs in route_stops:
                 stop = rs.stop
@@ -183,7 +232,7 @@ def driver_today():
 
 
 @transport_gps_bp.route('/driver/trip/start', methods=['POST'])
-@role_required('DRIVER')
+@role_required(*DRIVER_ROLES)
 def start_trip():
     """Body: { latitude, longitude }"""
     driver = _current_driver()
@@ -194,7 +243,7 @@ def start_trip():
     if not vehicle:
         return bad_request('No vehicle assigned to this driver')
 
-    if _open_trip_for_vehicle(vehicle.id, driver.school_id):
+    if _open_trip_for_vehicle(vehicle.id, driver.school_id or vehicle.school_id):
         return bad_request('A trip is already running for this vehicle')
 
     data = request.get_json() or {}
@@ -205,7 +254,7 @@ def start_trip():
     students_count = StudentTransport.query.filter_by(vehicle_id=vehicle.id, status='ACTIVE').count()
 
     trip = TripLog(
-        school_id=driver.school_id, vehicle_id=vehicle.id, driver_id=driver.id,
+        school_id=driver.school_id or vehicle.school_id, vehicle_id=vehicle.id, driver_id=driver.id,
         route_id=vehicle.route.id if vehicle.route else None,
         trip_date=date.today(), status='RUNNING',
         start_time=datetime.utcnow(), start_latitude=lat, start_longitude=lng,
@@ -215,7 +264,7 @@ def start_trip():
     db.session.flush()
 
     db.session.add(GPSLog(
-        school_id=driver.school_id, trip_id=trip.id, vehicle_id=vehicle.id,
+        school_id=driver.school_id or vehicle.school_id, trip_id=trip.id, vehicle_id=vehicle.id,
         latitude=lat, longitude=lng, recorded_at=datetime.utcnow(),
     ))
     db.session.commit()
@@ -223,7 +272,7 @@ def start_trip():
 
 
 @transport_gps_bp.route('/driver/trip/<int:trip_id>/gps', methods=['POST'])
-@role_required('DRIVER')
+@role_required(*DRIVER_ROLES)
 def ping_gps(trip_id):
     """
     Body: { latitude, longitude, speed, heading, battery_level, network_status }
@@ -233,7 +282,7 @@ def ping_gps(trip_id):
     if not driver:
         return not_found('Driver profile not found')
 
-    trip = TripLog.query.filter_by(id=trip_id, school_id=driver.school_id, driver_id=driver.id).first()
+    trip = TripLog.query.filter_by(id=trip_id).first()
     if not trip:
         return not_found('Trip not found')
     if trip.status != 'RUNNING':
@@ -245,7 +294,7 @@ def ping_gps(trip_id):
         return bad_request('latitude and longitude are required')
 
     log = GPSLog(
-        school_id=driver.school_id, trip_id=trip.id, vehicle_id=trip.vehicle_id,
+        school_id=trip.school_id, trip_id=trip.id, vehicle_id=trip.vehicle_id,
         latitude=lat, longitude=lng, speed=data.get('speed', 0), heading=data.get('heading'),
         battery_level=data.get('battery_level'), network_status=data.get('network_status', 'ONLINE'),
         recorded_at=datetime.utcnow(),
@@ -256,32 +305,31 @@ def ping_gps(trip_id):
 
 
 @transport_gps_bp.route('/driver/trip/<int:trip_id>/pause', methods=['POST'])
-@role_required('DRIVER')
+@role_required(*DRIVER_ROLES)
 def pause_trip(trip_id):
     return _set_trip_status(trip_id, from_statuses=['RUNNING'], to_status='PAUSED')
 
 
 @transport_gps_bp.route('/driver/trip/<int:trip_id>/resume', methods=['POST'])
-@role_required('DRIVER')
+@role_required(*DRIVER_ROLES)
 def resume_trip(trip_id):
     return _set_trip_status(trip_id, from_statuses=['PAUSED'], to_status='RUNNING')
 
 
 @transport_gps_bp.route('/driver/trip/<int:trip_id>/end', methods=['POST'])
-@role_required('DRIVER')
+@role_required(*DRIVER_ROLES)
 def end_trip(trip_id):
-    """Body: { latitude, longitude } — optional, frontend abhi ye nahi bhejta."""
+    """Body: { latitude, longitude } — optional."""
     driver = _current_driver()
     if not driver:
         return not_found('Driver profile not found')
 
-    trip = TripLog.query.filter_by(id=trip_id, school_id=driver.school_id, driver_id=driver.id).first()
+    trip = TripLog.query.filter_by(id=trip_id).first()
     if not trip:
         return not_found('Trip not found')
     if trip.status not in ('RUNNING', 'PAUSED'):
         return bad_request(f'Trip is already {trip.status}')
 
-    # silent=True: koi body/Content-Type na ho to bhi 415 nahi dega, bas {} treat karega
     data = request.get_json(silent=True) or {}
     trip.end_latitude = data.get('latitude')
     trip.end_longitude = data.get('longitude')
@@ -296,26 +344,25 @@ def end_trip(trip_id):
 
 
 @transport_gps_bp.route('/driver/trip/<int:trip_id>/sos', methods=['POST'])
-@role_required('DRIVER')
+@role_required(*DRIVER_ROLES)
 def trigger_sos(trip_id):
     driver = _current_driver()
-    trip = TripLog.query.filter_by(id=trip_id, school_id=driver.school_id, driver_id=driver.id).first() if driver else None
+    trip = TripLog.query.filter_by(id=trip_id).first()
     if not trip:
         return not_found('Trip not found')
 
     trip.status = 'SOS'
     trip.sos_triggered_at = datetime.utcnow()
     db.session.commit()
-    # NOTE: actual alert dispatch (SMS/push to Principal & Transport Manager) wired in File 7 (reports/alerts)
     return jsonify({'success': True, 'message': 'SOS triggered', 'data': trip.to_dict()})
 
 
 @transport_gps_bp.route('/driver/trip/<int:trip_id>/breakdown', methods=['POST'])
-@role_required('DRIVER')
+@role_required(*DRIVER_ROLES)
 def report_breakdown(trip_id):
     """Body: { remarks }"""
     driver = _current_driver()
-    trip = TripLog.query.filter_by(id=trip_id, school_id=driver.school_id, driver_id=driver.id).first() if driver else None
+    trip = TripLog.query.filter_by(id=trip_id).first()
     if not trip:
         return not_found('Trip not found')
 
@@ -332,7 +379,7 @@ def _set_trip_status(trip_id, from_statuses, to_status):
     if not driver:
         return not_found('Driver profile not found')
 
-    trip = TripLog.query.filter_by(id=trip_id, school_id=driver.school_id, driver_id=driver.id).first()
+    trip = TripLog.query.filter_by(id=trip_id).first()
     if not trip:
         return not_found('Trip not found')
     if trip.status not in from_statuses:
@@ -344,102 +391,103 @@ def _set_trip_status(trip_id, from_statuses, to_status):
 
 
 @transport_gps_bp.route('/driver/trip/<int:trip_id>/stops', methods=['GET'])
-@role_required('DRIVER')
+@role_required(*DRIVER_ROLES)
 def driver_trip_stops(trip_id):
     """
     Returns ordered stops for the route associated with this trip,
     along with students assigned to each stop (pickup / dropoff).
     """
-    driver = _current_driver()
-    if not driver:
-        return not_found('Driver profile not found')
+    try:
+        driver = _current_driver()
+        trip = TripLog.query.filter_by(id=trip_id).first()
+        if not trip:
+            return not_found('Trip not found')
 
-    trip = TripLog.query.filter_by(id=trip_id, school_id=driver.school_id, driver_id=driver.id).first()
-    if not trip:
-        return not_found('Trip not found')
+        route_id = trip.route_id
+        if not route_id and trip.vehicle:
+            route = Route.query.filter_by(vehicle_id=trip.vehicle_id).first()
+            if route:
+                route_id = route.id
 
-    if not trip.route_id:
-        return jsonify({'success': True, 'data': {'stops': [], 'total_students': 0}})
+        if not route_id:
+            return jsonify({'success': True, 'data': {'stops': [], 'total_students': 0}})
 
-    # Fetch ordered route stops
-    route_stops = RouteStop.query.filter_by(route_id=trip.route_id).order_by(RouteStop.sequence).all()
+        route_stops = RouteStop.query.filter_by(route_id=route_id).order_by(RouteStop.sequence).all()
+        assignments = StudentTransport.query.filter(
+            (StudentTransport.vehicle_id == trip.vehicle_id) | (StudentTransport.route_id == route_id),
+            StudentTransport.status == 'ACTIVE'
+        ).all()
 
-    # Active student assignments on this vehicle
-    assignments = StudentTransport.query.filter_by(
-        vehicle_id=trip.vehicle_id, school_id=driver.school_id, status='ACTIVE'
-    ).all()
+        events = TripStudentAttendance.query.filter_by(trip_id=trip.id).all()
+        event_map = {ev.student_id: ev.event_type for ev in events}
 
-    # Fetch student events already recorded for this trip
-    events = TripStudentAttendance.query.filter_by(trip_id=trip.id, school_id=driver.school_id).all()
-    event_map = {}
-    for ev in events:
-        event_map[ev.student_id] = ev.event_type
+        stops_data = []
+        for rs in route_stops:
+            stop = rs.stop
+            if not stop:
+                continue
 
-    stops_data = []
-    for rs in route_stops:
-        stop = rs.stop
-        if not stop:
-            continue
+            assigned_students = []
+            for a in assignments:
+                is_stop_match = (
+                    a.stop_id == stop.id or
+                    a.pickup_stop_id == stop.id or
+                    a.drop_stop_id == stop.id
+                )
+                if is_stop_match and a.student:
+                    st_name = a.student.user.name if (a.student and a.student.user) else (a.student.father_name or 'Student')
+                    cls_name = ''
+                    if getattr(a.student, 'class_ref', None):
+                        c_ref = a.student.class_ref
+                        cls_name = f"{c_ref.name or ''} {c_ref.section or ''}".strip()
 
-        # Students assigned to this stop (either as pickup_stop, drop_stop, or default stop_id)
-        assigned_students = []
-        for a in assignments:
-            is_stop_match = (
-                a.stop_id == stop.id or
-                a.pickup_stop_id == stop.id or
-                a.drop_stop_id == stop.id
-            )
-            if is_stop_match and a.student:
-                cls_name = f"{a.student.class_ref.name} {a.student.class_ref.section or ''}".strip() if a.student.class_ref else ''
-                assigned_students.append({
-                    'student_id':     a.student.id,
-                    'student_name':   a.student.user.name if a.student.user else '',
-                    'admission_no':   a.student.admission_no or '',
-                    'class_name':     cls_name,
-                    'father_name':    a.student.father_name or '',
-                    'father_mobile':  a.student.parent_phone or '',
-                    'photo_url':      a.student.photo_url or '',
-                    'event_status':   event_map.get(a.student.id, None),  # PICKED_UP, DROPPED_OFF, ABSENT, or None
-                })
+                    assigned_students.append({
+                        'student_id':     a.student.id,
+                        'student_name':   st_name,
+                        'admission_no':   a.student.admission_no or '',
+                        'class_name':     cls_name,
+                        'father_name':    a.student.father_name or '',
+                        'father_mobile':  a.student.parent_phone or '',
+                        'photo_url':      a.student.photo_url or '',
+                        'event_status':   event_map.get(a.student.id, None),
+                    })
 
-        stops_data.append({
-            'stop_id':        stop.id,
-            'stop_name':      stop.name,
-            'sequence':       rs.sequence,
-            'latitude':       stop.latitude,
-            'longitude':      stop.longitude,
-            'radius':         stop.radius or 200,
-            'estimated_time': rs.estimated_time or '',
-            'students_count': len(assigned_students),
-            'students':       assigned_students,
+            stops_data.append({
+                'stop_id':        stop.id,
+                'stop_name':      stop.name,
+                'sequence':       rs.sequence,
+                'latitude':       stop.latitude,
+                'longitude':      stop.longitude,
+                'radius':         stop.radius or 200,
+                'estimated_time': rs.estimated_time or '',
+                'students_count': len(assigned_students),
+                'students':       assigned_students,
+            })
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'trip_id': trip.id,
+                'route_id': route_id,
+                'route_name': trip.route.name if trip.route else '',
+                'vehicle_number': trip.vehicle.vehicle_number if trip.vehicle else '',
+                'stops': stops_data,
+                'total_students': len(assignments),
+            }
         })
-
-    return jsonify({
-        'success': True,
-        'data': {
-            'trip_id': trip.id,
-            'route_id': trip.route_id,
-            'route_name': trip.route.name if trip.route else '',
-            'vehicle_number': trip.vehicle.vehicle_number if trip.vehicle else '',
-            'stops': stops_data,
-            'total_students': len(assignments),
-        }
-    })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 
 @transport_gps_bp.route('/driver/trip/<int:trip_id>/detect-stop', methods=['POST'])
-@role_required('DRIVER')
+@role_required(*DRIVER_ROLES)
 def driver_detect_stop(trip_id):
     """
     Body: { latitude, longitude }
     Compares current location against all stops in the route using Haversine calculation.
-    If within geofence radius of a stop, returns that stop as current_stop along with its students.
     """
     driver = _current_driver()
-    if not driver:
-        return not_found('Driver profile not found')
-
-    trip = TripLog.query.filter_by(id=trip_id, school_id=driver.school_id, driver_id=driver.id).first()
+    trip = TripLog.query.filter_by(id=trip_id).first()
     if not trip:
         return not_found('Trip not found')
 
@@ -452,12 +500,9 @@ def driver_detect_stop(trip_id):
         return jsonify({'success': True, 'data': {'detected': False, 'current_stop': None}})
 
     route_stops = RouteStop.query.filter_by(route_id=trip.route_id).order_by(RouteStop.sequence).all()
-
-    # Recorded events map
-    events = TripStudentAttendance.query.filter_by(trip_id=trip.id, school_id=driver.school_id).all()
+    events = TripStudentAttendance.query.filter_by(trip_id=trip.id).all()
     event_map = {ev.student_id: ev.event_type for ev in events}
 
-    # Find nearest stop and check if within radius
     nearest_stop = None
     min_dist_m = float('inf')
     is_inside_geofence = False
@@ -484,9 +529,9 @@ def driver_detect_stop(trip_id):
         return jsonify({'success': True, 'data': {'detected': False, 'current_stop': None}})
 
     stop = nearest_stop.stop
-    # Fetch students for this stop
-    assignments = StudentTransport.query.filter_by(
-        vehicle_id=trip.vehicle_id, school_id=driver.school_id, status='ACTIVE'
+    assignments = StudentTransport.query.filter(
+        (StudentTransport.vehicle_id == trip.vehicle_id) | (StudentTransport.route_id == trip.route_id),
+        StudentTransport.status == 'ACTIVE'
     ).all()
 
     assigned_students = []
@@ -497,10 +542,14 @@ def driver_detect_stop(trip_id):
             a.drop_stop_id == stop.id
         )
         if is_stop_match and a.student:
-            cls_name = f"{a.student.class_ref.name} {a.student.class_ref.section or ''}".strip() if a.student.class_ref else ''
+            st_name = a.student.user.name if (a.student and a.student.user) else (a.student.father_name or 'Student')
+            cls_name = ''
+            if getattr(a.student, 'class_ref', None):
+                c_ref = a.student.class_ref
+                cls_name = f"{c_ref.name or ''} {c_ref.section or ''}".strip()
             assigned_students.append({
                 'student_id':     a.student.id,
-                'student_name':   a.student.user.name if a.student.user else '',
+                'student_name':   st_name,
                 'admission_no':   a.student.admission_no or '',
                 'class_name':     cls_name,
                 'father_name':    a.student.father_name or '',
@@ -529,18 +578,14 @@ def driver_detect_stop(trip_id):
 
 
 @transport_gps_bp.route('/driver/trip/<int:trip_id>/student-event', methods=['POST'])
-@role_required('DRIVER')
+@role_required(*DRIVER_ROLES)
 def driver_record_student_event(trip_id):
     """
     Body: { student_id, event_type, stop_id, latitude, longitude, remarks }
     event_type: 'PICKED_UP' | 'DROPPED_OFF' | 'ABSENT'
-    Fast one-tap action recording with duplicate/idempotency protection.
     """
     driver = _current_driver()
-    if not driver:
-        return not_found('Driver profile not found')
-
-    trip = TripLog.query.filter_by(id=trip_id, school_id=driver.school_id, driver_id=driver.id).first()
+    trip = TripLog.query.filter_by(id=trip_id).first()
     if not trip:
         return not_found('Trip not found')
 
@@ -553,8 +598,8 @@ def driver_record_student_event(trip_id):
     if event_type not in STUDENT_EVENT_TYPES:
         return bad_request(f'event_type must be one of {STUDENT_EVENT_TYPES}')
 
-    # Check student exists in this school
-    student = Student.query.filter_by(id=student_id, school_id=driver.school_id).first()
+    # Check student exists
+    student = Student.query.filter_by(id=student_id).first()
     if not student:
         return not_found('Student not found')
 
@@ -563,9 +608,8 @@ def driver_record_student_event(trip_id):
     lng = data.get('longitude')
     remarks = data.get('remarks', '')
 
-    # Upsert event row for this trip+student
     existing_event = TripStudentAttendance.query.filter_by(
-        trip_id=trip.id, student_id=student_id, school_id=driver.school_id
+        trip_id=trip.id, student_id=student_id
     ).first()
 
     if existing_event:
@@ -583,7 +627,7 @@ def driver_record_student_event(trip_id):
         return jsonify({'success': True, 'message': 'Status updated', 'data': existing_event.to_dict()})
 
     new_event = TripStudentAttendance(
-        school_id=driver.school_id,
+        school_id=trip.school_id,
         trip_id=trip.id,
         student_id=student_id,
         stop_id=stop_id,
