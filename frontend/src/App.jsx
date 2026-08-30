@@ -118,6 +118,8 @@ import StaffAccessPage    from './pages/rbac/StaffAccessPage';
 // ── Audit Logs ──────────────────────────────────────────────────────────────
 import SchoolAuditLogs    from './pages/audit/SchoolAuditLogs';
 import CompanyAuditLogs   from './pages/audit/CompanyAuditLogs';
+import AIChat             from './AI/pages/AIChat';
+import AIManagement       from './pages/developer/AIManagement';
 
 export default function App() {
   return (
@@ -703,6 +705,21 @@ export default function App() {
             <Route path="/audit/company/logs" element={
               <ProtectedRoute roles={['SUPER_ADMIN']}>
                 <CompanyAuditLogs />
+              </ProtectedRoute>
+            } />
+
+            {/* ── 1P360 BOT — AI Chat (Principal, Teacher, Staff) ── */}
+            <Route path="/ai/chat" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'VICE_PRINCIPAL', 'TEACHER',
+                                      'ACCOUNTANT', 'LIBRARIAN', 'HOSTEL', 'TRANSPORT']}>
+                <AIChat />
+              </ProtectedRoute>
+            } />
+
+            {/* ── Super Admin: AI Management ── */}
+            <Route path="/developer/ai" element={
+              <ProtectedRoute roles={['SUPER_ADMIN']}>
+                <AIManagement />
               </ProtectedRoute>
             } />
 

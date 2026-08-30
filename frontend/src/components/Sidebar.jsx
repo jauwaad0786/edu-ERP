@@ -57,6 +57,7 @@ const ROLE_MENUS = {
         { icon: 'ti-bug',              label: 'Error Center',   path: '/developer/errors' },
         { icon: 'ti-list-check',       label: 'Issue Board',    path: '/developer/issues' },
         { icon: 'ti-activity-heartbeat', label: 'System Health', path: '/developer/system-health' },
+        { icon: 'ti-robot',            label: '1P360 BOT Config', path: '/developer/ai', badge: 'AI' },
       ],
     },
   ],
@@ -219,6 +220,9 @@ const ROLE_MENUS = {
           ],
         },
 
+        // ── 1P360 BOT ──
+        { icon: 'ti-robot', label: '1P360 BOT', path: '/ai/chat', badge: 'AI' },
+
         {
           icon: 'ti-settings', label: 'Settings', path: '/school-settings',
           children: [
@@ -268,6 +272,12 @@ const ROLE_MENUS = {
         { icon: 'ti-speakerphone', label: 'Announcements', path: '/support/announcements' },
         { icon: 'ti-message-2',    label: 'Messages',      path: '/support/chat' },
         { icon: 'ti-help-circle',  label: 'Help Center',   path: '/support/help' },
+      ],
+    },
+    {
+      group: 'AI Assistant',
+      items: [
+        { icon: 'ti-robot', label: '1P360 BOT', path: '/ai/chat', badge: 'AI' },
       ],
     },
   ],
@@ -836,6 +846,13 @@ export default function Sidebar({ darkMode }) {
                       >
                         <i className={`ti ${item.icon}`} style={{ fontSize: 16, flexShrink: 0, width: 18, textAlign: 'center' }} aria-hidden="true" />
                         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</span>
+                        {item.badge && (
+                          <span style={{
+                            fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 99,
+                            background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
+                            color: 'white', flexShrink: 0,
+                          }}>{item.badge}</span>
+                        )}
                       </NavLink>
                     )}
 

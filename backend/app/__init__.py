@@ -133,6 +133,13 @@ def create_app(config_name='default'):
     from app.routes.academic_resources import academic_resources_bp
     app.register_blueprint(academic_resources_bp)
 
+    # ── 1P360 BOT — AI Blueprint ─────────────────────────────────────────────
+    try:
+        from app.AI.routes.ai_routes import ai_bp
+        app.register_blueprint(ai_bp)
+    except Exception as e:
+        app.logger.warning(f'AI blueprint registration skipped: {e}')
+
     # ── Startup sequence (ORDER IS CRITICAL on PostgreSQL) ──────────────────
     with app.app_context():
         try:
@@ -150,6 +157,15 @@ def create_app(config_name='default'):
             _ensure_library_columns()
             _ensure_hostel_columns()
             _ensure_transport_columns()
+            # ── Import AI models so db.create_all() creates their tables ──
+            try:
+                from app.AI.models.ai_models import (  # noqa: F401
+                    AIProviderConfig, AIRoleQuota, AIUsage,
+                    AIQueryCache, AIConversation, AIMessage,
+                    AIDocument, AIDocumentChunk,
+                )
+            except Exception as ai_e:
+                app.logger.warning(f'AI models import skipped: {ai_e}')
             db.create_all()
             _seed_super_admin()
 
