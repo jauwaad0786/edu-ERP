@@ -9,6 +9,7 @@ import {
   BarChart, Bar, AreaChart, Area, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
+import StudentTravelHistoryWidget from '../../components/transport/StudentTravelHistoryWidget';
 
 export default function PrincipalDashboard() {
   const navigate = useNavigate();
@@ -1388,6 +1389,9 @@ export default function PrincipalDashboard() {
             </div>
           </div>
 
+          {/* ══ 7. STUDENT TRANSPORT & DAILY TRAVEL HISTORY (BOARDING & DROPOFF) ══ */}
+          <StudentTravelHistoryWidget darkMode={darkMode} />
+
           {/* ══ 8. QUICK REPORTS BAR ══ */}
           <div style={{
             display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
@@ -1444,6 +1448,24 @@ export default function PrincipalDashboard() {
               <div>
                 <div style={{ fontSize: '13px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>Attendance Report</div>
                 <div style={{ fontSize: '11px', color: '#8b5cf6', fontWeight: 600 }}>View Details</div>
+              </div>
+            </div>
+
+            <div
+              onClick={() => navigate('/transport/reports')}
+              style={{
+                background: darkMode ? '#111827' : '#ffffff',
+                border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+                borderRadius: '14px', padding: '14px 18px', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: '12px'
+              }}
+            >
+              <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#e0f2fe', color: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <i className="ti ti-bus" style={{ fontSize: '18px' }} />
+              </div>
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>Transport Travel Report</div>
+                <div style={{ fontSize: '11px', color: '#0284c7', fontWeight: 600 }}>View Details</div>
               </div>
             </div>
 

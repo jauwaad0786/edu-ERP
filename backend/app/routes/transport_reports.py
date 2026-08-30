@@ -403,3 +403,252 @@ def report_transfer_history():
 
     return jsonify({'success': True, 'data': [r.to_dict() for r in p.items],
                      'total': p.total, 'page': p.page, 'pages': p.pages})
+
+
+@transport_reports_bp.route('/travel-history', methods=['GET'])
+@transport_reports_bp.route('/reports/student-travel-history', methods=['GET'])
+@role_required('PRINCIPAL', 'ADMIN', 'SUPER_ADMIN', 'TRANSPORT', 'STAFF')
+def get_student_travel_history():
+    """
+    Returns date-wise and month-wise transport travel history for all students enrolled in transport.
+    Includes exact boarding time (picked up / gari me aa gye), drop-off time (dropped off / drop ho gye),
+    stops, vehicle, route, driver, and live status.
+    """
+    from app.models.transport_gps import TripStudentAttendance, TripLog
+    sid = _school_id()
+
+    date_str = request.args.get('date', '').strip()
+    month_str = request.args.get('month', '').strip()
+    from_date_str = request.args.get('from_date', '').strip()
+    to_date_str = request.args.get('to_date', '').strip()
+    vehicle_id = request.args.get('vehicle_id', type=int)
+    route_id = request.args.get('route_id', type=int)
+    class_id = request.args.get('class_id', type=int)
+    status_filter = request.args.get('status', '').strip().upper()
+    search = request.args.get('search', '').strip().lower()
+
+    # Determine target dates
+    target_dates = []
+    if date_str:
+        try:
+            d = datetime.strptime(date_str, '%Y-%m-%d').date()
+            target_dates = [d]
+        except Exception:
+            d = date.today()
+            target_dates = [d]
+    elif month_str:
+        # e.g. "2026-08"
+        try:
+            year, month = map(int, month_str.split('-'))
+            import calendar
+            num_days = calendar.monthrange(year, month)[1]
+            target_dates = [date(year, month, day) for day in range(1, num_days + 1) if date(year, month, day) <= date.today()]
+            target_dates.reverse() # Newest dates first
+        except Exception:
+            target_dates = [date.today()]
+    elif from_date_str and to_date_str:
+        try:
+            f_d = datetime.strptime(from_date_str, '%Y-%m-%d').date()
+            t_d = datetime.strptime(to_date_str, '%Y-%m-%d').date()
+            cur = t_d
+            while cur >= f_d:
+                target_dates.append(cur)
+                cur -= timedelta(days=1)
+        except Exception:
+            target_dates = [date.today()]
+    else:
+        target_dates = [date.today()]
+
+    # 1. Fetch active transport assignments for this school
+    assign_q = StudentTransport.query.filter_by(school_id=sid, status='ACTIVE')
+    if vehicle_id:
+        assign_q = assign_q.filter_by(vehicle_id=vehicle_id)
+    if route_id:
+        assign_q = assign_q.filter_by(route_id=route_id)
+
+    assignments = assign_q.all()
+    if not assignments:
+        return jsonify({
+            'success': True,
+            'summary': {
+                'total_enrolled': 0, 'boarded_count': 0, 'dropped_count': 0,
+                'in_transit_count': 0, 'absent_count': 0, 'not_boarded_count': 0,
+                'total_records': 0, 'safe_drop_pct': 100.0,
+                'selected_date': date_str or (target_dates[0].isoformat() if target_dates else date.today().isoformat()),
+                'is_month_view': bool(month_str),
+            },
+            'data': [], 'total': 0, 'page': 1, 'pages': 1
+        })
+
+    # Filter assignments by class / search
+    valid_assignments = []
+    for a in assignments:
+        st = getattr(a, 'student', None) or (Student.query.get(a.student_id) if getattr(a, 'student_id', None) else None)
+        if not st:
+            continue
+        if class_id and getattr(st, 'class_id', None) != class_id:
+            continue
+        if search:
+            st_name = (st.user.name if getattr(st, 'user', None) else '').lower()
+            adm_no = (st.admission_no or '').lower()
+            father = (st.father_name or '').lower()
+            veh_num = (a.vehicle.vehicle_number if getattr(a, 'vehicle', None) else '').lower()
+            if search not in st_name and search not in adm_no and search not in father and search not in veh_num:
+                continue
+        valid_assignments.append((a, st))
+
+    total_enrolled = len(valid_assignments)
+
+    # 2. Fetch all TripStudentAttendance events for the target dates
+    min_date = min(target_dates) if target_dates else date.today()
+    max_date = max(target_dates) if target_dates else date.today()
+
+    trips = TripLog.query.filter(
+        TripLog.school_id == sid,
+        TripLog.trip_date >= min_date,
+        TripLog.trip_date <= max_date
+    ).all()
+    trip_map = {t.id: t for t in trips}
+    trip_ids = list(trip_map.keys())
+
+    student_events = {}
+    if trip_ids:
+        events = TripStudentAttendance.query.filter(
+            TripStudentAttendance.school_id == sid,
+            TripStudentAttendance.trip_id.in_(trip_ids)
+        ).order_by(TripStudentAttendance.recorded_at.asc()).all()
+
+        for ev in events:
+            trip = trip_map.get(ev.trip_id)
+            ev_date = trip.trip_date if trip else ev.recorded_at.date()
+            key = (ev.student_id, ev_date)
+            if key not in student_events:
+                student_events[key] = {}
+            student_events[key][ev.event_type] = ev
+
+    # 3. Build travel history records
+    results = []
+    total_boarded = 0
+    total_dropped = 0
+    total_in_transit = 0
+    total_absent = 0
+
+    for cur_date in target_dates:
+        for a, st in valid_assignments:
+            key = (st.id, cur_date)
+            evs = student_events.get(key, {})
+
+            picked_ev = evs.get('PICKED_UP')
+            dropped_ev = evs.get('DROPPED_OFF')
+            absent_ev = evs.get('ABSENT')
+
+            if dropped_ev:
+                status = 'DROPPED'
+                status_label = 'Safely Dropped'
+                total_dropped += 1
+                total_boarded += 1
+            elif picked_ev:
+                status = 'IN_TRANSIT'
+                status_label = 'In Transit (Boarded)'
+                total_in_transit += 1
+                total_boarded += 1
+            elif absent_ev:
+                status = 'ABSENT'
+                status_label = 'Marked Absent'
+                total_absent += 1
+            else:
+                status = 'NOT_BOARDED'
+                status_label = 'Scheduled (Pending)'
+
+            if status_filter and status_filter != 'ALL':
+                if status_filter == 'BOARDED' and status not in ('DROPPED', 'IN_TRANSIT'):
+                    continue
+                elif status_filter != status and status_filter != 'BOARDED':
+                    continue
+
+            cls_name = f"{st.class_ref.name} {st.class_ref.section or ''}".strip() if getattr(st, 'class_ref', None) else ''
+            v = getattr(a, 'vehicle', None)
+            r = getattr(a, 'route', None)
+            driver = v.driver if v else None
+            effective_pickup = getattr(a, 'pickup_stop', None) or getattr(a, 'stop', None)
+            effective_drop = getattr(a, 'drop_stop', None) or getattr(a, 'stop', None)
+
+            boarded_stop_name = picked_ev.stop.name if (picked_ev and getattr(picked_ev, 'stop', None)) else (effective_pickup.name if effective_pickup else '')
+            dropped_stop_name = dropped_ev.stop.name if (dropped_ev and getattr(dropped_ev, 'stop', None)) else (effective_drop.name if effective_drop else '')
+
+            results.append({
+                'student_id':        st.id,
+                'student_name':      st.user.name if getattr(st, 'user', None) else '',
+                'admission_no':      st.admission_no or '',
+                'roll_number':       st.roll_number or '',
+                'class_name':        cls_name,
+                'photo_url':         st.photo_url or '',
+                'father_name':       st.father_name or '',
+                'parent_phone':      st.parent_phone or '',
+
+                'vehicle_id':        v.id if v else None,
+                'vehicle_number':    v.vehicle_number if v else '',
+                'vehicle_type':      v.vehicle_type if v else 'BUS',
+                'route_id':          r.id if r else None,
+                'route_name':        r.name if r else '',
+                'driver_name':       driver.name if driver else '',
+                'driver_mobile':     driver.mobile_number if driver else '',
+
+                'date':              cur_date.isoformat(),
+                'date_formatted':    cur_date.strftime('%d %b %Y'),
+                'day_name':          cur_date.strftime('%A'),
+
+                'pickup_stop_name':  effective_pickup.name if effective_pickup else '',
+                'drop_stop_name':    effective_drop.name if effective_drop else '',
+
+                # Boarding details ("iss waqt gari me aa gye")
+                'boarded':           bool(picked_ev),
+                'boarded_time':      picked_ev.recorded_at.strftime('%I:%M %p') if picked_ev else '--',
+                'boarded_at':        picked_ev.recorded_at.isoformat() if picked_ev else None,
+                'boarded_stop':      boarded_stop_name,
+                'boarded_lat':       picked_ev.latitude if picked_ev else None,
+                'boarded_lng':       picked_ev.longitude if picked_ev else None,
+
+                # Drop-off details ("iss waqt drop ho gye")
+                'dropped':           bool(dropped_ev),
+                'dropped_time':      dropped_ev.recorded_at.strftime('%I:%M %p') if dropped_ev else '--',
+                'dropped_at':        dropped_ev.recorded_at.isoformat() if dropped_ev else None,
+                'dropped_stop':      dropped_stop_name,
+                'dropped_lat':       dropped_ev.latitude if dropped_ev else None,
+                'dropped_lng':       dropped_ev.longitude if dropped_ev else None,
+
+                'status':            status,
+                'status_label':      status_label,
+                'trip_id':           picked_ev.trip_id if picked_ev else (dropped_ev.trip_id if dropped_ev else (absent_ev.trip_id if absent_ev else None)),
+                'remarks':           (picked_ev.remarks if picked_ev else '') or (dropped_ev.remarks if dropped_ev else '') or (absent_ev.remarks if absent_ev else '')
+            })
+
+    summary = {
+        'total_enrolled':    total_enrolled,
+        'selected_date':     date_str or (target_dates[0].isoformat() if target_dates else date.today().isoformat()),
+        'is_month_view':     bool(month_str),
+        'total_records':     len(results),
+        'boarded_count':     total_boarded,
+        'dropped_count':     total_dropped,
+        'in_transit_count':  total_in_transit,
+        'absent_count':      total_absent,
+        'not_boarded_count': max(0, len(results) - (total_boarded + total_absent)),
+        'safe_drop_pct':     round((total_dropped / total_boarded * 100), 1) if total_boarded > 0 else 100.0,
+    }
+
+    page = request.args.get('page', 1, type=int)
+    per_page = min(request.args.get('per_page', 50, type=int), 500)
+    total = len(results)
+    start_idx = (page - 1) * per_page
+    end_idx = start_idx + per_page
+    paged_items = results[start_idx:end_idx]
+    pages = max(1, (total + per_page - 1) // per_page)
+
+    return jsonify({
+        'success': True,
+        'summary': summary,
+        'data': paged_items,
+        'total': total,
+        'page': page,
+        'pages': pages
+    })

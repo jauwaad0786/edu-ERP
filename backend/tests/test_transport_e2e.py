@@ -368,7 +368,44 @@ class TransportE2ETestCase(unittest.TestCase):
         self.assertEqual(data['data']['vehicle_number'], self.vehicle.vehicle_number)
         self.assertTrue(len(data['data']['stops']) > 0)
 
+    def test_10_student_travel_history_endpoint(self):
+        """Test GET /api/transport/travel-history returns datewise boarding & dropoff history"""
+        # Login as principal
+        login_res = self.client.post('/api/auth/login', json={
+            'identifier': 'principal@dpa.edu',
+            'password': 'pass123'
+        })
+        token = login_res.get_json()['access_token']
+
+        # 1. Query travel history for today
+        res = self.client.get(
+            f'/api/transport/travel-history?date={date.today().isoformat()}',
+            headers={'Authorization': f'Bearer {token}'}
+        )
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertTrue(data.get('success'))
+        self.assertEqual(data['summary']['total_enrolled'], 1)
+        self.assertEqual(len(data['data']), 1)
+        st_row = data['data'][0]
+        self.assertEqual(st_row['student_name'], 'Aarav Sharma')
+        self.assertEqual(st_row['vehicle_number'], self.vehicle.vehicle_number)
+        self.assertIn('boarded_time', st_row)
+        self.assertIn('dropped_time', st_row)
+
+        # 2. Query month-wise travel history
+        current_month = date.today().strftime('%Y-%m')
+        res_month = self.client.get(
+            f'/api/transport/travel-history?month={current_month}',
+            headers={'Authorization': f'Bearer {token}'}
+        )
+        self.assertEqual(res_month.status_code, 200)
+        data_month = res_month.get_json()
+        self.assertTrue(data_month.get('success'))
+        self.assertTrue(data_month['summary']['is_month_view'])
+
 
 if __name__ == '__main__':
     unittest.main()
+
 

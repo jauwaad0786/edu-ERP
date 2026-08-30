@@ -3,9 +3,14 @@ import Sidebar from '../../components/Sidebar';
 import Navbar  from '../../components/Navbar';
 import transportApi from '../../api/transportApi';
 import toast   from 'react-hot-toast';
+import StudentTravelHistoryWidget from '../../components/transport/StudentTravelHistoryWidget';
 
 // Each report: key -> { label, fetch(params), columns: [{key, label, format?}], filters: ['status'|'dateRange'] }
 const REPORTS = {
+  travelHistory: {
+    label: '🚌 Student Travel & Boarding History (Daily/Monthly)',
+    custom: 'travelHistory',
+  },
   vehicleStudents: {
     label: 'Vehicle Wise Students',
     fetch: transportApi.reports.vehicleWiseStudents,
@@ -220,45 +225,52 @@ export default function TransportReports() {
             ))}
           </div>
 
-          {/* Filters + export */}
-          <div style={{ ...cardStyle, marginBottom: 16, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              {report.filters?.includes('status') && (
-                <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={inputStyle}>
-                  <option value="">All Status</option>
-                  {FEE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              )}
-              {report.filters?.includes('dateRange') && (
-                <>
-                  <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} style={inputStyle} />
-                  <span style={{ alignSelf: 'center', color: '#94a3b8', fontSize: 12 }}>to</span>
-                  <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} style={inputStyle} />
-                </>
-              )}
-            </div>
-            <button onClick={handleExport} style={{
-              background: '#f1f5f9', color: '#334155', border: 'none', borderRadius: 8,
-              padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-            }}>⬇ Export CSV</button>
-          </div>
-
-          {/* Summary cards */}
-          {report.hasSummary && summary && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14, marginBottom: 16 }}>
-              {Object.entries(summary).map(([k, v]) => (
-                <div key={k} style={cardStyle}>
-                  <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>{k.replace(/_/g, ' ')}</div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: darkMode ? '#f1f5f9' : '#0f172a', marginTop: 4 }}>
-                    {typeof v === 'number' && k.includes('amount') || k.includes('collected') || k.includes('pending') || k === 'total_cost'
-                      ? `₹${v.toLocaleString()}` : v}
-                  </div>
+          {activeKey === 'travelHistory' ? (
+            <StudentTravelHistoryWidget darkMode={darkMode} />
+          ) : (
+            <>
+              {/* Filters + export */}
+              <div style={{ ...cardStyle, marginBottom: 16, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  {report.filters?.includes('status') && (
+                    <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={inputStyle}>
+                      <option value="">All Status</option>
+                      {FEE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  )}
+                  {report.filters?.includes('dateRange') && (
+                    <>
+                      <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} style={inputStyle} />
+                      <span style={{ alignSelf: 'center', color: '#94a3b8', fontSize: 12 }}>to</span>
+                      <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} style={inputStyle} />
+                    </>
+                  )}
                 </div>
-              ))}
-            </div>
+                <button onClick={handleExport} style={{
+                  background: '#f1f5f9', color: '#334155', border: 'none', borderRadius: 8,
+                  padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                }}>⬇ Export CSV</button>
+              </div>
+
+              {/* Summary cards */}
+              {report.hasSummary && summary && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14, marginBottom: 16 }}>
+                  {Object.entries(summary).map(([k, v]) => (
+                    <div key={k} style={cardStyle}>
+                      <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>{k.replace(/_/g, ' ')}</div>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: darkMode ? '#f1f5f9' : '#0f172a', marginTop: 4 }}>
+                        {typeof v === 'number' && k.includes('amount') || k.includes('collected') || k.includes('pending') || k === 'total_cost'
+                          ? `₹${v.toLocaleString()}` : v}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
 
           {/* Content */}
+          {activeKey !== 'travelHistory' && (
           <div style={cardStyle}>
             {loading ? (
               <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Loading...</div>
@@ -332,6 +344,7 @@ export default function TransportReports() {
               </>
             )}
           </div>
+          )}
         </div>
       </div>
     </div>

@@ -160,7 +160,11 @@ const transportApi = {
     maintenance:              (params) => api.get(`/transport/reports/maintenance${qs(params)}`),
     vehicleUtilization:       (params) => api.get(`/transport/reports/vehicle-utilization${qs(params)}`),
     transferHistory:          (params) => api.get(`/transport/reports/transfer-history${qs(params)}`),
+    studentTravelHistory:     (params) => api.get(`/transport/travel-history${qs(params)}`),
   },
+
+  // ── Travel History ───────────────────────────────────────────────────────
+  travelHistory: (params) => api.get(`/transport/travel-history${qs(params)}`),
 };
 
 export default transportApi;
