@@ -49,33 +49,53 @@ def _normalise(s):
     return re.sub(r'\s+', ' ', (s or '').strip()).lower()
 
 
-# ── Regular login (staff / principal / admin) ─────────────────────────────────
+# ── Regular login (staff / principal / admin / driver) ────────────────────────
 @auth_bp.route('/login', methods=['POST'])
-@limiter.limit("10 per minute")
+@limiter.limit("20 per minute")
 def login():
     """
-    Accepts email OR username in the 'identifier' field.
-    Also accepts legacy 'email' field for backward compatibility.
+    Accepts email, username, or phone / mobile number in the 'identifier' field.
+    Also accepts legacy 'email' or 'mobile_number' field for backward compatibility.
     """
+    from app.models.transport import Driver
+
     data = request.get_json() or {}
 
-    identifier = (
-        data.get('identifier') or data.get('email') or ''
-    ).strip().lower()
+    raw_identifier = (
+        data.get('identifier') or data.get('email') or data.get('mobile_number') or data.get('phone') or ''
+    ).strip()
+    identifier = raw_identifier.lower()
     password = data.get('password', '')
 
-    if not identifier or not password:
+    if not raw_identifier or not password:
         return jsonify({'error': 'Identifier and password required'}), 400
 
-    # Try email first, then username
+    # 1. Try email first
     user = User.query.filter(
         sqlfunc.lower(User.email) == identifier
     ).first()
 
+    # 2. Try username
     if not user:
         user = User.query.filter(
             sqlfunc.lower(User.username) == identifier
         ).first()
+
+    # 3. Try phone/mobile number on User model
+    if not user:
+        clean_phone = re.sub(r'\D', '', raw_identifier)
+        user = User.query.filter(User.phone == raw_identifier).first()
+        if not user and clean_phone and len(clean_phone) >= 10:
+            user = User.query.filter(User.phone.endswith(clean_phone[-10:])).first()
+
+    # 4. Try Driver profile mobile_number lookup
+    if not user:
+        clean_phone = re.sub(r'\D', '', raw_identifier)
+        driver = Driver.query.filter(Driver.mobile_number == raw_identifier).first()
+        if not driver and clean_phone and len(clean_phone) >= 10:
+            driver = Driver.query.filter(Driver.mobile_number.endswith(clean_phone[-10:])).first()
+        if driver and driver.user_id:
+            user = db.session.get(User, driver.user_id)
 
     if not user or not user.check_password(password):
         return jsonify({'error': 'Invalid credentials'}), 401

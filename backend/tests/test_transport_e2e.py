@@ -46,6 +46,7 @@ class TransportE2ETestCase(unittest.TestCase):
         self.app = create_app('testing')
         self.app_context = self.app.app_context()
         self.app_context.push()
+        self.client = self.app.test_client()
         db.create_all()
 
         # 1. Setup School 1 & School 2
@@ -308,6 +309,25 @@ class TransportE2ETestCase(unittest.TestCase):
         # Verify School B query isolation
         records_school_b = TransportFeeRecord.query.filter_by(school_id=self.school2.id).all()
         self.assertEqual(len(records_school_b), 0)
+
+    def test_07_driver_mobile_and_password_login(self):
+        """Test driver login using mobile number (and/or username) and password"""
+        # 1. Login with mobile number '9898989898'
+        res = self.client.post('/api/auth/login', json={
+            'identifier': '9898989898',
+            'password': 'driver123'
+        })
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertIn('access_token', data)
+        self.assertEqual(data['user']['role'], 'DRIVER')
+
+        # 2. Login with email
+        res2 = self.client.post('/api/auth/login', json={
+            'identifier': 'driver1@dpa.edu',
+            'password': 'driver123'
+        })
+        self.assertEqual(res2.status_code, 200)
 
 
 if __name__ == '__main__':

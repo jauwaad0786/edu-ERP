@@ -652,14 +652,21 @@ export default function Login() {
               onClick={() => { setActiveTab('staff'); setError(''); }}
             >
               <i className="ti ti-user-shield" />
-              Staff / Teacher / Principal
+              Staff / Admin
+            </button>
+            <button
+              className={`tab-item ${activeTab === 'driver' ? 'active' : ''}`}
+              onClick={() => { setActiveTab('driver'); setError(''); }}
+            >
+              <i className="ti ti-steering-wheel" />
+              Driver (Bus App)
             </button>
             <button
               className={`tab-item ${activeTab === 'student' ? 'active' : ''}`}
               onClick={() => { setActiveTab('student'); setError(''); }}
             >
               <i className="ti ti-school" />
-              Student &amp; Parent
+              Student / Parent
             </button>
           </div>
 
@@ -671,17 +678,79 @@ export default function Login() {
             </div>
           )}
 
-          {/* Staff Login Form */}
-          {activeTab === 'staff' ? (
+          {/* Driver Login Form */}
+          {activeTab === 'driver' ? (
             <form onSubmit={handleStaffLogin}>
               <div className="input-group">
-                <label className="input-label">Email or Username</label>
+                <label className="input-label">Driver Mobile Number or Username</label>
+                <div className="input-box-wrap">
+                  <i className="ti ti-phone input-box-icon" />
+                  <input
+                    type="text"
+                    className="input-field"
+                    placeholder="e.g. 9876543210 or driver_ramesh"
+                    value={identifier}
+                    onChange={e => setIdentifier(e.target.value)}
+                    required
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              <div className="input-group">
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <label className="input-label" style={{ margin: 0 }}>Driver Password</label>
+                  <button
+                    type="button"
+                    className="forgot-link"
+                    onClick={() => setShowForgot(true)}
+                  >
+                    Need Help?
+                  </button>
+                </div>
+                <div className="input-box-wrap">
+                  <i className="ti ti-lock input-box-icon" />
+                  <input
+                    type="password"
+                    className="input-field"
+                    placeholder="Enter your driver account password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="submit-btn"
+                style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', boxShadow: '0 4px 14px rgba(217, 119, 6, 0.35)' }}
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <i className="ti ti-loader-2 ti-spin" />
+                    <span>Opening Driver App...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Sign In to Driver App 🚌</span>
+                    <i className="ti ti-arrow-right" />
+                  </>
+                )}
+              </button>
+            </form>
+          ) : activeTab === 'staff' ? (
+            /* Staff / Principal Login Form */
+            <form onSubmit={handleStaffLogin}>
+              <div className="input-group">
+                <label className="input-label">Email, Mobile or Username</label>
                 <div className="input-box-wrap">
                   <i className="ti ti-user input-box-icon" />
                   <input
                     type="text"
                     className="input-field"
-                    placeholder="e.g. principal@school.com or teacher_01"
+                    placeholder="e.g. principal@school.com, 9876543210, or user_01"
                     value={identifier}
                     onChange={e => setIdentifier(e.target.value)}
                     required
