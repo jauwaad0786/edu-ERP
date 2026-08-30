@@ -19,25 +19,39 @@ PROVIDERS = {
         'name':   'Groq',
         'models': [
             {
-                'id':    'llama-3.3-70b-versatile',
-                'label': 'Llama 3.3 70B (Fast)',
+                'id':    'llama-3.1-8b-instant',
+                'label': 'Llama 3.1 8B Instant (Free Tier - Recommended & Fastest)',
+                'cost_per_1k_prompt':      0.0,
+                'cost_per_1k_completion':  0.0,
+            },
+            {
+                'id':    'llama3-8b-8192',
+                'label': 'Llama 3 8B 8k (Free Tier)',
+                'cost_per_1k_prompt':      0.0,
+                'cost_per_1k_completion':  0.0,
+            },
+            {
+                'id':    'gemma2-9b-it',
+                'label': 'Gemma 2 9B IT (Free Tier)',
+                'cost_per_1k_prompt':      0.0,
+                'cost_per_1k_completion':  0.0,
+            },
+            {
+                'id':    'llama-3.1-70b-versatile',
+                'label': 'Llama 3.1 70B Versatile (Higher Tier)',
                 'cost_per_1k_prompt':      0.00059,
                 'cost_per_1k_completion':  0.00079,
             },
             {
                 'id':    'mixtral-8x7b-32768',
-                'label': 'Mixtral 8x7B',
+                'label': 'Mixtral 8x7B 32k',
                 'cost_per_1k_prompt':      0.00027,
                 'cost_per_1k_completion':  0.00027,
             },
-            {
-                'id':    'llama-3.1-8b-instant',
-                'label': 'Llama 3.1 8B (Ultra Fast)',
-                'cost_per_1k_prompt':      0.00005,
-                'cost_per_1k_completion':  0.00008,
-            },
         ],
     },
+
+
     'OPENAI': {
         'name':   'OpenAI',
         'models': [

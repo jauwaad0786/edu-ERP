@@ -27,10 +27,11 @@ export default function AIManagement() {
   // Form state
   const [form, setForm] = useState({
     provider:    'GROQ',
-    model:       'llama-3.3-70b-versatile',
+    model:       'llama-3.1-8b-instant',
     api_key:     '',
     temperature: 0.3,
     max_tokens:  800,
+
   });
 
   const [quotaForm, setQuotaForm] = useState({ role: 'PRINCIPAL', daily_limit: 50 });

@@ -21,7 +21,8 @@ class AIProviderConfig(db.Model):
     provider       = db.Column(db.String(20), nullable=False, default='GROQ')
 
     # Model identifier — fully configurable (not hardcoded anywhere else)
-    model          = db.Column(db.String(80), nullable=False, default='llama-3.3-70b-versatile')
+    model          = db.Column(db.String(80), nullable=False, default='llama-3.1-8b-instant')
+
 
     # AES-256 encrypted key — NEVER store or return plaintext
     encrypted_api_key = db.Column(db.Text, nullable=True)
