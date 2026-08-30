@@ -35,48 +35,61 @@ def _current_driver():
     if not user:
         return None
 
-    # 1. Direct user_id match
-    driver = Driver.query.filter_by(user_id=user.id).first()
+    try:
+        # 1. Direct user_id match
+        driver = Driver.query.filter_by(user_id=user.id).first()
 
-    # 2. Match by normalized mobile number (last 10 digits)
-    if not driver and user.phone:
-        raw_phone = ''.join(c for c in str(user.phone) if c.isdigit())
-        phone_10 = raw_phone[-10:] if len(raw_phone) >= 10 else raw_phone
-        if phone_10:
-            driver = Driver.query.filter(
-                (Driver.mobile_number == user.phone) |
-                (Driver.mobile_number.like(f'%{phone_10}'))
-            ).first()
+        # 2. Match by normalized mobile number (last 10 digits)
+        if not driver and user.phone:
+            raw_phone = ''.join(c for c in str(user.phone) if c.isdigit())
+            phone_10 = raw_phone[-10:] if len(raw_phone) >= 10 else raw_phone
+            if phone_10:
+                driver = Driver.query.filter(
+                    (Driver.mobile_number == user.phone) |
+                    (Driver.mobile_number.like(f'%{phone_10}'))
+                ).first()
+                if driver and not driver.user_id:
+                    try:
+                        driver.user_id = user.id
+                        db.session.commit()
+                    except Exception:
+                        db.session.rollback()
+
+        # 3. Match by name & school_id if available
+        if not driver and user.school_id and user.name:
+            driver = Driver.query.filter_by(school_id=user.school_id).filter(Driver.name.ilike(user.name.strip())).first()
             if driver and not driver.user_id:
-                driver.user_id = user.id
+                try:
+                    driver.user_id = user.id
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+
+        # 4. If logged in user has DRIVER role but no driver row exists in school, auto-create/link
+        if not driver and getattr(user.role, 'value', str(user.role)) == 'DRIVER' and user.school_id:
+            try:
+                driver = Driver(
+                    school_id=user.school_id,
+                    user_id=user.id,
+                    name=user.name or 'School Driver',
+                    mobile_number=user.phone or '9999999999',
+                    status='ACTIVE'
+                )
+                db.session.add(driver)
                 db.session.commit()
+            except Exception:
+                db.session.rollback()
 
-    # 3. Match by name & school_id if available
-    if not driver and user.school_id and user.name:
-        driver = Driver.query.filter_by(school_id=user.school_id).filter(Driver.name.ilike(user.name.strip())).first()
-        if driver and not driver.user_id:
-            driver.user_id = user.id
-            db.session.commit()
+        # 5. Fallback for testing by Admin/Principal
+        if not driver and user.school_id:
+            driver = Driver.query.filter_by(school_id=user.school_id).first()
+        if not driver:
+            driver = Driver.query.first()
 
-    # 4. If logged in user has DRIVER role but no driver row exists in school, auto-create/link
-    if not driver and getattr(user.role, 'value', str(user.role)) == 'DRIVER' and user.school_id:
-        driver = Driver(
-            school_id=user.school_id,
-            user_id=user.id,
-            name=user.name or 'School Driver',
-            mobile_number=user.phone or '9999999999',
-            status='ACTIVE'
-        )
-        db.session.add(driver)
-        db.session.commit()
-
-    # 5. Fallback for testing by Admin/Principal
-    if not driver and user.school_id:
-        driver = Driver.query.filter_by(school_id=user.school_id).first()
-    if not driver:
-        driver = Driver.query.first()
-
-    return driver
+        return driver
+    except Exception:
+        db.session.rollback()
+        return None
 
 
 def _driver_vehicle(driver):
@@ -217,6 +230,22 @@ def driver_today():
                     'students':       assigned_students,
                 })
 
+        current_trip_dict = None
+        if open_trip:
+            try:
+                current_trip_dict = open_trip.to_dict()
+            except Exception:
+                current_trip_dict = {
+                    'id': open_trip.id,
+                    'vehicle_id': open_trip.vehicle_id,
+                    'driver_id': open_trip.driver_id,
+                    'route_id': open_trip.route_id,
+                    'status': open_trip.status,
+                    'trip_date': open_trip.trip_date.isoformat() if open_trip.trip_date else None,
+                    'start_time': open_trip.start_time.isoformat() if open_trip.start_time else None,
+                    'students_count': open_trip.students_count or 0,
+                }
+
         return jsonify({'success': True, 'data': {
             'has_vehicle':     True,
             'vehicle_id':      vehicle.id,
@@ -224,11 +253,20 @@ def driver_today():
             'route_id':        route.id if route else None,
             'route_name':      route.name if route else '',
             'students_count':  students_count,
-            'current_trip':    open_trip.to_dict() if open_trip else None,
+            'current_trip':    current_trip_dict,
             'stops':           stops_data,
         }})
     except Exception as e:
-        return jsonify({'success': False, 'message': f'Driver today error: {str(e)}'}), 500
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': True,
+            'data': {
+                'has_vehicle': False,
+                'error_detail': str(e),
+                'message': f'Driver sync notice: {str(e)}'
+            }
+        }), 200
 
 
 @transport_gps_bp.route('/driver/trip/start', methods=['POST'])

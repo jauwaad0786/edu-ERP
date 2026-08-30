@@ -48,9 +48,16 @@ class Vehicle(db.Model):
 
     driver    = db.relationship('Driver', foreign_keys=[driver_id])
     conductor = db.relationship('Conductor', foreign_keys=[conductor_id])
-    route     = db.relationship('Route', backref='vehicle', uselist=False)
+    routes    = db.relationship('Route', backref='vehicle', foreign_keys='Route.vehicle_id', lazy='dynamic')
     maintenance_logs = db.relationship('VehicleMaintenance', backref='vehicle', lazy='dynamic',
                                         cascade='all, delete-orphan')
+
+    @property
+    def route(self):
+        try:
+            return Route.query.filter_by(vehicle_id=self.id).first()
+        except Exception:
+            return None
 
     __table_args__ = (
         db.UniqueConstraint('school_id', 'vehicle_number', name='uq_vehicle_school_number'),
