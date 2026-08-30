@@ -3,10 +3,15 @@ from datetime import datetime, date
 from app import db
 from app.models.academic import Student, Class
 from app.models.transport import Vehicle, Route, Stop
+from app.models.financial import FeeRecord, FeeTransaction
 from app.models.transport_student import (
     StudentTransport, TransportTransferHistory,
-    TransportFeeStructure, TransportFeeRecord, TransportFeeTransaction,
+    TransportFeeStructure, TransportFeeRecord, TransportFeeTransaction, TransportFineRecord,
     FEE_FREQUENCIES, FEE_RECORD_STATUSES, PAYMENT_MODES
+)
+from app.services.transport_fee_service import (
+    generate_transport_fee_record, record_transport_fee_payment,
+    create_transport_fine, record_transport_fine_payment, waive_transport_fine
 )
 from app.utils.decorators import role_required, get_current_user
 
@@ -147,14 +152,7 @@ def browse_students():
 def assign_students():
     """
     Bulk assign — checkbox multi-select + Assign button on the frontend.
-    Body: { student_ids: [...], vehicle_id, route_id, stop_id, academic_year }
-
-    A student with no ACTIVE row gets one created (history: ADDED).
-    A student who already has an ACTIVE row gets that row UPDATED in place
-    (per the discipline documented on StudentTransport) and a history row
-    is written per changed field (VEHICLE_CHANGE / ROUTE_CHANGE / STOP_CHANGE)
-    so re-running Assign on an already-assigned student acts as a transfer,
-    not a duplicate.
+    Body: { student_ids: [...], vehicle_id, route_id, stop_id, pickup_stop_id, drop_stop_id, academic_year }
     """
     sid = _school_id()
     data = request.get_json() or {}
@@ -166,14 +164,18 @@ def assign_students():
     vehicle_id = data.get('vehicle_id')
     route_id = data.get('route_id')
     stop_id = data.get('stop_id')
+    pickup_stop_id = data.get('pickup_stop_id') or stop_id
+    drop_stop_id = data.get('drop_stop_id') or stop_id
     academic_year = data.get('academic_year', '')
 
     if vehicle_id and not Vehicle.query.filter_by(id=vehicle_id, school_id=sid).first():
         return bad_request('Invalid vehicle_id')
     if route_id and not Route.query.filter_by(id=route_id, school_id=sid).first():
         return bad_request('Invalid route_id')
-    if stop_id and not Stop.query.filter_by(id=stop_id, school_id=sid).first():
-        return bad_request('Invalid stop_id')
+    if pickup_stop_id and not Stop.query.filter_by(id=pickup_stop_id, school_id=sid).first():
+        return bad_request('Invalid pickup_stop_id')
+    if drop_stop_id and not Stop.query.filter_by(id=drop_stop_id, school_id=sid).first():
+        return bad_request('Invalid drop_stop_id')
 
     user = get_current_user()
     assigned, transferred = [], []
@@ -188,14 +190,17 @@ def assign_students():
         if not existing:
             row = StudentTransport(
                 school_id=sid, student_id=student_id,
-                vehicle_id=vehicle_id, route_id=route_id, stop_id=stop_id,
+                vehicle_id=vehicle_id, route_id=route_id,
+                stop_id=pickup_stop_id or stop_id,
+                pickup_stop_id=pickup_stop_id,
+                drop_stop_id=drop_stop_id,
                 academic_year=academic_year, assigned_date=date.today(),
                 status='ACTIVE', created_by=user.id,
             )
             db.session.add(row)
             db.session.add(TransportTransferHistory(
                 school_id=sid, student_id=student_id, transfer_type='ADDED',
-                to_vehicle_id=vehicle_id, to_route_id=route_id, to_stop_id=stop_id,
+                to_vehicle_id=vehicle_id, to_route_id=route_id, to_stop_id=pickup_stop_id or stop_id,
                 remarks='Added to transport', created_by=user.id,
             ))
             assigned.append(student_id)
@@ -205,8 +210,8 @@ def assign_students():
                 changes.append(('VEHICLE_CHANGE', 'from_vehicle_id', 'to_vehicle_id', existing.vehicle_id, vehicle_id))
             if route_id and route_id != existing.route_id:
                 changes.append(('ROUTE_CHANGE', 'from_route_id', 'to_route_id', existing.route_id, route_id))
-            if stop_id and stop_id != existing.stop_id:
-                changes.append(('STOP_CHANGE', 'from_stop_id', 'to_stop_id', existing.stop_id, stop_id))
+            if pickup_stop_id and pickup_stop_id != (existing.pickup_stop_id or existing.stop_id):
+                changes.append(('STOP_CHANGE', 'from_stop_id', 'to_stop_id', existing.pickup_stop_id or existing.stop_id, pickup_stop_id))
 
             for transfer_type, from_field, to_field, from_val, to_val in changes:
                 db.session.add(TransportTransferHistory(**{
@@ -217,7 +222,9 @@ def assign_students():
 
             existing.vehicle_id = vehicle_id or existing.vehicle_id
             existing.route_id = route_id or existing.route_id
-            existing.stop_id = stop_id or existing.stop_id
+            existing.stop_id = pickup_stop_id or stop_id or existing.stop_id
+            existing.pickup_stop_id = pickup_stop_id or existing.pickup_stop_id
+            existing.drop_stop_id = drop_stop_id or existing.drop_stop_id
             existing.academic_year = academic_year or existing.academic_year
             existing.updated_at = datetime.utcnow()
             if changes:
@@ -246,6 +253,8 @@ def transfer_student(student_id):
     vehicle_id = data.get('vehicle_id', existing.vehicle_id)
     route_id = data.get('route_id', existing.route_id)
     stop_id = data.get('stop_id', existing.stop_id)
+    pickup_stop_id = data.get('pickup_stop_id', existing.pickup_stop_id or stop_id)
+    drop_stop_id = data.get('drop_stop_id', existing.drop_stop_id or stop_id)
     remarks = data.get('remarks', '')
 
     if vehicle_id and vehicle_id != existing.vehicle_id and \
@@ -254,9 +263,10 @@ def transfer_student(student_id):
     if route_id and route_id != existing.route_id and \
        not Route.query.filter_by(id=route_id, school_id=sid).first():
         return bad_request('Invalid route_id')
-    if stop_id and stop_id != existing.stop_id and \
-       not Stop.query.filter_by(id=stop_id, school_id=sid).first():
-        return bad_request('Invalid stop_id')
+    if pickup_stop_id and not Stop.query.filter_by(id=pickup_stop_id, school_id=sid).first():
+        return bad_request('Invalid pickup_stop_id')
+    if drop_stop_id and not Stop.query.filter_by(id=drop_stop_id, school_id=sid).first():
+        return bad_request('Invalid drop_stop_id')
 
     if vehicle_id != existing.vehicle_id:
         db.session.add(TransportTransferHistory(
@@ -270,14 +280,17 @@ def transfer_student(student_id):
             from_route_id=existing.route_id, to_route_id=route_id,
             remarks=remarks, created_by=user.id,
         ))
-    if stop_id != existing.stop_id:
+    if pickup_stop_id != (existing.pickup_stop_id or existing.stop_id):
         db.session.add(TransportTransferHistory(
             school_id=sid, student_id=student_id, transfer_type='STOP_CHANGE',
-            from_stop_id=existing.stop_id, to_stop_id=stop_id,
+            from_stop_id=existing.pickup_stop_id or existing.stop_id, to_stop_id=pickup_stop_id,
             remarks=remarks, created_by=user.id,
         ))
 
-    existing.vehicle_id, existing.route_id, existing.stop_id = vehicle_id, route_id, stop_id
+    existing.vehicle_id, existing.route_id = vehicle_id, route_id
+    existing.stop_id = pickup_stop_id or stop_id
+    existing.pickup_stop_id = pickup_stop_id
+    existing.drop_stop_id = drop_stop_id
     existing.updated_at = datetime.utcnow()
     db.session.commit()
     return jsonify({'success': True, 'data': existing.to_dict()})
@@ -451,10 +464,8 @@ def list_fee_records():
 def generate_fee_records():
     """
     Body: { fee_structure_id, period_label, due_date }
-    Generates one TransportFeeRecord per ACTIVE student on that fee structure's
-    route (or all ACTIVE transport students if the structure is school-wide).
-    Skips students who already have a record for this exact period_label —
-    safe to re-run.
+    Generates one central FeeRecord (source='TRANSPORT') and TransportFeeRecord per ACTIVE student.
+    Skips students who already have a record for this exact period_label — safe to re-run.
     """
     sid = _school_id()
     data = request.get_json() or {}
@@ -481,27 +492,25 @@ def generate_fee_records():
         assign_q = assign_q.filter_by(route_id=fs.route_id)
     assignments = assign_q.all()
 
+    user = get_current_user()
     created, skipped = 0, 0
     for a in assignments:
-        exists = TransportFeeRecord.query.filter_by(
-            school_id=sid, student_id=a.student_id,
-            fee_structure_id=fs.id, period_label=period_label,
-        ).first()
-        if exists:
+        rec, status = generate_transport_fee_record(
+            assignment=a,
+            created_by_id=user.id,
+            month=period_label,
+            fee_structure_id=fs.id,
+            due_date=due_date
+        )
+        if status == 'created':
+            created += 1
+        else:
             skipped += 1
-            continue
-
-        db.session.add(TransportFeeRecord(
-            school_id=sid, student_id=a.student_id, fee_structure_id=fs.id,
-            period_label=period_label, due_date=due_date,
-            amount=fs.amount, status='PENDING',
-        ))
-        created += 1
 
     db.session.commit()
     return jsonify({
         'success': True,
-        'message': f'{created} fee record(s) generated, {skipped} already existed',
+        'message': f'{created} fee record(s) generated, {skipped} already existed or skipped',
         'created': created, 'skipped': skipped,
     })
 
@@ -509,58 +518,109 @@ def generate_fee_records():
 @transport_student_bp.route('/fee-records/<int:record_id>/collect', methods=['POST'])
 @role_required('PRINCIPAL', 'TRANSPORT')
 def collect_fee(record_id):
-    """Body: { amount_paid, payment_mode, transaction_ref, receipt_number, remarks }"""
+    """
+    Body: { amount_paid, payment_mode, transaction_ref, receipt_number, remarks }
+    Collects payment into central financial ledger with mutex-locked double-payment protection.
+    """
     sid = _school_id()
     record = TransportFeeRecord.query.filter_by(id=record_id, school_id=sid).first()
     if not record:
         return not_found('Fee record not found')
 
     data = request.get_json() or {}
-    amount_paid = data.get('amount_paid', 0)
-    if not amount_paid or amount_paid <= 0:
+    try:
+        amount_paid = float(data.get('amount_paid', 0))
+    except (TypeError, ValueError):
+        return bad_request('amount_paid must be a valid number')
+
+    if amount_paid <= 0:
         return bad_request('amount_paid must be greater than 0')
-    if data.get('payment_mode') and data['payment_mode'] not in PAYMENT_MODES:
+
+    payment_mode = data.get('payment_mode', 'CASH')
+    if payment_mode not in PAYMENT_MODES:
         return bad_request(f'payment_mode must be one of {PAYMENT_MODES}')
 
-    txn = TransportFeeTransaction(
-        school_id=sid, fee_record_id=record.id,
-        amount_paid=amount_paid,
-        payment_mode=data.get('payment_mode', 'CASH'),
-        transaction_ref=data.get('transaction_ref', ''),
-        receipt_number=data.get('receipt_number', ''),
-        remarks=data.get('remarks', ''),
-        collected_by=get_current_user().id,
-    )
-    db.session.add(txn)
+    # Find or link corresponding central FeeRecord
+    fee_rec = FeeRecord.query.filter_by(
+        school_id=sid, student_id=record.student_id,
+        source='TRANSPORT'
+    ).order_by(FeeRecord.created_at.desc()).first()
 
-    record.paid_amount = (record.paid_amount or 0) + amount_paid
-    balance = record.balance()
-    if balance <= 0:
-        record.status = 'PAID'
-    elif record.paid_amount > 0:
-        record.status = 'PARTIAL'
+    if not fee_rec:
+        fee_rec = FeeRecord(
+            school_id=sid,
+            student_id=record.student_id,
+            fee_type='TRANSPORT',
+            amount_due=record.amount,
+            amount_paid=0.0,
+            status='PENDING',
+            month=record.period_label,
+            due_date=record.due_date,
+            source='TRANSPORT',
+            remarks=f"Transport Fee ({record.period_label})",
+            collected_by=get_current_user().id,
+        )
+        db.session.add(fee_rec)
+        db.session.flush()
 
-    db.session.commit()
-    return jsonify({'success': True, 'data': record.to_dict(), 'transaction': txn.to_dict()}), 201
+    try:
+        updated_rec, txn = record_transport_fee_payment(
+            fee_rec,
+            amount_paid,
+            payment_mode=payment_mode,
+            remarks=data.get('remarks', ''),
+            collected_by_user=get_current_user(),
+            transaction_ref=data.get('transaction_ref', ''),
+            receipt_number=data.get('receipt_number', '')
+        )
+        # Refresh local record
+        db.session.refresh(record)
+        return jsonify({
+            'success': True,
+            'message': 'Payment collected successfully',
+            'data': record.to_dict(),
+            'central_fee_record': updated_rec.to_dict(),
+            'transaction': txn.to_dict(),
+        }), 201
+    except ValueError as e:
+        return bad_request(str(e))
 
 
 @transport_student_bp.route('/fee-records/<int:record_id>/waive', methods=['POST'])
 @role_required('PRINCIPAL')
 def waive_fee(record_id):
-    """Body: { waiver, remarks } — Principal-only, mirrors hostel fine-waive discipline."""
+    """Body: { waiver, remarks } — Principal-only."""
     sid = _school_id()
     record = TransportFeeRecord.query.filter_by(id=record_id, school_id=sid).first()
     if not record:
         return not_found('Fee record not found')
 
     data = request.get_json() or {}
-    waiver = data.get('waiver')
-    if waiver is None or waiver < 0:
+    try:
+        waiver = float(data.get('waiver', 0))
+    except (TypeError, ValueError):
+        return bad_request('waiver must be a non-negative number')
+
+    if waiver < 0:
         return bad_request('waiver must be a non-negative number')
 
     record.waiver = waiver
     if record.balance() <= 0:
         record.status = 'WAIVED' if waiver >= (record.amount or 0) else 'PAID'
+
+    # Sync linked central FeeRecord
+    fee_rec = FeeRecord.query.filter_by(
+        school_id=sid, student_id=record.student_id, source='TRANSPORT'
+    ).order_by(FeeRecord.created_at.desc()).first()
+
+    if fee_rec:
+        fee_rec.discount = (fee_rec.discount or 0.0) + waiver
+        fee_rec.discount_reason = data.get('remarks', 'Transport Fee Waiver')
+        fee_rec.adjusted_by = get_current_user().id
+        fee_rec.adjusted_at = datetime.utcnow()
+        if (fee_rec.amount_paid or 0.0) >= fee_rec.effective_due():
+            fee_rec.status = 'WAIVED' if (fee_rec.amount_paid or 0.0) == 0 else 'PAID'
+
     db.session.commit()
     return jsonify({'success': True, 'data': record.to_dict()})
 
@@ -575,3 +635,138 @@ def list_fee_transactions(record_id):
 
     rows = record.transactions.order_by(TransportFeeTransaction.payment_date.desc()).all()
     return jsonify({'success': True, 'data': [t.to_dict() for t in rows]})
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  TRANSPORT FINES & PENALTIES (Damage, Late fee, Misconduct)
+# ═══════════════════════════════════════════════════════════════════════════
+
+@transport_student_bp.route('/fines', methods=['GET'])
+@role_required('PRINCIPAL', 'TRANSPORT')
+def list_transport_fines():
+    sid = _school_id()
+    q = TransportFineRecord.query.filter_by(school_id=sid)
+
+    student_id = request.args.get('student_id', type=int)
+    if student_id:
+        q = q.filter_by(student_id=student_id)
+
+    status = request.args.get('status', '').upper()
+    if status:
+        q = q.filter_by(status=status)
+
+    fine_type = request.args.get('fine_type')
+    if fine_type:
+        q = q.filter_by(fine_type=fine_type)
+
+    page = request.args.get('page', 1, type=int)
+    per_page = min(request.args.get('per_page', 25, type=int), 100)
+    p = q.order_by(TransportFineRecord.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
+
+    return jsonify({
+        'success': True,
+        'data': [f.to_dict() for f in p.items],
+        'total': p.total, 'page': p.page, 'pages': p.pages
+    })
+
+
+@transport_student_bp.route('/fines', methods=['POST'])
+@role_required('PRINCIPAL', 'TRANSPORT')
+def create_fine():
+    """
+    Body: { student_id, amount, fine_type, reason }
+    Creates a transport fine and links central FeeRecord (source='TRANSPORT_FINE').
+    """
+    sid = _school_id()
+    data = request.get_json() or {}
+
+    student_id = data.get('student_id')
+    if not student_id:
+        return bad_request('student_id is required')
+
+    student = Student.query.filter_by(id=student_id, school_id=sid).first()
+    if not student:
+        return not_found('Student not found')
+
+    try:
+        amount = float(data.get('amount', 0))
+    except (TypeError, ValueError):
+        return bad_request('amount must be a positive number')
+
+    if amount <= 0:
+        return bad_request('amount must be greater than 0')
+
+    fine_type = data.get('fine_type', 'LATE_PAYMENT')
+    reason = data.get('reason', '')
+
+    try:
+        fine = create_transport_fine(
+            school_id=sid,
+            student_id=student_id,
+            amount=amount,
+            fine_type=fine_type,
+            reason=reason,
+            created_by_user=get_current_user(),
+        )
+        return jsonify({'success': True, 'message': 'Transport fine created', 'data': fine.to_dict()}), 201
+    except ValueError as e:
+        return bad_request(str(e))
+
+
+@transport_student_bp.route('/fines/<int:fine_id>/collect', methods=['POST'])
+@role_required('PRINCIPAL', 'TRANSPORT')
+def collect_fine_payment(fine_id):
+    """Body: { amount_paid, payment_mode, remarks }"""
+    sid = _school_id()
+    fine = TransportFineRecord.query.filter_by(id=fine_id, school_id=sid).first()
+    if not fine:
+        return not_found('Fine record not found')
+
+    data = request.get_json() or {}
+    try:
+        amount = float(data.get('amount_paid') or data.get('amount', 0))
+    except (TypeError, ValueError):
+        return bad_request('amount must be a valid number')
+
+    if amount <= 0:
+        return bad_request('amount must be greater than 0')
+
+    payment_mode = data.get('payment_mode', 'CASH')
+    remarks = data.get('remarks', '')
+
+    try:
+        updated_fine = record_transport_fine_payment(
+            fine, amount, payment_mode=payment_mode, remarks=remarks, collected_by_user=get_current_user()
+        )
+        return jsonify({'success': True, 'message': 'Fine payment collected', 'data': updated_fine.to_dict()})
+    except ValueError as e:
+        return bad_request(str(e))
+
+
+@transport_student_bp.route('/fines/<int:fine_id>/waive', methods=['POST'])
+@role_required('PRINCIPAL')
+def waive_transport_fine_route(fine_id):
+    """Body: { waiver_amount, reason } — Principal only."""
+    sid = _school_id()
+    fine = TransportFineRecord.query.filter_by(id=fine_id, school_id=sid).first()
+    if not fine:
+        return not_found('Fine record not found')
+
+    data = request.get_json() or {}
+    try:
+        waiver_amount = float(data.get('waiver_amount') or data.get('waiver', 0))
+    except (TypeError, ValueError):
+        return bad_request('waiver_amount must be a positive number')
+
+    if waiver_amount <= 0:
+        return bad_request('waiver_amount must be greater than 0')
+
+    reason = data.get('reason', '')
+    try:
+        updated_fine = waive_transport_fine(
+            fine, waiver_amount=waiver_amount, reason=reason, waived_by_user=get_current_user()
+        )
+        return jsonify({'success': True, 'message': 'Fine waived successfully', 'data': updated_fine.to_dict()})
+    except ValueError as e:
+        return bad_request(str(e))
+

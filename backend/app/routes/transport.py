@@ -47,6 +47,20 @@ def _gen_driver_username(name: str) -> str:
     return base + '.' + ''.join(_random.choices(_string.digits, k=6))
 
 
+from datetime import datetime, date
+
+
+def parse_date(val):
+    if not val:
+        return None
+    if isinstance(val, date):
+        return val
+    try:
+        return datetime.strptime(str(val)[:10], '%Y-%m-%d').date()
+    except Exception:
+        return None
+
+
 def not_found(msg='Not found'):
     return jsonify({'success': False, 'message': msg}), 404
 
@@ -89,6 +103,79 @@ def get_vehicle(vehicle_id):
     if not v:
         return not_found('Vehicle not found')
     return jsonify({'success': True, 'data': v.to_dict()})
+
+
+@transport_bp.route('/vehicles/<int:vehicle_id>/students', methods=['GET'])
+@jwt_required()
+def get_vehicle_students(vehicle_id):
+    """
+    Shows all students currently assigned to this vehicle/bus:
+    Capacity, Assigned count, Available capacity, and student roster
+    with class, section, pickup stop, drop stop, and live fee status.
+    """
+    school_id = get_current_school_id()
+    v = Vehicle.query.filter_by(id=vehicle_id, school_id=school_id).first()
+    if not v:
+        return not_found('Vehicle not found')
+
+    from app.models.transport_student import StudentTransport
+    from app.models.financial import FeeRecord
+
+    assignments = StudentTransport.query.filter_by(
+        vehicle_id=v.id, school_id=school_id, status='ACTIVE'
+    ).all()
+
+    student_list = []
+    for a in assignments:
+        student = a.student
+        if not student:
+            continue
+
+        cls_name = f"{student.class_ref.name} {student.class_ref.section or ''}".strip() if student.class_ref else ''
+
+        # Fetch latest transport fee record status
+        latest_fee = FeeRecord.query.filter(
+            FeeRecord.school_id == school_id,
+            FeeRecord.student_id == student.id,
+            FeeRecord.source.in_(['TRANSPORT', 'TRANSPORT_FINE'])
+        ).order_by(FeeRecord.created_at.desc()).first()
+
+        fee_status = latest_fee.status if latest_fee else 'NO_FEES'
+
+        pickup_name = a.pickup_stop.name if a.pickup_stop else (a.stop.name if a.stop else '')
+        drop_name = a.drop_stop.name if a.drop_stop else (a.stop.name if a.stop else '')
+
+        student_list.append({
+            'student_id':       student.id,
+            'admission_no':     student.admission_no or '',
+            'student_name':     student.user.name if student.user else '',
+            'class_name':       cls_name,
+            'father_name':      student.father_name or '',
+            'father_mobile':    student.parent_phone or '',
+            'photo_url':        student.photo_url or '',
+            'pickup_stop_id':   a.pickup_stop_id or a.stop_id,
+            'pickup_stop_name': pickup_name,
+            'drop_stop_id':     a.drop_stop_id or a.stop_id,
+            'drop_stop_name':   drop_name,
+            'transport_status': a.status,
+            'fee_status':       fee_status,
+            'assigned_date':    a.assigned_date.isoformat() if a.assigned_date else None,
+        })
+
+    capacity = v.capacity or 0
+    assigned_count = len(student_list)
+    available_capacity = max(0, capacity - assigned_count)
+
+    return jsonify({
+        'success': True,
+        'data': {
+            'vehicle': v.to_dict(),
+            'capacity': capacity,
+            'assigned_count': assigned_count,
+            'available_capacity': available_capacity,
+            'students': student_list,
+        }
+    })
 
 
 @transport_bp.route('/vehicles', methods=['POST'])

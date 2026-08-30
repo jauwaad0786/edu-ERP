@@ -27,9 +27,11 @@ class StudentTransport(db.Model):
     school_id  = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
 
-    vehicle_id = db.Column(db.Integer, db.ForeignKey('transport_vehicles.id'), nullable=True)
-    route_id   = db.Column(db.Integer, db.ForeignKey('transport_routes.id'), nullable=True)
-    stop_id    = db.Column(db.Integer, db.ForeignKey('transport_stops.id'), nullable=True)
+    vehicle_id     = db.Column(db.Integer, db.ForeignKey('transport_vehicles.id'), nullable=True)
+    route_id       = db.Column(db.Integer, db.ForeignKey('transport_routes.id'), nullable=True)
+    stop_id        = db.Column(db.Integer, db.ForeignKey('transport_stops.id'), nullable=True)
+    pickup_stop_id = db.Column(db.Integer, db.ForeignKey('transport_stops.id'), nullable=True)
+    drop_stop_id   = db.Column(db.Integer, db.ForeignKey('transport_stops.id'), nullable=True)
 
     academic_year = db.Column(db.String(20), default='')
     assigned_date = db.Column(db.Date, default=datetime.utcnow)
@@ -40,19 +42,24 @@ class StudentTransport(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    vehicle = db.relationship('Vehicle', foreign_keys=[vehicle_id])
-    route   = db.relationship('Route', foreign_keys=[route_id])
-    stop    = db.relationship('Stop', foreign_keys=[stop_id])
+    vehicle     = db.relationship('Vehicle', foreign_keys=[vehicle_id])
+    route       = db.relationship('Route', foreign_keys=[route_id])
+    stop        = db.relationship('Stop', foreign_keys=[stop_id])
+    pickup_stop = db.relationship('Stop', foreign_keys=[pickup_stop_id])
+    drop_stop   = db.relationship('Stop', foreign_keys=[drop_stop_id])
 
     def to_dict(self):
         from app.models.academic import Student
         student = Student.query.get(self.student_id)
+        effective_pickup = self.pickup_stop or self.stop
+        effective_drop = self.drop_stop or self.stop
         return {
             'id':              self.id,
             'student_id':      self.student_id,
             'student_name':    student.user.name if (student and student.user) else '',
             'admission_no':    student.admission_no if student else '',
             'class_id':        student.class_id if student else None,
+            'class_name':      f"{student.class_ref.name} {student.class_ref.section or ''}".strip() if (student and student.class_ref) else '',
             'father_name':     student.father_name if student else '',
             'father_mobile':   student.parent_phone if student else '',
             'photo_url':       student.photo_url if student else '',
@@ -60,8 +67,12 @@ class StudentTransport(db.Model):
             'vehicle_number':  self.vehicle.vehicle_number if self.vehicle else '',
             'route_id':        self.route_id,
             'route_name':      self.route.name if self.route else '',
-            'stop_id':         self.stop_id,
-            'stop_name':       self.stop.name if self.stop else '',
+            'stop_id':         self.stop_id or (self.pickup_stop_id or self.drop_stop_id),
+            'stop_name':       self.stop.name if self.stop else (effective_pickup.name if effective_pickup else ''),
+            'pickup_stop_id':  self.pickup_stop_id or self.stop_id,
+            'pickup_stop_name': effective_pickup.name if effective_pickup else '',
+            'drop_stop_id':    self.drop_stop_id or self.stop_id,
+            'drop_stop_name':  effective_drop.name if effective_drop else '',
             'academic_year':   self.academic_year or '',
             'assigned_date':   self.assigned_date.isoformat() if self.assigned_date else None,
             'status':          self.status,
@@ -232,3 +243,80 @@ class TransportFeeTransaction(db.Model):
             'remarks':          self.remarks or '',
             'created_at':       self.created_at.isoformat() if self.created_at else None,
         }
+
+
+class TransportFineRecord(db.Model):
+    """
+    Penalties / damage / late transport charges.
+    Linked to a central FeeRecord (source='TRANSPORT_FINE').
+    Supports fine lifecycle: OUTSTANDING -> PARTIALLY_PAID -> PAID or WAIVED.
+    """
+    __tablename__ = 'transport_fine_records'
+
+    id            = db.Column(db.Integer, primary_key=True)
+    school_id     = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    student_id    = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
+    fee_record_id = db.Column(db.Integer, db.ForeignKey('fee_records.id'), nullable=True, index=True)
+
+    amount        = db.Column(db.Float, nullable=False, default=0.0)
+    amount_paid   = db.Column(db.Float, default=0.0)
+    waived_amount = db.Column(db.Float, default=0.0)
+
+    fine_type     = db.Column(db.String(50), default='LATE_PAYMENT')  # LATE_PAYMENT / DAMAGE / MISCONDUCT / OTHER
+    reason        = db.Column(db.String(300), default='')
+    status        = db.Column(db.String(20), default='OUTSTANDING')  # OUTSTANDING / PARTIALLY_PAID / PAID / WAIVED
+
+    waived_by     = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    waived_at     = db.Column(db.DateTime, nullable=True)
+    waive_reason  = db.Column(db.String(300), default='')
+
+    collected_by  = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    collected_at  = db.Column(db.DateTime, nullable=True)
+    payment_mode  = db.Column(db.String(30), default='CASH')
+    receipt_no    = db.Column(db.String(50), default='')
+    fee_transaction_id = db.Column(db.Integer, nullable=True)
+
+    created_by    = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    created_at    = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at    = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    student       = db.relationship('Student', foreign_keys=[student_id])
+
+    @property
+    def outstanding_amount(self):
+        return max(0.0, round((self.amount or 0.0) - (self.amount_paid or 0.0) - (self.waived_amount or 0.0), 2))
+
+    def to_dict(self):
+        student_name = ''
+        admission_no = ''
+        class_name = ''
+        if self.student:
+            student_name = self.student.user.name if self.student.user else ''
+            admission_no = self.student.admission_no or ''
+            if self.student.class_ref:
+                class_name = f"{self.student.class_ref.name} {self.student.class_ref.section or ''}".strip()
+
+        return {
+            'id':                 self.id,
+            'student_id':         self.student_id,
+            'student_name':       student_name,
+            'admission_no':       admission_no,
+            'class_name':         class_name,
+            'fee_record_id':      self.fee_record_id,
+            'amount':             self.amount or 0.0,
+            'amount_paid':        self.amount_paid or 0.0,
+            'waived_amount':      self.waived_amount or 0.0,
+            'outstanding_amount': self.outstanding_amount,
+            'fine_type':          self.fine_type,
+            'reason':             self.reason or '',
+            'status':             self.status,
+            'waived_by':          self.waived_by,
+            'waived_at':          self.waived_at.isoformat() if self.waived_at else None,
+            'waive_reason':       self.waive_reason or '',
+            'collected_by':       self.collected_by,
+            'collected_at':       self.collected_at.isoformat() if self.collected_at else None,
+            'payment_mode':       self.payment_mode,
+            'receipt_no':         self.receipt_no or '',
+            'created_at':         self.created_at.isoformat() if self.created_at else None,
+        }
+

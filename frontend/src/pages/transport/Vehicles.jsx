@@ -35,6 +35,11 @@ export default function Vehicles() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
 
+  // Student Roster Modal
+  const [showStudentsModal, setShowStudentsModal] = useState(false);
+  const [selectedVehicleData, setSelectedVehicleData] = useState(null);
+  const [loadingStudents, setLoadingStudents] = useState(false);
+
   const load = useCallback(() => {
     setLoading(true);
     const params = new URLSearchParams({ page });
@@ -53,6 +58,20 @@ export default function Vehicles() {
     api.get('/transport/drivers?per_page=200').then(r => setDrivers(r.data.data || [])).catch(() => {});
     api.get('/transport/conductors?per_page=200').then(r => setConductors(r.data.data || [])).catch(() => {});
   }, []);
+
+  const openStudentsRoster = async (v) => {
+    setSelectedVehicleData({ vehicle: v, students: [], capacity: v.capacity || 0, assigned_count: 0 });
+    setShowStudentsModal(true);
+    setLoadingStudents(true);
+    try {
+      const res = await api.get(`/transport/vehicles/${v.id}/students`);
+      setSelectedVehicleData(res.data.data);
+    } catch (err) {
+      toast.error('Could not load student roster');
+    } finally {
+      setLoadingStudents(false);
+    }
+  };
 
   function openAdd() {
     setEditingId(null);
@@ -206,13 +225,17 @@ export default function Vehicles() {
                         </select>
                       </td>
                       <td style={{ padding: '10px 6px' }}>
+                        <button onClick={() => openStudentsRoster(v)} style={{
+                          background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: 6,
+                          padding: '5px 9px', fontSize: 11, fontWeight: 800, cursor: 'pointer', marginRight: 6,
+                        }}>👥 Roster</button>
                         <button onClick={() => openEdit(v)} style={{
                           background: '#eef2ff', color: '#4f46e5', border: 'none', borderRadius: 6,
-                          padding: '5px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', marginRight: 6,
+                          padding: '5px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer', marginRight: 6,
                         }}>Edit</button>
                         <button onClick={() => handleDelete(v)} style={{
                           background: '#fef2f2', color: '#dc2626', border: 'none', borderRadius: 6,
-                          padding: '5px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                          padding: '5px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
                         }}>Delete</button>
                       </td>
                     </tr>
@@ -239,6 +262,103 @@ export default function Vehicles() {
           </div>
         </div>
       </div>
+
+      {/* ── Bus Student Roster Modal ── */}
+      {showStudentsModal && selectedVehicleData && (
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowStudentsModal(false)}>
+          <div className="modal" style={{ maxWidth: 800 }}>
+            <div className="modal-header">
+              <div>
+                <h3 style={{ margin: 0 }}>
+                  🚌 Passenger Roster — {selectedVehicleData.vehicle?.vehicle_number}
+                </h3>
+                <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                  {selectedVehicleData.vehicle?.vehicle_name || 'Bus Fleet'} • Driver: {selectedVehicleData.vehicle?.driver_name || 'Not assigned'}
+                </div>
+              </div>
+              <button className="modal-close" onClick={() => setShowStudentsModal(false)}>✕</button>
+            </div>
+
+            <div className="modal-body">
+              {/* Capacity & Occupancy Bar */}
+              <div style={{
+                background: darkMode ? '#1e293b' : '#f8fafc',
+                padding: '12px 16px', borderRadius: 12, marginBottom: 16,
+                border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+              }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b' }}>CAPACITY OCCUPANCY</div>
+                  <div style={{ fontSize: 18, fontWeight: 900, color: '#6366f1' }}>
+                    {selectedVehicleData.assigned_count} / {selectedVehicleData.capacity} Seats Filled
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b' }}>AVAILABLE SEATS</div>
+                  <div style={{ fontSize: 18, fontWeight: 900, color: (selectedVehicleData.available_capacity || 0) > 0 ? '#10b981' : '#ef4444' }}>
+                    {selectedVehicleData.available_capacity || 0} Seats Free
+                  </div>
+                </div>
+              </div>
+
+              {loadingStudents ? (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: '#64748b' }}>Loading student roster...</div>
+              ) : (selectedVehicleData.students || []).length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: '#64748b' }}>
+                  No students are currently assigned to this vehicle.
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto', maxHeight: '380px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ borderBottom: `2px solid ${darkMode ? '#334155' : '#e2e8f0'}`, textAlign: 'left' }}>
+                        <th style={{ padding: '8px 6px', color: '#94a3b8' }}>STUDENT</th>
+                        <th style={{ padding: '8px 6px', color: '#94a3b8' }}>CLASS</th>
+                        <th style={{ padding: '8px 6px', color: '#94a3b8' }}>PICKUP STOP</th>
+                        <th style={{ padding: '8px 6px', color: '#94a3b8' }}>DROP STOP</th>
+                        <th style={{ padding: '8px 6px', color: '#94a3b8' }}>GUARDIAN CONTACT</th>
+                        <th style={{ padding: '8px 6px', color: '#94a3b8' }}>FEE STATUS</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedVehicleData.students.map(st => (
+                        <tr key={st.student_id} style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}` }}>
+                          <td style={{ padding: '8px 6px', fontWeight: 700, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
+                            {st.student_name}
+                            <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 500 }}>Adm: {st.admission_no}</div>
+                          </td>
+                          <td style={{ padding: '8px 6px', color: '#64748b' }}>{st.class_name || '—'}</td>
+                          <td style={{ padding: '8px 6px', color: '#64748b' }}>{st.pickup_stop_name || '—'}</td>
+                          <td style={{ padding: '8px 6px', color: '#64748b' }}>{st.drop_stop_name || '—'}</td>
+                          <td style={{ padding: '8px 6px', color: '#64748b' }}>
+                            {st.father_mobile ? `📞 ${st.father_mobile}` : '—'}
+                          </td>
+                          <td style={{ padding: '8px 6px' }}>
+                            <span style={{
+                              padding: '2px 8px', borderRadius: 12, fontSize: 10.5, fontWeight: 800,
+                              background: st.fee_status === 'PAID' ? '#dcfce7' : st.fee_status === 'PARTIAL' ? '#fef3c7' : st.fee_status === 'PENDING' ? '#fee2e2' : '#f1f5f9',
+                              color: st.fee_status === 'PAID' ? '#15803d' : st.fee_status === 'PARTIAL' ? '#b45309' : st.fee_status === 'PENDING' ? '#b91c1c' : '#64748b',
+                            }}>
+                              {st.fee_status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowStudentsModal(false)} style={{
+                background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 8,
+                padding: '8px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer'
+              }}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Add/Edit Modal ── */}
       {showForm && (

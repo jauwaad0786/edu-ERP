@@ -6,7 +6,7 @@ from app import db
 from app.models.academic import Student
 from app.models.transport import Vehicle, Driver, Route, RouteStop, Stop
 from app.models.transport_student import StudentTransport
-from app.models.transport_gps import TripLog, GPSLog, TRIP_STATUSES
+from app.models.transport_gps import TripLog, GPSLog, TripStudentAttendance, TRIP_STATUSES, STUDENT_EVENT_TYPES
 from app.utils.decorators import role_required, get_current_user
 
 transport_gps_bp = Blueprint('transport_gps', __name__)
@@ -257,6 +257,278 @@ def _set_trip_status(trip_id, from_statuses, to_status):
     return jsonify({'success': True, 'data': trip.to_dict()})
 
 
+@transport_gps_bp.route('/driver/trip/<int:trip_id>/stops', methods=['GET'])
+@role_required('DRIVER')
+def driver_trip_stops(trip_id):
+    """
+    Returns ordered stops for the route associated with this trip,
+    along with students assigned to each stop (pickup / dropoff).
+    """
+    driver = _current_driver()
+    if not driver:
+        return not_found('Driver profile not found')
+
+    trip = TripLog.query.filter_by(id=trip_id, school_id=driver.school_id, driver_id=driver.id).first()
+    if not trip:
+        return not_found('Trip not found')
+
+    if not trip.route_id:
+        return jsonify({'success': True, 'data': {'stops': [], 'total_students': 0}})
+
+    # Fetch ordered route stops
+    route_stops = RouteStop.query.filter_by(route_id=trip.route_id).order_by(RouteStop.sequence).all()
+
+    # Active student assignments on this vehicle
+    assignments = StudentTransport.query.filter_by(
+        vehicle_id=trip.vehicle_id, school_id=driver.school_id, status='ACTIVE'
+    ).all()
+
+    # Fetch student events already recorded for this trip
+    events = TripStudentAttendance.query.filter_by(trip_id=trip.id, school_id=driver.school_id).all()
+    event_map = {}
+    for ev in events:
+        event_map[ev.student_id] = ev.event_type
+
+    stops_data = []
+    for rs in route_stops:
+        stop = rs.stop
+        if not stop:
+            continue
+
+        # Students assigned to this stop (either as pickup_stop, drop_stop, or default stop_id)
+        assigned_students = []
+        for a in assignments:
+            is_stop_match = (
+                a.stop_id == stop.id or
+                a.pickup_stop_id == stop.id or
+                a.drop_stop_id == stop.id
+            )
+            if is_stop_match and a.student:
+                cls_name = f"{a.student.class_ref.name} {a.student.class_ref.section or ''}".strip() if a.student.class_ref else ''
+                assigned_students.append({
+                    'student_id':     a.student.id,
+                    'student_name':   a.student.user.name if a.student.user else '',
+                    'admission_no':   a.student.admission_no or '',
+                    'class_name':     cls_name,
+                    'father_name':    a.student.father_name or '',
+                    'father_mobile':  a.student.parent_phone or '',
+                    'photo_url':      a.student.photo_url or '',
+                    'event_status':   event_map.get(a.student.id, None),  # PICKED_UP, DROPPED_OFF, ABSENT, or None
+                })
+
+        stops_data.append({
+            'stop_id':        stop.id,
+            'stop_name':      stop.name,
+            'sequence':       rs.sequence,
+            'latitude':       stop.latitude,
+            'longitude':      stop.longitude,
+            'radius':         stop.radius or 200,
+            'estimated_time': rs.estimated_time or '',
+            'students_count': len(assigned_students),
+            'students':       assigned_students,
+        })
+
+    return jsonify({
+        'success': True,
+        'data': {
+            'trip_id': trip.id,
+            'route_id': trip.route_id,
+            'route_name': trip.route.name if trip.route else '',
+            'vehicle_number': trip.vehicle.vehicle_number if trip.vehicle else '',
+            'stops': stops_data,
+            'total_students': len(assignments),
+        }
+    })
+
+
+@transport_gps_bp.route('/driver/trip/<int:trip_id>/detect-stop', methods=['POST'])
+@role_required('DRIVER')
+def driver_detect_stop(trip_id):
+    """
+    Body: { latitude, longitude }
+    Compares current location against all stops in the route using Haversine calculation.
+    If within geofence radius of a stop, returns that stop as current_stop along with its students.
+    """
+    driver = _current_driver()
+    if not driver:
+        return not_found('Driver profile not found')
+
+    trip = TripLog.query.filter_by(id=trip_id, school_id=driver.school_id, driver_id=driver.id).first()
+    if not trip:
+        return not_found('Trip not found')
+
+    data = request.get_json() or {}
+    lat, lng = data.get('latitude'), data.get('longitude')
+    if lat is None or lng is None:
+        return bad_request('latitude and longitude are required')
+
+    if not trip.route_id:
+        return jsonify({'success': True, 'data': {'detected': False, 'current_stop': None}})
+
+    route_stops = RouteStop.query.filter_by(route_id=trip.route_id).order_by(RouteStop.sequence).all()
+
+    # Recorded events map
+    events = TripStudentAttendance.query.filter_by(trip_id=trip.id, school_id=driver.school_id).all()
+    event_map = {ev.student_id: ev.event_type for ev in events}
+
+    # Find nearest stop and check if within radius
+    nearest_stop = None
+    min_dist_m = float('inf')
+    is_inside_geofence = False
+
+    for rs in route_stops:
+        stop = rs.stop
+        if not stop or stop.latitude is None or stop.longitude is None:
+            continue
+
+        dist_km = _haversine_km(lat, lng, stop.latitude, stop.longitude)
+        dist_m = dist_km * 1000.0
+
+        if dist_m < min_dist_m:
+            min_dist_m = dist_m
+            nearest_stop = rs
+
+        radius_m = float(stop.radius or 200)
+        if dist_m <= radius_m:
+            is_inside_geofence = True
+            nearest_stop = rs
+            break
+
+    if not nearest_stop:
+        return jsonify({'success': True, 'data': {'detected': False, 'current_stop': None}})
+
+    stop = nearest_stop.stop
+    # Fetch students for this stop
+    assignments = StudentTransport.query.filter_by(
+        vehicle_id=trip.vehicle_id, school_id=driver.school_id, status='ACTIVE'
+    ).all()
+
+    assigned_students = []
+    for a in assignments:
+        is_stop_match = (
+            a.stop_id == stop.id or
+            a.pickup_stop_id == stop.id or
+            a.drop_stop_id == stop.id
+        )
+        if is_stop_match and a.student:
+            cls_name = f"{a.student.class_ref.name} {a.student.class_ref.section or ''}".strip() if a.student.class_ref else ''
+            assigned_students.append({
+                'student_id':     a.student.id,
+                'student_name':   a.student.user.name if a.student.user else '',
+                'admission_no':   a.student.admission_no or '',
+                'class_name':     cls_name,
+                'father_name':    a.student.father_name or '',
+                'father_mobile':  a.student.parent_phone or '',
+                'photo_url':      a.student.photo_url or '',
+                'event_status':   event_map.get(a.student.id, None),
+            })
+
+    return jsonify({
+        'success': True,
+        'data': {
+            'detected': is_inside_geofence,
+            'distance_meters': round(min_dist_m, 1),
+            'current_stop': {
+                'stop_id':        stop.id,
+                'stop_name':      stop.name,
+                'sequence':       nearest_stop.sequence,
+                'latitude':       stop.latitude,
+                'longitude':      stop.longitude,
+                'radius':         stop.radius or 200,
+                'estimated_time': nearest_stop.estimated_time or '',
+                'students':       assigned_students,
+            }
+        }
+    })
+
+
+@transport_gps_bp.route('/driver/trip/<int:trip_id>/student-event', methods=['POST'])
+@role_required('DRIVER')
+def driver_record_student_event(trip_id):
+    """
+    Body: { student_id, event_type, stop_id, latitude, longitude, remarks }
+    event_type: 'PICKED_UP' | 'DROPPED_OFF' | 'ABSENT'
+    Fast one-tap action recording with duplicate/idempotency protection.
+    """
+    driver = _current_driver()
+    if not driver:
+        return not_found('Driver profile not found')
+
+    trip = TripLog.query.filter_by(id=trip_id, school_id=driver.school_id, driver_id=driver.id).first()
+    if not trip:
+        return not_found('Trip not found')
+
+    data = request.get_json() or {}
+    student_id = data.get('student_id')
+    event_type = (data.get('event_type') or '').upper()
+
+    if not student_id:
+        return bad_request('student_id is required')
+    if event_type not in STUDENT_EVENT_TYPES:
+        return bad_request(f'event_type must be one of {STUDENT_EVENT_TYPES}')
+
+    # Check student exists in this school
+    student = Student.query.filter_by(id=student_id, school_id=driver.school_id).first()
+    if not student:
+        return not_found('Student not found')
+
+    stop_id = data.get('stop_id')
+    lat = data.get('latitude')
+    lng = data.get('longitude')
+    remarks = data.get('remarks', '')
+
+    # Upsert event row for this trip+student
+    existing_event = TripStudentAttendance.query.filter_by(
+        trip_id=trip.id, student_id=student_id, school_id=driver.school_id
+    ).first()
+
+    if existing_event:
+        existing_event.event_type = event_type
+        existing_event.recorded_at = datetime.utcnow()
+        if stop_id:
+            existing_event.stop_id = stop_id
+        if lat is not None:
+            existing_event.latitude = lat
+        if lng is not None:
+            existing_event.longitude = lng
+        existing_event.recorded_by = get_current_user().id
+        existing_event.remarks = remarks
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Status updated', 'data': existing_event.to_dict()})
+
+    new_event = TripStudentAttendance(
+        school_id=driver.school_id,
+        trip_id=trip.id,
+        student_id=student_id,
+        stop_id=stop_id,
+        event_type=event_type,
+        recorded_at=datetime.utcnow(),
+        latitude=lat,
+        longitude=lng,
+        recorded_by=get_current_user().id,
+        remarks=remarks,
+    )
+    db.session.add(new_event)
+    db.session.commit()
+    return jsonify({'success': True, 'message': f'Student marked as {event_type}', 'data': new_event.to_dict()}), 201
+
+
+@transport_gps_bp.route('/driver/trip/<int:trip_id>/attendance', methods=['GET'])
+@role_required('DRIVER', 'PRINCIPAL', 'TRANSPORT')
+def get_trip_attendance(trip_id):
+    """Returns all recorded student pickup/drop events for a trip."""
+    sid = _school_id()
+    trip = TripLog.query.filter_by(id=trip_id, school_id=sid).first()
+    if not trip:
+        return not_found('Trip not found')
+
+    events = TripStudentAttendance.query.filter_by(trip_id=trip.id, school_id=sid)\
+        .order_by(TripStudentAttendance.recorded_at.asc()).all()
+
+    return jsonify({'success': True, 'data': [e.to_dict() for e in events]})
+
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 #  PRINCIPAL / TRANSPORT MANAGER — LIVE VIEW
 # ═══════════════════════════════════════════════════════════════════════════
@@ -368,27 +640,64 @@ def parent_child_trip(student_id):
     latest_gps = trip.latest_gps()
     next_stop = _resolve_next_stop(trip, assignment.stop_id)
 
+    # Today's pickup / drop events for this child
+    today_event = TripStudentAttendance.query.filter_by(
+        trip_id=trip.id, student_id=student_id, school_id=sid
+    ).first()
+
     return jsonify({'success': True, 'data': {
         'has_transport':  True,
         'trip_status':    trip.status,
         'vehicle_number': trip.vehicle.vehicle_number if trip.vehicle else '',
         'driver_name':    trip.driver.name if trip.driver else '',
         'driver_mobile':  trip.driver.mobile_number if trip.driver else '',
+        'route_name':     trip.route.name if trip.route else '',
         'latitude':       latest_gps.latitude if latest_gps else None,
         'longitude':      latest_gps.longitude if latest_gps else None,
         'speed':          latest_gps.speed if latest_gps else 0,
         'last_updated':   latest_gps.recorded_at.isoformat() if latest_gps else None,
         'next_stop':      next_stop['name'] if next_stop else None,
         'eta':            next_stop['eta'] if next_stop else None,
+        'event_status':   today_event.event_type if today_event else None,
+        'event_time':     today_event.recorded_at.strftime('%I:%M %p') if today_event else None,
     }})
+
+
+@transport_gps_bp.route('/parent/child/<int:student_id>/history', methods=['GET'])
+@role_required('PARENT', 'STUDENT')
+def parent_child_history(student_id):
+    """
+    Returns student's historical transport trip attendance records:
+    Date, Bus, Route, Pickup/Drop Event, Recorded Time, Stop.
+    """
+    if student_id not in _own_student_ids():
+        return jsonify({'success': False, 'message': 'Not authorized for this student'}), 403
+
+    sid = _school_id()
+    events = TripStudentAttendance.query.filter_by(student_id=student_id, school_id=sid)\
+        .order_by(TripStudentAttendance.recorded_at.desc()).limit(30).all()
+
+    history = []
+    for ev in events:
+        trip = ev.trip
+        history.append({
+            'id':             ev.id,
+            'date':           ev.recorded_at.strftime('%d %b %Y'),
+            'time':           ev.recorded_at.strftime('%I:%M %p'),
+            'event_type':     ev.event_type,
+            'stop_name':      ev.stop.name if ev.stop else '',
+            'vehicle_number': trip.vehicle.vehicle_number if (trip and trip.vehicle) else '',
+            'route_name':     trip.route.name if (trip and trip.route) else '',
+            'driver_name':    trip.driver.name if (trip and trip.driver) else '',
+        })
+
+    return jsonify({'success': True, 'data': history})
 
 
 def _resolve_next_stop(trip, student_stop_id):
     """
     Simple heuristic: nearest not-yet-passed route stop by straight-line
-    distance from the latest GPS ping. Good enough for MVP ETA display —
-    a proper geofence-sequence tracker can replace this later without
-    touching the response shape.
+    distance from the latest GPS ping.
     """
     if not trip.route_id:
         return None
@@ -404,3 +713,4 @@ def _resolve_next_stop(trip, student_stop_id):
         latest.latitude, latest.longitude, rs.stop.latitude or 0, rs.stop.longitude or 0
     ))
     return {'name': nearest.stop.name if nearest.stop else '', 'eta': nearest.estimated_time}
+

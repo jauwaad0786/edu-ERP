@@ -162,13 +162,16 @@ const ROLE_MENUS = {
           icon: 'ti-bus', label: 'Transport', path: '/transport',
           children: [
             { icon: 'ti-layout-dashboard', label: 'Dashboard',         path: '/transport' },
-            { icon: 'ti-bus',              label: 'Vehicles',          path: '/transport/vehicles' },
+            { icon: 'ti-bus',              label: 'Vehicles & Fleet',  path: '/transport/vehicles' },
             { icon: 'ti-steering-wheel',   label: 'Drivers',           path: '/transport/drivers' },
             { icon: 'ti-user-check',       label: 'Conductors',        path: '/transport/conductors' },
             { icon: 'ti-route',            label: 'Routes',            path: '/transport/routes' },
-            { icon: 'ti-map-pin',          label: 'Stops',              path: '/transport/stops' },
-            { icon: 'ti-users',            label: 'Student Transport', path: '/transport/students' },
-            // Fees, Maintenance, Driver App, Parent View, Reports — pending files ban jaane ke baad add honge
+            { icon: 'ti-map-pin',          label: 'Stops',             path: '/transport/stops' },
+            { icon: 'ti-users',            label: 'Student Roster',    path: '/transport/students' },
+            { icon: 'ti-currency-rupee',   label: 'Fees & Fines',      path: '/transport/fees' },
+            { icon: 'ti-tool',             label: 'Maintenance',       path: '/transport/maintenance' },
+            { icon: 'ti-map-pin-filled',   label: 'Live Tracking',     path: '/transport/live' },
+            { icon: 'ti-report',           label: 'Reports',           path: '/transport/reports' },
           ],
         },
 
@@ -352,12 +355,16 @@ const ROLE_MENUS = {
     {
       group: 'Transport Management',
       items: [
-        { icon: 'ti-bus',              label: 'Vehicles',    path: '/transport/vehicles' },
-        { icon: 'ti-steering-wheel',   label: 'Drivers',     path: '/transport/drivers' },
-        { icon: 'ti-users',            label: 'Conductors',  path: '/transport/conductors' },
-        { icon: 'ti-route',            label: 'Routes',      path: '/transport/routes' },
-        { icon: 'ti-map-pin',          label: 'Stops',       path: '/transport/stops' },
-        { icon: 'ti-user-check',       label: 'Students',    path: '/transport/students' },
+        { icon: 'ti-bus',              label: 'Vehicles & Fleet', path: '/transport/vehicles' },
+        { icon: 'ti-steering-wheel',   label: 'Drivers',          path: '/transport/drivers' },
+        { icon: 'ti-user-check',       label: 'Conductors',       path: '/transport/conductors' },
+        { icon: 'ti-route',            label: 'Routes',           path: '/transport/routes' },
+        { icon: 'ti-map-pin',          label: 'Stops',            path: '/transport/stops' },
+        { icon: 'ti-users',            label: 'Student Roster',   path: '/transport/students' },
+        { icon: 'ti-currency-rupee',   label: 'Fees & Fines',     path: '/transport/fees' },
+        { icon: 'ti-tool',             label: 'Maintenance',      path: '/transport/maintenance' },
+        { icon: 'ti-map-pin-filled',   label: 'Live Tracking',    path: '/transport/live' },
+        { icon: 'ti-report',           label: 'Reports',          path: '/transport/reports' },
       ],
     },
     {
@@ -373,7 +380,7 @@ const ROLE_MENUS = {
   DRIVER: [
     {
       group: 'Overview',
-      items: [{ icon: 'ti-truck', label: 'My Trip', path: '/driver/app' }],
+      items: [{ icon: 'ti-truck', label: 'My Cockpit & Trip', path: '/driver/app' }],
     },
     {
       group: 'Customer Service',
@@ -400,6 +407,7 @@ const ROLE_MENUS = {
         { icon: 'ti-clipboard-check', label: 'Attendance',        path: '/attendance' },
         { icon: 'ti-file-certificate',label: 'Result Card',       path: '/result-card' },
         { icon: 'ti-receipt',         label: 'Fees',              path: '/fees' },
+        { icon: 'ti-bus',             label: 'My Transport',      path: '/transport/parent' },
         { icon: 'ti-file-text',       label: 'Documents',         path: '/documents' },
         { icon: 'ti-book',            label: 'Library',           path: '/library/books' },
         { icon: 'ti-ticket',          label: 'Admit Card',        path: '/admit-card' },
@@ -424,10 +432,11 @@ const ROLE_MENUS = {
     {
       group: 'My Child',
       items: [
-        { icon: 'ti-clipboard-check', label: 'Attendance',  path: '/attendance' },
-        { icon: 'ti-file-certificate',label: 'Report Card', path: '/result-card' },
-        { icon: 'ti-receipt',         label: 'Fees',        path: '/fees' },
-        { icon: 'ti-file-text',       label: 'Documents',   path: '/documents' },
+        { icon: 'ti-clipboard-check', label: 'Attendance',   path: '/attendance' },
+        { icon: 'ti-file-certificate',label: 'Report Card',  path: '/result-card' },
+        { icon: 'ti-receipt',         label: 'Fees',         path: '/fees' },
+        { icon: 'ti-bus',             label: 'Bus Tracking', path: '/transport/parent' },
+        { icon: 'ti-file-text',       label: 'Documents',    path: '/documents' },
       ],
     },
     {

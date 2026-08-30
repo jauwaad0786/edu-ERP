@@ -140,3 +140,65 @@ class GPSLog(db.Model):
             'network_status':  self.network_status,
             'recorded_at':     self.recorded_at.isoformat() if self.recorded_at else None,
         }
+
+
+STUDENT_EVENT_TYPES = ['PICKED_UP', 'DROPPED_OFF', 'ABSENT']
+
+
+class TripStudentAttendance(db.Model):
+    """
+    Records student pickup / dropoff / absent events per trip.
+    Allows drivers to record exact status at designated stops in real time.
+    """
+    __tablename__ = 'transport_trip_student_attendance'
+
+    id          = db.Column(db.Integer, primary_key=True)
+    school_id   = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    trip_id     = db.Column(db.Integer, db.ForeignKey('transport_trip_logs.id'), nullable=False, index=True)
+    student_id  = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
+    stop_id     = db.Column(db.Integer, db.ForeignKey('transport_stops.id'), nullable=True, index=True)
+
+    event_type  = db.Column(db.String(20), nullable=False)   # PICKED_UP / DROPPED_OFF / ABSENT
+    recorded_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+    latitude    = db.Column(db.Float, nullable=True)
+    longitude   = db.Column(db.Float, nullable=True)
+    recorded_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    remarks     = db.Column(db.String(300), default='')
+
+    created_at  = db.Column(db.DateTime, default=datetime.utcnow)
+
+    trip    = db.relationship('TripLog', foreign_keys=[trip_id], backref=db.backref('student_events', lazy='dynamic', cascade='all, delete-orphan'))
+    student = db.relationship('Student', foreign_keys=[student_id])
+    stop    = db.relationship('Stop', foreign_keys=[stop_id])
+
+    __table_args__ = (
+        db.UniqueConstraint('trip_id', 'student_id', 'event_type', name='uq_trip_student_event'),
+    )
+
+    def to_dict(self):
+        student_name = ''
+        admission_no = ''
+        class_name = ''
+        if self.student:
+            student_name = self.student.user.name if self.student.user else ''
+            admission_no = self.student.admission_no or ''
+            if self.student.class_ref:
+                class_name = f"{self.student.class_ref.name} {self.student.class_ref.section or ''}".strip()
+
+        return {
+            'id':           self.id,
+            'trip_id':      self.trip_id,
+            'student_id':   self.student_id,
+            'student_name': student_name,
+            'admission_no': admission_no,
+            'class_name':   class_name,
+            'stop_id':      self.stop_id,
+            'stop_name':    self.stop.name if self.stop else '',
+            'event_type':   self.event_type,
+            'recorded_at':  self.recorded_at.isoformat() if self.recorded_at else None,
+            'latitude':     self.latitude,
+            'longitude':    self.longitude,
+            'remarks':      self.remarks or '',
+        }
+

@@ -1097,6 +1097,9 @@ def collect_fee():
         elif record.source == 'HOSTEL_FINE':
             from app.services.hostel_fee_service import sync_hostel_fine_from_fee_record
             sync_hostel_fine_from_fee_record(record, txn)
+        elif record.source in ('TRANSPORT', 'TRANSPORT_FINE'):
+            from app.services.transport_fee_service import sync_transport_from_fee_record
+            sync_transport_from_fee_record(record, txn)
 
         db.session.commit()
 
@@ -1200,6 +1203,9 @@ def collect_fee_multiple():
             elif record.source == 'HOSTEL_FINE':
                 from app.services.hostel_fee_service import sync_hostel_fine_from_fee_record
                 sync_hostel_fine_from_fee_record(record, txn)
+            elif record.source in ('TRANSPORT', 'TRANSPORT_FINE'):
+                from app.services.transport_fee_service import sync_transport_from_fee_record
+                sync_transport_from_fee_record(record, txn)
 
             total += amount
 

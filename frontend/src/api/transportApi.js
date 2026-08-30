@@ -25,11 +25,12 @@ const qs = (params = {}) => {
 const transportApi = {
   // ── Vehicles ────────────────────────────────────────────────────────────
   vehicles: {
-    list:   (params) => api.get(`/transport/vehicles${qs(params)}`),
-    get:    (id)      => api.get(`/transport/vehicles/${id}`),
-    create: (data)     => api.post('/transport/vehicles', data),
-    update: (id, data) => api.put(`/transport/vehicles/${id}`, data),
-    remove: (id)       => api.delete(`/transport/vehicles/${id}`),
+    list:        (params) => api.get(`/transport/vehicles${qs(params)}`),
+    get:         (id)      => api.get(`/transport/vehicles/${id}`),
+    getStudents: (id)      => api.get(`/transport/vehicles/${id}/students`),
+    create:      (data)     => api.post('/transport/vehicles', data),
+    update:      (id, data) => api.put(`/transport/vehicles/${id}`, data),
+    remove:      (id)       => api.delete(`/transport/vehicles/${id}`),
   },
 
   // ── Drivers ─────────────────────────────────────────────────────────────
@@ -85,7 +86,7 @@ const transportApi = {
     history: (studentId)      => api.get(`/transport/students/${studentId}/history`),
   },
 
-  // ── Transport Fees ──────────────────────────────────────────────────────
+  // ── Transport Fees & Fines ──────────────────────────────────────────────
   fees: {
     listStructures:   (params) => api.get(`/transport/fee-structures${qs(params)}`),
     createStructure:  (data)     => api.post('/transport/fee-structures', data),
@@ -99,16 +100,27 @@ const transportApi = {
     transactions:   (recordId) => api.get(`/transport/fee-records/${recordId}/transactions`),
   },
 
+  fines: {
+    list:    (params) => api.get(`/transport/fines${qs(params)}`),
+    create:  (data)     => api.post('/transport/fines', data),
+    collect: (id, data) => api.post(`/transport/fines/${id}/collect`, data),
+    waive:   (id, data) => api.post(`/transport/fines/${id}/waive`, data),
+  },
+
   // ── Driver Mobile App ────────────────────────────────────────────────────
   driver: {
-    today:      () => api.get('/transport/driver/today'),
-    startTrip:  (data) => api.post('/transport/driver/trip/start', data),
-    pingGps:    (tripId, data) => api.post(`/transport/driver/trip/${tripId}/gps`, data),
-    pauseTrip:  (tripId) => api.post(`/transport/driver/trip/${tripId}/pause`),
-    resumeTrip: (tripId) => api.post(`/transport/driver/trip/${tripId}/resume`),
-    endTrip:    (tripId) => api.post(`/transport/driver/trip/${tripId}/end`),
-    sos:        (tripId) => api.post(`/transport/driver/trip/${tripId}/sos`),
-    breakdown:  (tripId, data) => api.post(`/transport/driver/trip/${tripId}/breakdown`, data),
+    today:              () => api.get('/transport/driver/today'),
+    startTrip:          (data) => api.post('/transport/driver/trip/start', data),
+    pingGps:            (tripId, data) => api.post(`/transport/driver/trip/${tripId}/gps`, data),
+    getStops:           (tripId) => api.get(`/transport/driver/trip/${tripId}/stops`),
+    detectStop:         (tripId, data) => api.post(`/transport/driver/trip/${tripId}/detect-stop`, data),
+    recordStudentEvent: (tripId, data) => api.post(`/transport/driver/trip/${tripId}/student-event`, data),
+    getAttendance:      (tripId) => api.get(`/transport/driver/trip/${tripId}/attendance`),
+    pauseTrip:          (tripId) => api.post(`/transport/driver/trip/${tripId}/pause`),
+    resumeTrip:         (tripId) => api.post(`/transport/driver/trip/${tripId}/resume`),
+    endTrip:            (tripId) => api.post(`/transport/driver/trip/${tripId}/end`),
+    sos:                (tripId) => api.post(`/transport/driver/trip/${tripId}/sos`),
+    breakdown:          (tripId, data) => api.post(`/transport/driver/trip/${tripId}/breakdown`, data),
   },
 
   // ── Live Tracking (Principal view) ──────────────────────────────────────
@@ -121,6 +133,7 @@ const transportApi = {
   // ── Parent View ──────────────────────────────────────────────────────────
   parent: {
     childTrip: (studentId) => api.get(`/transport/parent/child/${studentId}/trip`),
+    childHistory: (studentId) => api.get(`/transport/parent/child/${studentId}/history`),
   },
 
   // ── Dashboard ────────────────────────────────────────────────────────────

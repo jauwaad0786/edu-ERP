@@ -20,11 +20,20 @@ PERMISSION_CATALOG = [
     {'key': 'hostel.fees.manage',      'label': 'Collect / Manage Hostel Fees',  'module': 'hostel'},
     {'key': 'hostel.wardens.assign',   'label': 'Assign Wardens to Hostels',     'module': 'hostel'},
 
-    # ── Library Module (future-proofing — same pattern) ──
+    # ── Library Module ──
     {'key': 'library.books.manage',    'label': 'Manage Book Catalog',           'module': 'library'},
     {'key': 'library.issue.manage',    'label': 'Issue / Return Books',          'module': 'library'},
     {'key': 'library.members.manage',  'label': 'Manage Library Members',        'module': 'library'},
     {'key': 'library.fines.manage',    'label': 'Collect / Waive Fines',         'module': 'library'},
+
+    # ── Transport Module ──
+    {'key': 'transport.dashboard.view',  'label': 'View Transport Dashboard',              'module': 'transport'},
+    {'key': 'transport.vehicles.manage', 'label': 'Manage Vehicles & Fleet',               'module': 'transport'},
+    {'key': 'transport.routes.manage',   'label': 'Manage Routes & Stops',                 'module': 'transport'},
+    {'key': 'transport.students.manage', 'label': 'Assign / Transfer Students',            'module': 'transport'},
+    {'key': 'transport.fees.manage',     'label': 'Manage Transport Fees & Fines',         'module': 'transport'},
+    {'key': 'transport.tracking.view',   'label': 'Live GPS Tracking & Trips',             'module': 'transport'},
+    {'key': 'transport.reports.view',    'label': 'View Transport Analytics & Reports',    'module': 'transport'},
 ]
 
 PERMISSION_KEYS = {p['key'] for p in PERMISSION_CATALOG}
@@ -145,6 +154,15 @@ DEFAULT_ROLE_PERMISSIONS = {
         'library.issue.manage',
         'library.members.manage',
         'library.fines.manage',
+    ],
+    'TRANSPORT': [
+        'transport.dashboard.view',
+        'transport.vehicles.manage',
+        'transport.routes.manage',
+        'transport.students.manage',
+        'transport.fees.manage',
+        'transport.tracking.view',
+        'transport.reports.view',
     ],
     'TEACHER': [
         'hostel.dashboard.view',   # read-only visibility, matches current TEACHER access on student_hostel_status

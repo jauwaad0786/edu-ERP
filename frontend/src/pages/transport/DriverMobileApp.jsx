@@ -5,51 +5,112 @@ import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 
 const GPS_PING_INTERVAL_MS = 8000; // ping every 8 seconds while RUNNING
+const STOP_POLL_INTERVAL_MS = 10000; // auto-detect stop every 10 seconds
 
 export default function DriverMobileApp() {
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
   const [loading, setLoading] = useState(true);
   const [home, setHome] = useState(null); // /driver/today response
-  const [trip, setTrip] = useState(null); // current trip (RUNNING/PAUSED/SOS/BREAKDOWN)
+  const [trip, setTrip] = useState(null); // current trip
   const [lastGps, setLastGps] = useState(null); // { latitude, longitude, speed }
-  const [battery, setBattery] = useState(null); // 0-100
+  const [battery, setBattery] = useState(null);
   const [online, setOnline] = useState(navigator.onLine);
-  const [elapsed, setElapsed] = useState(0); // seconds since start_time
+  const [elapsed, setElapsed] = useState(0);
   const [busy, setBusy] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [breakdownRemarks, setBreakdownRemarks] = useState('');
 
+  // Route Stops and Student Attendance
+  const [stops, setStops] = useState([]);
+  const [currentStopIndex, setCurrentStopIndex] = useState(0);
+  const [selectedStopId, setSelectedStopId] = useState(null);
+  const [studentEvents, setStudentEvents] = useState({}); // { student_id: 'PICKED_UP' | 'DROPPED_OFF' | 'ABSENT' }
+  const [manualStopOverride, setManualStopOverride] = useState(false);
+  const [tripTab, setTripTab] = useState('CURRENT_STOP'); // 'CURRENT_STOP' | 'ALL_PASSENGERS' | 'ROUTE_MAP'
+
   const watchIdRef = useRef(null);
   const pingIntervalRef = useRef(null);
+  const stopDetectIntervalRef = useRef(null);
   const elapsedIntervalRef = useRef(null);
 
   useEffect(() => {
     localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light');
   }, [darkMode]);
 
-  // ── Load home screen ──
+  // ── Load home screen & active trip data ──
   const loadHome = useCallback(() => {
     setLoading(true);
     transportApi.driver.today()
       .then(r => {
         const data = r.data.data;
         setHome(data);
-        setTrip(data?.current_trip || null);
+        const activeTrip = data?.current_trip || null;
+        setTrip(activeTrip);
+        if (activeTrip) {
+          loadTripStops(activeTrip.id);
+        }
       })
       .catch(() => toast.error('Data load nahi hua — dobara try karo'))
       .finally(() => setLoading(false));
   }, []);
 
+  const loadTripStops = async (tripId) => {
+    try {
+      const res = await transportApi.driver.getStops(tripId);
+      const stopsData = res.data.data.stops || [];
+      setStops(stopsData);
+
+      // Build initial student events map
+      const evMap = {};
+      stopsData.forEach(s => {
+        (s.students || []).forEach(st => {
+          if (st.event_status) evMap[st.student_id] = st.event_status;
+        });
+      });
+      setStudentEvents(evMap);
+
+      if (stopsData.length > 0 && !selectedStopId) {
+        setSelectedStopId(stopsData[0].stop_id);
+      }
+    } catch (e) {
+      console.warn('Could not load stops:', e);
+    }
+  };
+
   useEffect(() => { loadHome(); }, [loadHome]);
 
-  // ── Online/offline listener ──
+  // ── Online/offline listener & offline queue flush ──
   useEffect(() => {
-    const on = () => setOnline(true);
-    const off = () => setOnline(false);
+    const on = () => {
+      setOnline(true);
+      toast.success('📶 Network Connected');
+      flushOfflineQueue();
+    };
+    const off = () => {
+      setOnline(false);
+      toast.error('📵 Offline Mode — actions queued');
+    };
     window.addEventListener('online', on);
     window.addEventListener('offline', off);
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
   }, []);
+
+  const flushOfflineQueue = async () => {
+    try {
+      const qStr = localStorage.getItem('ederp_offline_driver_events');
+      if (!qStr) return;
+      const q = JSON.parse(qStr);
+      if (Array.isArray(q) && q.length > 0) {
+        for (const item of q) {
+          try {
+            await transportApi.driver.recordStudentEvent(item.tripId, item.data);
+          } catch (err) {}
+        }
+        localStorage.removeItem('ederp_offline_driver_events');
+        toast.success(`Flushed ${q.length} offline actions to server!`);
+      }
+    } catch (err) {}
+  };
 
   // ── Battery status ──
   useEffect(() => {
@@ -71,25 +132,29 @@ export default function DriverMobileApp() {
     return () => clearInterval(elapsedIntervalRef.current);
   }, [trip]);
 
-  // ── GPS ping loop while RUNNING ──
+  // ── GPS ping & Stop Auto-Detection while RUNNING ──
   useEffect(() => {
     function stopGpsLoop() {
       if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
       clearInterval(pingIntervalRef.current);
+      clearInterval(stopDetectIntervalRef.current);
       watchIdRef.current = null;
       pingIntervalRef.current = null;
+      stopDetectIntervalRef.current = null;
     }
 
     if (trip && trip.status === 'RUNNING') {
       watchIdRef.current = navigator.geolocation.watchPosition(
         pos => setLastGps({
-          latitude: pos.coords.latitude, longitude: pos.coords.longitude,
-          speed: pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0, // m/s -> km/h
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          speed: pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0,
         }),
         () => toast.error('Location access nahi mila — GPS on karo'),
-        { enableHighAccuracy: true, maximumAge: 5000 }
+        { enableHighAccuracy: true, maximumAge: 4000 }
       );
 
+      // Periodic GPS Ping
       pingIntervalRef.current = setInterval(() => {
         setLastGps(current => {
           if (current) {
@@ -97,16 +162,42 @@ export default function DriverMobileApp() {
               latitude: current.latitude, longitude: current.longitude,
               speed: current.speed, battery_level: battery,
               network_status: online ? 'ONLINE' : 'OFFLINE',
-            }).catch(() => { /* silent — next ping will retry */ });
+            }).catch(() => {});
           }
           return current;
         });
       }, GPS_PING_INTERVAL_MS);
 
+      // Periodic Stop Auto-Detection
+      stopDetectIntervalRef.current = setInterval(() => {
+        setLastGps(current => {
+          if (current && !manualStopOverride) {
+            transportApi.driver.detectStop(trip.id, {
+              latitude: current.latitude, longitude: current.longitude
+            }).then(res => {
+              const resData = res.data.data;
+              if (resData.detected && resData.current_stop) {
+                const detectedStop = resData.current_stop;
+                setSelectedStopId(detectedStop.stop_id);
+                // Update student event status
+                setStudentEvents(prev => {
+                  const updated = { ...prev };
+                  (detectedStop.students || []).forEach(st => {
+                    if (st.event_status) updated[st.student_id] = st.event_status;
+                  });
+                  return updated;
+                });
+              }
+            }).catch(() => {});
+          }
+          return current;
+        });
+      }, STOP_POLL_INTERVAL_MS);
+
       return stopGpsLoop;
     }
     return stopGpsLoop;
-  }, [trip?.id, trip?.status, battery, online]);
+  }, [trip?.id, trip?.status, battery, online, manualStopOverride]);
 
   function getCurrentPosition() {
     return new Promise((resolve, reject) => {
@@ -122,9 +213,11 @@ export default function DriverMobileApp() {
   async function handleStart() {
     setBusy(true);
     try {
-      const pos = await getCurrentPosition();
+      const pos = await getCurrentPosition().catch(() => ({ latitude: null, longitude: null }));
       const r = await transportApi.driver.startTrip(pos);
-      setTrip(r.data.data);
+      const newTrip = r.data.data;
+      setTrip(newTrip);
+      await loadTripStops(newTrip.id);
       toast.success('Trip shuru ho gayi 🚌');
     } catch (err) {
       toast.error(err.response?.data?.message || err.message || 'Trip start nahi hui');
@@ -157,14 +250,15 @@ export default function DriverMobileApp() {
   }
 
   async function handleEnd() {
-    if (!window.confirm('Trip khatam karni hai?')) return;
+    if (!window.confirm('Trip khatam karni hai? / Complete Journey?')) return;
     setBusy(true);
     try {
-      const pos = await getCurrentPosition();
+      const pos = await getCurrentPosition().catch(() => ({ latitude: null, longitude: null }));
       await transportApi.driver.endTrip(trip.id, pos);
       toast.success('Trip khatam ✅');
       setTrip(null);
       setElapsed(0);
+      setStops([]);
       loadHome();
     } catch (err) {
       toast.error(err.response?.data?.message || err.message || 'Nahi hua');
@@ -173,7 +267,7 @@ export default function DriverMobileApp() {
   }
 
   async function handleSOS() {
-    if (!window.confirm('SOS emergency alert bhejni hai? Principal & Admin ko turant alert jayega!')) return;
+    if (!window.confirm('🚨 SOS Emergency Alert भेजना है? Principal को तुरंत alert जाएगा!')) return;
     setBusy(true);
     try {
       const r = await transportApi.driver.sos(trip.id);
@@ -199,6 +293,39 @@ export default function DriverMobileApp() {
     setBusy(false);
   }
 
+  // ── Record Student Action: Picked up, Dropped off, Absent ──
+  const handleStudentEvent = async (studentId, eventType) => {
+    if (navigator.vibrate) navigator.vibrate(60);
+
+    // Optimistic UI update
+    setStudentEvents(prev => ({ ...prev, [studentId]: eventType }));
+
+    const payload = {
+      student_id: studentId,
+      event_type: eventType,
+      stop_id: selectedStopId,
+      latitude: lastGps?.latitude || null,
+      longitude: lastGps?.longitude || null,
+    };
+
+    if (!online) {
+      // Save in offline queue
+      const q = JSON.parse(localStorage.getItem('ederp_offline_driver_events') || '[]');
+      q.push({ tripId: trip.id, data: payload, time: Date.now() });
+      localStorage.setItem('ederp_offline_driver_events', JSON.stringify(q));
+      toast('Action saved offline 💾', { icon: '📵' });
+      return;
+    }
+
+    try {
+      await transportApi.driver.recordStudentEvent(trip.id, payload);
+      const label = eventType === 'PICKED_UP' ? 'Picked Up 🟢' : eventType === 'DROPPED_OFF' ? 'Dropped Off 🔵' : 'Marked Absent 🔴';
+      toast.success(label);
+    } catch (err) {
+      toast.error('Record nahi hua — retry karo');
+    }
+  };
+
   function fmtDuration(sec) {
     const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
@@ -210,23 +337,31 @@ export default function DriverMobileApp() {
   const isBreakdown = trip?.status === 'BREAKDOWN';
   const tripActive = trip && ['RUNNING', 'PAUSED', 'SOS', 'BREAKDOWN'].includes(trip.status);
 
+  // Resolve current active stop
+  const currentStop = stops.find(s => s.stop_id === selectedStopId) || (stops.length > 0 ? stops[0] : null);
+  const currentStopIndexInList = stops.findIndex(s => s.stop_id === (currentStop?.stop_id));
+  const nextStop = currentStopIndexInList >= 0 && currentStopIndexInList < stops.length - 1 ? stops[currentStopIndexInList + 1] : null;
+
+  // Flatten all students across all stops
+  const allStudents = stops.flatMap(s => (s.students || []).map(st => ({ ...st, stop_name: s.stop_name })));
+
   return (
     <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
       <Sidebar darkMode={darkMode} />
       <div className="main-content">
-        <Navbar title="Driver Cockpit &amp; Trip Control" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
-        <div className="page-body" style={{ maxWidth: '900px', margin: '0 auto' }}>
+        <Navbar title="Driver Cockpit & Trip Control" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
+        <div className="page-body" style={{ maxWidth: '960px', margin: '0 auto' }}>
 
           {loading ? (
             <div style={{ textAlign: 'center', padding: '80px 20px', color: darkMode ? '#94a3b8' : '#64748b' }}>
-              <div className="driver-spinner" style={{ margin: '0 auto 16px', width: '40px', height: '40px', border: '4px solid #6366f120', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-              <div style={{ fontSize: '20px', fontWeight: 800 }}>Loading Cockpit... / लोड हो रहा है...</div>
+              <div className="driver-spinner" style={{ margin: '0 auto 16px', width: '44px', height: '44px', border: '4px solid #6366f120', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+              <div style={{ fontSize: '22px', fontWeight: 800 }}>Loading Cockpit... / लोड हो रहा है...</div>
             </div>
           ) : !home?.has_vehicle ? (
             <div style={{
               background: darkMode ? '#111827' : '#ffffff',
               border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
-              borderRadius: '20px', padding: '60px 24px', textAlign: 'center',
+              borderRadius: '24px', padding: '60px 24px', textAlign: 'center',
               boxShadow: '0 10px 30px rgba(0,0,0,0.1)'
             }}>
               <div style={{ fontSize: '64px', marginBottom: '16px' }}>🚌</div>
@@ -242,7 +377,7 @@ export default function DriverMobileApp() {
               {/* ══ Vehicle & Route Hero Header ══ */}
               <div style={{
                 position: 'relative', overflow: 'hidden',
-                borderRadius: '24px', padding: '26px 30px', marginBottom: '22px',
+                borderRadius: '24px', padding: '24px 28px', marginBottom: '20px',
                 background: darkMode
                   ? 'radial-gradient(circle at 85% 20%, rgba(245,158,11,0.25) 0%, transparent 60%), linear-gradient(135deg, #2b1102 0%, #451a03 45%, #0f172a 100%)'
                   : 'radial-gradient(circle at 85% 20%, rgba(255,255,255,0.18) 0%, transparent 50%), linear-gradient(135deg, #78350f 0%, #b45309 35%, #d97706 75%, #f59e0b 100%)',
@@ -251,17 +386,13 @@ export default function DriverMobileApp() {
                   ? '0 12px 35px -5px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1)'
                   : '0 15px 35px -5px rgba(217,119,6,0.35), inset 0 1px 0 rgba(255,255,255,0.3)',
                 border: darkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(255,255,255,0.25)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: '20px'
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px'
               }}>
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
                     <span style={{
                       padding: '4px 12px', borderRadius: '20px',
-                      background: 'rgba(255,255,255,0.2)', fontSize: '11.5px', fontWeight: 800,
+                      background: 'rgba(255,255,255,0.2)', fontSize: '11px', fontWeight: 800,
                       letterSpacing: '0.05em', textTransform: 'uppercase',
                       backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.25)'
                     }}>
@@ -271,7 +402,7 @@ export default function DriverMobileApp() {
                       <span style={{
                         padding: '4px 12px', borderRadius: '20px',
                         background: isRunning ? '#10b981' : isPaused ? '#f59e0b' : '#ef4444',
-                        color: '#ffffff', fontSize: '11.5px', fontWeight: 800,
+                        color: '#ffffff', fontSize: '11px', fontWeight: 800,
                         boxShadow: '0 0 10px rgba(0,0,0,0.2)'
                       }}>
                         {isRunning ? '● LIVE ON ROUTE' : isPaused ? '⏸ PAUSED' : '🚨 ALERT ACTIVE'}
@@ -279,39 +410,30 @@ export default function DriverMobileApp() {
                     )}
                   </div>
 
-                  <h1 style={{ margin: 0, fontSize: '34px', fontWeight: 900, letterSpacing: '-0.02em', color: '#ffffff', textShadow: '0 2px 10px rgba(0,0,0,0.2)' }}>
+                  <h1 style={{ margin: 0, fontSize: '32px', fontWeight: 900, letterSpacing: '-0.02em', color: '#ffffff' }}>
                     🚌 {home.vehicle_number}
                   </h1>
-                  <div style={{ fontSize: '15px', color: 'rgba(255,255,255,0.92)', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
+                  <div style={{ fontSize: '14.5px', color: 'rgba(255,255,255,0.92)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
                     <i className="ti ti-map-pin" style={{ color: '#fef3c7' }} />
                     <span>{home.route_name || 'Route not assigned'}</span>
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                   <div style={{
                     display: 'flex', gap: '12px',
-                    background: 'rgba(255,255,255,0.15)', padding: '12px 18px', borderRadius: '16px',
+                    background: 'rgba(255,255,255,0.15)', padding: '10px 16px', borderRadius: '14px',
                     backdropFilter: 'blur(8px)', alignItems: 'center', border: '1px solid rgba(255,255,255,0.2)'
                   }}>
-                    <div style={{ textAlign: 'center', padding: '0 6px' }}>
-                      <div style={{ fontSize: '11px', opacity: 0.85, fontWeight: 700 }}>BATTERY</div>
-                      <div style={{ fontSize: '16px', fontWeight: 900 }}>🔋 {battery ?? '--'}%</div>
+                    <div style={{ textAlign: 'center', padding: '0 4px' }}>
+                      <div style={{ fontSize: '10px', opacity: 0.85, fontWeight: 700 }}>BATTERY</div>
+                      <div style={{ fontSize: '15px', fontWeight: 900 }}>🔋 {battery ?? '--'}%</div>
                     </div>
-                    <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.25)' }} />
-                    <div style={{ textAlign: 'center', padding: '0 6px' }}>
-                      <div style={{ fontSize: '11px', opacity: 0.85, fontWeight: 700 }}>NETWORK</div>
-                      <div style={{ fontSize: '16px', fontWeight: 900 }}>{online ? '📶 Online' : '📵 Offline'}</div>
+                    <div style={{ width: '1px', height: '22px', background: 'rgba(255,255,255,0.25)' }} />
+                    <div style={{ textAlign: 'center', padding: '0 4px' }}>
+                      <div style={{ fontSize: '10px', opacity: 0.85, fontWeight: 700 }}>NETWORK</div>
+                      <div style={{ fontSize: '15px', fontWeight: 900 }}>{online ? '📶 Online' : '📵 Offline'}</div>
                     </div>
-                  </div>
-
-                  {/* Mini Framed 3D Bus */}
-                  <div style={{
-                    width: '120px', height: '80px', borderRadius: '12px', overflow: 'hidden',
-                    background: 'rgba(255,255,255,0.15)', border: '1.5px solid rgba(255,255,255,0.25)',
-                    padding: '3px'
-                  }}>
-                    <img src="/assets/illustrations/transport_hero.jpg" alt="Bus" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px' }} />
                   </div>
                 </div>
               </div>
@@ -320,7 +442,7 @@ export default function DriverMobileApp() {
               {isSOS && (
                 <div style={{
                   background: 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)',
-                  borderRadius: '16px', padding: '16px 20px', marginBottom: '20px',
+                  borderRadius: '16px', padding: '16px 20px', marginBottom: '18px',
                   color: '#ffffff', textAlign: 'center', boxShadow: '0 8px 24px rgba(220, 38, 38, 0.4)',
                   animation: 'pulse 1.5s infinite'
                 }}>
@@ -334,7 +456,7 @@ export default function DriverMobileApp() {
               {isBreakdown && (
                 <div style={{
                   background: 'linear-gradient(135deg, #d97706 0%, #b45309 100%)',
-                  borderRadius: '16px', padding: '16px 20px', marginBottom: '20px',
+                  borderRadius: '16px', padding: '16px 20px', marginBottom: '18px',
                   color: '#ffffff', textAlign: 'center', boxShadow: '0 8px 24px rgba(217, 119, 6, 0.4)'
                 }}>
                   <div style={{ fontSize: '20px', fontWeight: 900 }}>🔧 BREAKDOWN REPORTED</div>
@@ -346,73 +468,73 @@ export default function DriverMobileApp() {
 
               {/* ══ Telemetry Cards Grid ══ */}
               <div style={{
-                display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', marginBottom: '24px'
+                display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '20px'
               }}>
                 <div style={{
                   background: darkMode ? '#111827' : '#ffffff',
                   border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
-                  borderRadius: '16px', padding: '16px 14px', textAlign: 'center',
+                  borderRadius: '16px', padding: '14px 12px', textAlign: 'center',
                   boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
                 }}>
-                  <div style={{ fontSize: '11.5px', color: darkMode ? '#94a3b8' : '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
-                    Students / छात्र
+                  <div style={{ fontSize: '11px', color: darkMode ? '#94a3b8' : '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                    Passengers
                   </div>
-                  <div style={{ fontSize: '28px', fontWeight: 900, color: '#6366f1', marginTop: '4px' }}>
+                  <div style={{ fontSize: '26px', fontWeight: 900, color: '#6366f1', marginTop: '2px' }}>
                     {home.students_count ?? 0}
                   </div>
-                  <div style={{ fontSize: '10.5px', color: darkMode ? '#64748b' : '#94a3b8' }}>Assigned passengers</div>
+                  <div style={{ fontSize: '10px', color: darkMode ? '#64748b' : '#94a3b8' }}>Total assigned</div>
                 </div>
 
                 <div style={{
                   background: darkMode ? '#111827' : '#ffffff',
                   border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
-                  borderRadius: '16px', padding: '16px 14px', textAlign: 'center',
+                  borderRadius: '16px', padding: '14px 12px', textAlign: 'center',
                   boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
                 }}>
-                  <div style={{ fontSize: '11.5px', color: darkMode ? '#94a3b8' : '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
-                    Speed / गति
+                  <div style={{ fontSize: '11px', color: darkMode ? '#94a3b8' : '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                    Speed
                   </div>
-                  <div style={{ fontSize: '28px', fontWeight: 900, color: '#10b981', marginTop: '4px' }}>
-                    {lastGps?.speed ?? 0} <span style={{ fontSize: '13px', fontWeight: 600 }}>km/h</span>
+                  <div style={{ fontSize: '26px', fontWeight: 900, color: '#10b981', marginTop: '2px' }}>
+                    {lastGps?.speed ?? 0} <span style={{ fontSize: '12px', fontWeight: 600 }}>km/h</span>
                   </div>
-                  <div style={{ fontSize: '10.5px', color: darkMode ? '#64748b' : '#94a3b8' }}>Live telemetry</div>
+                  <div style={{ fontSize: '10px', color: darkMode ? '#64748b' : '#94a3b8' }}>Live GPS</div>
                 </div>
 
                 <div style={{
                   background: darkMode ? '#111827' : '#ffffff',
                   border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
-                  borderRadius: '16px', padding: '16px 14px', textAlign: 'center',
+                  borderRadius: '16px', padding: '14px 12px', textAlign: 'center',
                   boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
                 }}>
-                  <div style={{ fontSize: '11.5px', color: darkMode ? '#94a3b8' : '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
-                    Duration / समय
+                  <div style={{ fontSize: '11px', color: darkMode ? '#94a3b8' : '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                    Duration
                   </div>
-                  <div style={{ fontSize: '24px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a', marginTop: '6px', fontFamily: 'monospace' }}>
+                  <div style={{ fontSize: '22px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a', marginTop: '4px', fontFamily: 'monospace' }}>
                     {isRunning ? fmtDuration(elapsed) : '--:--:--'}
                   </div>
-                  <div style={{ fontSize: '10.5px', color: darkMode ? '#64748b' : '#94a3b8' }}>Elapsed trip time</div>
+                  <div style={{ fontSize: '10px', color: darkMode ? '#64748b' : '#94a3b8' }}>Elapsed time</div>
                 </div>
 
                 <div style={{
                   background: darkMode ? '#111827' : '#ffffff',
                   border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
-                  borderRadius: '16px', padding: '16px 14px', textAlign: 'center',
+                  borderRadius: '16px', padding: '14px 12px', textAlign: 'center',
                   boxShadow: '0 4px 14px rgba(0,0,0,0.04)'
                 }}>
-                  <div style={{ fontSize: '11.5px', color: darkMode ? '#94a3b8' : '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
-                    GPS Accuracy
+                  <div style={{ fontSize: '11px', color: darkMode ? '#94a3b8' : '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                    GPS Lock
                   </div>
-                  <div style={{ fontSize: '22px', fontWeight: 900, color: lastGps ? '#10b981' : '#f59e0b', marginTop: '6px' }}>
+                  <div style={{ fontSize: '20px', fontWeight: 900, color: lastGps ? '#10b981' : '#f59e0b', marginTop: '4px' }}>
                     {lastGps ? '🟢 LOCKED' : '🟡 SEARCHING'}
                   </div>
-                  <div style={{ fontSize: '10.5px', color: darkMode ? '#64748b' : '#94a3b8' }}>
-                    {lastGps ? `${lastGps.latitude.toFixed(4)}, ${lastGps.longitude.toFixed(4)}` : 'Wait for GPS'}
+                  <div style={{ fontSize: '10px', color: darkMode ? '#64748b' : '#94a3b8' }}>
+                    {lastGps ? `${lastGps.latitude.toFixed(3)}, ${lastGps.longitude.toFixed(3)}` : 'Wait for GPS'}
                   </div>
                 </div>
               </div>
 
               {/* ══ Giant Tactile Action Controls ══ */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '24px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '22px' }}>
                 {!tripActive && (
                   <button
                     disabled={busy}
@@ -420,35 +542,35 @@ export default function DriverMobileApp() {
                     style={{
                       background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                       color: '#ffffff', border: 'none', borderRadius: '24px',
-                      padding: '30px 24px', fontSize: '28px', fontWeight: 900, cursor: 'pointer',
+                      padding: '28px 24px', fontSize: '28px', fontWeight: 900, cursor: 'pointer',
                       boxShadow: '0 10px 25px rgba(16, 185, 129, 0.4)',
                       transition: 'all 0.2s ease', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center'
                     }}
                     onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'}
                     onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
                   >
-                    <div>▶️ START TRIP</div>
+                    <div>▶️ START JOURNEY</div>
                     <span style={{ fontSize: '16px', fontWeight: 600, opacity: 0.9, marginTop: '4px' }}>
-                      ट्रिप शुरू करें (GPS Live Tracking)
+                      सफ़र शुरू करें (Live GPS & Stop Detection Active)
                     </span>
                   </button>
                 )}
 
                 {isRunning && (
-                  <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
                     <button
                       disabled={busy}
                       onClick={handlePause}
                       style={{
                         background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
                         color: '#ffffff', border: 'none', borderRadius: '20px',
-                        padding: '24px 20px', fontSize: '24px', fontWeight: 900, cursor: 'pointer',
+                        padding: '22px 18px', fontSize: '22px', fontWeight: 900, cursor: 'pointer',
                         boxShadow: '0 8px 20px rgba(245, 158, 11, 0.35)',
                         display: 'flex', flexDirection: 'column', alignItems: 'center'
                       }}
                     >
                       <div>⏸️ PAUSE TRIP</div>
-                      <span style={{ fontSize: '15px', fontWeight: 600, opacity: 0.9, marginTop: '2px' }}>
+                      <span style={{ fontSize: '13px', fontWeight: 600, opacity: 0.9, marginTop: '2px' }}>
                         रुकें (Temporary Halt)
                       </span>
                     </button>
@@ -459,35 +581,35 @@ export default function DriverMobileApp() {
                       style={{
                         background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
                         color: '#ffffff', border: 'none', borderRadius: '20px',
-                        padding: '24px 20px', fontSize: '24px', fontWeight: 900, cursor: 'pointer',
+                        padding: '22px 18px', fontSize: '22px', fontWeight: 900, cursor: 'pointer',
                         boxShadow: '0 8px 20px rgba(239, 68, 68, 0.35)',
                         display: 'flex', flexDirection: 'column', alignItems: 'center'
                       }}
                     >
-                      <div>⏹️ END TRIP</div>
-                      <span style={{ fontSize: '15px', fontWeight: 600, opacity: 0.9, marginTop: '2px' }}>
-                        ट्रिप खत्म करें (Complete Route)
+                      <div>⏹️ END JOURNEY</div>
+                      <span style={{ fontSize: '13px', fontWeight: 600, opacity: 0.9, marginTop: '2px' }}>
+                        सफ़र खत्म करें (Complete Route)
                       </span>
                     </button>
-                  </>
+                  </div>
                 )}
 
                 {isPaused && (
-                  <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
                     <button
                       disabled={busy}
                       onClick={handleResume}
                       style={{
                         background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                         color: '#ffffff', border: 'none', borderRadius: '20px',
-                        padding: '24px 20px', fontSize: '24px', fontWeight: 900, cursor: 'pointer',
+                        padding: '22px 18px', fontSize: '22px', fontWeight: 900, cursor: 'pointer',
                         boxShadow: '0 8px 20px rgba(16, 185, 129, 0.35)',
                         display: 'flex', flexDirection: 'column', alignItems: 'center'
                       }}
                     >
                       <div>▶️ RESUME TRIP</div>
-                      <span style={{ fontSize: '15px', fontWeight: 600, opacity: 0.9, marginTop: '2px' }}>
-                        फिर से शुरू करें (Resume Navigation)
+                      <span style={{ fontSize: '13px', fontWeight: 600, opacity: 0.9, marginTop: '2px' }}>
+                        फिर से शुरू करें (Resume)
                       </span>
                     </button>
 
@@ -497,29 +619,29 @@ export default function DriverMobileApp() {
                       style={{
                         background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
                         color: '#ffffff', border: 'none', borderRadius: '20px',
-                        padding: '24px 20px', fontSize: '24px', fontWeight: 900, cursor: 'pointer',
+                        padding: '22px 18px', fontSize: '22px', fontWeight: 900, cursor: 'pointer',
                         boxShadow: '0 8px 20px rgba(239, 68, 68, 0.35)',
                         display: 'flex', flexDirection: 'column', alignItems: 'center'
                       }}
                     >
-                      <div>⏹️ END TRIP</div>
-                      <span style={{ fontSize: '15px', fontWeight: 600, opacity: 0.9, marginTop: '2px' }}>
-                        ट्रिप खत्म करें
+                      <div>⏹️ END JOURNEY</div>
+                      <span style={{ fontSize: '13px', fontWeight: 600, opacity: 0.9, marginTop: '2px' }}>
+                        सफ़र खत्म करें
                       </span>
                     </button>
-                  </>
+                  </div>
                 )}
 
                 {/* Secondary Safety / Emergency Triggers */}
                 {(isRunning || isPaused) && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginTop: '8px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     <button
                       disabled={busy}
                       onClick={handleSOS}
                       style={{
                         background: 'linear-gradient(135deg, #7f1d1d 0%, #450a0a 100%)',
                         color: '#fca5a5', border: '2px solid #ef4444', borderRadius: '16px',
-                        padding: '16px', fontSize: '18px', fontWeight: 900, cursor: 'pointer',
+                        padding: '14px', fontSize: '17px', fontWeight: 900, cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
                       }}
                     >
@@ -532,7 +654,7 @@ export default function DriverMobileApp() {
                       style={{
                         background: darkMode ? '#1e293b' : '#f8fafc',
                         color: '#d97706', border: '2px solid #f59e0b', borderRadius: '16px',
-                        padding: '16px', fontSize: '18px', fontWeight: 900, cursor: 'pointer',
+                        padding: '14px', fontSize: '17px', fontWeight: 900, cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
                       }}
                     >
@@ -541,6 +663,194 @@ export default function DriverMobileApp() {
                   </div>
                 )}
               </div>
+
+              {/* ══ Live Stops & Student Pickup/Drop Roster ══ */}
+              {tripActive && stops.length > 0 && (
+                <div style={{
+                  background: darkMode ? '#111827' : '#ffffff',
+                  borderRadius: '24px', padding: '24px',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+                  boxShadow: '0 8px 30px rgba(0,0,0,0.06)', marginBottom: '24px'
+                }}>
+                  {/* Stop Navigation Header & Manual Selector */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '18px' }}>
+                    <div>
+                      <div style={{ fontSize: '12px', fontWeight: 800, color: '#6366f1', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                        📍 CURRENT STOP & PASSENGER ACTIONS
+                      </div>
+                      <div style={{ fontSize: '24px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a', marginTop: '2px' }}>
+                        {currentStop ? currentStop.stop_name : 'Selecting Stop...'}
+                        <span style={{ fontSize: '14px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', marginLeft: '10px' }}>
+                          (Stop {currentStopIndexInList + 1} of {stops.length})
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Manual Stop Selector Override */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b' }}>
+                        Change Stop:
+                      </span>
+                      <select
+                        value={selectedStopId || ''}
+                        onChange={e => {
+                          setSelectedStopId(parseInt(e.target.value, 10));
+                          setManualStopOverride(true);
+                        }}
+                        style={{
+                          padding: '8px 12px', borderRadius: '12px', fontSize: '14px', fontWeight: 700,
+                          background: darkMode ? '#1e293b' : '#f8fafc',
+                          color: darkMode ? '#ffffff' : '#0f172a',
+                          border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`, outline: 'none'
+                        }}
+                      >
+                        {stops.map(s => (
+                          <option key={s.stop_id} value={s.stop_id}>
+                            #{s.sequence} {s.stop_name} ({s.students_count || 0} students)
+                          </option>
+                        ))}
+                      </select>
+                      {manualStopOverride && (
+                        <button
+                          onClick={() => { setManualStopOverride(false); toast.success('Auto GPS stop detection active'); }}
+                          style={{
+                            padding: '8px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: 800,
+                            background: '#6366f1', color: '#ffffff', border: 'none', cursor: 'pointer'
+                          }}
+                        >
+                          Auto-Detect
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Next Stop Indicator */}
+                  {nextStop && (
+                    <div style={{
+                      background: darkMode ? 'rgba(99,102,241,0.1)' : '#eef2ff',
+                      border: `1px dashed ${darkMode ? 'rgba(99,102,241,0.3)' : '#c7d2fe'}`,
+                      borderRadius: '14px', padding: '12px 16px', marginBottom: '18px',
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                    }}>
+                      <div style={{ fontSize: '13.5px', fontWeight: 700, color: '#6366f1' }}>
+                        ⏩ NEXT STOP: <strong>{nextStop.stop_name}</strong> {nextStop.estimated_time ? `(~${nextStop.estimated_time})` : ''}
+                      </div>
+                      <span style={{ fontSize: '12px', fontWeight: 800, color: '#4f46e5' }}>
+                        {nextStop.students_count || 0} Passengers waiting
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Student Passenger Cards for Current Stop */}
+                  {(!currentStop?.students || currentStop.students.length === 0) ? (
+                    <div style={{ textAlign: 'center', padding: '30px 20px', color: darkMode ? '#94a3b8' : '#64748b' }}>
+                      <div style={{ fontSize: '36px', marginBottom: '8px' }}>🚏</div>
+                      <div style={{ fontSize: '16px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                        Is Stop Pe Koi Student Assigned Nahi Hai
+                      </div>
+                      <p style={{ fontSize: '13px', margin: '4px 0 0' }}>
+                        No passengers scheduled for {currentStop?.stop_name}. You may proceed to next stop.
+                      </p>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {currentStop.students.map(st => {
+                        const status = studentEvents[st.student_id] || st.event_status;
+                        return (
+                          <div
+                            key={st.student_id}
+                            style={{
+                              background: darkMode ? '#1e293b' : '#f8fafc',
+                              border: `1.5px solid ${
+                                status === 'PICKED_UP' ? '#10b981' :
+                                status === 'DROPPED_OFF' ? '#3b82f6' :
+                                status === 'ABSENT' ? '#ef4444' :
+                                (darkMode ? 'rgba(255,255,255,0.06)' : '#e2e8f0')
+                              }`,
+                              borderRadius: '18px', padding: '16px 20px',
+                              display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px',
+                              boxShadow: '0 4px 12px rgba(0,0,0,0.03)'
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                              <div style={{
+                                width: '48px', height: '48px', borderRadius: '50%',
+                                background: status === 'PICKED_UP' ? '#10b98120' : status === 'DROPPED_OFF' ? '#3b82f620' : '#6366f120',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: '20px', fontWeight: 900, color: '#6366f1'
+                              }}>
+                                {st.photo_url ? (
+                                  <img src={st.photo_url} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                                ) : (
+                                  st.student_name ? st.student_name[0].toUpperCase() : 'S'
+                                )}
+                              </div>
+                              <div>
+                                <div style={{ fontSize: '18px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                                  {st.student_name}
+                                </div>
+                                <div style={{ fontSize: '13px', color: darkMode ? '#94a3b8' : '#64748b', fontWeight: 600 }}>
+                                  Adm: {st.admission_no || '--'} • {st.class_name || 'Class N/A'}
+                                </div>
+                                {st.father_mobile && (
+                                  <div style={{ fontSize: '12px', color: '#10b981', fontWeight: 700, marginTop: '2px' }}>
+                                    📞 {st.father_mobile}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* One-Tap Tactile Action Buttons */}
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                              <button
+                                onClick={() => handleStudentEvent(st.student_id, 'PICKED_UP')}
+                                style={{
+                                  background: status === 'PICKED_UP' ? '#10b981' : (darkMode ? '#0f172a' : '#ffffff'),
+                                  color: status === 'PICKED_UP' ? '#ffffff' : '#10b981',
+                                  border: '2px solid #10b981', borderRadius: '14px',
+                                  padding: '12px 18px', fontSize: '15px', fontWeight: 900, cursor: 'pointer',
+                                  display: 'flex', alignItems: 'center', gap: '6px',
+                                  boxShadow: status === 'PICKED_UP' ? '0 4px 12px rgba(16,185,129,0.4)' : 'none'
+                                }}
+                              >
+                                <span>🟢 PICKED UP</span>
+                              </button>
+
+                              <button
+                                onClick={() => handleStudentEvent(st.student_id, 'DROPPED_OFF')}
+                                style={{
+                                  background: status === 'DROPPED_OFF' ? '#3b82f6' : (darkMode ? '#0f172a' : '#ffffff'),
+                                  color: status === 'DROPPED_OFF' ? '#ffffff' : '#3b82f6',
+                                  border: '2px solid #3b82f6', borderRadius: '14px',
+                                  padding: '12px 18px', fontSize: '15px', fontWeight: 900, cursor: 'pointer',
+                                  display: 'flex', alignItems: 'center', gap: '6px',
+                                  boxShadow: status === 'DROPPED_OFF' ? '0 4px 12px rgba(59,130,246,0.4)' : 'none'
+                                }}
+                              >
+                                <span>🔵 DROPPED OFF</span>
+                              </button>
+
+                              <button
+                                onClick={() => handleStudentEvent(st.student_id, 'ABSENT')}
+                                style={{
+                                  background: status === 'ABSENT' ? '#ef4444' : (darkMode ? '#0f172a' : '#ffffff'),
+                                  color: status === 'ABSENT' ? '#ffffff' : '#ef4444',
+                                  border: '2px solid #ef4444', borderRadius: '14px',
+                                  padding: '12px 14px', fontSize: '14px', fontWeight: 900, cursor: 'pointer',
+                                  display: 'flex', alignItems: 'center', gap: '4px',
+                                  boxShadow: status === 'ABSENT' ? '0 4px 12px rgba(239,68,68,0.4)' : 'none'
+                                }}
+                              >
+                                <span>🔴 ABSENT</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* ══ Breakdown Modal ══ */}
               {showBreakdown && (
@@ -611,9 +921,7 @@ export default function DriverMobileApp() {
 
       <style>{`
         @keyframes spin { 100% { transform: rotate(360deg); } }
-        @media (max-width: 640px) {
-          .dash-telemetry-grid { grid-template-columns: 1fr 1fr !important; }
-        }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.85; } }
       `}</style>
     </div>
   );

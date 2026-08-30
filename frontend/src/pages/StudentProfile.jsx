@@ -203,6 +203,136 @@ function HostelTab({ studentId }) {
   );
 }
 
+function TransportTab({ studentId }) {
+  const [transportInfo, setTransportInfo] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.allSettled([
+      api.get(`/transport/students/browse?search=${studentId}&per_page=1`),
+      api.get(`/transport/gps/parent/child/${studentId}/history`)
+    ]).then(([stRes, histRes]) => {
+      if (stRes.status === 'fulfilled' && stRes.value?.data?.data?.length > 0) {
+        setTransportInfo(stRes.value.data.data[0]);
+      }
+      if (histRes.status === 'fulfilled') {
+        setHistory(histRes.value?.data?.data?.events || []);
+      }
+    }).finally(() => setLoading(false));
+  }, [studentId]);
+
+  if (loading) {
+    return <div style={{ padding: 40, textAlign: 'center', color: 'var(--neutral-5)' }}>⏳ Loading transport details...</div>;
+  }
+
+  if (!transportInfo) {
+    return (
+      <div className="card" style={{ margin: 0 }}>
+        <div className="empty-state" style={{ padding: 48, textAlign: 'center' }}>
+          <div style={{ fontSize: 36, marginBottom: 8 }}>🚌</div>
+          <h4 style={{ margin: 0, color: 'var(--neutral-8)' }}>Not Enrolled in School Transport</h4>
+          <p style={{ color: 'var(--neutral-5)', marginTop: 4 }}>This student does not have an active bus or vehicle route assignment.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Route & Vehicle Summary Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+        <div className="card" style={{ margin: 0, borderLeft: '4px solid #4f46e5' }}>
+          <div style={{ fontSize: 11, color: 'var(--neutral-5)', fontWeight: 600 }}>ASSIGNED VEHICLE</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: '#4f46e5', marginTop: 4 }}>
+            🚌 {transportInfo.vehicle_number || 'Bus'}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--neutral-6)', marginTop: 2 }}>{transportInfo.route_name || 'Assigned Route'}</div>
+        </div>
+
+        <div className="card" style={{ margin: 0, borderLeft: '4px solid #059669' }}>
+          <div style={{ fontSize: 11, color: 'var(--neutral-5)', fontWeight: 600 }}>DRIVER DETAILS</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: '#059669', marginTop: 4 }}>
+            👨‍✈️ {transportInfo.driver_name || 'Assigned Driver'}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--neutral-6)', marginTop: 2 }}>
+            {transportInfo.driver_phone ? `📞 ${transportInfo.driver_phone}` : 'Contact via Transport Desk'}
+          </div>
+        </div>
+
+        <div className="card" style={{ margin: 0, borderLeft: '4px solid #d97706' }}>
+          <div style={{ fontSize: 11, color: 'var(--neutral-5)', fontWeight: 600 }}>PICKUP & DROP STOPS</div>
+          <div style={{ fontSize: 13, fontWeight: 700, marginTop: 4, color: 'var(--neutral-8)' }}>
+            🟢 Pickup: {transportInfo.pickup_stop_name || 'Default Route Stop'}
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 700, marginTop: 2, color: 'var(--neutral-8)' }}>
+            🔴 Drop: {transportInfo.drop_stop_name || 'Default Route Stop'}
+          </div>
+        </div>
+      </div>
+
+      {/* Live Status & History Table */}
+      <div className="card" style={{ margin: 0 }}>
+        <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h4>📍 Recent Transport Activity & Trip Events</h4>
+          <a
+            href="/transport/parent"
+            style={{
+              background: '#eef2ff', color: '#4f46e5', padding: '6px 12px', borderRadius: 8,
+              fontSize: 12, fontWeight: 700, textDecoration: 'none'
+            }}
+          >
+            Live Bus Tracker →
+          </a>
+        </div>
+        <div className="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Event Type</th>
+                <th>Stop / Location</th>
+                <th>Vehicle & Driver</th>
+                <th>Timestamp</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.length === 0 ? (
+                <tr>
+                  <td colSpan={4} style={{ textAlign: 'center', padding: 24, color: 'var(--neutral-4)' }}>
+                    No trip events recorded recently.
+                  </td>
+                </tr>
+              ) : (
+                history.map(ev => (
+                  <tr key={ev.id}>
+                    <td>
+                      <span style={{
+                        padding: '3px 8px', borderRadius: 12, fontSize: 11, fontWeight: 800,
+                        background: ev.event_type === 'PICKED_UP' ? '#dcfce7' : ev.event_type === 'DROPPED_OFF' ? '#e0e7ff' : '#fee2e2',
+                        color: ev.event_type === 'PICKED_UP' ? '#15803d' : ev.event_type === 'DROPPED_OFF' ? '#4338ca' : '#b91c1c',
+                      }}>
+                        {ev.event_type === 'PICKED_UP' ? '🟢 Picked Up' : ev.event_type === 'DROPPED_OFF' ? '🏁 Dropped Off' : '❌ Absent'}
+                      </span>
+                    </td>
+                    <td style={{ fontWeight: 600 }}>{ev.stop_name || 'En Route'}</td>
+                    <td style={{ color: 'var(--neutral-6)' }}>
+                      {ev.vehicle_number ? `Bus: ${ev.vehicle_number}` : ''} {ev.driver_name ? `(${ev.driver_name})` : ''}
+                    </td>
+                    <td style={{ color: 'var(--neutral-6)', fontSize: 12 }}>
+                      {ev.recorded_at ? new Date(ev.recorded_at).toLocaleString('en-IN') : '—'}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function StudentProfile() {
   const { id }     = useParams();
   const navigate   = useNavigate();
@@ -351,7 +481,7 @@ export default function StudentProfile() {
     { key: 'attendance',  label: '📅 Attendance'  },
     { key: 'fees',        label: '💰 Fees'        },
     { key: 'marks',       label: '📝 Marks'       },
-    { key: 'hostel',      label: '🏨 Hostel'      },
+    { key: 'transport',   label: '🚌 Transport'   },
     { key: 'documents',   label: '🎓 Documents'   },
   ];
 
@@ -846,6 +976,11 @@ export default function StudentProfile() {
                 </>
               )}
             </div>
+          )}
+
+          {/* ══ TRANSPORT ══ */}
+          {tab === 'transport' && (
+            <TransportTab studentId={id} />
           )}
 
         </div>

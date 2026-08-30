@@ -149,6 +149,7 @@ def create_app(config_name='default'):
             _ensure_document_columns()
             _ensure_library_columns()
             _ensure_hostel_columns()
+            _ensure_transport_columns()
             db.create_all()
             _seed_super_admin()
 
@@ -416,6 +417,57 @@ def _ensure_hostel_columns():
                             print(f'[WARN] hostel_fine_records.{col}: {e}')
     except Exception as e:
         print(f'[WARN] _ensure_hostel_columns error: {e}')
+
+
+def _ensure_transport_columns():
+    """
+    Ensure newly added columns and tables exist in transport tables for PostgreSQL/SQLite:
+    - transport_student_assignments (pickup_stop_id, drop_stop_id)
+    - transport_trip_logs (students_count, sos_triggered_at, breakdown_reported_at, remarks)
+    - transport_fine_records
+    - transport_trip_student_attendance
+    """
+    from sqlalchemy import text, inspect
+    try:
+        inspector = inspect(db.engine)
+        tables = inspector.get_table_names()
+
+        if 'transport_student_assignments' in tables:
+            existing = {c['name'] for c in inspector.get_columns('transport_student_assignments')}
+            to_add = {
+                'pickup_stop_id': 'INTEGER REFERENCES transport_stops(id)',
+                'drop_stop_id':   'INTEGER REFERENCES transport_stops(id)',
+            }
+            with db.engine.connect() as conn:
+                for col, defn in to_add.items():
+                    if col not in existing:
+                        try:
+                            conn.execute(text(f'ALTER TABLE transport_student_assignments ADD COLUMN {col} {defn}'))
+                            conn.commit()
+                            print(f'[OK] Added column transport_student_assignments.{col}')
+                        except Exception as e:
+                            print(f'[WARN] transport_student_assignments.{col}: {e}')
+
+        if 'transport_trip_logs' in tables:
+            existing = {c['name'] for c in inspector.get_columns('transport_trip_logs')}
+            to_add = {
+                'students_count':        'INTEGER DEFAULT 0',
+                'sos_triggered_at':      'TIMESTAMP',
+                'breakdown_reported_at': 'TIMESTAMP',
+                'remarks':               'VARCHAR(500)',
+            }
+            with db.engine.connect() as conn:
+                for col, defn in to_add.items():
+                    if col not in existing:
+                        try:
+                            conn.execute(text(f'ALTER TABLE transport_trip_logs ADD COLUMN {col} {defn}'))
+                            conn.commit()
+                            print(f'[OK] Added column transport_trip_logs.{col}')
+                        except Exception as e:
+                            print(f'[WARN] transport_trip_logs.{col}: {e}')
+    except Exception as e:
+        print(f'[WARN] _ensure_transport_columns error: {e}')
+
 
 
 def _ensure_communication_columns():

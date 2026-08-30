@@ -20,9 +20,10 @@ const EMPTY_GENERATE  = { fee_structure_id: '', period_label: '', due_date: '' }
 
 export default function TransportFees() {
   const [darkMode, setDarkMode] = useState(localStorage.getItem('ederp_theme') === 'dark');
-  const [tab, setTab] = useState('records'); // 'records' | 'structures'
+  const [tab, setTab] = useState('records'); // 'records' | 'fines' | 'structures'
 
   const [routes, setRoutes] = useState([]);
+  const [allStudents, setAllStudents] = useState([]);
 
   // ── Fee Structures ──
   const [structures, setStructures] = useState([]);
@@ -40,6 +41,17 @@ export default function TransportFees() {
   const [statusFilter, setStatusFilter] = useState('');
   const [periodFilter, setPeriodFilter] = useState('');
   const [routeFilter, setRouteFilter] = useState('');
+
+  // ── Transport Fines ──
+  const [fines, setFines] = useState([]);
+  const [loadingFines, setLoadingFines] = useState(false);
+  const [showFineModal, setShowFineModal] = useState(false);
+  const [fineForm, setFineForm] = useState({ student_id: '', amount: '', fine_type: 'LATE_PAYMENT', reason: '' });
+  const [savingFine, setSavingFine] = useState(false);
+  const [collectFineRecord, setCollectFineRecord] = useState(null);
+  const [collectFineForm, setCollectFineForm] = useState({ amount_paid: '', payment_mode: 'CASH', remarks: '' });
+  const [waiveFineRecord, setWaiveFineRecord] = useState(null);
+  const [waiveFineForm, setWaiveFineForm] = useState({ waiver_amount: '', reason: '' });
 
   // ── Generate modal ──
   const [showGenerate, setShowGenerate] = useState(false);
@@ -59,6 +71,14 @@ export default function TransportFees() {
   // ── Transactions drawer ──
   const [txnRecord, setTxnRecord] = useState(null);
   const [txns, setTxns] = useState([]);
+
+  const loadFines = useCallback(() => {
+    setLoadingFines(true);
+    transportApi.fines.list()
+      .then(r => setFines(r.data.data || []))
+      .catch(() => toast.error('Fines load nahi hue'))
+      .finally(() => setLoadingFines(false));
+  }, []);
 
   const loadStructures = useCallback(() => {
     setLoadingStructures(true);
@@ -82,8 +102,10 @@ export default function TransportFees() {
 
   useEffect(() => { loadStructures(); }, [loadStructures]);
   useEffect(() => { loadRecords(); }, [loadRecords]);
+  useEffect(() => { loadFines(); }, [loadFines]);
   useEffect(() => {
     transportApi.routes.list({ include_stops: false }).then(r => setRoutes(r.data.data || [])).catch(() => {});
+    transportApi.students.browse({ per_page: 200 }).then(r => setAllStudents(r.data.data || [])).catch(() => {});
   }, []);
 
   // ── Structure CRUD ──
@@ -129,36 +151,91 @@ export default function TransportFees() {
     setSavingStruct(false);
   }
   async function handleDeleteStruct(s) {
-    if (!window.confirm(`"${s.name}" fee structure delete karni hai?`)) return;
+    if (!window.confirm(`"${s.name}" ko delete karna hai?`)) return;
     try {
       await transportApi.fees.removeStructure(s.id);
-      toast.success('Deleted');
+      toast.success('Structure deleted');
       loadStructures();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Delete nahi hua — records generate ho chuke honge, structure ko Inactive karo instead');
+      toast.error(err.response?.data?.message || 'Delete nahi hua');
     }
   }
 
-  // ── Generate records ──
-  function openGenerate() {
-    setGenerateForm(EMPTY_GENERATE);
-    setShowGenerate(true);
+  // ── Fine Actions ──
+  async function handleSaveFine(e) {
+    e.preventDefault();
+    if (!fineForm.student_id) { toast.error('Student select karein'); return; }
+    if (!fineForm.amount || Number(fineForm.amount) <= 0) { toast.error('Valid fine amount enter karein'); return; }
+
+    setSavingFine(true);
+    try {
+      await transportApi.fines.create({
+        student_id: Number(fineForm.student_id),
+        amount: Number(fineForm.amount),
+        fine_type: fineForm.fine_type,
+        reason: fineForm.reason,
+      });
+      toast.success('Transport fine added');
+      setShowFineModal(false);
+      setFineForm({ student_id: '', amount: '', fine_type: 'LATE_PAYMENT', reason: '' });
+      loadFines();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Fine create nahi hua');
+    }
+    setSavingFine(false);
   }
+
+  async function handleCollectFine(e) {
+    e.preventDefault();
+    if (!collectFineForm.amount_paid || Number(collectFineForm.amount_paid) <= 0) {
+      toast.error('Valid amount enter karein'); return;
+    }
+    try {
+      await transportApi.fines.collect(collectFineRecord.id, {
+        amount_paid: Number(collectFineForm.amount_paid),
+        payment_mode: collectFineForm.payment_mode,
+        remarks: collectFineForm.remarks,
+      });
+      toast.success('Fine payment collected');
+      setCollectFineRecord(null);
+      loadFines();
+      loadRecords();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Payment collect nahi hua');
+    }
+  }
+
+  async function handleWaiveFine(e) {
+    e.preventDefault();
+    if (!waiveFineForm.waiver_amount || Number(waiveFineForm.waiver_amount) <= 0) {
+      toast.error('Valid waiver amount enter karein'); return;
+    }
+    try {
+      await transportApi.fines.waive(waiveFineRecord.id, {
+        waiver_amount: Number(waiveFineForm.waiver_amount),
+        reason: waiveFineForm.reason,
+      });
+      toast.success('Fine waived');
+      setWaiveFineRecord(null);
+      loadFines();
+      loadRecords();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Waive nahi hua — sirf Principal kar sakte hain');
+    }
+  }
+
+  // ── Generate Records ──
   async function handleGenerate(e) {
     e.preventDefault();
-    if (!generateForm.fee_structure_id || !generateForm.period_label.trim()) {
-      toast.error('Fee structure aur period label required hai');
-      return;
-    }
+    if (!generateForm.fee_structure_id) { toast.error('Fee structure select karein'); return; }
+    if (!generateForm.period_label.trim()) { toast.error('Period label required hai (e.g. "April 2026")'); return; }
+
     setGenerating(true);
     try {
-      const r = await transportApi.fees.generateRecords({
-        fee_structure_id: generateForm.fee_structure_id,
-        period_label: generateForm.period_label,
-        due_date: generateForm.due_date || null,
-      });
-      toast.success(r.data.message || 'Records generated');
+      const r = await transportApi.fees.generateRecords(generateForm);
+      toast.success(r.data.message || 'Fee records generated');
       setShowGenerate(false);
+      setGenerateForm(EMPTY_GENERATE);
       loadRecords();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Generate nahi hua');
@@ -166,19 +243,21 @@ export default function TransportFees() {
     setGenerating(false);
   }
 
-  // ── Collect ──
+  // ── Collect Payment ──
   function openCollect(record) {
     setCollectRecord(record);
-    setCollectForm({ amount_paid: record.balance || '', payment_mode: 'CASH', transaction_ref: '', receipt_number: '', remarks: '' });
+    setCollectForm({
+      amount_paid: record.balance || '',
+      payment_mode: 'CASH', transaction_ref: '', receipt_number: '', remarks: '',
+    });
   }
   async function handleCollect(e) {
     e.preventDefault();
-    const amt = Number(collectForm.amount_paid);
-    if (!amt || amt <= 0) { toast.error('Amount paid 0 se zyada hona chahiye'); return; }
+    if (!collectForm.amount_paid || Number(collectForm.amount_paid) <= 0) { toast.error('Amount paid required hai'); return; }
     setCollecting(true);
     try {
       await transportApi.fees.collect(collectRecord.id, {
-        amount_paid: amt,
+        amount_paid: Number(collectForm.amount_paid),
         payment_mode: collectForm.payment_mode,
         transaction_ref: collectForm.transaction_ref,
         receipt_number: collectForm.receipt_number,
@@ -188,7 +267,7 @@ export default function TransportFees() {
       setCollectRecord(null);
       loadRecords();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Collect nahi hua');
+      toast.error(err.response?.data?.message || 'Payment collect nahi hua');
     }
     setCollecting(false);
   }
@@ -196,7 +275,7 @@ export default function TransportFees() {
   // ── Waive ──
   function openWaive(record) {
     setWaiveRecord(record);
-    setWaiveForm({ waiver: record.waiver || '', remarks: '' });
+    setWaiveForm({ waiver: record.balance || '', remarks: '' });
   }
   async function handleWaive(e) {
     e.preventDefault();
@@ -252,7 +331,7 @@ export default function TransportFees() {
     <div style={{ display: 'flex', minHeight: '100vh', background: darkMode ? '#0f172a' : '#f8fafc' }}>
       <Sidebar darkMode={darkMode} />
       <div style={{ marginLeft: 232, flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <Navbar title="Transport Fees" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
+        <Navbar title="Transport Fees & Fines" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
 
         <div style={{ padding: 24 }}>
           {/* Summary cards (current page only) */}
@@ -265,11 +344,16 @@ export default function TransportFees() {
               <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>PENDING (this page)</div>
               <div style={{ fontSize: 22, fontWeight: 800, color: '#d97706', marginTop: 4 }}>₹{totals.pending.toLocaleString()}</div>
             </div>
+            <div style={{ ...cardStyle, borderLeft: '4px solid #ef4444' }}>
+              <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>FINES / PENALTIES</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: '#ef4444', marginTop: 4 }}>{fines.length} Recorded</div>
+            </div>
           </div>
 
           {/* Tabs */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
             {tabBtn('records', 'Fee Collection')}
+            {tabBtn('fines', 'Fines & Penalties')}
             {tabBtn('structures', 'Fee Structures')}
           </div>
 
@@ -426,9 +510,300 @@ export default function TransportFees() {
                 </div>
               </div>
             </>
+          ) : (
+            /* ══ TAB: FINES & PENALTIES ══ */
+            <div style={cardStyle}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 16, color: darkMode ? '#fff' : '#0f172a' }}>
+                    Transport Fines & Penalties
+                  </h3>
+                  <div style={{ fontSize: 12, color: '#94a3b8' }}>
+                    Manage student damages, late fee charges, and penalty waivers
+                  </div>
+                </div>
+                <button onClick={() => setShowFineModal(true)} style={{
+                  background: '#ef4444', color: '#fff', border: 'none', borderRadius: 8,
+                  padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 6
+                }}>
+                  + Add Penalty / Fine
+                </button>
+              </div>
+
+              {loadingFines ? (
+                <p style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', padding: '30px 0' }}>Loading fines...</p>
+              ) : fines.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
+                  <div style={{ fontSize: 32, marginBottom: 8 }}>🎉</div>
+                  <div style={{ fontSize: 14, fontWeight: 700 }}>No Outstanding Fines</div>
+                  <div style={{ fontSize: 12 }}>All students are in good standing</div>
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ borderBottom: `2px solid ${darkMode ? '#334155' : '#e2e8f0'}`, textAlign: 'left' }}>
+                        <th style={{ padding: '8px 6px', color: '#94a3b8' }}>STUDENT</th>
+                        <th style={{ padding: '8px 6px', color: '#94a3b8' }}>FINE TYPE</th>
+                        <th style={{ padding: '8px 6px', color: '#94a3b8' }}>AMOUNT</th>
+                        <th style={{ padding: '8px 6px', color: '#94a3b8' }}>PAID</th>
+                        <th style={{ padding: '8px 6px', color: '#94a3b8' }}>WAIVED</th>
+                        <th style={{ padding: '8px 6px', color: '#94a3b8' }}>BALANCE</th>
+                        <th style={{ padding: '8px 6px', color: '#94a3b8' }}>STATUS</th>
+                        <th style={{ padding: '8px 6px', color: '#94a3b8' }}>ACTIONS</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fines.map(f => (
+                        <tr key={f.id} style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}` }}>
+                          <td style={{ padding: '10px 6px', fontWeight: 700, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
+                            {f.student_name || 'Student'}
+                            <div style={{ fontSize: 10.5, color: '#94a3b8', fontWeight: 400 }}>
+                              {f.admission_no ? `Adm: ${f.admission_no}` : ''} {f.class_name ? `• ${f.class_name}` : ''}
+                            </div>
+                          </td>
+                          <td style={{ padding: '10px 6px', color: '#64748b' }}>
+                            <span style={{ fontWeight: 600 }}>{f.fine_type}</span>
+                            {f.reason && <div style={{ fontSize: 10.5, color: '#94a3b8' }}>{f.reason}</div>}
+                          </td>
+                          <td style={{ padding: '10px 6px', fontWeight: 700, color: darkMode ? '#fff' : '#0f172a' }}>
+                            ₹{f.amount?.toLocaleString()}
+                          </td>
+                          <td style={{ padding: '10px 6px', color: '#16a34a', fontWeight: 600 }}>
+                            ₹{(f.amount_paid || 0).toLocaleString()}
+                          </td>
+                          <td style={{ padding: '10px 6px', color: '#64748b' }}>
+                            ₹{(f.waived_amount || 0).toLocaleString()}
+                          </td>
+                          <td style={{ padding: '10px 6px', fontWeight: 800, color: (f.outstanding_amount || 0) > 0 ? '#dc2626' : '#16a34a' }}>
+                            ₹{(f.outstanding_amount || 0).toLocaleString()}
+                          </td>
+                          <td style={{ padding: '10px 6px' }}>
+                            <span style={{
+                              padding: '2px 8px', borderRadius: 12, fontSize: 10.5, fontWeight: 800,
+                              background: f.status === 'PAID' ? '#dcfce7' : f.status === 'WAIVED' ? '#f1f5f9' : f.status === 'PARTIALLY_PAID' ? '#fef3c7' : '#fee2e2',
+                              color: f.status === 'PAID' ? '#15803d' : f.status === 'WAIVED' ? '#64748b' : f.status === 'PARTIALLY_PAID' ? '#b45309' : '#b91c1c',
+                            }}>
+                              {f.status}
+                            </span>
+                          </td>
+                          <td style={{ padding: '10px 6px' }}>
+                            {(f.outstanding_amount || 0) > 0 && f.status !== 'WAIVED' && (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    setCollectFineRecord(f);
+                                    setCollectFineForm({ amount_paid: f.outstanding_amount, payment_mode: 'CASH', remarks: '' });
+                                  }}
+                                  style={{
+                                    background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0',
+                                    borderRadius: 6, padding: '4px 8px', fontSize: 11, fontWeight: 800, cursor: 'pointer', marginRight: 6
+                                  }}
+                                >
+                                  Collect
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setWaiveFineRecord(f);
+                                    setWaiveFineForm({ waiver_amount: f.outstanding_amount, reason: '' });
+                                  }}
+                                  style={{
+                                    background: '#f8fafc', color: '#64748b', border: '1px solid #cbd5e1',
+                                    borderRadius: 6, padding: '4px 8px', fontSize: 11, fontWeight: 700, cursor: 'pointer'
+                                  }}
+                                >
+                                  Waive
+                                </button>
+                              </>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>
+
+      {/* ── Add Fine Modal ── */}
+      {showFineModal && (
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowFineModal(false)}>
+          <div className="modal" style={{ maxWidth: 460 }}>
+            <div className="modal-header">
+              <h3>Add Transport Fine / Penalty</h3>
+              <button className="modal-close" onClick={() => setShowFineModal(false)}>✕</button>
+            </div>
+            <form onSubmit={handleSaveFine} className="modal-body">
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600 }}>Select Student *</label>
+                <select
+                  className="form-input"
+                  value={fineForm.student_id}
+                  onChange={e => setFineForm(f => ({ ...f, student_id: e.target.value }))}
+                  required
+                >
+                  <option value="">-- Choose Student --</option>
+                  {allStudents.map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.admission_no || 'No Adm'}) {s.class_name ? `• ${s.class_name}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600 }}>Fine Amount (₹) *</label>
+                  <input
+                    type="number" min="1" className="form-input"
+                    value={fineForm.amount}
+                    onChange={e => setFineForm(f => ({ ...f, amount: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600 }}>Fine Type</label>
+                  <select
+                    className="form-input"
+                    value={fineForm.fine_type}
+                    onChange={e => setFineForm(f => ({ ...f, fine_type: e.target.value }))}
+                  >
+                    <option value="LATE_PAYMENT">Late Payment</option>
+                    <option value="DAMAGE">Bus Damage / Seat Tear</option>
+                    <option value="MISCONDUCT">Misconduct / Discipline</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ marginTop: 12 }}>
+                <label style={{ fontSize: 12, fontWeight: 600 }}>Reason / Description</label>
+                <textarea
+                  className="form-input" rows={2}
+                  placeholder="e.g. Window handle broken on Route 2"
+                  value={fineForm.reason}
+                  onChange={e => setFineForm(f => ({ ...f, reason: e.target.value }))}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
+                <button type="button" onClick={() => setShowFineModal(false)} style={{
+                  background: '#f1f5f9', color: '#334155', border: 'none', borderRadius: 8,
+                  padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer'
+                }}>Cancel</button>
+                <button type="submit" disabled={savingFine} style={{
+                  background: '#ef4444', color: '#fff', border: 'none', borderRadius: 8,
+                  padding: '9px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer'
+                }}>{savingFine ? 'Saving...' : 'Add Penalty'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Collect Fine Modal ── */}
+      {collectFineRecord && (
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setCollectFineRecord(null)}>
+          <div className="modal" style={{ maxWidth: 440 }}>
+            <div className="modal-header">
+              <h3>Collect Fine — {collectFineRecord.student_name}</h3>
+              <button className="modal-close" onClick={() => setCollectFineRecord(null)}>✕</button>
+            </div>
+            <form onSubmit={handleCollectFine} className="modal-body">
+              <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 10 }}>
+                Fine outstanding: <strong style={{ color: '#dc2626' }}>₹{collectFineRecord.outstanding_amount}</strong>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600 }}>Amount (₹) *</label>
+                <input
+                  type="number" min="1" className="form-input"
+                  value={collectFineForm.amount_paid}
+                  onChange={e => setCollectFineForm(f => ({ ...f, amount_paid: e.target.value }))}
+                  required
+                />
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <label style={{ fontSize: 12, fontWeight: 600 }}>Payment Mode</label>
+                <select
+                  className="form-input"
+                  value={collectFineForm.payment_mode}
+                  onChange={e => setCollectFineForm(f => ({ ...f, payment_mode: e.target.value }))}
+                >
+                  {PAYMENT_MODES.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <label style={{ fontSize: 12, fontWeight: 600 }}>Remarks</label>
+                <textarea
+                  className="form-input" rows={2}
+                  value={collectFineForm.remarks}
+                  onChange={e => setCollectFineForm(f => ({ ...f, remarks: e.target.value }))}
+                />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
+                <button type="button" onClick={() => setCollectFineRecord(null)} style={{
+                  background: '#f1f5f9', color: '#334155', border: 'none', borderRadius: 8,
+                  padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer'
+                }}>Cancel</button>
+                <button type="submit" style={{
+                  background: '#10b981', color: '#fff', border: 'none', borderRadius: 8,
+                  padding: '9px 18px', fontSize: 13, fontWeight: 800, cursor: 'pointer'
+                }}>Collect Payment</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Waive Fine Modal ── */}
+      {waiveFineRecord && (
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setWaiveFineRecord(null)}>
+          <div className="modal" style={{ maxWidth: 440 }}>
+            <div className="modal-header">
+              <h3>Waive Fine — {waiveFineRecord.student_name}</h3>
+              <button className="modal-close" onClick={() => setWaiveFineRecord(null)}>✕</button>
+            </div>
+            <form onSubmit={handleWaiveFine} className="modal-body">
+              <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 10 }}>
+                Principal-only action. Fine will be marked as waived.
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600 }}>Waiver Amount (₹) *</label>
+                <input
+                  type="number" min="1" className="form-input"
+                  value={waiveFineForm.waiver_amount}
+                  onChange={e => setWaiveFineForm(f => ({ ...f, waiver_amount: e.target.value }))}
+                  required
+                />
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <label style={{ fontSize: 12, fontWeight: 600 }}>Waiver Reason *</label>
+                <textarea
+                  className="form-input" rows={2}
+                  placeholder="e.g. Approved by Principal on parent appeal"
+                  value={waiveFineForm.reason}
+                  onChange={e => setWaiveFineForm(f => ({ ...f, reason: e.target.value }))}
+                  required
+                />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
+                <button type="button" onClick={() => setWaiveFineRecord(null)} style={{
+                  background: '#f1f5f9', color: '#334155', border: 'none', borderRadius: 8,
+                  padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer'
+                }}>Cancel</button>
+                <button type="submit" style={{
+                  background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8,
+                  padding: '9px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer'
+                }}>Waive Fine</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ── Add/Edit Fee Structure modal ── */}
       {showStructForm && (

@@ -83,10 +83,12 @@ import TransportConductors   from './pages/transport/Conductors';
 import TransportRouteBuilder from './pages/transport/RouteBuilder';
 import TransportStops        from './pages/transport/Stops';
 import StudentTransport      from './pages/transport/StudentTransport';
-import DriverMobileApp       from './pages/transport/DriverMobileApp';
+import TransportFees         from './pages/transport/TransportFees';
+import VehicleMaintenance    from './pages/transport/VehicleMaintenance';
 import LiveTracking          from './pages/transport/LiveTracking';
-// NOTE: TransportFees, VehicleMaintenance, DriverMobileApp, ParentTransportView,
-// TransportReports abhi banni baaki hain — unke import/route baad me add honge.
+import ParentTransportView   from './pages/transport/ParentTransportView';
+import TransportReports      from './pages/transport/TransportReports';
+import DriverMobileApp       from './pages/transport/DriverMobileApp';
 
 import StaffAttendanceDashboard from './pages/staff-attendance/StaffAttendanceDashboard';
 import AttendanceSettings   from './pages/staff-attendance/AttendanceSettings';
@@ -495,6 +497,26 @@ export default function App() {
             <Route path="/transport/live" element={
               <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
                 <LiveTracking />
+              </ProtectedRoute>
+            } />
+            <Route path="/transport/fees" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
+                <TransportFees />
+              </ProtectedRoute>
+            } />
+            <Route path="/transport/maintenance" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
+                <VehicleMaintenance />
+              </ProtectedRoute>
+            } />
+            <Route path="/transport/reports" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
+                <TransportReports />
+              </ProtectedRoute>
+            } />
+            <Route path="/transport/parent" element={
+              <ProtectedRoute roles={['PARENT', 'STUDENT', 'PRINCIPAL']}>
+                <ParentTransportView />
               </ProtectedRoute>
             } />
             <Route path="/driver/app" element={
