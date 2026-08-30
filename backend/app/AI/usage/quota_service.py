@@ -47,6 +47,15 @@ def check_quota(user_id: int, role: str, school_id: int = None) -> dict:
     Check if user has remaining quota.
     Returns: {'allowed': bool, 'used': int, 'limit': int, 'remaining': int}
     """
+    if str(role).upper() in ('SUPER_ADMIN', 'DEVELOPER', 'ADMIN'):
+        used = get_usage_today(user_id)
+        return {
+            'allowed':   True,
+            'used':      used,
+            'limit':     9999,
+            'remaining': 9999,
+        }
+
     limit = get_daily_limit(role, school_id)
     used  = get_usage_today(user_id)
     remaining = max(0, limit - used)
@@ -63,6 +72,9 @@ def enforce_quota(user_id: int, role: str, school_id: int = None):
     Raise AIProviderError with QUOTA_EXCEEDED if limit is reached.
     Call this BEFORE making any AI provider call.
     """
+    if str(role).upper() in ('SUPER_ADMIN', 'DEVELOPER', 'ADMIN'):
+        return
+
     quota = check_quota(user_id, role, school_id)
     if not quota['allowed']:
         raise AIProviderError(
@@ -70,6 +82,7 @@ def enforce_quota(user_id: int, role: str, school_id: int = None):
             f"Please try again tomorrow.",
             'QUOTA_EXCEEDED'
         )
+
 
 
 def log_usage(user_id: int, role: str, school_id: int = None,

@@ -128,6 +128,18 @@ def _get_analytics_data(intent: str, params: dict, school_id: int,
             from app.AI.school_data.infra_analytics import get_library_summary
             return {'library': get_library_summary(school_id)}
 
+        elif intent == Intent.STUDENT_FEE_STATUS:
+            from app.AI.school_data.fee_analytics import get_student_fee_status
+            return {'student_fee': get_student_fee_status(school_id, params.get('student_name', ''))}
+
+        elif intent == Intent.EXPENSE_SUMMARY:
+            from app.AI.school_data.fee_analytics import get_expense_summary
+            return {'expenses': get_expense_summary(school_id, month, year)}
+
+        elif intent == Intent.STAFF_SALARY_STATUS:
+            from app.AI.school_data.fee_analytics import get_staff_salary_status
+            return {'staff_salary': get_staff_salary_status(school_id, params.get('staff_name'))}
+
         elif intent == Intent.PLATFORM_SCHOOLS_COUNT:
             from app.AI.school_data.platform_analytics import get_platform_schools_summary
             return {'schools_summary': get_platform_schools_summary()}
@@ -153,6 +165,7 @@ def _get_analytics_data(intent: str, params: dict, school_id: int,
         return {'error': str(type(e).__name__), 'data_unavailable': True}
 
     return {}
+
 
 
 def _build_context_message(intent: str, analytics_data: dict,

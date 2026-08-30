@@ -240,3 +240,145 @@ def get_hostel_fee_summary(school_id: int, month: int = None, year: int = None) 
         'outstanding': round(max(0, due - paid), 2),
         'rate':        round(paid / due * 100, 1) if due > 0 else 0,
     }
+
+
+def get_student_fee_status(school_id: int, student_name: str) -> dict:
+    """Get complete fee payment & pending dues for a student by name."""
+    from app.models.academic import Student, Class
+    from app.models.financial import FeeRecord
+
+    clean_name = student_name.strip()
+    # Search student in this school (or any school if school_id is 0 / Super Admin)
+    q = Student.query
+    if school_id > 0:
+        q = q.filter(Student.school_id == school_id)
+    students = q.filter(Student.name.ilike(f'%{clean_name}%')).all()
+
+    if not students:
+        return {'found': False, 'searched_name': student_name}
+
+    results = []
+    for s in students:
+        cls = Class.query.get(s.class_id) if s.class_id else None
+        records = FeeRecord.query.filter_by(student_id=s.id).all()
+        
+        total_due   = sum(r.amount_due for r in records)
+        total_paid  = sum(r.amount_paid for r in records)
+        outstanding = max(0, total_due - total_paid)
+
+        fee_details = []
+        for r in records[-6:]:
+            fee_details.append({
+                'fee_type':    r.fee_type or 'Tuition Fee',
+                'amount_due':  r.amount_due,
+                'amount_paid': r.amount_paid,
+                'status':      r.status,
+                'month':       r.month,
+            })
+
+        results.append({
+            'student_id':     s.id,
+            'name':           s.name,
+            'roll_number':    s.roll_number,
+            'class_name':     cls.name if cls else 'N/A',
+            'total_due':      round(total_due, 2),
+            'total_paid':     round(total_paid, 2),
+            'outstanding_due': round(outstanding, 2),
+            'status':         'PAID' if outstanding == 0 and total_due > 0 else ('PARTIAL' if total_paid > 0 else 'UNPAID'),
+            'recent_records': fee_details,
+        })
+
+    return {
+        'found':          True,
+        'total_matched':  len(results),
+        'students':       results,
+    }
+
+
+def get_expense_summary(school_id: int, month: int = None, year: int = None) -> dict:
+    """Get school operational expenses summary."""
+    from app.models.finance import Expense
+
+    q = Expense.query
+    if school_id > 0:
+        q = q.filter(Expense.school_id == school_id)
+    if year and month:
+        month_str = f"{year}-{month:02d}"
+        q = q.filter(Expense.expense_date.like(f"{month_str}%"))
+
+    expenses = q.all()
+    total_amount = sum(float(e.amount or 0) for e in expenses)
+
+    by_category = {}
+    for e in expenses:
+        cat = e.category or 'MISCELLANEOUS'
+        by_category[cat] = by_category.get(cat, 0.0) + float(e.amount or 0)
+
+    recent = []
+    for e in sorted(expenses, key=lambda x: str(x.expense_date or ''), reverse=True)[:5]:
+        recent.append({
+            'title':          e.title or e.category,
+            'category':       e.category,
+            'amount':         float(e.amount or 0),
+            'date':           str(e.expense_date),
+            'payment_method': e.payment_method,
+        })
+
+    return {
+        'total_expenses': round(total_amount, 2),
+        'count':          len(expenses),
+        'by_category':    by_category,
+        'recent_expenses': recent,
+    }
+
+
+def get_staff_salary_status(school_id: int, staff_name: str = None) -> dict:
+    """Get staff or teacher salary details and payment status."""
+    from app.models.user import User
+    from app.models.academic import Teacher
+    from app.models.finance import StaffSalaryRecord
+    from app.models.financial import SalaryRecord
+
+    matched_staff = []
+
+    # Search Staff Users
+    user_q = User.query
+    if school_id > 0:
+        user_q = user_q.filter(User.school_id == school_id)
+    if staff_name:
+        user_q = user_q.filter(User.name.ilike(f'%{staff_name.strip()}%'))
+    users = user_q.all()
+
+    for u in users:
+        sal_rec = StaffSalaryRecord.query.filter_by(user_id=u.id).order_by(StaffSalaryRecord.id.desc()).first()
+        matched_staff.append({
+            'name':                u.name,
+            'role':                u.role.value if hasattr(u.role, 'value') else str(u.role),
+            'monthly_salary':      sal_rec.amount if sal_rec else getattr(u, 'salary', 0),
+            'last_payment_status': sal_rec.status if sal_rec else 'PENDING',
+            'last_paid_month':     sal_rec.month if sal_rec else 'N/A',
+        })
+
+    # Search Teachers
+    t_q = Teacher.query
+    if school_id > 0:
+        t_q = t_q.filter(Teacher.school_id == school_id)
+    if staff_name:
+        t_q = t_q.filter(Teacher.name.ilike(f'%{staff_name.strip()}%'))
+    teachers = t_q.all()
+
+    for t in teachers:
+        t_sal = SalaryRecord.query.filter_by(teacher_id=t.id).order_by(SalaryRecord.id.desc()).first()
+        matched_staff.append({
+            'name':                t.name,
+            'role':                'TEACHER',
+            'monthly_salary':      t.salary if hasattr(t, 'salary') else (t_sal.amount if t_sal else 0),
+            'last_payment_status': t_sal.status if t_sal else 'PENDING',
+            'last_paid_month':     t_sal.month if t_sal else 'N/A',
+        })
+
+    return {
+        'total_found':   len(matched_staff),
+        'staff_members': matched_staff,
+    }
+

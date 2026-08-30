@@ -5,6 +5,8 @@ import {
   getAIConfig, saveAIConfig, testConnection,
   getQuotas, setQuota, getAIAnalytics,
 } from '../../AI/services/aiApi';
+import OneP360BotDrawer from '../../AI/components/OneP360BotDrawer';
+
 
 const TABS = ['Configuration', 'Quotas', 'Analytics'];
 
@@ -578,9 +580,11 @@ export default function AIManagement() {
           )}
         </div>
       </div>
+      <OneP360BotDrawer />
     </div>
   );
 }
+
 
 function StatusRow({ label, value, green, darkMode }) {
   return (

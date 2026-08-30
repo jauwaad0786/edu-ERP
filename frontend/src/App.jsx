@@ -708,13 +708,14 @@ export default function App() {
               </ProtectedRoute>
             } />
 
-            {/* ── 1P360 BOT — AI Chat (Principal, Teacher, Staff) ── */}
+            {/* ── 1P360 BOT — AI Chat (Super Admin, Principal, Teacher, Staff) ── */}
             <Route path="/ai/chat" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'VICE_PRINCIPAL', 'TEACHER',
+              <ProtectedRoute roles={['SUPER_ADMIN', 'ADMIN', 'DEVELOPER', 'PRINCIPAL', 'VICE_PRINCIPAL', 'TEACHER',
                                       'ACCOUNTANT', 'LIBRARIAN', 'HOSTEL', 'TRANSPORT']}>
                 <AIChat />
               </ProtectedRoute>
             } />
+
 
             {/* ── Super Admin: AI Management ── */}
             <Route path="/developer/ai" element={

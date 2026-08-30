@@ -81,20 +81,22 @@ def chat():
     if not user or not user.is_active:
         return jsonify({'error': 'Authentication required'}), 401
 
-    # NEVER trust school_id from frontend — derive from JWT
-    school_id = user.school_id
-    role      = user.role.value if hasattr(user.role, 'value') else str(user.role)
+    role = user.role.value if hasattr(user.role, 'value') else str(user.role)
+    is_super = getattr(user, 'is_super', False) or str(role).upper() in ('SUPER_ADMIN', 'ADMIN', 'DEVELOPER')
+    if is_super:
+        role = 'SUPER_ADMIN'
 
     # Only allow AI for supported roles
-    ALLOWED_ROLES = {'SUPER_ADMIN', 'PRINCIPAL', 'DIRECTOR', 'VICE_PRINCIPAL', 'TEACHER', 'ACCOUNTANT',
-                     'LIBRARIAN', 'HOSTEL', 'TRANSPORT'}
-    if role not in ALLOWED_ROLES:
+    ALLOWED_ROLES = {'SUPER_ADMIN', 'ADMIN', 'DEVELOPER', 'PRINCIPAL', 'DIRECTOR', 'VICE_PRINCIPAL', 'TEACHER', 'ACCOUNTANT',
+                     'LIBRARIAN', 'HOSTEL', 'TRANSPORT', 'HR', 'RECEPTIONIST'}
+    if role not in ALLOWED_ROLES and not is_super:
         return jsonify({'error': f'AI assistant is not available for role: {role}'}), 403
 
-    if not school_id and role != 'SUPER_ADMIN':
+    if not user.school_id and not is_super:
         return jsonify({'error': 'No school associated with your account'}), 400
 
-    school_id = school_id or 0
+    school_id = user.school_id or 0
+
 
 
     data     = request.get_json() or {}

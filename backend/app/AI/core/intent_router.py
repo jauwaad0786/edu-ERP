@@ -19,9 +19,13 @@ class Intent:
     FEE_OUTSTANDING      = 'FEE_OUTSTANDING'
     FEE_COMPARISON       = 'FEE_COMPARISON'
     FEE_PENDING_STUDENTS = 'FEE_PENDING_STUDENTS'
+    STUDENT_FEE_STATUS   = 'STUDENT_FEE_STATUS'
+    EXPENSE_SUMMARY      = 'EXPENSE_SUMMARY'
+    STAFF_SALARY_STATUS  = 'STAFF_SALARY_STATUS'
     TRANSPORT_FEE        = 'TRANSPORT_FEE'
     HOSTEL_FEE           = 'HOSTEL_FEE'
     LIBRARY_FINES        = 'LIBRARY_FINES'
+
 
     # Attendance
     ATTENDANCE_TODAY     = 'ATTENDANCE_TODAY'
@@ -143,6 +147,32 @@ def _extract_class(text: str) -> str:
     return None
 
 
+def _extract_person_name(text: str) -> str:
+    """Extract person/student name from queries like 'Mudassir ka fees...', 'sana ki salary...'."""
+    # Pattern: '<name> ka/ki/ke/ka fees/salary/attendance/marks'
+    m = re.search(r'\b([a-zA-Z]{3,20})\s+(?:ka|ki|ke)\s+(?:fees?|salary|paid|due|baki|marks|attendance)\b', text, re.IGNORECASE)
+    if m:
+        candidate = m.group(1).strip()
+        if candidate.lower() not in ['student', 'teacher', 'school', 'class', 'today', 'aaj', 'kal', 'month', 'total', 'abhi']:
+            return candidate
+
+    # Pattern: 'salary of <name>' or 'fees of <name>'
+    m = re.search(r'\b(?:salary|fees?|dues?|record)\s+of\s+([a-zA-Z]{3,20})\b', text, re.IGNORECASE)
+    if m:
+        candidate = m.group(1).strip()
+        if candidate.lower() not in ['student', 'teacher', 'school', 'class', 'today', 'aaj', 'month']:
+            return candidate
+
+    # Pattern: '<name> ki salary btana/batao'
+    m = re.search(r'\b([a-zA-Z]{3,20})\s+(?:ki|ka)\s+salary\b', text, re.IGNORECASE)
+    if m:
+        candidate = m.group(1).strip()
+        if candidate.lower() not in ['staff', 'teacher', 'employee', 'all']:
+            return candidate
+
+    return None
+
+
 def classify_intent(message: str) -> dict:
     """
     Fast rule-based intent classification for both School & Platform Super Admin queries.
@@ -152,6 +182,22 @@ def classify_intent(message: str) -> dict:
 
     month, year  = _extract_month(message)
     class_filter = _extract_class(message)
+    person_name  = _extract_person_name(message)
+
+    # ── SPECIFIC STUDENT FEE SEARCH (e.g. 'Mudassir ka fees kitna pay h kitna bacha hua h') ──
+    if person_name and any(p in low for p in ['fee', 'fees', 'pay', 'bacha', 'due', 'baki', 'paid', 'kitna diya']):
+        return _result(Intent.STUDENT_FEE_STATUS, {'student_name': person_name, 'month': month, 'year': year}, 0.96, norm)
+
+    # ── STAFF / TEACHER SALARY (e.g. 'sana ki salary btana', 'salary of sana', 'teachers salary') ──
+    if any(p in low for p in ['salary', 'vetan', 'tankhwah', 'tanvaah', 'salaries']):
+        return _result(Intent.STAFF_SALARY_STATUS, {'staff_name': person_name, 'month': month, 'year': year}, 0.95, norm)
+
+    # ── SCHOOL EXPENSES (e.g. 'abhi tk kitni expenses hui h', 'total expenses', 'kharcha kitna hua') ──
+    if any(p in low for p in [
+        'expense', 'expenses', 'kharcha', 'kharch', 'total expenditure', 'kitna kharcha',
+        'spending', 'kitna spend', 'kitna expense', 'school expenses'
+    ]):
+        return _result(Intent.EXPENSE_SUMMARY, {'month': month, 'year': year}, 0.95, norm)
 
     # ── DOCUMENT QA (must check before other intents) ──
     if any(p in low for p in ['pdf', 'document', 'upload', 'is file', 'ye file', 'is pdf', 'uploaded']):
@@ -174,6 +220,7 @@ def classify_intent(message: str) -> dict:
         'kitni school', 'schools count', 'all schools', 'saare school'
     ]):
         return _result(Intent.PLATFORM_SCHOOLS_COUNT, {}, 0.95, norm)
+
 
     if any(p in low for p in [
         'paid plan', 'paid subscription', 'paid school', 'paid service',

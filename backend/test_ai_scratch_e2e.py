@@ -76,6 +76,9 @@ with app.app_context():
         ("Show school transport summary", Intent.TRANSPORT_SUMMARY),
         ("What is the current hostel occupancy?", Intent.HOSTEL_SUMMARY),
         ("How many library books are currently issued?", Intent.LIBRARY_SUMMARY),
+        ("Mudassir ka fees kitna pay h kitna bacha hua h", Intent.STUDENT_FEE_STATUS),
+        ("abhi tk kitni expenses hui h", Intent.EXPENSE_SUMMARY),
+        ("sana ki salary btana", Intent.STAFF_SALARY_STATUS),
     ]
 
     for q, expected_intent in queries:
@@ -83,6 +86,7 @@ with app.app_context():
         matched = res['intent'] == expected_intent
         status = "✓ PASS" if matched else f"✗ FAIL (got {res['intent']})"
         print(f"  {status}: '{q}' -> {res['intent']}")
+
 
     # ── Test 4: Analytics DB Queries ──
     print("\n[TEST 4] Testing Deterministic Analytics Engines:")
