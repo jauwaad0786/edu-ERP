@@ -196,14 +196,19 @@ def create_vehicle():
     if exists:
         return bad_request('Vehicle number already exists')
 
+    raw_driver_id = data.get('driver_id')
+    raw_conductor_id = data.get('conductor_id')
+    driver_id = int(raw_driver_id) if raw_driver_id not in (None, '', 'null') else None
+    conductor_id = int(raw_conductor_id) if raw_conductor_id not in (None, '', 'null') else None
+
     v = Vehicle(
         school_id=school_id,
         vehicle_number=vehicle_number,
         vehicle_name=data.get('vehicle_name', ''),
         vehicle_type=data.get('vehicle_type', 'BUS'),
         capacity=data.get('capacity', 0),
-        driver_id=data.get('driver_id'),
-        conductor_id=data.get('conductor_id'),
+        driver_id=driver_id,
+        conductor_id=conductor_id,
         purchase_date=parse_date(data.get('purchase_date')),
         insurance_expiry=parse_date(data.get('insurance_expiry')),
         photo_url=data.get('photo_url', ''),
@@ -240,10 +245,16 @@ def update_vehicle(vehicle_id):
     if 'vehicle_type' in data and data['vehicle_type'] not in VEHICLE_TYPES:
         return bad_request(f'vehicle_type must be one of {VEHICLE_TYPES}')
 
-    for field in ['vehicle_name', 'vehicle_type', 'capacity', 'driver_id', 'conductor_id',
-                  'photo_url', 'notes', 'status']:
+    for field in ['vehicle_name', 'vehicle_type', 'capacity', 'photo_url', 'notes', 'status']:
         if field in data:
             setattr(v, field, data[field])
+
+    if 'driver_id' in data:
+        raw_driver_id = data.get('driver_id')
+        v.driver_id = int(raw_driver_id) if raw_driver_id not in (None, '', 'null') else None
+    if 'conductor_id' in data:
+        raw_conductor_id = data.get('conductor_id')
+        v.conductor_id = int(raw_conductor_id) if raw_conductor_id not in (None, '', 'null') else None
 
     if 'purchase_date' in data:
         v.purchase_date = parse_date(data['purchase_date'])

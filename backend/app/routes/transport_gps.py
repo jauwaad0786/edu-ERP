@@ -65,13 +65,28 @@ def _current_driver():
                 except Exception:
                     db.session.rollback()
 
-        # 4. If logged in user has DRIVER role but no driver row exists in school, auto-create/link
-        if not driver and getattr(user.role, 'value', str(user.role)) == 'DRIVER' and user.school_id:
+        # 4. If logged in user is testing as Admin / Principal / Transport / Super Admin:
+        # Look for the driver assigned to an active vehicle in that school!
+        if not driver and user.school_id:
+            assigned_vehicle = Vehicle.query.filter(Vehicle.school_id == user.school_id, Vehicle.driver_id.isnot(None)).first()
+            if assigned_vehicle and assigned_vehicle.driver_id:
+                driver = Driver.query.get(assigned_vehicle.driver_id)
+
+        # 5. Any driver in school
+        if not driver and user.school_id:
+            driver = Driver.query.filter_by(school_id=user.school_id).first()
+
+        # 6. Global fallback
+        if not driver:
+            driver = Driver.query.first()
+
+        # 7. If still no driver exists in DB, create one on the fly for this school
+        if not driver:
             try:
                 driver = Driver(
-                    school_id=user.school_id,
+                    school_id=user.school_id or 1,
                     user_id=user.id,
-                    name=user.name or 'School Driver',
+                    name=user.name or 'Main Bus Driver',
                     mobile_number=user.phone or '9999999999',
                     status='ACTIVE'
                 )
@@ -80,12 +95,6 @@ def _current_driver():
             except Exception:
                 db.session.rollback()
 
-        # 5. Fallback for testing by Admin/Principal
-        if not driver and user.school_id:
-            driver = Driver.query.filter_by(school_id=user.school_id).first()
-        if not driver:
-            driver = Driver.query.first()
-
         return driver
     except Exception:
         db.session.rollback()
@@ -93,19 +102,53 @@ def _current_driver():
 
 
 def _driver_vehicle(driver):
-    if not driver:
-        return None
-    v = Vehicle.query.filter_by(driver_id=driver.id, school_id=driver.school_id).first()
-    if not v and driver.user_id:
-        v = Vehicle.query.filter_by(driver_id=driver.user_id, school_id=driver.school_id).first()
-    if not v:
+    user = get_current_user()
+    sid = driver.school_id if driver else (user.school_id if user else None)
+
+    # 1. Match by driver.id
+    if driver and driver.id:
         v = Vehicle.query.filter_by(driver_id=driver.id).first()
-    if not v and driver.school_id:
-        v = Vehicle.query.filter_by(school_id=driver.school_id, status='ACTIVE').first()
-    if not v and driver.school_id:
-        v = Vehicle.query.filter_by(school_id=driver.school_id).first()
-    if not v:
-        v = Vehicle.query.first()
+        if v:
+            return v
+
+    # 2. Match by driver.user_id
+    if driver and driver.user_id:
+        v = Vehicle.query.filter_by(driver_id=driver.user_id).first()
+        if v:
+            return v
+
+    # 3. If current user is a Driver (or linked to driver), check if user.id or user.phone matched any driver record on a vehicle
+    if user:
+        alt_drivers = Driver.query.filter(
+            (Driver.user_id == user.id) |
+            (Driver.mobile_number == user.phone) |
+            (Driver.name.ilike(user.name))
+        ).all()
+        for d in alt_drivers:
+            v = Vehicle.query.filter_by(driver_id=d.id).first()
+            if v:
+                return v
+
+    # 4. If current user is testing (e.g. Principal/Admin/Transport), check if any vehicle with assigned driver exists in school
+    if sid:
+        v = Vehicle.query.filter(Vehicle.school_id == sid, Vehicle.driver_id.isnot(None)).first()
+        if v:
+            return v
+
+    # 5. First active vehicle in school
+    if sid:
+        v = Vehicle.query.filter_by(school_id=sid, status='ACTIVE').first()
+        if v:
+            return v
+
+    # 6. Any vehicle in school
+    if sid:
+        v = Vehicle.query.filter_by(school_id=sid).first()
+        if v:
+            return v
+
+    # 7. Global fallback: first active or any vehicle
+    v = Vehicle.query.filter_by(status='ACTIVE').first() or Vehicle.query.first()
     return v
 
 
@@ -174,7 +217,11 @@ def driver_today():
         if not route and getattr(vehicle, 'route_id', None):
             route = Route.query.get(vehicle.route_id)
         if not route and vehicle.school_id:
+            route = Route.query.filter_by(school_id=vehicle.school_id, status='ACTIVE').first()
+        if not route and vehicle.school_id:
             route = Route.query.filter_by(school_id=vehicle.school_id).first()
+        if not route:
+            route = Route.query.first()
 
         students_count = StudentTransport.query.filter_by(
             vehicle_id=vehicle.id, status='ACTIVE'
@@ -228,6 +275,24 @@ def driver_today():
                     'estimated_time': rs.estimated_time or '',
                     'students_count': len(assigned_students),
                     'students':       assigned_students,
+                })
+
+        # If still no stops data, fallback to master stops in school
+        if not stops_data and vehicle.school_id:
+            master_stops = Stop.query.filter_by(school_id=vehicle.school_id, status='ACTIVE').all()
+            if not master_stops:
+                master_stops = Stop.query.filter_by(school_id=vehicle.school_id).all()
+            for idx, stop in enumerate(master_stops, start=1):
+                stops_data.append({
+                    'stop_id':        stop.id,
+                    'stop_name':      stop.name,
+                    'sequence':       idx,
+                    'latitude':       stop.latitude,
+                    'longitude':      stop.longitude,
+                    'radius':         stop.radius or 200,
+                    'estimated_time': f'+{idx * 5} min',
+                    'students_count': 0,
+                    'students':       [],
                 })
 
         current_trip_dict = None
