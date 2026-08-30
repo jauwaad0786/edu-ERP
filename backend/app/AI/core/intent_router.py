@@ -326,14 +326,31 @@ def classify_intent(message: str) -> dict:
                               'kitne fail', 'pass fail', 'result aaya', 'exam kaisa raha']):
         return _result(Intent.EXAM_RESULTS, {'class': class_filter}, 0.88, norm)
 
+    # ── TEACHER COUNT ──
+    if any(p in low for p in [
+        'how many teacher', 'how many teachers', 'total teacher', 'total teachers',
+        'teacher count', 'teachers in my school', 'teachers in school', 'kitne teacher', 'kitne teachers'
+    ]):
+        return _result(Intent.TEACHER_COUNT, {}, 0.95, norm)
+
+    # ── STUDENT COUNT ──
+    if any(p in low for p in [
+        'how many student', 'how many students', 'total student', 'total students',
+        'student count', 'students in my school', 'students in school', 'kitne student', 'kitne students'
+    ]):
+        return _result(Intent.STUDENT_COUNT, {}, 0.95, norm)
+
     # ── TRANSPORT ──
-    if any(p in low for p in ['transport', 'bus', 'vehicle', 'kitne student bus', 'bus me kitne',
-                              'transport student', 'driver', 'route', 'transport summary']):
+    if any(p in low for p in [
+        'transport', 'bus', 'vehicle', 'kitne student bus', 'bus me kitne',
+        'transport student', 'driver', 'route', 'transport summary'
+    ]):
         return _result(Intent.TRANSPORT_SUMMARY, {}, 0.92, norm)
 
-    # ── HOSTEL ──
-    if any(p in low for p in ['hostel', 'hostel me kitne', 'hostel student', 'boarding', 'hostel occupancy',
-                              'hostel bed', 'warden', 'hostel summary']):
+    # ── HOSTEL (Check visitors first) ──
+    if any(p in low for p in ['hostel', 'boarding']):
+        if any(p in low for p in ['visitor', 'mehman', 'aaya', 'aaye']):
+            return _result(Intent.HOSTEL_SUMMARY, {'check_visitors': True}, 0.92, norm)
         return _result(Intent.HOSTEL_SUMMARY, {}, 0.92, norm)
 
     # ── LIBRARY ──
@@ -342,10 +359,13 @@ def classify_intent(message: str) -> dict:
         return _result(Intent.LIBRARY_SUMMARY, {}, 0.92, norm)
 
     # ── SCHOOL OVERVIEW ──
-    if any(p in low for p in ['school me kitne', 'total student', 'school overview', 'school summary',
-                              'overall', 'school stats', 'school ka overview', 'how many student',
-                              'student count', 'kitne student hain']):
-        return _result(Intent.SCHOOL_SUMMARY, {}, 0.85, norm)
+    if any(p in low for p in [
+        'school me kitne', 'school overview', 'school summary', 'overall', 'school stats',
+        'school ka overview', 'total strength', 'school details'
+    ]):
+        return _result(Intent.SCHOOL_SUMMARY, {}, 0.9, norm)
+
+
 
     # ── No confident match → fallback to GENERAL (LLM will handle) ──
     return _result(Intent.GENERAL, {'month': month, 'year': year, 'class': class_filter}, 0.0, norm)

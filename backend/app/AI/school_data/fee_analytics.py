@@ -135,6 +135,61 @@ def get_monthly_fee_trend(school_id: int, months: int = 6) -> list:
     return result
 
 
+def get_fee_month_comparison(school_id: int, month: int = None, year: int = None) -> dict:
+    """Directly compare this month fee collection against previous month."""
+    from app.models.financial import FeeRecord
+
+    today = date.today()
+    if not year:  year  = today.year
+    if not month: month = today.month
+
+    cur_str = f"{year}-{month:02d}"
+
+    # Calculate previous month
+    last_m = month - 1
+    last_y = year
+    if last_m < 1:
+        last_m = 12
+        last_y -= 1
+    last_str = f"{last_y}-{last_m:02d}"
+
+    cur_paid = db.session.query(func.sum(FeeRecord.amount_paid)).filter(
+        FeeRecord.school_id == school_id,
+        FeeRecord.month == cur_str,
+    ).scalar() or 0.0
+
+    cur_due = db.session.query(func.sum(FeeRecord.amount_due)).filter(
+        FeeRecord.school_id == school_id,
+        FeeRecord.month == cur_str,
+    ).scalar() or 0.0
+
+    last_paid = db.session.query(func.sum(FeeRecord.amount_paid)).filter(
+        FeeRecord.school_id == school_id,
+        FeeRecord.month == last_str,
+    ).scalar() or 0.0
+
+    last_due = db.session.query(func.sum(FeeRecord.amount_due)).filter(
+        FeeRecord.school_id == school_id,
+        FeeRecord.month == last_str,
+    ).scalar() or 0.0
+
+    diff = float(cur_paid) - float(last_paid)
+    pct = round((diff / float(last_paid)) * 100, 1) if float(last_paid) > 0 else 0.0
+
+    return {
+        'current_month':           cur_str,
+        'current_month_collected': round(float(cur_paid), 2),
+        'current_month_due':       round(float(cur_due), 2),
+        'last_month':              last_str,
+        'last_month_collected':    round(float(last_paid), 2),
+        'last_month_due':          round(float(last_due), 2),
+        'difference':              round(diff, 2),
+        'percentage_change':       pct,
+        'trend':                   'Increased' if diff > 0 else ('Decreased' if diff < 0 else 'Same'),
+    }
+
+
+
 def get_pending_fee_students(school_id: int, month: int = None, year: int = None,
                               limit: int = 20) -> list:
     """Students with pending/partial fees — returns compact list for LLM."""

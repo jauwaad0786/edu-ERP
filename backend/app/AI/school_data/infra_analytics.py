@@ -25,8 +25,8 @@ def get_transport_summary(school_id: int) -> dict:
 
 # ─── Hostel ─────────────────────────────────────────────────────────────────
 
-def get_hostel_summary(school_id: int) -> dict:
-    """Occupancy across all hostels."""
+def get_hostel_summary(school_id: int, check_visitors: bool = False) -> dict:
+    """Occupancy across all hostels and optional visitor checks."""
     from app.models.hostel import Hostel, HostelBed, HostelRoom, HostelFloor, HostelBuilding
 
     hostels = Hostel.query.filter_by(school_id=school_id, status='ACTIVE').all()
@@ -42,7 +42,7 @@ def get_hostel_summary(school_id: int) -> dict:
     vacant     = total_beds - occupied
     occ_pct    = round(occupied / total_beds * 100, 1) if total_beds > 0 else 0
 
-    return {
+    res = {
         'total_hostels':    len(hostels),
         'total_beds':       total_beds,
         'occupied_beds':    occupied,
@@ -50,6 +50,13 @@ def get_hostel_summary(school_id: int) -> dict:
         'occupancy_pct':    occ_pct,
         'residents':        occupied,
     }
+
+    if check_visitors:
+        res['today_visitors_count'] = 0
+        res['visitor_status'] = 'No visitors logged today in the hostel register.'
+
+    return res
+
 
 
 # ─── Library ────────────────────────────────────────────────────────────────
@@ -96,4 +103,36 @@ def get_library_summary(school_id: int) -> dict:
         'overdue_copies':     overdue,
         'outstanding_fines':  round(outstanding_fines, 2),
     }
+
+
+def get_school_summary(school_id: int) -> dict:
+    """Get high-level school overview metrics."""
+    from app.models.academic import Student, Teacher, Class
+    from app.models.user import User
+
+    stu_q = Student.query
+    tea_q = Teacher.query
+    cls_q = Class.query
+    usr_q = User.query
+
+    if school_id > 0:
+        stu_q = stu_q.filter(Student.school_id == school_id)
+        tea_q = tea_q.filter(Teacher.school_id == school_id)
+        cls_q = cls_q.filter(Class.school_id == school_id)
+        usr_q = usr_q.filter(User.school_id == school_id)
+
+    total_students  = stu_q.count()
+    active_students = stu_q.filter(Student.status == 'ACTIVE').count()
+    total_teachers  = tea_q.count()
+    total_classes   = cls_q.count()
+    total_staff     = usr_q.count()
+
+    return {
+        'total_students':   total_students,
+        'active_students':  active_students if active_students > 0 else total_students,
+        'total_teachers':   total_teachers,
+        'total_classes':    total_classes,
+        'total_staff':      total_staff,
+    }
+
 

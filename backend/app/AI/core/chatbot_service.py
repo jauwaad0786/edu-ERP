@@ -69,8 +69,13 @@ def _get_analytics_data(intent: str, params: dict, school_id: int,
             return {'outstanding': get_fee_outstanding_summary(school_id)}
 
         elif intent == Intent.FEE_COMPARISON:
-            from app.AI.school_data.fee_analytics import get_monthly_fee_trend
-            return {'trend': get_monthly_fee_trend(school_id, months=6)}
+            from app.AI.school_data.fee_analytics import get_fee_month_comparison
+            return {'month_comparison': get_fee_month_comparison(school_id, month, year)}
+
+        elif intent in (Intent.SCHOOL_SUMMARY, Intent.STUDENT_COUNT, Intent.TEACHER_COUNT):
+            from app.AI.school_data.infra_analytics import get_school_summary
+            return {'school_overview': get_school_summary(school_id)}
+
 
         elif intent == Intent.FEE_PENDING_STUDENTS:
             from app.AI.school_data.fee_analytics import get_pending_fee_students
@@ -122,7 +127,8 @@ def _get_analytics_data(intent: str, params: dict, school_id: int,
 
         elif intent == Intent.HOSTEL_SUMMARY:
             from app.AI.school_data.infra_analytics import get_hostel_summary
-            return {'hostel': get_hostel_summary(school_id)}
+            return {'hostel': get_hostel_summary(school_id, params.get('check_visitors', False))}
+
 
         elif intent == Intent.LIBRARY_SUMMARY:
             from app.AI.school_data.infra_analytics import get_library_summary
@@ -167,14 +173,10 @@ def _get_analytics_data(intent: str, params: dict, school_id: int,
     return {}
 
 
-
 def _build_context_message(intent: str, analytics_data: dict,
                             message: str, role: str) -> str:
     """
-    Build compact LLM user message:
-    [ERP Data] + [User Question]
-    Only sends compact structured data — NOT raw DB records.
-    Minimizes external data exposure (GDPR/privacy compliance).
+    Build compact LLM user message with authoritative data.
     """
     if not analytics_data or analytics_data.get('data_unavailable'):
         return f"""User Question: {message}
@@ -182,28 +184,28 @@ def _build_context_message(intent: str, analytics_data: dict,
 ERP Data: No records found for this query in the ERP system.
 
 Instructions:
-- If the question is in English, reply in English: "No records found in the ERP system for this query."
-- If the question is in Hinglish, reply in Hinglish: "ERP me is query ka koi record available nahi hai."
-- If the question is in Hindi, reply in Hindi.
-- Do NOT invent or estimate any numbers."""
+- Give a single direct sentence saying no records were found in the ERP system.
+- Do NOT output language headings (e.g. Do NOT write 'Hindi Response:' or 'English Response:').
+- If question was in English -> reply in English. If in Hinglish -> reply in Hinglish."""
 
     # Compact JSON representation — no PII beyond what's needed
     data_str = json.dumps(analytics_data, indent=2, ensure_ascii=False, default=str)
 
-    return f"""ERP Analytics Data (authoritative — use ONLY these numbers):
+    return f"""ERP Analytics Data (authoritative numbers — use ONLY these facts):
 {data_str}
 
 User Question: {message}
 
-Instructions:
-1. LANGUAGE RULE (STRICT):
-   - If User Question is in English -> Respond ONLY in fluent, professional English. (DO NOT translate to Hindi).
-   - If User Question is in Hinglish (e.g. "Kitni fees baki hai?", "Transport me kitne students hain?") -> Respond in natural, clean Hinglish.
-   - If User Question is in Hindi (Devanagari script) -> Respond in polite Hindi.
-2. Structure your response with clean bullet points or a concise summary.
-3. Use ₹ for all currency.
-4. Do NOT invent any numbers not present in the ERP data above.
-5. Keep the response under 150 words and do not repeat sentences."""
+CRITICAL RULES:
+1. OUTPUT FORMAT: Output EXACTLY ONE single direct response. NEVER output section headers like "Hindi Response:" or "English Response:".
+2. LANGUAGE:
+   - If User Question is in English -> Respond ONLY in natural, professional English.
+   - If User Question is in Hinglish -> Respond in natural, clean Hinglish.
+   - If User Question is in Hindi -> Respond in polite Hindi.
+3. State facts and numbers clearly using ₹ for currency.
+4. If a value in data is 0 or empty, report it accurately (e.g. "Total expenses recorded: ₹0").
+5. Do NOT make up, imagine, or hallucinate numbers not present in the ERP JSON above."""
+
 
 
 
