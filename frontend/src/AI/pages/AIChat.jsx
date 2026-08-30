@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import Sidebar from '../../components/Sidebar';
+import Navbar  from '../../components/Navbar';
 import { useAuth } from '../../context/AuthContext';
 import {
   sendMessage, getUsage, getConversations, getConversation,
@@ -39,10 +41,8 @@ const SOURCE_LABELS = {
   GENERAL: { label: 'AI', cls: 'erp' },
 };
 
-import Sidebar from '../../components/Sidebar';
-import Navbar  from '../../components/Navbar';
-
 export default function AIChat() {
+
   const { user } = useAuth();
   const role = user?.role || '';
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
