@@ -48,6 +48,16 @@ export default function DriverMobileApp() {
         setTrip(activeTrip);
         if (activeTrip) {
           loadTripStops(activeTrip.id);
+        } else if (data?.stops && data.stops.length > 0) {
+          setStops(data.stops);
+          setSelectedStopId(data.stops[0].stop_id);
+          const evMap = {};
+          data.stops.forEach(s => {
+            (s.students || []).forEach(st => {
+              if (st.event_status) evMap[st.student_id] = st.event_status;
+            });
+          });
+          setStudentEvents(evMap);
         }
       })
       .catch(() => toast.error('Data load nahi hua — dobara try karo'))
@@ -343,7 +353,46 @@ export default function DriverMobileApp() {
   const nextStop = currentStopIndexInList >= 0 && currentStopIndexInList < stops.length - 1 ? stops[currentStopIndexInList + 1] : null;
 
   // Flatten all students across all stops
-  const allStudents = stops.flatMap(s => (s.students || []).map(st => ({ ...st, stop_name: s.stop_name })));
+  const allStudents = stops.flatMap(s => (s.students || []).map(st => ({ ...st, stop_name: s.stop_name, assigned_stop_id: s.stop_id })));
+
+  // Live Onboard & Drop Off Passenger Manifest counts
+  const pickedUpList = allStudents.filter(st => (studentEvents[st.student_id] || st.event_status) === 'PICKED_UP');
+  const droppedOffList = allStudents.filter(st => (studentEvents[st.student_id] || st.event_status) === 'DROPPED_OFF');
+  const absentList = allStudents.filter(st => (studentEvents[st.student_id] || st.event_status) === 'ABSENT');
+  const pendingList = allStudents.filter(st => {
+    const s = studentEvents[st.student_id] || st.event_status;
+    return !s || (s !== 'PICKED_UP' && s !== 'DROPPED_OFF' && s !== 'ABSENT');
+  });
+
+  const pickedUpCount = pickedUpList.length;
+  const droppedOffCount = droppedOffList.length;
+  const absentCount = absentList.length;
+  const pendingCount = pendingList.length;
+
+  // Filter students based on active tab and search query
+  const [manifestFilter, setManifestFilter] = useState('CURRENT_STOP'); // 'CURRENT_STOP' | 'ONBOARD' | 'DROPPED' | 'ALL'
+  const [searchQuery, setSearchQuery] = useState('');
+
+  let displayedStudents = [];
+  if (manifestFilter === 'CURRENT_STOP') {
+    displayedStudents = currentStop?.students || [];
+  } else if (manifestFilter === 'ONBOARD') {
+    displayedStudents = pickedUpList;
+  } else if (manifestFilter === 'DROPPED') {
+    displayedStudents = droppedOffList;
+  } else {
+    displayedStudents = allStudents;
+  }
+
+  if (searchQuery.trim()) {
+    const q = searchQuery.toLowerCase().trim();
+    displayedStudents = displayedStudents.filter(st =>
+      (st.student_name || '').toLowerCase().includes(q) ||
+      (st.admission_no || '').toLowerCase().includes(q) ||
+      (st.class_name || '').toLowerCase().includes(q) ||
+      (st.stop_name || '').toLowerCase().includes(q)
+    );
+  }
 
   return (
     <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
@@ -664,193 +713,384 @@ export default function DriverMobileApp() {
                 )}
               </div>
 
-              {/* ══ Live Stops & Student Pickup/Drop Roster ══ */}
-              {tripActive && stops.length > 0 && (
-                <div style={{
-                  background: darkMode ? '#111827' : '#ffffff',
-                  borderRadius: '24px', padding: '24px',
-                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
-                  boxShadow: '0 8px 30px rgba(0,0,0,0.06)', marginBottom: '24px'
-                }}>
-                  {/* Stop Navigation Header & Manual Selector */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '18px' }}>
-                    <div>
-                      <div style={{ fontSize: '12px', fontWeight: 800, color: '#6366f1', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-                        📍 CURRENT STOP & PASSENGER ACTIONS
-                      </div>
-                      <div style={{ fontSize: '24px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a', marginTop: '2px' }}>
-                        {currentStop ? currentStop.stop_name : 'Selecting Stop...'}
-                        <span style={{ fontSize: '14px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', marginLeft: '10px' }}>
-                          (Stop {currentStopIndexInList + 1} of {stops.length})
-                        </span>
-                      </div>
-                    </div>
+              {/* ══ Live Passenger Manifest & Onboard / Dropoff Status Strip ══ */}
+              <div style={{
+                display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', marginBottom: '20px'
+              }}>
+                {/* 1. Onboard / Bus Mein Hain */}
+                <div
+                  onClick={() => setManifestFilter('ONBOARD')}
+                  style={{
+                    background: darkMode ? '#064e3b30' : '#ecfdf5',
+                    border: `2px solid ${manifestFilter === 'ONBOARD' ? '#10b981' : (darkMode ? '#064e3b60' : '#a7f3d0')}`,
+                    borderRadius: '16px', padding: '14px 12px', textAlign: 'center', cursor: 'pointer',
+                    boxShadow: manifestFilter === 'ONBOARD' ? '0 4px 16px rgba(16,185,129,0.3)' : 'none',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#10b981', letterSpacing: '0.04em' }}>
+                    🟢 BUS MEIN HAIN
+                  </div>
+                  <div style={{ fontSize: '26px', fontWeight: 900, color: '#10b981', marginTop: '2px' }}>
+                    {pickedUpCount}
+                  </div>
+                  <div style={{ fontSize: '10.5px', color: darkMode ? '#94a3b8' : '#059669', fontWeight: 600 }}>
+                    Picked Up (Onboard)
+                  </div>
+                </div>
 
-                    {/* Manual Stop Selector Override */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '13px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b' }}>
-                        Change Stop:
-                      </span>
-                      <select
-                        value={selectedStopId || ''}
-                        onChange={e => {
-                          setSelectedStopId(parseInt(e.target.value, 10));
-                          setManualStopOverride(true);
-                        }}
-                        style={{
-                          padding: '8px 12px', borderRadius: '12px', fontSize: '14px', fontWeight: 700,
-                          background: darkMode ? '#1e293b' : '#f8fafc',
-                          color: darkMode ? '#ffffff' : '#0f172a',
-                          border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`, outline: 'none'
-                        }}
-                      >
-                        {stops.map(s => (
-                          <option key={s.stop_id} value={s.stop_id}>
-                            #{s.sequence} {s.stop_name} ({s.students_count || 0} students)
-                          </option>
-                        ))}
-                      </select>
-                      {manualStopOverride && (
-                        <button
-                          onClick={() => { setManualStopOverride(false); toast.success('Auto GPS stop detection active'); }}
+                {/* 2. Dropped Off / Utar Gaye */}
+                <div
+                  onClick={() => setManifestFilter('DROPPED')}
+                  style={{
+                    background: darkMode ? '#1e3a8a30' : '#eff6ff',
+                    border: `2px solid ${manifestFilter === 'DROPPED' ? '#3b82f6' : (darkMode ? '#1e3a8a60' : '#bfdbfe')}`,
+                    borderRadius: '16px', padding: '14px 12px', textAlign: 'center', cursor: 'pointer',
+                    boxShadow: manifestFilter === 'DROPPED' ? '0 4px 16px rgba(59,130,246,0.3)' : 'none',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#3b82f6', letterSpacing: '0.04em' }}>
+                    🔵 DROP HO GAYE
+                  </div>
+                  <div style={{ fontSize: '26px', fontWeight: 900, color: '#3b82f6', marginTop: '2px' }}>
+                    {droppedOffCount}
+                  </div>
+                  <div style={{ fontSize: '10.5px', color: darkMode ? '#94a3b8' : '#2563eb', fontWeight: 600 }}>
+                    Dropped Off (Safe)
+                  </div>
+                </div>
+
+                {/* 3. Absent / Nahi Aaye */}
+                <div
+                  onClick={() => setManifestFilter('ALL')}
+                  style={{
+                    background: darkMode ? '#7f1d1d30' : '#fef2f2',
+                    border: `2px solid ${darkMode ? '#7f1d1d60' : '#fecaca'}`,
+                    borderRadius: '16px', padding: '14px 12px', textAlign: 'center', cursor: 'pointer',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#ef4444', letterSpacing: '0.04em' }}>
+                    🔴 ABSENT
+                  </div>
+                  <div style={{ fontSize: '26px', fontWeight: 900, color: '#ef4444', marginTop: '2px' }}>
+                    {absentCount}
+                  </div>
+                  <div style={{ fontSize: '10.5px', color: darkMode ? '#94a3b8' : '#dc2626', fontWeight: 600 }}>
+                    Ghar Pe Hain
+                  </div>
+                </div>
+
+                {/* 4. Pending / Baki Hain */}
+                <div
+                  onClick={() => setManifestFilter('ALL')}
+                  style={{
+                    background: darkMode ? '#78350f30' : '#fffbeb',
+                    border: `2px solid ${darkMode ? '#78350f60' : '#fde68a'}`,
+                    borderRadius: '16px', padding: '14px 12px', textAlign: 'center', cursor: 'pointer',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#f59e0b', letterSpacing: '0.04em' }}>
+                    ⏳ BAKI HAIN
+                  </div>
+                  <div style={{ fontSize: '26px', fontWeight: 900, color: '#f59e0b', marginTop: '2px' }}>
+                    {pendingCount}
+                  </div>
+                  <div style={{ fontSize: '10.5px', color: darkMode ? '#94a3b8' : '#d97706', fontWeight: 600 }}>
+                    Pending Pickup/Drop
+                  </div>
+                </div>
+              </div>
+
+              {/* ══ Live Stops & Student Pickup/Drop Roster ══ */}
+              <div style={{
+                background: darkMode ? '#111827' : '#ffffff',
+                borderRadius: '24px', padding: '24px',
+                border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+                boxShadow: '0 8px 30px rgba(0,0,0,0.06)', marginBottom: '24px'
+              }}>
+                {tripActive && stops.length > 0 && (
+                  <>
+                    {/* Stop Navigation Header & Manual Selector */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '18px' }}>
+                      <div>
+                        <div style={{ fontSize: '12px', fontWeight: 800, color: '#6366f1', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                          📍 ACTIVE STOP SELECTION
+                        </div>
+                        <div style={{ fontSize: '24px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a', marginTop: '2px' }}>
+                          {currentStop ? currentStop.stop_name : 'Selecting Stop...'}
+                          <span style={{ fontSize: '14px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', marginLeft: '10px' }}>
+                            (Stop {currentStopIndexInList + 1} of {stops.length})
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Manual Stop Selector Override */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b' }}>
+                          Change Stop:
+                        </span>
+                        <select
+                          value={selectedStopId || ''}
+                          onChange={e => {
+                            setSelectedStopId(parseInt(e.target.value, 10));
+                            setManualStopOverride(true);
+                            setManifestFilter('CURRENT_STOP');
+                          }}
                           style={{
-                            padding: '8px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: 800,
-                            background: '#6366f1', color: '#ffffff', border: 'none', cursor: 'pointer'
+                            padding: '8px 12px', borderRadius: '12px', fontSize: '14px', fontWeight: 700,
+                            background: darkMode ? '#1e293b' : '#f8fafc',
+                            color: darkMode ? '#ffffff' : '#0f172a',
+                            border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`, outline: 'none'
                           }}
                         >
-                          Auto-Detect
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Next Stop Indicator */}
-                  {nextStop && (
-                    <div style={{
-                      background: darkMode ? 'rgba(99,102,241,0.1)' : '#eef2ff',
-                      border: `1px dashed ${darkMode ? 'rgba(99,102,241,0.3)' : '#c7d2fe'}`,
-                      borderRadius: '14px', padding: '12px 16px', marginBottom: '18px',
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-                    }}>
-                      <div style={{ fontSize: '13.5px', fontWeight: 700, color: '#6366f1' }}>
-                        ⏩ NEXT STOP: <strong>{nextStop.stop_name}</strong> {nextStop.estimated_time ? `(~${nextStop.estimated_time})` : ''}
-                      </div>
-                      <span style={{ fontSize: '12px', fontWeight: 800, color: '#4f46e5' }}>
-                        {nextStop.students_count || 0} Passengers waiting
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Student Passenger Cards for Current Stop */}
-                  {(!currentStop?.students || currentStop.students.length === 0) ? (
-                    <div style={{ textAlign: 'center', padding: '30px 20px', color: darkMode ? '#94a3b8' : '#64748b' }}>
-                      <div style={{ fontSize: '36px', marginBottom: '8px' }}>🚏</div>
-                      <div style={{ fontSize: '16px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
-                        Is Stop Pe Koi Student Assigned Nahi Hai
-                      </div>
-                      <p style={{ fontSize: '13px', margin: '4px 0 0' }}>
-                        No passengers scheduled for {currentStop?.stop_name}. You may proceed to next stop.
-                      </p>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      {currentStop.students.map(st => {
-                        const status = studentEvents[st.student_id] || st.event_status;
-                        return (
-                          <div
-                            key={st.student_id}
+                          {stops.map(s => (
+                            <option key={s.stop_id} value={s.stop_id}>
+                              #{s.sequence} {s.stop_name} ({s.students_count || 0} students)
+                            </option>
+                          ))}
+                        </select>
+                        {manualStopOverride && (
+                          <button
+                            onClick={() => { setManualStopOverride(false); toast.success('Auto GPS stop detection active'); }}
                             style={{
-                              background: darkMode ? '#1e293b' : '#f8fafc',
-                              border: `1.5px solid ${
-                                status === 'PICKED_UP' ? '#10b981' :
-                                status === 'DROPPED_OFF' ? '#3b82f6' :
-                                status === 'ABSENT' ? '#ef4444' :
-                                (darkMode ? 'rgba(255,255,255,0.06)' : '#e2e8f0')
-                              }`,
-                              borderRadius: '18px', padding: '16px 20px',
-                              display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px',
-                              boxShadow: '0 4px 12px rgba(0,0,0,0.03)'
+                              padding: '8px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: 800,
+                              background: '#6366f1', color: '#ffffff', border: 'none', cursor: 'pointer'
                             }}
                           >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                              <div style={{
-                                width: '48px', height: '48px', borderRadius: '50%',
-                                background: status === 'PICKED_UP' ? '#10b98120' : status === 'DROPPED_OFF' ? '#3b82f620' : '#6366f120',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontSize: '20px', fontWeight: 900, color: '#6366f1'
-                              }}>
-                                {st.photo_url ? (
-                                  <img src={st.photo_url} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
-                                ) : (
-                                  st.student_name ? st.student_name[0].toUpperCase() : 'S'
-                                )}
-                              </div>
-                              <div>
-                                <div style={{ fontSize: '18px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a' }}>
-                                  {st.student_name}
-                                </div>
-                                <div style={{ fontSize: '13px', color: darkMode ? '#94a3b8' : '#64748b', fontWeight: 600 }}>
-                                  Adm: {st.admission_no || '--'} • {st.class_name || 'Class N/A'}
-                                </div>
-                                {st.father_mobile && (
-                                  <div style={{ fontSize: '12px', color: '#10b981', fontWeight: 700, marginTop: '2px' }}>
-                                    📞 {st.father_mobile}
-                                  </div>
-                                )}
-                              </div>
+                            Auto-Detect
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Next Stop Indicator */}
+                    {nextStop && (
+                      <div style={{
+                        background: darkMode ? 'rgba(99,102,241,0.1)' : '#eef2ff',
+                        border: `1px dashed ${darkMode ? 'rgba(99,102,241,0.3)' : '#c7d2fe'}`,
+                        borderRadius: '14px', padding: '12px 16px', marginBottom: '18px',
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                      }}>
+                        <div style={{ fontSize: '13.5px', fontWeight: 700, color: '#6366f1' }}>
+                          ⏩ NEXT STOP: <strong>{nextStop.stop_name}</strong> {nextStop.estimated_time ? `(~${nextStop.estimated_time})` : ''}
+                        </div>
+                        <span style={{ fontSize: '12px', fontWeight: 800, color: '#4f46e5' }}>
+                          {nextStop.students_count || 0} Passengers waiting
+                        </span>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* ══ Passenger Manifest Filter Tabs & Search ══ */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {tripActive && (
+                      <button
+                        onClick={() => setManifestFilter('CURRENT_STOP')}
+                        style={{
+                          padding: '10px 16px', borderRadius: '12px', fontSize: '13px', fontWeight: 800, cursor: 'pointer', border: 'none',
+                          background: manifestFilter === 'CURRENT_STOP' ? '#6366f1' : (darkMode ? '#1e293b' : '#f1f5f9'),
+                          color: manifestFilter === 'CURRENT_STOP' ? '#ffffff' : (darkMode ? '#94a3b8' : '#475569')
+                        }}
+                      >
+                        📍 Is Stop Ke Bacche ({currentStop?.students?.length || 0})
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => setManifestFilter('ONBOARD')}
+                      style={{
+                        padding: '10px 16px', borderRadius: '12px', fontSize: '13px', fontWeight: 800, cursor: 'pointer', border: 'none',
+                        background: manifestFilter === 'ONBOARD' ? '#10b981' : (darkMode ? '#1e293b' : '#f1f5f9'),
+                        color: manifestFilter === 'ONBOARD' ? '#ffffff' : (darkMode ? '#94a3b8' : '#475569')
+                      }}
+                    >
+                      🟢 Bus Mein Kaun Hain ({pickedUpCount})
+                    </button>
+
+                    <button
+                      onClick={() => setManifestFilter('DROPPED')}
+                      style={{
+                        padding: '10px 16px', borderRadius: '12px', fontSize: '13px', fontWeight: 800, cursor: 'pointer', border: 'none',
+                        background: manifestFilter === 'DROPPED' ? '#3b82f6' : (darkMode ? '#1e293b' : '#f1f5f9'),
+                        color: manifestFilter === 'DROPPED' ? '#ffffff' : (darkMode ? '#94a3b8' : '#475569')
+                      }}
+                    >
+                      🔵 Drop Ho Gaye ({droppedOffCount})
+                    </button>
+
+                    <button
+                      onClick={() => setManifestFilter('ALL')}
+                      style={{
+                        padding: '10px 16px', borderRadius: '12px', fontSize: '13px', fontWeight: 800, cursor: 'pointer', border: 'none',
+                        background: manifestFilter === 'ALL' ? '#0f172a' : (darkMode ? '#1e293b' : '#f1f5f9'),
+                        color: manifestFilter === 'ALL' ? '#ffffff' : (darkMode ? '#94a3b8' : '#475569')
+                      }}
+                    >
+                      👥 Sabhi Passengers ({allStudents.length})
+                    </button>
+                  </div>
+
+                  {/* Quick Search */}
+                  <div style={{ position: 'relative', width: '220px' }}>
+                    <i className="ti ti-search" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                    <input
+                      type="text"
+                      placeholder="Search bacche ka naam..."
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      style={{
+                        width: '100%', padding: '9px 12px 9px 36px', borderRadius: '12px', fontSize: '13px',
+                        background: darkMode ? '#1e293b' : '#f8fafc', color: darkMode ? '#ffffff' : '#0f172a',
+                        border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`, outline: 'none'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* ══ Student Passenger Cards List ══ */}
+                {displayedStudents.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px 20px', color: darkMode ? '#94a3b8' : '#64748b' }}>
+                    <div style={{ fontSize: '36px', marginBottom: '8px' }}>
+                      {manifestFilter === 'ONBOARD' ? '🚍' : manifestFilter === 'DROPPED' ? '🏠' : '🚏'}
+                    </div>
+                    <div style={{ fontSize: '16px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                      {manifestFilter === 'ONBOARD'
+                        ? 'Abhi Bus Mein Koi Baccha Nahi Hai'
+                        : manifestFilter === 'DROPPED'
+                        ? 'Abhi Tak Koi Baccha Drop Nahi Hua Hai'
+                        : manifestFilter === 'CURRENT_STOP'
+                        ? 'Is Stop Pe Koi Baccha Assigned Nahi Hai'
+                        : 'Koi Record Nahi Mila'}
+                    </div>
+                    <p style={{ fontSize: '13px', margin: '4px 0 0' }}>
+                      {manifestFilter === 'ONBOARD'
+                        ? 'Bacchon ko board karne ke liye "🟢 Bus Mein Liya" button dabayein.'
+                        : 'Check other tabs or proceed with journey.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {displayedStudents.map(st => {
+                      const status = studentEvents[st.student_id] || st.event_status;
+                      const isOnboard = status === 'PICKED_UP';
+                      const isDropped = status === 'DROPPED_OFF';
+                      const isAbsent = status === 'ABSENT';
+
+                      return (
+                        <div
+                          key={st.student_id}
+                          style={{
+                            background: darkMode ? '#1e293b' : '#f8fafc',
+                            border: `2px solid ${
+                              isOnboard ? '#10b981' :
+                              isDropped ? '#3b82f6' :
+                              isAbsent ? '#ef4444' :
+                              (darkMode ? 'rgba(255,255,255,0.06)' : '#e2e8f0')
+                            }`,
+                            borderRadius: '18px', padding: '16px 20px',
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.03)'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                            <div style={{
+                              width: '48px', height: '48px', borderRadius: '50%',
+                              background: isOnboard ? '#10b98120' : isDropped ? '#3b82f620' : isAbsent ? '#ef444420' : '#6366f120',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: '20px', fontWeight: 900,
+                              color: isOnboard ? '#10b981' : isDropped ? '#3b82f6' : isAbsent ? '#ef4444' : '#6366f1'
+                            }}>
+                              {st.photo_url ? (
+                                <img src={st.photo_url} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                              ) : (
+                                st.student_name ? st.student_name[0].toUpperCase() : 'S'
+                              )}
                             </div>
-
-                            {/* One-Tap Tactile Action Buttons */}
-                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                              <button
-                                onClick={() => handleStudentEvent(st.student_id, 'PICKED_UP')}
-                                style={{
-                                  background: status === 'PICKED_UP' ? '#10b981' : (darkMode ? '#0f172a' : '#ffffff'),
-                                  color: status === 'PICKED_UP' ? '#ffffff' : '#10b981',
-                                  border: '2px solid #10b981', borderRadius: '14px',
-                                  padding: '12px 18px', fontSize: '15px', fontWeight: 900, cursor: 'pointer',
-                                  display: 'flex', alignItems: 'center', gap: '6px',
-                                  boxShadow: status === 'PICKED_UP' ? '0 4px 12px rgba(16,185,129,0.4)' : 'none'
-                                }}
-                              >
-                                <span>🟢 PICKED UP</span>
-                              </button>
-
-                              <button
-                                onClick={() => handleStudentEvent(st.student_id, 'DROPPED_OFF')}
-                                style={{
-                                  background: status === 'DROPPED_OFF' ? '#3b82f6' : (darkMode ? '#0f172a' : '#ffffff'),
-                                  color: status === 'DROPPED_OFF' ? '#ffffff' : '#3b82f6',
-                                  border: '2px solid #3b82f6', borderRadius: '14px',
-                                  padding: '12px 18px', fontSize: '15px', fontWeight: 900, cursor: 'pointer',
-                                  display: 'flex', alignItems: 'center', gap: '6px',
-                                  boxShadow: status === 'DROPPED_OFF' ? '0 4px 12px rgba(59,130,246,0.4)' : 'none'
-                                }}
-                              >
-                                <span>🔵 DROPPED OFF</span>
-                              </button>
-
-                              <button
-                                onClick={() => handleStudentEvent(st.student_id, 'ABSENT')}
-                                style={{
-                                  background: status === 'ABSENT' ? '#ef4444' : (darkMode ? '#0f172a' : '#ffffff'),
-                                  color: status === 'ABSENT' ? '#ffffff' : '#ef4444',
-                                  border: '2px solid #ef4444', borderRadius: '14px',
-                                  padding: '12px 14px', fontSize: '14px', fontWeight: 900, cursor: 'pointer',
-                                  display: 'flex', alignItems: 'center', gap: '4px',
-                                  boxShadow: status === 'ABSENT' ? '0 4px 12px rgba(239,68,68,0.4)' : 'none'
-                                }}
-                              >
-                                <span>🔴 ABSENT</span>
-                              </button>
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontSize: '18px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                                  {st.student_name}
+                                </span>
+                                <span style={{
+                                  padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 800,
+                                  background: isOnboard ? '#10b98120' : isDropped ? '#3b82f620' : isAbsent ? '#ef444420' : '#f1f5f9',
+                                  color: isOnboard ? '#10b981' : isDropped ? '#3b82f6' : isAbsent ? '#ef4444' : '#64748b'
+                                }}>
+                                  {isOnboard ? '🟢 Bus Mein Hai' : isDropped ? '🔵 Drop Ho Gaya' : isAbsent ? '🔴 Absent' : '⏳ Baki Hai'}
+                                </span>
+                              </div>
+                              <div style={{ fontSize: '13px', color: darkMode ? '#94a3b8' : '#64748b', fontWeight: 600 }}>
+                                Adm: {st.admission_no || '--'} • {st.class_name || 'Class N/A'} • 🚏 {st.stop_name || 'Assigned Stop'}
+                              </div>
+                              {st.father_mobile && (
+                                <a
+                                  href={`tel:${st.father_mobile}`}
+                                  style={{
+                                    fontSize: '12px', color: '#10b981', fontWeight: 700, marginTop: '3px',
+                                    display: 'inline-flex', alignItems: 'center', gap: '4px', textDecoration: 'none'
+                                  }}
+                                >
+                                  📞 Call Parent ({st.father_mobile})
+                                </a>
+                              )}
                             </div>
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
+
+                          {/* One-Tap Tactile Action Buttons */}
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            <button
+                              onClick={() => handleStudentEvent(st.student_id, 'PICKED_UP')}
+                              style={{
+                                background: isOnboard ? '#10b981' : (darkMode ? '#0f172a' : '#ffffff'),
+                                color: isOnboard ? '#ffffff' : '#10b981',
+                                border: '2px solid #10b981', borderRadius: '14px',
+                                padding: '12px 18px', fontSize: '15px', fontWeight: 900, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: '6px',
+                                boxShadow: isOnboard ? '0 4px 12px rgba(16,185,129,0.4)' : 'none'
+                              }}
+                            >
+                              <span>🟢 Bus Mein Liya</span>
+                            </button>
+
+                            <button
+                              onClick={() => handleStudentEvent(st.student_id, 'DROPPED_OFF')}
+                              style={{
+                                background: isDropped ? '#3b82f6' : (darkMode ? '#0f172a' : '#ffffff'),
+                                color: isDropped ? '#ffffff' : '#3b82f6',
+                                border: '2px solid #3b82f6', borderRadius: '14px',
+                                padding: '12px 18px', fontSize: '15px', fontWeight: 900, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: '6px',
+                                boxShadow: isDropped ? '0 4px 12px rgba(59,130,246,0.4)' : 'none'
+                              }}
+                            >
+                              <span>🔵 Drop Kiya</span>
+                            </button>
+
+                            <button
+                              onClick={() => handleStudentEvent(st.student_id, 'ABSENT')}
+                              style={{
+                                background: isAbsent ? '#ef4444' : (darkMode ? '#0f172a' : '#ffffff'),
+                                color: isAbsent ? '#ffffff' : '#ef4444',
+                                border: '2px solid #ef4444', borderRadius: '14px',
+                                padding: '12px 14px', fontSize: '14px', fontWeight: 900, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: '4px',
+                                boxShadow: isAbsent ? '0 4px 12px rgba(239,68,68,0.4)' : 'none'
+                              }}
+                            >
+                              <span>🔴 Absent</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
 
               {/* ══ Breakdown Modal ══ */}
               {showBreakdown && (
