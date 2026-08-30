@@ -166,8 +166,13 @@ def _build_context_message(intent: str, analytics_data: dict,
     if not analytics_data or analytics_data.get('data_unavailable'):
         return f"""User Question: {message}
 
-ERP Data: No data found for this query. Please state clearly that the data is not available.
-Do NOT invent or estimate any numbers."""
+ERP Data: No records found for this query in the ERP system.
+
+Instructions:
+- If the question is in English, reply in English: "No records found in the ERP system for this query."
+- If the question is in Hinglish, reply in Hinglish: "ERP me is query ka koi record available nahi hai."
+- If the question is in Hindi, reply in Hindi.
+- Do NOT invent or estimate any numbers."""
 
     # Compact JSON representation — no PII beyond what's needed
     data_str = json.dumps(analytics_data, indent=2, ensure_ascii=False, default=str)
@@ -178,13 +183,15 @@ Do NOT invent or estimate any numbers."""
 User Question: {message}
 
 Instructions:
-- Answer in the same language as the question (Hindi/Hinglish/English).
-- Be concise, direct, and professional.
-- Use ₹ for all currency. Format large numbers as "₹X.X lakh" or "₹X.X crore".
-- Do NOT invent any numbers not present in the ERP data above.
-- If a specific data point is missing, say "Data available nahi hai".
-- For financial data: always show collected, outstanding, and collection rate.
-- Keep the response under 150 words unless a list is needed."""
+1. LANGUAGE RULE (STRICT):
+   - If User Question is in English -> Respond ONLY in fluent, professional English. (DO NOT translate to Hindi).
+   - If User Question is in Hinglish (e.g. "Kitni fees baki hai?", "Transport me kitne students hain?") -> Respond in natural, clean Hinglish.
+   - If User Question is in Hindi (Devanagari script) -> Respond in polite Hindi.
+2. Structure your response with clean bullet points or a concise summary.
+3. Use ₹ for all currency.
+4. Do NOT invent any numbers not present in the ERP data above.
+5. Keep the response under 150 words and do not repeat sentences."""
+
 
 
 def _build_teacher_context(message: str, doc_chunks: list = None) -> str:
