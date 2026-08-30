@@ -23,6 +23,13 @@ from app.utils.file_security import validate_uploaded_file
 
 chat_bp = Blueprint('chat', __name__)
 
+ALL_COMMUNICATION_ROLES = (
+    'SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL',
+    'TEACHER', 'STUDENT', 'PARENT',
+    'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN',
+    'HOSTEL', 'TRANSPORT', 'HR', 'DRIVER'
+)
+
 
 # ─── Tenant & Encryption Helpers ──────────────────────────────────────────────
 
@@ -74,10 +81,7 @@ def _safe_decrypt_text(stored_text):
 # ─── 1. Send Message ──────────────────────────────────────────────────────────
 
 @chat_bp.route('', methods=['POST'])
-@role_required('SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL',
-               'TEACHER', 'STUDENT', 'PARENT',
-               'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN',
-               'HOSTEL', 'TRANSPORT', 'HR')
+@role_required(*ALL_COMMUNICATION_ROLES)
 def send_message():
     """
     POST /api/support/chat
@@ -138,10 +142,7 @@ def send_message():
 # ─── 2. Get Conversation (between two users) ──────────────────────────────────
 
 @chat_bp.route('/conversation/<int:other_user_id>', methods=['GET'])
-@role_required('SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL',
-               'TEACHER', 'STUDENT', 'PARENT',
-               'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN',
-               'HOSTEL', 'TRANSPORT', 'HR')
+@role_required(*ALL_COMMUNICATION_ROLES)
 def get_conversation(other_user_id):
     """
     GET /api/support/chat/conversation/<other_user_id>
@@ -204,10 +205,7 @@ def get_conversation(other_user_id):
 # ─── 3. My Conversations List (inbox) ────────────────────────────────────────
 
 @chat_bp.route('/inbox', methods=['GET'])
-@role_required('SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL',
-               'TEACHER', 'STUDENT', 'PARENT',
-               'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN',
-               'HOSTEL', 'TRANSPORT', 'HR')
+@role_required(*ALL_COMMUNICATION_ROLES)
 def inbox():
     """
     GET /api/support/chat/inbox
@@ -278,10 +276,7 @@ def inbox():
 # ─── 4. Unread Message Count ──────────────────────────────────────────────────
 
 @chat_bp.route('/unread-count', methods=['GET'])
-@role_required('SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL',
-               'TEACHER', 'STUDENT', 'PARENT',
-               'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN',
-               'HOSTEL', 'TRANSPORT', 'HR')
+@role_required(*ALL_COMMUNICATION_ROLES)
 def unread_count():
     """
     GET /api/support/chat/unread-count
@@ -302,10 +297,7 @@ def unread_count():
 # ─── 5. Mark Conversation Read ────────────────────────────────────────────────
 
 @chat_bp.route('/conversation/<int:other_user_id>/read', methods=['PATCH'])
-@role_required('SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL',
-               'TEACHER', 'STUDENT', 'PARENT',
-               'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN',
-               'HOSTEL', 'TRANSPORT', 'HR')
+@role_required(*ALL_COMMUNICATION_ROLES)
 def mark_conversation_read(other_user_id):
     """
     PATCH /api/support/chat/conversation/<other_user_id>/read
@@ -327,10 +319,7 @@ def mark_conversation_read(other_user_id):
 # ─── 6. Send File / Image ─────────────────────────────────────────────────────
 
 @chat_bp.route('/send-file', methods=['POST'])
-@role_required('SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL',
-               'TEACHER', 'STUDENT', 'PARENT',
-               'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN',
-               'HOSTEL', 'TRANSPORT', 'HR')
+@role_required(*ALL_COMMUNICATION_ROLES)
 def send_file():
     """
     POST /api/support/chat/send-file
@@ -400,10 +389,7 @@ def send_file():
 # ─── 7. Delete Message (sender only) ─────────────────────────────────────────
 
 @chat_bp.route('/<int:msg_id>', methods=['DELETE'])
-@role_required('SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL',
-               'TEACHER', 'STUDENT', 'PARENT',
-               'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN',
-               'HOSTEL', 'TRANSPORT', 'HR')
+@role_required(*ALL_COMMUNICATION_ROLES)
 def delete_message(msg_id):
     """
     DELETE /api/support/chat/<msg_id>
@@ -423,10 +409,7 @@ def delete_message(msg_id):
 # ─── 8. Search Users to Chat With ────────────────────────────────────────────
 
 @chat_bp.route('/users', methods=['GET'])
-@role_required('SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL',
-               'TEACHER', 'STUDENT', 'PARENT',
-               'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN',
-               'HOSTEL', 'TRANSPORT', 'HR')
+@role_required(*ALL_COMMUNICATION_ROLES)
 def searchable_users():
     """
     GET /api/support/chat/users?search=name

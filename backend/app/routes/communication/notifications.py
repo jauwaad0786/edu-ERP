@@ -6,14 +6,18 @@ from datetime import datetime
 
 notifications_bp = Blueprint('notifications', __name__)
 
+ALL_COMMUNICATION_ROLES = (
+    'SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL',
+    'TEACHER', 'STUDENT', 'PARENT',
+    'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN',
+    'HOSTEL', 'TRANSPORT', 'HR', 'DRIVER'
+)
+
 
 # ─── 1. My Notifications ──────────────────────────────────────────────────────
 
 @notifications_bp.route('', methods=['GET'])
-@role_required('SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL',
-               'TEACHER', 'STUDENT', 'PARENT',
-               'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN',
-               'HOSTEL', 'TRANSPORT', 'HR')
+@role_required(*ALL_COMMUNICATION_ROLES)
 def my_notifications():
     """
     GET /api/support/notifications
@@ -54,10 +58,7 @@ def my_notifications():
 # ─── 2. Unread Count (navbar bell badge ke liye) ──────────────────────────────
 
 @notifications_bp.route('/unread-count', methods=['GET'])
-@role_required('SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL',
-               'TEACHER', 'STUDENT', 'PARENT',
-               'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN',
-               'HOSTEL', 'TRANSPORT', 'HR')
+@role_required(*ALL_COMMUNICATION_ROLES)
 def unread_count():
     """
     GET /api/support/notifications/unread-count
@@ -80,10 +81,7 @@ def unread_count():
 # ─── 3. Mark Single Notification Read ────────────────────────────────────────
 
 @notifications_bp.route('/<int:notif_id>/read', methods=['PATCH'])
-@role_required('SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL',
-               'TEACHER', 'STUDENT', 'PARENT',
-               'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN',
-               'HOSTEL', 'TRANSPORT', 'HR')
+@role_required(*ALL_COMMUNICATION_ROLES)
 def mark_read(notif_id):
     """
     PATCH /api/support/notifications/<id>/read
@@ -105,10 +103,7 @@ def mark_read(notif_id):
 # ─── 4. Mark All Read ─────────────────────────────────────────────────────────
 
 @notifications_bp.route('/mark-all-read', methods=['PATCH'])
-@role_required('SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL',
-               'TEACHER', 'STUDENT', 'PARENT',
-               'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN',
-               'HOSTEL', 'TRANSPORT', 'HR')
+@role_required(*ALL_COMMUNICATION_ROLES)
 def mark_all_read():
     """
     PATCH /api/support/notifications/mark-all-read
@@ -130,10 +125,7 @@ def mark_all_read():
 # ─── 5. Delete Single Notification ───────────────────────────────────────────
 
 @notifications_bp.route('/<int:notif_id>', methods=['DELETE'])
-@role_required('SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL',
-               'TEACHER', 'STUDENT', 'PARENT',
-               'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN',
-               'HOSTEL', 'TRANSPORT', 'HR')
+@role_required(*ALL_COMMUNICATION_ROLES)
 def delete_notification(notif_id):
     """
     DELETE /api/support/notifications/<id>
@@ -153,10 +145,7 @@ def delete_notification(notif_id):
 # ─── 6. Clear All Notifications ───────────────────────────────────────────────
 
 @notifications_bp.route('/clear-all', methods=['DELETE'])
-@role_required('SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL',
-               'TEACHER', 'STUDENT', 'PARENT',
-               'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN',
-               'HOSTEL', 'TRANSPORT', 'HR')
+@role_required(*ALL_COMMUNICATION_ROLES)
 def clear_all():
     """
     DELETE /api/support/notifications/clear-all

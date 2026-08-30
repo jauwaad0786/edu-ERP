@@ -28,11 +28,26 @@ def not_found(msg='Not found'):
 
 def _current_driver():
     """Driver row for the logged-in user, or None if this user isn't a driver."""
-    return Driver.query.filter_by(user_id=get_current_user().id).first()
+    user = get_current_user()
+    if not user:
+        return None
+    driver = Driver.query.filter_by(user_id=user.id).first()
+    if not driver and user.phone:
+        driver = Driver.query.filter_by(mobile_number=user.phone).first()
+    if not driver and user.school_id and user.name:
+        driver = Driver.query.filter_by(school_id=user.school_id).filter(Driver.name.ilike(user.name)).first()
+    return driver
 
 
 def _driver_vehicle(driver):
-    return Vehicle.query.filter_by(driver_id=driver.id, school_id=driver.school_id).first()
+    if not driver:
+        return None
+    v = Vehicle.query.filter_by(driver_id=driver.id, school_id=driver.school_id).first()
+    if not v and driver.user_id:
+        v = Vehicle.query.filter_by(driver_id=driver.user_id, school_id=driver.school_id).first()
+    if not v:
+        v = Vehicle.query.filter_by(driver_id=driver.id).first()
+    return v
 
 
 def _haversine_km(lat1, lon1, lat2, lon2):
@@ -70,73 +85,101 @@ def _open_trip_for_vehicle(vehicle_id, sid):
 @role_required('DRIVER')
 def driver_today():
     """Home screen data: today's vehicle, route, students count, current trip (if any), and route stops."""
-    driver = _current_driver()
-    if not driver:
-        return not_found('Driver profile not found for this login')
-
-    vehicle = _driver_vehicle(driver)
-    if not vehicle:
-        return jsonify({'success': True, 'data': {'has_vehicle': False}})
-
-    route = vehicle.route
-    students_count = StudentTransport.query.filter_by(
-        vehicle_id=vehicle.id, school_id=driver.school_id, status='ACTIVE'
-    ).count()
-
-    open_trip = _open_trip_for_vehicle(vehicle.id, driver.school_id)
-
-    # If no open trip, still fetch ordered stops & assigned passengers so driver can preview manifest
-    stops_data = []
-    if route and not open_trip:
-        route_stops = RouteStop.query.filter_by(route_id=route.id).order_by(RouteStop.sequence).all()
-        assignments = StudentTransport.query.filter_by(
-            vehicle_id=vehicle.id, school_id=driver.school_id, status='ACTIVE'
-        ).all()
-        for rs in route_stops:
-            stop = rs.stop
-            if not stop:
-                continue
-            assigned_students = []
-            for a in assignments:
-                is_stop_match = (
-                    a.stop_id == stop.id or
-                    a.pickup_stop_id == stop.id or
-                    a.drop_stop_id == stop.id
-                )
-                if is_stop_match and a.student:
-                    cls_name = f"{a.student.class_ref.name} {a.student.class_ref.section or ''}".strip() if a.student.class_ref else ''
-                    assigned_students.append({
-                        'student_id':     a.student.id,
-                        'student_name':   a.student.user.name if a.student.user else '',
-                        'admission_no':   a.student.admission_no or '',
-                        'class_name':     cls_name,
-                        'father_name':    a.student.father_name or '',
-                        'father_mobile':  a.student.parent_phone or '',
-                        'photo_url':      a.student.photo_url or '',
-                        'event_status':   None,
-                    })
-            stops_data.append({
-                'stop_id':        stop.id,
-                'stop_name':      stop.name,
-                'sequence':       rs.sequence,
-                'latitude':       stop.latitude,
-                'longitude':      stop.longitude,
-                'radius':         stop.radius or 200,
-                'estimated_time': rs.estimated_time or '',
-                'students_count': len(assigned_students),
-                'students':       assigned_students,
+    try:
+        driver = _current_driver()
+        if not driver:
+            return jsonify({
+                'success': True,
+                'data': {
+                    'has_vehicle': False,
+                    'message': 'Driver profile not linked with your account. Contact School Admin.'
+                }
             })
 
-    return jsonify({'success': True, 'data': {
-        'has_vehicle':     True,
-        'vehicle_id':      vehicle.id,
-        'vehicle_number':  vehicle.vehicle_number,
-        'route_id':        route.id if route else None,
-        'route_name':      route.name if route else '',
-        'students_count':  students_count,
-        'current_trip':    open_trip.to_dict() if open_trip else None,
-        'stops':           stops_data,
-    }})
+        vehicle = _driver_vehicle(driver)
+        if not vehicle:
+            return jsonify({
+                'success': True,
+                'data': {
+                    'has_vehicle': False,
+                    'driver_name': driver.name,
+                    'message': 'No vehicle assigned to your profile.'
+                }
+            })
+
+        # Safely resolve route for vehicle
+        route = Route.query.filter_by(vehicle_id=vehicle.id).first()
+        if not route:
+            try:
+                route = vehicle.route
+            except Exception:
+                route = None
+
+        students_count = StudentTransport.query.filter_by(
+            vehicle_id=vehicle.id, status='ACTIVE'
+        ).count()
+
+        open_trip = _open_trip_for_vehicle(vehicle.id, driver.school_id)
+
+        # If no open trip, fetch ordered stops & assigned passengers so driver can preview manifest
+        stops_data = []
+        if route and not open_trip:
+            route_stops = RouteStop.query.filter_by(route_id=route.id).order_by(RouteStop.sequence).all()
+            assignments = StudentTransport.query.filter_by(
+                vehicle_id=vehicle.id, status='ACTIVE'
+            ).all()
+            for rs in route_stops:
+                stop = rs.stop
+                if not stop:
+                    continue
+                assigned_students = []
+                for a in assignments:
+                    is_stop_match = (
+                        a.stop_id == stop.id or
+                        a.pickup_stop_id == stop.id or
+                        a.drop_stop_id == stop.id
+                    )
+                    if is_stop_match and a.student:
+                        st_name = a.student.user.name if (a.student and a.student.user) else (a.student.father_name or 'Student')
+                        cls_name = ''
+                        if getattr(a.student, 'class_ref', None):
+                            c_ref = a.student.class_ref
+                            cls_name = f"{c_ref.name or ''} {c_ref.section or ''}".strip()
+
+                        assigned_students.append({
+                            'student_id':     a.student.id,
+                            'student_name':   st_name,
+                            'admission_no':   a.student.admission_no or '',
+                            'class_name':     cls_name,
+                            'father_name':    a.student.father_name or '',
+                            'father_mobile':  a.student.parent_phone or '',
+                            'photo_url':      a.student.photo_url or '',
+                            'event_status':   None,
+                        })
+                stops_data.append({
+                    'stop_id':        stop.id,
+                    'stop_name':      stop.name,
+                    'sequence':       rs.sequence,
+                    'latitude':       stop.latitude,
+                    'longitude':      stop.longitude,
+                    'radius':         stop.radius or 200,
+                    'estimated_time': rs.estimated_time or '',
+                    'students_count': len(assigned_students),
+                    'students':       assigned_students,
+                })
+
+        return jsonify({'success': True, 'data': {
+            'has_vehicle':     True,
+            'vehicle_id':      vehicle.id,
+            'vehicle_number':  vehicle.vehicle_number,
+            'route_id':        route.id if route else None,
+            'route_name':      route.name if route else '',
+            'students_count':  students_count,
+            'current_trip':    open_trip.to_dict() if open_trip else None,
+            'stops':           stops_data,
+        }})
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Driver today error: {str(e)}'}), 500
 
 
 @transport_gps_bp.route('/driver/trip/start', methods=['POST'])
