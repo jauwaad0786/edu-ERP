@@ -471,6 +471,7 @@ export default function AIChat() {
             </div>
           )}
         </div>
+      )}
         </div>
       </div>
     </div>
