@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Users, GraduationCap, BookOpen, IndianRupee, TrendingUp } from 'lucide-react';
 
 const classData = [
   { cls: 'Class 1', students: 42, feesCollected: 210000, feesPending: 42000 },
@@ -17,10 +16,10 @@ export default function SchoolDashboard({ school }) {
   const totalFeesPending = classData.reduce((a, c) => a + c.feesPending, 0);
 
   const stats = [
-    { label: 'Total Students', value: totalStudents, icon: <GraduationCap size={22} />, color: '#2563eb' },
-    { label: 'Total Teachers', value: 28, icon: <Users size={22} />, color: '#7c3aed' },
-    { label: 'Fees Collected', value: `₹${(totalFeesCollected/100000).toFixed(1)}L`, icon: <IndianRupee size={22} />, color: '#059669' },
-    { label: 'Fees Pending', value: `₹${(totalFeesPending/100000).toFixed(1)}L`, icon: <TrendingUp size={22} />, color: '#dc2626' },
+    { label: 'Total Students', value: totalStudents, icon: <i className="ti ti-school" style={{ fontSize: 22 }} />, color: '#2563eb' },
+    { label: 'Total Teachers', value: 28, icon: <i className="ti ti-users" style={{ fontSize: 22 }} />, color: '#7c3aed' },
+    { label: 'Fees Collected', value: `₹${(totalFeesCollected/100000).toFixed(1)}L`, icon: <i className="ti ti-currency-rupee" style={{ fontSize: 22 }} />, color: '#059669' },
+    { label: 'Fees Pending', value: `₹${(totalFeesPending/100000).toFixed(1)}L`, icon: <i className="ti ti-trending-down" style={{ fontSize: 22 }} />, color: '#dc2626' },
   ];
 
   return (

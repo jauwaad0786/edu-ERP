@@ -3,10 +3,6 @@ import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
-import {
-  Layers, Plus, Edit2, CheckCircle2, AlertCircle,
-  Percent, ShieldCheck, Tag, DollarSign, RefreshCw
-} from 'lucide-react';
 
 export default function FeeSetupPage() {
   const [activeTab, setActiveTab] = useState('heads'); // heads | structures | concessions
@@ -84,7 +80,6 @@ export default function FeeSetupPage() {
   };
 
   const openAddStructure = () => {
-    // Populate structure items with default heads
     const initialItems = heads.map((h) => ({
       fee_head_id: h.id,
       fee_head_name: h.name,
@@ -123,133 +118,112 @@ export default function FeeSetupPage() {
   const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
+    <div className="app-shell">
       <Sidebar />
-      <div className="flex-1 flex flex-col overflow-y-auto">
-        <Navbar />
+      <div className="main-content">
+        <Navbar title="Fee Setup & Class Rate Cards" />
+        <div className="page-body">
 
-        <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto w-full">
-          {/* Header */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          {/* Page Header */}
+          <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="px-2.5 py-0.5 bg-purple-100 text-purple-700 text-xs font-semibold rounded-full">
-                  Configuration
-                </span>
-                <span className="text-xs text-slate-500">Service Master & Rate Cards</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <span className="badge badge-info">Service Configuration</span>
+                <span className="text-xs text-muted">Department Heads & Rate Cards</span>
               </div>
-              <h1 className="text-2xl font-bold text-slate-900 mt-1">Fee Setup & Rate Cards</h1>
-              <p className="text-xs text-slate-500">
-                Configure departments, customizable fee heads, and class rate structures.
+              <h2 className="page-title">Fee Setup & Rate Cards</h2>
+              <p className="page-subtitle">
+                Configure departments, customizable fee heads, class rate structures, and scholarship rules.
               </p>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div style={{ display: 'flex', gap: 8 }}>
               {activeTab === 'heads' && (
-                <button
-                  onClick={openAddHead}
-                  className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add Fee Head
+                <button onClick={openAddHead} className="btn btn-primary">
+                  <i className="ti ti-plus"></i> Add Fee Head
                 </button>
               )}
               {activeTab === 'structures' && (
-                <button
-                  onClick={openAddStructure}
-                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm"
-                >
-                  <Plus className="w-4 h-4" />
-                  Create Rate Card
+                <button onClick={openAddStructure} className="btn btn-primary">
+                  <i className="ti ti-plus"></i> Create Rate Card
                 </button>
               )}
             </div>
           </div>
 
-          {/* Tabs */}
-          <div className="flex items-center gap-2 border-b border-slate-200">
-            {[
-              { id: 'heads', label: 'Fee Heads (Services)', icon: Tag, count: heads.length },
-              { id: 'structures', label: 'Class Rate Cards', icon: Layers, count: structures.length },
-              { id: 'concessions', label: 'Concessions & Scholarships', icon: Percent, count: concessions.length },
-            ].map((tab) => {
-              const Icon = tab.icon;
-              const active = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-3 text-xs font-bold border-b-2 transition-all ${
-                    active ? 'border-purple-600 text-purple-700' : 'border-transparent text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  <span>{tab.label}</span>
-                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${active ? 'bg-purple-100 text-purple-800' : 'bg-slate-100 text-slate-600'}`}>
-                    {tab.count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          {/* Tab Navigation */}
+          <div className="card mb-6">
+            <div className="card-header" style={{ padding: '8px 16px', background: '#fafaf9' }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {[
+                  { id: 'heads', label: 'Fee Heads (Services)', icon: 'ti-tag', count: heads.length },
+                  { id: 'structures', label: 'Class Rate Cards', icon: 'ti-layers-intersect', count: structures.length },
+                  { id: 'concessions', label: 'Concessions & Scholarships', icon: 'ti-percentage', count: concessions.length },
+                ].map((tab) => {
+                  const active = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`btn ${active ? 'btn-primary' : 'btn-neutral'} btn-sm`}
+                      style={{ borderRadius: 20 }}
+                    >
+                      <i className={`ti ${tab.icon}`}></i>
+                      {tab.label} ({tab.count})
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
-          {/* Tab 1: Fee Heads */}
-          {activeTab === 'heads' && (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
+            {/* Tab 1: Fee Heads */}
+            {activeTab === 'heads' && (
+              <div className="table-container" style={{ border: 'none' }}>
+                <table className="table">
                   <thead>
-                    <tr className="border-b border-slate-200 text-xs font-bold text-slate-500 uppercase bg-slate-50/50">
-                      <th className="py-3 px-4">Code</th>
-                      <th className="py-3 px-4">Fee Head Name</th>
-                      <th className="py-3 px-4">Department</th>
-                      <th className="py-3 px-4">Category</th>
-                      <th className="py-3 px-4">Frequency</th>
-                      <th className="py-3 px-4">Recurring</th>
-                      <th className="py-3 px-4">Status</th>
-                      <th className="py-3 px-4 text-center">Edit</th>
+                    <tr>
+                      <th>Code</th>
+                      <th>Fee Head Name</th>
+                      <th>Department</th>
+                      <th>Category</th>
+                      <th>Frequency</th>
+                      <th>Recurring</th>
+                      <th>Status</th>
+                      <th style={{ textAlign: 'center' }}>Edit</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 text-xs">
+                  <tbody>
                     {heads.map((h) => (
-                      <tr key={h.id} className="hover:bg-slate-50/80">
-                        <td className="py-3 px-4 font-mono font-bold text-slate-800">{h.code}</td>
-                        <td className="py-3 px-4 font-semibold text-slate-900">{h.name}</td>
-                        <td className="py-3 px-4">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 uppercase">
-                            {h.department}
+                      <tr key={h.id}>
+                        <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--neutral-9)' }}>{h.code}</td>
+                        <td style={{ fontWeight: 600 }}>{h.name}</td>
+                        <td>
+                          <span className="badge badge-neutral" style={{ fontSize: 10 }}>{h.department}</span>
+                        </td>
+                        <td>{h.category}</td>
+                        <td>{h.default_frequency}</td>
+                        <td>
+                          {h.is_recurring ? (
+                            <span style={{ color: '#2e844a', fontWeight: 700 }}>Yes</span>
+                          ) : (
+                            <span className="text-muted">One-time</span>
+                          )}
+                        </td>
+                        <td>
+                          <span className={`badge ${h.is_active ? 'badge-success' : 'badge-neutral'}`}>
+                            {h.is_active ? 'Active' : 'Inactive'}
                           </span>
                         </td>
-                        <td className="py-3 px-4 text-slate-600">{h.category}</td>
-                        <td className="py-3 px-4 text-slate-600">{h.default_frequency}</td>
-                        <td className="py-3 px-4">
-                          {h.is_recurring ? (
-                            <span className="text-emerald-600 font-bold">Yes</span>
-                          ) : (
-                            <span className="text-slate-400">One-time</span>
-                          )}
-                        </td>
-                        <td className="py-3 px-4">
-                          {h.is_active ? (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700">
-                              Active
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500">
-                              Inactive
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-3 px-4 text-center">
+                        <td style={{ textAlign: 'center' }}>
                           <button
                             onClick={() => {
                               setEditingHead(h);
                               setHeadForm({ ...h });
                               setHeadModal(true);
                             }}
-                            className="p-1 text-slate-600 hover:text-purple-700 hover:bg-purple-50 rounded"
+                            className="btn btn-neutral btn-sm"
                           >
-                            <Edit2 className="w-3.5 h-3.5" />
+                            <i className="ti ti-edit"></i> Edit
                           </button>
                         </td>
                       </tr>
@@ -257,239 +231,244 @@ export default function FeeSetupPage() {
                   </tbody>
                 </table>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Tab 2: Rate Cards */}
-          {activeTab === 'structures' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {structures.map((s) => (
-                <div key={s.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="font-bold text-slate-900 text-sm">{s.name}</h3>
-                      <p className="text-xs text-slate-500">{s.class_name} • {s.session}</p>
-                    </div>
-                    <span className="text-sm font-bold text-blue-700">{fmt(s.total_amount)}/mo</span>
+            {/* Tab 2: Rate Cards */}
+            {activeTab === 'structures' && (
+              <div className="card-body" style={{ padding: 20 }}>
+                {structures.length === 0 ? (
+                  <div className="empty-state">
+                    <p className="text-xs text-muted">No rate cards configured. Click 'Create Rate Card' to get started.</p>
                   </div>
+                ) : (
+                  <div className="grid-3">
+                    {structures.map((s) => (
+                      <div key={s.id} style={{ background: '#fafaf9', border: '1px solid var(--neutral-2)', borderRadius: 8, padding: 16 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                          <div>
+                            <div style={{ fontWeight: 800, fontSize: 14, color: 'var(--neutral-9)' }}>{s.name}</div>
+                            <div className="text-xs text-muted">{s.class_name} • {s.session}</div>
+                          </div>
+                          <span style={{ fontWeight: 800, color: '#0176d3', fontSize: 14 }}>{fmt(s.total_amount)}/mo</span>
+                        </div>
 
-                  <div className="space-y-1.5 pt-2 border-t border-slate-100 text-xs">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase">Itemized Rates:</span>
-                    {s.items?.map((it, idx) => (
-                      <div key={idx} className="flex justify-between text-slate-700">
-                        <span>{it.fee_head_name}</span>
-                        <span className="font-semibold">{fmt(it.amount)}</span>
+                        <div style={{ borderTop: '1px solid var(--neutral-2)', paddingTop: 10, marginTop: 8 }}>
+                          <div className="text-xs font-bold text-muted mb-2">ITEMIZED RATES:</div>
+                          {s.items?.map((it, idx) => (
+                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '3px 0' }}>
+                              <span>{it.fee_head_name}</span>
+                              <span style={{ fontWeight: 700 }}>{fmt(it.amount)}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     ))}
                   </div>
+                )}
+              </div>
+            )}
+
+            {/* Tab 3: Concessions */}
+            {activeTab === 'concessions' && (
+              <div className="card-body" style={{ padding: 20 }}>
+                {concessions.length === 0 ? (
+                  <div className="empty-state">
+                    <p className="text-xs text-muted">No student concessions on record.</p>
+                  </div>
+                ) : (
+                  <div className="grid-2">
+                    {concessions.map((c) => (
+                      <div key={c.id} style={{ background: '#fafaf9', border: '1px solid var(--neutral-2)', borderRadius: 8, padding: 14 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                          <span style={{ fontWeight: 700, fontSize: 13 }}>{c.student_name} ({c.admission_no})</span>
+                          <span className="badge badge-success">
+                            {c.discount_type === 'PERCENTAGE' ? `${c.discount_value}% OFF` : `₹${c.discount_value} OFF`}
+                          </span>
+                        </div>
+                        <div className="text-xs text-muted" style={{ marginBottom: 4 }}>
+                          Type: <strong>{c.concession_type}</strong> • Head: {c.fee_head_name}
+                        </div>
+                        <div className="text-xs text-muted" style={{ fontStyle: 'italic' }}>
+                          "{c.reason}"
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Fee Head Modal */}
+          {headModal && (
+            <div className="modal-backdrop">
+              <div className="modal">
+                <div className="modal-header">
+                  <h3 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0 }}>
+                    {editingHead ? 'Edit Fee Head' : 'Add Fee Head (Service)'}
+                  </h3>
+                  <button onClick={() => setHeadModal(false)} className="modal-close">✕</button>
                 </div>
-              ))}
+
+                <form onSubmit={handleHeadSubmit}>
+                  <div className="modal-body">
+                    <div className="form-group">
+                      <label className="form-label">Fee Head Name</label>
+                      <input
+                        type="text"
+                        value={headForm.name}
+                        onChange={(e) => setHeadForm({ ...headForm, name: e.target.value })}
+                        placeholder="e.g. Science Lab Fee"
+                        required
+                        className="form-input"
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">Code (Identifier)</label>
+                      <input
+                        type="text"
+                        value={headForm.code}
+                        onChange={(e) => setHeadForm({ ...headForm, code: e.target.value.toUpperCase().replace(' ', '_') })}
+                        placeholder="e.g. LAB_FEE"
+                        required
+                        className="form-input"
+                        style={{ fontFamily: 'monospace', fontWeight: 700 }}
+                      />
+                    </div>
+
+                    <div className="grid-2">
+                      <div className="form-group">
+                        <label className="form-label">Department</label>
+                        <select
+                          value={headForm.department}
+                          onChange={(e) => setHeadForm({ ...headForm, department: e.target.value })}
+                          className="form-select"
+                        >
+                          <option value="ACCOUNTS">ACCOUNTS</option>
+                          <option value="TRANSPORT">TRANSPORT</option>
+                          <option value="HOSTEL">HOSTEL</option>
+                          <option value="LIBRARY">LIBRARY</option>
+                        </select>
+                      </div>
+
+                      <div className="form-group">
+                        <label className="form-label">Category</label>
+                        <select
+                          value={headForm.category}
+                          onChange={(e) => setHeadForm({ ...headForm, category: e.target.value })}
+                          className="form-select"
+                        >
+                          <option value="ACADEMIC">ACADEMIC</option>
+                          <option value="TRANSPORT">TRANSPORT</option>
+                          <option value="HOSTEL">HOSTEL</option>
+                          <option value="LIBRARY">LIBRARY</option>
+                          <option value="EXAM">EXAM</option>
+                          <option value="ACTIVITY">ACTIVITY</option>
+                          <option value="OTHER">OTHER</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="modal-footer">
+                    <button type="button" onClick={() => setHeadModal(false)} className="btn btn-neutral">
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn btn-primary">
+                      Save Fee Head
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
           )}
 
-          {/* Tab 3: Concessions */}
-          {activeTab === 'concessions' && (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-6">
-              <h3 className="text-base font-bold text-slate-900 mb-3">All Active Concessions & Scholarships</h3>
-              {concessions.length === 0 ? (
-                <div className="py-8 text-center text-slate-400 text-xs">No concessions on record.</div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {concessions.map((c) => (
-                    <div key={c.id} className="p-4 bg-purple-50/40 rounded-xl border border-purple-100 space-y-1.5 text-xs">
-                      <div className="flex justify-between font-bold">
-                        <span className="text-slate-900">{c.student_name} ({c.admission_no})</span>
-                        <span className="text-purple-700">
-                          {c.discount_type === 'PERCENTAGE' ? `${c.discount_value}% OFF` : `₹${c.discount_value} OFF`}
-                        </span>
-                      </div>
-                      <div className="text-slate-600">Type: <span className="font-semibold">{c.concession_type.replace('_', ' ')}</span> • Head: {c.fee_head_name}</div>
-                      <div className="text-slate-500 italic">"{c.reason}"</div>
-                    </div>
-                  ))}
+          {/* Structure Modal */}
+          {structModal && (
+            <div className="modal-backdrop">
+              <div className="modal">
+                <div className="modal-header">
+                  <h3 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0 }}>Create Class Rate Card</h3>
+                  <button onClick={() => setStructModal(false)} className="modal-close">✕</button>
                 </div>
-              )}
+
+                <form onSubmit={handleStructureSubmit}>
+                  <div className="modal-body">
+                    <div className="form-group">
+                      <label className="form-label">Structure Name</label>
+                      <input
+                        type="text"
+                        value={structForm.name}
+                        onChange={(e) => setStructForm({ ...structForm, name: e.target.value })}
+                        placeholder="e.g. Class 8 Standard Rate Card 2026-27"
+                        required
+                        className="form-input"
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">Applicable Class</label>
+                      <select
+                        value={structForm.class_id}
+                        onChange={(e) => setStructForm({ ...structForm, class_id: e.target.value })}
+                        className="form-select"
+                      >
+                        <option value="">All Classes (School-wide Default)</option>
+                        {classes.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} {c.section || ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">Itemized Rates (₹)</label>
+                      <div className="table-container" style={{ maxHeight: 200, overflowY: 'auto' }}>
+                        <table className="table">
+                          <tbody>
+                            {structForm.items.map((it, idx) => (
+                              <tr key={idx}>
+                                <td style={{ fontWeight: 600 }}>{it.fee_head_name}</td>
+                                <td style={{ textAlign: 'right' }}>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="any"
+                                    value={it.amount}
+                                    onChange={(e) => {
+                                      const next = [...structForm.items];
+                                      next[idx].amount = parseFloat(e.target.value) || 0;
+                                      setStructForm({ ...structForm, items: next });
+                                    }}
+                                    className="form-input"
+                                    style={{ width: 100, height: 30, textAlign: 'right', fontWeight: 700, marginLeft: 'auto' }}
+                                  />
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="modal-footer">
+                    <button type="button" onClick={() => setStructModal(false)} className="btn btn-neutral">
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn btn-primary">
+                      Save Rate Card
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
           )}
+
         </div>
       </div>
-
-      {/* Fee Head Modal */}
-      {headModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-base font-bold text-slate-900">
-                {editingHead ? 'Edit Fee Head' : 'Add Fee Head (Service)'}
-              </h3>
-              <button onClick={() => setHeadModal(false)} className="text-slate-400 hover:text-slate-600 p-1">
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleHeadSubmit} className="space-y-3 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Fee Head Name</label>
-                <input
-                  type="text"
-                  value={headForm.name}
-                  onChange={(e) => setHeadForm({ ...headForm, name: e.target.value })}
-                  placeholder="e.g. Science Lab Fee"
-                  required
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold outline-none focus:bg-white focus:ring-2 focus:ring-purple-500"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Code (Identifier)</label>
-                <input
-                  type="text"
-                  value={headForm.code}
-                  onChange={(e) => setHeadForm({ ...headForm, code: e.target.value.toUpperCase().replace(' ', '_') })}
-                  placeholder="e.g. LAB_FEE"
-                  required
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono uppercase font-bold outline-none focus:bg-white focus:ring-2 focus:ring-purple-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Department</label>
-                  <select
-                    value={headForm.department}
-                    onChange={(e) => setHeadForm({ ...headForm, department: e.target.value })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold outline-none"
-                  >
-                    <option value="ACCOUNTS">ACCOUNTS</option>
-                    <option value="TRANSPORT">TRANSPORT</option>
-                    <option value="HOSTEL">HOSTEL</option>
-                    <option value="LIBRARY">LIBRARY</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Category</label>
-                  <select
-                    value={headForm.category}
-                    onChange={(e) => setHeadForm({ ...headForm, category: e.target.value })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold outline-none"
-                  >
-                    <option value="ACADEMIC">ACADEMIC</option>
-                    <option value="TRANSPORT">TRANSPORT</option>
-                    <option value="HOSTEL">HOSTEL</option>
-                    <option value="LIBRARY">LIBRARY</option>
-                    <option value="EXAM">EXAM</option>
-                    <option value="ACTIVITY">ACTIVITY</option>
-                    <option value="OTHER">OTHER</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setHeadModal(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 text-xs font-semibold bg-purple-600 hover:bg-purple-700 text-white rounded-xl shadow-md"
-                >
-                  Save Fee Head
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Structure Modal */}
-      {structModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-base font-bold text-slate-900">Create Class Rate Card</h3>
-              <button onClick={() => setStructModal(false)} className="text-slate-400 hover:text-slate-600 p-1">
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleStructureSubmit} className="space-y-3 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Structure Name</label>
-                <input
-                  type="text"
-                  value={structForm.name}
-                  onChange={(e) => setStructForm({ ...structForm, name: e.target.value })}
-                  placeholder="e.g. Class 8 Standard Rate Card 2026-27"
-                  required
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold outline-none focus:bg-white focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Applicable Class</label>
-                <select
-                  value={structForm.class_id}
-                  onChange={(e) => setStructForm({ ...structForm, class_id: e.target.value })}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold outline-none focus:bg-white focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">All Classes (School-wide Default)</option>
-                  {classes.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} {c.section || ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-2 pt-2 border-t border-slate-100">
-                <span className="font-bold text-slate-700 block">Itemized Rates (₹):</span>
-                <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl p-2 max-h-48 overflow-y-auto">
-                  {structForm.items.map((it, idx) => (
-                    <div key={idx} className="py-2 flex items-center justify-between gap-3">
-                      <span className="font-medium text-slate-800">{it.fee_head_name}</span>
-                      <div className="flex items-center gap-1">
-                        <span>₹</span>
-                        <input
-                          type="number"
-                          min="0"
-                          step="any"
-                          value={it.amount}
-                          onChange={(e) => {
-                            const next = [...structForm.items];
-                            next[idx].amount = parseFloat(e.target.value) || 0;
-                            setStructForm({ ...structForm, items: next });
-                          }}
-                          className="w-24 p-1.5 text-right font-bold text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none"
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setStructModal(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md"
-                >
-                  Save Rate Card
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

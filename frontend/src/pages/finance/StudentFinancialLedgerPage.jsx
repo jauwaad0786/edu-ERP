@@ -4,48 +4,20 @@ import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
-import {
-  User, DollarSign, FileText, CheckCircle2, Download,
-  CreditCard, ArrowLeft, Layers, Percent, Clock, AlertCircle
-} from 'lucide-react';
-
-const STATUS_COLORS = {
-  ISSUED: 'bg-blue-50 text-blue-700 border-blue-200',
-  PARTIALLY_PAID: 'bg-amber-50 text-amber-700 border-amber-200',
-  PAID: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  OVERDUE: 'bg-rose-50 text-rose-700 border-rose-200',
-};
 
 export default function StudentFinancialLedgerPage() {
   const { studentId } = useParams();
   const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = useState('bills'); // bills | payments | ledger | concessions
-  const [data, setData] = useState(null);
-  const [student, setStudent] = useState(null);
+  const [ledger, setLedger] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('bills'); // bills | receipts | movements | concessions
 
-  // Concession Modal
-  const [concessionModal, setConcessionModal] = useState(false);
-  const [feeHeads, setFeeHeads] = useState([]);
-  const [cType, setCType] = useState('SCHOLARSHIP');
-  const [dType, setDType] = useState('FIXED');
-  const [dVal, setDVal] = useState('');
-  const [selectedFeeHead, setSelectedFeeHead] = useState('');
-  const [cReason, setCReason] = useState('');
-  const [savingConcession, setSavingConcession] = useState(false);
-
-  const fetchFinancials = async () => {
+  const fetchLedger = async () => {
     try {
       setLoading(true);
-      const [ledgerRes, studentRes, headsRes] = await Promise.all([
-        api.get(`/fees-finance/students/${studentId}/ledger`),
-        api.get(`/principal/students/${studentId}`).catch(() => ({ data: null })),
-        api.get('/fees-finance/heads').catch(() => ({ data: [] })),
-      ]);
-      setData(ledgerRes.data);
-      setStudent(studentRes.data);
-      setFeeHeads(headsRes.data || []);
+      const res = await api.get(`/fees-finance/students/${studentId}/ledger?session=2026-27`);
+      setLedger(res.data);
     } catch (err) {
       toast.error('Failed to load student financial ledger');
     } finally {
@@ -54,474 +26,335 @@ export default function StudentFinancialLedgerPage() {
   };
 
   useEffect(() => {
-    fetchFinancials();
-  }, [studentId]);
-
-  const handleApplyConcession = async (e) => {
-    e.preventDefault();
-    try {
-      setSavingConcession(true);
-      await api.post('/fees-finance/concessions', {
-        student_id: parseInt(studentId),
-        fee_head_id: selectedFeeHead ? parseInt(selectedFeeHead) : null,
-        concession_type: cType,
-        discount_type: dType,
-        discount_value: parseFloat(dVal),
-        reason: cReason,
-      });
-      toast.success('Concession applied successfully!');
-      setConcessionModal(false);
-      fetchFinancials();
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to apply concession');
-    } finally {
-      setSavingConcession(false);
+    if (studentId) {
+      fetchLedger();
     }
-  };
+  }, [studentId]);
 
   const downloadBillPDF = async (billId, billNo) => {
     try {
-      toast.loading('Preparing Bill...', { id: 'bill-dl' });
       const res = await api.get(`/fees-finance/bills/${billId}/pdf`, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `${billNo}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      toast.success('Downloaded!', { id: 'bill-dl' });
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Demand_Bill_${billNo}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      toast.success('Fee Bill PDF downloaded');
     } catch (e) {
-      toast.error('Could not download bill', { id: 'bill-dl' });
+      toast.error('Download failed');
     }
   };
 
   const downloadReceiptPDF = async (paymentId, receiptNo) => {
     try {
-      toast.loading('Preparing Receipt...', { id: 'rcpt-dl' });
       const res = await api.get(`/fees-finance/payments/${paymentId}/receipt-pdf`, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `${receiptNo}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      toast.success('Downloaded!', { id: 'rcpt-dl' });
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Official_Receipt_${receiptNo}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      toast.success('Official Receipt PDF downloaded');
     } catch (e) {
-      toast.error('Could not download receipt', { id: 'rcpt-dl' });
+      toast.error('Download failed');
     }
   };
 
   const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
+    <div className="app-shell">
       <Sidebar />
-      <div className="flex-1 flex flex-col overflow-y-auto">
-        <Navbar />
+      <div className="main-content">
+        <Navbar title="Student Financial Ledger" />
+        <div className="page-body">
 
-        <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto w-full">
-          {/* Back Button & Header */}
-          <div className="flex items-center justify-between">
-            <button
-              onClick={() => navigate(-1)}
-              className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white border border-slate-200 px-3 py-1.5 rounded-xl shadow-sm"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Back
-            </button>
+          {/* Page Header */}
+          <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <span className="badge badge-info">360° Account Statement</span>
+                <span className="text-xs text-muted">Single Source of Truth</span>
+              </div>
+              <h2 className="page-title">
+                {ledger?.student?.name ? `${ledger.student.name} — Financial Ledger` : 'Student Financial Ledger'}
+              </h2>
+              <p className="page-subtitle">
+                Complete debit/credit statement across Tuition, Transport, Hostel, and Library.
+              </p>
+            </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setConcessionModal(true)}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl text-xs font-bold transition-all"
-              >
-                <Percent className="w-3.5 h-3.5" />
-                Apply Concession
-              </button>
+            <div style={{ display: 'flex', gap: 8 }}>
               <button
                 onClick={() => navigate(`/finance/payments/collect?student_id=${studentId}`)}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                className="btn btn-primary"
               >
-                <CreditCard className="w-3.5 h-3.5" />
+                <i className="ti ti-credit-card"></i>
                 Collect Payment
               </button>
-            </div>
-          </div>
-
-          {/* Student Profile Card */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center font-bold text-indigo-600 text-xl shadow-inner">
-                {data?.student_name ? data.student_name.charAt(0) : 'S'}
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-xl font-bold text-slate-900">{data?.student_name}</h1>
-                  <span className="px-2.5 py-0.5 bg-slate-100 text-slate-700 font-mono text-[11px] font-bold rounded-md">
-                    {data?.admission_no}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Class: <span className="font-semibold text-slate-700">{data?.class_name}</span> • Session: {data?.session}
-                </p>
-                {student && (
-                  <p className="text-xs text-slate-500">
-                    Parent: {student.father_name || student.guardian_name || '—'} • Mobile: {student.parent_phone || '—'}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Balances */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
-                <span className="text-[10px] font-semibold text-slate-500 uppercase">Total Invoiced</span>
-                <div className="text-base font-bold text-slate-800">{fmt(data?.total_billed)}</div>
-              </div>
-              <div className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-100 text-center">
-                <span className="text-[10px] font-semibold text-emerald-800 uppercase">Total Paid</span>
-                <div className="text-base font-bold text-emerald-700">{fmt(data?.total_paid)}</div>
-              </div>
-              <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-100 text-center">
-                <span className="text-[10px] font-semibold text-amber-800 uppercase">Outstanding</span>
-                <div className="text-base font-bold text-amber-700">{fmt(data?.outstanding)}</div>
-              </div>
-              <div className="p-3 bg-indigo-50/60 rounded-xl border border-indigo-100 text-center">
-                <span className="text-[10px] font-semibold text-indigo-800 uppercase">Advance Credit</span>
-                <div className="text-base font-bold text-indigo-700">{fmt(data?.advance_credit)}</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Navigation Tabs */}
-          <div className="flex items-center gap-2 border-b border-slate-200">
-            {[
-              { id: 'bills', label: 'Demand Bills', icon: FileText, count: data?.bills?.length },
-              { id: 'payments', label: 'Payment Receipts', icon: CheckCircle2, count: data?.payments?.length },
-              { id: 'ledger', label: 'Transaction Ledger', icon: Layers, count: data?.ledger_entries?.length },
-              { id: 'concessions', label: 'Concessions & Waivers', icon: Percent, count: data?.concessions?.length },
-            ].map((tab) => {
-              const Icon = tab.icon;
-              const active = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-3 text-xs font-bold border-b-2 transition-all ${
-                    active
-                      ? 'border-blue-600 text-blue-600'
-                      : 'border-transparent text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  <span>{tab.label}</span>
-                  {tab.count !== undefined && (
-                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${active ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-600'}`}>
-                      {tab.count}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Tab 1: Demand Bills */}
-          {activeTab === 'bills' && (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              {data?.bills?.length === 0 ? (
-                <div className="py-12 text-center text-slate-400 text-xs">No demand bills issued yet.</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-200 text-xs font-bold text-slate-500 uppercase bg-slate-50/50">
-                        <th className="py-3 px-4">Bill No</th>
-                        <th className="py-3 px-4">Period</th>
-                        <th className="py-3 px-4 text-right">Payable</th>
-                        <th className="py-3 px-4 text-right">Paid</th>
-                        <th className="py-3 px-4 text-right">Balance</th>
-                        <th className="py-3 px-4">Due Date</th>
-                        <th className="py-3 px-4">Status</th>
-                        <th className="py-3 px-4 text-center">PDF</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-xs">
-                      {data?.bills?.map((b) => (
-                        <tr key={b.id} className="hover:bg-slate-50/80">
-                          <td className="py-3 px-4 font-mono font-bold text-slate-800">{b.bill_no}</td>
-                          <td className="py-3 px-4 font-semibold text-slate-900">{b.bill_period_label}</td>
-                          <td className="py-3 px-4 text-right font-bold text-slate-800">{fmt(b.total_payable)}</td>
-                          <td className="py-3 px-4 text-right font-semibold text-emerald-700">{fmt(b.amount_paid)}</td>
-                          <td className="py-3 px-4 text-right font-bold text-amber-700">{fmt(b.balance_due)}</td>
-                          <td className="py-3 px-4 text-slate-600">{b.due_date}</td>
-                          <td className="py-3 px-4">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${STATUS_COLORS[b.status] || STATUS_COLORS.ISSUED}`}>
-                              {b.status.replace('_', ' ')}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 text-center">
-                            <button
-                              onClick={() => downloadBillPDF(b.id, b.bill_no)}
-                              className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                              title="Download Bill PDF"
-                            >
-                              <Download className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Tab 2: Payment Receipts */}
-          {activeTab === 'payments' && (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              {data?.payments?.length === 0 ? (
-                <div className="py-12 text-center text-slate-400 text-xs">No payment receipts found.</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-200 text-xs font-bold text-slate-500 uppercase bg-slate-50/50">
-                        <th className="py-3 px-4">Receipt No</th>
-                        <th className="py-3 px-4">Date</th>
-                        <th className="py-3 px-4">Mode</th>
-                        <th className="py-3 px-4">Transaction Ref</th>
-                        <th className="py-3 px-4 text-right">Amount Paid</th>
-                        <th className="py-3 px-4">Collected By</th>
-                        <th className="py-3 px-4 text-center">Receipt PDF</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-xs">
-                      {data?.payments?.map((p) => (
-                        <tr key={p.id} className="hover:bg-slate-50/80">
-                          <td className="py-3 px-4 font-mono font-bold text-slate-800">{p.receipt_no}</td>
-                          <td className="py-3 px-4 text-slate-700">{p.payment_date}</td>
-                          <td className="py-3 px-4 font-semibold text-slate-800">{p.payment_mode}</td>
-                          <td className="py-3 px-4 font-mono text-slate-500">{p.transaction_ref || '—'}</td>
-                          <td className="py-3 px-4 text-right font-bold text-emerald-700">{fmt(p.total_paid)}</td>
-                          <td className="py-3 px-4 text-slate-600">{p.collected_by_name}</td>
-                          <td className="py-3 px-4 text-center">
-                            <button
-                              onClick={() => downloadReceiptPDF(p.id, p.receipt_no)}
-                              className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                              title="Download Receipt PDF"
-                            >
-                              <Download className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Tab 3: Transaction Ledger */}
-          {activeTab === 'ledger' && (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              {data?.ledger_entries?.length === 0 ? (
-                <div className="py-12 text-center text-slate-400 text-xs">No ledger movements recorded.</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-200 text-xs font-bold text-slate-500 uppercase bg-slate-50/50">
-                        <th className="py-3 px-4">Date</th>
-                        <th className="py-3 px-4">Type</th>
-                        <th className="py-3 px-4">Department</th>
-                        <th className="py-3 px-4">Description / Reference</th>
-                        <th className="py-3 px-4 text-right">Debit (₹)</th>
-                        <th className="py-3 px-4 text-right">Credit (₹)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-xs">
-                      {data?.ledger_entries?.map((e) => (
-                        <tr key={e.id} className="hover:bg-slate-50/80">
-                          <td className="py-3 px-4 text-slate-600">{e.entry_date}</td>
-                          <td className="py-3 px-4">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              e.entry_type === 'DEBIT' ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'
-                            }`}>
-                              {e.entry_type}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 font-semibold uppercase text-slate-600">{e.department}</td>
-                          <td className="py-3 px-4">
-                            <div className="font-semibold text-slate-900">{e.description}</div>
-                            {e.reference_no && <div className="text-[11px] font-mono text-slate-400">{e.reference_no}</div>}
-                          </td>
-                          <td className="py-3 px-4 text-right font-bold text-rose-700">
-                            {e.entry_type === 'DEBIT' ? fmt(e.amount) : '—'}
-                          </td>
-                          <td className="py-3 px-4 text-right font-bold text-emerald-700">
-                            {e.entry_type === 'CREDIT' ? fmt(e.amount) : '—'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Tab 4: Concessions */}
-          {activeTab === 'concessions' && (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">Active Concessions & Scholarships</h3>
-                  <p className="text-xs text-slate-500">Authorized fee discounts applied to this student</p>
-                </div>
-                <button
-                  onClick={() => setConcessionModal(true)}
-                  className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold"
-                >
-                  + Add Concession
-                </button>
-              </div>
-
-              {data?.concessions?.length === 0 ? (
-                <div className="py-12 text-center text-slate-400 text-xs">No active concessions on record.</div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {data?.concessions?.map((c) => (
-                    <div key={c.id} className="p-4 bg-purple-50/40 rounded-xl border border-purple-100 space-y-2 text-xs">
-                      <div className="flex justify-between items-center">
-                        <span className="font-bold text-purple-900">{c.concession_type.replace('_', ' ')}</span>
-                        <span className="px-2 py-0.5 bg-purple-100 text-purple-800 font-bold rounded">
-                          {c.discount_type === 'PERCENTAGE' ? `${c.discount_value}% OFF` : `₹${c.discount_value} OFF`}
-                        </span>
-                      </div>
-                      <div className="text-slate-600 font-medium">Head: {c.fee_head_name}</div>
-                      <div className="text-slate-500 italic">"{c.reason}"</div>
-                      <div className="text-[11px] text-slate-400 pt-1 border-t border-purple-100">
-                        Approved by {c.approved_by_name}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Apply Concession Modal */}
-      {concessionModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">Apply Student Concession</h3>
-                <p className="text-xs text-slate-500">Scholarship, sibling, or staff child discount</p>
-              </div>
-              <button onClick={() => setConcessionModal(false)} className="text-slate-400 hover:text-slate-600 p-1">
-                ✕
+              <button onClick={() => navigate('/finance/bills')} className="btn btn-neutral">
+                Back to Bills
               </button>
             </div>
-
-            <form onSubmit={handleApplyConcession} className="space-y-3 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Concession Type</label>
-                <select
-                  value={cType}
-                  onChange={(e) => setCType(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold outline-none focus:bg-white focus:ring-2 focus:ring-purple-500"
-                >
-                  <option value="SCHOLARSHIP">Merit / Academic Scholarship</option>
-                  <option value="SIBLING">Sibling Discount</option>
-                  <option value="STAFF_CHILD">Staff Child Concession</option>
-                  <option value="PRINCIPAL_SPECIAL">Principal Special Concession</option>
-                  <option value="PARTIAL_WAIVER">Partial Fee Waiver</option>
-                  <option value="FULL_WAIVER">Full 100% Waiver</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Applicable Fee Head</label>
-                <select
-                  value={selectedFeeHead}
-                  onChange={(e) => setSelectedFeeHead(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold outline-none focus:bg-white focus:ring-2 focus:ring-purple-500"
-                >
-                  <option value="">All Fee Heads (Total Bill)</option>
-                  {feeHeads.map((h) => (
-                    <option key={h.id} value={h.id}>
-                      {h.name} ({h.department})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Discount Type</label>
-                  <select
-                    value={dType}
-                    onChange={(e) => setDType(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold outline-none"
-                  >
-                    <option value="FIXED">Fixed Amount (₹)</option>
-                    <option value="PERCENTAGE">Percentage (%)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Discount Value</label>
-                  <input
-                    type="number"
-                    min="1"
-                    step="any"
-                    value={dVal}
-                    onChange={(e) => setDVal(e.target.value)}
-                    placeholder={dType === 'FIXED' ? 'e.g. 500' : 'e.g. 20'}
-                    required
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:bg-white focus:ring-2 focus:ring-purple-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Official Reason & Authorization</label>
-                <textarea
-                  rows="2"
-                  value={cReason}
-                  onChange={(e) => setCReason(e.target.value)}
-                  placeholder="e.g. Approved under Merit Scholarship Scheme 2026-27"
-                  required
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-purple-500"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setConcessionModal(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingConcession}
-                  className="px-4 py-2 text-xs font-semibold bg-purple-600 hover:bg-purple-700 text-white rounded-xl shadow-md transition-all disabled:opacity-50"
-                >
-                  {savingConcession ? 'Saving...' : 'Save & Authorize'}
-                </button>
-              </div>
-            </form>
           </div>
+
+          {loading ? (
+            <div className="empty-state">
+              <div className="spinner" style={{ width: 32, height: 32 }}></div>
+              <p className="mt-4">Loading student financial ledger...</p>
+            </div>
+          ) : !ledger ? (
+            <div className="empty-state">
+              <i className="ti ti-alert-circle" style={{ fontSize: 36, color: 'var(--error)' }}></i>
+              <h4 style={{ marginTop: 12 }}>Ledger Not Found</h4>
+              <p className="text-xs text-muted">Unable to retrieve student financial account details.</p>
+            </div>
+          ) : (
+            <>
+              {/* Profile & Summary Top Cards */}
+              <div className="grid-4 mb-6">
+                <div className="stat-card" style={{ borderLeft: '4px solid #0176d3' }}>
+                  <div className="stat-label">Student Details</div>
+                  <div style={{ fontSize: '1.125rem', fontWeight: 800, color: 'var(--neutral-9)' }}>
+                    {ledger.student.name}
+                  </div>
+                  <div className="stat-sub">
+                    {ledger.student.admission_no} • {ledger.student.class_name}
+                  </div>
+                </div>
+
+                <div className="stat-card" style={{ borderLeft: '4px solid #0176d3' }}>
+                  <div className="stat-label">Total Billed (Invoiced)</div>
+                  <div className="stat-value" style={{ fontSize: '1.5rem', color: '#0176d3' }}>
+                    {fmt(ledger.total_billed)}
+                  </div>
+                  <div className="stat-sub">{ledger.bills?.length || 0} demand bills issued</div>
+                </div>
+
+                <div className="stat-card" style={{ borderLeft: '4px solid #2e844a' }}>
+                  <div className="stat-label">Total Amount Paid</div>
+                  <div className="stat-value" style={{ fontSize: '1.5rem', color: '#2e844a' }}>
+                    {fmt(ledger.total_paid)}
+                  </div>
+                  <div className="stat-sub">{ledger.payments?.length || 0} payment receipts</div>
+                </div>
+
+                <div className="stat-card" style={{ borderLeft: `4px solid ${ledger.outstanding > 0 ? '#dd7a01' : '#2e844a'}` }}>
+                  <div className="stat-label">Outstanding Balance Due</div>
+                  <div className="stat-value" style={{ fontSize: '1.5rem', color: ledger.outstanding > 0 ? '#dd7a01' : '#2e844a' }}>
+                    {fmt(ledger.outstanding)}
+                  </div>
+                  <div className="stat-sub">
+                    {ledger.advance_balance > 0 ? `Advance Credit: ${fmt(ledger.advance_balance)}` : 'Current Pending Arrears'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Navigation Tabs */}
+              <div className="card mb-6">
+                <div className="card-header" style={{ padding: '8px 16px', background: '#fafaf9' }}>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {[
+                      { id: 'bills', label: 'Demand Bills', icon: 'ti-file-invoice', count: ledger.bills?.length || 0 },
+                      { id: 'receipts', label: 'Payment Receipts', icon: 'ti-receipt', count: ledger.payments?.length || 0 },
+                      { id: 'movements', label: 'Ledger Audit Trail', icon: 'ti-list-check', count: ledger.ledger_movements?.length || 0 },
+                      { id: 'concessions', label: 'Concessions & Scholarships', icon: 'ti-percentage', count: ledger.concessions?.length || 0 },
+                    ].map((tab) => {
+                      const active = activeTab === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          onClick={() => setActiveTab(tab.id)}
+                          className={`btn ${active ? 'btn-primary' : 'btn-neutral'} btn-sm`}
+                          style={{ borderRadius: 20 }}
+                        >
+                          <i className={`ti ${tab.icon}`}></i>
+                          {tab.label} ({tab.count})
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Tab 1: Demand Bills */}
+                {activeTab === 'bills' && (
+                  <div className="table-container" style={{ border: 'none' }}>
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Bill No</th>
+                          <th>Period</th>
+                          <th>Issue Date</th>
+                          <th>Due Date</th>
+                          <th style={{ textAlign: 'right' }}>Total Payable</th>
+                          <th style={{ textAlign: 'right' }}>Paid</th>
+                          <th style={{ textAlign: 'right' }}>Balance Due</th>
+                          <th>Status</th>
+                          <th style={{ textAlign: 'center' }}>PDF</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ledger.bills?.map((b) => (
+                          <tr key={b.id}>
+                            <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--blue-60)' }}>{b.bill_no}</td>
+                            <td style={{ fontWeight: 600 }}>{b.bill_period_label}</td>
+                            <td>{b.issue_date}</td>
+                            <td style={{ color: b.balance_due > 0 ? '#ba0517' : 'inherit', fontWeight: 500 }}>{b.due_date}</td>
+                            <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(b.total_payable)}</td>
+                            <td style={{ textAlign: 'right', fontWeight: 600, color: '#2e844a' }}>{fmt(b.amount_paid)}</td>
+                            <td style={{ textAlign: 'right', fontWeight: 800, color: b.balance_due > 0 ? '#dd7a01' : '#2e844a' }}>
+                              {fmt(b.balance_due)}
+                            </td>
+                            <td>
+                              <span className={`badge ${b.status === 'PAID' ? 'badge-success' : b.status === 'PARTIALLY_PAID' ? 'badge-warning' : 'badge-info'}`}>
+                                {b.status}
+                              </span>
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <button
+                                onClick={() => downloadBillPDF(b.id, b.bill_no)}
+                                className="btn btn-neutral btn-sm"
+                              >
+                                <i className="ti ti-download"></i> PDF
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Tab 2: Payment Receipts */}
+                {activeTab === 'receipts' && (
+                  <div className="table-container" style={{ border: 'none' }}>
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Receipt No</th>
+                          <th>Payment Date</th>
+                          <th>Mode & Ref</th>
+                          <th style={{ textAlign: 'right' }}>Total Paid</th>
+                          <th>Allocations</th>
+                          <th>Status</th>
+                          <th style={{ textAlign: 'center' }}>PDF</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ledger.payments?.map((p) => (
+                          <tr key={p.id}>
+                            <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--blue-60)' }}>{p.receipt_no}</td>
+                            <td style={{ fontWeight: 500 }}>{p.payment_date}</td>
+                            <td>
+                              <span className="badge badge-neutral" style={{ fontSize: 10 }}>{p.payment_mode}</span>
+                              {p.transaction_ref && <span className="text-xs text-muted" style={{ marginLeft: 6 }}>{p.transaction_ref}</span>}
+                            </td>
+                            <td style={{ textAlign: 'right', fontWeight: 800, color: p.status === 'VALID' ? '#2e844a' : 'var(--neutral-6)' }}>
+                              {fmt(p.total_paid)}
+                            </td>
+                            <td style={{ fontSize: 12 }}>
+                              {p.allocations?.map((a) => `${a.fee_head_name}: ₹${a.amount}`).join(', ')}
+                            </td>
+                            <td>
+                              <span className={`badge ${p.status === 'VALID' ? 'badge-success' : 'badge-error'}`}>
+                                {p.status}
+                              </span>
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <button
+                                onClick={() => downloadReceiptPDF(p.id, p.receipt_no)}
+                                className="btn btn-neutral btn-sm"
+                              >
+                                <i className="ti ti-download"></i> PDF
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Tab 3: Chronological Ledger Movements */}
+                {activeTab === 'movements' && (
+                  <div className="table-container" style={{ border: 'none' }}>
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Entry Type</th>
+                          <th>Service / Fee Head</th>
+                          <th>Description</th>
+                          <th style={{ textAlign: 'right' }}>Debit (+)</th>
+                          <th style={{ textAlign: 'right' }}>Credit (-)</th>
+                          <th style={{ textAlign: 'right' }}>Running Balance</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ledger.ledger_movements?.map((m) => (
+                          <tr key={m.id}>
+                            <td style={{ fontSize: 12, fontWeight: 500 }}>{m.date?.slice(0, 16)}</td>
+                            <td>
+                              <span className={`badge ${m.entry_type === 'FEE_PAYMENT' ? 'badge-success' : m.entry_type === 'CONCESSION' ? 'badge-info' : 'badge-warning'}`}>
+                                {m.entry_type}
+                              </span>
+                            </td>
+                            <td style={{ fontWeight: 600 }}>{m.fee_head_name}</td>
+                            <td style={{ fontSize: 12, color: 'var(--neutral-6)' }}>{m.description}</td>
+                            <td style={{ textAlign: 'right', fontWeight: 700, color: m.debit_amount > 0 ? '#ba0517' : 'var(--neutral-4)' }}>
+                              {m.debit_amount > 0 ? fmt(m.debit_amount) : '-'}
+                            </td>
+                            <td style={{ textAlign: 'right', fontWeight: 700, color: m.credit_amount > 0 ? '#2e844a' : 'var(--neutral-4)' }}>
+                              {m.credit_amount > 0 ? fmt(m.credit_amount) : '-'}
+                            </td>
+                            <td style={{ textAlign: 'right', fontWeight: 800 }}>
+                              {fmt(m.running_balance)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Tab 4: Concessions */}
+                {activeTab === 'concessions' && (
+                  <div className="card-body" style={{ padding: 20 }}>
+                    {ledger.concessions?.length === 0 ? (
+                      <div className="empty-state" style={{ padding: '20px 0' }}>
+                        <p className="text-xs text-muted">No active concessions or scholarships assigned to this student.</p>
+                      </div>
+                    ) : (
+                      <div className="grid-2">
+                        {ledger.concessions?.map((c) => (
+                          <div key={c.id} style={{ background: '#fafaf9', border: '1px solid var(--neutral-2)', borderRadius: 8, padding: 14 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                              <span style={{ fontWeight: 700, fontSize: 13 }}>{c.fee_head_name}</span>
+                              <span className="badge badge-success">
+                                {c.discount_type === 'PERCENTAGE' ? `${c.discount_value}% OFF` : `₹${c.discount_value} OFF`}
+                              </span>
+                            </div>
+                            <div className="text-xs text-muted" style={{ marginBottom: 4 }}>
+                              Type: <strong>{c.concession_type}</strong>
+                            </div>
+                            <div className="text-xs text-muted" style={{ fontStyle: 'italic' }}>
+                              "{c.reason}"
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
         </div>
-      )}
+      </div>
     </div>
   );
 }
