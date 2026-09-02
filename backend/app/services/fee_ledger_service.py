@@ -845,6 +845,105 @@ def collect_fee_payment(
 
 
 # ═══════════════════════════════════════════════════════════════════════
+#  5. INSTANT SCHOLARSHIP / FEE WAIVER (MAAFI) ENGINE
+# ═══════════════════════════════════════════════════════════════════════
+
+def apply_concession_and_adjust_bills(
+    school_id, student_id, fee_head_id=None,
+    concession_type='WAIVER', discount_type='FIXED',
+    discount_value=0.0, reason='', session='2026-27',
+    actor_user=None
+):
+    """
+    Applies an instant scholarship, sibling discount, or fee waiver (maafi)
+    and immediately deducts the amount from the student's active unpaid bills and ledger.
+    """
+    student = Student.query.get(student_id)
+    if not student:
+        raise ValueError("Student not found")
+
+    discount_value = float(discount_value)
+    if discount_value <= 0:
+        raise ValueError("Discount value must be greater than zero")
+
+    # 1. Create Concession Rule
+    conc = StudentConcession(
+        school_id=school_id,
+        student_id=student_id,
+        fee_head_id=fee_head_id,
+        session=session,
+        concession_type=concession_type,
+        discount_type=discount_type,
+        discount_value=discount_value,
+        reason=reason,
+        requested_by=actor_user.id if actor_user else None,
+        approved_by=actor_user.id if actor_user else None,
+        approval_status='APPROVED',
+        approved_at=datetime.utcnow(),
+        is_active=True,
+    )
+    db.session.add(conc)
+    db.session.flush()
+
+    # 2. Immediately Apply to Open/Pending Bills
+    open_bills = FeeBill.query.filter(
+        FeeBill.student_id == student_id,
+        FeeBill.school_id == school_id,
+        FeeBill.status.in_([BillStatus.ISSUED.value, BillStatus.PARTIALLY_PAID.value, BillStatus.OVERDUE.value])
+    ).order_by(FeeBill.bill_month.desc(), FeeBill.id.desc()).all()
+
+    total_actual_deduction = 0.0
+
+    for bill in open_bills:
+        for itm in bill.items:
+            # Check if this item matches the target fee head or applies to all
+            if fee_head_id is None or itm.fee_head_id == fee_head_id:
+                base_amt = itm.original_amount or itm.net_amount
+                if discount_type == 'PERCENTAGE':
+                    disc_amt = round(base_amt * (discount_value / 100.0), 2)
+                else:
+                    disc_amt = round(discount_value, 2)
+
+                disc_amt = min(disc_amt, base_amt)
+                itm.discount_amount = round((itm.discount_amount or 0.0) + disc_amt, 2)
+                itm.net_amount = round(max(0.0, itm.original_amount - itm.discount_amount), 2)
+                itm.balance_amount = round(max(0.0, itm.net_amount - (itm.paid_amount or 0.0)), 2)
+                total_actual_deduction += disc_amt
+
+        bill.calculate_totals()
+
+    # 3. Post Credit Ledger Movement for the Granted Maafi / Discount
+    ledger_entry = StudentLedger(
+        school_id=school_id,
+        student_id=student_id,
+        fee_head_id=fee_head_id,
+        department='ACCOUNTS',
+        entry_type='CREDIT',
+        entry_date=date.today(),
+        period_label=f"Waiver {date.today().strftime('%b %Y')}",
+        amount=discount_value,
+        reference_no=f"MAAFI-{conc.id}",
+        description=f"Fee Waiver / Maafi ({concession_type}): {discount_value}{'%' if discount_type == 'PERCENTAGE' else ' INR'}. Reason: {reason}",
+        created_by=actor_user.id if actor_user else None,
+    )
+    db.session.add(ledger_entry)
+
+    # 4. Audit Log
+    audit = FinancialAuditLog(
+        school_id=school_id,
+        student_id=student_id,
+        action='CONCESSION_GRANTED',
+        actor_id=actor_user.id if actor_user else None,
+        new_value=f"Concession ID: {conc.id}, Type: {concession_type}, Value: {discount_value} ({discount_type})",
+        reason=reason,
+    )
+    db.session.add(audit)
+    db.session.commit()
+
+    return conc
+
+
+# ═══════════════════════════════════════════════════════════════════════
 #  5. RECEIPT CANCELLATION & REFUNDS
 # ═══════════════════════════════════════════════════════════════════════
 

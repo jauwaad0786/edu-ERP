@@ -33,7 +33,7 @@ from app.services.fee_ledger_service import (
     generate_fee_bill, bulk_generate_fee_bills,
     collect_fee_payment, cancel_payment_receipt,
     process_fee_refund, get_finance_dashboard_metrics,
-    ensure_default_fee_heads
+    ensure_default_fee_heads, apply_concession_and_adjust_bills
 )
 from app.utils.fee_pdf_generator import generate_fee_bill_pdf, generate_fee_receipt_pdf
 
@@ -589,24 +589,21 @@ def apply_concession():
     if not student_id or d_val <= 0 or not reason:
         return jsonify({'error': 'student_id, discount_value > 0 and reason are required.'}), 400
 
-    conc = StudentConcession(
-        school_id=user.school_id,
-        student_id=student_id,
-        fee_head_id=data.get('fee_head_id'),
-        session=data.get('session', '2026-27'),
-        concession_type=c_type,
-        discount_type=d_type,
-        discount_value=d_val,
-        reason=reason,
-        requested_by=user.id,
-        approved_by=user.id,
-        approval_status='APPROVED',
-        approved_at=datetime.utcnow(),
-        is_active=True,
-    )
-    db.session.add(conc)
-    db.session.commit()
-    return jsonify(conc.to_dict()), 201
+    try:
+        conc = apply_concession_and_adjust_bills(
+            school_id=user.school_id,
+            student_id=student_id,
+            fee_head_id=data.get('fee_head_id'),
+            concession_type=c_type,
+            discount_type=d_type,
+            discount_value=d_val,
+            reason=reason,
+            session=data.get('session', '2026-27'),
+            actor_user=user
+        )
+        return jsonify(conc.to_dict()), 201
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
 
 
 @fees_finance_bp.route('/refunds', methods=['GET'])

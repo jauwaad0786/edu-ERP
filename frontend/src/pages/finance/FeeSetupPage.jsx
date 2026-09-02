@@ -426,33 +426,29 @@ export default function FeeSetupPage() {
 
                     <div className="grid-2">
                       <div className="form-group">
-                        <label className="form-label">Department</label>
+                        <label className="form-label">Billing Frequency</label>
                         <select
-                          value={headForm.department}
-                          onChange={(e) => setHeadForm({ ...headForm, department: e.target.value })}
+                          value={headForm.default_frequency || 'MONTHLY'}
+                          onChange={(e) => setHeadForm({ ...headForm, default_frequency: e.target.value })}
                           className="form-select"
+                          style={{ fontWeight: 700 }}
                         >
-                          <option value="ACCOUNTS">ACCOUNTS</option>
-                          <option value="TRANSPORT">TRANSPORT</option>
-                          <option value="HOSTEL">HOSTEL</option>
-                          <option value="LIBRARY">LIBRARY</option>
+                          <option value="MONTHLY">Monthly (Every Month)</option>
+                          <option value="YEARLY">Yearly / Annual (Once per Year)</option>
+                          <option value="QUARTERLY">Quarterly / Term (Exam Months)</option>
+                          <option value="ONE_TIME">One-Time (Admission / Caution)</option>
                         </select>
                       </div>
 
                       <div className="form-group">
-                        <label className="form-label">Category</label>
+                        <label className="form-label">Applicability / Facility Type</label>
                         <select
-                          value={headForm.category}
-                          onChange={(e) => setHeadForm({ ...headForm, category: e.target.value })}
+                          value={headForm.is_recurring ? 'MANDATORY' : 'OPTIONAL'}
+                          onChange={(e) => setHeadForm({ ...headForm, is_recurring: e.target.value === 'MANDATORY' })}
                           className="form-select"
                         >
-                          <option value="ACADEMIC">ACADEMIC</option>
-                          <option value="TRANSPORT">TRANSPORT</option>
-                          <option value="HOSTEL">HOSTEL</option>
-                          <option value="LIBRARY">LIBRARY</option>
-                          <option value="EXAM">EXAM</option>
-                          <option value="ACTIVITY">ACTIVITY</option>
-                          <option value="OTHER">OTHER</option>
+                          <option value="MANDATORY">Mandatory (All Class Students - Tuition, Comp, Misc)</option>
+                          <option value="OPTIONAL">Optional Facility (Only if Enrolled in Bus, Hostel, Library)</option>
                         </select>
                       </div>
                     </div>
