@@ -23,6 +23,9 @@ export default function CollectPaymentPage() {
   const [ledgerData, setLedgerData] = useState(null);
   const [loadingLedger, setLoadingLedger] = useState(false);
 
+  // Fee Heads for Concession / Maafi
+  const [feeHeads, setFeeHeads] = useState([]);
+
   // Payment Allocation State
   const [paymentMode, setPaymentMode] = useState('UPI');
   const [transactionRef, setTransactionRef] = useState('');
@@ -30,13 +33,24 @@ export default function CollectPaymentPage() {
   const [selectedItems, setSelectedItems] = useState({}); // { itemId: { ... } }
   const [collecting, setCollecting] = useState(false);
 
+  // Instant Concession / Maafi Form State
+  const [concHeadId, setConcHeadId] = useState('');
+  const [concType, setConcType] = useState('WAIVER');
+  const [concDiscountType, setConcDiscountType] = useState('FIXED');
+  const [concDiscountValue, setConcDiscountValue] = useState('');
+  const [concReason, setConcReason] = useState('');
+  const [applyingConc, setApplyingConc] = useState(false);
+
   // Receipt Modal State
   const [receiptModal, setReceiptModal] = useState(null);
 
-  // 1. Fetch Classes on mount
+  // 1. Fetch Classes & Fee Heads on mount
   useEffect(() => {
     api.get('/principal/classes')
       .then((res) => setClasses(res.data || []))
+      .catch(() => {});
+    api.get('/fees-finance/heads')
+      .then((res) => setFeeHeads(res.data || []))
       .catch(() => {});
   }, []);
 
@@ -157,7 +171,9 @@ export default function CollectPaymentPage() {
 
       const payload = {
         student_id: selectedStudent.id,
+        amount: totalToPay,
         amount_paid: totalToPay,
+        total_amount: totalToPay,
         payment_mode: paymentMode,
         transaction_ref: transactionRef,
         remarks: remarks,
@@ -174,6 +190,47 @@ export default function CollectPaymentPage() {
       toast.error(err.response?.data?.error || 'Payment collection failed');
     } finally {
       setCollecting(false);
+    }
+  };
+
+  // Instant Scholarship / Fee Waiver (Maafi)
+  const handleApplyConcession = async (e) => {
+    e.preventDefault();
+    if (!selectedStudent) {
+      toast.error('Please select a student first');
+      return;
+    }
+    if (!concDiscountValue || parseFloat(concDiscountValue) <= 0) {
+      toast.error('Enter a valid discount / waiver amount');
+      return;
+    }
+    if (!concReason.trim()) {
+      toast.error('Please enter a reason or approval note');
+      return;
+    }
+
+    try {
+      setApplyingConc(true);
+      const payload = {
+        student_id: selectedStudent.id,
+        fee_head_id: concHeadId ? parseInt(concHeadId) : null,
+        concession_type: concType,
+        discount_type: concDiscountType,
+        discount_value: parseFloat(concDiscountValue),
+        reason: concReason.trim(),
+        session: '2026-27',
+      };
+
+      await api.post('/fees-finance/concessions', payload);
+      toast.success('Scholarship / Fee Waiver (Maafi) applied successfully!');
+      setConcDiscountValue('');
+      setConcReason('');
+      loadStudentLedger(selectedStudent.id);
+      fetchStudents();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to apply concession');
+    } finally {
+      setApplyingConc(false);
     }
   };
 
@@ -353,204 +410,313 @@ export default function CollectPaymentPage() {
               <p className="mt-4">Loading student financial ledger & pending bills...</p>
             </div>
           ) : selectedStudent && ledgerData ? (
-            <div className="grid-3 mb-6" style={{ gridTemplateColumns: '1fr 2fr' }}>
-              {/* Left Column: Student Details Card */}
-              <div className="card">
-                <div className="card-header">
-                  <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, margin: 0 }}>Selected Student</h3>
-                  <button
-                    onClick={() => navigate(`/finance/students/${selectedStudent.id}/ledger`)}
-                    className="btn btn-neutral btn-sm"
-                  >
-                    View Ledger
-                  </button>
+            <>
+              <div className="grid-3 mb-6" style={{ gridTemplateColumns: '1fr 2fr' }}>
+                {/* Left Column: Student Details Card */}
+                <div className="card">
+                  <div className="card-header">
+                    <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, margin: 0 }}>Selected Student</h3>
+                    <button
+                      onClick={() => navigate(`/finance/students/${selectedStudent.id}/ledger`)}
+                      className="btn btn-neutral btn-sm"
+                    >
+                      View Ledger
+                    </button>
+                  </div>
+                  <div className="card-body" style={{ padding: 16 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                      <div className="avatar avatar-lg">
+                        {selectedStudent?.name?.slice(0, 2)?.toUpperCase()}
+                      </div>
+                      <div>
+                        <h3 style={{ fontSize: '1.0625rem', fontWeight: 800, margin: 0 }}>{selectedStudent?.name}</h3>
+                        <div className="text-xs text-muted" style={{ fontWeight: 600, marginTop: 2 }}>
+                          Class: {selectedStudent?.class_name} • Roll No: {selectedStudent?.roll_no || '—'}
+                        </div>
+                        <div className="text-xs text-muted">
+                          Adm No: <strong>{selectedStudent?.admission_no}</strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ borderTop: '1px solid var(--neutral-2)', paddingTop: 12, marginBottom: 16 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0' }}>
+                        <span className="text-muted">Father Name:</span>
+                        <span style={{ fontWeight: 700 }}>{selectedStudent?.father_name || '—'}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0' }}>
+                        <span className="text-muted">Parent Mobile:</span>
+                        <span style={{ fontWeight: 700 }}>{selectedStudent?.parent_phone || '—'}</span>
+                      </div>
+                    </div>
+
+                    {/* Outstanding Summary */}
+                    <div className="stat-card mb-4" style={{ padding: 14, background: '#fef5e4', borderColor: '#fdd9a0' }}>
+                      <div className="stat-label" style={{ color: '#dd7a01', margin: 0 }}>Total Pending Dues</div>
+                      <div className="stat-value" style={{ fontSize: '1.75rem', color: '#dd7a01', marginTop: 4 }}>
+                        {fmt(ledgerData?.outstanding)}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '6px 0', borderBottom: '1px solid var(--neutral-2)' }}>
+                      <span className="text-muted">Total Invoiced:</span>
+                      <span style={{ fontWeight: 700 }}>{fmt(ledgerData?.total_billed)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '6px 0', borderBottom: '1px solid var(--neutral-2)' }}>
+                      <span className="text-muted">Total Paid So Far:</span>
+                      <span style={{ fontWeight: 700, color: '#2e844a' }}>{fmt(ledgerData?.total_paid)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '6px 0' }}>
+                      <span className="text-muted">Advance Credit:</span>
+                      <span style={{ fontWeight: 700, color: '#0176d3' }}>{fmt(ledgerData?.advance_credit || ledgerData?.advance_balance)}</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="card-body" style={{ padding: 16 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-                    <div className="avatar avatar-lg">
-                      {selectedStudent?.name?.slice(0, 2)?.toUpperCase()}
-                    </div>
+
+                {/* Right Column: Itemized Dues & Payment Form */}
+                <div className="card">
+                  <div className="card-header">
                     <div>
-                      <h3 style={{ fontSize: '1.0625rem', fontWeight: 800, margin: 0 }}>{selectedStudent?.name}</h3>
-                      <div className="text-xs text-muted" style={{ fontWeight: 600, marginTop: 2 }}>
-                        Class: {selectedStudent?.class_name} • Roll No: {selectedStudent?.roll_no || '—'}
+                      <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, margin: 0 }}>Itemized Dues & Service Selection</h3>
+                      <p className="text-xs text-muted" style={{ margin: 0 }}>
+                        Select specific fee heads to pay (Tuition, Transport, Library, etc.).
+                      </p>
+                    </div>
+                    <span className="badge badge-info">{Object.keys(selectedItems).length} Payable Items</span>
+                  </div>
+
+                  <form onSubmit={handleCollectPayment}>
+                    <div className="card-body" style={{ padding: 16 }}>
+                      {Object.keys(selectedItems).length === 0 ? (
+                        <div className="empty-state" style={{ padding: '30px 20px' }}>
+                          <i className="ti ti-check" style={{ fontSize: 32, color: '#2e844a' }}></i>
+                          <h4 style={{ marginTop: 8 }}>All Dues are Cleared!</h4>
+                          <p className="text-xs text-muted">This student has no pending fee bills or charges.</p>
+                        </div>
+                      ) : (
+                        <div className="table-container mb-4" style={{ border: '1px solid var(--neutral-2)' }}>
+                          <table className="table">
+                            <thead>
+                              <tr>
+                                <th style={{ width: 40 }}></th>
+                                <th>Service / Fee Head</th>
+                                <th>Bill Period</th>
+                                <th>Department</th>
+                                <th style={{ textAlign: 'right' }}>Max Due</th>
+                                <th style={{ textAlign: 'right', width: 140 }}>Paying (₹)</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {Object.values(selectedItems).map((it) => (
+                                <tr key={it.bill_item_id} style={{ background: it.selected ? '#fafaf9' : 'transparent' }}>
+                                  <td>
+                                    <input
+                                      type="checkbox"
+                                      checked={it.selected}
+                                      onChange={() => toggleItem(it.bill_item_id)}
+                                      style={{ width: 16, height: 16, cursor: 'pointer' }}
+                                    />
+                                  </td>
+                                  <td>
+                                    <div style={{ fontWeight: 700, color: 'var(--neutral-9)' }}>{it.fee_head_name}</div>
+                                  </td>
+                                  <td style={{ fontSize: 12, color: 'var(--neutral-6)' }}>{it.bill_period}</td>
+                                  <td>
+                                    <span className="badge badge-neutral" style={{ fontSize: 10 }}>{it.department}</span>
+                                  </td>
+                                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(it.max)}</td>
+                                  <td style={{ textAlign: 'right' }}>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max={it.max}
+                                      step="any"
+                                      disabled={!it.selected}
+                                      value={it.amount}
+                                      onChange={(e) => updateItemAmount(it.bill_item_id, e.target.value)}
+                                      className="form-input"
+                                      style={{ height: 32, width: 110, textAlign: 'right', fontWeight: 700, marginLeft: 'auto' }}
+                                    />
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      {/* Payment Mode & Transaction Details */}
+                      <div className="grid-3 mb-4">
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label className="form-label">Payment Mode</label>
+                          <select
+                            value={paymentMode}
+                            onChange={(e) => setPaymentMode(e.target.value)}
+                            className="form-select"
+                            style={{ fontWeight: 700 }}
+                          >
+                            <option value="UPI">UPI / QR Code</option>
+                            <option value="CASH">Cash Counter</option>
+                            <option value="CARD">Debit / Credit Card</option>
+                            <option value="BANK_TRANSFER">Bank Transfer / NEFT</option>
+                            <option value="CHEQUE">Cheque / Demand Draft</option>
+                          </select>
+                        </div>
+
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label className="form-label">Transaction Ref / UTR No</label>
+                          <input
+                            type="text"
+                            value={transactionRef}
+                            onChange={(e) => setTransactionRef(e.target.value)}
+                            placeholder="e.g. UPI-UTR-998877"
+                            className="form-input"
+                          />
+                        </div>
+
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label className="form-label">Remarks / Notes</label>
+                          <input
+                            type="text"
+                            value={remarks}
+                            onChange={(e) => setRemarks(e.target.value)}
+                            placeholder="e.g. Paid at accounts desk"
+                            className="form-input"
+                          />
+                        </div>
                       </div>
-                      <div className="text-xs text-muted">
-                        Adm No: <strong>{selectedStudent?.admission_no}</strong>
+
+                      {/* Total & Submit Button */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#eaf5ea', border: '1px solid #a9d6b3', borderRadius: 8, padding: '12px 16px' }}>
+                        <div>
+                          <span className="text-xs font-semibold" style={{ color: '#2e844a' }}>TOTAL PAYMENT AMOUNT:</span>
+                          <div style={{ fontSize: '1.375rem', fontWeight: 800, color: '#2e844a' }}>
+                            {fmt(totalToPay)}
+                          </div>
+                        </div>
+
+                        <button
+                          type="submit"
+                          disabled={collecting || totalToPay <= 0}
+                          className="btn btn-primary"
+                          style={{ height: 42, padding: '0 24px', fontSize: '0.875rem' }}
+                        >
+                          <i className="ti ti-check"></i>
+                          {collecting ? 'Processing Payment...' : 'Collect & Issue Receipt'}
+                        </button>
                       </div>
                     </div>
-                  </div>
-
-                  <div style={{ borderTop: '1px solid var(--neutral-2)', paddingTop: 12, marginBottom: 16 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0' }}>
-                      <span className="text-muted">Father Name:</span>
-                      <span style={{ fontWeight: 700 }}>{selectedStudent?.father_name || '—'}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0' }}>
-                      <span className="text-muted">Parent Mobile:</span>
-                      <span style={{ fontWeight: 700 }}>{selectedStudent?.parent_phone || '—'}</span>
-                    </div>
-                  </div>
-
-                  {/* Outstanding Summary */}
-                  <div className="stat-card mb-4" style={{ padding: 14, background: '#fef5e4', borderColor: '#fdd9a0' }}>
-                    <div className="stat-label" style={{ color: '#dd7a01', margin: 0 }}>Total Pending Dues</div>
-                    <div className="stat-value" style={{ fontSize: '1.75rem', color: '#dd7a01', marginTop: 4 }}>
-                      {fmt(ledgerData?.outstanding)}
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '6px 0', borderBottom: '1px solid var(--neutral-2)' }}>
-                    <span className="text-muted">Total Invoiced:</span>
-                    <span style={{ fontWeight: 700 }}>{fmt(ledgerData?.total_billed)}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '6px 0', borderBottom: '1px solid var(--neutral-2)' }}>
-                    <span className="text-muted">Total Paid So Far:</span>
-                    <span style={{ fontWeight: 700, color: '#2e844a' }}>{fmt(ledgerData?.total_paid)}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '6px 0' }}>
-                    <span className="text-muted">Advance Credit:</span>
-                    <span style={{ fontWeight: 700, color: '#0176d3' }}>{fmt(ledgerData?.advance_credit || ledgerData?.advance_balance)}</span>
-                  </div>
+                  </form>
                 </div>
               </div>
 
-              {/* Right Column: Itemized Dues & Payment Form */}
-              <div className="card">
+              {/* SECTION 3: INSTANT CONCESSION / SCHOLARSHIP / MAAFI FOR THIS STUDENT */}
+              <div className="card mb-6" style={{ borderLeft: '4px solid #0176d3' }}>
                 <div className="card-header">
                   <div>
-                    <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, margin: 0 }}>Itemized Dues & Service Selection</h3>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>
+                      <i className="ti ti-percentage" style={{ marginRight: 6, color: '#0176d3' }}></i>
+                      Apply Scholarship / Fee Waiver (Maafi) for this Student
+                    </h3>
                     <p className="text-xs text-muted" style={{ margin: 0 }}>
-                      Select specific fee heads to pay (Tuition, Transport, Library, etc.).
+                      Grant instant fee reduction, merit scholarship, sibling discount, or fee waiver (maafi) for {selectedStudent?.name}.
                     </p>
                   </div>
-                  <span className="badge badge-info">{Object.keys(selectedItems).length} Payable Items</span>
+                  <span className="badge badge-info">Instant Discount / Maafi</span>
                 </div>
 
-                <form onSubmit={handleCollectPayment}>
+                <form onSubmit={handleApplyConcession}>
                   <div className="card-body" style={{ padding: 16 }}>
-                    {Object.keys(selectedItems).length === 0 ? (
-                      <div className="empty-state" style={{ padding: '30px 20px' }}>
-                        <i className="ti ti-check" style={{ fontSize: 32, color: '#2e844a' }}></i>
-                        <h4 style={{ marginTop: 8 }}>All Dues are Cleared!</h4>
-                        <p className="text-xs text-muted">This student has no pending fee bills or charges.</p>
-                      </div>
-                    ) : (
-                      <div className="table-container mb-4" style={{ border: '1px solid var(--neutral-2)' }}>
-                        <table className="table">
-                          <thead>
-                            <tr>
-                              <th style={{ width: 40 }}></th>
-                              <th>Service / Fee Head</th>
-                              <th>Bill Period</th>
-                              <th>Department</th>
-                              <th style={{ textAlign: 'right' }}>Max Due</th>
-                              <th style={{ textAlign: 'right', width: 140 }}>Paying (₹)</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {Object.values(selectedItems).map((it) => (
-                              <tr key={it.bill_item_id} style={{ background: it.selected ? '#fafaf9' : 'transparent' }}>
-                                <td>
-                                  <input
-                                    type="checkbox"
-                                    checked={it.selected}
-                                    onChange={() => toggleItem(it.bill_item_id)}
-                                    style={{ width: 16, height: 16, cursor: 'pointer' }}
-                                  />
-                                </td>
-                                <td>
-                                  <div style={{ fontWeight: 700, color: 'var(--neutral-9)' }}>{it.fee_head_name}</div>
-                                </td>
-                                <td style={{ fontSize: 12, color: 'var(--neutral-6)' }}>{it.bill_period}</td>
-                                <td>
-                                  <span className="badge badge-neutral" style={{ fontSize: 10 }}>{it.department}</span>
-                                </td>
-                                <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(it.max)}</td>
-                                <td style={{ textAlign: 'right' }}>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    max={it.max}
-                                    step="any"
-                                    disabled={!it.selected}
-                                    value={it.amount}
-                                    onChange={(e) => updateItemAmount(it.bill_item_id, e.target.value)}
-                                    className="form-input"
-                                    style={{ height: 32, width: 110, textAlign: 'right', fontWeight: 700, marginLeft: 'auto' }}
-                                  />
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-
-                    {/* Payment Mode & Transaction Details */}
-                    <div className="grid-3 mb-4">
+                    <div className="grid-4 mb-3">
                       <div className="form-group" style={{ margin: 0 }}>
-                        <label className="form-label">Payment Mode</label>
+                        <label className="form-label">Applicable Fee Head</label>
                         <select
-                          value={paymentMode}
-                          onChange={(e) => setPaymentMode(e.target.value)}
+                          value={concHeadId}
+                          onChange={(e) => setConcHeadId(e.target.value)}
                           className="form-select"
-                          style={{ fontWeight: 700 }}
                         >
-                          <option value="UPI">UPI / QR Code</option>
-                          <option value="CASH">Cash Counter</option>
-                          <option value="CARD">Debit / Credit Card</option>
-                          <option value="BANK_TRANSFER">Bank Transfer / NEFT</option>
-                          <option value="CHEQUE">Cheque / Demand Draft</option>
+                          <option value="">All Fees (Entire Bill)</option>
+                          {feeHeads.map((h) => (
+                            <option key={h.id} value={h.id}>
+                              {h.name}
+                            </option>
+                          ))}
                         </select>
                       </div>
 
                       <div className="form-group" style={{ margin: 0 }}>
-                        <label className="form-label">Transaction Ref / UTR No</label>
-                        <input
-                          type="text"
-                          value={transactionRef}
-                          onChange={(e) => setTransactionRef(e.target.value)}
-                          placeholder="e.g. UPI-UTR-998877"
-                          className="form-input"
-                        />
+                        <label className="form-label">Type / Category</label>
+                        <select
+                          value={concType}
+                          onChange={(e) => setConcType(e.target.value)}
+                          className="form-select"
+                          style={{ fontWeight: 700 }}
+                        >
+                          <option value="WAIVER">Fee Waiver / Maafi</option>
+                          <option value="SCHOLARSHIP">Merit Scholarship</option>
+                          <option value="SIBLING">Sibling Discount</option>
+                          <option value="STAFF_CHILD">Staff Child Concession</option>
+                          <option value="PRINCIPAL_SPECIAL">Principal Special Maafi</option>
+                        </select>
                       </div>
 
                       <div className="form-group" style={{ margin: 0 }}>
-                        <label className="form-label">Remarks / Notes</label>
+                        <label className="form-label">Discount Mode</label>
+                        <select
+                          value={concDiscountType}
+                          onChange={(e) => setConcDiscountType(e.target.value)}
+                          className="form-select"
+                        >
+                          <option value="FIXED">Fixed Amount (₹)</option>
+                          <option value="PERCENTAGE">Percentage (%)</option>
+                        </select>
+                      </div>
+
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label className="form-label">
+                          Discount / Maafi Value ({concDiscountType === 'PERCENTAGE' ? '%' : '₹'})
+                        </label>
                         <input
-                          type="text"
-                          value={remarks}
-                          onChange={(e) => setRemarks(e.target.value)}
-                          placeholder="e.g. Paid at accounts desk"
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={concDiscountValue}
+                          onChange={(e) => setConcDiscountValue(e.target.value)}
+                          placeholder={concDiscountType === 'PERCENTAGE' ? 'e.g. 20%' : 'e.g. 500'}
+                          required
                           className="form-input"
+                          style={{ fontWeight: 700 }}
                         />
                       </div>
                     </div>
 
-                    {/* Total & Submit Button */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#eaf5ea', border: '1px solid #a9d6b3', borderRadius: 8, padding: '12px 16px' }}>
-                      <div>
-                        <span className="text-xs font-semibold" style={{ color: '#2e844a' }}>TOTAL PAYMENT AMOUNT:</span>
-                        <div style={{ fontSize: '1.375rem', fontWeight: 800, color: '#2e844a' }}>
-                          {fmt(totalToPay)}
-                        </div>
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+                      <div className="form-group" style={{ flex: 1, margin: 0 }}>
+                        <label className="form-label">Reason / Approval Note (Maafi Reason)</label>
+                        <input
+                          type="text"
+                          value={concReason}
+                          onChange={(e) => setConcReason(e.target.value)}
+                          placeholder="e.g. Principal approved ₹500 maafi on tuition fees for this term"
+                          required
+                          className="form-input"
+                        />
                       </div>
 
                       <button
                         type="submit"
-                        disabled={collecting || totalToPay <= 0}
+                        disabled={applyingConc}
                         className="btn btn-primary"
-                        style={{ height: 42, padding: '0 24px', fontSize: '0.875rem' }}
+                        style={{ height: 38, background: '#0176d3', borderColor: '#0176d3', padding: '0 20px' }}
                       >
                         <i className="ti ti-check"></i>
-                        {collecting ? 'Processing Payment...' : 'Collect & Issue Receipt'}
+                        {applyingConc ? 'Applying...' : 'Apply Maafi / Concession'}
                       </button>
                     </div>
                   </div>
                 </form>
               </div>
-            </div>
+            </>
           ) : null}
 
           {/* Success Official Receipt Modal (Direct PDF Download in Front of Cashier) */}
@@ -573,7 +739,7 @@ export default function CollectPaymentPage() {
                       {receiptModal.receipt_no}
                     </div>
                     <div style={{ fontSize: '1.375rem', fontWeight: 800, color: '#2e844a' }}>
-                      {fmt(receiptModal.total_paid)}
+                      {fmt(receiptModal.total_paid || receiptModal.payment?.total_paid)}
                     </div>
                     <div className="text-xs text-muted mt-1">
                       Student: <strong>{selectedStudent?.name}</strong> ({selectedStudent?.admission_no})
@@ -589,10 +755,12 @@ export default function CollectPaymentPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {receiptModal.allocations?.map((alc, idx) => (
+                        {(receiptModal.allocations || receiptModal.payment?.allocations)?.map((alc, idx) => (
                           <tr key={idx}>
-                            <td style={{ fontWeight: 600 }}>{alc.fee_head_name}</td>
-                            <td style={{ textAlign: 'right', fontWeight: 700, color: '#2e844a' }}>{fmt(alc.amount)}</td>
+                            <td style={{ fontWeight: 600 }}>{alc.fee_head_name || 'General Fee'}</td>
+                            <td style={{ textAlign: 'right', fontWeight: 700, color: '#2e844a' }}>
+                              {fmt(alc.allocated_amount || alc.amount)}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -615,7 +783,7 @@ export default function CollectPaymentPage() {
 
                   <button
                     type="button"
-                    onClick={() => downloadReceiptPDF(receiptModal.payment_id, receiptModal.receipt_no)}
+                    onClick={() => downloadReceiptPDF(receiptModal.payment_id || receiptModal.payment?.id, receiptModal.receipt_no)}
                     className="btn btn-primary btn-lg"
                     style={{ background: '#2e844a', borderColor: '#2e844a' }}
                   >

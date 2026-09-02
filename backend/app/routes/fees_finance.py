@@ -441,7 +441,10 @@ def collect_payment():
 
     data = request.get_json() or {}
     student_id = data.get('student_id')
-    amount = data.get('amount')
+    amount = data.get('amount') if data.get('amount') is not None else data.get('amount_paid')
+    if amount is None:
+        amount = data.get('total_amount')
+        
     mode = data.get('payment_mode', 'CASH')
     txn_ref = data.get('transaction_ref', '')
     allocations = data.get('allocations', [])
@@ -449,8 +452,8 @@ def collect_payment():
     department = data.get('department', 'ACCOUNTS')
     session = data.get('session', '2026-27')
 
-    if not student_id or not amount:
-        return jsonify({'error': 'student_id and amount are required.'}), 400
+    if not student_id or amount is None or float(amount) <= 0:
+        return jsonify({'error': 'Valid student_id and payment amount (> 0) are required.'}), 400
 
     try:
         payment = collect_fee_payment(
@@ -465,9 +468,12 @@ def collect_payment():
             session=session
         )
         return jsonify({
-            'message': 'Payment collected successfully',
-            'receipt_no': payment.receipt_no,
-            'payment': payment.to_dict(),
+            'message':      'Payment collected successfully',
+            'receipt_no':   payment.receipt_no,
+            'payment_id':   payment.id,
+            'total_paid':   payment.total_paid,
+            'payment':      payment.to_dict(),
+            'allocations':  [a.to_dict() for a in payment.allocations],
         }), 201
     except Exception as e:
         return jsonify({'error': str(e)}), 400
