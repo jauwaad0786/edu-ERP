@@ -421,47 +421,136 @@ def approve_payroll_run(payroll_run_id, approver):
     return pr
 
 
-def lock_payroll_run(payroll_run_id, locker):
+def pay_payroll_slip(slip_id, payment_mode='BANK_TRANSFER', transaction_ref='', paid_by_user=None, remarks=None):
     """
-    Locks payroll run. After locking, the payroll is frozen.
-    Also creates an aggregate / linked Expense record for School Finance P&L.
+    Pays an individual employee payroll slip, generating a canonical
+    Central Finance Expense record and updating HRMS and Finance state simultaneously.
     """
-    pr = PayrollRun.query.get_or_404(payroll_run_id)
-    if pr.school_id != locker.school_id:
+    slip = PayrollSlip.query.get_or_404(slip_id)
+    if paid_by_user and slip.school_id != paid_by_user.school_id:
         raise ValueError('Unauthorized.')
 
-    pr.status = PayrollRunStatus.LOCKED.value
-    pr.locked_by = locker.id
-    pr.locked_at = datetime.utcnow()
+    if slip.payment_status == 'PAID':
+        raise ValueError(f"Salary for {slip.user.name} ({slip.payroll_run.month_name}) has already been paid (Ref: {slip.remarks}).")
 
-    # Link to School Finance Expense
-    exp = Expense(
-        school_id=pr.school_id,
-        category='TEACHER_SALARY',
-        title=f'Monthly Staff & Teacher Payroll — {pr.month_name}',
-        vendor_name='Staff & Teachers',
-        amount=pr.total_net,
-        payment_method='BANK_TRANSFER',
-        payment_date=date.today(),
-        month=pr.month_name,
-        status='PAID',
-        source='PAYROLL_BATCH_AUTO',
-        source_ref_id=pr.id,
-        remarks=f'Automated batch payroll for {pr.total_employees} employees (Gross: ₹{pr.total_gross:,.2f}, Deductions: ₹{pr.total_deductions:,.2f})',
-        created_by=locker.id,
-    )
-    db.session.add(exp)
+    # Determine Department & Category
+    role_str = (slip.user.role.value if hasattr(slip.user.role, 'value') else str(slip.user.role or '')).upper()
+    dept_str = str(getattr(slip.user, 'department', '') or '').upper()
 
-    # Mark slips as PAID
-    for s in pr.slips:
-        s.payment_status = 'PAID'
-        s.payment_date = date.today()
+    if 'TEACH' in role_str or 'TEACH' in dept_str:
+        category = 'TEACHER_SALARY'
+    elif 'TRANSPORT' in role_str or 'TRANSPORT' in dept_str or 'DRIV' in dept_str:
+        category = 'TRANSPORT_STAFF_SALARY'
+    elif 'HOSTEL' in role_str or 'HOSTEL' in dept_str or 'WARDEN' in dept_str:
+        category = 'HOSTEL_STAFF_SALARY'
+    elif 'LIBRAR' in role_str or 'LIBRAR' in dept_str:
+        category = 'LIBRARY_STAFF_SALARY'
+    else:
+        category = 'STAFF_SALARY'
+
+    # Unique Voucher / Transaction Reference
+    inv_no = transaction_ref if transaction_ref else f"SAL-{slip.payroll_run.year}-{slip.id:06d}"
+
+    # Check if canonical Expense already exists for this slip
+    exp = Expense.query.filter_by(
+        school_id=slip.school_id,
+        source='HRMS_PAYROLL',
+        source_ref_id=slip.id
+    ).first()
+
+    if not exp:
+        exp = Expense(
+            school_id=slip.school_id,
+            category=category,
+            title=f"Salary Payment — {slip.user.name} ({slip.payroll_run.month_name})",
+            vendor_name=slip.user.name,
+            amount=round(float(slip.net_salary), 2),
+            payment_method=payment_mode or 'BANK_TRANSFER',
+            payment_date=date.today(),
+            month=slip.payroll_run.month_name,
+            status='PAID',
+            source='HRMS_PAYROLL',
+            source_ref_id=slip.id,
+            invoice_number=inv_no,
+            remarks=remarks or f"Net: ₹{slip.net_salary:,.2f}, Gross: ₹{slip.gross_salary:,.2f}, Deductions: ₹{slip.total_deductions:,.2f} | Paid by {paid_by_user.name if paid_by_user else 'Accounts'}",
+            created_by=paid_by_user.id if paid_by_user else None,
+        )
+        db.session.add(exp)
+    else:
+        exp.amount = round(float(slip.net_salary), 2)
+        exp.payment_method = payment_mode or 'BANK_TRANSFER'
+        exp.payment_date = date.today()
+        exp.invoice_number = inv_no
+        exp.status = 'PAID'
+
+    # Update PayrollSlip
+    slip.payment_status = 'PAID'
+    slip.payment_mode = payment_mode or 'BANK_TRANSFER'
+    slip.payment_date = date.today()
+    slip.remarks = f"Paid by {paid_by_user.name if paid_by_user else 'Accounts'} | Ref: {inv_no}"
+
+    # Financial Audit Log
+    try:
+        from app.models.fee_finance import FinancialAuditLog
+        audit = FinancialAuditLog(
+            school_id=slip.school_id,
+            user_id=paid_by_user.id if paid_by_user else None,
+            action='SALARY_PAID',
+            old_value='PENDING',
+            new_value=f"Paid ₹{slip.net_salary:,.2f} to {slip.user.name} via {payment_mode} (Ref: {inv_no})",
+            reason=remarks or 'Payroll salary disbursement'
+        )
+        db.session.add(audit)
+    except Exception:
+        pass
 
     log_hrms_audit(
-        school_id=pr.school_id,
-        action='PAYROLL_LOCKED',
-        actor_id=locker.id,
-        new_value=f'Locked Payroll for {pr.month_name}',
+        school_id=slip.school_id,
+        action='SALARY_PAID',
+        target_user_id=slip.user_id,
+        actor_id=paid_by_user.id if paid_by_user else None,
+        new_value=f"Paid Net ₹{slip.net_salary:,.2f} for {slip.payroll_run.month_name} (Ref: {inv_no})",
     )
+
     db.session.commit()
+    return slip, exp
+
+
+def pay_payroll_run_all(payroll_run_id, payment_mode='BANK_TRANSFER', paid_by_user=None, remarks=None):
+    """
+    Disburses all unpaid slips in a payroll run at once, creating itemized canonical Expenses.
+    """
+    pr = PayrollRun.query.get_or_404(payroll_run_id)
+    if paid_by_user and pr.school_id != paid_by_user.school_id:
+        raise ValueError('Unauthorized.')
+
+    paid_count = 0
+    for slip in pr.slips:
+        if slip.payment_status != 'PAID':
+            pay_payroll_slip(
+                slip.id,
+                payment_mode=payment_mode,
+                transaction_ref=f"SAL-{pr.year}-{slip.id:06d}",
+                paid_by_user=paid_by_user,
+                remarks=remarks or f"Batch payment for {pr.month_name} ({payment_mode})"
+            )
+            paid_count += 1
+
+    pr.status = PayrollRunStatus.LOCKED.value
+    pr.locked_by = paid_by_user.id if paid_by_user else None
+    pr.locked_at = datetime.utcnow()
+    db.session.commit()
+    return pr, paid_count
+
+
+def lock_payroll_run(payroll_run_id, locker):
+    """
+    Locks payroll run and disburses all unpaid slips creating itemized canonical expenses.
+    """
+    pr, paid_count = pay_payroll_run_all(
+        payroll_run_id,
+        payment_mode='BANK_TRANSFER',
+        paid_by_user=locker,
+        remarks=f'Locked and disbursed batch for {locker.name}'
+    )
     return pr

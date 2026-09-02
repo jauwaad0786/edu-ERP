@@ -114,6 +114,7 @@ import FeeSetupPage              from './pages/finance/FeeSetupPage';
 import OutstandingPage           from './pages/finance/OutstandingPage';
 import FinanceReportsPage        from './pages/finance/FinanceReportsPage';
 import PaymentLogsPage          from './pages/finance/PaymentLogsPage';
+import FinancePayrollPage       from './pages/finance/FinancePayrollPage';
 
 // ── Communication Hub Pages ───────────────────────────────────────────────────
 import SupportInbox     from './pages/communication/SupportInbox';
@@ -274,8 +275,8 @@ export default function App() {
               </ProtectedRoute>
             } />
             <Route path="/finance/payroll" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT']} permissions={ROUTE_PERMISSIONS['/finance/payroll']}>
-                <PayrollPage />
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL', 'HR']}>
+                <FinancePayrollPage />
               </ProtectedRoute>
             } />
             <Route path="/finance/vendors" element={

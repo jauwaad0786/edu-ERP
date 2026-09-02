@@ -41,6 +41,26 @@ def generate_library_fine_fee_record(fine_txn, created_by=None):
         remarks=f'Library penalty — {fine_txn.reason or "FINE"}',
     )
     db.session.add(rec)
+
+    # ── Canonical Central Finance Sync ──
+    try:
+        from app.services.fee_ledger_service import register_or_sync_service_charge
+        register_or_sync_service_charge(
+            school_id=fine_txn.school_id,
+            student_id=student.id,
+            amount=fine_txn.amount,
+            fee_head_code='LIBRARY_FINE',
+            department='LIBRARY',
+            source_module='LIBRARY',
+            source_type='FINE',
+            source_ref_id=fine_txn.id,
+            description=f'Library penalty — {fine_txn.reason or "FINE"}',
+            actor_user_id=created_by
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+
     return rec, 'created'
 
 
@@ -79,6 +99,9 @@ def record_library_fine_payment(fine_txn, payment_amount, payment_mode='CASH', c
         fee_rec, _ = generate_library_fine_fee_record(fine_txn, created_by=collected_by_user_id)
         db.session.flush()
 
+    member = fine_txn.member or LibraryMember.query.get(fine_txn.member_id)
+    student = Student.query.filter_by(user_id=member.user_id).first() if member else None
+
     if fee_rec:
         fee_rec.amount_paid = fine_txn.amount_paid
         fee_rec.payment_mode = payment_mode
@@ -116,6 +139,30 @@ def record_library_fine_payment(fine_txn, payment_amount, payment_mode='CASH', c
         db.session.add(txn)
         db.session.flush()
         fine_txn.fee_transaction_id = txn.id
+
+    # ── Canonical Central Finance Payment Collection ──
+    if student:
+        try:
+            from app.services.fee_ledger_service import collect_fee_payment
+            from app.models.user import User
+            librarian_user = User.query.get(collected_by_user_id) if collected_by_user_id else None
+            central_pmt = collect_fee_payment(
+                student_id=student.id,
+                amount_paid=collect_amt,
+                payment_mode=payment_mode,
+                collected_by=librarian_user,
+                department='LIBRARY',
+                remarks=remarks or f'Library Fine Payment — Fine #{fine_txn.id} ({fine_txn.reason})',
+                session=getattr(student, 'session', '2026-27') or '2026-27',
+                allocations=[]
+            )
+            if central_pmt:
+                fine_txn.receipt_no = central_pmt.receipt_no
+                if fee_rec:
+                    fee_rec.receipt_no = central_pmt.receipt_no
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
 
     return {
         'fine_id':            fine_txn.id,

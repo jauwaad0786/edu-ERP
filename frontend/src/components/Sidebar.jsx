@@ -35,6 +35,73 @@ const ROLE_MENUS = {
       ],
     },
     {
+      group: 'School & Fees Operations',
+      items: [
+        {
+          icon: 'ti-currency-rupee', label: 'Finance & Fees', path: '/finance/dashboard',
+          children: [
+            { icon: 'ti-layout-dashboard', label: 'Finance Dashboard', path: '/finance/dashboard' },
+            { icon: 'ti-file-invoice',     label: 'Fee Bills',         path: '/finance/bills' },
+            { icon: 'ti-credit-card',      label: 'Collect Payment',   path: '/finance/payments/collect' },
+            { icon: 'ti-history',          label: 'Payment Logs & Cashiers', path: '/finance/payment-logs' },
+            { icon: 'ti-cash',             label: 'Salary & Payroll',  path: '/finance/payroll' },
+            { icon: 'ti-receipt',          label: 'Receipts',          path: '/finance/receipts' },
+            { icon: 'ti-alert-circle',     label: 'Outstanding Dues',  path: '/finance/outstanding' },
+            { icon: 'ti-settings-2',       label: 'Fee Setup & Rates', path: '/finance/setup' },
+            { icon: 'ti-receipt-2',        label: 'Expenses',          path: '/finance/expenses' },
+            { icon: 'ti-report-analytics', label: 'Finance Reports',   path: '/finance/reports' },
+            { icon: 'ti-boxes',            label: 'Inventory',         path: '/finance/inventory' },
+            { icon: 'ti-building-store',   label: 'Vendors',           path: '/finance/vendors' },
+          ],
+        },
+        {
+          icon: 'ti-address-book', label: 'Student Management', path: '/students',
+          children: [
+            { icon: 'ti-user-plus',      label: 'Admissions',            path: '/admission' },
+            { icon: 'ti-address-book',   label: 'Students',              path: '/students' },
+            { icon: 'ti-edit',           label: 'Students Bulk Edit',    path: '/students/bulk-edit' },
+            { icon: 'ti-id-badge',       label: 'ID Cards',              path: '/id-cards' },
+          ],
+        },
+        {
+          icon: 'ti-briefcase', label: 'Staff & HRMS', path: '/hrms',
+          children: [
+            { icon: 'ti-layout-dashboard', label: 'HRMS Command Center',   path: '/hrms' },
+            { icon: 'ti-users',            label: 'Employee Directory',    path: '/hrms/employees' },
+            { icon: 'ti-map-pin',          label: 'GPS Attendance',        path: '/staff/attendance' },
+            { icon: 'ti-calendar-event',   label: 'Leaves & Official Duty',path: '/hrms/leaves' },
+            { icon: 'ti-cash',             label: 'Payroll & Payslips',    path: '/hrms/payroll' },
+          ],
+        },
+        {
+          icon: 'ti-books', label: 'Library', path: '/library',
+          children: [
+            { icon: 'ti-layout-dashboard', label: 'Dashboard',      path: '/library' },
+            { icon: 'ti-books',            label: 'Book Master',    path: '/library/books' },
+            { icon: 'ti-arrows-exchange',  label: 'Issue / Return', path: '/library/issue-return' },
+            { icon: 'ti-currency-rupee',   label: 'Fines & Dues',   path: '/library/fines' },
+          ],
+        },
+        {
+          icon: 'ti-bed', label: 'Hostel', path: '/hostel',
+          children: [
+            { icon: 'ti-layout-dashboard', label: 'Dashboard',          path: '/hostel' },
+            { icon: 'ti-layout-grid',      label: 'Room Map & Beds',    path: '/hostel/room-map' },
+            { icon: 'ti-receipt-2',        label: 'Monthly Fees',       path: '/hostel/fees' },
+            { icon: 'ti-alert-triangle',   label: 'Fines & Waivers',    path: '/hostel/fines' },
+          ],
+        },
+        {
+          icon: 'ti-bus', label: 'Transport', path: '/transport',
+          children: [
+            { icon: 'ti-layout-dashboard', label: 'Dashboard',              path: '/transport' },
+            { icon: 'ti-bus',              label: 'Vehicles & Fleet',       path: '/transport/vehicles' },
+            { icon: 'ti-currency-rupee',   label: 'Fees & Fines',           path: '/transport/fees' },
+          ],
+        },
+      ],
+    },
+    {
       group: 'Customer Service',
       items: [
         {
@@ -110,6 +177,7 @@ const ROLE_MENUS = {
             { icon: 'ti-file-invoice',     label: 'Fee Bills',         path: '/finance/bills' },
             { icon: 'ti-credit-card',      label: 'Collect Payment',   path: '/finance/payments/collect' },
             { icon: 'ti-history',          label: 'Payment Logs & Cashiers', path: '/finance/payment-logs' },
+            { icon: 'ti-cash',             label: 'Salary & Payroll',  path: '/finance/payroll' },
             { icon: 'ti-receipt',          label: 'Receipts',          path: '/finance/receipts' },
             { icon: 'ti-alert-circle',     label: 'Outstanding Dues',  path: '/finance/outstanding' },
             { icon: 'ti-settings-2',       label: 'Fee Setup & Rates', path: '/finance/setup' },
@@ -320,16 +388,18 @@ const ROLE_MENUS = {
   ACCOUNTANT: [
     {
       group: 'Overview',
-      items: [{ icon: 'ti-layout-dashboard', label: 'Dashboard', path: '/finance/expenses' }],
+      items: [{ icon: 'ti-layout-dashboard', label: 'Finance Dashboard', path: '/finance/dashboard' }],
     },
     {
       group: 'Finance',
       items: [
-        { icon: 'ti-receipt',        label: 'Fees',       path: '/fees' },
-        { icon: 'ti-receipt-2',      label: 'Expenses',   path: '/finance/expenses' },
-        { icon: 'ti-boxes',          label: 'Inventory',  path: '/finance/inventory' },
-        { icon: 'ti-cash',           label: 'Payroll',    path: '/finance/payroll' },
-        { icon: 'ti-building-store', label: 'Vendors',    path: '/finance/vendors' },
+        { icon: 'ti-credit-card',      label: 'Collect Payment',   path: '/finance/payments/collect' },
+        { icon: 'ti-file-invoice',     label: 'Fee Bills',         path: '/finance/bills' },
+        { icon: 'ti-history',          label: 'Payment Logs',      path: '/finance/payment-logs' },
+        { icon: 'ti-cash',             label: 'Salary & Payroll',  path: '/finance/payroll' },
+        { icon: 'ti-receipt-2',        label: 'Expenses',          path: '/finance/expenses' },
+        { icon: 'ti-boxes',            label: 'Inventory',         path: '/finance/inventory' },
+        { icon: 'ti-building-store',   label: 'Vendors',           path: '/finance/vendors' },
       ],
     },
     {
@@ -607,7 +677,9 @@ export default function Sidebar({ darkMode }) {
 
   const baseGroups = (isCompanyActor && !isTrueAdmin)
     ? ROLE_MENUS.EMPLOYEE
-    : (ROLE_MENUS[resolveMenuRole(user?.role, ROLE_MENUS)] || []);
+    : (!isCompanyActor && (user?.role === 'SUPER_ADMIN' || user?.is_super))
+      ? ROLE_MENUS.PRINCIPAL
+      : (ROLE_MENUS[resolveMenuRole(user?.role, ROLE_MENUS)] || ROLE_MENUS.PRINCIPAL);
 
   // Static role bucket + jo bhi extra permission is user ko diya gaya hai
   // (Staff Access page / Permission Matrix se) — ab dono merge hote hain,

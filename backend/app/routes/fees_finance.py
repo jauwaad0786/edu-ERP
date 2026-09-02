@@ -22,6 +22,8 @@ from app import db
 from app.models.user import User
 from app.models.school import School
 from app.models.academic import Student, Class
+from app.models.finance import Expense
+from app.models.hrms import PayrollRun, PayrollSlip, PayrollRunStatus
 from app.models.fee_finance import (
     FeeHead, FeeStructureV2, FeeStructureItemV2, StudentFeeAssignment,
     StudentConcession, FeeBill, FeeBillItem, StudentLedger, FeePayment,
@@ -35,6 +37,7 @@ from app.services.fee_ledger_service import (
     process_fee_refund, get_finance_dashboard_metrics,
     ensure_default_fee_heads, apply_concession_and_adjust_bills
 )
+from app.services import payroll_engine as p_svc
 from app.utils.fee_pdf_generator import generate_fee_bill_pdf, generate_fee_receipt_pdf
 
 fees_finance_bp = Blueprint('fees_finance', __name__)
@@ -573,27 +576,259 @@ def list_payments():
     status  = request.args.get('status')
     mode    = request.args.get('payment_mode')
     department = request.args.get('department')
+    log_type = request.args.get('type', 'ALL').upper() # ALL, INCOME, EXPENSE, SALARY
 
-    q = FeePayment.query.filter_by(school_id=user.school_id, session=session)
-    if status:
-        q = q.filter_by(status=status)
-    if mode:
-        q = q.filter_by(payment_mode=mode)
-    if department:
-        q = q.filter_by(department=department)
+    results = []
 
-    if search:
-        q = q.join(Student).join(User, Student.user_id == User.id).filter(
-            db.or_(
-                User.name.ilike(f"%{search}%"),
-                Student.admission_no.ilike(f"%{search}%"),
-                FeePayment.receipt_no.ilike(f"%{search}%"),
-                FeePayment.transaction_ref.ilike(f"%{search}%")
+    # 1. Money IN (Student Fee Collections)
+    if log_type in ['ALL', 'INCOME']:
+        q = FeePayment.query.filter_by(school_id=user.school_id, session=session)
+        if status:
+            q = q.filter_by(status=status)
+        if mode:
+            q = q.filter_by(payment_mode=mode)
+        if department:
+            q = q.filter_by(department=department)
+
+        if search:
+            q = q.join(Student).join(User, Student.user_id == User.id).filter(
+                db.or_(
+                    User.name.ilike(f"%{search}%"),
+                    Student.admission_no.ilike(f"%{search}%"),
+                    FeePayment.receipt_no.ilike(f"%{search}%"),
+                    FeePayment.transaction_ref.ilike(f"%{search}%")
+                )
             )
-        )
 
-    payments = q.order_by(FeePayment.payment_date.desc(), FeePayment.id.desc()).all()
-    return jsonify([p.to_dict() for p in payments]), 200
+        payments = q.order_by(FeePayment.payment_date.desc(), FeePayment.id.desc()).all()
+        for p in payments:
+            stu_name = p.student.user.name if p.student and p.student.user else f"Student #{p.student_id}"
+            cls_name = p.student.class_ref.name if p.student and p.student.class_ref else ''
+            adm_no   = p.student.admission_no if p.student else ''
+            d = p.to_dict()
+            d['direction'] = 'IN'
+            d['transaction_type'] = 'STUDENT_FEE'
+            d['party_name'] = stu_name
+            d['party_subtext'] = f"Class {cls_name} • Adm: {adm_no}" if cls_name else adm_no
+            d['party_type'] = 'STUDENT'
+            results.append(d)
+
+    # 2. Money OUT (Staff/Teacher Salaries & Expenses)
+    if log_type in ['ALL', 'EXPENSE', 'SALARY']:
+        eq = Expense.query.filter_by(school_id=user.school_id)
+        if status:
+            eq = eq.filter_by(status=status)
+        if mode:
+            eq = eq.filter_by(payment_method=mode)
+        if log_type == 'SALARY':
+            eq = eq.filter(Expense.category.ilike('%SALARY%'))
+
+        if department:
+            if department == 'ACCOUNTS':
+                eq = eq.filter(Expense.category.in_(['STAFF_SALARY', 'ELECTRICITY', 'MAINTENANCE', 'MISCELLANEOUS']))
+            elif department == 'HOSTEL':
+                eq = eq.filter(Expense.category.in_(['HOSTEL_STAFF_SALARY', 'HOSTEL_EXPENSE']))
+            elif department == 'TRANSPORT':
+                eq = eq.filter(Expense.category.in_(['TRANSPORT_STAFF_SALARY', 'TRANSPORT_FUEL']))
+            elif department == 'LIBRARY':
+                eq = eq.filter(Expense.category.in_(['LIBRARY_STAFF_SALARY', 'BOOKS_LIBRARY']))
+
+        if search:
+            eq = eq.filter(
+                db.or_(
+                    Expense.vendor_name.ilike(f"%{search}%"),
+                    Expense.title.ilike(f"%{search}%"),
+                    Expense.invoice_number.ilike(f"%{search}%")
+                )
+            )
+
+        expenses = eq.order_by(Expense.payment_date.desc(), Expense.id.desc()).all()
+        for e in expenses:
+            is_sal = 'SALARY' in (e.category or '').upper()
+            creator_name = e.creator.name if hasattr(e, 'creator') and e.creator else 'Accountant'
+            creator_role = e.creator.role.value if hasattr(e, 'creator') and e.creator and e.creator.role else 'Staff'
+            results.append({
+                'id': e.id,
+                'direction': 'OUT',
+                'transaction_type': 'SALARY_PAYMENT' if is_sal else 'EXPENSE',
+                'receipt_no': e.invoice_number or f"EXP-{e.id:06d}",
+                'party_name': e.vendor_name or e.title,
+                'party_subtext': e.category.replace('_', ' ').title(),
+                'party_type': 'STAFF' if is_sal else 'VENDOR',
+                'total_paid': e.amount,
+                'amount_paid': e.amount,
+                'payment_mode': e.payment_method,
+                'payment_date': str(e.payment_date) if e.payment_date else None,
+                'department': 'TRANSPORT' if 'TRANSPORT' in (e.category or '') else ('HOSTEL' if 'HOSTEL' in (e.category or '') else ('LIBRARY' if 'LIBRARY' in (e.category or '') else 'ACCOUNTS')),
+                'status': e.status or 'PAID',
+                'collector_name': creator_name,
+                'collector_role': creator_role,
+                'remarks': e.remarks or e.title,
+                'created_at': e.created_at.isoformat() if e.created_at else None,
+                'allocations': [],
+            })
+
+    # Sort combined results by payment_date / timestamp descending
+    results.sort(key=lambda x: (x.get('payment_date') or '', x.get('created_at') or ''), reverse=True)
+    return jsonify(results), 200
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  6.1 PAYROLL & SALARY DISBURSEMENT FROM CENTRAL FINANCE
+# ═══════════════════════════════════════════════════════════════════════
+
+@fees_finance_bp.route('/payroll/slips', methods=['GET'])
+@jwt_required()
+def get_payroll_slips_for_finance():
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    run_id = request.args.get('payroll_run_id')
+    month = request.args.get('month')
+    year = request.args.get('year')
+    status = request.args.get('status')
+    search = (request.args.get('search') or '').strip()
+    role = request.args.get('role')
+    department = request.args.get('department')
+
+    q = PayrollSlip.query.filter_by(school_id=user.school_id)
+    if run_id:
+        q = q.filter_by(payroll_run_id=int(run_id))
+    if status:
+        q = q.filter_by(payment_status=status)
+    if month or year:
+        q = q.join(PayrollRun)
+        if month:
+            q = q.filter(PayrollRun.month == int(month))
+        if year:
+            q = q.filter(PayrollRun.year == int(year))
+
+    if role or department or search:
+        q = q.join(User, PayrollSlip.user_id == User.id)
+        if role:
+            q = q.filter(User.role == role)
+        if department:
+            q = q.filter(User.department.ilike(f"%{department}%"))
+        if search:
+            q = q.filter(
+                db.or_(
+                    User.name.ilike(f"%{search}%"),
+                    User.employee_id.ilike(f"%{search}%"),
+                    User.email.ilike(f"%{search}%")
+                )
+            )
+
+    slips = q.order_by(PayrollSlip.id.desc()).all()
+    res = []
+    for s in slips:
+        d = s.to_dict()
+        d['month_name'] = s.payroll_run.month_name if s.payroll_run else ''
+        d['run_status'] = s.payroll_run.status if s.payroll_run else ''
+        res.append(d)
+    return jsonify(res), 200
+
+
+@fees_finance_bp.route('/payroll/slips/<int:slip_id>/pay', methods=['POST'])
+@jwt_required()
+def pay_payroll_slip_from_finance(slip_id):
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    data = request.get_json() or {}
+    mode = data.get('payment_mode', 'BANK_TRANSFER')
+    txn_ref = (data.get('transaction_ref') or '').strip()
+    remarks = data.get('remarks')
+
+    try:
+        slip, exp = p_svc.pay_payroll_slip(
+            slip_id=slip_id,
+            payment_mode=mode,
+            transaction_ref=txn_ref,
+            paid_by_user=user,
+            remarks=remarks
+        )
+        return jsonify({
+            'message': f'Salary payment of ₹{slip.net_salary:,.2f} for {slip.user.name} completed successfully!',
+            'slip': slip.to_dict(),
+            'expense': exp.to_dict(),
+        }), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@fees_finance_bp.route('/payroll/runs/<int:run_id>/pay-all', methods=['POST'])
+@jwt_required()
+def pay_payroll_run_all_from_finance(run_id):
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    data = request.get_json() or {}
+    mode = data.get('payment_mode', 'BANK_TRANSFER')
+    remarks = data.get('remarks')
+
+    try:
+        run, count = p_svc.pay_payroll_run_all(
+            payroll_run_id=run_id,
+            payment_mode=mode,
+            paid_by_user=user,
+            remarks=remarks
+        )
+        return jsonify({
+            'message': f'Disbursed {count} salary payments for {run.month_name} successfully!',
+            'run': run.to_dict(),
+            'paid_count': count,
+        }), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@fees_finance_bp.route('/expenses/by-category', methods=['GET'])
+@jwt_required()
+def get_expenses_by_category():
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    month = request.args.get('month')
+    q = Expense.query.filter_by(school_id=user.school_id, status='PAID')
+    if month:
+        q = q.filter(Expense.month.ilike(f"%{month}%"))
+
+    expenses = q.order_by(Expense.payment_date.desc()).all()
+
+    categories_map = {
+        'TEACHER_SALARY':         {'label': 'Teacher Salaries',           'department': 'ACADEMIC',    'total': 0.0, 'count': 0},
+        'STAFF_SALARY':           {'label': 'Staff & Admin Salaries',     'department': 'ADMIN',       'total': 0.0, 'count': 0},
+        'TRANSPORT_STAFF_SALARY': {'label': 'Transport Staff & Drivers',  'department': 'TRANSPORT',   'total': 0.0, 'count': 0},
+        'HOSTEL_STAFF_SALARY':    {'label': 'Hostel Wardens & Staff',     'department': 'HOSTEL',      'total': 0.0, 'count': 0},
+        'LIBRARY_STAFF_SALARY':   {'label': 'Library Staff',              'department': 'LIBRARY',     'total': 0.0, 'count': 0},
+        'ELECTRICITY':            {'label': 'Electricity Bills',          'department': 'UTILITY',     'total': 0.0, 'count': 0},
+        'MAINTENANCE':            {'label': 'Campus Maintenance',         'department': 'MAINTENANCE', 'total': 0.0, 'count': 0},
+        'TRANSPORT_FUEL':         {'label': 'Vehicle Fuel & Maintenance', 'department': 'TRANSPORT',   'total': 0.0, 'count': 0},
+        'BOOKS_LIBRARY':          {'label': 'Books & Publications',       'department': 'LIBRARY',     'total': 0.0, 'count': 0},
+        'INVENTORY_PURCHASE':     {'label': 'Vendor & Inventory Purchases','department': 'OPERATIONS',  'total': 0.0, 'count': 0},
+        'MISCELLANEOUS':          {'label': 'Miscellaneous Expenses',     'department': 'OTHER',       'total': 0.0, 'count': 0},
+    }
+
+    for exp in expenses:
+        cat = exp.category or 'MISCELLANEOUS'
+        if cat not in categories_map:
+            categories_map[cat] = {'label': cat.replace('_', ' ').title(), 'department': 'OTHER', 'total': 0.0, 'count': 0}
+        categories_map[cat]['total'] = round(categories_map[cat]['total'] + exp.amount, 2)
+        categories_map[cat]['count'] += 1
+
+    return jsonify({
+        'total_expenses': sum(c['total'] for c in categories_map.values() if isinstance(c, dict)),
+        'categories': categories_map,
+        'recent_expenses': [e.to_dict() for e in expenses[:50]]
+    }), 200
 
 
 @fees_finance_bp.route('/payments/<int:payment_id>/receipt-pdf', methods=['GET'])

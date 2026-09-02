@@ -895,6 +895,60 @@ def lock_payroll_run_route(run_id):
     return jsonify(run.to_dict()), 200
 
 
+@hrms_bp.route('/payroll/slips/<int:slip_id>/pay', methods=['POST'])
+@role_required('PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'HR')
+def pay_payroll_slip_route(slip_id):
+    actor = get_current_user()
+    data = request.get_json() or {}
+    payment_mode = data.get('payment_mode', 'BANK_TRANSFER')
+    transaction_ref = (data.get('transaction_ref') or '').strip()
+    remarks = data.get('remarks')
+
+    try:
+        slip, exp = p_svc.pay_payroll_slip(
+            slip_id=slip_id,
+            payment_mode=payment_mode,
+            transaction_ref=transaction_ref,
+            paid_by_user=actor,
+            remarks=remarks
+        )
+        return jsonify({
+            'message': f'Salary for {slip.user.name} paid successfully!',
+            'slip': slip.to_dict(),
+            'expense': exp.to_dict(),
+        }), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@hrms_bp.route('/payroll/runs/<int:run_id>/pay-all', methods=['POST'])
+@role_required('PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT')
+def pay_payroll_run_all_route(run_id):
+    actor = get_current_user()
+    data = request.get_json() or {}
+    payment_mode = data.get('payment_mode', 'BANK_TRANSFER')
+    remarks = data.get('remarks')
+
+    try:
+        run, count = p_svc.pay_payroll_run_all(
+            payroll_run_id=run_id,
+            payment_mode=payment_mode,
+            paid_by_user=actor,
+            remarks=remarks
+        )
+        return jsonify({
+            'message': f'Disbursed {count} salary payments for {run.month_name} successfully!',
+            'run': run.to_dict(),
+            'paid_count': count,
+        }), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @hrms_bp.route('/payroll/slips/<int:slip_id>/pdf', methods=['GET'])
 @jwt_required()
 def download_payslip_pdf(slip_id):

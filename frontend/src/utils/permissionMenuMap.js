@@ -22,11 +22,15 @@ export const PERMISSION_MENU_ITEMS = {
 
   'staff.profile.manage':      { group: 'Staff Management', item: { icon: 'ti-briefcase', label: 'Staff List', path: '/staff' } },
 
-  'fees.structure.manage':     { group: 'Operations', item: { icon: 'ti-currency-rupee', label: 'Fee Structures', path: '/fees/structures' } },
-  'fees.collect':              { group: 'Operations', item: { icon: 'ti-receipt',        label: 'Fees',           path: '/fees' } },
-  'fees.discount.apply':       { group: 'Operations', item: { icon: 'ti-receipt',        label: 'Fees',           path: '/fees' } },
-  'fees.receipt.view':         { group: 'Operations', item: { icon: 'ti-receipt',        label: 'Fees',           path: '/fees' } },
-  'fees.reports.view':         { group: 'Operations', item: { icon: 'ti-receipt',        label: 'Fees',           path: '/fees' } },
+  'fees.structure.manage':     { group: 'Finance & Fees', item: { icon: 'ti-settings-2',       label: 'Fee Setup & Rates', path: '/finance/setup' } },
+  'fees.collect': [
+    { group: 'Finance & Fees', item: { icon: 'ti-credit-card',      label: 'Collect Payment',   path: '/finance/payments/collect' } },
+    { group: 'Finance & Fees', item: { icon: 'ti-file-invoice',     label: 'Fee Bills',         path: '/finance/bills' } },
+    { group: 'Finance & Fees', item: { icon: 'ti-history',          label: 'Payment Logs',      path: '/finance/payment-logs' } },
+  ],
+  'fees.discount.apply':       { group: 'Finance & Fees', item: { icon: 'ti-credit-card',      label: 'Collect Payment',   path: '/finance/payments/collect' } },
+  'fees.receipt.view':         { group: 'Finance & Fees', item: { icon: 'ti-receipt',          label: 'Receipts',          path: '/finance/receipts' } },
+  'fees.reports.view':         { group: 'Finance & Fees', item: { icon: 'ti-report-analytics', label: 'Finance Reports',   path: '/finance/reports' } },
 
   'exams.schedule.manage':     { group: 'Examinations', item: { icon: 'ti-pencil',    label: 'Exam Schedule', path: '/exams' } },
   'exams.timetable.manage':    { group: 'Examinations', item: { icon: 'ti-pencil',    label: 'Exam Schedule', path: '/exams' } },

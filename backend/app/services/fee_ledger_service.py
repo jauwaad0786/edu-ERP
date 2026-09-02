@@ -125,20 +125,20 @@ def get_student_ledger(student_id, session=None):
 
     if session:
         bills_session = bill_query.filter_by(session=session).order_by(FeeBill.bill_month.desc(), FeeBill.id.desc()).all()
-        if bills_session:
-            bills = bills_session
-            pay_query = pay_query.filter_by(session=session)
-            ledger_query = ledger_query.filter_by(session=session)
-            concessions_query = concessions_query.filter_by(session=session)
-        else:
-            # Fallback to all active bills if no bills found for specific session tag
-            bills = bill_query.order_by(FeeBill.bill_month.desc(), FeeBill.id.desc()).all()
+        bills = bills_session if bills_session else bill_query.order_by(FeeBill.bill_month.desc(), FeeBill.id.desc()).all()
+
+        pays_session = pay_query.filter_by(session=session).order_by(FeePayment.payment_date.desc(), FeePayment.id.desc()).all()
+        payments = pays_session if pays_session else pay_query.order_by(FeePayment.payment_date.desc(), FeePayment.id.desc()).all()
+
+        ledg_session = ledger_query.filter_by(session=session).order_by(StudentLedger.entry_date.desc(), StudentLedger.id.desc()).all()
+        ledger_entries = ledg_session if ledg_session else ledger_query.order_by(StudentLedger.entry_date.desc(), StudentLedger.id.desc()).all()
+
+        concessions = concessions_query.filter_by(session=session).all() or concessions_query.all()
     else:
         bills = bill_query.order_by(FeeBill.bill_month.desc(), FeeBill.id.desc()).all()
-
-    payments = pay_query.order_by(FeePayment.payment_date.desc(), FeePayment.id.desc()).all()
-    ledger_entries = ledger_query.order_by(StudentLedger.entry_date.desc(), StudentLedger.id.desc()).all()
-    concessions = concessions_query.all()
+        payments = pay_query.order_by(FeePayment.payment_date.desc(), FeePayment.id.desc()).all()
+        ledger_entries = ledger_query.order_by(StudentLedger.entry_date.desc(), StudentLedger.id.desc()).all()
+        concessions = concessions_query.all()
 
     total_billed = sum(b.total_payable for b in bills)
     total_paid   = sum(p.total_paid for p in payments)
@@ -452,14 +452,17 @@ def get_student_applicable_charges(student_id, session='2026-27', bill_month=Non
 
     # ── 3. Hostel Department Integration (ONLY IF ACTIVE IN HOSTEL) ───────
     try:
-        from app.models.hostel import HostelBedAllocation
+        from app.models.hostel import HostelBedAllocation, HostelFineRecord
+        from app.services.hostel_fee_service import resolve_fee_structure
         h_alloc = HostelBedAllocation.query.filter_by(student_id=student_id, status='ACTIVE').first()
         if h_alloc:
             hostel_head = fee_heads.get('HOSTEL')
             if hostel_head:
                 ca = custom_assignments.get(hostel_head.id)
                 if not (ca and ca.is_exempt):
-                    h_amt = 5000.0
+                    # Resolve exact hostel fee structure for this bed
+                    fs = resolve_fee_structure(h_alloc.bed) if h_alloc.bed else None
+                    h_amt = fs.total_monthly() if fs else 5000.0
                     if ca and ca.custom_amount is not None:
                         h_amt = ca.custom_amount
 
@@ -474,13 +477,30 @@ def get_student_applicable_charges(student_id, session='2026-27', bill_month=Non
 
                     charges.append({
                         'fee_head_id':     hostel_head.id,
-                        'fee_head_name':   hostel_head.name,
+                        'fee_head_name':   f"{hostel_head.name} ({h_alloc.bed.room.room_number if (h_alloc.bed and h_alloc.bed.room) else 'Bed'})",
                         'fee_head_code':   hostel_head.code,
                         'department':      'HOSTEL',
                         'original_amount': round(h_amt, 2),
                         'discount_amount': round(disc, 2),
                         'fine_amount':     0.0,
                         'net_amount':      round(max(0.0, h_amt - disc), 2),
+                    })
+
+            # Check pending hostel fines
+            h_fines = HostelFineRecord.query.filter_by(student_id=student_id, status='PENDING').all()
+            tot_h_fine = sum(hf.outstanding() for hf in h_fines)
+            if tot_h_fine > 0:
+                h_fine_head = fee_heads.get('HOSTEL_FINE') or hostel_head
+                if h_fine_head:
+                    charges.append({
+                        'fee_head_id':     h_fine_head.id,
+                        'fee_head_name':   f"Hostel Disciplinary Fine ({len(h_fines)} pending)",
+                        'fee_head_code':   h_fine_head.code,
+                        'department':      'HOSTEL',
+                        'original_amount': round(tot_h_fine, 2),
+                        'discount_amount': 0.0,
+                        'fine_amount':     round(tot_h_fine, 2),
+                        'net_amount':      round(tot_h_fine, 2),
                     })
     except Exception:
         pass
@@ -531,6 +551,126 @@ def get_student_applicable_charges(student_id, session='2026-27', bill_month=Non
         pass
 
     return charges
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  2B. CANONICAL SERVICE CHARGE REGISTRATION (HOSTEL/LIB/TRANS/ADM/EXAM)
+# ═══════════════════════════════════════════════════════════════════════
+
+def register_or_sync_service_charge(
+    school_id, student_id, amount, fee_head_code,
+    department='ACCOUNTS', source_module='SCHOOL_FEES',
+    source_type='CHARGE', source_ref_id=None,
+    description='', session='2026-27', due_date=None,
+    billing_period=None, actor_user_id=None
+):
+    """
+    Registers a new departmental charge or fine into Central Finance.
+    Creates/Updates FeeBill, FeeBillItem, and records a DEBIT in StudentLedger.
+    Guarantees instant visibility across Hostel, Library, Transport, Central Finance & Principal Dashboard.
+    """
+    student = Student.query.get(student_id)
+    if not student:
+        raise ValueError(f"Student #{student_id} not found.")
+
+    amount = round(float(amount), 2)
+    if amount <= 0:
+        return None
+
+    ensure_default_fee_heads(school_id)
+    fh = FeeHead.query.filter_by(school_id=school_id, code=fee_head_code).first()
+    if not fh:
+        fh = FeeHead.query.filter_by(school_id=school_id, department=department).first()
+    if not fh:
+        fh = FeeHead(
+            school_id=school_id, name=description or f"{department} Charge",
+            code=fee_head_code, department=department, category=department
+        )
+        db.session.add(fh)
+        db.session.flush()
+
+    b_month = billing_period or date.today().strftime('%Y-%m')
+    d_date = due_date or date.today()
+
+    # Find or create active monthly bill
+    bill = FeeBill.query.filter_by(
+        school_id=school_id, student_id=student_id, bill_month=b_month
+    ).first()
+
+    if not bill:
+        rcpt_count = FeeBill.query.filter_by(school_id=school_id).count() + 1
+        bill_no = f"BILL-{date.today().year}-{rcpt_count:06d}"
+        try:
+            yr, mo = map(int, b_month.split('-'))
+            m_label = f"{calendar.month_name[mo]} {yr}"
+        except Exception:
+            m_label = f"Billing Period {b_month}"
+
+        bill = FeeBill(
+            bill_no=bill_no,
+            school_id=school_id,
+            student_id=student_id,
+            session=session,
+            bill_month=b_month,
+            bill_period_label=m_label,
+            generation_date=date.today(),
+            due_date=d_date,
+            status=BillStatus.ISSUED.value,
+            generated_by=actor_user_id,
+            total_current_charges=0.0,
+            total_discount=0.0,
+            total_payable=0.0,
+            amount_paid=0.0,
+            balance_due=0.0,
+        )
+        db.session.add(bill)
+        db.session.flush()
+
+    # Add or update bill item
+    existing_item = FeeBillItem.query.filter_by(
+        bill_id=bill.id, fee_head_id=fh.id
+    ).first()
+
+    if existing_item:
+        existing_item.original_amount = round(existing_item.original_amount + amount, 2)
+        existing_item.net_amount = round(max(0.0, existing_item.original_amount - (existing_item.discount_amount or 0.0)), 2)
+        existing_item.balance_amount = round(max(0.0, existing_item.net_amount - (existing_item.paid_amount or 0.0)), 2)
+    else:
+        new_item = FeeBillItem(
+            bill_id=bill.id,
+            fee_head_id=fh.id,
+            department=department,
+            original_amount=amount,
+            discount_amount=0.0,
+            fine_amount=0.0,
+            net_amount=amount,
+            paid_amount=0.0,
+            balance_amount=amount,
+        )
+        db.session.add(new_item)
+
+    bill.calculate_totals()
+
+    # Post Debit entry to Student Ledger
+    ledger_entry = StudentLedger(
+        school_id=school_id,
+        student_id=student_id,
+        fee_head_id=fh.id,
+        department=department,
+        entry_type='DEBIT',
+        entry_date=date.today(),
+        period_label=f"{department} {date.today().strftime('%b %Y')}",
+        session=session,
+        amount=amount,
+        bill_id=bill.id,
+        reference_no=bill.bill_no,
+        description=f"{department} {source_type}: ₹{amount:.2f} ({description or fh.name})",
+        created_by=actor_user_id,
+    )
+    db.session.add(ledger_entry)
+    db.session.commit()
+
+    return bill
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -697,7 +837,7 @@ def bulk_generate_fee_bills(school_id, bill_month, due_date, class_id=None, sect
 # ═══════════════════════════════════════════════════════════════════════
 
 def collect_fee_payment(
-    student_id, amount_paid, payment_mode, transaction_ref,
+    student_id, amount_paid, payment_mode='CASH', transaction_ref='',
     allocations=None, collected_by=None, remarks=None,
     department='ACCOUNTS', session='2026-27'
 ):
@@ -829,13 +969,62 @@ def collect_fee_payment(
     )
     db.session.add(ledger_entry)
 
+    # ── Bi-Directional Cross-Department Sync ──────────────────────────────
+    try:
+        # 1. Sync Hostel Fines
+        from app.models.hostel import HostelFineRecord
+        h_fines = HostelFineRecord.query.filter(
+            HostelFineRecord.student_id == student_id,
+            HostelFineRecord.status.in_(['PENDING', 'PARTIAL', 'PARTIALLY_PAID'])
+        ).all()
+        for hf in h_fines:
+            hf.status = 'PAID'
+            hf.amount_paid = hf.amount
+            hf.paid_at = datetime.utcnow()
+            hf.receipt_no = payment.receipt_no
+
+        # 2. Sync Library Fines
+        from app.models.library import LibraryMember, FineTransaction
+        lib_mem = LibraryMember.query.filter_by(user_id=student.user_id, school_id=student.school_id).first()
+        if lib_mem:
+            lib_fines = lib_mem.fines.filter(FineTransaction.status.in_(['OUTSTANDING', 'PENDING', 'PARTIAL', 'PARTIALLY_PAID'])).all()
+            for lf in lib_fines:
+                lf.status = 'PAID'
+                lf.paid_amount = lf.amount
+                lf.paid_at = datetime.utcnow()
+                lf.payment_reference = payment.receipt_no
+                lf.collected_by = collected_by.id if collected_by else None
+
+        # 3. Sync Legacy FeeRecord if present
+        from app.models.financial import FeeRecord
+        legacy_recs = FeeRecord.query.filter(
+            FeeRecord.student_id == student_id,
+            FeeRecord.status.in_(['PENDING', 'PARTIAL', 'PARTIALLY_PAID'])
+        ).all()
+        for lr in legacy_recs:
+            rem_due = max(0.0, round(lr.effective_due() - (lr.amount_paid or 0.0), 2))
+            if rem_due > 0 and amount_paid >= rem_due:
+                lr.amount_paid = lr.effective_due()
+                lr.status = 'PAID'
+            elif (lr.amount_paid or 0.0) >= lr.effective_due():
+                lr.status = 'PAID'
+            elif (lr.amount_paid or 0.0) > 0:
+                lr.status = 'PARTIAL'
+            lr.paid_date = date.today()
+            lr.receipt_no = payment.receipt_no
+            lr.payment_mode = payment_mode
+            lr.collected_by = collected_by.id if collected_by else None
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+
     # Audit Log
     audit = FinancialAuditLog(
         school_id=student.school_id,
         student_id=student_id,
         action='PAYMENT_COLLECTED',
         actor_id=collected_by.id if collected_by else None,
-        new_value=f"Receipt: {payment.receipt_no}, Amount: ₹{amount_paid:.2f}, Mode: {payment_mode}",
+        new_value=f"Receipt: {payment.receipt_no}, Amount: ₹{amount_paid:.2f}, Mode: {payment_mode}, Dept: {department}",
         reason="Fee payment collection",
     )
     db.session.add(audit)
@@ -1196,6 +1385,41 @@ def get_finance_dashboard_metrics(school_id, session='2026-27', month=None):
         col_name = p.collector.name if p.collector else 'Accounts Staff'
         collectors_breakdown[col_name] = round(collectors_breakdown.get(col_name, 0.0) + p.total_paid, 2)
 
+    # ── Department-wise Expense Breakdown ──────────────────────────────
+    dept_expenses = {
+        'TEACHER_SALARY':        {'label': 'Teacher Salaries',           'department': 'ACADEMIC',    'amount': 0.0, 'count': 0},
+        'STAFF_SALARY':          {'label': 'Staff & Admin Salaries',     'department': 'ADMIN',       'amount': 0.0, 'count': 0},
+        'TRANSPORT':             {'label': 'Transport Operations & Staff','department': 'TRANSPORT',   'amount': 0.0, 'count': 0},
+        'HOSTEL':                {'label': 'Hostel Operations & Staff',  'department': 'HOSTEL',      'amount': 0.0, 'count': 0},
+        'LIBRARY':               {'label': 'Library Books & Staff',      'department': 'LIBRARY',     'amount': 0.0, 'count': 0},
+        'UTILITIES_MAINTENANCE': {'label': 'Utilities & Maintenance',    'department': 'OPERATIONS',  'amount': 0.0, 'count': 0},
+        'OTHER':                 {'label': 'Vendor & Miscellaneous',     'department': 'OTHER',       'amount': 0.0, 'count': 0},
+    }
+    for e in expenses:
+        cat = (e.category or '').upper()
+        amt = e.amount or 0.0
+        if 'TEACH' in cat:
+            dept_expenses['TEACHER_SALARY']['amount'] = round(dept_expenses['TEACHER_SALARY']['amount'] + amt, 2)
+            dept_expenses['TEACHER_SALARY']['count'] += 1
+        elif 'STAFF' in cat and 'TRANSPORT' not in cat and 'HOSTEL' not in cat and 'LIBRAR' not in cat:
+            dept_expenses['STAFF_SALARY']['amount'] = round(dept_expenses['STAFF_SALARY']['amount'] + amt, 2)
+            dept_expenses['STAFF_SALARY']['count'] += 1
+        elif 'TRANSPORT' in cat:
+            dept_expenses['TRANSPORT']['amount'] = round(dept_expenses['TRANSPORT']['amount'] + amt, 2)
+            dept_expenses['TRANSPORT']['count'] += 1
+        elif 'HOSTEL' in cat:
+            dept_expenses['HOSTEL']['amount'] = round(dept_expenses['HOSTEL']['amount'] + amt, 2)
+            dept_expenses['HOSTEL']['count'] += 1
+        elif 'LIBRAR' in cat:
+            dept_expenses['LIBRARY']['amount'] = round(dept_expenses['LIBRARY']['amount'] + amt, 2)
+            dept_expenses['LIBRARY']['count'] += 1
+        elif 'ELECTRIC' in cat or 'MAINTENANCE' in cat or 'CLEANING' in cat or 'WATER' in cat or 'RENT' in cat:
+            dept_expenses['UTILITIES_MAINTENANCE']['amount'] = round(dept_expenses['UTILITIES_MAINTENANCE']['amount'] + amt, 2)
+            dept_expenses['UTILITIES_MAINTENANCE']['count'] += 1
+        else:
+            dept_expenses['OTHER']['amount'] = round(dept_expenses['OTHER']['amount'] + amt, 2)
+            dept_expenses['OTHER']['count'] += 1
+
     # ── Class-wise Fee Collection Summary ──────────────────────────────
     classes = Class.query.filter_by(school_id=school_id).all()
     class_stats = []
@@ -1227,6 +1451,7 @@ def get_finance_dashboard_metrics(school_id, session='2026-27', month=None):
         'net_surplus':           net_surplus,
         'collection_percentage': collection_pct,
         'service_wise':          list(service_stats.values()),
+        'department_expenses':   list(dept_expenses.values()),
         'class_wise':            class_stats,
         'monthly_summary':       monthly_summary,
         'today_collection': {

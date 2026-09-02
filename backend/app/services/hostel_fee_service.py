@@ -75,6 +75,7 @@ def generate_hostel_fee_record(allocation, created_by, month=None, prorated_days
         amount_due = round((base_fee / total_month_days) * prorated_days, 2)
         remarks += f" (Prorated for {prorated_days}/{total_month_days} days)"
 
+    stu_session = getattr(allocation.student, 'session', '2026-27') if allocation.student else '2026-27'
     rec = FeeRecord(
         school_id     = allocation.school_id,
         student_id    = allocation.student_id,
@@ -83,12 +84,35 @@ def generate_hostel_fee_record(allocation, created_by, month=None, prorated_days
         amount_paid   = 0.0,
         status        = 'PENDING',
         month         = month,
+        session       = stu_session,
         due_date      = date.today().replace(day=min(10, 28)),
         source        = 'HOSTEL',
         source_ref_id = allocation.id,
         remarks       = remarks,
     )
     db.session.add(rec)
+
+    # ── Canonical Central Finance Sync ──
+    try:
+        from app.services.fee_ledger_service import register_or_sync_service_charge
+        register_or_sync_service_charge(
+            school_id=allocation.school_id,
+            student_id=allocation.student_id,
+            amount=amount_due,
+            fee_head_code='HOSTEL',
+            department='HOSTEL',
+            source_module='HOSTEL',
+            source_type='CHARGE',
+            source_ref_id=allocation.id,
+            description=remarks,
+            session=stu_session,
+            billing_period=month,
+            actor_user_id=created_by
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+
     return rec, 'created'
 
 
@@ -170,6 +194,27 @@ def record_hostel_fee_payment(record, amount, payment_mode='CASH', remarks='', c
             collected_by     = user_id,
         )
         db.session.add(txn)
+
+        # ── Canonical Central Finance Payment Collection ──
+        try:
+            from app.services.fee_ledger_service import collect_fee_payment
+            central_pmt = collect_fee_payment(
+                student_id=record.student_id,
+                amount_paid=amount,
+                payment_mode=payment_mode,
+                collected_by=collected_by_user,
+                department='HOSTEL',
+                remarks=remarks or f"Hostel payment collected by Warden",
+                session=getattr(record, 'session', '2026-27') or '2026-27',
+                allocations=[]
+            )
+            if central_pmt:
+                record.receipt_no = central_pmt.receipt_no
+                txn.receipt_no = central_pmt.receipt_no
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+
         db.session.commit()
 
         log_hostel_activity(

@@ -858,6 +858,24 @@ def create_student():
                 session=student.session, remarks='Admission Fee — auto-generated',
             )
             db.session.add(rec)
+
+            try:
+                from app.services.fee_ledger_service import register_or_sync_service_charge
+                register_or_sync_service_charge(
+                    school_id=sid,
+                    student_id=student.id,
+                    amount=admission_fs.amount,
+                    fee_head_code='ADMISSION',
+                    department='ACCOUNTS',
+                    source_module='ADMISSION',
+                    source_type='ADMISSION_FEE',
+                    source_ref_id=student.id,
+                    description='Admission Fee — auto-generated',
+                    session=student.session,
+                    actor_user_id=get_current_user().id if get_current_user() else None
+                )
+            except Exception:
+                pass
     except Exception:
         pass
 
