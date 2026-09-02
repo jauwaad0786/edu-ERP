@@ -102,30 +102,76 @@ def finalize_working_status(record, settings):
     record.overtime_minutes = max(0, minutes - ot_threshold)
 
 
-# ═══════════════════════════════════════════════════════════════════════
-#  CHECK-IN
-# ═══════════════════════════════════════════════════════════════════════
+def get_user_shift_timings(user, on_date=None):
+    """Retrieves user's assigned Shift or falls back to global StaffAttendanceSettings."""
+    on_date = on_date or date.today()
+    from app.models.hrms import EmployeeShiftAssignment, Shift
+    assignment = EmployeeShiftAssignment.query.filter(
+        EmployeeShiftAssignment.user_id == user.id,
+        EmployeeShiftAssignment.valid_from <= on_date,
+        db.or_(
+            EmployeeShiftAssignment.valid_to == None,
+            EmployeeShiftAssignment.valid_to >= on_date
+        )
+    ).first()
+
+    if assignment and assignment.shift:
+        s = assignment.shift
+        return {
+            'start_time': s.start_time or '08:00',
+            'end_time': s.end_time or '14:00',
+            'grace_minutes': s.grace_minutes if s.grace_minutes is not None else 10,
+            'half_day_after_minutes': s.half_day_after_minutes or 240,
+            'overtime_after_minutes': s.full_day_minutes or 480,
+            'shift_name': s.name,
+        }
+
+    settings = StaffAttendanceSettings.get_or_create(user.school_id)
+    return {
+        'start_time': settings.school_start_time or '08:00',
+        'end_time': settings.school_end_time or '14:00',
+        'grace_minutes': settings.grace_minutes if settings.grace_minutes is not None else 10,
+        'half_day_after_minutes': settings.half_day_after_minutes or 240,
+        'overtime_after_minutes': settings.overtime_after_minutes or 480,
+        'shift_name': 'Default School Hours',
+    }
+
 
 def check_in(user, latitude, longitude, accuracy=None, is_mock=False, device=None):
     """
     Creates (or returns existing) today's StaffAttendance row for this user.
-    Raises ValueError with a user-facing message on invalid attempts.
+    Validates location against school campus coordinates and radius,
+    accounting for GPS accuracy, Official Duty exemptions, and shift timings.
     """
     settings = StaffAttendanceSettings.get_or_create(user.school_id)
-
     today = date.today()
     existing = StaffAttendance.query.filter_by(user_id=user.id, attendance_date=today).first()
     if existing and existing.check_in_time:
         raise ValueError('Aaj ka check-in already ho chuka hai.')
 
+    # Check for approved Official Duty (OD)
+    from app.models.hrms import OfficialDuty
+    active_od = OfficialDuty.query.filter(
+        OfficialDuty.user_id == user.id,
+        OfficialDuty.status == 'APPROVED',
+        OfficialDuty.from_date <= today,
+        OfficialDuty.to_date >= today,
+    ).first()
+
     distance = None
-    if settings.latitude is not None and settings.longitude is not None:
+    if settings.latitude is not None and settings.longitude is not None and latitude is not None and longitude is not None:
         distance = haversine_distance_meters(latitude, longitude, settings.latitude, settings.longitude)
 
     gps_status = compute_gps_status(distance, settings.radius_meters or 100)
 
-    if gps_status == 'OUTSIDE_CAMPUS' and settings.approval_required is False:
-        # Hard block only when approvals are OFF (no human in the loop to catch it)
+    # If on Official Duty, override GPS restriction
+    if active_od:
+        gps_status = 'OFFICIAL_DUTY'
+
+    # Check GPS accuracy: if accuracy > 200m and not on OD, require approval / warn
+    accuracy_poor = (accuracy is not None and accuracy > 200 and not active_od)
+
+    if gps_status == 'OUTSIDE_CAMPUS' and settings.approval_required is False and not active_od:
         raise ValueError(f'Aap school se {int(distance)}m door hain — allowed radius {settings.radius_meters}m hai.')
 
     if settings.mock_location_detection and is_mock:
@@ -138,6 +184,11 @@ def check_in(user, latitude, longitude, accuracy=None, is_mock=False, device=Non
     except Exception:
         pass
 
+    shift_info = get_user_shift_timings(user, today)
+    start_dt = _parse_hhmm(shift_info['start_time'], today)
+    grace_cutoff = start_dt + timedelta(minutes=shift_info['grace_minutes'] or 0)
+    calculated_status = 'LATE' if now > grace_cutoff else 'PRESENT'
+
     record = existing or StaffAttendance(school_id=user.school_id, user_id=user.id, attendance_date=today)
     record.check_in_time     = now
     record.check_in_lat      = latitude
@@ -149,20 +200,27 @@ def check_in(user, latitude, longitude, accuracy=None, is_mock=False, device=Non
     record.check_in_ip       = ctx.get('ip_address')
     record.check_in_browser  = ctx.get('browser')
 
-    if settings.approval_required:
+    # Approval decision
+    if active_od:
+        record.approval_status = 'APPROVED'
+        record.status = 'PRESENT'
+        record.rejection_reason = f'Official Duty: {active_od.duty_type} ({active_od.location})'
+    elif settings.approval_required or accuracy_poor or gps_status == 'OUTSIDE_CAMPUS':
         record.approval_status = 'PENDING'
-        record.status = 'PRESENT' if gps_status != 'OUTSIDE_CAMPUS' else 'ABSENT'
+        record.status = calculated_status if gps_status != 'OUTSIDE_CAMPUS' else 'ABSENT'
+        if accuracy_poor:
+            record.rejection_reason = f'Low GPS accuracy ({int(accuracy)}m)'
     else:
         record.approval_status = 'NOT_REQUIRED'
-        record.status = compute_checkin_status(now, settings)
+        record.status = calculated_status
 
     record.gps_status = gps_status
 
     db.session.add(record)
-    db.session.flush()   # get record.id before logging
+    db.session.flush()
 
     log_audit(user.school_id, 'REQUESTED', user_id=user.id, action_by=user.id,
-              new_value=f'check_in at {now.isoformat()}, distance={distance}')
+              new_value=f'check_in at {now.isoformat()}, distance={distance}, gps_status={gps_status}')
     db.session.commit()
     return record
 
@@ -402,9 +460,31 @@ def rebuild_monthly_summary(school_id, user, month, year):
     marked_days = present + late + half + absent
     attendance_pct = round(((present + late + half) / working_days) * 100, 2) if working_days else 0.0
 
-    # Payroll impact: absent + half-day counted as loss-of-pay days
-    per_day_salary = (user.salary or 0) / working_days if working_days else 0
-    salary_impact = round(per_day_salary * (absent + 0.5 * half), 2)
+    # Query approved leaves in month
+    from app.models.hrms import LeaveRequest, LeaveStatus
+    approved_leaves = LeaveRequest.query.filter(
+        LeaveRequest.user_id == user.id,
+        LeaveRequest.status == LeaveStatus.APPROVED.value,
+        LeaveRequest.from_date <= end,
+        LeaveRequest.to_date >= start,
+    ).all()
+
+    paid_leaves = 0.0
+    unpaid_leaves = 0.0
+    for lr in approved_leaves:
+        l_start = max(lr.from_date, start)
+        l_end = min(lr.to_date, end)
+        days = (l_end - l_start).days + 1
+        if lr.is_half_day:
+            days = 0.5
+        if lr.leave_type and lr.leave_type.is_paid:
+            paid_leaves += days
+        else:
+            unpaid_leaves += days
+
+    # Total loss of pay = unexcused absences + unpaid leaves + 0.5 * half_days
+    total_lop = absent + unpaid_leaves + (0.5 * half)
+    salary_impact = round(per_day_salary * total_lop, 2)
 
     summary = StaffMonthlyAttendanceSummary.query.filter_by(
         user_id=user.id, month=month, year=year
@@ -420,8 +500,8 @@ def rebuild_monthly_summary(school_id, user, month, year):
     summary.absent_days           = absent
     summary.late_days             = late
     summary.half_days             = half
-    summary.paid_leave_days       = 0     # wired up once Leave module integration lands
-    summary.unpaid_leave_days     = 0
+    summary.paid_leave_days       = int(paid_leaves)
+    summary.unpaid_leave_days     = int(unpaid_leaves)
     summary.total_working_minutes = total_minutes
     summary.overtime_minutes      = ot_minutes
     summary.regularization_count  = reg_count

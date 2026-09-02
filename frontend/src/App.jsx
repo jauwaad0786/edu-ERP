@@ -96,6 +96,14 @@ import AttendanceSettings   from './pages/staff-attendance/AttendanceSettings';
 import EmployeeProfile      from './pages/staff-attendance/EmployeeProfile';
 import AttendanceAnalytics  from './pages/staff-attendance/AttendanceAnalytics';
 
+// ── HRMS & Staff Management Suite ─────────────────────────────────────────────
+import HRMSDashboard        from './pages/hrms/HRMSDashboard';
+import EmployeeDirectory    from './pages/hrms/EmployeeDirectory';
+import EmployeeDetailPage   from './pages/hrms/EmployeeDetailPage';
+import LeaveManagementPage  from './pages/hrms/LeaveManagementPage';
+import PayrollManagerPage   from './pages/hrms/PayrollManagerPage';
+import StaffSelfService     from './pages/hrms/StaffSelfService';
+
 // ── Communication Hub Pages ───────────────────────────────────────────────────
 import SupportInbox     from './pages/communication/SupportInbox';
 import TicketDetail     from './pages/communication/TicketDetail';
@@ -381,6 +389,38 @@ export default function App() {
             <Route path="/staff/attendance/employee/:userId" element={
               <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HR', 'DIRECTOR', 'VICE_PRINCIPAL']}>
                 <EmployeeProfile />
+              </ProtectedRoute>
+            } />
+
+            {/* ── HRMS & Employee Management Suite ── */}
+            <Route path="/hrms" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HR', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <HRMSDashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/hrms/employees" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HR', 'DIRECTOR', 'VICE_PRINCIPAL', 'ACCOUNTANT']}>
+                <EmployeeDirectory />
+              </ProtectedRoute>
+            } />
+            <Route path="/hrms/employees/:userId" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HR', 'DIRECTOR', 'VICE_PRINCIPAL', 'ACCOUNTANT']}>
+                <EmployeeDetailPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/hrms/leaves" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HR', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <LeaveManagementPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/hrms/payroll" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HR', 'DIRECTOR', 'VICE_PRINCIPAL', 'ACCOUNTANT']}>
+                <PayrollManagerPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/my-hr" element={
+              <ProtectedRoute roles={['TEACHER', 'ACCOUNTANT', 'LIBRARIAN', 'RECEPTIONIST', 'HOSTEL', 'TRANSPORT', 'HR', 'VICE_PRINCIPAL', 'ACADEMIC_COORDINATOR', 'EXAM_CONTROLLER', 'DRIVER', 'PRINCIPAL']}>
+                <StaffSelfService />
               </ProtectedRoute>
             } />
 

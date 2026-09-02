@@ -111,6 +111,9 @@ def create_app(config_name='default'):
     from app.routes.staff_attendance import staff_attendance_bp
     app.register_blueprint(staff_attendance_bp, url_prefix='/api/staff-attendance')
 
+    from app.routes.hrms import hrms_bp
+    app.register_blueprint(hrms_bp, url_prefix='/api/hrms')
+
     from app.routes.whatsapp_settings import whatsapp_settings_bp
     app.register_blueprint(whatsapp_settings_bp, url_prefix='/api/principal/whatsapp')
 
@@ -143,6 +146,7 @@ def create_app(config_name='default'):
     # ── Startup sequence (ORDER IS CRITICAL on PostgreSQL) ──────────────────
     with app.app_context():
         try:
+            from app.models import hrms as hrms_models  # noqa: F401
             _ensure_school_columns()
             _ensure_user_columns()
             _ensure_teacher_columns()

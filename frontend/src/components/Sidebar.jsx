@@ -116,13 +116,15 @@ const ROLE_MENUS = {
         },
 
         {
-          icon: 'ti-briefcase', label: 'Staff Management', path: '/staff',
+          icon: 'ti-briefcase', label: 'Staff & HRMS', path: '/hrms',
           children: [
-            { icon: 'ti-chalkboard',      label: 'Teachers',              path: '/teachers' },
-            { icon: 'ti-briefcase',       label: 'Staff List',            path: '/staff' },
-            { icon: 'ti-clipboard-check', label: 'Staff Attendance',      path: '/staff/attendance' },
-            { icon: 'ti-chart-bar',       label: 'Attendance Analytics',  path: '/staff/attendance/analytics' },
-            { icon: 'ti-settings',        label: 'Attendance Settings',   path: '/staff/attendance/settings' },
+            { icon: 'ti-layout-dashboard', label: 'HRMS Command Center',   path: '/hrms' },
+            { icon: 'ti-users',            label: 'Employee Directory',    path: '/hrms/employees' },
+            { icon: 'ti-map-pin',          label: 'GPS Attendance',        path: '/staff/attendance' },
+            { icon: 'ti-calendar-event',   label: 'Leaves & Official Duty',path: '/hrms/leaves' },
+            { icon: 'ti-cash',             label: 'Payroll & Payslips',    path: '/hrms/payroll' },
+            { icon: 'ti-chart-bar',        label: 'Attendance Analytics',  path: '/staff/attendance/analytics' },
+            { icon: 'ti-settings',         label: 'Attendance Settings',   path: '/staff/attendance/settings' },
           ],
         },
 
@@ -257,12 +259,14 @@ const ROLE_MENUS = {
     {
       group: 'My Work',
       items: [
-        { icon: 'ti-clipboard-check', label: 'Attendance',         path: '/attendance' },
-        { icon: 'ti-pencil',          label: 'Exam Marks Entry',   path: '/marks' },
-        { icon: 'ti-checklist',       label: 'Result Submission',  path: '/mark-entry' },
-        { icon: 'ti-award',           label: 'Issue Certificates', path: '/issue-documents' },
-        { icon: 'ti-file-text',        label: 'Student KYC Docs',   path: '/documents' },
-        { icon: 'ti-user-graduate',   label: 'My Students',        path: '/students' },
+        { icon: 'ti-user-circle',     label: 'My HR & Self-Service', path: '/my-hr' },
+        { icon: 'ti-map-pin',         label: 'My GPS Attendance',    path: '/staff/attendance' },
+        { icon: 'ti-clipboard-check', label: 'Student Attendance',   path: '/attendance' },
+        { icon: 'ti-pencil',          label: 'Exam Marks Entry',     path: '/marks' },
+        { icon: 'ti-checklist',       label: 'Result Submission',    path: '/mark-entry' },
+        { icon: 'ti-award',           label: 'Issue Certificates',   path: '/issue-documents' },
+        { icon: 'ti-file-text',        label: 'Student KYC Docs',     path: '/documents' },
+        { icon: 'ti-user-graduate',   label: 'My Students',          path: '/students' },
       ],
     },
     {
