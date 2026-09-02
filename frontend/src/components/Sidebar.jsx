@@ -104,14 +104,18 @@ const ROLE_MENUS = {
         },
 
         {
-          icon: 'ti-receipt', label: 'Fees Management', path: '/fees',
+          icon: 'ti-currency-rupee', label: 'Finance & Fees', path: '/finance/dashboard',
           children: [
-            { icon: 'ti-receipt',        label: 'Fees',           path: '/fees' },
-            { icon: 'ti-currency-rupee', label: 'Fee Structures', path: '/fees/structures' },
-            { icon: 'ti-receipt-2',      label: 'Expenses',       path: '/finance/expenses' },
-            { icon: 'ti-boxes',          label: 'Inventory',      path: '/finance/inventory' },
-            { icon: 'ti-cash',           label: 'Payroll',        path: '/finance/payroll' },
-            { icon: 'ti-building-store', label: 'Vendors',        path: '/finance/vendors' },
+            { icon: 'ti-layout-dashboard', label: 'Finance Dashboard', path: '/finance/dashboard' },
+            { icon: 'ti-file-invoice',     label: 'Fee Bills',         path: '/finance/bills' },
+            { icon: 'ti-credit-card',      label: 'Collect Payment',   path: '/finance/payments/collect' },
+            { icon: 'ti-receipt',          label: 'Receipts',          path: '/finance/receipts' },
+            { icon: 'ti-alert-circle',     label: 'Outstanding Dues',  path: '/finance/outstanding' },
+            { icon: 'ti-settings-2',       label: 'Fee Setup & Rates', path: '/finance/setup' },
+            { icon: 'ti-receipt-2',        label: 'Expenses',          path: '/finance/expenses' },
+            { icon: 'ti-report-analytics', label: 'Finance Reports',   path: '/finance/reports' },
+            { icon: 'ti-boxes',            label: 'Inventory',         path: '/finance/inventory' },
+            { icon: 'ti-building-store',   label: 'Vendors',           path: '/finance/vendors' },
           ],
         },
 

@@ -114,6 +114,9 @@ def create_app(config_name='default'):
     from app.routes.hrms import hrms_bp
     app.register_blueprint(hrms_bp, url_prefix='/api/hrms')
 
+    from app.routes.fees_finance import fees_finance_bp
+    app.register_blueprint(fees_finance_bp, url_prefix='/api/fees-finance')
+
     from app.routes.whatsapp_settings import whatsapp_settings_bp
     app.register_blueprint(whatsapp_settings_bp, url_prefix='/api/principal/whatsapp')
 
@@ -147,6 +150,7 @@ def create_app(config_name='default'):
     with app.app_context():
         try:
             from app.models import hrms as hrms_models  # noqa: F401
+            from app.models import fee_finance as fee_finance_models  # noqa: F401
             _ensure_school_columns()
             _ensure_user_columns()
             _ensure_teacher_columns()

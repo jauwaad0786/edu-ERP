@@ -104,6 +104,16 @@ import LeaveManagementPage  from './pages/hrms/LeaveManagementPage';
 import PayrollManagerPage   from './pages/hrms/PayrollManagerPage';
 import StaffSelfService     from './pages/hrms/StaffSelfService';
 
+// ── Unified Finance & Fee Management Suite ─────────────────────────────────────
+import FinanceDashboard          from './pages/finance/FinanceDashboard';
+import FeeBillsPage              from './pages/finance/FeeBillsPage';
+import CollectPaymentPage        from './pages/finance/CollectPaymentPage';
+import ReceiptsPage              from './pages/finance/ReceiptsPage';
+import StudentFinancialLedgerPage from './pages/finance/StudentFinancialLedgerPage';
+import FeeSetupPage              from './pages/finance/FeeSetupPage';
+import OutstandingPage           from './pages/finance/OutstandingPage';
+import FinanceReportsPage        from './pages/finance/FinanceReportsPage';
+
 // ── Communication Hub Pages ───────────────────────────────────────────────────
 import SupportInbox     from './pages/communication/SupportInbox';
 import TicketDetail     from './pages/communication/TicketDetail';
@@ -191,14 +201,60 @@ export default function App() {
                 <StaffProfile />
               </ProtectedRoute>
             } />
+            {/* ── Unified Finance & Fee Management Suite ── */}
+            <Route path="/finance" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <FinanceDashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/finance/dashboard" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <FinanceDashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/finance/bills" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <FeeBillsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/finance/payments/collect" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <CollectPaymentPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/finance/receipts" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <ReceiptsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/finance/students/:studentId/ledger" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL', 'TEACHER', 'PARENT', 'STUDENT']}>
+                <StudentFinancialLedgerPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/finance/setup" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR']}>
+                <FeeSetupPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/finance/outstanding" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <OutstandingPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/finance/reports" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <FinanceReportsPage />
+              </ProtectedRoute>
+            } />
             <Route path="/fees" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'ACCOUNTANT']} permissions={ROUTE_PERMISSIONS['/fees']}>
-                <FeesPage />
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'ACCOUNTANT']}>
+                <FeeBillsPage />
               </ProtectedRoute>
             } />
             <Route path="/fees/structures" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/fees/structures']}>
-                <FeeStructures />
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT']}>
+                <FeeSetupPage />
               </ProtectedRoute>
             } />
             <Route path="/finance/expenses" element={
