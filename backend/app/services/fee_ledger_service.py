@@ -169,6 +169,8 @@ def get_student_ledger(student_id, session=None):
         'photo_url':    getattr(student, 'photo_url', '') or '',
     }
 
+    services_status = get_student_services_status(student_id)
+
     return {
         'student':        student_dict,
         'student_id':     student.id,
@@ -180,6 +182,7 @@ def get_student_ledger(student_id, session=None):
         'class_id':       student.class_id,
         'class_name':     class_name,
         'session':        session or getattr(student, 'session', '2026-27'),
+        'services':       services_status,
         'total_billed':   round(total_billed, 2),
         'total_paid':     round(total_paid, 2),
         'outstanding':    round(outstanding, 2),
@@ -193,18 +196,118 @@ def get_student_ledger(student_id, session=None):
 
 
 # ═══════════════════════════════════════════════════════════════════════
-#  2. APPLICABLE CHARGES CALCULATOR
+#  2. STUDENT SERVICES & SUBSCRIPTIONS DETECTOR
+# ═══════════════════════════════════════════════════════════════════════
+
+def get_student_services_status(student_id):
+    """
+    Returns real-time enrollment status for all school services:
+    - Academic (Class & Section)
+    - Transport (Bus Route, Stop, Monthly Fare)
+    - Hostel & Mess (Room, Bed, Fee)
+    - Library Membership (Card No, Issues, Overdue Fines)
+    - Scholarships / Concessions
+    """
+    student = Student.query.get(student_id)
+    if not student:
+        return {}
+
+    # 1. Transport Service Status
+    trans_info = {'active': False, 'status': 'INACTIVE', 'details': 'Day Scholar (No Transport)', 'monthly_fee': 0.0}
+    try:
+        from app.models.transport_student import StudentTransport
+        st_trans = StudentTransport.query.filter_by(student_id=student_id, status='ACTIVE').first()
+        if st_trans:
+            r_name = st_trans.route.name if st_trans.route else 'Assigned Route'
+            s_name = st_trans.pickup_stop.name if st_trans.pickup_stop else (st_trans.stop.name if st_trans.stop else 'Bus Stop')
+            fare = 1200.0
+            if st_trans.stop and hasattr(st_trans.stop, 'monthly_fee') and st_trans.stop.monthly_fee:
+                fare = float(st_trans.stop.monthly_fee)
+            elif st_trans.pickup_stop and hasattr(st_trans.pickup_stop, 'monthly_fee') and st_trans.pickup_stop.monthly_fee:
+                fare = float(st_trans.pickup_stop.monthly_fee)
+
+            trans_info = {
+                'active':      True,
+                'status':      'ACTIVE',
+                'route_id':    st_trans.route_id,
+                'route_name':  r_name,
+                'stop_name':   s_name,
+                'details':     f"{r_name} • {s_name}",
+                'monthly_fee': fare,
+            }
+    except Exception:
+        pass
+
+    # 2. Hostel & Mess Service Status
+    hostel_info = {'active': False, 'status': 'INACTIVE', 'details': 'Non-Hosteller (Day Scholar)', 'monthly_fee': 0.0}
+    try:
+        from app.models.hostel import HostelBedAllocation
+        h_alloc = HostelBedAllocation.query.filter_by(student_id=student_id, status='ACTIVE').first()
+        if h_alloc:
+            room_no = h_alloc.bed.room.room_number if (h_alloc.bed and h_alloc.bed.room) else 'Room'
+            bed_no  = h_alloc.bed.bed_number if h_alloc.bed else 'Bed'
+            hostel_info = {
+                'active':      True,
+                'status':      'ACTIVE',
+                'details':     f"Room {room_no} • Bed {bed_no}",
+                'room_no':     room_no,
+                'bed_no':      bed_no,
+                'monthly_fee': 5000.0,
+            }
+    except Exception:
+        pass
+
+    # 3. Library Service Status
+    library_info = {'active': False, 'status': 'INACTIVE', 'details': 'No Library Card', 'card_number': '', 'pending_fine': 0.0, 'issues_count': 0}
+    try:
+        from app.models.library import LibraryMember, FineTransaction
+        lib_mem = LibraryMember.query.filter_by(user_id=student.user_id, school_id=student.school_id).first()
+        if lib_mem and lib_mem.status == 'ACTIVE':
+            issues_count = lib_mem.issues.filter_by(status='ISSUED').count()
+            unpaid_fines = lib_mem.fines.filter(FineTransaction.status.in_(['OUTSTANDING', 'PENDING', 'PARTIAL', 'PARTIALLY_PAID'])).all()
+            tot_fine = sum(f.outstanding_amount for f in unpaid_fines)
+            library_info = {
+                'active':       True,
+                'status':       'ACTIVE',
+                'card_number':  lib_mem.card_number or f"LIB-{student.id}",
+                'issues_count': issues_count,
+                'details':      f"Card: {lib_mem.card_number or 'Active'} • {issues_count} Books Borrowed",
+                'pending_fine': round(tot_fine, 2),
+                'monthly_fee':  150.0,
+            }
+    except Exception:
+        pass
+
+    # 4. Concessions & Scholarships
+    concessions = StudentConcession.query.filter_by(
+        student_id=student_id, approval_status='APPROVED', is_active=True
+    ).all()
+    conc_list = [c.to_dict() for c in concessions]
+
+    return {
+        'academic': {
+            'class_id':   student.class_id,
+            'class_name': f"{student.class_ref.name} {student.class_ref.section or ''}".strip() if student.class_ref else '—',
+        },
+        'transport':   trans_info,
+        'hostel':      hostel_info,
+        'library':     library_info,
+        'concessions': conc_list,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  3. APPLICABLE CHARGES CALCULATOR (DYNAMIC MULTI-SERVICE ENGINE)
 # ═══════════════════════════════════════════════════════════════════════
 
 def get_student_applicable_charges(student_id, session='2026-27', bill_month=None):
     """
     Evaluates applicable charges for a student across all departments:
-    1. Class default fee structure
-    2. Student-specific customized fee assignments / exemptions
-    3. Transport service charges
-    4. Hostel & Mess service charges
-    5. Unpaid Library late fines
-    6. Concessions / Scholarships
+    1. Class default fee structure (Tuition, Development, etc.)
+    2. Transport service charges (ONLY if actively enrolled in Transport)
+    3. Hostel & Mess charges (ONLY if actively allocated a bed in Hostel)
+    4. Library facility fee / late fines (ONLY if registered Library member)
+    5. Deducts active Student Concessions / Scholarships / Waivers
     """
     student = Student.query.get(student_id)
     if not student:
@@ -236,15 +339,21 @@ def get_student_applicable_charges(student_id, session='2026-27', bill_month=Non
     ).first()
 
     if not struct:
-        # Fallback to school-wide structure
+        # Fallback to school-wide structure or any active structure for this class
         struct = FeeStructureV2.query.filter_by(
-            school_id=student.school_id, class_id=None, session=session, is_active=True
+            school_id=student.school_id, class_id=student.class_id, is_active=True
+        ).first() or FeeStructureV2.query.filter_by(
+            school_id=student.school_id, class_id=None, is_active=True
         ).first()
 
-    if struct:
+    if struct and struct.items:
         for itm in struct.items:
             fh = fee_heads_by_id.get(itm.fee_head_id)
             if not fh:
+                continue
+
+            # Don't duplicate transport/hostel/library if already handled dynamically below
+            if fh.category in ('TRANSPORT', 'HOSTEL', 'LIBRARY'):
                 continue
 
             # Check for student specific exemption / custom override
@@ -302,7 +411,7 @@ def get_student_applicable_charges(student_id, session='2026-27', bill_month=Non
                     'net_amount':      round(base_amt - disc, 2),
                 })
 
-    # ── 2. Transport Department Integration ──────────────────────────────
+    # ── 2. Transport Department Integration (ONLY IF ACTIVE IN TRANSPORT) ──
     try:
         from app.models.transport_student import StudentTransport
         st_trans = StudentTransport.query.filter_by(student_id=student_id, status='ACTIVE').first()
@@ -311,27 +420,37 @@ def get_student_applicable_charges(student_id, session='2026-27', bill_month=Non
             if trans_head:
                 ca = custom_assignments.get(trans_head.id)
                 if not (ca and ca.is_exempt):
-                    # Rate from stop or default transport fee
                     trans_amt = 1200.0
                     if st_trans.stop and hasattr(st_trans.stop, 'monthly_fee') and st_trans.stop.monthly_fee:
                         trans_amt = float(st_trans.stop.monthly_fee)
+                    elif st_trans.pickup_stop and hasattr(st_trans.pickup_stop, 'monthly_fee') and st_trans.pickup_stop.monthly_fee:
+                        trans_amt = float(st_trans.pickup_stop.monthly_fee)
                     if ca and ca.custom_amount is not None:
                         trans_amt = ca.custom_amount
 
+                    disc = 0.0
+                    for conc in concessions:
+                        if conc.fee_head_id == trans_head.id:
+                            if conc.discount_type == 'PERCENTAGE':
+                                disc += (trans_amt * conc.discount_value / 100.0)
+                            else:
+                                disc += conc.discount_value
+                    disc = min(disc, trans_amt)
+
                     charges.append({
                         'fee_head_id':     trans_head.id,
-                        'fee_head_name':   trans_head.name,
+                        'fee_head_name':   f"{trans_head.name} ({st_trans.route.name if st_trans.route else 'Bus'})",
                         'fee_head_code':   trans_head.code,
                         'department':      'TRANSPORT',
                         'original_amount': round(trans_amt, 2),
-                        'discount_amount': 0.0,
+                        'discount_amount': round(disc, 2),
                         'fine_amount':     0.0,
-                        'net_amount':      round(trans_amt, 2),
+                        'net_amount':      round(max(0.0, trans_amt - disc), 2),
                     })
     except Exception:
         pass
 
-    # ── 3. Hostel Department Integration ────────────────────────────────
+    # ── 3. Hostel Department Integration (ONLY IF ACTIVE IN HOSTEL) ───────
     try:
         from app.models.hostel import HostelBedAllocation
         h_alloc = HostelBedAllocation.query.filter_by(student_id=student_id, status='ACTIVE').first()
@@ -343,35 +462,65 @@ def get_student_applicable_charges(student_id, session='2026-27', bill_month=Non
                     h_amt = 5000.0
                     if ca and ca.custom_amount is not None:
                         h_amt = ca.custom_amount
+
+                    disc = 0.0
+                    for conc in concessions:
+                        if conc.fee_head_id == hostel_head.id:
+                            if conc.discount_type == 'PERCENTAGE':
+                                disc += (h_amt * conc.discount_value / 100.0)
+                            else:
+                                disc += conc.discount_value
+                    disc = min(disc, h_amt)
+
                     charges.append({
                         'fee_head_id':     hostel_head.id,
                         'fee_head_name':   hostel_head.name,
                         'fee_head_code':   hostel_head.code,
                         'department':      'HOSTEL',
                         'original_amount': round(h_amt, 2),
-                        'discount_amount': 0.0,
+                        'discount_amount': round(disc, 2),
                         'fine_amount':     0.0,
-                        'net_amount':      round(h_amt, 2),
+                        'net_amount':      round(max(0.0, h_amt - disc), 2),
                     })
     except Exception:
         pass
 
-    # ── 4. Library Department Integration (Unpaid Fines) ─────────────────
+    # ── 4. Library Department Integration (ONLY IF ACTIVE MEMBER) ─────────
     try:
         from app.models.library import LibraryMember, FineTransaction
         lib_member = LibraryMember.query.filter_by(user_id=student.user_id, school_id=student.school_id).first()
-        if lib_member:
-            unpaid_fines = FineTransaction.query.filter_by(member_id=lib_member.id).filter(
+        if lib_member and lib_member.status == 'ACTIVE':
+            # 4a. Library Facility Subscription
+            lib_head = fee_heads.get('LIBRARY')
+            if lib_head:
+                ca = custom_assignments.get(lib_head.id)
+                if not (ca and ca.is_exempt):
+                    lib_amt = 150.0
+                    if ca and ca.custom_amount is not None:
+                        lib_amt = ca.custom_amount
+                    charges.append({
+                        'fee_head_id':     lib_head.id,
+                        'fee_head_name':   f"{lib_head.name} ({lib_member.card_number or 'Member'})",
+                        'fee_head_code':   lib_head.code,
+                        'department':      'LIBRARY',
+                        'original_amount': round(lib_amt, 2),
+                        'discount_amount': 0.0,
+                        'fine_amount':     0.0,
+                        'net_amount':      round(lib_amt, 2),
+                    })
+
+            # 4b. Unpaid Book Late Fines
+            unpaid_fines = lib_member.fines.filter(
                 FineTransaction.status.in_(['OUTSTANDING', 'PENDING', 'PARTIAL', 'PARTIALLY_PAID'])
             ).all()
             tot_fine = sum(f.outstanding_amount for f in unpaid_fines)
             if tot_fine > 0:
-                lib_head = fee_heads.get('LIBRARY_FINE')
-                if lib_head:
+                fine_head = fee_heads.get('LIBRARY_FINE') or lib_head
+                if fine_head:
                     charges.append({
-                        'fee_head_id':     lib_head.id,
-                        'fee_head_name':   lib_head.name,
-                        'fee_head_code':   lib_head.code,
+                        'fee_head_id':     fine_head.id,
+                        'fee_head_name':   'Library Overdue Book Fines',
+                        'fee_head_code':   'LIBRARY_FINE',
                         'department':      'LIBRARY',
                         'original_amount': round(tot_fine, 2),
                         'discount_amount': 0.0,
@@ -849,8 +998,15 @@ def get_finance_dashboard_metrics(school_id, session='2026-27', month=None):
         except Exception:
             pass
 
-    bills = bill_query.all()
-    payments = pay_query.all()
+    bills_in_session = bill_query.all()
+    if not bills_in_session and not month:
+        # If no bills exist under this specific session tag, fallback to all active school bills
+        bills = FeeBill.query.filter_by(school_id=school_id).filter(FeeBill.status != BillStatus.CANCELLED.value).all()
+        payments = FeePayment.query.filter_by(school_id=school_id, status=PaymentStatus.VALID.value).all()
+    else:
+        bills = bills_in_session
+        payments = pay_query.all()
+
     expenses = exp_query.all()
 
     total_billed    = sum(b.total_payable for b in bills)

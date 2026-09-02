@@ -170,6 +170,83 @@ export default function StudentFinancialLedgerPage() {
                 </div>
               </div>
 
+              {/* Enrolled School Services & Facilities Status */}
+              <div className="card mb-6" style={{ padding: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.9375rem', color: 'var(--neutral-9)' }}>
+                    <i className="ti ti-layout-grid" style={{ marginRight: 6, color: '#0176d3' }}></i>
+                    Enrolled School Facilities & Service Subscriptions
+                  </div>
+                  <span className="text-xs text-muted">Real-time Department Status</span>
+                </div>
+
+                <div className="grid-4" style={{ gap: 12 }}>
+                  {/* Academic Service */}
+                  <div style={{ background: '#fafaf9', border: '1px solid var(--neutral-2)', borderRadius: 8, padding: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <span style={{ fontWeight: 700, fontSize: 13 }}>🎓 Academics</span>
+                      <span className="badge badge-success" style={{ fontSize: 10 }}>ACTIVE</span>
+                    </div>
+                    <div className="text-xs text-muted" style={{ fontWeight: 600 }}>{className}</div>
+                    <div className="text-xs text-muted">Roll No: {rollNo}</div>
+                  </div>
+
+                  {/* Transport Service */}
+                  <div style={{ background: '#fafaf9', border: '1px solid var(--neutral-2)', borderRadius: 8, padding: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <span style={{ fontWeight: 700, fontSize: 13 }}>🚌 Transport</span>
+                      <span className={`badge ${ledger.services?.transport?.active ? 'badge-success' : 'badge-neutral'}`} style={{ fontSize: 10 }}>
+                        {ledger.services?.transport?.active ? 'ACTIVE' : 'INACTIVE'}
+                      </span>
+                    </div>
+                    <div className="text-xs text-muted" style={{ fontWeight: 600 }}>
+                      {ledger.services?.transport?.details || 'Day Scholar (No Bus)'}
+                    </div>
+                    {ledger.services?.transport?.active && (
+                      <div className="text-xs" style={{ color: '#0176d3', fontWeight: 700 }}>
+                        Fee: {fmt(ledger.services?.transport?.monthly_fee)}/mo
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Hostel Service */}
+                  <div style={{ background: '#fafaf9', border: '1px solid var(--neutral-2)', borderRadius: 8, padding: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <span style={{ fontWeight: 700, fontSize: 13 }}>🛏️ Hostel & Mess</span>
+                      <span className={`badge ${ledger.services?.hostel?.active ? 'badge-success' : 'badge-neutral'}`} style={{ fontSize: 10 }}>
+                        {ledger.services?.hostel?.active ? 'ACTIVE' : 'INACTIVE'}
+                      </span>
+                    </div>
+                    <div className="text-xs text-muted" style={{ fontWeight: 600 }}>
+                      {ledger.services?.hostel?.details || 'Day Scholar (No Hostel)'}
+                    </div>
+                    {ledger.services?.hostel?.active && (
+                      <div className="text-xs" style={{ color: '#0176d3', fontWeight: 700 }}>
+                        Fee: {fmt(ledger.services?.hostel?.monthly_fee)}/mo
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Library Service */}
+                  <div style={{ background: '#fafaf9', border: '1px solid var(--neutral-2)', borderRadius: 8, padding: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <span style={{ fontWeight: 700, fontSize: 13 }}>📚 Library Card</span>
+                      <span className={`badge ${ledger.services?.library?.active ? 'badge-success' : 'badge-neutral'}`} style={{ fontSize: 10 }}>
+                        {ledger.services?.library?.active ? 'ACTIVE' : 'INACTIVE'}
+                      </span>
+                    </div>
+                    <div className="text-xs text-muted" style={{ fontWeight: 600 }}>
+                      {ledger.services?.library?.details || 'Not Enrolled'}
+                    </div>
+                    {ledger.services?.library?.pending_fine > 0 && (
+                      <div className="text-xs" style={{ color: '#ba0517', fontWeight: 700 }}>
+                        Pending Fine: {fmt(ledger.services?.library?.pending_fine)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               {/* Navigation Tabs */}
               <div className="card mb-6">
                 <div className="card-header" style={{ padding: '8px 16px', background: '#fafaf9' }}>

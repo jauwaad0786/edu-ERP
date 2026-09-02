@@ -22,6 +22,7 @@ export default function FeeBillsPage() {
   const [genMonth, setGenMonth] = useState('2026-09');
   const [genDueDate, setGenDueDate] = useState('2026-09-05');
   const [genClassId, setGenClassId] = useState('');
+  const [forceRegenerate, setForceRegenerate] = useState(false);
   const [generating, setGenerating] = useState(false);
 
   const fetchClasses = async () => {
@@ -64,9 +65,10 @@ export default function FeeBillsPage() {
         bill_month: genMonth,
         due_date: genDueDate,
         class_id: genClassId ? parseInt(genClassId) : null,
+        force_regenerate: forceRegenerate,
       };
       const res = await api.post('/fees-finance/bills/generate', payload);
-      toast.success(`Generated ${res.data.created_count} demand bills (${res.data.skipped_count} existing)`);
+      toast.success(`Generated ${res.data.created_count} bills (${res.data.skipped_count} skipped/existing)`);
       setGenModal(false);
       fetchBills();
     } catch (err) {
@@ -369,6 +371,25 @@ export default function FeeBillsPage() {
                           </option>
                         ))}
                       </select>
+                    </div>
+
+                    <div style={{ marginTop: 12, padding: '10px 12px', background: '#fafaf9', border: '1px solid var(--neutral-2)', borderRadius: 8 }}>
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
+                        <input
+                          type="checkbox"
+                          checked={forceRegenerate}
+                          onChange={(e) => setForceRegenerate(e.target.checked)}
+                          style={{ width: 16, height: 16, marginTop: 2 }}
+                        />
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--neutral-9)' }}>
+                            Sync & Recalculate with Active Services / New Rates
+                          </div>
+                          <div className="text-xs text-muted">
+                            Recalculates bills for students whose services changed (e.g. newly joined Transport, allocated Hostel, or assigned Library card).
+                          </div>
+                        </div>
+                      </label>
                     </div>
                   </div>
 
