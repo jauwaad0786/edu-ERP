@@ -210,6 +210,88 @@ def create_fee_structure():
     return jsonify(struct.to_dict()), 201
 
 
+@fees_finance_bp.route('/heads/<int:head_id>', methods=['DELETE'])
+@jwt_required()
+def delete_fee_head(head_id):
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    fh = FeeHead.query.filter_by(id=head_id, school_id=user.school_id).first_or_404()
+    # Check if used in active rate cards or bills
+    used_items = FeeStructureItemV2.query.filter_by(fee_head_id=head_id).first()
+    if used_items:
+        # Soft delete
+        fh.is_active = False
+        db.session.commit()
+        return jsonify({'message': f'Fee head {fh.name} marked inactive (referenced in existing rate cards).'}), 200
+
+    db.session.delete(fh)
+    db.session.commit()
+    return jsonify({'message': 'Fee head deleted successfully.'}), 200
+
+
+@fees_finance_bp.route('/structures/<int:struct_id>', methods=['PUT', 'PATCH'])
+@jwt_required()
+def update_fee_structure(struct_id):
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    struct = FeeStructureV2.query.filter_by(id=struct_id, school_id=user.school_id).first_or_404()
+    data = request.get_json() or {}
+
+    if 'name' in data:
+        struct.name = data['name'].strip()
+    if 'session' in data:
+        struct.session = data['session']
+    if 'class_id' in data:
+        struct.class_id = data['class_id']
+    if 'frequency' in data:
+        struct.frequency = data['frequency']
+
+    if 'items' in data:
+        # Replace items
+        FeeStructureItemV2.query.filter_by(structure_id=struct.id).delete()
+        for item in data.get('items', []):
+            fhi = FeeStructureItemV2(
+                structure_id=struct.id,
+                fee_head_id=item['fee_head_id'],
+                amount=float(item.get('amount', 0.0)),
+            )
+            db.session.add(fhi)
+
+    db.session.commit()
+    return jsonify(struct.to_dict()), 200
+
+
+@fees_finance_bp.route('/structures/<int:struct_id>', methods=['DELETE'])
+@jwt_required()
+def delete_fee_structure(struct_id):
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    struct = FeeStructureV2.query.filter_by(id=struct_id, school_id=user.school_id).first_or_404()
+    FeeStructureItemV2.query.filter_by(structure_id=struct.id).delete()
+    db.session.delete(struct)
+    db.session.commit()
+    return jsonify({'message': 'Rate card deleted successfully.'}), 200
+
+
+@fees_finance_bp.route('/concessions/<int:conc_id>', methods=['DELETE'])
+@jwt_required()
+def delete_concession(conc_id):
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    conc = StudentConcession.query.filter_by(id=conc_id, school_id=user.school_id).first_or_404()
+    db.session.delete(conc)
+    db.session.commit()
+    return jsonify({'message': 'Concession deleted successfully.'}), 200
+
+
 # ═══════════════════════════════════════════════════════════════════════
 #  4. STUDENT 360° FINANCIAL LEDGER & APPLICABLE CHARGES
 # ═══════════════════════════════════════════════════════════════════════

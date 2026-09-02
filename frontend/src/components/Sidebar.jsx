@@ -109,6 +109,7 @@ const ROLE_MENUS = {
             { icon: 'ti-layout-dashboard', label: 'Finance Dashboard', path: '/finance/dashboard' },
             { icon: 'ti-file-invoice',     label: 'Fee Bills',         path: '/finance/bills' },
             { icon: 'ti-credit-card',      label: 'Collect Payment',   path: '/finance/payments/collect' },
+            { icon: 'ti-history',          label: 'Payment Logs & Cashiers', path: '/finance/payment-logs' },
             { icon: 'ti-receipt',          label: 'Receipts',          path: '/finance/receipts' },
             { icon: 'ti-alert-circle',     label: 'Outstanding Dues',  path: '/finance/outstanding' },
             { icon: 'ti-settings-2',       label: 'Fee Setup & Rates', path: '/finance/setup' },

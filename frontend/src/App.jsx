@@ -113,6 +113,7 @@ import StudentFinancialLedgerPage from './pages/finance/StudentFinancialLedgerPa
 import FeeSetupPage              from './pages/finance/FeeSetupPage';
 import OutstandingPage           from './pages/finance/OutstandingPage';
 import FinanceReportsPage        from './pages/finance/FinanceReportsPage';
+import PaymentLogsPage          from './pages/finance/PaymentLogsPage';
 
 // ── Communication Hub Pages ───────────────────────────────────────────────────
 import SupportInbox     from './pages/communication/SupportInbox';
@@ -245,6 +246,11 @@ export default function App() {
             <Route path="/finance/reports" element={
               <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
                 <FinanceReportsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/finance/payment-logs" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL', 'HOSTEL', 'LIBRARIAN']}>
+                <PaymentLogsPage />
               </ProtectedRoute>
             } />
             <Route path="/fees" element={

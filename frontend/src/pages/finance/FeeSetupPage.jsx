@@ -23,6 +23,7 @@ export default function FeeSetupPage() {
 
   // Structure Modal
   const [structModal, setStructModal] = useState(false);
+  const [editingStruct, setEditingStruct] = useState(null);
   const [structForm, setStructForm] = useState({
     name: '', class_id: '', frequency: 'MONTHLY', due_date_day: 10,
     items: []
@@ -106,7 +107,19 @@ export default function FeeSetupPage() {
     }
   };
 
+  const handleDeleteHead = async (head) => {
+    if (!window.confirm(`Are you sure you want to delete Fee Head "${head.name}"?`)) return;
+    try {
+      await api.delete(`/fees-finance/heads/${head.id}`);
+      toast.success(`Fee Head "${head.name}" removed`);
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to delete fee head');
+    }
+  };
+
   const openAddStructure = () => {
+    setEditingStruct(null);
     const initialItems = heads.map((h) => ({
       fee_head_id: h.id,
       fee_head_name: h.name,
@@ -117,6 +130,51 @@ export default function FeeSetupPage() {
       items: initialItems,
     });
     setStructModal(true);
+  };
+
+  const openEditStructure = (struct) => {
+    setEditingStruct(struct);
+    const itemMap = {};
+    (struct.items || []).forEach((it) => {
+      itemMap[it.fee_head_id] = it.amount;
+    });
+
+    const structItems = heads.map((h) => ({
+      fee_head_id: h.id,
+      fee_head_name: h.name,
+      amount: itemMap[h.id] !== undefined ? itemMap[h.id] : 0,
+    }));
+
+    setStructForm({
+      name: struct.name,
+      class_id: struct.class_id || '',
+      frequency: struct.frequency || 'MONTHLY',
+      due_date_day: 10,
+      items: structItems,
+    });
+    setStructModal(true);
+  };
+
+  const handleDeleteStructure = async (struct) => {
+    if (!window.confirm(`Are you sure you want to delete Rate Card "${struct.name}"?`)) return;
+    try {
+      await api.delete(`/fees-finance/structures/${struct.id}`);
+      toast.success(`Rate card "${struct.name}" deleted`);
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to delete rate card');
+    }
+  };
+
+  const handleDeleteConcession = async (conc) => {
+    if (!window.confirm(`Are you sure you want to remove concession for student "${conc.student_name}"?`)) return;
+    try {
+      await api.delete(`/fees-finance/concessions/${conc.id}`);
+      toast.success('Concession rule deleted');
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to delete concession');
+    }
   };
 
   const handleStructureSubmit = async (e) => {
@@ -133,8 +191,13 @@ export default function FeeSetupPage() {
         due_date_day: parseInt(structForm.due_date_day),
         items: structForm.items.filter((it) => it.amount > 0),
       };
-      await api.post('/fees-finance/structures', payload);
-      toast.success('Fee Structure created');
+      if (editingStruct) {
+        await api.put(`/fees-finance/structures/${editingStruct.id}`, payload);
+        toast.success('Fee Structure updated');
+      } else {
+        await api.post('/fees-finance/structures', payload);
+        toast.success('Fee Structure created');
+      }
       setStructModal(false);
       fetchData();
     } catch (err) {
@@ -271,7 +334,7 @@ export default function FeeSetupPage() {
                       <th>Frequency</th>
                       <th>Recurring</th>
                       <th>Status</th>
-                      <th style={{ textAlign: 'center' }}>Edit</th>
+                      <th style={{ textAlign: 'center', width: 140 }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -297,16 +360,27 @@ export default function FeeSetupPage() {
                           </span>
                         </td>
                         <td style={{ textAlign: 'center' }}>
-                          <button
-                            onClick={() => {
-                              setEditingHead(h);
-                              setHeadForm({ ...h });
-                              setHeadModal(true);
-                            }}
-                            className="btn btn-neutral btn-sm"
-                          >
-                            <i className="ti ti-edit"></i> Edit
-                          </button>
+                          <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+                            <button
+                              onClick={() => {
+                                setEditingHead(h);
+                                setHeadForm({ ...h });
+                                setHeadModal(true);
+                              }}
+                              className="btn btn-neutral btn-sm"
+                              title="Edit Fee Head"
+                            >
+                              <i className="ti ti-edit"></i> Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeleteHead(h)}
+                              className="btn btn-neutral btn-sm"
+                              style={{ color: '#ba0517' }}
+                              title="Delete Fee Head"
+                            >
+                              <i className="ti ti-trash"></i>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -343,6 +417,24 @@ export default function FeeSetupPage() {
                             </div>
                           ))}
                         </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12, paddingTop: 8, borderTop: '1px solid var(--neutral-2)' }}>
+                          <button
+                            onClick={() => openEditStructure(s)}
+                            className="btn btn-neutral btn-sm"
+                            title="Edit Rate Card"
+                          >
+                            <i className="ti ti-edit"></i> Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteStructure(s)}
+                            className="btn btn-neutral btn-sm"
+                            style={{ color: '#ba0517' }}
+                            title="Delete Rate Card"
+                          >
+                            <i className="ti ti-trash"></i> Delete
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -368,9 +460,19 @@ export default function FeeSetupPage() {
                       <div key={c.id} style={{ background: '#fafaf9', border: '1px solid var(--neutral-2)', borderRadius: 8, padding: 14 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                           <span style={{ fontWeight: 700, fontSize: 13 }}>{c.student_name} ({c.admission_no})</span>
-                          <span className="badge badge-success">
-                            {c.discount_type === 'PERCENTAGE' ? `${c.discount_value}% OFF` : `₹${c.discount_value} OFF`}
-                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span className="badge badge-success">
+                              {c.discount_type === 'PERCENTAGE' ? `${c.discount_value}% OFF` : `₹${c.discount_value} OFF`}
+                            </span>
+                            <button
+                              onClick={() => handleDeleteConcession(c)}
+                              className="btn btn-neutral btn-sm"
+                              style={{ color: '#ba0517', padding: '2px 6px' }}
+                              title="Delete Concession"
+                            >
+                              <i className="ti ti-trash"></i>
+                            </button>
+                          </div>
                         </div>
                         <div className="text-xs text-muted" style={{ marginBottom: 4 }}>
                           Type: <strong>{c.concession_type}</strong> • Head: <strong>{c.fee_head_name}</strong>
