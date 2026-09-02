@@ -28,6 +28,21 @@ export default function FeeSetupPage() {
     items: []
   });
 
+  // Concession / Scholarship Modal
+  const [concModal, setConcModal] = useState(false);
+  const [concStudents, setConcStudents] = useState([]);
+  const [concClassId, setConcClassId] = useState('');
+  const [concForm, setConcForm] = useState({
+    student_id: '',
+    fee_head_id: '',
+    concession_type: 'SCHOLARSHIP',
+    discount_type: 'FIXED',
+    discount_value: '',
+    reason: '',
+    session: '2026-27'
+  });
+  const [savingConc, setSavingConc] = useState(false);
+
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -51,6 +66,18 @@ export default function FeeSetupPage() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Fetch students for concession modal when class changes
+  useEffect(() => {
+    if (concModal) {
+      const params = concClassId ? `?class_id=${concClassId}` : '';
+      api.get(`/fees-finance/students/search${params}`)
+        .then((res) => {
+          setConcStudents(res.data?.students || []);
+        })
+        .catch(() => setConcStudents([]));
+    }
+  }, [concClassId, concModal]);
 
   const openAddHead = () => {
     setEditingHead(null);
@@ -115,6 +142,56 @@ export default function FeeSetupPage() {
     }
   };
 
+  const openAddConcession = () => {
+    setConcForm({
+      student_id: '',
+      fee_head_id: heads[0]?.id || '',
+      concession_type: 'SCHOLARSHIP',
+      discount_type: 'FIXED',
+      discount_value: '',
+      reason: '',
+      session: '2026-27'
+    });
+    setConcModal(true);
+  };
+
+  const handleConcessionSubmit = async (e) => {
+    e.preventDefault();
+    if (!concForm.student_id) {
+      toast.error('Please select a student');
+      return;
+    }
+    if (!concForm.discount_value || parseFloat(concForm.discount_value) <= 0) {
+      toast.error('Enter valid discount value');
+      return;
+    }
+    if (!concForm.reason.trim()) {
+      toast.error('Please provide a reason / approval note');
+      return;
+    }
+
+    try {
+      setSavingConc(true);
+      const payload = {
+        student_id: parseInt(concForm.student_id),
+        fee_head_id: concForm.fee_head_id ? parseInt(concForm.fee_head_id) : null,
+        concession_type: concForm.concession_type,
+        discount_type: concForm.discount_type,
+        discount_value: parseFloat(concForm.discount_value),
+        reason: concForm.reason.trim(),
+        session: concForm.session,
+      };
+      await api.post('/fees-finance/concessions', payload);
+      toast.success('Concession / Scholarship applied successfully!');
+      setConcModal(false);
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to save concession');
+    } finally {
+      setSavingConc(false);
+    }
+  };
+
   const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 
   return (
@@ -129,11 +206,11 @@ export default function FeeSetupPage() {
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <span className="badge badge-info">Service Configuration</span>
-                <span className="text-xs text-muted">Department Heads & Rate Cards</span>
+                <span className="text-xs text-muted">Department Heads, Rate Cards & Scholarships</span>
               </div>
               <h2 className="page-title">Fee Setup & Rate Cards</h2>
               <p className="page-subtitle">
-                Configure departments, customizable fee heads, class rate structures, and scholarship rules.
+                Configure departments, customizable fee heads, class rate structures, and student scholarship rules.
               </p>
             </div>
 
@@ -146,6 +223,11 @@ export default function FeeSetupPage() {
               {activeTab === 'structures' && (
                 <button onClick={openAddStructure} className="btn btn-primary">
                   <i className="ti ti-plus"></i> Create Rate Card
+                </button>
+              )}
+              {activeTab === 'concessions' && (
+                <button onClick={openAddConcession} className="btn btn-primary">
+                  <i className="ti ti-plus"></i> Add Concession / Scholarship
                 </button>
               )}
             </div>
@@ -268,12 +350,17 @@ export default function FeeSetupPage() {
               </div>
             )}
 
-            {/* Tab 3: Concessions */}
+            {/* Tab 3: Concessions & Scholarships */}
             {activeTab === 'concessions' && (
               <div className="card-body" style={{ padding: 20 }}>
                 {concessions.length === 0 ? (
                   <div className="empty-state">
-                    <p className="text-xs text-muted">No student concessions on record.</p>
+                    <i className="ti ti-percentage" style={{ fontSize: 36, color: 'var(--neutral-4)' }}></i>
+                    <h4 style={{ marginTop: 8 }}>No Student Concessions Configured</h4>
+                    <p className="text-xs text-muted mb-4">Click 'Add Concession / Scholarship' to assign fee waivers or merit discounts.</p>
+                    <button onClick={openAddConcession} className="btn btn-primary">
+                      <i className="ti ti-plus"></i> Add Concession
+                    </button>
                   </div>
                 ) : (
                   <div className="grid-2">
@@ -286,7 +373,7 @@ export default function FeeSetupPage() {
                           </span>
                         </div>
                         <div className="text-xs text-muted" style={{ marginBottom: 4 }}>
-                          Type: <strong>{c.concession_type}</strong> • Head: {c.fee_head_name}
+                          Type: <strong>{c.concession_type}</strong> • Head: <strong>{c.fee_head_name}</strong>
                         </div>
                         <div className="text-xs text-muted" style={{ fontStyle: 'italic' }}>
                           "{c.reason}"
@@ -460,6 +547,154 @@ export default function FeeSetupPage() {
                     </button>
                     <button type="submit" className="btn btn-primary">
                       Save Rate Card
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Add Concession / Scholarship Modal */}
+          {concModal && (
+            <div className="modal-backdrop">
+              <div className="modal">
+                <div className="modal-header">
+                  <h3 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0 }}>
+                    Add Concession / Scholarship
+                  </h3>
+                  <button onClick={() => setConcModal(false)} className="modal-close">✕</button>
+                </div>
+
+                <form onSubmit={handleConcessionSubmit}>
+                  <div className="modal-body">
+                    {/* Class Selector for filtering students */}
+                    <div className="form-group">
+                      <label className="form-label">Select Student Class</label>
+                      <select
+                        value={concClassId}
+                        onChange={(e) => setConcClassId(e.target.value)}
+                        className="form-select"
+                      >
+                        <option value="">All Classes</option>
+                        {classes.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} {c.section || ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Student Selector */}
+                    <div className="form-group">
+                      <label className="form-label">Select Student</label>
+                      <select
+                        value={concForm.student_id}
+                        onChange={(e) => setConcForm({ ...concForm, student_id: e.target.value })}
+                        required
+                        className="form-select"
+                        style={{ fontWeight: 700 }}
+                      >
+                        <option value="">-- Choose Student --</option>
+                        {concStudents.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name} ({s.admission_no} • {s.class_name})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Fee Head & Concession Type */}
+                    <div className="grid-2">
+                      <div className="form-group">
+                        <label className="form-label">Applicable Fee Head</label>
+                        <select
+                          value={concForm.fee_head_id}
+                          onChange={(e) => setConcForm({ ...concForm, fee_head_id: e.target.value })}
+                          className="form-select"
+                        >
+                          <option value="">All Fees (Entire Bill)</option>
+                          {heads.map((h) => (
+                            <option key={h.id} value={h.id}>
+                              {h.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="form-group">
+                        <label className="form-label">Concession Type</label>
+                        <select
+                          value={concForm.concession_type}
+                          onChange={(e) => setConcForm({ ...concForm, concession_type: e.target.value })}
+                          className="form-select"
+                        >
+                          <option value="SCHOLARSHIP">Merit Scholarship</option>
+                          <option value="SIBLING">Sibling Discount</option>
+                          <option value="STAFF_CHILD">Staff Child Concession</option>
+                          <option value="PRINCIPAL_SPECIAL">Principal Special Concession</option>
+                          <option value="WAIVER">Fee Waiver / Financial Aid</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Discount Type & Value */}
+                    <div className="grid-2">
+                      <div className="form-group">
+                        <label className="form-label">Discount Type</label>
+                        <select
+                          value={concForm.discount_type}
+                          onChange={(e) => setConcForm({ ...concForm, discount_type: e.target.value })}
+                          className="form-select"
+                        >
+                          <option value="FIXED">Fixed Amount (₹)</option>
+                          <option value="PERCENTAGE">Percentage (%)</option>
+                        </select>
+                      </div>
+
+                      <div className="form-group">
+                        <label className="form-label">Discount Value ({concForm.discount_type === 'PERCENTAGE' ? '%' : '₹'})</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={concForm.discount_value}
+                          onChange={(e) => setConcForm({ ...concForm, discount_value: e.target.value })}
+                          placeholder={concForm.discount_type === 'PERCENTAGE' ? 'e.g. 25' : 'e.g. 500'}
+                          required
+                          className="form-input"
+                          style={{ fontWeight: 700 }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Reason */}
+                    <div className="form-group">
+                      <label className="form-label">Reason / Approval Justification</label>
+                      <input
+                        type="text"
+                        value={concForm.reason}
+                        onChange={(e) => setConcForm({ ...concForm, reason: e.target.value })}
+                        placeholder="e.g. 95% in Board Exams Merit or 2nd child in school"
+                        required
+                        className="form-input"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="modal-footer">
+                    <button
+                      type="button"
+                      onClick={() => setConcModal(false)}
+                      className="btn btn-neutral"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={savingConc}
+                      className="btn btn-primary"
+                    >
+                      {savingConc ? 'Saving...' : 'Apply Concession'}
                     </button>
                   </div>
                 </form>

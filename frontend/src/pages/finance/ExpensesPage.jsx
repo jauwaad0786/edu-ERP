@@ -1,18 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Sidebar from '../../components/Sidebar';
-import Navbar  from '../../components/Navbar';
+import Navbar from '../../components/Navbar';
 import api from '../../api/axios';
-import { useAuth } from '../../context/AuthContext';
-import {
-  PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
-} from 'recharts';
-
-const COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899', '#84cc16', '#3b82f6', '#14b8a6', '#f97316', '#a855f7'];
-
-function prettyLabel(v) {
-  if (!v) return '';
-  return v.split('_').map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
-}
+import toast from 'react-hot-toast';
 
 function lastNMonths(n) {
   const out = [];
@@ -26,49 +16,44 @@ function lastNMonths(n) {
 }
 
 const EMPTY_FORM = {
-  category: '', title: '', vendor_name: '', amount: '', invoice_number: '',
-  payment_method: 'CASH', payment_date: new Date().toISOString().slice(0, 10),
-  status: 'PAID', remarks: '',
+  category: 'OPERATIONAL',
+  title: '',
+  vendor_name: '',
+  amount: '',
+  invoice_number: '',
+  payment_method: 'CASH',
+  payment_date: new Date().toISOString().slice(0, 10),
+  status: 'PAID',
+  remarks: '',
 };
 
 export default function ExpensesPage() {
-  const { user } = useAuth();
-  const isPrincipal = user?.role === 'PRINCIPAL' || user?.role === 'ACCOUNTANT' || user?.role === 'SUPER_ADMIN';
-
-  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
-  useEffect(() => { localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
-
   const months = useMemo(() => lastNMonths(12), []);
-  const [month, setMonth]           = useState(months[0]);
+  const [month, setMonth] = useState(months[0]);
   const [categoryFilter, setCategoryFilter] = useState('');
-  const [statusFilter, setStatusFilter]     = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
 
-  const [meta, setMeta]         = useState({ categories: [], payment_methods: [] });
+  const [meta, setMeta] = useState({ categories: [], payment_methods: [] });
   const [expenses, setExpenses] = useState([]);
-  const [summary, setSummary]   = useState(null);
-  const [loading, setLoading]   = useState(true);
+  const [summary, setSummary] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [form, setForm]           = useState(EMPTY_FORM);
-  const [saving, setSaving]       = useState(false);
-
-  const [vendors, setVendors]                       = useState([]);
-  const [vendorDropdownOpen, setVendorDropdownOpen] = useState(false);
-  const [creatingVendor, setCreatingVendor]         = useState(false);
-  const [newVendorName, setNewVendorName]           = useState('');
-  const [savingVendor, setSavingVendor]             = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
+  const [vendors, setVendors] = useState([]);
 
   useEffect(() => {
-    api.get('/finance/meta').then(r => setMeta(r.data)).catch(() => {});
-    api.get('/finance/vendors').then(r => setVendors(r.data || [])).catch(() => {});
+    api.get('/finance/meta').then((r) => setMeta(r.data)).catch(() => {});
+    api.get('/finance/vendors').then((r) => setVendors(r.data || [])).catch(() => {});
   }, []);
 
-  const load = () => {
+  const loadExpenses = () => {
     setLoading(true);
     const params = { month };
     if (categoryFilter) params.category = categoryFilter;
-    if (statusFilter)   params.status   = statusFilter;
+    if (statusFilter) params.status = statusFilter;
 
     Promise.all([
       api.get('/finance/expenses', { params }).catch(() => ({ data: { data: [] } })),
@@ -80,646 +65,421 @@ export default function ExpensesPage() {
     });
   };
 
-  useEffect(load, [month, categoryFilter, statusFilter]);
+  useEffect(() => {
+    loadExpenses();
+  }, [month, categoryFilter, statusFilter]);
 
-  const fmt = n => Number(n || 0).toLocaleString('en-IN');
+  const openAdd = () => {
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setModalOpen(true);
+  };
 
-  const openAdd = () => { setEditingId(null); setForm({ ...EMPTY_FORM, payment_date: new Date().toISOString().slice(0, 10) }); setModalOpen(true); };
-  const openEdit = (e) => {
-    setEditingId(e.id);
+  const openEdit = (exp) => {
+    setEditingId(exp.id);
     setForm({
-      category: e.category, title: e.title, vendor_name: e.vendor_name,
-      amount: e.amount, invoice_number: e.invoice_number,
-      payment_method: e.payment_method, payment_date: e.payment_date,
-      status: e.status, remarks: e.remarks,
+      category: exp.category || 'OPERATIONAL',
+      title: exp.title || '',
+      vendor_name: exp.vendor_name || '',
+      amount: exp.amount || '',
+      invoice_number: exp.invoice_number || '',
+      payment_method: exp.payment_method || 'CASH',
+      payment_date: exp.payment_date || new Date().toISOString().slice(0, 10),
+      status: exp.status || 'PAID',
+      remarks: exp.remarks || '',
     });
     setModalOpen(true);
   };
 
-  const save = async () => {
-    if (!form.category || !form.title.trim() || !form.amount) {
-      alert('Category, title aur amount zaroori hai');
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.title || !form.amount) {
+      toast.error('Please enter expense title and amount');
       return;
     }
-    setSaving(true);
+
     try {
+      setSaving(true);
       if (editingId) {
-        await api.patch(`/finance/expenses/${editingId}`, form);
+        await api.put(`/finance/expenses/${editingId}`, form);
+        toast.success('Expense record updated');
       } else {
         await api.post('/finance/expenses', form);
+        toast.success('Expense recorded successfully');
       }
       setModalOpen(false);
-      load();
+      loadExpenses();
     } catch (err) {
-      alert(err?.response?.data?.error || 'Save nahi hua, dobara try karo');
+      toast.error(err.response?.data?.error || 'Failed to save expense');
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
-  const remove = async (id) => {
-    if (!window.confirm('Ye expense delete karna hai? Ye action undo nahi ho sakta.')) return;
+  const handleDelete = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this expense record?')) return;
     try {
       await api.delete(`/finance/expenses/${id}`);
-      load();
-    } catch {
-      alert('Delete nahi hua');
-    }
-  };
-
-  const filteredVendors = vendors.filter(v =>
-    v.name.toLowerCase().includes((form.vendor_name || '').toLowerCase())
-  );
-  const exactVendorMatch = vendors.some(
-    v => v.name.toLowerCase() === (form.vendor_name || '').trim().toLowerCase()
-  );
-
-  const selectVendor = (name) => {
-    setForm(f => ({ ...f, vendor_name: name }));
-    setVendorDropdownOpen(false);
-  };
-
-  const openCreateVendor = () => {
-    setNewVendorName(form.vendor_name.trim());
-    setCreatingVendor(true);
-  };
-
-  const saveNewVendor = async () => {
-    if (!newVendorName.trim()) return;
-    setSavingVendor(true);
-    try {
-      const res = await api.post('/finance/vendors', { name: newVendorName.trim() });
-      const created = res.data?.data || res.data;
-      setVendors(prev => [...prev, created]);
-      setForm(f => ({ ...f, vendor_name: created.name }));
-      setCreatingVendor(false);
-      setVendorDropdownOpen(false);
+      toast.success('Expense deleted');
+      loadExpenses();
     } catch (err) {
-      alert(err?.response?.data?.error || 'Vendor create nahi ho paya');
+      toast.error('Failed to delete expense');
     }
-    setSavingVendor(false);
   };
 
-  const totalExpense = summary?.total_expense ?? expenses.reduce((a, b) => a + Number(b.amount || 0), 0);
-  const salaryTotal  = summary?.salary_total  ?? expenses.filter(e => e.source === 'SALARY_AUTO').reduce((a, b) => a + Number(b.amount || 0), 0);
-  const topCategory  = summary?.category_breakdown?.[0];
-  const autoCount    = summary?.auto_linked_count ?? expenses.filter(e => e.source !== 'MANUAL').length;
-
-  const pieData = (summary?.category_breakdown || []).map((c, i) => ({
-    name: prettyLabel(c.category),
-    value: Number(c.amount || 0),
-    color: COLORS[i % COLORS.length],
-  })).filter(x => x.value > 0);
+  const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 
   return (
-    <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
-      <Sidebar darkMode={darkMode} />
+    <div className="app-shell">
+      <Sidebar />
       <div className="main-content">
-        <Navbar title="Financial Accounts &amp; Expense Center" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
+        <Navbar title="School Expenses & Disbursements" />
         <div className="page-body">
 
-          {/* ══ Hero Command Banner ══ */}
-          <div style={{
-            position: 'relative', overflow: 'hidden',
-            borderRadius: '24px', padding: '28px 34px', marginBottom: '24px',
-            background: darkMode
-              ? 'radial-gradient(circle at 85% 20%, rgba(16,185,129,0.25) 0%, transparent 60%), linear-gradient(135deg, #04251e 0%, #064e3b 45%, #0f172a 100%)'
-              : 'radial-gradient(circle at 85% 20%, rgba(255,255,255,0.18) 0%, transparent 50%), linear-gradient(135deg, #064e3b 0%, #065f46 35%, #059669 75%, #10b981 100%)',
-            color: '#ffffff',
-            boxShadow: darkMode
-              ? '0 12px 35px -5px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1)'
-              : '0 15px 35px -5px rgba(5,150,105,0.35), inset 0 1px 0 rgba(255,255,255,0.3)',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '24px',
-            border: darkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(255,255,255,0.25)'
-          }}>
-            {/* Ambient Background Glows */}
-            <div style={{
-              position: 'absolute', top: '-50px', right: '280px', width: '220px', height: '220px',
-              borderRadius: '50%', background: 'rgba(255,255,255,0.06)', pointerEvents: 'none', filter: 'blur(30px)'
-            }} />
-            <div style={{
-              position: 'absolute', bottom: '-40px', left: '15%', width: '180px', height: '180px',
-              borderRadius: '50%', background: 'rgba(52,211,153,0.2)', pointerEvents: 'none', filter: 'blur(40px)'
-            }} />
-
-            <div style={{ flex: 1, minWidth: '300px', zIndex: 2 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                <span style={{
-                  padding: '4px 12px', borderRadius: '20px',
-                  background: 'rgba(255,255,255,0.2)', fontSize: '11.5px', fontWeight: 800, textTransform: 'uppercase',
-                  backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.25)',
-                  display: 'flex', alignItems: 'center', gap: '6px', color: '#ffffff'
-                }}>
-                  💰 Accounts & Disbursements
-                </span>
-                <span style={{
-                  padding: '4px 12px', borderRadius: '20px',
-                  background: 'rgba(255,255,255,0.12)', color: '#d1fae5',
-                  fontSize: '11.5px', fontWeight: 700, backdropFilter: 'blur(6px)'
-                }}>
-                  Fiscal Month: {month}
-                </span>
+          {/* Page Header */}
+          <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <span className="badge badge-error">Accounts & Disbursements</span>
+                <span className="text-xs text-muted">Voucher & Expense Register</span>
               </div>
-
-              <h1 style={{
-                margin: '0 0 8px', fontSize: '32px', fontWeight: 900, letterSpacing: '-0.02em', color: '#ffffff',
-                textShadow: '0 2px 10px rgba(0,0,0,0.2)'
-              }}>
-                Financial Accounts & Expense Hub 💵
-              </h1>
-
-              <p style={{
-                margin: '0 0 20px', fontSize: '14.5px', color: 'rgba(255,255,255,0.92)',
-                maxWidth: '540px', lineHeight: 1.5, fontWeight: 500
-              }}>
-                Record vendor bills, staff payroll disbursements, inventory vouchers, and monitor monthly institutional cash flows.
+              <h2 className="page-title">School Expenses & Bills</h2>
+              <p className="page-subtitle">
+                Track operational bills, vendor payments, maintenance, and departmental expense vouchers.
               </p>
+            </div>
 
-              {/* Month Selector & Quick Action */}
-              <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span className="text-xs font-semibold text-muted">Month:</span>
                 <select
-                  style={{
-                    width: '190px', fontSize: '13px', borderRadius: '12px', fontWeight: 700,
-                    background: 'rgba(255,255,255,0.18)', color: '#ffffff', border: '1.5px solid rgba(255,255,255,0.3)',
-                    backdropFilter: 'blur(8px)', padding: '10px 14px', outline: 'none'
-                  }}
                   value={month}
-                  onChange={e => setMonth(e.target.value)}
+                  onChange={(e) => setMonth(e.target.value)}
+                  className="form-select"
+                  style={{ width: 170, height: 36, fontSize: 13, fontWeight: 700 }}
                 >
-                  {months.map(m => <option key={m} value={m} style={{ color: '#0f172a' }}>{m}</option>)}
+                  {months.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
                 </select>
-                <button
-                  onClick={openAdd}
-                  style={{
-                    background: '#ffffff', color: '#064e3b', border: 'none', borderRadius: '12px',
-                    padding: '11px 20px', fontSize: '13.5px', fontWeight: 800, cursor: 'pointer',
-                    boxShadow: '0 6px 18px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: '8px',
-                    transition: 'all 0.2s'
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
+              </div>
+
+              <button onClick={openAdd} className="btn btn-primary">
+                <i className="ti ti-plus"></i> Record Expense
+              </button>
+            </div>
+          </div>
+
+          {/* Summary KPI Cards */}
+          <div className="grid-4 mb-6">
+            <div className="stat-card" style={{ borderLeft: '4px solid #ba0517' }}>
+              <div className="stat-label">Total Month Expenses</div>
+              <div className="stat-value" style={{ fontSize: '1.5rem', color: '#ba0517' }}>
+                {fmt(summary?.total_amount)}
+              </div>
+              <div className="stat-sub">{summary?.count || expenses.length} vouchers recorded</div>
+            </div>
+
+            <div className="stat-card" style={{ borderLeft: '4px solid #2e844a' }}>
+              <div className="stat-label">Paid Expenses</div>
+              <div className="stat-value" style={{ fontSize: '1.5rem', color: '#2e844a' }}>
+                {fmt(summary?.paid_amount || summary?.total_amount)}
+              </div>
+              <div className="stat-sub">Settled disbursements</div>
+            </div>
+
+            <div className="stat-card" style={{ borderLeft: '4px solid #dd7a01' }}>
+              <div className="stat-label">Pending / Unpaid Bills</div>
+              <div className="stat-value" style={{ fontSize: '1.5rem', color: '#dd7a01' }}>
+                {fmt(summary?.pending_amount || 0)}
+              </div>
+              <div className="stat-sub">Vendor bills awaiting payment</div>
+            </div>
+
+            <div className="stat-card" style={{ borderLeft: '4px solid #0176d3' }}>
+              <div className="stat-label">Vendors & Payees</div>
+              <div className="stat-value" style={{ fontSize: '1.5rem', color: '#0176d3' }}>
+                {vendors.length}
+              </div>
+              <div className="stat-sub">Active registered vendors</div>
+            </div>
+          </div>
+
+          {/* Filter Bar */}
+          <div className="card mb-6" style={{ padding: 12 }}>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+              <div style={{ minWidth: 180 }}>
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="form-select"
+                  style={{ height: 36 }}
                 >
-                  <i className="ti ti-plus" style={{ color: '#059669' }} /> Add New Expense
-                </button>
+                  <option value="">All Categories</option>
+                  <option value="OPERATIONAL">Operational / Utilities</option>
+                  <option value="SALARY">Staff Payroll / Salary</option>
+                  <option value="MAINTENANCE">Repairs & Maintenance</option>
+                  <option value="INVENTORY">Inventory / Supplies</option>
+                  <option value="TRANSPORT">Transport & Fuel</option>
+                  <option value="EVENTS">Events & Functions</option>
+                  <option value="OTHER">Other Expenses</option>
+                </select>
               </div>
-            </div>
 
-            {/* Framed 3D Isometric Accountant Office Card */}
-            <div style={{
-              width: '320px', height: '160px', borderRadius: '18px', overflow: 'hidden',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-              background: 'rgba(255,255,255,0.12)',
-              border: '1.5px solid rgba(255,255,255,0.25)',
-              backdropFilter: 'blur(10px)',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
-              padding: '6px',
-              position: 'relative'
-            }}>
-              <img
-                src="/assets/illustrations/accountant_hero.jpg"
-                alt="Accountant Office"
-                style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '14px' }}
-                onError={(e) => { e.currentTarget.style.display = 'none'; }}
-              />
-              <div style={{
-                position: 'absolute', bottom: '12px', right: '14px',
-                background: 'rgba(6,78,59,0.85)', color: '#ffffff',
-                padding: '3px 8px', borderRadius: '6px', fontSize: '10.5px',
-                fontWeight: 800, backdropFilter: 'blur(6px)', letterSpacing: '0.04em'
-              }}>
-                💵 FINANCE VAULT
+              <div style={{ minWidth: 150 }}>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="form-select"
+                  style={{ height: 36 }}
+                >
+                  <option value="">All Statuses</option>
+                  <option value="PAID">Paid</option>
+                  <option value="PENDING">Pending Approval</option>
+                </select>
               </div>
-            </div>
-          </div>
 
-          {/* ══ Bento Stat Cards ══ */}
-          <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-            gap: '14px', marginBottom: '22px'
-          }}>
-            <div style={{
-              background: darkMode ? '#111827' : '#ffffff',
-              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`,
-              borderRadius: '16px', padding: '18px',
-              boxShadow: darkMode ? '0 4px 16px rgba(0,0,0,0.3)' : '0 4px 16px rgba(15,23,42,0.03)'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '11.5px', color: darkMode ? '#94a3b8' : '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
-                  Total Expense ({month})
-                </span>
-                <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'rgba(239,68,68,0.15)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <i className="ti ti-receipt-2" />
-                </div>
-              </div>
-              <div style={{ fontSize: '26px', fontWeight: 900, color: '#ef4444' }}>
-                ₹{fmt(totalExpense)}
-              </div>
-              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{expenses.length} Total vouchers</div>
-            </div>
-
-            <div style={{
-              background: darkMode ? '#111827' : '#ffffff',
-              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`,
-              borderRadius: '16px', padding: '18px',
-              boxShadow: darkMode ? '0 4px 16px rgba(0,0,0,0.3)' : '0 4px 16px rgba(15,23,42,0.03)'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '11.5px', color: darkMode ? '#94a3b8' : '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
-                  Payroll / Salaries
-                </span>
-                <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'rgba(99,102,241,0.15)', color: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <i className="ti ti-users" />
-                </div>
-              </div>
-              <div style={{ fontSize: '26px', fontWeight: 900, color: '#6366f1' }}>
-                ₹{fmt(salaryTotal)}
-              </div>
-              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>Teacher &amp; staff compensation</div>
-            </div>
-
-            <div style={{
-              background: darkMode ? '#111827' : '#ffffff',
-              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`,
-              borderRadius: '16px', padding: '18px',
-              boxShadow: darkMode ? '0 4px 16px rgba(0,0,0,0.3)' : '0 4px 16px rgba(15,23,42,0.03)'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '11.5px', color: darkMode ? '#94a3b8' : '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
-                  Top Category
-                </span>
-                <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'rgba(245,158,11,0.15)', color: '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <i className="ti ti-chart-pie" />
-                </div>
-              </div>
-              <div style={{ fontSize: '20px', fontWeight: 900, color: '#f59e0b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {topCategory ? prettyLabel(topCategory.category) : '—'}
-              </div>
-              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
-                {topCategory ? `₹${fmt(topCategory.amount)} · ${topCategory.pct}%` : 'No data'}
-              </div>
-            </div>
-
-            <div style={{
-              background: darkMode ? '#111827' : '#ffffff',
-              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`,
-              borderRadius: '16px', padding: '18px',
-              boxShadow: darkMode ? '0 4px 16px rgba(0,0,0,0.3)' : '0 4px 16px rgba(15,23,42,0.03)'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '11.5px', color: darkMode ? '#94a3b8' : '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
-                  Automated Entries
-                </span>
-                <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'rgba(6,182,212,0.15)', color: '#06b6d4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <i className="ti ti-bolt" />
-                </div>
-              </div>
-              <div style={{ fontSize: '26px', fontWeight: 900, color: '#06b6d4' }}>
-                {autoCount}
-              </div>
-              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>Synced from payroll &amp; inventory</div>
+              <button
+                onClick={loadExpenses}
+                className="btn btn-neutral"
+                style={{ height: 36, padding: '0 12px' }}
+                title="Refresh"
+              >
+                <i className="ti ti-refresh"></i>
+              </button>
             </div>
           </div>
 
-          {/* ══ Main Ledger & Category Distribution Grid ══ */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '20px', marginBottom: '24px', alignItems: 'start' }}>
-
-            {/* Expense Entries Table */}
-            <div className="card" style={{
-              borderRadius: '18px', margin: 0,
-              background: darkMode ? '#111827' : '#ffffff',
-              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`,
-              boxShadow: darkMode ? '0 4px 20px rgba(0,0,0,0.3)' : '0 4px 20px rgba(15,23,42,0.03)'
-            }}>
-              <div className="card-header" style={{
-                padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`,
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap'
-              }}>
-                <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <i className="ti ti-list" style={{ color: '#6366f1', fontSize: '18px' }} /> Expense Vouchers &amp; Bills
-                </h4>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <select
-                    className="form-select"
-                    style={{
-                      width: '150px', fontSize: '12px', borderRadius: '8px',
-                      background: darkMode ? '#1e293b' : '#ffffff',
-                      borderColor: darkMode ? '#334155' : '#cbd5e1',
-                      color: darkMode ? '#ffffff' : '#0f172a'
-                    }}
-                    value={categoryFilter}
-                    onChange={e => setCategoryFilter(e.target.value)}
-                  >
-                    <option value="">All Categories</option>
-                    {meta.categories.map(c => <option key={c} value={c}>{prettyLabel(c)}</option>)}
-                  </select>
-                  <select
-                    className="form-select"
-                    style={{
-                      width: '110px', fontSize: '12px', borderRadius: '8px',
-                      background: darkMode ? '#1e293b' : '#ffffff',
-                      borderColor: darkMode ? '#334155' : '#cbd5e1',
-                      color: darkMode ? '#ffffff' : '#0f172a'
-                    }}
-                    value={statusFilter}
-                    onChange={e => setStatusFilter(e.target.value)}
-                  >
-                    <option value="">All Status</option>
-                    <option value="PAID">Paid</option>
-                    <option value="PENDING">Pending</option>
-                  </select>
-                </div>
+          {/* Expenses Register Table */}
+          <div className="card">
+            <div className="card-header">
+              <div>
+                <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, margin: 0 }}>Expense Register ({month})</h3>
+                <p className="text-xs text-muted" style={{ margin: 0 }}>
+                  Showing {expenses.length} voucher records.
+                </p>
               </div>
+            </div>
 
-              <div className="table-container" style={{ border: 'none' }}>
-                <table>
+            <div className="table-container" style={{ border: 'none' }}>
+              {loading ? (
+                <div className="empty-state">
+                  <div className="spinner" style={{ width: 28, height: 28 }}></div>
+                  <p className="mt-2 text-xs text-muted">Loading expense vouchers...</p>
+                </div>
+              ) : expenses.length === 0 ? (
+                <div className="empty-state">
+                  <i className="ti ti-receipt-off" style={{ fontSize: 36, color: 'var(--neutral-4)' }}></i>
+                  <h4 style={{ marginTop: 8 }}>No Expenses Recorded</h4>
+                  <p className="text-xs text-muted">Click 'Record Expense' to add a new voucher for this month.</p>
+                </div>
+              ) : (
+                <table className="table">
                   <thead>
                     <tr>
-                      <th>Title &amp; Invoice</th><th>Category</th><th>Vendor</th><th>Amount</th>
-                      <th>Date</th><th>Method</th><th>Status</th><th>Source</th>
-                      {isPrincipal && <th>Action</th>}
+                      <th>Date</th>
+                      <th>Title & Description</th>
+                      <th>Category</th>
+                      <th>Vendor / Payee</th>
+                      <th>Payment Mode</th>
+                      <th>Invoice No</th>
+                      <th style={{ textAlign: 'right' }}>Amount</th>
+                      <th>Status</th>
+                      <th style={{ textAlign: 'center' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {loading ? (
-                      <tr><td colSpan={9} style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>Loading expense ledger...</td></tr>
-                    ) : expenses.length === 0 ? (
-                      <tr><td colSpan={9} style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>Is mahine koi expense record nahi hai</td></tr>
-                    ) : expenses.map(e => (
-                      <tr key={e.id}>
+                    {expenses.map((exp) => (
+                      <tr key={exp.id}>
+                        <td style={{ fontSize: 12, fontWeight: 500 }}>{exp.payment_date}</td>
                         <td>
-                          <div style={{ fontWeight: 700, fontSize: '13.5px', color: darkMode ? '#ffffff' : '#0f172a' }}>{e.title}</div>
-                          {e.invoice_number && <div style={{ fontSize: '11px', color: '#94a3b8' }}>Inv #{e.invoice_number}</div>}
-                        </td>
-                        <td style={{ fontSize: '12px' }}>{prettyLabel(e.category)}</td>
-                        <td style={{ fontSize: '12px', color: '#94a3b8' }}>{e.vendor_name || '—'}</td>
-                        <td style={{ fontWeight: 800, fontSize: '13.5px', color: '#ef4444' }}>₹{fmt(e.amount)}</td>
-                        <td style={{ fontSize: '12px' }}>{e.payment_date}</td>
-                        <td style={{ fontSize: '12px' }}>{prettyLabel(e.payment_method)}</td>
-                        <td>
-                          <span style={{
-                            padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 800,
-                            background: e.status === 'PAID' ? (darkMode ? 'rgba(16,185,129,0.15)' : '#dcfce7') : (darkMode ? 'rgba(245,158,11,0.15)' : '#fef3c7'),
-                            color: e.status === 'PAID' ? '#10b981' : '#d97706',
-                          }}>{e.status}</span>
+                          <div style={{ fontWeight: 700, color: 'var(--neutral-9)' }}>{exp.title}</div>
+                          {exp.remarks && <div className="text-xs text-muted">{exp.remarks}</div>}
                         </td>
                         <td>
-                          {e.source !== 'MANUAL' ? (
-                            <span style={{
-                              fontSize: '10.5px', fontWeight: 800, padding: '2px 8px', borderRadius: '12px',
-                              background: darkMode ? 'rgba(99,102,241,0.2)' : '#e0e7ff', color: '#6366f1',
-                            }}>{e.source === 'SALARY_AUTO' ? 'Payroll' : 'Inventory'}</span>
-                          ) : <span style={{ fontSize: '11px', color: '#94a3b8' }}>Manual</span>}
+                          <span className="badge badge-neutral" style={{ fontSize: 10 }}>{exp.category}</span>
                         </td>
-                        {isPrincipal && (
-                          <td>
-                            <div style={{ display: 'flex', gap: '6px' }}>
-                              <button onClick={() => openEdit(e)} style={{
-                                background: 'none', border: 'none', cursor: 'pointer', color: '#6366f1', padding: '4px',
-                              }}><i className="ti ti-edit" style={{ fontSize: '15px' }} /></button>
-                              <button onClick={() => remove(e.id)} style={{
-                                background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: '4px',
-                              }}><i className="ti ti-trash" style={{ fontSize: '15px' }} /></button>
-                            </div>
-                          </td>
-                        )}
+                        <td style={{ fontWeight: 600 }}>{exp.vendor_name || '—'}</td>
+                        <td style={{ fontSize: 12 }}>{exp.payment_method}</td>
+                        <td style={{ fontFamily: 'monospace', color: 'var(--neutral-6)' }}>{exp.invoice_number || '—'}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 800, color: '#ba0517' }}>
+                          {fmt(exp.amount)}
+                        </td>
+                        <td>
+                          <span className={`badge ${exp.status === 'PAID' ? 'badge-success' : 'badge-warning'}`}>
+                            {exp.status}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <div style={{ display: 'flex', justifyContent: 'center', gap: 6 }}>
+                            <button
+                              onClick={() => openEdit(exp)}
+                              className="btn btn-neutral btn-sm"
+                              title="Edit"
+                            >
+                              <i className="ti ti-edit"></i>
+                            </button>
+                            <button
+                              onClick={() => handleDelete(exp.id)}
+                              className="btn btn-neutral btn-sm"
+                              style={{ color: '#ba0517' }}
+                              title="Delete"
+                            >
+                              <i className="ti ti-trash"></i>
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              </div>
-            </div>
-
-            {/* Category Breakdown Donut Card */}
-            <div className="card" style={{
-              borderRadius: '18px', margin: 0,
-              background: darkMode ? '#111827' : '#ffffff',
-              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`,
-              padding: '20px', boxShadow: darkMode ? '0 4px 20px rgba(0,0,0,0.3)' : '0 4px 20px rgba(15,23,42,0.03)'
-            }}>
-              <h4 style={{ margin: '0 0 14px', fontSize: '15px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
-                Category Breakdown
-              </h4>
-              {pieData.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '30px 10px', color: '#94a3b8', fontSize: '13px' }}>
-                  Is mahine koi breakdown data nahi hai
-                </div>
-              ) : (
-                <>
-                  <ResponsiveContainer width="100%" height={180}>
-                    <PieChart>
-                      <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={42} outerRadius={68}>
-                        {pieData.map(entry => (
-                          <Cell key={entry.name} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={val => `₹${fmt(val)}`} />
-                    </PieChart>
-                  </ResponsiveContainer>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
-                    {summary?.category_breakdown?.slice(0, 5).map((c, i) => (
-                      <div key={c.category} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: darkMode ? '#cbd5e1' : '#475569' }}>
-                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: COLORS[i % COLORS.length] }} />
-                          {prettyLabel(c.category)}
-                        </span>
-                        <span style={{ fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a' }}>
-                          ₹{fmt(c.amount)} ({c.pct}%)
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </>
               )}
             </div>
-
           </div>
 
-          {/* ══ Add/Edit Expense Modal ══ */}
+          {/* Add / Edit Expense Modal */}
           {modalOpen && (
-            <div
-              style={{
-                position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999,
-                backdropFilter: 'blur(6px)'
-              }}
-              onClick={e => e.target === e.currentTarget && setModalOpen(false)}
-            >
-              <div style={{
-                background: darkMode ? '#111827' : '#ffffff', borderRadius: '20px', padding: '28px',
-                width: '100%', maxWidth: '520px', maxHeight: '90vh', overflowY: 'auto',
-                border: `1px solid ${darkMode ? 'rgba(255,255,255,0.1)' : '#e2e8f0'}`,
-                boxShadow: '0 20px 40px rgba(0,0,0,0.4)'
-              }}>
-                <h3 style={{ margin: '0 0 18px', fontSize: '18px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
-                  {editingId ? '✏️ Edit Expense Voucher' : '➕ Record New Expense'}
-                </h3>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-                  <div>
-                    <label style={{ fontSize: '12px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '4px' }}>
-                      Category *
-                    </label>
-                    <select
-                      className="form-select"
-                      style={{
-                        width: '100%', borderRadius: '8px', fontSize: '13px',
-                        background: darkMode ? '#0f172a' : '#ffffff',
-                        borderColor: darkMode ? '#334155' : '#cbd5e1',
-                        color: darkMode ? '#ffffff' : '#0f172a'
-                      }}
-                      value={form.category}
-                      onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
-                    >
-                      <option value="">-- Select Category --</option>
-                      {meta.categories.map(c => <option key={c} value={c}>{prettyLabel(c)}</option>)}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label style={{ fontSize: '12px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '4px' }}>
-                      Amount (₹) *
-                    </label>
-                    <input
-                      type="number"
-                      className="form-input"
-                      style={{
-                        width: '100%', borderRadius: '8px', fontSize: '13px', fontWeight: 700,
-                        background: darkMode ? '#0f172a' : '#ffffff',
-                        borderColor: darkMode ? '#334155' : '#cbd5e1',
-                        color: darkMode ? '#ffffff' : '#0f172a'
-                      }}
-                      placeholder="0.00"
-                      value={form.amount}
-                      onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
-                    />
-                  </div>
+            <div className="modal-backdrop">
+              <div className="modal">
+                <div className="modal-header">
+                  <h3 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0 }}>
+                    {editingId ? 'Edit Expense Record' : 'Record New Expense'}
+                  </h3>
+                  <button onClick={() => setModalOpen(false)} className="modal-close">✕</button>
                 </div>
 
-                <div style={{ marginBottom: '12px' }}>
-                  <label style={{ fontSize: '12px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '4px' }}>
-                    Title / Purpose *
-                  </label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    style={{
-                      width: '100%', borderRadius: '8px', fontSize: '13px',
-                      background: darkMode ? '#0f172a' : '#ffffff',
-                      borderColor: darkMode ? '#334155' : '#cbd5e1',
-                      color: darkMode ? '#ffffff' : '#0f172a'
-                    }}
-                    placeholder="e.g. Science Lab Chemical Reagents"
-                    value={form.title}
-                    onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                  />
-                </div>
+                <form onSubmit={handleSubmit}>
+                  <div className="modal-body">
+                    <div className="form-group">
+                      <label className="form-label">Expense Title / Item</label>
+                      <input
+                        type="text"
+                        value={form.title}
+                        onChange={(e) => setForm({ ...form, title: e.target.value })}
+                        placeholder="e.g. Science Lab Consumables or School Electricity Bill"
+                        required
+                        className="form-input"
+                      />
+                    </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-                  <div>
-                    <label style={{ fontSize: '12px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '4px' }}>
-                      Vendor / Payee
-                    </label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      style={{
-                        width: '100%', borderRadius: '8px', fontSize: '13px',
-                        background: darkMode ? '#0f172a' : '#ffffff',
-                        borderColor: darkMode ? '#334155' : '#cbd5e1',
-                        color: darkMode ? '#ffffff' : '#0f172a'
-                      }}
-                      placeholder="e.g. Apex Stationers"
-                      value={form.vendor_name}
-                      onChange={e => setForm(f => ({ ...f, vendor_name: e.target.value }))}
-                    />
+                    <div className="grid-2">
+                      <div className="form-group">
+                        <label className="form-label">Category</label>
+                        <select
+                          value={form.category}
+                          onChange={(e) => setForm({ ...form, category: e.target.value })}
+                          className="form-select"
+                        >
+                          <option value="OPERATIONAL">Operational / Utilities</option>
+                          <option value="SALARY">Staff Payroll / Salary</option>
+                          <option value="MAINTENANCE">Repairs & Maintenance</option>
+                          <option value="INVENTORY">Inventory / Supplies</option>
+                          <option value="TRANSPORT">Transport & Fuel</option>
+                          <option value="EVENTS">Events & Functions</option>
+                          <option value="OTHER">Other Expenses</option>
+                        </select>
+                      </div>
+
+                      <div className="form-group">
+                        <label className="form-label">Amount (₹)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={form.amount}
+                          onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                          placeholder="e.g. 4500"
+                          required
+                          className="form-input"
+                          style={{ fontWeight: 700 }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid-2">
+                      <div className="form-group">
+                        <label className="form-label">Vendor / Payee</label>
+                        <input
+                          type="text"
+                          value={form.vendor_name}
+                          onChange={(e) => setForm({ ...form, vendor_name: e.target.value })}
+                          placeholder="e.g. Reliance Power or Gupta Stationery"
+                          className="form-input"
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label className="form-label">Invoice / Bill Number</label>
+                        <input
+                          type="text"
+                          value={form.invoice_number}
+                          onChange={(e) => setForm({ ...form, invoice_number: e.target.value })}
+                          placeholder="e.g. INV-9842"
+                          className="form-input"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid-3">
+                      <div className="form-group">
+                        <label className="form-label">Payment Mode</label>
+                        <select
+                          value={form.payment_method}
+                          onChange={(e) => setForm({ ...form, payment_method: e.target.value })}
+                          className="form-select"
+                        >
+                          <option value="CASH">Cash</option>
+                          <option value="UPI">UPI</option>
+                          <option value="BANK_TRANSFER">Bank Transfer / NEFT</option>
+                          <option value="CHEQUE">Cheque</option>
+                          <option value="CARD">Card</option>
+                        </select>
+                      </div>
+
+                      <div className="form-group">
+                        <label className="form-label">Payment Date</label>
+                        <input
+                          type="date"
+                          value={form.payment_date}
+                          onChange={(e) => setForm({ ...form, payment_date: e.target.value })}
+                          className="form-input"
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label className="form-label">Status</label>
+                        <select
+                          value={form.status}
+                          onChange={(e) => setForm({ ...form, status: e.target.value })}
+                          className="form-select"
+                        >
+                          <option value="PAID">Paid</option>
+                          <option value="PENDING">Pending</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">Remarks / Description</label>
+                      <input
+                        type="text"
+                        value={form.remarks}
+                        onChange={(e) => setForm({ ...form, remarks: e.target.value })}
+                        placeholder="Additional notes..."
+                        className="form-input"
+                      />
+                    </div>
                   </div>
 
-                  <div>
-                    <label style={{ fontSize: '12px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '4px' }}>
-                      Payment Method
-                    </label>
-                    <select
-                      className="form-select"
-                      style={{
-                        width: '100%', borderRadius: '8px', fontSize: '13px',
-                        background: darkMode ? '#0f172a' : '#ffffff',
-                        borderColor: darkMode ? '#334155' : '#cbd5e1',
-                        color: darkMode ? '#ffffff' : '#0f172a'
-                      }}
-                      value={form.payment_method}
-                      onChange={e => setForm(f => ({ ...f, payment_method: e.target.value }))}
-                    >
-                      {meta.payment_methods.map(m => <option key={m} value={m}>{prettyLabel(m)}</option>)}
-                    </select>
+                  <div className="modal-footer">
+                    <button type="button" onClick={() => setModalOpen(false)} className="btn btn-neutral">
+                      Cancel
+                    </button>
+                    <button type="submit" disabled={saving} className="btn btn-primary">
+                      {saving ? 'Saving...' : 'Save Expense'}
+                    </button>
                   </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
-                  <div>
-                    <label style={{ fontSize: '12px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '4px' }}>
-                      Payment Date
-                    </label>
-                    <input
-                      type="date"
-                      className="form-input"
-                      style={{
-                        width: '100%', borderRadius: '8px', fontSize: '13px',
-                        background: darkMode ? '#0f172a' : '#ffffff',
-                        borderColor: darkMode ? '#334155' : '#cbd5e1',
-                        color: darkMode ? '#ffffff' : '#0f172a'
-                      }}
-                      value={form.payment_date}
-                      onChange={e => setForm(f => ({ ...f, payment_date: e.target.value }))}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ fontSize: '12px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', display: 'block', marginBottom: '4px' }}>
-                      Invoice / Bill Number
-                    </label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      style={{
-                        width: '100%', borderRadius: '8px', fontSize: '13px',
-                        background: darkMode ? '#0f172a' : '#ffffff',
-                        borderColor: darkMode ? '#334155' : '#cbd5e1',
-                        color: darkMode ? '#ffffff' : '#0f172a'
-                      }}
-                      placeholder="e.g. INV-2024-991"
-                      value={form.invoice_number}
-                      onChange={e => setForm(f => ({ ...f, invoice_number: e.target.value }))}
-                    />
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
-                  <button
-                    onClick={() => setModalOpen(false)}
-                    style={{
-                      padding: '10px 16px', borderRadius: '10px', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
-                      background: darkMode ? '#1e293b' : '#f8fafc',
-                      color: darkMode ? '#ffffff' : '#334155', cursor: 'pointer', fontSize: '13px', fontWeight: 600
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    disabled={saving}
-                    onClick={save}
-                    style={{
-                      padding: '10px 20px', borderRadius: '10px', border: 'none',
-                      background: '#6366f1', color: '#ffffff', cursor: 'pointer',
-                      fontSize: '13px', fontWeight: 800
-                    }}
-                  >
-                    {saving ? 'Saving...' : 'Save Voucher'}
-                  </button>
-                </div>
+                </form>
               </div>
             </div>
           )}

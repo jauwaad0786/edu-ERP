@@ -124,12 +124,18 @@ def get_student_ledger(student_id, session=None):
     concessions_query = StudentConcession.query.filter_by(student_id=student_id, is_active=True)
 
     if session:
-        bill_query = bill_query.filter_by(session=session)
-        pay_query  = pay_query.filter_by(session=session)
-        ledger_query = ledger_query.filter_by(session=session)
-        concessions_query = concessions_query.filter_by(session=session)
+        bills_session = bill_query.filter_by(session=session).order_by(FeeBill.bill_month.desc(), FeeBill.id.desc()).all()
+        if bills_session:
+            bills = bills_session
+            pay_query = pay_query.filter_by(session=session)
+            ledger_query = ledger_query.filter_by(session=session)
+            concessions_query = concessions_query.filter_by(session=session)
+        else:
+            # Fallback to all active bills if no bills found for specific session tag
+            bills = bill_query.order_by(FeeBill.bill_month.desc(), FeeBill.id.desc()).all()
+    else:
+        bills = bill_query.order_by(FeeBill.bill_month.desc(), FeeBill.id.desc()).all()
 
-    bills = bill_query.order_by(FeeBill.bill_month.desc(), FeeBill.id.desc()).all()
     payments = pay_query.order_by(FeePayment.payment_date.desc(), FeePayment.id.desc()).all()
     ledger_entries = ledger_query.order_by(StudentLedger.entry_date.desc(), StudentLedger.id.desc()).all()
     concessions = concessions_query.all()
@@ -139,18 +145,47 @@ def get_student_ledger(student_id, session=None):
     outstanding  = sum(b.balance_due for b in bills)
     advance_credit = max(0.0, total_paid - total_billed) if total_paid > total_billed else 0.0
 
+    class_name = f"{student.class_ref.name} {student.class_ref.section or ''}".strip() if student.class_ref else '—'
+    father_name = student.father_name or student.parent_name or ''
+    parent_phone = student.parent_phone or getattr(student, 'phone', '') or ''
+    roll_number = getattr(student, 'roll_number', '') or getattr(student, 'roll_no', '') or ''
+
+    bills_dict = [b.to_dict() for b in bills]
+    pending_bills_dict = [b for b in bills_dict if (b.get('balance_due') or 0) > 0]
+
+    student_dict = {
+        'id':           student.id,
+        'name':         student.user.name if student.user else '',
+        'admission_no': student.admission_no or '',
+        'roll_no':      roll_number,
+        'roll_number':  roll_number,
+        'class_id':     student.class_id,
+        'class_name':   class_name,
+        'father_name':  father_name,
+        'mother_name':  getattr(student, 'mother_name', '') or '',
+        'parent_name':  student.parent_name or father_name,
+        'parent_phone': parent_phone,
+        'parent_email': getattr(student, 'parent_email', '') or '',
+        'photo_url':    getattr(student, 'photo_url', '') or '',
+    }
+
     return {
+        'student':        student_dict,
         'student_id':     student.id,
         'student_name':   student.user.name if student.user else '',
         'admission_no':   student.admission_no,
+        'roll_no':        roll_number,
+        'father_name':    father_name,
+        'parent_phone':   parent_phone,
         'class_id':       student.class_id,
-        'class_name':     f"{student.class_ref.name} {student.class_ref.section or ''}".strip() if student.class_ref else '—',
+        'class_name':     class_name,
         'session':        session or getattr(student, 'session', '2026-27'),
         'total_billed':   round(total_billed, 2),
         'total_paid':     round(total_paid, 2),
         'outstanding':    round(outstanding, 2),
         'advance_credit': round(advance_credit, 2),
-        'bills':          [b.to_dict() for b in bills],
+        'bills':          bills_dict,
+        'pending_bills':  pending_bills_dict,
         'payments':       [p.to_dict() for p in payments],
         'ledger_entries': [e.to_dict() for e in ledger_entries],
         'concessions':    [c.to_dict() for c in concessions],
@@ -906,6 +941,27 @@ def get_finance_dashboard_metrics(school_id, session='2026-27', month=None):
         col_name = p.collector.name if p.collector else 'Accounts Staff'
         collectors_breakdown[col_name] = round(collectors_breakdown.get(col_name, 0.0) + p.total_paid, 2)
 
+    # ── Class-wise Fee Collection Summary ──────────────────────────────
+    classes = Class.query.filter_by(school_id=school_id).all()
+    class_stats = []
+    for cls in classes:
+        cls_students = Student.query.filter_by(class_id=cls.id, school_id=school_id).all()
+        stu_ids = {s.id for s in cls_students}
+        c_billed = sum(b.total_payable for b in bills if b.student_id in stu_ids)
+        c_collected = sum(p.total_paid for p in payments if p.student_id in stu_ids)
+        c_out = sum(b.balance_due for b in bills if b.student_id in stu_ids)
+        c_pct = round((c_collected / c_billed * 100.0), 1) if c_billed > 0 else 0.0
+
+        class_stats.append({
+            'class_id':       cls.id,
+            'class_name':     f"{cls.name} {cls.section or ''}".strip(),
+            'students_count': len(cls_students),
+            'billed':         round(c_billed, 2),
+            'collected':      round(c_collected, 2),
+            'outstanding':    round(c_out, 2),
+            'collection_pct': c_pct,
+        })
+
     return {
         'session':               session,
         'filter_month':          month,
@@ -916,6 +972,7 @@ def get_finance_dashboard_metrics(school_id, session='2026-27', month=None):
         'net_surplus':           net_surplus,
         'collection_percentage': collection_pct,
         'service_wise':          list(service_stats.values()),
+        'class_wise':            class_stats,
         'monthly_summary':       monthly_summary,
         'today_collection': {
             'date':              today.isoformat(),

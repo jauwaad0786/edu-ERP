@@ -214,6 +214,70 @@ def create_fee_structure():
 #  4. STUDENT 360° FINANCIAL LEDGER & APPLICABLE CHARGES
 # ═══════════════════════════════════════════════════════════════════════
 
+@fees_finance_bp.route('/students/search', methods=['GET'])
+@jwt_required()
+def search_students():
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    class_id = request.args.get('class_id', type=int)
+    query = (request.args.get('query') or request.args.get('search') or '').strip()
+    session = request.args.get('session', None)
+    only_pending = request.args.get('only_pending', 'false').lower() in ('true', '1')
+
+    q = Student.query.join(User, Student.user_id == User.id).filter(Student.school_id == user.school_id)
+
+    if class_id:
+        q = q.filter(Student.class_id == class_id)
+
+    if query:
+        pattern = f"%{query}%"
+        q = q.filter(db.or_(
+            User.name.ilike(pattern),
+            Student.admission_no.ilike(pattern),
+            Student.roll_number.ilike(pattern),
+            Student.father_name.ilike(pattern),
+            Student.parent_name.ilike(pattern),
+            Student.parent_phone.ilike(pattern),
+        ))
+
+    students = q.order_by(Student.class_id.asc(), Student.roll_number.asc()).limit(60).all()
+
+    results = []
+    for s in students:
+        bill_q = FeeBill.query.filter_by(student_id=s.id, school_id=user.school_id).filter(FeeBill.status != BillStatus.CANCELLED.value)
+        if session:
+            bill_session = bill_q.filter_by(session=session).all()
+            bills = bill_session if bill_session else bill_q.all()
+        else:
+            bills = bill_q.all()
+
+        total_billed = sum(b.total_payable for b in bills)
+        total_paid   = sum(b.amount_paid for b in bills)
+        outstanding  = sum(b.balance_due for b in bills)
+
+        if only_pending and outstanding <= 0:
+            continue
+
+        results.append({
+            'id':           s.id,
+            'name':         s.user.name if s.user else '',
+            'admission_no': s.admission_no or '',
+            'roll_no':      getattr(s, 'roll_number', '') or '',
+            'class_id':     s.class_id,
+            'class_name':   f"{s.class_ref.name} {s.class_ref.section or ''}".strip() if s.class_ref else '—',
+            'father_name':  s.father_name or s.parent_name or '',
+            'parent_phone': s.parent_phone or '',
+            'total_billed': round(total_billed, 2),
+            'total_paid':   round(total_paid, 2),
+            'outstanding':  round(outstanding, 2),
+            'status':       'HAS_DUES' if outstanding > 0 else 'CLEARED',
+        })
+
+    return jsonify({'students': results}), 200
+
+
 @fees_finance_bp.route('/students/<int:student_id>/ledger', methods=['GET'])
 @jwt_required()
 def get_student_financial_ledger(student_id):

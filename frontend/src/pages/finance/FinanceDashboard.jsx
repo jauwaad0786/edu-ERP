@@ -29,6 +29,11 @@ export default function FinanceDashboard() {
 
   const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 
+  const maxMonthValue = Math.max(
+    ...(data?.monthly_summary?.map((m) => Math.max(m.billed, m.collected, m.expenses)) || [10000]),
+    1000
+  );
+
   return (
     <div className="app-shell">
       <Sidebar />
@@ -45,7 +50,7 @@ export default function FinanceDashboard() {
               </div>
               <h2 className="page-title">Finance Executive Dashboard</h2>
               <p className="page-subtitle">
-                Unified financial ledger, service-wise allocation, cash flow, and net surplus tracking.
+                Unified financial ledger, class-wise fee collections, cash flow graphs, and net surplus tracking.
               </p>
             </div>
 
@@ -159,6 +164,129 @@ export default function FinanceDashboard() {
                     {fmt(data?.net_surplus)}
                   </div>
                   <div className="stat-sub">Revenue minus expenses</div>
+                </div>
+              </div>
+
+              {/* Visual Graph: Monthly Income vs Expenses Chart */}
+              <div className="card mb-6">
+                <div className="card-header">
+                  <div>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>Cash Flow Trend & Monthly Comparison</h3>
+                    <p className="text-xs text-muted" style={{ margin: 0 }}>
+                      Comparison of Invoiced Fees, Realized Cash Collections, and Operational Expenses.
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ width: 10, height: 10, background: '#2e844a', borderRadius: 2 }}></span>
+                      Collected
+                    </span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ width: 10, height: 10, background: '#0176d3', borderRadius: 2 }}></span>
+                      Invoiced
+                    </span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ width: 10, height: 10, background: '#ba0517', borderRadius: 2 }}></span>
+                      Expenses
+                    </span>
+                  </div>
+                </div>
+
+                <div className="card-body" style={{ padding: '20px 24px' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', height: 160, gap: 12, borderBottom: '1px solid var(--neutral-2)', paddingBottom: 8 }}>
+                    {data?.monthly_summary?.map((m, idx) => {
+                      const collHeight = maxMonthValue > 0 ? Math.max((m.collected / maxMonthValue) * 140, 4) : 4;
+                      const billedHeight = maxMonthValue > 0 ? Math.max((m.billed / maxMonthValue) * 140, 4) : 4;
+                      const expHeight = maxMonthValue > 0 ? Math.max((m.expenses / maxMonthValue) * 140, 4) : 4;
+                      return (
+                        <div key={idx} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', justifyContent: 'flex-end' }}>
+                          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, width: '100%', justifyContent: 'center' }}>
+                            {/* Invoiced Bar */}
+                            <div
+                              title={`Invoiced: ${fmt(m.billed)}`}
+                              style={{ width: 8, height: `${billedHeight}px`, background: '#0176d3', borderRadius: '3px 3px 0 0', opacity: 0.7 }}
+                            ></div>
+                            {/* Collected Bar */}
+                            <div
+                              title={`Collected: ${fmt(m.collected)}`}
+                              style={{ width: 10, height: `${collHeight}px`, background: '#2e844a', borderRadius: '3px 3px 0 0' }}
+                            ></div>
+                            {/* Expense Bar */}
+                            <div
+                              title={`Expense: ${fmt(m.expenses)}`}
+                              style={{ width: 8, height: `${expHeight}px`, background: '#ba0517', borderRadius: '3px 3px 0 0', opacity: 0.8 }}
+                            ></div>
+                          </div>
+                          <div style={{ fontSize: 10, fontWeight: 700, marginTop: 8, color: 'var(--neutral-6)' }}>
+                            {m.month_label.slice(0, 3)}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Class-wise Collection & Defaulter Summary Table */}
+              <div className="card mb-6">
+                <div className="card-header">
+                  <div>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>Class-Wise Fee Collection & Dues Status</h3>
+                    <p className="text-xs text-muted" style={{ margin: 0 }}>
+                      Class-wise breakdown of student count, total fees invoiced, fees paid, and pending balance.
+                    </p>
+                  </div>
+                  <span className="badge badge-info">{data?.class_wise?.length || 0} Classes</span>
+                </div>
+
+                <div className="table-container" style={{ border: 'none' }}>
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Class & Section</th>
+                        <th>Students</th>
+                        <th style={{ textAlign: 'right' }}>Total Invoiced</th>
+                        <th style={{ textAlign: 'right' }}>Total Paid</th>
+                        <th style={{ textAlign: 'right' }}>Pending Dues</th>
+                        <th>Collection Rate</th>
+                        <th style={{ textAlign: 'center' }}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data?.class_wise?.map((c) => (
+                        <tr key={c.class_id}>
+                          <td style={{ fontWeight: 700, color: 'var(--neutral-9)' }}>{c.class_name}</td>
+                          <td>{c.students_count} students</td>
+                          <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(c.billed)}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 700, color: '#2e844a' }}>{fmt(c.collected)}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 800, color: c.outstanding > 0 ? '#dd7a01' : '#2e844a' }}>
+                            {fmt(c.outstanding)}
+                          </td>
+                          <td style={{ minWidth: 140 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <div className="progress-bar" style={{ flex: 1, height: 6 }}>
+                                <div
+                                  className="progress-fill success"
+                                  style={{ width: `${Math.min(c.collection_pct, 100)}%` }}
+                                ></div>
+                              </div>
+                              <span style={{ fontSize: 11, fontWeight: 700, width: 36, textAlign: 'right' }}>
+                                {c.collection_pct}%
+                              </span>
+                            </div>
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <button
+                              onClick={() => navigate(`/finance/payments/collect?class_id=${c.class_id}`)}
+                              className="btn btn-neutral btn-sm"
+                            >
+                              Collect Fees
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
 
