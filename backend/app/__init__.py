@@ -172,6 +172,7 @@ def create_app(config_name='default'):
             _ensure_hostel_columns()
             _ensure_transport_columns()
             _ensure_finance_phase2_columns()
+            _ensure_audit_columns()
             # ── Import AI models so db.create_all() creates their tables ──
             try:
                 from app.AI.models.ai_models import (  # noqa: F401
@@ -604,6 +605,22 @@ def _ensure_finance_phase2_columns():
                             print(f'[WARN] inventory_items.{col}: {e}')
     except Exception as e:
         print(f'[WARN] _ensure_finance_phase2_columns error: {e}')
+
+
+def _ensure_audit_columns():
+    """Ensure company_activity_logs.actor_user_id is nullable (PostgreSQL compatibility)."""
+    from sqlalchemy import text, inspect
+    try:
+        inspector = inspect(db.engine)
+        if 'company_activity_logs' in inspector.get_table_names():
+            with db.engine.connect() as conn:
+                try:
+                    conn.execute(text('ALTER TABLE company_activity_logs ALTER COLUMN actor_user_id DROP NOT NULL;'))
+                    conn.commit()
+                except Exception:
+                    pass
+    except Exception as e:
+        print(f'[WARN] _ensure_audit_columns error: {e}')
 
 
 def _ensure_communication_columns():

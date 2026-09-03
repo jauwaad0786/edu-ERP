@@ -1011,3 +1011,36 @@ def finance_meta():
         'payment_methods': PAYMENT_METHODS,
         'statuses':        EXPENSE_STATUSES,
     }), 200
+
+
+@finance_bp.route('/monthly-trend', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT', 'SUPER_ADMIN')
+def monthly_trend():
+    """
+    Returns monthly financial trend for the school over the last N months.
+    """
+    sid = _school_id()
+    months_count = request.args.get('months', default=6, type=int)
+
+    fee_agg = db.session.query(
+        FeeRecord.month,
+        func.sum(FeeRecord.amount_due).label('expected'),
+        func.sum(FeeRecord.amount_paid).label('collected')
+    ).filter(
+        FeeRecord.school_id == sid,
+        FeeRecord.month.isnot(None)
+    ).group_by(FeeRecord.month).order_by(FeeRecord.month.desc()).limit(months_count).all()
+
+    result = []
+    for r in reversed(fee_agg):
+        exp = float(r.expected or 0)
+        col = float(r.collected or 0)
+        result.append({
+            'month': r.month,
+            'expected': exp,
+            'collected': col,
+            'pending': max(0.0, exp - col),
+            'collection_pct': round((col / exp * 100), 1) if exp > 0 else 0.0
+        })
+
+    return jsonify(result), 200

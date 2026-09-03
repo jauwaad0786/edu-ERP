@@ -39,6 +39,7 @@ class TestMSG91Integration(unittest.TestCase):
         os.environ.pop('MSG91_EMAIL_DOMAIN', None)
         os.environ.pop('MSG91_OTP_TEMPLATE_ID', None)
         self.app = create_app('testing')
+        self.app.config['RATELIMIT_ENABLED'] = False
         self.app_context = self.app.app_context()
         self.app_context.push()
         self.client = self.app.test_client()
@@ -457,12 +458,28 @@ class TestMSG91Integration(unittest.TestCase):
     # ──────────────────────────────────────────────────────────────────────────
     # 17. Single Authkey Environment Safety
     # ──────────────────────────────────────────────────────────────────────────
-    def test_single_auth_key_environment_safety(self):
+    @patch('app.services.communication.msg91_service.requests.post')
+    def test_single_auth_key_environment_safety(self, mock_post):
         """Backend safely handles send_otp without crashing when MSG91_OTP_TEMPLATE_ID is absent."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = '{"message": "OTP sent successfully"}'
+        mock_resp.json.return_value = {"message": "OTP sent successfully"}
+        mock_post.return_value = mock_resp
+
         result = MSG91Service.send_otp(mobile="9876543210", otp="123456")
-        self.assertFalse(result['success'])
-        self.assertEqual(result['code'], "CONFIG_REQUIRED")
-        self.assertEqual(result['message'], "Unable to send OTP at this time.")
+        self.assertTrue(result['success'])
+        called_params = mock_post.call_args[1].get('params', {})
+        self.assertNotIn('template_id', called_params)
+        self.assertEqual(called_params['mobile'], '919876543210')
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # 18. Finance Monthly Trend Endpoint
+    # ──────────────────────────────────────────────────────────────────────────
+    def test_finance_monthly_trend(self):
+        res = self.client.get('/api/finance/monthly-trend?months=6', headers=self.headers_principal_a)
+        self.assertEqual(res.status_code, 200)
+        self.assertIsInstance(res.get_json(), list)
 
 
 if __name__ == '__main__':

@@ -98,13 +98,6 @@ class MSG91Service:
             }
 
         tpl_id = template_id or cls.get_config_val('MSG91_OTP_TEMPLATE_ID')
-        if not tpl_id:
-            logger.info("[MSG91] Mobile OTP: MSG91_OTP_TEMPLATE_ID not configured in environment. MSG91 OTP API requires an OTP Template ID.")
-            return {
-                "success": False,
-                "message": "Unable to send OTP at this time.",
-                "code": "CONFIG_REQUIRED"
-            }
 
         headers = {
             "authkey": auth_key,
@@ -112,10 +105,11 @@ class MSG91Service:
         }
 
         params = {
-            "template_id": tpl_id,
             "mobile": norm_mobile,
             "otp": otp,
         }
+        if tpl_id:
+            params["template_id"] = tpl_id
 
         try:
             logger.info(f"[MSG91] Mobile OTP request initiated for mobile ending in ...{norm_mobile[-4:]}")
@@ -136,7 +130,7 @@ class MSG91Service:
                     "provider_ref": resp_json.get('request_id') or resp_json.get('message')
                 }
             else:
-                logger.error(f"[MSG91] Mobile OTP failed: {response.status_code}")
+                logger.error(f"[MSG91] Mobile OTP failed HTTP {response.status_code}: {response.text[:200]}")
                 return {
                     "success": False,
                     "message": "Unable to send OTP at this time.",

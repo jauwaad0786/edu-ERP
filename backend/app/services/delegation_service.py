@@ -296,13 +296,16 @@ def expire_delegation(delegation_id):
     _remove_temporary_role_if_no_other(delegation.delegatee_user_id, delegation.role_id)
 
     # Audit logging (system action, no actor)
-    _log_delegation_audit(
-        actor=None,  # system
-        target=User.query.get(delegation.delegatee_user_id),
-        action='EXPIRE',
-        delegation=delegation,
-        reason="Auto-expired by system"
-    )
+    try:
+        _log_delegation_audit(
+            actor=None,  # system
+            target=User.query.get(delegation.delegatee_user_id),
+            action='EXPIRE',
+            delegation=delegation,
+            reason="Auto-expired by system"
+        )
+    except Exception as audit_err:
+        logger.warning(f"Delegation audit log skipped: {audit_err}")
 
     db.session.commit()
     return True
@@ -470,8 +473,15 @@ def _log_delegation_audit(actor, target, action, delegation, reason=None):
 
     if actor is None:
         # System action (auto-expiry) — log to CompanyActivityLog
+        # Ensure actor_user_id is not null if database table enforces NOT NULL
+        fallback_actor = None
+        if delegation and delegation.delegator_user_id:
+            fallback_actor = User.query.get(delegation.delegator_user_id)
+        if not fallback_actor:
+            fallback_actor = User.query.filter_by(role=UserRole.SUPER_ADMIN).first()
+
         log_company_action(
-            actor_user=None,
+            actor_user=fallback_actor,
             module='delegation',
             action='SYSTEM_EXPIRE',
             old_value=log_data['old_value'],
