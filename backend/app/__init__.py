@@ -151,6 +151,7 @@ def create_app(config_name='default'):
         try:
             from app.models import hrms as hrms_models  # noqa: F401
             from app.models import fee_finance as fee_finance_models  # noqa: F401
+            from app.models import finance as finance_models  # noqa: F401
             _ensure_school_columns()
             _ensure_user_columns()
             _ensure_teacher_columns()
@@ -165,6 +166,7 @@ def create_app(config_name='default'):
             _ensure_library_columns()
             _ensure_hostel_columns()
             _ensure_transport_columns()
+            _ensure_finance_phase2_columns()
             # ── Import AI models so db.create_all() creates their tables ──
             try:
                 from app.AI.models.ai_models import (  # noqa: F401
@@ -527,6 +529,76 @@ def _ensure_transport_columns():
     except Exception as e:
         print(f'[WARN] _ensure_transport_columns error: {e}')
 
+
+def _ensure_finance_phase2_columns():
+    """Ensure newly added columns exist in expenses, vendors, and inventory_items across PostgreSQL/SQLite."""
+    from sqlalchemy import text, inspect
+    try:
+        inspector = inspect(db.engine)
+        table_names = inspector.get_table_names()
+
+        if 'expenses' in table_names:
+            existing = {c['name'] for c in inspector.get_columns('expenses')}
+            to_add = {
+                'expense_number':   'VARCHAR(40)',
+                'department':       "VARCHAR(50) DEFAULT 'ACCOUNTS'",
+                'approved_by':      'INTEGER',
+                'approved_at':      'TIMESTAMP',
+                'rejection_reason': 'VARCHAR(300)',
+            }
+            with db.engine.connect() as conn:
+                for col, defn in to_add.items():
+                    if col not in existing:
+                        try:
+                            conn.execute(text(f'ALTER TABLE expenses ADD COLUMN {col} {defn}'))
+                            conn.commit()
+                            print(f'[OK] Added column expenses.{col}')
+                        except Exception as e:
+                            print(f'[WARN] expenses.{col}: {e}')
+
+        if 'vendors' in table_names:
+            existing = {c['name'] for c in inspector.get_columns('vendors')}
+            to_add = {
+                'vendor_code':     'VARCHAR(40)',
+                'payment_terms':   "VARCHAR(50) DEFAULT 'Net 30'",
+                'bank_name':       'VARCHAR(100)',
+                'bank_account_no': 'VARCHAR(50)',
+                'bank_ifsc':       'VARCHAR(30)',
+            }
+            with db.engine.connect() as conn:
+                for col, defn in to_add.items():
+                    if col not in existing:
+                        try:
+                            conn.execute(text(f'ALTER TABLE vendors ADD COLUMN {col} {defn}'))
+                            conn.commit()
+                            print(f'[OK] Added column vendors.{col}')
+                        except Exception as e:
+                            print(f'[WARN] vendors.{col}: {e}')
+
+        if 'inventory_items' in table_names:
+            existing = {c['name'] for c in inspector.get_columns('inventory_items')}
+            to_add = {
+                'item_code':        'VARCHAR(50)',
+                'subcategory':      'VARCHAR(60)',
+                'unit':             "VARCHAR(30) DEFAULT 'PIECES'",
+                'brand':            'VARCHAR(100)',
+                'description':      'VARCHAR(300)',
+                'selling_price':    'FLOAT DEFAULT 0.0',
+                'reorder_level':    'INTEGER DEFAULT 10',
+                'vendor_id':        'INTEGER',
+                'storage_location': 'VARCHAR(150)',
+            }
+            with db.engine.connect() as conn:
+                for col, defn in to_add.items():
+                    if col not in existing:
+                        try:
+                            conn.execute(text(f'ALTER TABLE inventory_items ADD COLUMN {col} {defn}'))
+                            conn.commit()
+                            print(f'[OK] Added column inventory_items.{col}')
+                        except Exception as e:
+                            print(f'[WARN] inventory_items.{col}: {e}')
+    except Exception as e:
+        print(f'[WARN] _ensure_finance_phase2_columns error: {e}')
 
 
 def _ensure_communication_columns():

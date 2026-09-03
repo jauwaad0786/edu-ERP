@@ -1,558 +1,648 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import Sidebar from '../../components/Sidebar';
-import Navbar  from '../../components/Navbar';
+import Navbar from '../../components/Navbar';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
-import {
-  PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
-} from 'recharts';
-
-const COLORS = ['#4f46e5', '#7c3aed', '#16a34a', '#d97706', '#dc2626', '#0891b2', '#db2777', '#65a30d', '#9333ea', '#0284c7', '#ca8a04', '#be185d'];
-
-function prettyLabel(v) {
-  if (!v) return '';
-  return v.split('_').map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
-}
-
-function StatCard({ icon, label, value, sub, color, darkMode }) {
-  return (
-    <div className="stat-card" style={{ background: darkMode ? '#141b2d' : undefined, borderColor: darkMode ? '#1e293b' : undefined }}>
-      <div className="stat-icon" style={{ background: color + '16' }}>
-        <i className={`ti ${icon}`} style={{ fontSize: 18, color }} aria-hidden="true" />
-      </div>
-      <div className="stat-label" style={{ color: darkMode ? '#94a3b8' : undefined }}>{label}</div>
-      <div className="stat-value" style={{ color }}>{value ?? '—'}</div>
-      {sub && <div className="stat-sub" style={{ color: darkMode ? '#64748b' : undefined }}>{sub}</div>}
-    </div>
-  );
-}
-
-const EMPTY_FORM = {
-  name: '', category: '', sku: '', vendor_name: '', quantity: 1, unit_price: '',
-  min_stock: 5, purchase_date: new Date().toISOString().slice(0, 10),
-  location: '', assigned_to: '', condition: 'NEW', remarks: '',
-};
-
-const EMPTY_RESTOCK = { quantity: '', unit_price: '', vendor_name: '', purchase_date: new Date().toISOString().slice(0, 10) };
+import toast from 'react-hot-toast';
 
 export default function InventoryPage() {
   const { user } = useAuth();
-  const isPrincipal = user?.role === 'PRINCIPAL';
+  const isPrincipal = user?.role === 'PRINCIPAL' || user?.role === 'SUPER_ADMIN';
 
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
   useEffect(() => { localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
 
-  const [meta, setMeta]         = useState({ categories: [], conditions: [], statuses: [] });
-  const [items, setItems]       = useState([]);
-  const [summary, setSummary]   = useState(null);
-  const [loading, setLoading]   = useState(true);
+  const [items, setItems] = useState([]);
+  const [summary, setSummary] = useState(null);
+  const [loading, setLoading] = useState(true);
 
+  // Filters
   const [categoryFilter, setCategoryFilter] = useState('');
-  const [lowStockOnly, setLowStockOnly]     = useState(false);
-  const [search, setSearch]                 = useState('');
+  const [lowStockOnly, setLowStockOnly] = useState(false);
+  const [search, setSearch] = useState('');
 
-  const [modalOpen, setModalOpen]     = useState(false);
-  const [form, setForm]               = useState(EMPTY_FORM);
-  const [saving, setSaving]           = useState(false);
+  // Modals
+  const [addModal, setAddModal] = useState(false);
+  const [addForm, setAddForm] = useState({
+    name: '', category: 'STATIONERY', subcategory: '', unit: 'PIECES', brand: '',
+    quantity: 0, unit_price: 0, selling_price: 0, min_stock: 5, reorder_level: 10,
+    storage_location: 'Store Room', remarks: ''
+  });
 
-  const [restockItem, setRestockItem] = useState(null);
-  const [restockForm, setRestockForm] = useState(EMPTY_RESTOCK);
-  const [restocking, setRestocking]   = useState(false);
+  const [issueModal, setIssueModal] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [issueForm, setIssueForm] = useState({
+    quantity: 1, issued_to_name: '', department: 'ACADEMIC', class_name: '', reason: ''
+  });
 
-  const [vendors, setVendors]                       = useState([]);
-  const [vendorDropdownOpen, setVendorDropdownOpen] = useState(false);
-  const [creatingVendor, setCreatingVendor]         = useState(false);
-  const [newVendorName, setNewVendorName]           = useState('');
-  const [savingVendor, setSavingVendor]             = useState(false);
+  const [adjustModal, setAdjustModal] = useState(false);
+  const [adjustForm, setAdjustForm] = useState({ adjustment_qty: '', reason: '' });
+
+  const [movementModal, setMovementModal] = useState(false);
+  const [movements, setMovements] = useState([]);
+  const [loadingMovements, setLoadingMovements] = useState(false);
+
+  const [submitting, setSubmitting] = useState(false);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const params = {};
+      if (categoryFilter) params.category = categoryFilter;
+      if (lowStockOnly) params.low_stock = 'true';
+      if (search) params.search = search;
+
+      const [iRes, sRes] = await Promise.all([
+        api.get('/finance/inventory', { params }),
+        api.get('/finance/inventory/summary')
+      ]);
+      setItems(iRes.data || []);
+      setSummary(sRes.data || null);
+    } catch (err) {
+      toast.error('Failed to load inventory data');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    api.get('/finance/inventory/meta').then(r => setMeta(r.data)).catch(() => {});
-    api.get('/finance/vendors').then(r => setVendors(r.data || [])).catch(() => {});
-  }, []);
+    loadData();
+  }, [categoryFilter, lowStockOnly, search]);
 
-  const load = () => {
-    setLoading(true);
-    const params = {};
-    if (categoryFilter) params.category = categoryFilter;
-    if (lowStockOnly)   params.low_stock = 'true';
-    if (search.trim())  params.search = search.trim();
-
-    Promise.all([
-      api.get('/finance/inventory', { params }).catch(() => ({ data: [] })),
-      api.get('/finance/inventory/summary').catch(() => ({ data: null })),
-    ]).then(([it, sum]) => {
-      setItems(it.data || []);
-      setSummary(sum.data);
-      setLoading(false);
-    });
-  };
-
-  useEffect(load, [categoryFilter, lowStockOnly, search]);
-
-  const fmt  = n => Number(n || 0).toLocaleString('en-IN');
-  const cardBg = { background: darkMode ? '#141b2d' : undefined, borderColor: darkMode ? '#1e293b' : undefined };
-
-  const openAdd = () => { setForm({ ...EMPTY_FORM, purchase_date: new Date().toISOString().slice(0, 10) }); setModalOpen(true); };
-
-  const save = async () => {
-    if (!form.name.trim() || !form.category || !form.unit_price) {
-      alert('Item name, category aur unit price zaroori hai');
-      return;
-    }
-    setSaving(true);
+  // Handle Add Item
+  const handleAddItem = async (e) => {
+    e.preventDefault();
     try {
-      await api.post('/finance/inventory', form);
-      setModalOpen(false);
-      load();
+      setSubmitting(true);
+      await api.post('/finance/inventory', addForm);
+      toast.success('Inventory item registered');
+      setAddModal(false);
+      setAddForm({
+        name: '', category: 'STATIONERY', subcategory: '', unit: 'PIECES', brand: '',
+        quantity: 0, unit_price: 0, selling_price: 0, min_stock: 5, reorder_level: 10,
+        storage_location: 'Store Room', remarks: ''
+      });
+      loadData();
     } catch (err) {
-      alert(err?.response?.data?.error || 'Save nahi hua, dobara try karo');
+      toast.error(err.response?.data?.error || 'Failed to add item');
+    } finally {
+      setSubmitting(false);
     }
-    setSaving(false);
   };
 
-  const openRestock = (item) => {
-    setRestockItem(item);
-    setRestockForm({ ...EMPTY_RESTOCK, unit_price: item.unit_price, vendor_name: item.vendor_name });
-  };
-
-  const doRestock = async () => {
-    if (!restockForm.quantity || Number(restockForm.quantity) <= 0) {
-      alert('Quantity 0 se zyada honi chahiye');
-      return;
-    }
-    setRestocking(true);
+  // Handle Issue Stock
+  const handleIssueStock = async (e) => {
+    e.preventDefault();
     try {
-      await api.post(`/finance/inventory/${restockItem.id}/restock`, restockForm);
-      setRestockItem(null);
-      load();
+      setSubmitting(true);
+      const res = await api.post('/finance/inventory/issue', {
+        item_id: selectedItem.id,
+        ...issueForm
+      });
+      toast.success(res.data.message || 'Stock issued successfully');
+      setIssueModal(false);
+      loadData();
     } catch (err) {
-      alert(err?.response?.data?.error || 'Restock nahi hua');
-    }
-    setRestocking(false);
-  };
-
-  const remove = async (id) => {
-    if (!window.confirm('Ye item delete karna hai?')) return;
-    try {
-      await api.delete(`/finance/inventory/${id}`);
-      load();
-    } catch {
-      alert('Delete nahi hua');
+      toast.error(err.response?.data?.error || 'Failed to issue stock');
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const filteredVendors = vendors.filter(v =>
-    v.name.toLowerCase().includes((form.vendor_name || '').toLowerCase())
-  );
-  const exactVendorMatch = vendors.some(
-    v => v.name.toLowerCase() === (form.vendor_name || '').trim().toLowerCase()
-  );
-
-  const selectVendor = (name) => {
-    setForm(f => ({ ...f, vendor_name: name }));
-    setVendorDropdownOpen(false);
-  };
-
-  const openCreateVendor = () => {
-    setNewVendorName(form.vendor_name.trim());
-    setCreatingVendor(true);
-  };
-
-  const saveNewVendor = async () => {
-    if (!newVendorName.trim()) return;
-    setSavingVendor(true);
+  // Handle Adjust Stock
+  const handleAdjustStock = async (e) => {
+    e.preventDefault();
     try {
-      const r = await api.post('/finance/vendors', { name: newVendorName.trim(), category: 'OTHER' });
-      setVendors(v => [...v, r.data]);
-      setForm(f => ({ ...f, vendor_name: r.data.name }));
-      setCreatingVendor(false);
-      setVendorDropdownOpen(false);
+      setSubmitting(true);
+      const res = await api.post('/finance/inventory/adjust', {
+        item_id: selectedItem.id,
+        ...adjustForm
+      });
+      toast.success(res.data.message || 'Stock adjusted successfully');
+      setAdjustModal(false);
+      loadData();
     } catch (err) {
-      alert(err?.response?.data?.error || 'Vendor save nahi hua');
+      toast.error(err.response?.data?.error || 'Failed to adjust stock');
+    } finally {
+      setSubmitting(false);
     }
-    setSavingVendor(false);
   };
 
-  const chartData = (summary?.by_category || []).map(c => ({ category: c.category, value: c.value }));
+  // View Movement History
+  const viewHistory = async (item) => {
+    setSelectedItem(item);
+    setMovementModal(true);
+    setLoadingMovements(true);
+    try {
+      const res = await api.get(`/finance/inventory/${item.id}/movements`);
+      setMovements(res.data || []);
+    } catch (err) {
+      toast.error('Failed to load stock movements');
+    } finally {
+      setLoadingMovements(false);
+    }
+  };
+
+  const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
+  const inputStyle = {
+    width: '100%', padding: '8px 12px', borderRadius: 8,
+    border: `1px solid ${darkMode ? '#475569' : '#cbd5e1'}`,
+    background: darkMode ? '#1e293b' : '#fff',
+    color: darkMode ? '#f8fafc' : '#0f172a', fontSize: 13, marginBottom: 12
+  };
+  const labelStyle = { display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 4, color: darkMode ? '#cbd5e1' : '#475569' };
 
   return (
-    <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
-      <Sidebar darkMode={darkMode} />
+    <div className="app-shell">
+      <Sidebar />
       <div className="main-content">
-        <Navbar title="Inventory" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
+        <Navbar title="Inventory & Supplies" />
         <div className="page-body">
 
-          <div className="page-header flex justify-between items-center">
+          {/* Banner & Information */}
+          <div style={{
+            background: 'linear-gradient(135deg, #0d9488 0%, #0f766e 100%)',
+            borderRadius: 14, padding: '22px 26px', color: '#fff', marginBottom: 20,
+            boxShadow: '0 4px 20px rgba(13, 148, 136, 0.25)',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16
+          }}>
             <div>
-              <h2 className="page-title">Inventory Management</h2>
-              <p className="page-subtitle">Item purchase karte hi Expenses mein turant reflect hoga</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{ background: 'rgba(255,255,255,0.2)', padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 800 }}>
+                  CONSUMABLES &amp; SUPPLIES
+                </span>
+                <span style={{ fontSize: 12, opacity: 0.85 }}>Stationery &bull; Paper &bull; Uniforms &bull; Chalk &bull; Cleaning Supplies</span>
+              </div>
+              <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>Consumables &amp; Stock Register</h1>
+              <p style={{ margin: '4px 0 0', fontSize: 13, opacity: 0.9, maxWidth: 680 }}>
+                Manage school supplies, track department/classroom issues with automatic deduction, perform audited physical count adjustments, and monitor low-stock thresholds.
+              </p>
             </div>
-            <button className="btn btn-primary btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 6 }} onClick={openAdd}>
-              <i className="ti ti-plus" style={{ fontSize: 14 }} aria-hidden="true" /> Add Item
-            </button>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <Link
+                to="/finance/assets"
+                style={{
+                  background: 'rgba(255,255,255,0.15)', color: '#fff', textDecoration: 'none', border: '1px solid rgba(255,255,255,0.3)',
+                  borderRadius: 10, padding: '10px 16px', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6
+                }}
+              >
+                💻 View School Assets ➔
+              </Link>
+              <button
+                onClick={() => setAddModal(true)}
+                style={{
+                  background: '#fff', color: '#0f766e', border: 'none', borderRadius: 10,
+                  padding: '10px 20px', fontSize: 13, fontWeight: 800, cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: 8
+                }}
+              >
+                <i className="ti ti-plus" />
+                Add Consumable
+              </button>
+            </div>
           </div>
 
-          <div className="grid-4 mb-6">
-            <StatCard icon="ti-package" label="Total Items" value={summary?.total_items ?? 0}
-              sub="Active inventory" color="#4f46e5" darkMode={darkMode} />
-            <StatCard icon="ti-currency-rupee" label="Total Value" value={`₹${fmt(summary?.total_value)}`}
-              sub="Current stock worth" color="#16a34a" darkMode={darkMode} />
-            <StatCard icon="ti-alert-triangle" label="Low Stock" value={summary?.low_stock_count ?? 0}
-              sub="Minimum se neeche" color="#dc2626" darkMode={darkMode} />
-            <StatCard icon="ti-category" label="Categories" value={summary?.by_category?.length ?? 0}
-              sub="Active types" color="#d97706" darkMode={darkMode} />
-          </div>
+          {/* Stat Cards */}
+          {summary && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 20 }}>
+              <div className="stat-card" style={{ background: darkMode ? '#1e293b' : '#fff', borderLeft: '4px solid #0d9488' }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8' }}>TOTAL ITEMS</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: darkMode ? '#f8fafc' : '#0f172a' }}>{summary.total_items}</div>
+                <div style={{ fontSize: 12, color: '#64748b' }}>Stock value: {fmt(summary.total_stock_value)}</div>
+              </div>
 
-          {summary?.low_stock_count > 0 && (
-            <div className="card mb-6" style={{ ...cardBg, borderColor: '#fca5a5' }}>
-              <div style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <i className="ti ti-alert-triangle" style={{ color: '#dc2626', fontSize: 16 }} aria-hidden="true" />
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#dc2626' }}>Low Stock Alert:</span>
-                {summary.low_stock_items.map(i => (
-                  <span key={i.id} style={{
-                    fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
-                    background: darkMode ? 'rgba(220,38,38,0.15)' : '#fee2e2', color: '#dc2626',
-                  }}>{i.name} ({i.quantity} left)</span>
-                ))}
+              <div className="stat-card" style={{ background: darkMode ? '#1e293b' : '#fff', borderLeft: '4px solid #16a34a' }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8' }}>TOTAL STOCK VALUE</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: '#16a34a' }}>{fmt(summary.total_stock_value)}</div>
+                <div style={{ fontSize: 12, color: '#64748b' }}>Across all stores</div>
+              </div>
+
+              <div className="stat-card" style={{ background: darkMode ? '#1e293b' : '#fff', borderLeft: '4px solid #dc2626' }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8' }}>LOW STOCK ALERTS</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: '#dc2626' }}>{summary.low_stock_count}</div>
+                <div style={{ fontSize: 12, color: '#64748b' }}>Needs restocking</div>
+              </div>
+
+              <div className="stat-card" style={{ background: darkMode ? '#1e293b' : '#fff', borderLeft: '4px solid #0284c7' }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8' }}>PROCUREMENT</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: '#0284c7', marginTop: 4 }}>
+                  <Link to="/finance/purchases" style={{ color: '#0284c7', textDecoration: 'none' }}>
+                    Raise Purchase Order ➔
+                  </Link>
+                </div>
+                <div style={{ fontSize: 12, color: '#64748b' }}>Vendor orders &amp; GRN</div>
               </div>
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20, marginBottom: 24, alignItems: 'start' }}>
+          {/* Filters Bar */}
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+            <input
+              type="text"
+              placeholder="Search by item code, name, brand..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{ ...inputStyle, width: 280, marginBottom: 0 }}
+            />
 
-            <div className="card" style={{ margin: 0, ...cardBg }}>
-              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <h4 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <i className="ti ti-boxes" style={{ color: '#4f46e5', fontSize: 17 }} aria-hidden="true" /> Items
-                </h4>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <input className="form-input" placeholder="Search items..." style={{ width: 160, fontSize: 12 }}
-                    value={search} onChange={e => setSearch(e.target.value)} />
-                  <select className="form-select" style={{ width: 150, fontSize: 12 }} value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}>
-                    <option value="">All Categories</option>
-                    {meta.categories.map(c => <option key={c} value={c}>{prettyLabel(c)}</option>)}
-                  </select>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={lowStockOnly} onChange={e => setLowStockOnly(e.target.checked)} />
-                    Low stock only
-                  </label>
-                </div>
-              </div>
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              style={{ ...inputStyle, width: 170, marginBottom: 0 }}
+            >
+              <option value="">All Categories</option>
+              <option value="STATIONERY">Stationery</option>
+              <option value="BOOKS">Books &amp; Printing</option>
+              <option value="UNIFORM">Uniforms</option>
+              <option value="SPORTS">Sports Equipment</option>
+              <option value="CLEANING">Cleaning &amp; Housekeeping</option>
+              <option value="OTHER">Other</option>
+            </select>
 
-              <div className="table-container">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Item</th><th>Category</th><th>SKU</th><th>Qty</th>
-                      <th>Unit Price</th><th>Value</th><th>Location</th><th>Condition</th>
-                      {isPrincipal && <th>Action</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {loading ? (
-                      <tr><td colSpan={9} style={{ textAlign: 'center', padding: 24, color: 'var(--neutral-4)' }}>Loading...</td></tr>
-                    ) : items.length === 0 ? (
-                      <tr><td colSpan={9} style={{ textAlign: 'center', padding: 24, color: 'var(--neutral-4)' }}>Koi item nahi mila</td></tr>
-                    ) : items.map(i => (
-                      <tr key={i.id}>
-                        <td>
-                          <div style={{ fontWeight: 600, fontSize: 13 }}>{i.name}</div>
-                          {i.vendor_name && <div style={{ fontSize: 11, color: 'var(--neutral-5)' }}>{i.vendor_name}</div>}
-                        </td>
-                        <td style={{ fontSize: 12 }}>{prettyLabel(i.category)}</td>
-                        <td style={{ fontSize: 12 }}>{i.sku || '—'}</td>
-                        <td>
-                          <span style={{
-                            fontWeight: 700, fontSize: 13,
-                            color: i.low_stock ? '#dc2626' : (darkMode ? '#e2e8f0' : '#0f172a'),
-                          }}>{i.quantity}</span>
-                          {i.low_stock && <i className="ti ti-alert-triangle" style={{ fontSize: 12, color: '#dc2626', marginLeft: 4 }} aria-hidden="true" />}
-                        </td>
-                        <td style={{ fontSize: 12 }}>₹{fmt(i.unit_price)}</td>
-                        <td style={{ fontWeight: 700, fontSize: 13, color: '#16a34a' }}>₹{fmt(i.total_value)}</td>
-                        <td style={{ fontSize: 12 }}>{i.location || '—'}</td>
-                        <td style={{ fontSize: 12 }}>{prettyLabel(i.condition)}</td>
-                        {isPrincipal && (
-                          <td>
-                            <div style={{ display: 'flex', gap: 6 }}>
-                              <button onClick={() => openRestock(i)} title="Restock" style={{
-                                background: 'none', border: 'none', cursor: 'pointer', color: '#16a34a', padding: 4,
-                              }}><i className="ti ti-truck-delivery" style={{ fontSize: 15 }} aria-hidden="true" /></button>
-                              <button onClick={() => remove(i.id)} title="Delete" style={{
-                                background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', padding: 4,
-                              }}><i className="ti ti-trash" style={{ fontSize: 15 }} aria-hidden="true" /></button>
-                            </div>
-                          </td>
-                        )}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="card" style={{ margin: 0, ...cardBg }}>
-              <div className="card-header">
-                <h4 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <i className="ti ti-chart-pie" style={{ color: '#7c3aed', fontSize: 17 }} aria-hidden="true" /> Value by Category
-                </h4>
-              </div>
-              <div style={{ padding: '12px 16px' }}>
-                {chartData.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: 30, color: 'var(--neutral-4)', fontSize: 13 }}>Koi data nahi hai</div>
-                ) : (
-                  <>
-                    <ResponsiveContainer width="100%" height={200}>
-                      <PieChart>
-                        <Pie data={chartData} dataKey="value" nameKey="category" innerRadius={42} outerRadius={75} paddingAngle={2}>
-                          {chartData.map((c, i) => <Cell key={c.category} fill={COLORS[i % COLORS.length]} />)}
-                        </Pie>
-                        <Tooltip formatter={(v) => `₹${fmt(v)}`} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
-                      {summary.by_category.map((c, i) => (
-                        <div key={c.category} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
-                          <span style={{ width: 9, height: 9, borderRadius: '50%', background: COLORS[i % COLORS.length], flexShrink: 0 }} />
-                          <span style={{ flex: 1, color: darkMode ? '#cbd5e1' : '#334155' }}>{prettyLabel(c.category)}</span>
-                          <span style={{ fontWeight: 700 }}>₹{fmt(c.value)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
+            <button
+              onClick={() => setLowStockOnly(!lowStockOnly)}
+              style={{
+                padding: '8px 16px', borderRadius: 8, border: 'none', fontWeight: 800, fontSize: 12, cursor: 'pointer',
+                background: lowStockOnly ? '#dc2626' : (darkMode ? '#1e293b' : '#e2e8f0'),
+                color: lowStockOnly ? '#fff' : (darkMode ? '#94a3b8' : '#475569')
+              }}
+            >
+              ⚠️ Low Stock Only
+            </button>
           </div>
+
+          {/* Table */}
+          <div className="card" style={{ background: darkMode ? '#1e293b' : '#fff', padding: 0, overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: darkMode ? '#0f172a' : '#f8fafc', borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+                  <th style={{ padding: '12px 16px', color: '#94a3b8', fontSize: 11, fontWeight: 800 }}>CODE &amp; ITEM NAME</th>
+                  <th style={{ padding: '12px 16px', color: '#94a3b8', fontSize: 11, fontWeight: 800 }}>CATEGORY</th>
+                  <th style={{ padding: '12px 16px', color: '#94a3b8', fontSize: 11, fontWeight: 800 }}>LOCATION</th>
+                  <th style={{ padding: '12px 16px', color: '#94a3b8', fontSize: 11, fontWeight: 800, textAlign: 'right' }}>AVAILABLE STOCK</th>
+                  <th style={{ padding: '12px 16px', color: '#94a3b8', fontSize: 11, fontWeight: 800, textAlign: 'right' }}>UNIT RATE (₹)</th>
+                  <th style={{ padding: '12px 16px', color: '#94a3b8', fontSize: 11, fontWeight: 800, textAlign: 'right' }}>TOTAL VALUE (₹)</th>
+                  <th style={{ padding: '12px 16px', color: '#94a3b8', fontSize: 11, fontWeight: 800, textAlign: 'right' }}>ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan="7" style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>Loading inventory...</td>
+                  </tr>
+                ) : items.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" style={{ textAlign: 'center', padding: '50px 0', color: '#94a3b8' }}>
+                      No consumable items found.
+                    </td>
+                  </tr>
+                ) : (
+                  items.map(it => {
+                    const isLow = (it.quantity || 0) <= (it.min_stock || 0);
+                    return (
+                      <tr key={it.id} style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}` }}>
+                        <td style={{ padding: '12px 16px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontFamily: 'monospace', fontWeight: 800, color: '#0d9488' }}>{it.item_code || it.sku}</span>
+                            {isLow && (
+                              <span style={{ background: '#fef2f2', color: '#dc2626', fontSize: 10, padding: '1px 6px', borderRadius: 4, fontWeight: 800 }}>
+                                Low Stock
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontWeight: 700, color: darkMode ? '#f8fafc' : '#0f172a' }}>{it.name}</div>
+                        </td>
+                        <td style={{ padding: '12px 16px', fontSize: 12 }}>{it.category}</td>
+                        <td style={{ padding: '12px 16px', fontSize: 12 }}>{it.storage_location || it.location || 'Store Room'}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                          <span style={{ fontWeight: 800, fontSize: 14, color: isLow ? '#dc2626' : (darkMode ? '#f8fafc' : '#0f172a') }}>
+                            {it.quantity} {it.unit}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>{fmt(it.unit_price)}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700 }}>
+                          {fmt((it.quantity || 0) * (it.unit_price || 0))}
+                        </td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                            <button
+                              onClick={() => { setSelectedItem(it); setIssueForm({ quantity: 1, issued_to_name: '', department: 'ACADEMIC', class_name: '', reason: '' }); setIssueModal(true); }}
+                              className="btn btn-neutral btn-sm"
+                              title="Issue to class, student or teacher"
+                            >
+                              📤 Issue
+                            </button>
+                            <button
+                              onClick={() => { setSelectedItem(it); setAdjustForm({ adjustment_qty: '', reason: '' }); setAdjustModal(true); }}
+                              className="btn btn-neutral btn-sm"
+                              title="Audit adjustment"
+                            >
+                              ⚖️ Adjust
+                            </button>
+                            <button
+                              onClick={() => viewHistory(it)}
+                              className="btn btn-neutral btn-sm"
+                              title="Stock movement audit log"
+                            >
+                              📜 Trail
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
         </div>
       </div>
 
-      {modalOpen && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} onClick={() => setModalOpen(false)}>
-          <div onClick={e => e.stopPropagation()} style={{
-            background: darkMode ? '#141b2d' : '#fff', borderRadius: 14, width: 500, maxWidth: '92vw',
-            maxHeight: '88vh', overflowY: 'auto', padding: 24,
-          }}>
-            <h3 style={{ margin: '0 0 4px', fontSize: 16, color: darkMode ? '#f1f5f9' : '#0f172a' }}>Add Inventory Item</h3>
-            <p style={{ margin: '0 0 18px', fontSize: 12, color: darkMode ? '#94a3b8' : '#64748b' }}>Save karte hi ek linked Expense entry bhi ban jaayegi</p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div>
-                <label className="form-label">Item Name *</label>
-                <input className="form-input" placeholder="e.g. A4 Register" value={form.name}
-                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label className="form-label">Category *</label>
-                  <select className="form-select" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
-                    <option value="">Select category</option>
-                    {meta.categories.map(c => <option key={c} value={c}>{prettyLabel(c)}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="form-label">SKU (optional)</label>
-                  <input className="form-input" placeholder="e.g. STA-REG-001" value={form.sku}
-                    onChange={e => setForm(f => ({ ...f, sku: e.target.value }))} />
-                </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label className="form-label">Quantity *</label>
-                  <input className="form-input" type="number" value={form.quantity}
-                    onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="form-label">Unit Price (₹) *</label>
-                  <input className="form-input" type="number" value={form.unit_price}
-                    onChange={e => setForm(f => ({ ...f, unit_price: e.target.value }))} />
-                </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div style={{ position: 'relative' }}>
-                  <label className="form-label">Vendor</label>
-                  <input
-                    className="form-input"
-                    placeholder="Type ya list se select karo"
-                    value={form.vendor_name}
-                    onChange={e => { setForm(f => ({ ...f, vendor_name: e.target.value })); setVendorDropdownOpen(true); }}
-                    onFocus={() => setVendorDropdownOpen(true)}
-                    onBlur={() => setTimeout(() => setVendorDropdownOpen(false), 150)}
-                  />
-                  {vendorDropdownOpen && (
-                    <div style={{
-                      position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20,
-                      background: darkMode ? '#1c2436' : '#fff',
-                      border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
-                      borderRadius: 8, marginTop: 4, maxHeight: 160, overflowY: 'auto',
-                      boxShadow: '0 6px 16px rgba(0,0,0,0.15)',
-                    }}>
-                      {filteredVendors.map(v => (
-                        <div key={v.id}
-                          onMouseDown={() => selectVendor(v.name)}
-                          style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer', color: darkMode ? '#e2e8f0' : '#0f172a' }}
-                        >{v.name}</div>
-                      ))}
-                      {form.vendor_name.trim() && !exactVendorMatch && (
-                        <div
-                          onMouseDown={openCreateVendor}
-                          style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer', color: '#4f46e5', fontWeight: 600, borderTop: filteredVendors.length ? `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` : 'none' }}
-                        >+ Create "{form.vendor_name.trim()}"</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <label className="form-label">Min Stock (alert level)</label>
-                  <input className="form-input" type="number" value={form.min_stock}
-                    onChange={e => setForm(f => ({ ...f, min_stock: e.target.value }))} />
-                </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label className="form-label">Purchase Date</label>
-                  <input className="form-input" type="date" value={form.purchase_date}
-                    onChange={e => setForm(f => ({ ...f, purchase_date: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="form-label">Condition</label>
-                  <select className="form-select" value={form.condition} onChange={e => setForm(f => ({ ...f, condition: e.target.value }))}>
-                    {meta.conditions.map(c => <option key={c} value={c}>{prettyLabel(c)}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label className="form-label">Location</label>
-                  <input className="form-input" placeholder="e.g. Computer Lab" value={form.location}
-                    onChange={e => setForm(f => ({ ...f, location: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="form-label">Assigned To</label>
-                  <input className="form-input" placeholder="e.g. Class 8-A" value={form.assigned_to}
-                    onChange={e => setForm(f => ({ ...f, assigned_to: e.target.value }))} />
-                </div>
-              </div>
+      {/* ══ MODAL: ADD CONSUMABLE ITEM ══ */}
+      {addModal && (
+        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setAddModal(false)}>
+          <div className="modal" style={{ maxWidth: 600, background: darkMode ? '#1e293b' : '#fff' }}>
+            <div className="modal-header">
+              <h3 style={{ margin: 0, fontWeight: 800 }}>Add Consumable Stock Item</h3>
+              <button className="modal-close" onClick={() => setAddModal(false)}>✕</button>
             </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-              <button className="btn btn-neutral btn-sm" onClick={() => setModalOpen(false)}>Cancel</button>
-              <button className="btn btn-primary btn-sm" disabled={saving} onClick={save}>
-                {saving ? 'Saving...' : 'Save Item'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {restockItem && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} onClick={() => setRestockItem(null)}>
-          <div onClick={e => e.stopPropagation()} style={{
-            background: darkMode ? '#141b2d' : '#fff', borderRadius: 14, width: 420, maxWidth: '92vw', padding: 24,
-          }}>
-            <h3 style={{ margin: '0 0 4px', fontSize: 16, color: darkMode ? '#f1f5f9' : '#0f172a' }}>Restock — {restockItem.name}</h3>
-            <p style={{ margin: '0 0 18px', fontSize: 12, color: darkMode ? '#94a3b8' : '#64748b' }}>
-              Abhi stock: {restockItem.quantity} units · Ye purchase bhi ek nayi Expense banaayegi
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div>
-                <label className="form-label">Quantity to Add *</label>
-                <input className="form-input" type="number" value={restockForm.quantity}
-                  onChange={e => setRestockForm(f => ({ ...f, quantity: e.target.value }))} />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label className="form-label">Unit Price (₹)</label>
-                  <input className="form-input" type="number" value={restockForm.unit_price}
-                    onChange={e => setRestockForm(f => ({ ...f, unit_price: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="form-label">Purchase Date</label>
-                  <input className="form-input" type="date" value={restockForm.purchase_date}
-                    onChange={e => setRestockForm(f => ({ ...f, purchase_date: e.target.value }))} />
-                </div>
-              </div>
-              <div style={{ position: 'relative' }}>
-                <label className="form-label">Vendor</label>
-                <input
-                  className="form-input"
-                  value={restockForm.vendor_name}
-                  onChange={e => { setRestockForm(f => ({ ...f, vendor_name: e.target.value })); setVendorDropdownOpen(true); }}
-                  onFocus={() => setVendorDropdownOpen(true)}
-                  onBlur={() => setTimeout(() => setVendorDropdownOpen(false), 150)}
-                />
-                {vendorDropdownOpen && (
-                  <div style={{
-                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20,
-                    background: darkMode ? '#1c2436' : '#fff',
-                    border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
-                    borderRadius: 8, marginTop: 4, maxHeight: 140, overflowY: 'auto',
-                    boxShadow: '0 6px 16px rgba(0,0,0,0.15)',
-                  }}>
-                    {vendors.filter(v => v.name.toLowerCase().includes((restockForm.vendor_name || '').toLowerCase())).map(v => (
-                      <div key={v.id}
-                        onMouseDown={() => { setRestockForm(f => ({ ...f, vendor_name: v.name })); setVendorDropdownOpen(false); }}
-                        style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer', color: darkMode ? '#e2e8f0' : '#0f172a' }}
-                      >{v.name}</div>
-                    ))}
+            <form onSubmit={handleAddItem}>
+              <div className="modal-body">
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={labelStyle}>Item Name *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. A4 Paper Ream (75 GSM)"
+                      value={addForm.name}
+                      onChange={(e) => setAddForm({ ...addForm, name: e.target.value })}
+                      style={inputStyle}
+                      required
+                    />
                   </div>
-                )}
+                  <div>
+                    <label style={labelStyle}>Category *</label>
+                    <select
+                      value={addForm.category}
+                      onChange={(e) => setAddForm({ ...addForm, category: e.target.value })}
+                      style={inputStyle}
+                    >
+                      <option value="STATIONERY">Stationery</option>
+                      <option value="BOOKS">Books &amp; Printing</option>
+                      <option value="UNIFORM">Uniforms</option>
+                      <option value="SPORTS">Sports Equipment</option>
+                      <option value="CLEANING">Cleaning Supplies</option>
+                      <option value="OTHER">Other</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={labelStyle}>Opening Qty</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={addForm.quantity}
+                      onChange={(e) => setAddForm({ ...addForm, quantity: e.target.value })}
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Unit of Measure</label>
+                    <select
+                      value={addForm.unit}
+                      onChange={(e) => setAddForm({ ...addForm, unit: e.target.value })}
+                      style={inputStyle}
+                    >
+                      <option value="PIECES">Pieces</option>
+                      <option value="REAMS">Reams</option>
+                      <option value="BOXES">Boxes</option>
+                      <option value="PACKETS">Packets</option>
+                      <option value="KG">Kg</option>
+                      <option value="LITERS">Liters</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Unit Cost Price (₹) *</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={addForm.unit_price}
+                      onChange={(e) => setAddForm({ ...addForm, unit_price: e.target.value })}
+                      style={inputStyle}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={labelStyle}>Low Stock Alert Threshold</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={addForm.min_stock}
+                      onChange={(e) => setAddForm({ ...addForm, min_stock: e.target.value })}
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Storage Location</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Stationery Store, Shelf B"
+                      value={addForm.storage_location}
+                      onChange={(e) => setAddForm({ ...addForm, storage_location: e.target.value })}
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
               </div>
-            </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-              <button className="btn btn-neutral btn-sm" onClick={() => setRestockItem(null)}>Cancel</button>
-              <button className="btn btn-primary btn-sm" disabled={restocking} onClick={doRestock}>
-                {restocking ? 'Saving...' : 'Confirm Restock'}
-              </button>
+              <div className="modal-footer" style={{ borderTop: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, padding: '14px 20px' }}>
+                <button type="button" className="btn btn-neutral" onClick={() => setAddModal(false)}>Cancel</button>
+                <button type="submit" disabled={submitting} className="btn btn-primary">
+                  {submitting ? 'Adding...' : 'Register Item'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ══ MODAL: ISSUE INVENTORY ══ */}
+      {issueModal && (
+        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setIssueModal(false)}>
+          <div className="modal" style={{ maxWidth: 480, background: darkMode ? '#1e293b' : '#fff' }}>
+            <div className="modal-header">
+              <h3 style={{ margin: 0, fontWeight: 800 }}>Issue Stock: {selectedItem?.name}</h3>
+              <button className="modal-close" onClick={() => setIssueModal(false)}>✕</button>
+            </div>
+            <form onSubmit={handleIssueStock}>
+              <div className="modal-body">
+                <div style={{ background: darkMode ? '#0f172a' : '#f8fafc', padding: 10, borderRadius: 8, marginBottom: 12, fontSize: 12 }}>
+                  <div>Available Stock: <strong>{selectedItem?.quantity} {selectedItem?.unit}</strong></div>
+                </div>
+
+                <label style={labelStyle}>Issue Quantity *</label>
+                <input
+                  type="number"
+                  min="1"
+                  max={selectedItem?.quantity}
+                  value={issueForm.quantity}
+                  onChange={(e) => setIssueForm({ ...issueForm, quantity: e.target.value })}
+                  style={inputStyle}
+                  required
+                />
+
+                <label style={labelStyle}>Issued To (Staff/Teacher/Student Name)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Teacher Rahul / Amit Sharma"
+                  value={issueForm.issued_to_name}
+                  onChange={(e) => setIssueForm({ ...issueForm, issued_to_name: e.target.value })}
+                  style={inputStyle}
+                />
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={labelStyle}>Department</label>
+                    <select
+                      value={issueForm.department}
+                      onChange={(e) => setIssueForm({ ...issueForm, department: e.target.value })}
+                      style={inputStyle}
+                    >
+                      <option value="ACADEMIC">Academic</option>
+                      <option value="EXAMINATION">Examination</option>
+                      <option value="ADMIN">Administration</option>
+                      <option value="SPORTS">Sports</option>
+                      <option value="HOSTEL">Hostel</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Class (if applicable)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Class 8-A"
+                      value={issueForm.class_name}
+                      onChange={(e) => setIssueForm({ ...issueForm, class_name: e.target.value })}
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+
+                <label style={labelStyle}>Reason / Purpose *</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Annual exam question paper printing"
+                  value={issueForm.reason}
+                  onChange={(e) => setIssueForm({ ...issueForm, reason: e.target.value })}
+                  style={inputStyle}
+                  required
+                />
+              </div>
+
+              <div className="modal-footer" style={{ borderTop: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, padding: '14px 20px' }}>
+                <button type="button" className="btn btn-neutral" onClick={() => setIssueModal(false)}>Cancel</button>
+                <button type="submit" disabled={submitting} className="btn btn-primary">
+                  {submitting ? 'Issuing...' : 'Confirm Stock Issue'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ══ MODAL: ADJUST INVENTORY ══ */}
+      {adjustModal && (
+        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setAdjustModal(false)}>
+          <div className="modal" style={{ maxWidth: 460, background: darkMode ? '#1e293b' : '#fff' }}>
+            <div className="modal-header">
+              <h3 style={{ margin: 0, fontWeight: 800 }}>Adjust Stock: {selectedItem?.name}</h3>
+              <button className="modal-close" onClick={() => setAdjustModal(false)}>✕</button>
+            </div>
+            <form onSubmit={handleAdjustStock}>
+              <div className="modal-body">
+                <div style={{ background: darkMode ? '#0f172a' : '#f8fafc', padding: 10, borderRadius: 8, marginBottom: 12, fontSize: 12 }}>
+                  <div>Current System Stock: <strong>{selectedItem?.quantity} {selectedItem?.unit}</strong></div>
+                </div>
+
+                <label style={labelStyle}>Adjustment Quantity (+ or -) *</label>
+                <input
+                  type="number"
+                  placeholder="e.g. -5 (for damaged/lost) or +10 (audit surplus)"
+                  value={adjustForm.adjustment_qty}
+                  onChange={(e) => setAdjustForm({ ...adjustForm, adjustment_qty: e.target.value })}
+                  style={inputStyle}
+                  required
+                />
+
+                <label style={labelStyle}>Mandatory Audit Reason *</label>
+                <textarea
+                  placeholder="Explain why physical stock differs from system count..."
+                  value={adjustForm.reason}
+                  onChange={(e) => setAdjustForm({ ...adjustForm, reason: e.target.value })}
+                  style={{ ...inputStyle, height: 75 }}
+                  required
+                />
+              </div>
+
+              <div className="modal-footer" style={{ borderTop: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, padding: '14px 20px' }}>
+                <button type="button" className="btn btn-neutral" onClick={() => setAdjustModal(false)}>Cancel</button>
+                <button type="submit" disabled={submitting} className="btn btn-primary">
+                  {submitting ? 'Adjusting...' : 'Save Adjustment'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ══ MODAL: STOCK MOVEMENT TRAIL ══ */}
+      {movementModal && (
+        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setMovementModal(false)}>
+          <div className="modal" style={{ maxWidth: 640, background: darkMode ? '#1e293b' : '#fff' }}>
+            <div className="modal-header">
+              <h3 style={{ margin: 0, fontWeight: 800 }}>Audit Trail: {selectedItem?.name}</h3>
+              <button className="modal-close" onClick={() => setMovementModal(false)}>✕</button>
+            </div>
+            <div className="modal-body" style={{ maxHeight: 420, overflowY: 'auto' }}>
+              {loadingMovements ? (
+                <div style={{ textAlign: 'center', padding: 30, color: '#94a3b8' }}>Loading movement trail...</div>
+              ) : movements.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 30, color: '#94a3b8' }}>No stock movements recorded yet.</div>
+              ) : (
+                movements.map((m, i) => (
+                  <div key={i} style={{ background: darkMode ? '#0f172a' : '#f8fafc', padding: 10, borderRadius: 8, marginBottom: 8, fontSize: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800 }}>
+                      <span style={{
+                        color: m.movement_type === 'PURCHASE' || m.movement_type === 'STOCK_IN' ? '#16a34a' : m.movement_type === 'ISSUE' ? '#0284c7' : '#dc2626'
+                      }}>
+                        {m.movement_type} ({m.quantity > 0 && (m.movement_type === 'PURCHASE' || m.movement_type === 'STOCK_IN') ? `+${m.quantity}` : `-${m.quantity}`})
+                      </span>
+                      <span style={{ color: '#94a3b8', fontSize: 11 }}>{m.movement_date}</span>
+                    </div>
+                    <div style={{ color: '#64748b', marginTop: 2 }}>
+                      Stock: {m.previous_stock} ➔ {m.new_stock} &bull; Ref: {m.reference_no || 'Manual'}
+                    </div>
+                    <div style={{ marginTop: 2 }}>
+                      {m.reason || (m.issued_to_name ? `Issued to: ${m.issued_to_name}` : 'Stock update')}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="modal-footer" style={{ borderTop: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, padding: '14px 20px' }}>
+              <button type="button" className="btn btn-neutral" onClick={() => setMovementModal(false)}>Close</button>
             </div>
           </div>
         </div>
       )}
 
-      {creatingVendor && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} onClick={() => setCreatingVendor(false)}>
-          <div onClick={e => e.stopPropagation()} style={{
-            background: darkMode ? '#141b2d' : '#fff', borderRadius: 14, width: 360, maxWidth: '90vw', padding: 22,
-          }}>
-            <h3 style={{ margin: '0 0 14px', fontSize: 15, color: darkMode ? '#f1f5f9' : '#0f172a' }}>Create New Vendor</h3>
-            <label className="form-label">Vendor Name *</label>
-            <input className="form-input" value={newVendorName}
-              onChange={e => setNewVendorName(e.target.value)} autoFocus />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
-              <button className="btn btn-neutral btn-sm" onClick={() => setCreatingVendor(false)}>Cancel</button>
-              <button className="btn btn-primary btn-sm" disabled={savingVendor} onClick={saveNewVendor}>
-                {savingVendor ? 'Saving...' : 'Create & Select'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <style>{`
-        .theme-dark { background: #0b1220; }
-        .theme-dark .main-content { background: #0b1220; }
-        .theme-dark .card, .theme-dark .stat-card { background: #141b2d !important; border-color: #1e293b !important; }
-        .theme-dark .card-header { border-color: #1e293b !important; }
-        .theme-dark h2, .theme-dark h3, .theme-dark h4, .theme-dark .page-title, .theme-dark .stat-value { color: #f1f5f9 !important; }
-        .theme-dark .page-subtitle, .theme-dark .stat-label, .theme-dark .stat-sub { color: #94a3b8 !important; }
-        .theme-dark .table-container, .theme-dark table { background: #141b2d !important; }
-        .theme-dark th { background: #1c2436 !important; color: #94a3b8 !important; border-color: #1e293b !important; }
-        .theme-dark td { border-color: #1e293b !important; color: #cbd5e1 !important; }
-        .theme-dark .btn-neutral { background: #1e293b !important; color: #cbd5e1 !important; border-color: #334155 !important; }
-        .theme-dark .form-select, .theme-dark .form-input { background: #0f172a !important; color: #e2e8f0 !important; border-color: #334155 !important; }
-        .theme-dark .form-label { color: #94a3b8 !important; }
-      `}</style>
     </div>
   );
 }

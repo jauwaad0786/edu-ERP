@@ -61,9 +61,12 @@ PERMISSION_CATALOG = [
     {'key': 'staff.payroll.manage',   'label': 'Process/Edit Payroll',              'module': 'staff'},
 
     # ── Finance ──
-    {'key': 'finance.expense.manage',  'label': 'Record/Edit Expenses',             'module': 'finance'},
-    {'key': 'finance.inventory.manage','label': 'Manage Inventory & Restocking',    'module': 'finance'},
-    {'key': 'finance.pnl.view',        'label': 'View Profit & Loss',               'module': 'finance'},
+    {'key': 'finance.expense.manage',   'label': 'Record/Edit Expenses',             'module': 'finance'},
+    {'key': 'finance.inventory.manage', 'label': 'Manage Inventory & Supplies',      'module': 'finance'},
+    {'key': 'finance.purchases.manage', 'label': 'Manage Purchases & Orders',        'module': 'finance'},
+    {'key': 'finance.vendors.manage',   'label': 'Manage Vendors & Bills',           'module': 'finance'},
+    {'key': 'finance.assets.manage',    'label': 'Manage School Assets & Equipment', 'module': 'finance'},
+    {'key': 'finance.pnl.view',         'label': 'View Profit & Loss',               'module': 'finance'},
 
     # ── Documents ──
     {'key': 'documents.issue', 'label': 'Issue Bonafide/TC/Character Certificates', 'module': 'documents'},

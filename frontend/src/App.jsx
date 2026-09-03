@@ -45,6 +45,8 @@ import StaffProfile     from './pages/StaffProfile';
 import ExpensesPage     from './pages/finance/ExpensesPage';
 import InventoryPage    from './pages/finance/InventoryPage';
 import VendorsPage      from './pages/finance/VendorsPage';
+import PurchasesPage    from './pages/finance/PurchasesPage';
+import AssetsPage       from './pages/finance/AssetsPage';
 import DeletedItemsPage from './pages/principal/DeletedItemsPage';
 
 import PayrollPage       from './pages/PayrollPage';
@@ -289,6 +291,16 @@ export default function App() {
             <Route path="/finance/vendors" element={
               <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'ACCOUNTANT']}>
                 <VendorsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/finance/purchases" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT']}>
+                <PurchasesPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/finance/assets" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'ACCOUNTANT']}>
+                <AssetsPage />
               </ProtectedRoute>
             } />
             <Route path="/admission" element={

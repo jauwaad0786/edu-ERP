@@ -227,6 +227,60 @@ export default function FinanceDashboard() {
                 </div>
               </div>
 
+              {/* Phase 2: Procurement, Inventory & Assets Command Grid */}
+              <div className="grid-3 mb-6" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+                {/* 1. Consumables & Inventory */}
+                <div className="card" style={{ padding: 18, borderLeft: '4px solid #0d9488', cursor: 'pointer' }} onClick={() => navigate('/finance/inventory')}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: '#0d9488' }}>CONSUMABLES &amp; SUPPLIES</span>
+                    <i className="ti ti-package" style={{ fontSize: 18, color: '#0d9488' }} />
+                  </div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--neutral-9)' }}>
+                    {fmt(data?.inventory_summary?.total_stock_value)}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--neutral-6)', marginTop: 2 }}>
+                    {data?.inventory_summary?.total_items || 0} active stock items &bull; <strong style={{ color: '#ba0517' }}>{data?.inventory_summary?.low_stock_count || 0} low-stock alerts</strong>
+                  </div>
+                  <div style={{ marginTop: 10, fontSize: 12, fontWeight: 700, color: '#0d9488' }}>
+                    Open Stock Register ➔
+                  </div>
+                </div>
+
+                {/* 2. Vendors & Payables */}
+                <div className="card" style={{ padding: 18, borderLeft: '4px solid #2563eb', cursor: 'pointer' }} onClick={() => navigate('/finance/purchases')}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: '#2563eb' }}>PURCHASES &amp; PAYABLES</span>
+                    <i className="ti ti-shopping-cart" style={{ fontSize: 18, color: '#2563eb' }} />
+                  </div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: (data?.vendors_summary?.total_payables || 0) > 0 ? '#ba0517' : '#2e844a' }}>
+                    {fmt(data?.vendors_summary?.total_payables)}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--neutral-6)', marginTop: 2 }}>
+                    {data?.vendors_summary?.total_vendors || 0} approved vendors &bull; <strong>{data?.vendors_summary?.pending_bills || 0} bills pending payment</strong>
+                  </div>
+                  <div style={{ marginTop: 10, fontSize: 12, fontWeight: 700, color: '#2563eb' }}>
+                    View Purchases &amp; Bills ➔
+                  </div>
+                </div>
+
+                {/* 3. School Assets */}
+                <div className="card" style={{ padding: 18, borderLeft: '4px solid #4f46e5', cursor: 'pointer' }} onClick={() => navigate('/finance/assets')}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: '#4f46e5' }}>CAPITAL ASSETS REGISTER</span>
+                    <i className="ti ti-devices" style={{ fontSize: 18, color: '#4f46e5' }} />
+                  </div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--neutral-9)' }}>
+                    {data?.assets_summary?.total_assets || 0} Assets
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--neutral-6)', marginTop: 2 }}>
+                    {data?.assets_summary?.assigned || 0} in active use &bull; <strong style={{ color: '#d97706' }}>{data?.assets_summary?.under_repair || 0} in maintenance</strong>
+                  </div>
+                  <div style={{ marginTop: 10, fontSize: 12, fontWeight: 700, color: '#4f46e5' }}>
+                    Manage Asset Lifecycle ➔
+                  </div>
+                </div>
+              </div>
+
               {/* Class-wise Collection & Defaulter Summary Table */}
               <div className="card mb-6">
                 <div className="card-header">

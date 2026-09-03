@@ -1463,6 +1463,37 @@ def get_finance_dashboard_metrics(school_id, session='2026-27', month=None):
             'collection_pct': c_pct,
         })
 
+    # ── Phase 2: Inventory, Vendors & Asset Summary ──────────────────
+    try:
+        from app.models.finance import InventoryItem, Vendor, VendorBill, SchoolAsset
+        inv_items = InventoryItem.query.filter_by(school_id=school_id, status='ACTIVE').all()
+        total_inv_items = len(inv_items)
+        total_stock_val = sum((i.quantity or 0) * (i.unit_price or 0.0) for i in inv_items)
+        low_stock_count = sum(1 for i in inv_items if (i.quantity or 0) <= (i.min_stock or 0))
+
+        vendors = Vendor.query.filter_by(school_id=school_id, is_active=True).all()
+        total_vendors = len(vendors)
+        vendor_bills = VendorBill.query.filter_by(school_id=school_id).all()
+        total_payables = sum(b.balance_amount for b in vendor_bills if b.status != 'VOID')
+        pending_bills_count = sum(1 for b in vendor_bills if b.status in ['PENDING', 'PARTIAL'])
+
+        assets = SchoolAsset.query.filter_by(school_id=school_id).all()
+        total_assets = len(assets)
+        assigned_assets = sum(1 for a in assets if a.status == 'ASSIGNED')
+        under_repair_assets = sum(1 for a in assets if a.status in ['UNDER_MAINTENANCE', 'IN_REPAIR', 'DAMAGED'])
+        warranty_expiring_assets = sum(1 for a in assets if a.is_warranty_expiring_soon)
+    except Exception:
+        total_inv_items = 0
+        total_stock_val = 0.0
+        low_stock_count = 0
+        total_vendors = 0
+        total_payables = 0.0
+        pending_bills_count = 0
+        total_assets = 0
+        assigned_assets = 0
+        under_repair_assets = 0
+        warranty_expiring_assets = 0
+
     return {
         'session':               session,
         'filter_month':          month,
@@ -1481,5 +1512,21 @@ def get_finance_dashboard_metrics(school_id, session='2026-27', month=None):
             'total_amount':      round(today_total, 2),
             'by_mode':           modes_breakdown,
             'by_collector':      [{'collector': k, 'amount': v} for k, v in collectors_breakdown.items()],
+        },
+        'inventory_summary': {
+            'total_items':       total_inv_items,
+            'total_stock_value': round(total_stock_val, 2),
+            'low_stock_count':   low_stock_count,
+        },
+        'vendors_summary': {
+            'total_vendors':     total_vendors,
+            'total_payables':    round(total_payables, 2),
+            'pending_bills':     pending_bills_count,
+        },
+        'assets_summary': {
+            'total_assets':      total_assets,
+            'assigned':          assigned_assets,
+            'under_repair':      under_repair_assets,
+            'warranty_expiring': warranty_expiring_assets,
         },
     }
