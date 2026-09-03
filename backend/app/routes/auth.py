@@ -69,6 +69,22 @@ def _find_user_by_identifier(raw_identifier):
     return None
 
 
+def _dispatch_otp(ident, email, phone_num, code):
+    """
+    Dispatches OTP with automatic multichannel fallback.
+    """
+    if _is_email(ident) and email:
+        res = MSG91Service.send_email_otp(email, code)
+        if not res.get('success') and phone_num:
+            MSG91Service.send_otp(phone_num, code)
+    elif phone_num:
+        res = MSG91Service.send_otp(phone_num, code)
+        if not res.get('success') and email:
+            MSG91Service.send_email_otp(email, code)
+    elif email:
+        MSG91Service.send_email_otp(email, code)
+
+
 def _serialize_user(user):
     # Heal any user still missing a UserRoleAssignment (e.g. staff created
     # before this fix, or created via a flow that doesn't wire it yet) —
@@ -408,13 +424,7 @@ def send_login_otp():
         if err:
             return jsonify({'error': err}), 429
 
-        # Dispatch via MSG91
-        if _is_email(raw_identifier) and target_email:
-            MSG91Service.send_email_otp(target_email, otp)
-        elif target_phone:
-            MSG91Service.send_otp(target_phone, otp)
-        elif target_email:
-            MSG91Service.send_email_otp(target_email, otp)
+        _dispatch_otp(raw_identifier, target_email, target_phone, otp)
 
     return jsonify({
         'success': True,
@@ -502,12 +512,7 @@ def resend_otp():
         target_phone = user.phone or (None if _is_email(raw_identifier) else raw_identifier)
         target_email = user.email
 
-        if _is_email(raw_identifier) and target_email:
-            MSG91Service.send_email_otp(target_email, otp)
-        elif target_phone:
-            MSG91Service.send_otp(target_phone, otp)
-        elif target_email:
-            MSG91Service.send_email_otp(target_email, otp)
+        _dispatch_otp(raw_identifier, target_email, target_phone, otp)
 
     return jsonify({
         'success': True,
@@ -543,12 +548,7 @@ def forgot_password():
         target_phone = user.phone or (None if _is_email(raw_identifier) else raw_identifier)
         target_email = user.email
 
-        if _is_email(raw_identifier) and target_email:
-            MSG91Service.send_email_otp(target_email, otp)
-        elif target_phone:
-            MSG91Service.send_otp(target_phone, otp)
-        elif target_email:
-            MSG91Service.send_email_otp(target_email, otp)
+        _dispatch_otp(raw_identifier, target_email, target_phone, otp)
 
     return jsonify({
         'success': True,

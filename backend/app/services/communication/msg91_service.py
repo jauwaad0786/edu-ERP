@@ -126,7 +126,7 @@ class MSG91Service:
                     "provider_ref": resp_json.get('request_id') or resp_json.get('message')
                 }
             else:
-                logger.error(f"[MSG91] OTP dispatch error HTTP {response.status_code}")
+                logger.error(f"[MSG91] OTP dispatch error HTTP {response.status_code}: {response.text[:200]}")
                 return {
                     "success": False,
                     "message": "Provider failed to dispatch OTP",
@@ -208,7 +208,7 @@ class MSG91Service:
                     "message": "Email OTP dispatched successfully"
                 }
             else:
-                logger.error(f"[MSG91] Email OTP error HTTP {response.status_code}")
+                logger.error(f"[MSG91] Email OTP error HTTP {response.status_code}: {response.text[:200]}")
                 return {
                     "success": False,
                     "message": "Failed to send email OTP",
