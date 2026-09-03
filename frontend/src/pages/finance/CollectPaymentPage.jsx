@@ -176,9 +176,11 @@ export default function CollectPaymentPage() {
         total_amount: totalToPay,
         payment_mode: paymentMode,
         transaction_ref: transactionRef,
-        remarks: remarks,
         allocations: allocations,
-        department: 'ACCOUNTS',
+        department: (function() {
+          const depts = new Set(Object.values(selectedItems).filter(it => it.selected && it.amount > 0).map(it => it.department || 'ACCOUNTS'));
+          return depts.size === 1 ? Array.from(depts)[0] : 'ACCOUNTS';
+        })(),
       };
 
       const res = await api.post('/fees-finance/payments/collect', payload);

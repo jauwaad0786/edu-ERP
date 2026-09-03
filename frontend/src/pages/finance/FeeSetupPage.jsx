@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 
 export default function FeeSetupPage() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('heads'); // heads | structures | concessions
   const [heads, setHeads] = useState([]);
   const [structures, setStructures] = useState([]);
@@ -24,6 +26,7 @@ export default function FeeSetupPage() {
   // Structure Modal
   const [structModal, setStructModal] = useState(false);
   const [editingStruct, setEditingStruct] = useState(null);
+  const [safeguardModal, setSafeguardModal] = useState(null);
   const [structForm, setStructForm] = useState({
     name: '', class_id: '', frequency: 'MONTHLY', due_date_day: 10,
     items: []
@@ -156,13 +159,32 @@ export default function FeeSetupPage() {
   };
 
   const handleDeleteStructure = async (struct) => {
+    if (struct.is_used) {
+      setSafeguardModal(struct);
+      return;
+    }
     if (!window.confirm(`Are you sure you want to delete Rate Card "${struct.name}"?`)) return;
     try {
       await api.delete(`/fees-finance/structures/${struct.id}`);
       toast.success(`Rate card "${struct.name}" deleted`);
       fetchData();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to delete rate card');
+      if (err.response?.status === 409) {
+        setSafeguardModal(struct);
+      } else {
+        toast.error(err.response?.data?.error || 'Failed to delete rate card');
+      }
+    }
+  };
+
+  const handleArchiveStructure = async (struct) => {
+    try {
+      await api.patch(`/fees-finance/structures/${struct.id}/archive`);
+      toast.success(`Rate card "${struct.name}" archived successfully`);
+      setSafeguardModal(null);
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to archive rate card');
     }
   };
 
@@ -402,8 +424,20 @@ export default function FeeSetupPage() {
                       <div key={s.id} style={{ background: '#fafaf9', border: '1px solid var(--neutral-2)', borderRadius: 8, padding: 16 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                           <div>
-                            <div style={{ fontWeight: 800, fontSize: 14, color: 'var(--neutral-9)' }}>{s.name}</div>
-                            <div className="text-xs text-muted">{s.class_name} • {s.session}</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--neutral-9)' }}>{s.name}</span>
+                              {s.is_used && (
+                                <span className="badge badge-info" style={{ fontSize: 9.5, padding: '2px 6px' }}>
+                                  In Use (Protected)
+                                </span>
+                              )}
+                              {s.is_archived && (
+                                <span className="badge badge-neutral" style={{ fontSize: 9.5, padding: '2px 6px' }}>
+                                  Archived
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs text-muted" style={{ marginTop: 2 }}>{s.class_name} • {s.session}</div>
                           </div>
                           <span style={{ fontWeight: 800, color: '#0176d3', fontSize: 14 }}>{fmt(s.total_amount)}/mo</span>
                         </div>
@@ -513,18 +547,100 @@ export default function FeeSetupPage() {
                       />
                     </div>
 
-                    <div className="form-group">
-                      <label className="form-label">Code (Identifier)</label>
-                      <input
-                        type="text"
-                        value={headForm.code}
-                        onChange={(e) => setHeadForm({ ...headForm, code: e.target.value.toUpperCase().replace(' ', '_') })}
-                        placeholder="e.g. LAB_FEE"
-                        required
-                        className="form-input"
-                        style={{ fontFamily: 'monospace', fontWeight: 700 }}
-                      />
+                    <div className="grid-2">
+                      <div className="form-group">
+                        <label className="form-label">Code (Identifier)</label>
+                        <input
+                          type="text"
+                          value={headForm.code}
+                          onChange={(e) => setHeadForm({ ...headForm, code: e.target.value.toUpperCase().replace(' ', '_') })}
+                          placeholder="e.g. LAB_FEE"
+                          required
+                          className="form-input"
+                          style={{ fontFamily: 'monospace', fontWeight: 700 }}
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label className="form-label">Service Domain / Department</label>
+                        <select
+                          value={headForm.department || 'ACCOUNTS'}
+                          onChange={(e) => {
+                            const dept = e.target.value;
+                            setHeadForm({ ...headForm, department: dept });
+                          }}
+                          className="form-select"
+                          style={{ fontWeight: 700 }}
+                        >
+                          <option value="ACCOUNTS">Academic / Tuition / Exam (General)</option>
+                          <option value="HOSTEL">Hostel Management (Room &amp; Mess)</option>
+                          <option value="TRANSPORT">Transport Fleet (Bus &amp; Routes)</option>
+                          <option value="LIBRARY">Library Center (Fines &amp; Books)</option>
+                          <option value="ADMISSION">Admission Counter (Registration)</option>
+                        </select>
+                      </div>
                     </div>
+
+                    {/* Smart Redirect Alerts when Special Service Domain is chosen */}
+                    {headForm.department === 'HOSTEL' && (
+                      <div style={{ background: '#f5f3ff', border: '1.5px solid #8b5cf6', borderRadius: 10, padding: 14, marginBottom: 14 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#6d28d9', fontWeight: 800, fontSize: 13 }}>
+                          <i className="ti ti-building-community" style={{ fontSize: 18 }} />
+                          Hostel Fee Setup Detected
+                        </div>
+                        <p style={{ margin: '6px 0 10px', fontSize: 12, color: '#4c1d95', lineHeight: 1.5 }}>
+                          Hostel fee structures require building, room category, floor, and AC/Non-AC matrix configuration. Would you like to configure hostel rates in the dedicated Hostel Fee Management center?
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => { setHeadModal(false); navigate('/hostel/fee-structures'); }}
+                          className="btn btn-sm"
+                          style={{ background: '#7c3aed', color: '#fff', fontWeight: 700 }}
+                        >
+                          Open Hostel Fee Management ➔
+                        </button>
+                      </div>
+                    )}
+
+                    {headForm.department === 'TRANSPORT' && (
+                      <div style={{ background: '#ecfeff', border: '1.5px solid #06b6d4', borderRadius: 10, padding: 14, marginBottom: 14 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#0e7490', fontWeight: 800, fontSize: 13 }}>
+                          <i className="ti ti-bus" style={{ fontSize: 18 }} />
+                          Transport Route Fee Setup
+                        </div>
+                        <p style={{ margin: '6px 0 10px', fontSize: 12, color: '#155e75', lineHeight: 1.5 }}>
+                          Transport fee amounts are calculated per route stop and distance slab. You can configure transport slabs directly in Transport Management.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => { setHeadModal(false); navigate('/transport/fees'); }}
+                          className="btn btn-sm"
+                          style={{ background: '#0891b2', color: '#fff', fontWeight: 700 }}
+                        >
+                          Open Transport Fee Slabs ➔
+                        </button>
+                      </div>
+                    )}
+
+                    {headForm.department === 'LIBRARY' && (
+                      <div style={{ background: '#fffbeb', border: '1.5px solid #f59e0b', borderRadius: 10, padding: 14, marginBottom: 14 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#b45309', fontWeight: 800, fontSize: 13 }}>
+                          <i className="ti ti-books" style={{ fontSize: 18 }} />
+                          Library Rules &amp; Fines Setup
+                        </div>
+                        <p style={{ margin: '6px 0 10px', fontSize: 12, color: '#92400e', lineHeight: 1.5 }}>
+                          Library late return fines are determined by membership lending policies and grace periods.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => { setHeadModal(false); navigate('/library/fines'); }}
+                          className="btn btn-sm"
+                          style={{ background: '#d97706', color: '#fff', fontWeight: 700 }}
+                        >
+                          Open Library Fine Settings ➔
+                        </button>
+                      </div>
+                    )}
 
                     <div className="grid-2">
                       <div className="form-group">
@@ -796,6 +912,42 @@ export default function FeeSetupPage() {
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          )}
+
+          {/* Safeguard Modal when Rate Card is in use */}
+          {safeguardModal && (
+            <div className="modal-backdrop">
+              <div className="modal" style={{ maxWidth: 480 }}>
+                <div className="modal-header" style={{ background: '#fffbeb', borderBottom: '1px solid #fde68a' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#b45309', fontWeight: 800, fontSize: 15 }}>
+                    <i className="ti ti-shield-alert" style={{ fontSize: 20 }} />
+                    Rate Card In Active Use — Protected 🛡️
+                  </div>
+                  <button onClick={() => setSafeguardModal(null)} className="modal-close">✕</button>
+                </div>
+                <div className="modal-body" style={{ padding: 20 }}>
+                  <p style={{ fontSize: 13.5, color: '#1e293b', lineHeight: 1.6, margin: '0 0 12px' }}>
+                    <strong>"{safeguardModal.name}"</strong> is currently assigned to active students or has issued bills in the central financial ledger.
+                  </p>
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12, fontSize: 12, color: '#475569', marginBottom: 16, lineHeight: 1.5 }}>
+                    Hard deletion is permanently disabled to maintain audit compliance and prevent orphaned student bills.
+                    Instead, you can <strong>Archive / Deactivate</strong> this rate card so it cannot be used for any new student assignments.
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                    <button onClick={() => setSafeguardModal(null)} className="btn btn-neutral">
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => handleArchiveStructure(safeguardModal)}
+                      className="btn btn-primary"
+                      style={{ background: '#d97706', borderColor: '#d97706', fontWeight: 700 }}
+                    >
+                      <i className="ti ti-archive" /> Archive Rate Card
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           )}

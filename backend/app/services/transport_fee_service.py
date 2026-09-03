@@ -120,6 +120,26 @@ def generate_transport_fee_record(assignment, created_by_id=None, month=None, fe
             )
             db.session.add(local_rec)
 
+    # ── Canonical Central Finance Sync ──
+    try:
+        from app.services.fee_ledger_service import register_or_sync_service_charge
+        register_or_sync_service_charge(
+            school_id=assignment.school_id,
+            student_id=assignment.student_id,
+            amount=amount,
+            fee_head_code='TRANSPORT',
+            department='TRANSPORT',
+            source_module='TRANSPORT',
+            source_type='CHARGE',
+            source_ref_id=assignment.id,
+            description=remarks,
+            billing_period=month_str,
+            actor_user_id=created_by_id
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+
     return fee_rec, 'created'
 
 
@@ -217,6 +237,27 @@ def record_transport_fee_payment(record, amount, payment_mode='CASH', remarks=''
                 remarks=remarks,
             ))
 
+        # ── Canonical Central Finance Payment Sync ──
+        try:
+            from app.services.fee_ledger_service import collect_fee_payment
+            central_pmt = collect_fee_payment(
+                student_id=record.student_id,
+                amount_paid=amount,
+                payment_mode=payment_mode,
+                collected_by=collected_by_user,
+                department='TRANSPORT',
+                remarks=remarks or f"Transport payment collected at counter",
+                session=getattr(record, 'session', '2026-27') or '2026-27',
+                allocations=[],
+                skip_record_id=record.id
+            )
+            if central_pmt:
+                record.receipt_no = central_pmt.receipt_no
+                txn.receipt_no = central_pmt.receipt_no
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+
         db.session.commit()
         return record, txn
 
@@ -266,6 +307,26 @@ def create_transport_fine(school_id, student_id, amount, fine_type='LATE_PAYMENT
     db.session.flush()
 
     fee_rec.source_ref_id = fine.id
+
+    # ── Canonical Central Finance Sync ──
+    try:
+        from app.services.fee_ledger_service import register_or_sync_service_charge
+        register_or_sync_service_charge(
+            school_id=school_id,
+            student_id=student_id,
+            amount=amount,
+            fee_head_code='TRANSPORT_FINE',
+            department='TRANSPORT',
+            source_module='TRANSPORT',
+            source_type='FINE',
+            source_ref_id=fine.id,
+            description=f"Transport Fine: {reason or fine_type}",
+            actor_user_id=user_id
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+
     db.session.commit()
     return fine
 

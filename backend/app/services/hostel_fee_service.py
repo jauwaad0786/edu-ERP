@@ -206,7 +206,8 @@ def record_hostel_fee_payment(record, amount, payment_mode='CASH', remarks='', c
                 department='HOSTEL',
                 remarks=remarks or f"Hostel payment collected by Warden",
                 session=getattr(record, 'session', '2026-27') or '2026-27',
-                allocations=[]
+                allocations=[],
+                skip_record_id=record.id
             )
             if central_pmt:
                 record.receipt_no = central_pmt.receipt_no

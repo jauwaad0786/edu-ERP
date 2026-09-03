@@ -850,12 +850,22 @@ def create_student():
             frequency='ONE_TIME', status='ACTIVE'
         ).first()
 
-        if admission_fs:
+        adm_fee_amt = 0.0
+        if data.get('admission_fee'):
+            try:
+                adm_fee_amt = float(data.get('admission_fee'))
+            except (ValueError, TypeError):
+                adm_fee_amt = 0.0
+        if adm_fee_amt <= 0 and admission_fs:
+            adm_fee_amt = float(admission_fs.amount or 0.0)
+
+        if adm_fee_amt > 0:
             rec = FeeRecord(
                 school_id=sid, student_id=student.id, fee_type='ADMISSION',
-                amount_due=admission_fs.amount, amount_paid=0, status='PENDING',
+                amount_due=adm_fee_amt, amount_paid=0, status='PENDING',
                 due_date=date.today() + timedelta(days=7),
                 session=student.session, remarks='Admission Fee — auto-generated',
+                source='ADMISSION', source_ref_id=student.id,
             )
             db.session.add(rec)
 
@@ -864,7 +874,7 @@ def create_student():
                 register_or_sync_service_charge(
                     school_id=sid,
                     student_id=student.id,
-                    amount=admission_fs.amount,
+                    amount=adm_fee_amt,
                     fee_head_code='ADMISSION',
                     department='ACCOUNTS',
                     source_module='ADMISSION',
@@ -934,18 +944,50 @@ def fees_summary():
      .group_by(FeeTransaction.payment_mode).all()
     mode_map = {mode: amt for mode, amt in mode_agg}
 
+    # Department/Service breakdown of Today's collection
+    today_txns = FeeTransaction.query.filter_by(school_id=sid, transaction_date=today).all()
+    today_by_dept = {
+        'academic': 0.0,
+        'hostel': 0.0,
+        'transport': 0.0,
+        'library': 0.0,
+        'admission': 0.0,
+        'other': 0.0,
+        'total': float(today_collection or 0.0),
+    }
+    for txn in today_txns:
+        rec = FeeRecord.query.get(txn.fee_record_id) if txn.fee_record_id else None
+        src = (rec.source if rec and rec.source else (rec.fee_type if rec else 'ACADEMIC')).upper()
+        amt = float(txn.amount or 0.0)
+        if 'HOSTEL' in src:
+            today_by_dept['hostel'] += amt
+        elif 'TRANSPORT' in src:
+            today_by_dept['transport'] += amt
+        elif 'LIBRARY' in src:
+            today_by_dept['library'] += amt
+        elif 'ADMISSION' in src:
+            today_by_dept['admission'] += amt
+        elif any(k in src for k in ['ACADEMIC', 'TUITION', 'EXAM']):
+            today_by_dept['academic'] += amt
+        else:
+            today_by_dept['other'] += amt
+
+    for k in ['academic', 'hostel', 'transport', 'library', 'admission', 'other']:
+        today_by_dept[k] = round(today_by_dept[k], 2)
+
     return jsonify({
         'total_due': total_due, 'total_collected': total_paid,
         'pending_count': pending, 'overdue_count': overdue,
         'collection_rate': round(total_paid / total_due * 100, 1) if total_due else 0,
 
-        'today_collection':    today_collection,
-        'this_month':          this_month,
+        'today_collection':      today_collection,
+        'today_breakdown':       today_by_dept,
+        'this_month':            this_month,
         'this_month_collection': month_collection,
-        'cash_collection':      mode_map.get('CASH', 0),
-        'upi_collection':       mode_map.get('UPI', 0),
-        'online_collection':    mode_map.get('ONLINE', 0),
-        'cheque_collection':    mode_map.get('CHEQUE', 0),
+        'cash_collection':       mode_map.get('CASH', 0),
+        'upi_collection':        mode_map.get('UPI', 0),
+        'online_collection':     mode_map.get('ONLINE', 0),
+        'cheque_collection':     mode_map.get('CHEQUE', 0),
     }), 200
 
 
@@ -954,31 +996,86 @@ def fees_summary():
 def recent_fee_collections():
     sid = _school_id()
     try:
-        records = FeeRecord.query.filter(
-            FeeRecord.school_id == sid,
-            FeeRecord.amount_paid > 0
-        ).order_by(FeeRecord.id.desc()).limit(8).all()
-
+        from app.models.fee_finance import FeePayment
+        now = datetime.utcnow()
         result = []
-        for r in records:
-            student = Student.query.get(r.student_id) if r.student_id else None
-            cls = Class.query.get(student.class_id) if (student and student.class_id) else None
-            class_name = f"{cls.name}{' - ' + cls.section if cls.section else ''}" if cls else '—'
-            student_name = student.user.name if (student and student.user) else 'Student'
-            
-            p_date_str = r.paid_date.strftime('%d %b %Y') if r.paid_date else (r.created_at.strftime('%d %b %Y') if getattr(r, 'created_at', None) else 'Today')
-            
-            result.append({
-                'id': r.id,
-                'receipt_no': r.receipt_no or f"RCPT/{r.id:04d}",
-                'student_name': student_name,
-                'class_name': class_name,
-                'amount': float(r.amount_paid or 0),
-                'date': p_date_str,
-                'status': 'Paid' if r.status == 'PAID' else (r.status or 'Paid')
-            })
+
+        # 1. Fetch recent central payments
+        payments = FeePayment.query.filter_by(school_id=sid, status='VALID')\
+            .order_by(FeePayment.id.desc()).limit(10).all()
+
+        if payments:
+            for p in payments:
+                student = p.student or (Student.query.get(p.student_id) if p.student_id else None)
+                user = student.user if student else None
+                cls = student.class_ref if student and hasattr(student, 'class_ref') and student.class_ref else None
+                class_name = f"{cls.name} - {cls.section}" if cls else '—'
+                student_name = user.name if user else 'Student'
+
+                diff = now - (p.created_at or datetime.combine(p.payment_date, datetime.min.time()))
+                mins = int(diff.total_seconds() / 60)
+                if mins < 1:
+                    time_ago = 'Just now'
+                elif mins < 60:
+                    time_ago = f"{mins} mins ago"
+                elif mins < 1440:
+                    time_ago = f"{mins // 60} hours ago"
+                else:
+                    time_ago = f"{diff.days} days ago"
+
+                col_user = p.collector
+                col_name = col_user.name if col_user else 'Counter Staff'
+                col_role = getattr(col_user.role, 'value', str(col_user.role)) if (col_user and hasattr(col_user, 'role')) else 'Staff'
+
+                # Clean role label (e.g. HOSTEL -> Warden, LIBRARIAN -> Librarian, PRINCIPAL -> Principal)
+                role_label = 'Warden' if col_role == 'HOSTEL' else ('Librarian' if col_role == 'LIBRARIAN' else ('Accountant' if col_role in ('ACCOUNTANT', 'FINANCE') else col_role.title()))
+
+                result.append({
+                    'id': p.id,
+                    'receipt_no': p.receipt_no,
+                    'student_name': student_name,
+                    'class_name': class_name,
+                    'amount': float(p.total_paid or 0),
+                    'department': p.department or 'ACCOUNTS',
+                    'service': p.department or 'Tuition',
+                    'collector_name': col_name,
+                    'collector_role': role_label,
+                    'time_ago': time_ago,
+                    'date': p.payment_date.strftime('%d %b %Y') if p.payment_date else 'Today',
+                    'status': 'Paid'
+                })
+        else:
+            # Fallback to FeeTransaction / FeeRecord
+            txns = FeeTransaction.query.filter_by(school_id=sid)\
+                .order_by(FeeTransaction.id.desc()).limit(10).all()
+            for t in txns:
+                student = Student.query.get(t.student_id) if t.student_id else None
+                cls = Class.query.get(student.class_id) if (student and student.class_id) else None
+                class_name = f"{cls.name}{' - ' + cls.section if cls.section else ''}" if cls else '—'
+                student_name = student.user.name if (student and student.user) else 'Student'
+                col_user = User.query.get(t.collected_by) if t.collected_by else None
+                col_role = getattr(col_user.role, 'value', str(col_user.role)) if (col_user and hasattr(col_user, 'role')) else 'Staff'
+                role_label = 'Warden' if col_role == 'HOSTEL' else ('Librarian' if col_role == 'LIBRARIAN' else ('Accountant' if col_role in ('ACCOUNTANT', 'FINANCE') else col_role.title()))
+
+                result.append({
+                    'id': t.id,
+                    'receipt_no': t.receipt_no or f"RCPT/{t.id:04d}",
+                    'student_name': student_name,
+                    'class_name': class_name,
+                    'amount': float(t.amount or 0),
+                    'department': 'ACCOUNTS',
+                    'service': 'School Fee',
+                    'collector_name': col_user.name if col_user else 'Counter Staff',
+                    'collector_role': role_label,
+                    'time_ago': 'Recent',
+                    'date': t.transaction_date.strftime('%d %b %Y') if t.transaction_date else 'Today',
+                    'status': 'Paid'
+                })
+
         return jsonify(result), 200
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify([]), 200
 
 
@@ -1120,6 +1217,26 @@ def collect_fee():
             from app.services.transport_fee_service import sync_transport_from_fee_record
             sync_transport_from_fee_record(record, txn)
 
+        # ── Canonical Central Finance Ledger Sync ──
+        try:
+            from app.services.fee_ledger_service import collect_fee_payment
+            central_pmt = collect_fee_payment(
+                student_id=record.student_id,
+                amount_paid=new_payment,
+                payment_mode=record.payment_mode,
+                collected_by=get_current_user(),
+                department=record.source or 'ACCOUNTS',
+                remarks=data.get('remarks', '') or f"Fee collected via Principal / Accounts Counter",
+                session=getattr(record, 'session', '2026-27') or '2026-27',
+                allocations=[]
+            )
+            if central_pmt:
+                record.receipt_no = central_pmt.receipt_no
+                txn.receipt_no = central_pmt.receipt_no
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+
         db.session.commit()
 
         # Return full record with student info
@@ -1227,6 +1344,25 @@ def collect_fee_multiple():
                 sync_transport_from_fee_record(record, txn)
 
             total += amount
+
+        # ── Canonical Central Finance Ledger Sync ──
+        try:
+            from app.services.fee_ledger_service import collect_fee_payment
+            central_pmt = collect_fee_payment(
+                student_id=student_id_check,
+                amount_paid=total,
+                payment_mode=payment_mode,
+                collected_by=get_current_user(),
+                department=source_key if source_key != 'ALL' else 'ACCOUNTS',
+                remarks=remarks or f"Multiple Fee Collection ({source_key})",
+                session='2026-27',
+                allocations=[]
+            )
+            if central_pmt:
+                receipt_no = central_pmt.receipt_no
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
 
         db.session.add(FeeReceiptGroup(
             receipt_no=receipt_no, school_id=sid, student_id=student_id_check,

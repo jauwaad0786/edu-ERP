@@ -198,6 +198,7 @@ export default function PaymentLogsPage() {
                   <option value="HOSTEL">Hostel & Mess</option>
                   <option value="TRANSPORT">Transport</option>
                   <option value="LIBRARY">Library</option>
+                  <option value="ADMISSION">Admission Counter</option>
                 </select>
 
                 <select

@@ -456,7 +456,20 @@ class HostelFeeStructure(db.Model):
             (self.maintenance_charges or 0) - (self.discount or 0), 2
         )
 
+    def is_used(self):
+        """Checks whether any hostel resident or fee record is currently bound to this structure."""
+        from app.models.hostel import HostelBedAllocation
+        from app.models.financial import FeeRecord
+        # Check active allocations
+        alloc = HostelBedAllocation.query.filter_by(hostel_id=self.hostel_id, status='ACTIVE').first()
+        if alloc:
+            return True
+        # Check if fee records exist
+        fee = FeeRecord.query.filter_by(school_id=self.school_id, source='HOSTEL').first()
+        return fee is not None
+
     def to_dict(self):
+        used = self.is_used()
         return {
             'id':                  self.id,
             'hostel_id':           self.hostel_id,
@@ -479,6 +492,8 @@ class HostelFeeStructure(db.Model):
             'discount':            self.discount or 0,
             'total_monthly':       self.total_monthly(),
             'status':              self.status,
+            'is_used':             used,
+            'can_delete':          not used,
         }
 
 

@@ -30,6 +30,7 @@ export default function PrincipalDashboard() {
   const [announcements, setAnnouncements] = useState([]);
   const [upcomingEvents, setUpcomingEvents] = useState([]);
   const [recentFeeCollections, setRecentFeeCollections] = useState([]);
+  const [feesSummary, setFeesSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [classViewMode, setClassViewMode] = useState('GRAPH'); // 'GRAPH' or 'GRID'
   const [feePeriod, setFeePeriod] = useState('MONTH'); // 'MONTH', 'YEAR', 'ALL'
@@ -52,7 +53,8 @@ export default function PrincipalDashboard() {
       api.get('/principal/holidays').catch(() => ({ data: [] })),
       api.get('/support/announcements/latest').catch(() => ({ data: [] })),
       api.get('/principal/fees/recent-collections').catch(() => ({ data: [] })),
-    ]).then(([s, c, f, att, tatt, trend, profit, hols, ann, recentFees]) => {
+      api.get('/principal/fees/summary').catch(() => ({ data: null })),
+    ]).then(([s, c, f, att, tatt, trend, profit, hols, ann, recentFees, fSum]) => {
       setStats(s.data);
       setClasses(c.data || []);
       setFees(f.data);
@@ -69,6 +71,7 @@ export default function PrincipalDashboard() {
       setUpcomingEvents(eventsList);
       setAnnouncements(ann.data || []);
       setRecentFeeCollections(Array.isArray(recentFees.data) ? recentFees.data : []);
+      setFeesSummary(fSum?.data || null);
       setLoading(false);
     });
   }, [financeMonth]);
@@ -568,6 +571,83 @@ export default function PrincipalDashboard() {
                 <span style={{ fontSize: '11px', fontWeight: 800, color: '#ef4444', background: '#fef2f2', padding: '2px 6px', borderRadius: '6px' }}>
                   Pending Dues
                 </span>
+              </div>
+            </div>
+          </div>
+
+          {/* ══ TODAY'S COLLECTION BY SERVICE (CENTRAL FINANCE) ══ */}
+          <div style={{
+            background: darkMode ? '#111827' : '#ffffff',
+            border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+            borderRadius: '18px', padding: '20px', marginBottom: '22px',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#ecfdf5', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <i className="ti ti-cash" style={{ fontSize: '20px' }} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                    Today's Collection by Service (Central Finance Sync) 💰
+                  </h3>
+                  <p style={{ margin: '2px 0 0', fontSize: '11.5px', color: '#94a3b8' }}>
+                    Unified real-time inflows across School, Hostel, Transport, Library &amp; Admission counters
+                  </p>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: '#94a3b8' }}>Total Today:</span>
+                <span style={{ fontSize: '20px', fontWeight: 900, color: '#10b981' }}>
+                  ₹{Number(feesSummary?.today_breakdown?.total || feesSummary?.today_collection || 0).toLocaleString('en-IN')}
+                </span>
+                <button
+                  onClick={() => navigate('/finance/payments/collect')}
+                  className="btn btn-sm btn-primary"
+                  style={{ borderRadius: '8px', padding: '6px 14px', fontSize: '12px', fontWeight: 700 }}
+                >
+                  Collect Payment
+                </button>
+              </div>
+            </div>
+
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+              gap: '12px'
+            }}>
+              <div style={{ background: darkMode ? '#1e293b' : '#f8fafc', padding: '12px 16px', borderRadius: '12px', borderLeft: '4px solid #3b82f6' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8' }}>SCHOOL / TUITION</div>
+                <div style={{ fontSize: '18px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', marginTop: '2px' }}>
+                  ₹{Number(feesSummary?.today_breakdown?.academic || 0).toLocaleString('en-IN')}
+                </div>
+              </div>
+
+              <div style={{ background: darkMode ? '#1e293b' : '#f8fafc', padding: '12px 16px', borderRadius: '12px', borderLeft: '4px solid #8b5cf6' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8' }}>HOSTEL FEES</div>
+                <div style={{ fontSize: '18px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', marginTop: '2px' }}>
+                  ₹{Number(feesSummary?.today_breakdown?.hostel || 0).toLocaleString('en-IN')}
+                </div>
+              </div>
+
+              <div style={{ background: darkMode ? '#1e293b' : '#f8fafc', padding: '12px 16px', borderRadius: '12px', borderLeft: '4px solid #06b6d4' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8' }}>TRANSPORT FLEET</div>
+                <div style={{ fontSize: '18px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', marginTop: '2px' }}>
+                  ₹{Number(feesSummary?.today_breakdown?.transport || 0).toLocaleString('en-IN')}
+                </div>
+              </div>
+
+              <div style={{ background: darkMode ? '#1e293b' : '#f8fafc', padding: '12px 16px', borderRadius: '12px', borderLeft: '4px solid #f59e0b' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8' }}>LIBRARY FINES</div>
+                <div style={{ fontSize: '18px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', marginTop: '2px' }}>
+                  ₹{Number(feesSummary?.today_breakdown?.library || 0).toLocaleString('en-IN')}
+                </div>
+              </div>
+
+              <div style={{ background: darkMode ? '#1e293b' : '#f8fafc', padding: '12px 16px', borderRadius: '12px', borderLeft: '4px solid #10b981' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8' }}>NEW ADMISSIONS</div>
+                <div style={{ fontSize: '18px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', marginTop: '2px' }}>
+                  ₹{Number(feesSummary?.today_breakdown?.admission || 0).toLocaleString('en-IN')}
+                </div>
               </div>
             </div>
           </div>
@@ -1255,14 +1335,22 @@ export default function PrincipalDashboard() {
                       No recent fee transactions.
                     </div>
                   ) : (
-                    recentFeesList.slice(0, 5).map(r => (
+                    recentFeesList.slice(0, 6).map(r => (
                       <div key={r.id || r.receipt_no} style={{
                         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                         fontSize: '12.5px', paddingBottom: '8px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`
                       }}>
                         <div>
                           <div style={{ fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a' }}>{r.student_name}</div>
-                          <div style={{ fontSize: '11px', color: '#94a3b8' }}>{r.class_name} · {r.receipt_no}</div>
+                          <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                            {r.service ? <span style={{ fontWeight: 700, color: '#3b82f6' }}>{r.service} · </span> : ''}
+                            {r.class_name} · {r.receipt_no}
+                          </div>
+                          {r.collector_role && (
+                            <div style={{ fontSize: '10.5px', color: '#6366f1', fontWeight: 600 }}>
+                              Collected by {r.collector_role} {r.time_ago ? `(${r.time_ago})` : ''}
+                            </div>
+                          )}
                         </div>
                         <div style={{ textAlign: 'right' }}>
                           <div style={{ fontWeight: 800, color: '#10b981' }}>₹{r.amount.toLocaleString('en-IN')}</div>

@@ -3,7 +3,8 @@ from app import db
 from app.utils.decorators import role_required, get_current_user
 from app.models.library import (
     BookCategory, Book, BookCopy, LibraryMember, BookIssue,
-    BookReservation, FineTransaction, LibrarySettings, LibraryActivityLog, log_activity
+    BookReservation, FineTransaction, LibrarySettings, LibraryActivityLog, log_activity,
+    LibraryVisit
 )
 from app.models.academic import Class, Student
 from app.models.user import User, UserRole
@@ -1638,3 +1639,283 @@ def global_search():
         'members':     [m.to_dict() for m in members],
         'barcode_hit': copy_match.to_dict() if copy_match else None,
     }), 200
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  LIBRARY ATTENDANCE & IN/OUT VISIT MANAGEMENT
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _resolve_student(school_id, identifier):
+    """Finds a student by student_id, admission_no, or library card_number."""
+    if not identifier:
+        return None
+
+    # Try by numeric ID
+    if isinstance(identifier, int) or (isinstance(identifier, str) and identifier.isdigit()):
+        st = Student.query.filter_by(school_id=school_id, id=int(identifier)).first()
+        if st:
+            return st
+
+    clean_id = str(identifier).strip()
+
+    # Try admission_no
+    st = Student.query.filter_by(school_id=school_id, admission_no=clean_id).first()
+    if st:
+        return st
+
+    # Try library card number
+    mem = LibraryMember.query.filter_by(school_id=school_id, card_number=clean_id).first()
+    if mem:
+        st = Student.query.filter_by(school_id=school_id, user_id=mem.user_id).first()
+        if st:
+            return st
+
+    # Case-insensitive admission_no or roll_number match
+    st = Student.query.filter(
+        Student.school_id == school_id,
+        db.or_(Student.admission_no.ilike(clean_id), Student.roll_number.ilike(clean_id))
+    ).first()
+    return st
+
+
+@library_bp.route('/attendance/check-in', methods=['POST'])
+@role_required(*LIBRARY_ROLES)
+def library_check_in():
+    """
+    Records a student's entry into the library.
+    Body: { identifier (student_id / admission_no / card_number), entry_method, remarks }
+    """
+    sid = _school_id()
+    data = request.get_json() or {}
+    identifier = data.get('identifier') or data.get('student_id')
+    if not identifier:
+        return jsonify({'error': 'Student identifier is required (Student ID, Admission No, or Card No)'}), 400
+
+    student = _resolve_student(sid, identifier)
+    if not student:
+        return jsonify({'error': f'Student "{identifier}" not found.'}), 404
+
+    # Check if student is already inside
+    active_visit = LibraryVisit.query.filter_by(
+        school_id=sid, student_id=student.id, status='INSIDE'
+    ).first()
+    if active_visit:
+        return jsonify({
+            'error': f'{student.user.name if student.user else "Student"} is already inside the library (Checked in at {active_visit.entry_time.strftime("%I:%M %p")}).',
+            'visit': active_visit.to_dict()
+        }), 409
+
+    entry_method = data.get('entry_method', 'MANUAL').upper()
+    visit = LibraryVisit(
+        school_id=sid,
+        student_id=student.id,
+        visit_date=date.today(),
+        entry_time=datetime.utcnow(),
+        entry_method=entry_method,
+        recorded_by=get_current_user().id,
+        status='INSIDE',
+        remarks=data.get('remarks', '')
+    )
+    db.session.add(visit)
+    log_activity(sid, get_current_user().id, 'LIBRARY_CHECKIN', f'Student #{student.id} checked in ({entry_method})')
+    db.session.commit()
+
+    return jsonify({
+        'message': f'Welcome, {student.user.name if student.user else "Student"}! Checked in successfully.',
+        'visit': visit.to_dict()
+    }), 201
+
+
+@library_bp.route('/attendance/check-out', methods=['POST'])
+@role_required(*LIBRARY_ROLES)
+def library_check_out():
+    """
+    Records a student's exit from the library and computes visit duration.
+    Body: { visit_id or identifier (student_id / admission_no / card_number), remarks }
+    """
+    sid = _school_id()
+    data = request.get_json() or {}
+    visit_id = data.get('visit_id')
+
+    visit = None
+    if visit_id:
+        visit = LibraryVisit.query.filter_by(id=visit_id, school_id=sid).first()
+    else:
+        identifier = data.get('identifier') or data.get('student_id')
+        if not identifier:
+            return jsonify({'error': 'visit_id or student identifier is required'}), 400
+        student = _resolve_student(sid, identifier)
+        if not student:
+            return jsonify({'error': 'Student not found'}), 404
+        visit = LibraryVisit.query.filter_by(
+            school_id=sid, student_id=student.id, status='INSIDE'
+        ).order_by(LibraryVisit.id.desc()).first()
+
+    if not visit:
+        return jsonify({'error': 'No active library check-in session found for this student.'}), 404
+
+    if visit.status == 'EXITED':
+        return jsonify({'message': 'Student has already checked out.', 'visit': visit.to_dict()}), 200
+
+    visit.checkout()
+    if data.get('remarks'):
+        visit.remarks = (visit.remarks or '') + f" | {data.get('remarks')}".strip(' |')
+
+    log_activity(sid, get_current_user().id, 'LIBRARY_CHECKOUT', f'Student #{visit.student_id} checked out (Duration: {visit.duration_minutes}m)')
+    db.session.commit()
+
+    return jsonify({
+        'message': f'Checkout recorded! Duration: {visit.duration_minutes} minutes.',
+        'visit': visit.to_dict()
+    }), 200
+
+
+@library_bp.route('/attendance/scan', methods=['POST'])
+@role_required(*LIBRARY_ROLES)
+def library_scan():
+    """
+    Smart Scanner: auto-detects check-in vs check-out upon barcode / QR / RFID scan.
+    If student is already INSIDE -> check them out.
+    If student is OUTSIDE -> check them in.
+    """
+    sid = _school_id()
+    data = request.get_json() or {}
+    barcode = (data.get('barcode') or data.get('identifier') or '').strip()
+    if not barcode:
+        return jsonify({'error': 'Barcode or identifier string is required'}), 400
+
+    student = _resolve_student(sid, barcode)
+    if not student:
+        return jsonify({'error': f'No student found matching barcode "{barcode}".'}), 404
+
+    active_visit = LibraryVisit.query.filter_by(
+        school_id=sid, student_id=student.id, status='INSIDE'
+    ).first()
+
+    method = data.get('entry_method', 'BARCODE').upper()
+    if active_visit:
+        active_visit.checkout()
+        db.session.commit()
+        return jsonify({
+            'action': 'CHECK_OUT',
+            'message': f'Checked OUT: {student.user.name if student.user else "Student"}. Duration: {active_visit.duration_minutes} mins.',
+            'visit': active_visit.to_dict()
+        }), 200
+    else:
+        new_visit = LibraryVisit(
+            school_id=sid,
+            student_id=student.id,
+            visit_date=date.today(),
+            entry_time=datetime.utcnow(),
+            entry_method=method,
+            recorded_by=get_current_user().id,
+            status='INSIDE',
+        )
+        db.session.add(new_visit)
+        db.session.commit()
+        return jsonify({
+            'action': 'CHECK_IN',
+            'message': f'Checked IN: {student.user.name if student.user else "Student"} at {new_visit.entry_time.strftime("%I:%M %p")}.',
+            'visit': new_visit.to_dict()
+        }), 201
+
+
+@library_bp.route('/attendance/live', methods=['GET'])
+@role_required(*LIBRARY_ROLES)
+def library_attendance_live():
+    """
+    Returns live counters: Currently Inside, Total Today Entries, Today Exits, and active visitors list.
+    """
+    sid = _school_id()
+    today = date.today()
+
+    active_visits = LibraryVisit.query.filter_by(school_id=sid, status='INSIDE')\
+        .order_by(LibraryVisit.entry_time.asc()).all()
+
+    today_entries = LibraryVisit.query.filter_by(school_id=sid, visit_date=today).count()
+    today_exits = LibraryVisit.query.filter(
+        LibraryVisit.school_id == sid,
+        LibraryVisit.visit_date == today,
+        LibraryVisit.status == 'EXITED'
+    ).count()
+
+    return jsonify({
+        'currently_inside_count': len(active_visits),
+        'today_entries_count':    today_entries,
+        'today_exits_count':      today_exits,
+        'currently_inside':       [v.to_dict() for v in active_visits],
+    }), 200
+
+
+@library_bp.route('/attendance/logs', methods=['GET'])
+@role_required(*LIBRARY_ROLES)
+def library_attendance_logs():
+    """
+    Filterable attendance logs with search, class, date, and status filters.
+    """
+    sid = _school_id()
+    q = LibraryVisit.query.filter_by(school_id=sid)
+
+    date_param = request.args.get('date')
+    if date_param:
+        try:
+            q = q.filter_by(visit_date=date.fromisoformat(date_param))
+        except ValueError:
+            pass
+
+    status_param = request.args.get('status')
+    if status_param and status_param != 'ALL':
+        q = q.filter_by(status=status_param.upper())
+
+    student_id = request.args.get('student_id', type=int)
+    if student_id:
+        q = q.filter_by(student_id=student_id)
+
+    class_id = request.args.get('class_id', type=int)
+    if class_id:
+        q = q.join(Student, LibraryVisit.student_id == Student.id).filter(Student.class_id == class_id)
+
+    search = (request.args.get('search') or '').strip().lower()
+    visits = q.order_by(LibraryVisit.entry_time.desc()).limit(150).all()
+
+    results = []
+    for v in visits:
+        d = v.to_dict()
+        if search:
+            st_name = (d.get('student_name') or '').lower()
+            adm_no  = (d.get('admission_no') or '').lower()
+            if search not in st_name and search not in adm_no:
+                continue
+        results.append(d)
+
+    return jsonify(results), 200
+
+
+@library_bp.route('/attendance/reports', methods=['GET'])
+@role_required(*LIBRARY_ROLES)
+def library_attendance_reports():
+    """
+    Daily, weekly, and monthly aggregate reports for library visits and average study duration.
+    """
+    sid = _school_id()
+    today = date.today()
+
+    all_today = LibraryVisit.query.filter_by(school_id=sid, visit_date=today).all()
+    durations = [v.duration_minutes for v in all_today if v.duration_minutes]
+    avg_duration = round(sum(durations) / len(durations), 1) if durations else 0
+
+    # Hourly distribution for today
+    hourly = {f"{h:02d}:00": 0 for h in range(8, 19)}
+    for v in all_today:
+        if v.entry_time:
+            hr_key = f"{v.entry_time.hour:02d}:00"
+            if hr_key in hourly:
+                hourly[hr_key] += 1
+
+    return jsonify({
+        'date':                  str(today),
+        'total_visits_today':    len(all_today),
+        'average_duration_mins': avg_duration,
+        'hourly_footfall':       [{'hour': k, 'visits': v} for k, v in hourly.items()],
+    }), 200
+

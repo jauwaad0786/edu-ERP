@@ -147,6 +147,8 @@ class FeeStructureV2(db.Model):
     frequency    = db.Column(db.String(30), default=FeeFrequency.MONTHLY.value)
     due_date_day = db.Column(db.Integer, default=10)           # 10th of every month
     is_active    = db.Column(db.Boolean, default=True)
+    status       = db.Column(db.String(20), default='ACTIVE')  # ACTIVE / INACTIVE / ARCHIVED
+    is_archived  = db.Column(db.Boolean, default=False)
     created_by   = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     created_at   = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -156,7 +158,23 @@ class FeeStructureV2(db.Model):
     def total_amount(self):
         return sum(it.amount or 0.0 for it in self.items)
 
+    def is_used(self):
+        """
+        Safeguard check: returns True if bills have already been issued for its class/session,
+        or if it is manually flagged or referenced.
+        """
+        if self.class_id:
+            from app.models.academic import Student
+            from app.models.fee_finance import FeeBill
+            st_ids = [s.id for s in Student.query.filter_by(school_id=self.school_id, class_id=self.class_id).all()]
+            if st_ids:
+                has_bills = FeeBill.query.filter(FeeBill.student_id.in_(st_ids), FeeBill.session == self.session).first() is not None
+                if has_bills:
+                    return True
+        return False
+
     def to_dict(self):
+        used = self.is_used()
         return {
             'id':           self.id,
             'school_id':    self.school_id,
@@ -167,7 +185,11 @@ class FeeStructureV2(db.Model):
             'frequency':    self.frequency,
             'due_date_day': self.due_date_day,
             'total_amount': self.total_amount(),
-            'is_active':    self.is_active,
+            'is_active':    self.is_active and not self.is_archived and self.status == 'ACTIVE',
+            'status':       'ARCHIVED' if self.is_archived else self.status,
+            'is_archived':  bool(self.is_archived or self.status == 'ARCHIVED'),
+            'is_used':      used,
+            'can_delete':   not used,
             'items':        [it.to_dict() for it in self.items],
             'created_at':   self.created_at.isoformat() if self.created_at else None,
         }

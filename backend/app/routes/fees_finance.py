@@ -254,7 +254,17 @@ def update_fee_structure(struct_id):
         struct.frequency = data['frequency']
 
     if 'items' in data:
-        # Replace items
+        # If structure is already in use by active bills, prevent modifying base amounts
+        if struct.is_used():
+            old_items = {it.fee_head_id: it.amount for it in struct.items}
+            new_items = {int(it['fee_head_id']): float(it.get('amount', 0.0)) for it in data.get('items', [])}
+            if old_items != new_items:
+                return jsonify({
+                    'error': 'Cannot alter base amounts on an in-use Fee Structure with active bills. Please create a new rate card version or archive this structure.',
+                    'can_archive': True
+                }), 409
+
+        # Replace items if safe
         FeeStructureItemV2.query.filter_by(structure_id=struct.id).delete()
         for item in data.get('items', []):
             fhi = FeeStructureItemV2(
@@ -268,6 +278,21 @@ def update_fee_structure(struct_id):
     return jsonify(struct.to_dict()), 200
 
 
+@fees_finance_bp.route('/structures/<int:struct_id>/archive', methods=['POST', 'PATCH'])
+@jwt_required()
+def archive_fee_structure(struct_id):
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    struct = FeeStructureV2.query.filter_by(id=struct_id, school_id=user.school_id).first_or_404()
+    struct.is_archived = True
+    struct.status = 'ARCHIVED'
+    struct.is_active = False
+    db.session.commit()
+    return jsonify({'message': f'Fee Structure "{struct.name}" archived successfully.', 'structure': struct.to_dict()}), 200
+
+
 @fees_finance_bp.route('/structures/<int:struct_id>', methods=['DELETE'])
 @jwt_required()
 def delete_fee_structure(struct_id):
@@ -276,6 +301,13 @@ def delete_fee_structure(struct_id):
         return jsonify({'error': 'Unauthorized'}), 401
 
     struct = FeeStructureV2.query.filter_by(id=struct_id, school_id=user.school_id).first_or_404()
+    if struct.is_used():
+        return jsonify({
+            'error': f'Rate Card "{struct.name}" is in active use by students or issued bills. Hard delete is disabled to protect financial audit integrity.',
+            'can_archive': True,
+            'suggestion': 'Please Archive / Deactivate this rate card instead.'
+        }), 409
+
     FeeStructureItemV2.query.filter_by(structure_id=struct.id).delete()
     db.session.delete(struct)
     db.session.commit()
@@ -576,6 +608,9 @@ def list_payments():
     status  = request.args.get('status')
     mode    = request.args.get('payment_mode')
     department = request.args.get('department')
+    collector_id = request.args.get('collector_id', type=int)
+    date_from = request.args.get('date_from')
+    date_to = request.args.get('date_to')
     log_type = request.args.get('type', 'ALL').upper() # ALL, INCOME, EXPENSE, SALARY
 
     results = []
@@ -589,6 +624,18 @@ def list_payments():
             q = q.filter_by(payment_mode=mode)
         if department:
             q = q.filter_by(department=department)
+        if collector_id:
+            q = q.filter_by(collected_by=collector_id)
+        if date_from:
+            try:
+                q = q.filter(FeePayment.payment_date >= date.fromisoformat(date_from))
+            except ValueError:
+                pass
+        if date_to:
+            try:
+                q = q.filter(FeePayment.payment_date <= date.fromisoformat(date_to))
+            except ValueError:
+                pass
 
         if search:
             q = q.join(Student).join(User, Student.user_id == User.id).filter(

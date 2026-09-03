@@ -57,6 +57,7 @@ import LibraryReservations from './pages/library/LibraryReservations';
 import LibraryMembers    from './pages/library/LibraryMembers';
 import LibraryFines      from './pages/library/LibraryFines';
 import LibraryReports    from './pages/library/LibraryReports';
+import LibraryAttendance from './pages/library/LibraryAttendance';
 
 // ── Hostel Management ─────────────────────────────────────────────────────
 import HostelDashboard   from './pages/hostel/HostelDashboard';
@@ -431,6 +432,11 @@ export default function App() {
             <Route path="/library/reports" element={
               <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN']}>
                 <LibraryReports />
+              </ProtectedRoute>
+            } />
+            <Route path="/library/attendance" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN', 'DIRECTOR', 'VICE_PRINCIPAL', 'TEACHER']}>
+                <LibraryAttendance />
               </ProtectedRoute>
             } />
             {/* ── Staff Attendance Management ── */}

@@ -420,3 +420,75 @@ class LibraryActivityLog(db.Model):
 def log_activity(school_id, user_id, action, details=''):
     entry = LibraryActivityLog(school_id=school_id, user_id=user_id, action=action, details=details)
     db.session.add(entry)
+
+
+class LibraryVisit(db.Model):
+    """
+    Library Attendance / Visit Management.
+    Tracks physical student presence inside the library independently from school attendance.
+    Supports barcode/QR scanning, manual entry, live inside tracking, and visit duration analysis.
+    """
+    __tablename__ = 'library_visits'
+
+    id               = db.Column(db.Integer, primary_key=True)
+    school_id        = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    student_id       = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
+
+    visit_date       = db.Column(db.Date, nullable=False, default=date.today, index=True)
+    entry_time       = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    exit_time        = db.Column(db.DateTime, nullable=True)
+    duration_minutes = db.Column(db.Integer, nullable=True)
+
+    entry_method     = db.Column(db.String(30), default='MANUAL')  # MANUAL / BARCODE / QR_CODE / RFID / STUDENT_ID
+    recorded_by      = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    status           = db.Column(db.String(20), default='INSIDE', index=True)  # INSIDE / EXITED
+    remarks          = db.Column(db.String(300), nullable=True)
+    created_at       = db.Column(db.DateTime, default=datetime.utcnow)
+
+    student  = db.relationship('Student', foreign_keys=[student_id])
+    recorder = db.relationship('User', foreign_keys=[recorded_by])
+
+    def checkout(self, exit_dt=None):
+        now = exit_dt or datetime.utcnow()
+        self.exit_time = now
+        self.status = 'EXITED'
+        if self.entry_time:
+            delta = now - self.entry_time
+            self.duration_minutes = max(1, int(delta.total_seconds() / 60))
+        return self
+
+    def to_dict(self):
+        st = self.student
+        user = st.user if st else None
+        cls = st.class_ref if st and hasattr(st, 'class_ref') and st.class_ref else (st.class_obj if st and hasattr(st, 'class_obj') else None)
+        class_name = ''
+        if cls:
+            class_name = f"{getattr(cls, 'name', '')} {getattr(cls, 'section', '')}".strip()
+        elif st and getattr(st, 'class_id', None):
+            from app.models.academic import Class
+            c = Class.query.get(st.class_id)
+            if c:
+                class_name = f"{c.name} {c.section}".strip()
+
+        rec = self.recorder
+
+        return {
+            'id':               self.id,
+            'school_id':        self.school_id,
+            'student_id':       self.student_id,
+            'student_name':     user.name if user else '',
+            'admission_no':     st.admission_no if st else '',
+            'roll_number':      st.roll_number if st else '',
+            'class_name':       class_name,
+            'visit_date':       str(self.visit_date),
+            'entry_time':       self.entry_time.isoformat() if self.entry_time else None,
+            'exit_time':        self.exit_time.isoformat() if self.exit_time else None,
+            'duration_minutes': self.duration_minutes or (max(1, int((datetime.utcnow() - self.entry_time).total_seconds() / 60)) if self.status == 'INSIDE' and self.entry_time else None),
+            'entry_method':     self.entry_method,
+            'recorded_by':      self.recorded_by,
+            'recorder_name':    rec.name if rec else '',
+            'status':           self.status,
+            'remarks':          self.remarks or '',
+            'created_at':       self.created_at.isoformat() if self.created_at else None,
+        }
+

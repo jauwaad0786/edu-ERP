@@ -31,6 +31,7 @@ export default function LibraryDashboard() {
   const [loading, setLoading]   = useState(true);
   const [overdue, setOverdue]   = useState([]);
   const [popular, setPopular]   = useState([]);
+  const [liveAttendance, setLiveAttendance] = useState({ currently_inside_count: 0, today_entries_count: 0 });
 
   useEffect(() => {
     localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light');
@@ -42,11 +43,13 @@ export default function LibraryDashboard() {
       api.get('/library/dashboard'),
       api.get('/library/reports/overdue'),
       api.get('/library/reports/popular-books?limit=6'),
+      api.get('/library/attendance/live').catch(() => ({ data: { currently_inside_count: 0, today_entries_count: 0 } })),
     ])
-      .then(([d, o, p]) => {
-        setStats(d.data);
-        setOverdue(Array.isArray(o.data) ? o.data.slice(0, 6) : []);
-        setPopular(Array.isArray(p.data) ? p.data : []);
+      .then(([dashRes, overdueRes, popRes, attRes]) => {
+        setStats(dashRes.data || {});
+        setOverdue(Array.isArray(overdueRes.data) ? overdueRes.data.slice(0, 6) : []);
+        setPopular(Array.isArray(popRes.data) ? popRes.data : []);
+        if (attRes?.data) setLiveAttendance(attRes.data);
       })
       .catch(() => toast.error('Dashboard load nahi ho paya'))
       .finally(() => setLoading(false));
@@ -148,6 +151,19 @@ export default function LibraryDashboard() {
                   onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.16)'}
                 >
                   <i className="ti ti-books" /> Catalog Search
+                </button>
+                <button
+                  onClick={() => navigate('/library/attendance')}
+                  style={{
+                    background: 'rgba(16,185,129,0.22)', color: '#ffffff', border: '1.5px solid rgba(16,185,129,0.5)',
+                    borderRadius: '12px', padding: '11px 20px', fontSize: '13.5px', fontWeight: 800, cursor: 'pointer',
+                    backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', gap: '8px',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(16,185,129,0.35)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(16,185,129,0.22)'}
+                >
+                  <i className="ti ti-user-check" style={{ color: '#6ee7b7' }} /> Live Attendance ({liveAttendance.currently_inside_count} Inside)
                 </button>
               </div>
             </div>

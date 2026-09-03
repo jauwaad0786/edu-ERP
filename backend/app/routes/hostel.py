@@ -1130,6 +1130,12 @@ def delete_fee_structure(fs_id):
     fs = HostelFeeStructure.query.get_or_404(fs_id)
     if fs.school_id != _school_id():
         return jsonify({'error': 'Unauthorized'}), 403
+    if fs.is_used():
+        return jsonify({
+            'error': 'Hostel fee structure is actively in use. Hard delete is disabled to protect financial audit integrity.',
+            'can_archive': True,
+            'suggestion': 'Deactivate this structure instead.'
+        }), 409
     db.session.delete(fs)
     db.session.commit()
     return jsonify({'message': 'Fee structure deleted'}), 200
@@ -1780,6 +1786,25 @@ def create_hostel_fine():
     db.session.add(fee_rec)
     db.session.flush()
     fine.fee_record_id = fee_rec.id
+
+    # ── Canonical Central Finance Sync ──
+    try:
+        from app.services.fee_ledger_service import register_or_sync_service_charge
+        register_or_sync_service_charge(
+            school_id=sid,
+            student_id=student_id,
+            amount=amount,
+            fee_head_code='HOSTEL_FINE',
+            department='HOSTEL',
+            source_module='HOSTEL',
+            source_type='FINE',
+            source_ref_id=fine.id,
+            description=f"Hostel Fine: {reason.replace('_', ' ').title()}",
+            actor_user_id=user.id
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
 
     log_hostel_activity(sid, user.id, 'FINE_RAISED', f'₹{amount} fine on student #{student_id} — {reason}')
     db.session.commit()

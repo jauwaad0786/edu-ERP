@@ -839,7 +839,7 @@ def bulk_generate_fee_bills(school_id, bill_month, due_date, class_id=None, sect
 def collect_fee_payment(
     student_id, amount_paid, payment_mode='CASH', transaction_ref='',
     allocations=None, collected_by=None, remarks=None,
-    department='ACCOUNTS', session='2026-27'
+    department='ACCOUNTS', session='2026-27', skip_record_id=None
 ):
     """
     Collects student fee payment, generates unique receipt number,
@@ -990,10 +990,10 @@ def collect_fee_payment(
             lib_fines = lib_mem.fines.filter(FineTransaction.status.in_(['OUTSTANDING', 'PENDING', 'PARTIAL', 'PARTIALLY_PAID'])).all()
             for lf in lib_fines:
                 lf.status = 'PAID'
-                lf.paid_amount = lf.amount
+                lf.amount_paid = lf.amount
                 lf.paid_at = datetime.utcnow()
-                lf.payment_reference = payment.receipt_no
-                lf.collected_by = collected_by.id if collected_by else None
+                lf.receipt_no = payment.receipt_no
+                lf.collected_by = collected_by.id if (collected_by and hasattr(collected_by, 'id')) else None
 
         # 3. Sync Legacy FeeRecord if present
         from app.models.financial import FeeRecord
@@ -1002,6 +1002,8 @@ def collect_fee_payment(
             FeeRecord.status.in_(['PENDING', 'PARTIAL', 'PARTIALLY_PAID'])
         ).all()
         for lr in legacy_recs:
+            if skip_record_id and lr.id == skip_record_id:
+                continue
             rem_due = max(0.0, round(lr.effective_due() - (lr.amount_paid or 0.0), 2))
             if rem_due > 0 and amount_paid >= rem_due:
                 lr.amount_paid = lr.effective_due()
