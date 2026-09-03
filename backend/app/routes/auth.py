@@ -15,7 +15,58 @@ from app.services.permission_resolver import ensure_role_assignment_for_user
 from datetime import datetime
 import re
 
+from app.models.otp import OTPPurpose
+from app.services.communication.msg91_service import MSG91Service
+from app.services.communication.otp_service import OTPService
+
 auth_bp = Blueprint('auth', __name__)
+
+
+def _is_email(identifier):
+    """Detect whether identifier is an email address."""
+    s = str(identifier or '').strip()
+    return '@' in s and '.' in s
+
+
+def _find_user_by_identifier(raw_identifier):
+    """Find user by email, username, phone, or Driver mobile number."""
+    from app.models.transport import Driver
+
+    if not raw_identifier:
+        return None
+
+    raw_str = str(raw_identifier).strip()
+    identifier = raw_str.lower()
+
+    # 1. Try email
+    user = User.query.filter(sqlfunc.lower(User.email) == identifier).first()
+    if user:
+        return user
+
+    # 2. Try username
+    user = User.query.filter(sqlfunc.lower(User.username) == identifier).first()
+    if user:
+        return user
+
+    # 3. Try phone/mobile number on User model
+    clean_phone = re.sub(r'\D', '', raw_str)
+    user = User.query.filter(User.phone == raw_str).first()
+    if not user and clean_phone and len(clean_phone) >= 10:
+        user = User.query.filter(User.phone.endswith(clean_phone[-10:])).first()
+    if user:
+        return user
+
+    # 4. Try Driver profile mobile_number lookup
+    if clean_phone and len(clean_phone) >= 10:
+        driver = Driver.query.filter(Driver.mobile_number == raw_str).first()
+        if not driver:
+            driver = Driver.query.filter(Driver.mobile_number.endswith(clean_phone[-10:])).first()
+        if driver and driver.user_id:
+            user = db.session.get(User, driver.user_id)
+            if user:
+                return user
+
+    return None
 
 
 def _serialize_user(user):
@@ -324,13 +375,238 @@ def change_password():
     return jsonify({'message': 'Password updated successfully'}), 200
 
 
-# ── Forgot password (admin-handled) ──────────────────────────────────────────
+# ── Send Login OTP ────────────────────────────────────────────────────────────
+@auth_bp.route('/send-login-otp', methods=['POST'])
+@limiter.limit("10 per minute")
+def send_login_otp():
+    """
+    POST /api/v1/auth/send-login-otp
+    Accepts identifier (mobile or email).
+    Sends 6-digit OTP via MSG91 (SMS or Email).
+    Returns generic response to prevent account enumeration.
+    """
+    data = request.get_json() or {}
+    raw_identifier = (data.get('identifier') or data.get('mobile_number') or data.get('email') or '').strip()
+
+    if not raw_identifier:
+        return jsonify({'error': 'Mobile number or email identifier is required'}), 400
+
+    user = _find_user_by_identifier(raw_identifier)
+
+    if user and user.is_active:
+        user_id = user.id
+        school_id = user.school_id
+        target_phone = user.phone or (None if _is_email(raw_identifier) else raw_identifier)
+        target_email = user.email
+
+        otp, record, err = OTPService.create_otp(
+            identifier=raw_identifier,
+            purpose=OTPPurpose.LOGIN,
+            user_id=user_id,
+            school_id=school_id
+        )
+        if err:
+            return jsonify({'error': err}), 429
+
+        # Dispatch via MSG91
+        if _is_email(raw_identifier) and target_email:
+            MSG91Service.send_email_otp(target_email, otp)
+        elif target_phone:
+            MSG91Service.send_otp(target_phone, otp)
+        elif target_email:
+            MSG91Service.send_email_otp(target_email, otp)
+
+    return jsonify({
+        'success': True,
+        'message': 'If the account exists, an OTP has been sent.'
+    }), 200
+
+
+# ── Verify Login OTP ──────────────────────────────────────────────────────────
+@auth_bp.route('/verify-otp', methods=['POST'])
+@limiter.limit("20 per minute")
+def verify_otp():
+    """
+    POST /api/v1/auth/verify-otp
+    Accepts identifier and 6-digit otp.
+    Validates attempt limits, expiration, consumes OTP.
+    Returns access_token, refresh_token, and serialized user.
+    """
+    data = request.get_json() or {}
+    raw_identifier = (data.get('identifier') or data.get('mobile_number') or data.get('email') or '').strip()
+    otp = (data.get('otp') or '').strip()
+
+    if not raw_identifier or not otp:
+        return jsonify({'error': 'Identifier and OTP are required'}), 400
+
+    is_valid, msg, record = OTPService.verify_otp(
+        identifier=raw_identifier,
+        raw_otp=otp,
+        purpose=OTPPurpose.LOGIN
+    )
+
+    if not is_valid:
+        return jsonify({'error': msg}), 400
+
+    user = None
+    if record and record.user_id:
+        user = User.query.get(record.user_id)
+    if not user:
+        user = _find_user_by_identifier(raw_identifier)
+
+    if not user:
+        return jsonify({'error': 'Account not found. Please contact your school administrator.'}), 404
+
+    if not user.is_active:
+        return jsonify({'error': 'Account deactivated. Contact your administrator.'}), 403
+
+    user.touch_last_login()
+    db.session.commit()
+
+    access_token  = create_access_token(identity=str(user.id))
+    refresh_token = create_refresh_token(identity=str(user.id))
+
+    return jsonify({
+        'access_token':  access_token,
+        'refresh_token': refresh_token,
+        'user':          _serialize_user(user),
+    }), 200
+
+
+# ── Resend OTP ────────────────────────────────────────────────────────────────
+@auth_bp.route('/resend-otp', methods=['POST'])
+@limiter.limit("10 per minute")
+def resend_otp():
+    """
+    POST /api/v1/auth/resend-otp
+    Resends OTP with cooldown enforcement.
+    """
+    data = request.get_json() or {}
+    raw_identifier = (data.get('identifier') or data.get('mobile_number') or data.get('email') or '').strip()
+    purpose = (data.get('purpose') or OTPPurpose.LOGIN).upper()
+
+    if not raw_identifier:
+        return jsonify({'error': 'Identifier is required'}), 400
+
+    user = _find_user_by_identifier(raw_identifier)
+    if user and user.is_active:
+        otp, record, err = OTPService.create_otp(
+            identifier=raw_identifier,
+            purpose=purpose,
+            user_id=user.id,
+            school_id=user.school_id
+        )
+        if err:
+            return jsonify({'error': err}), 429
+
+        target_phone = user.phone or (None if _is_email(raw_identifier) else raw_identifier)
+        target_email = user.email
+
+        if _is_email(raw_identifier) and target_email:
+            MSG91Service.send_email_otp(target_email, otp)
+        elif target_phone:
+            MSG91Service.send_otp(target_phone, otp)
+        elif target_email:
+            MSG91Service.send_email_otp(target_email, otp)
+
+    return jsonify({
+        'success': True,
+        'message': 'If the account exists, a new OTP has been sent.'
+    }), 200
+
+
+# ── Forgot password (OTP-powered self-service) ───────────────────────────────
 @auth_bp.route('/forgot-password', methods=['POST'])
 @limiter.limit("5 per minute")
 def forgot_password():
-    return jsonify({
-        'message': (
-            'Password resets are handled by your administrator. '
-            'Please contact your school admin to reset your password.'
+    """
+    POST /api/v1/auth/forgot-password
+    Generates password reset OTP for registered mobile or email.
+    """
+    data = request.get_json() or {}
+    raw_identifier = (data.get('identifier') or data.get('mobile_number') or data.get('email') or '').strip()
+
+    if not raw_identifier:
+        return jsonify({'error': 'Identifier (email or mobile number) is required'}), 400
+
+    user = _find_user_by_identifier(raw_identifier)
+    if user and user.is_active:
+        otp, record, err = OTPService.create_otp(
+            identifier=raw_identifier,
+            purpose=OTPPurpose.PASSWORD_RESET,
+            user_id=user.id,
+            school_id=user.school_id
         )
+        if err:
+            return jsonify({'error': err}), 429
+
+        target_phone = user.phone or (None if _is_email(raw_identifier) else raw_identifier)
+        target_email = user.email
+
+        if _is_email(raw_identifier) and target_email:
+            MSG91Service.send_email_otp(target_email, otp)
+        elif target_phone:
+            MSG91Service.send_otp(target_phone, otp)
+        elif target_email:
+            MSG91Service.send_email_otp(target_email, otp)
+
+    return jsonify({
+        'success': True,
+        'message': 'If the account exists, a password reset OTP has been sent.'
     }), 200
+
+
+# ── Reset password via OTP ───────────────────────────────────────────────────
+@auth_bp.route('/reset-password', methods=['POST'])
+@limiter.limit("5 per minute")
+def reset_password():
+    """
+    POST /api/v1/auth/reset-password
+    Resets password after verifying PASSWORD_RESET OTP.
+    """
+    data = request.get_json() or {}
+    raw_identifier = (data.get('identifier') or data.get('mobile_number') or data.get('email') or '').strip()
+    otp = (data.get('otp') or '').strip()
+    new_password = (data.get('new_password') or '').strip()
+
+    if not raw_identifier or not otp or not new_password:
+        return jsonify({'error': 'Identifier, OTP, and new password are required'}), 400
+
+    if len(new_password) < 6:
+        return jsonify({'error': 'New password must be at least 6 characters'}), 400
+
+    is_valid, msg, record = OTPService.verify_otp(
+        identifier=raw_identifier,
+        raw_otp=otp,
+        purpose=OTPPurpose.PASSWORD_RESET
+    )
+
+    if not is_valid:
+        return jsonify({'error': msg}), 400
+
+    user = None
+    if record and record.user_id:
+        user = User.query.get(record.user_id)
+    if not user:
+        user = _find_user_by_identifier(raw_identifier)
+
+    if not user:
+        return jsonify({'error': 'Account not found.'}), 404
+
+    user.set_password(new_password, store_plain=False)
+    db.session.commit()
+
+    return jsonify({
+        'success': True,
+        'message': 'Password has been reset successfully. Please login with your new password.'
+    }), 200
+
+
+# ── Logout ───────────────────────────────────────────────────────────────────
+@auth_bp.route('/logout', methods=['POST'])
+def logout():
+    """
+    POST /api/v1/auth/logout
+    Client clears stored JWTs; server returns confirmation.
+    """
+    return jsonify({'success': True, 'message': 'Logged out successfully'}), 200

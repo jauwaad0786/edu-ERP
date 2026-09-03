@@ -124,6 +124,8 @@ def create_app(config_name='default'):
     app.register_blueprint(webhook_bp, url_prefix='/api/webhooks')
     app.register_blueprint(tickets_bp,       url_prefix='/api/support/tickets')
     app.register_blueprint(notifications_bp, url_prefix='/api/support/notifications')
+    app.register_blueprint(notifications_bp, url_prefix='/api/v1/notifications', name='notifications_v1_bp')
+    app.register_blueprint(notifications_bp, url_prefix='/api/notifications', name='notifications_alias_bp')
     app.register_blueprint(meetings_bp,      url_prefix='/api/support/meetings')
     app.register_blueprint(announcements_bp, url_prefix='/api/support/announcements')
     app.register_blueprint(chat_bp,          url_prefix='/api/support/chat')
@@ -131,6 +133,7 @@ def create_app(config_name='default'):
     app.register_blueprint(marks_bp,        url_prefix='/api/marks')
     app.register_blueprint(result_bp,       url_prefix='/api/results')
     app.register_blueprint(auth_bp,         url_prefix='/api/auth')
+    app.register_blueprint(auth_bp,         url_prefix='/api/v1/auth', name='auth_v1_bp')
     app.register_blueprint(admin_bp,        url_prefix='/api/admin')
     app.register_blueprint(principal_bp,    url_prefix='/api/principal')
     app.register_blueprint(teacher_bp,      url_prefix='/api/teacher')
@@ -152,6 +155,8 @@ def create_app(config_name='default'):
             from app.models import hrms as hrms_models  # noqa: F401
             from app.models import fee_finance as fee_finance_models  # noqa: F401
             from app.models import finance as finance_models  # noqa: F401
+            from app.models import otp as otp_models  # noqa: F401
+            from app.models import device as device_models  # noqa: F401
             _ensure_school_columns()
             _ensure_user_columns()
             _ensure_teacher_columns()
@@ -633,6 +638,24 @@ def _ensure_communication_columns():
                     conn.commit()
                 except Exception as e:
                     print(f'[WARN] chat_messages index creation: {e}')
+
+        # 3. support_notifications columns (created_by, priority, metadata_json)
+        if 'support_notifications' in table_names:
+            notif_cols = {c['name'] for c in inspector.get_columns('support_notifications')}
+            to_add_notif = {
+                'created_by': 'INTEGER REFERENCES users(id)',
+                'priority': "VARCHAR(20) DEFAULT 'MEDIUM'",
+                'metadata_json': "TEXT DEFAULT '{}'",
+            }
+            with db.engine.connect() as conn:
+                for col, defn in to_add_notif.items():
+                    if col not in notif_cols:
+                        try:
+                            conn.execute(text(f'ALTER TABLE support_notifications ADD COLUMN {col} {defn}'))
+                            conn.commit()
+                            print(f'[OK] Added column support_notifications.{col}')
+                        except Exception as e:
+                            print(f'[WARN] support_notifications.{col}: {e}')
     except Exception as e:
         print(f'[WARN] _ensure_communication_columns error: {e}')
 

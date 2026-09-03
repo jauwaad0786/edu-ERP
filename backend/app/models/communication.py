@@ -225,22 +225,39 @@ class SupportNotification(db.Model):
     message    = db.Column(db.String(500), default='')
     notif_type = db.Column(db.String(30),  default='TICKET')
     # TICKET / CHAT / MEETING / ANNOUNCEMENT / SYSTEM
-    is_read    = db.Column(db.Boolean,  default=False)
-    read_at    = db.Column(db.DateTime, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_by    = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    priority      = db.Column(db.String(20), default='MEDIUM')
+    metadata_json = db.Column(db.Text, default='{}')
+    is_read       = db.Column(db.Boolean,  default=False)
+    read_at       = db.Column(db.DateTime, nullable=True)
+    created_at    = db.Column(db.DateTime, default=datetime.utcnow)
 
     def to_dict(self):
+        import json
+        meta = {}
+        try:
+            if self.metadata_json:
+                meta = json.loads(self.metadata_json)
+        except Exception:
+            meta = {}
+
         return {
-            'id':         self.id,
-            'user_id':    self.user_id,
-            'ticket_id':  self.ticket_id,
-            'school_id':  self.school_id,
-            'title':      self.title,
-            'message':    self.message,
-            'notif_type': self.notif_type,
-            'is_read':    self.is_read,
-            'read_at':    self.read_at.isoformat()   if self.read_at   else None,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'id':                self.id,
+            'notification_id':   self.id,
+            'user_id':           self.user_id,
+            'recipient_user_id': self.user_id,
+            'ticket_id':         self.ticket_id,
+            'school_id':         self.school_id,
+            'created_by':        self.created_by,
+            'title':             self.title,
+            'message':           self.message,
+            'type':              self.notif_type,
+            'notif_type':        self.notif_type,
+            'priority':          self.priority or 'MEDIUM',
+            'metadata':          meta,
+            'is_read':           self.is_read,
+            'read_at':           self.read_at.isoformat()   if self.read_at   else None,
+            'created_at':        self.created_at.isoformat() if self.created_at else None,
         }
 
 

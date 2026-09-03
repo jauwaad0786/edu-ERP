@@ -71,13 +71,21 @@ export function AuthProvider({ children }) {
     return data.user;
   };
 
+  const otpLogin = async (identifier, otp) => {
+    const { data } = await api.post('/auth/verify-otp', { identifier, otp });
+    localStorage.setItem('access_token',  data.access_token);
+    localStorage.setItem('refresh_token', data.refresh_token);
+    setUser(data.user);
+    return data.user;
+  };
+
   const logout = () => {
     localStorage.clear();
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, studentLogin, logout, loading, refreshUser }}>
+    <AuthContext.Provider value={{ user, login, otpLogin, studentLogin, logout, loading, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

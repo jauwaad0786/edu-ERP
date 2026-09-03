@@ -1,8 +1,81 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import api from '../api/axios';
 
 function ForgotPasswordModal({ onClose }) {
+  const [step, setStep] = useState(1); // 1: Enter email/phone, 2: Enter OTP & New Password
+  const [identifier, setIdentifier] = useState('');
+  const [otp, setOtp] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [error, setError] = useState('');
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    let timer;
+    if (cooldown > 0) {
+      timer = setTimeout(() => setCooldown(c => c - 1), 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [cooldown]);
+
+  const handleSendOtp = async (e) => {
+    e.preventDefault();
+    if (!identifier.trim()) {
+      setError('Please enter your registered mobile number or email.');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    setMsg('');
+    try {
+      const res = await api.post('/auth/forgot-password', { identifier: identifier.trim() });
+      setMsg(res.data?.message || 'If the account exists, a password reset code has been sent.');
+      setCooldown(60);
+      setStep(2);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to send reset code. Please check your details.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    if (!otp.trim() || !newPassword.trim()) {
+      setError('Please enter the verification OTP and new password.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setError('New password must be at least 6 characters long.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match. Please re-enter.');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const res = await api.post('/auth/reset-password', {
+        identifier: identifier.trim(),
+        otp: otp.trim(),
+        new_password: newPassword.trim(),
+      });
+      setMsg(res.data?.message || 'Password reset successfully! You can now log in.');
+      setTimeout(() => {
+        onClose();
+      }, 1800);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Invalid or expired OTP. Please check and try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="fp-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="fp-card">
@@ -10,13 +83,102 @@ function ForgotPasswordModal({ onClose }) {
           <h3>Reset Password</h3>
           <button className="fp-close" onClick={onClose} aria-label="Close">&times;</button>
         </div>
-        <p className="fp-text">
-          For institutional security, password resets are verified and managed by your school administrator.
-        </p>
-        <p className="fp-text">
-          Please contact your school administration office with your registered details to receive temporary reset credentials.
-        </p>
-        <button className="fp-ok" onClick={onClose}>Understood</button>
+
+        {error && (
+          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12 }}>
+            {error}
+          </div>
+        )}
+
+        {msg && (
+          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12 }}>
+            {msg}
+          </div>
+        )}
+
+        {step === 1 ? (
+          <form onSubmit={handleSendOtp}>
+            <p className="fp-text">
+              Enter your registered mobile number or email address. We will send you an OTP code to reset your password.
+            </p>
+            <div style={{ marginBottom: 14 }}>
+              <input
+                type="text"
+                className="input-field"
+                placeholder="Mobile number (10 digits) or Email"
+                value={identifier}
+                onChange={e => setIdentifier(e.target.value)}
+                required
+                autoFocus
+              />
+            </div>
+            <button type="submit" className="fp-ok" disabled={loading}>
+              {loading ? 'Sending Code...' : 'Send Reset OTP'}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleResetPassword}>
+            <p className="fp-text" style={{ marginBottom: 8 }}>
+              Enter the 6-digit OTP code sent to <strong>{identifier}</strong> and set your new password.
+            </p>
+            <div style={{ marginBottom: 10 }}>
+              <input
+                type="text"
+                className="input-field"
+                placeholder="6-Digit OTP"
+                maxLength={6}
+                value={otp}
+                onChange={e => setOtp(e.target.value)}
+                required
+                autoFocus
+              />
+            </div>
+            <div style={{ marginBottom: 10 }}>
+              <input
+                type="password"
+                className="input-field"
+                placeholder="New Password (min 6 characters)"
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+                required
+              />
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <input
+                type="password"
+                className="input-field"
+                placeholder="Confirm New Password"
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+                required
+              />
+            </div>
+            <button type="submit" className="fp-ok" disabled={loading}>
+              {loading ? 'Resetting Password...' : 'Save New Password'}
+            </button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, fontSize: 12 }}>
+              <button
+                type="button"
+                onClick={handleSendOtp}
+                disabled={cooldown > 0 || loading}
+                style={{ background: 'none', border: 'none', color: cooldown > 0 ? '#94a3b8' : '#0176d3', cursor: cooldown > 0 ? 'default' : 'pointer', padding: 0 }}
+              >
+                {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend OTP'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setStep(1); setError(''); setMsg(''); }}
+                style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: 0 }}
+              >
+                Change identifier
+              </button>
+            </div>
+          </form>
+        )}
+
+        <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #f1f5f9', fontSize: 11, color: '#94a3b8', textAlign: 'center' }}>
+          For school administrator assistance, contact your institutional administration office.
+        </div>
       </div>
     </div>
   );
@@ -25,11 +187,26 @@ function ForgotPasswordModal({ onClose }) {
 export default function Login() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { login, studentLogin } = useAuth();
+  const { login, otpLogin, studentLogin } = useAuth();
 
   // Role mode: 'staff' (Principal/Teacher/Admin) vs 'student' (Student/Parent)
   const [activeTab, setActiveTab] = useState('staff');
   const [showForgot, setShowForgot] = useState(false);
+
+  // Auth method: 'password' | 'otp'
+  const [authMethod, setAuthMethod] = useState('password');
+  const [otpStep, setOtpStep] = useState(1); // 1: Send OTP, 2: Enter OTP
+  const [otpValue, setOtpValue] = useState('');
+  const [otpCooldown, setOtpCooldown] = useState(0);
+  const [otpSentMsg, setOtpSentMsg] = useState('');
+
+  useEffect(() => {
+    let timer;
+    if (otpCooldown > 0) {
+      timer = setTimeout(() => setOtpCooldown(c => c - 1), 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [otpCooldown]);
 
   // Staff credentials
   const [identifier, setIdentifier] = useState('');
@@ -57,6 +234,45 @@ export default function Login() {
       navigate('/dashboard');
     } catch (err) {
       setError(err.response?.data?.error || 'Login failed. Please check your credentials.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSendLoginOtp = async e => {
+    if (e) e.preventDefault();
+    if (!identifier.trim()) {
+      setError('Please enter your registered mobile number or email.');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    setOtpSentMsg('');
+    try {
+      const res = await api.post('/auth/send-login-otp', { identifier: identifier.trim() });
+      setOtpSentMsg(res.data?.message || 'If the account exists, an OTP has been sent.');
+      setOtpCooldown(60);
+      setOtpStep(2);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to send OTP. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyLoginOtp = async e => {
+    e.preventDefault();
+    if (!otpValue.trim()) {
+      setError('Please enter the 6-digit OTP code.');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      await otpLogin(identifier.trim(), otpValue.trim());
+      navigate('/dashboard');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Verification failed. Please check the OTP.');
     } finally {
       setLoading(false);
     }
@@ -549,6 +765,51 @@ export default function Login() {
           margin-top: 8px;
         }
 
+        .or-divider {
+          display: flex;
+          align-items: center;
+          margin: 18px 0 14px;
+          text-align: center;
+        }
+
+        .or-divider::before,
+        .or-divider::after {
+          content: '';
+          flex: 1;
+          border-bottom: 1px solid #e2e8f0;
+        }
+
+        .or-divider span {
+          padding: 0 10px;
+          color: #94a3b8;
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.5px;
+        }
+
+        .switch-auth-btn {
+          width: 100%;
+          padding: 11px 16px;
+          border-radius: 9px;
+          background: #ffffff;
+          color: #032d60;
+          border: 1.5px solid #cbd5e1;
+          font-size: 13px;
+          font-weight: 700;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          transition: all 0.15s ease-in-out;
+        }
+
+        .switch-auth-btn:hover {
+          background: #f8fafc;
+          border-color: #0176d3;
+          color: #0176d3;
+        }
+
         @media (max-width: 900px) {
           .login-wrapper { flex-direction: column; }
           .login-sidebar { width: 100%; padding: 32px 24px; }
@@ -741,66 +1002,185 @@ export default function Login() {
               </button>
             </form>
           ) : activeTab === 'staff' ? (
-            /* Staff / Principal Login Form */
-            <form onSubmit={handleStaffLogin}>
-              <div className="input-group">
-                <label className="input-label">Email, Mobile or Username</label>
-                <div className="input-box-wrap">
-                  <i className="ti ti-user input-box-icon" />
-                  <input
-                    type="text"
-                    className="input-field"
-                    placeholder="e.g. principal@school.com, 9876543210, or user_01"
-                    value={identifier}
-                    onChange={e => setIdentifier(e.target.value)}
-                    required
-                    autoFocus
-                  />
+            authMethod === 'password' ? (
+              /* Staff Password Login */
+              <form onSubmit={handleStaffLogin}>
+                <div className="input-group">
+                  <label className="input-label">Email, Mobile or Username</label>
+                  <div className="input-box-wrap">
+                    <i className="ti ti-user input-box-icon" />
+                    <input
+                      type="text"
+                      className="input-field"
+                      placeholder="e.g. principal@school.com, 9876543210, or user_01"
+                      value={identifier}
+                      onChange={e => setIdentifier(e.target.value)}
+                      required
+                      autoFocus
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div className="input-group">
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <label className="input-label" style={{ margin: 0 }}>Password</label>
-                  <button
-                    type="button"
-                    className="forgot-link"
-                    onClick={() => setShowForgot(true)}
-                  >
-                    Forgot Password?
-                  </button>
+                <div className="input-group">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <label className="input-label" style={{ margin: 0 }}>Password</label>
+                    <button
+                      type="button"
+                      className="forgot-link"
+                      onClick={() => setShowForgot(true)}
+                    >
+                      Forgot Password?
+                    </button>
+                  </div>
+                  <div className="input-box-wrap">
+                    <i className="ti ti-lock input-box-icon" />
+                    <input
+                      type="password"
+                      className="input-field"
+                      placeholder="Enter your account password"
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      required
+                    />
+                  </div>
                 </div>
-                <div className="input-box-wrap">
-                  <i className="ti ti-lock input-box-icon" />
-                  <input
-                    type="password"
-                    className="input-field"
-                    placeholder="Enter your account password"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
 
-              <button
-                type="submit"
-                className="submit-btn"
-                disabled={loading}
-              >
-                {loading ? (
-                  <>
-                    <i className="ti ti-loader-2 ti-spin" />
-                    <span>Signing In...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Sign In to School ERP</span>
-                    <i className="ti ti-arrow-right" />
-                  </>
+                <button
+                  type="submit"
+                  className="submit-btn"
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <>
+                      <i className="ti ti-loader-2 ti-spin" />
+                      <span>Signing In...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Sign In to School ERP</span>
+                      <i className="ti ti-arrow-right" />
+                    </>
+                  )}
+                </button>
+
+                <div className="or-divider">
+                  <span>OR</span>
+                </div>
+                <button
+                  type="button"
+                  className="switch-auth-btn"
+                  onClick={() => { setAuthMethod('otp'); setOtpStep(1); setError(''); }}
+                >
+                  <i className="ti ti-device-mobile-message" style={{ fontSize: 16 }} />
+                  <span>Login with OTP (Mobile / Email)</span>
+                </button>
+              </form>
+            ) : (
+              /* Staff OTP Login */
+              <form onSubmit={otpStep === 1 ? handleSendLoginOtp : handleVerifyLoginOtp}>
+                {otpSentMsg && (
+                  <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 14 }}>
+                    <i className="ti ti-circle-check" style={{ marginRight: 6 }} />
+                    {otpSentMsg}
+                  </div>
                 )}
-              </button>
-            </form>
+
+                <div className="input-group">
+                  <label className="input-label">Registered Mobile Number or Email</label>
+                  <div className="input-box-wrap">
+                    <i className="ti ti-user-check input-box-icon" />
+                    <input
+                      type="text"
+                      className="input-field"
+                      placeholder="e.g. 9876543210 or principal@school.com"
+                      value={identifier}
+                      onChange={e => setIdentifier(e.target.value)}
+                      required
+                      disabled={otpStep === 2}
+                      autoFocus={otpStep === 1}
+                    />
+                  </div>
+                </div>
+
+                {otpStep === 2 && (
+                  <div className="input-group">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <label className="input-label" style={{ margin: 0 }}>Enter 6-Digit OTP</label>
+                      <button
+                        type="button"
+                        className="forgot-link"
+                        onClick={() => { setOtpStep(1); setOtpValue(''); setError(''); }}
+                      >
+                        Change identifier
+                      </button>
+                    </div>
+                    <div className="input-box-wrap">
+                      <i className="ti ti-shield-check input-box-icon" />
+                      <input
+                        type="text"
+                        className="input-field"
+                        placeholder="e.g. 123456"
+                        maxLength={6}
+                        value={otpValue}
+                        onChange={e => setOtpValue(e.target.value)}
+                        required
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  className="submit-btn"
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <>
+                      <i className="ti ti-loader-2 ti-spin" />
+                      <span>{otpStep === 1 ? 'Sending OTP Code...' : 'Verifying OTP...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>{otpStep === 1 ? 'Send Verification OTP' : 'Verify & Sign In'}</span>
+                      <i className="ti ti-arrow-right" />
+                    </>
+                  )}
+                </button>
+
+                {otpStep === 2 && (
+                  <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
+                    <button
+                      type="button"
+                      onClick={handleSendLoginOtp}
+                      disabled={otpCooldown > 0 || loading}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: otpCooldown > 0 ? '#94a3b8' : '#0176d3',
+                        cursor: otpCooldown > 0 ? 'default' : 'pointer',
+                        fontSize: 13,
+                        fontWeight: 600
+                      }}
+                    >
+                      {otpCooldown > 0 ? `Resend OTP in ${otpCooldown}s` : 'Resend OTP'}
+                    </button>
+                  </div>
+                )}
+
+                <div className="or-divider">
+                  <span>OR</span>
+                </div>
+                <button
+                  type="button"
+                  className="switch-auth-btn"
+                  onClick={() => { setAuthMethod('password'); setError(''); }}
+                >
+                  <i className="ti ti-lock" style={{ fontSize: 16 }} />
+                  <span>Sign In with Password</span>
+                </button>
+              </form>
+            )
           ) : (
             /* Student / Parent Login Form */
             <form onSubmit={handleStudentLogin}>

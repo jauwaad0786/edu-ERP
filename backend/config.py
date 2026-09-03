@@ -19,6 +19,16 @@ class Config:
     UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', 'uploads/')
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max upload
 
+    # MSG91 Communication Configuration
+    MSG91_AUTH_KEY = os.environ.get('MSG91_AUTH_KEY')
+    MSG91_OTP_TEMPLATE_ID = os.environ.get('MSG91_OTP_TEMPLATE_ID')
+    MSG91_SMS_FLOW_ID = os.environ.get('MSG91_SMS_FLOW_ID')
+    MSG91_SENDER_ID = os.environ.get('MSG91_SENDER_ID')
+    MSG91_EMAIL_DOMAIN = os.environ.get('MSG91_EMAIL_DOMAIN')
+    MSG91_EMAIL_FROM_EMAIL = os.environ.get('MSG91_EMAIL_FROM_EMAIL')
+    MSG91_EMAIL_FROM_NAME = os.environ.get('MSG91_EMAIL_FROM_NAME', 'Edu ERP')
+    MSG91_EMAIL_TEMPLATE_ID = os.environ.get('MSG91_EMAIL_TEMPLATE_ID')
+
 class DevelopmentConfig(Config):
     DEBUG = True
 

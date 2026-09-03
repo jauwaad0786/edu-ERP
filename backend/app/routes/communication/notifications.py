@@ -1,6 +1,9 @@
 from flask import Blueprint, request, jsonify
 from app import db
+from app.models.user import UserRole
 from app.models.communication import SupportNotification
+from app.models.device import UserDevice
+from app.services.communication.notification_service import NotificationService
 from app.utils.decorators import role_required, get_current_user
 from datetime import datetime
 
@@ -155,3 +158,139 @@ def clear_all():
     SupportNotification.query.filter_by(user_id=user.id).delete()
     db.session.commit()
     return jsonify({'message': 'All notifications cleared'}), 200
+
+
+# ─── 7. Mark All Read (standard alias) ────────────────────────────────────────
+@notifications_bp.route('/read-all', methods=['PATCH'])
+@role_required(*ALL_COMMUNICATION_ROLES)
+def read_all():
+    return mark_all_read()
+
+
+# ─── 8. Broadcast / Send Notification (Principal & Super Admin) ──────────────
+@notifications_bp.route('/send', methods=['POST'])
+@role_required('SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL')
+def send_broadcast():
+    """
+    POST /api/v1/notifications/send
+    Body: {
+      title, message, audience, selected_user_ids,
+      channels, priority, target_school_ids, target_roles
+    }
+    """
+    user = get_current_user()
+    data = request.get_json() or {}
+
+    title = (data.get('title') or '').strip()
+    message = (data.get('message') or '').strip()
+
+    if not title or not message:
+        return jsonify({'error': 'Title and message are required'}), 400
+
+    audience = (data.get('audience') or 'ALL').upper()
+    selected_user_ids = data.get('selected_user_ids')
+    channels = data.get('channels') or ['in_app']
+    priority = (data.get('priority') or 'MEDIUM').upper()
+
+    # Multi-tenant scoping: Super Admin vs Principal
+    if user.role == UserRole.SUPER_ADMIN:
+        target_school_ids = data.get('target_school_ids')
+        target_roles = data.get('target_roles')
+        created = NotificationService.broadcast_platform_notification(
+            sender_user=user,
+            title=title,
+            message=message,
+            target_school_ids=target_school_ids,
+            target_roles=target_roles,
+            channels=channels,
+            priority=priority
+        )
+    else:
+        # Principal & Vice Principal can ONLY target their own school
+        school_id = user.school_id
+        if not school_id:
+            return jsonify({'error': 'User has no associated school'}), 400
+
+        created = NotificationService.broadcast_school_notification(
+            school_id=school_id,
+            sender_user=user,
+            title=title,
+            message=message,
+            target_audience=audience,
+            selected_user_ids=selected_user_ids,
+            channels=channels,
+            priority=priority
+        )
+
+    return jsonify({
+        'success': True,
+        'count': len(created),
+        'message': f'Notification dispatched to {len(created)} recipient(s)'
+    }), 201
+
+
+# ─── 9. Register Push Device Token ────────────────────────────────────────────
+@notifications_bp.route('/devices/register', methods=['POST'])
+@role_required(*ALL_COMMUNICATION_ROLES)
+def register_device():
+    """
+    POST /api/v1/notifications/devices/register
+    Body: { device_token, platform: 'web'|'android'|'ios'|'pwa' }
+    """
+    user = get_current_user()
+    data = request.get_json() or {}
+    device_token = (data.get('device_token') or '').strip()
+    platform = (data.get('platform') or 'web').strip().lower()
+
+    if not device_token:
+        return jsonify({'error': 'device_token is required'}), 400
+
+    device = UserDevice.query.filter_by(
+        user_id=user.id,
+        device_token=device_token
+    ).first()
+
+    if not device:
+        device = UserDevice(
+            user_id=user.id,
+            school_id=user.school_id,
+            device_token=device_token,
+            platform=platform,
+            is_active=True,
+            last_seen=datetime.utcnow()
+        )
+        db.session.add(device)
+    else:
+        device.is_active = True
+        device.platform = platform
+        device.last_seen = datetime.utcnow()
+
+    db.session.commit()
+    return jsonify({'success': True, 'device': device.to_dict()}), 200
+
+
+# ─── 10. Unregister Push Device Token ─────────────────────────────────────────
+@notifications_bp.route('/devices/unregister', methods=['POST'])
+@role_required(*ALL_COMMUNICATION_ROLES)
+def unregister_device():
+    """
+    POST /api/v1/notifications/devices/unregister
+    Body: { device_token }
+    """
+    user = get_current_user()
+    data = request.get_json() or {}
+    device_token = (data.get('device_token') or '').strip()
+
+    if not device_token:
+        return jsonify({'error': 'device_token is required'}), 400
+
+    device = UserDevice.query.filter_by(
+        user_id=user.id,
+        device_token=device_token
+    ).first()
+
+    if device:
+        device.is_active = False
+        db.session.commit()
+
+    return jsonify({'success': True, 'message': 'Device unregistered successfully'}), 200
