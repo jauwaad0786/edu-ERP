@@ -35,79 +35,6 @@ const ROLE_MENUS = {
       ],
     },
     {
-      group: 'School & Fees Operations',
-      items: [
-        {
-          icon: 'ti-currency-rupee', label: 'Finance & Fees', path: '/finance/dashboard',
-          children: [
-            { icon: 'ti-layout-dashboard', label: 'Dashboard',         path: '/finance/dashboard' },
-            { icon: 'ti-file-invoice',     label: 'Fees',              path: '/finance/bills' },
-            { icon: 'ti-credit-card',      label: 'Payments',          path: '/finance/payments/collect' },
-            { icon: 'ti-receipt',          label: 'Receipts',          path: '/finance/receipts' },
-            { icon: 'ti-receipt-2',        label: 'Expenses',          path: '/finance/expenses' },
-            { icon: 'ti-shopping-cart',    label: 'Purchases',         path: '/finance/purchases' },
-            { icon: 'ti-boxes',            label: 'Inventory',         path: '/finance/inventory' },
-            { icon: 'ti-building-store',   label: 'Vendors',           path: '/finance/vendors' },
-            { icon: 'ti-devices',          label: 'Assets',            path: '/finance/assets' },
-            { icon: 'ti-report-analytics', label: 'Reports',           path: '/finance/reports' },
-          ],
-        },
-        {
-          icon: 'ti-address-book', label: 'Student Management', path: '/students',
-          children: [
-            { icon: 'ti-user-plus',      label: 'Admissions',            path: '/admission' },
-            { icon: 'ti-address-book',   label: 'Students',              path: '/students' },
-            { icon: 'ti-edit',           label: 'Students Bulk Edit',    path: '/students/bulk-edit' },
-            { icon: 'ti-id-badge',       label: 'ID Cards',              path: '/id-cards' },
-          ],
-        },
-        {
-          icon: 'ti-briefcase', label: 'Staff & HRMS', path: '/hrms',
-          children: [
-            { icon: 'ti-layout-dashboard', label: 'HRMS Command Center',   path: '/hrms' },
-            { icon: 'ti-users',            label: 'Employee Directory',    path: '/hrms/employees' },
-            { icon: 'ti-map-pin',          label: 'GPS Attendance',        path: '/staff/attendance' },
-            { icon: 'ti-calendar-event',   label: 'Leaves & Official Duty',path: '/hrms/leaves' },
-            { icon: 'ti-cash',             label: 'Payroll & Payslips',    path: '/hrms/payroll' },
-          ],
-        },
-        {
-          icon: 'ti-books', label: 'Library', path: '/library',
-          children: [
-            { icon: 'ti-layout-dashboard', label: 'Dashboard',      path: '/library' },
-            { icon: 'ti-books',            label: 'Book Master',    path: '/library/books' },
-            { icon: 'ti-arrows-exchange',  label: 'Issue / Return', path: '/library/issue-return' },
-            { icon: 'ti-currency-rupee',   label: 'Fines & Dues',   path: '/library/fines' },
-          ],
-        },
-        {
-          icon: 'ti-bed', label: 'Hostel', path: '/hostel',
-          children: [
-            { icon: 'ti-layout-dashboard', label: 'Dashboard',          path: '/hostel' },
-            { icon: 'ti-layout-grid',      label: 'Room Map & Beds',    path: '/hostel/room-map' },
-            { icon: 'ti-receipt-2',        label: 'Monthly Fees',       path: '/hostel/fees' },
-            { icon: 'ti-alert-triangle',   label: 'Fines & Waivers',    path: '/hostel/fines' },
-          ],
-        },
-        {
-          icon: 'ti-bus', label: 'Transport', path: '/transport',
-          children: [
-            { icon: 'ti-layout-dashboard', label: 'Dashboard',              path: '/transport' },
-            { icon: 'ti-bus',              label: 'Vehicles & Fleet',       path: '/transport/vehicles' },
-            { icon: 'ti-currency-rupee',   label: 'Fees & Fines',           path: '/transport/fees' },
-          ],
-        },
-        {
-          icon: 'ti-trash', label: 'Deleted Items', path: '/principal/deleted-items',
-          children: [
-            { icon: 'ti-school',     label: 'Deleted Students', path: '/principal/deleted-items?tab=student' },
-            { icon: 'ti-chalkboard', label: 'Deleted Teachers', path: '/principal/deleted-items?tab=teacher' },
-            { icon: 'ti-briefcase',  label: 'Deleted Staff',    path: '/principal/deleted-items?tab=staff' },
-          ],
-        },
-      ],
-    },
-    {
       group: 'Customer Service',
       items: [
         {
@@ -689,33 +616,25 @@ export default function Sidebar({ darkMode }) {
   // _resolve_creation_role). Real identity is user.active_role (from
   // platform_roles via UserRoleAssignment, see auth.py _serialize_user).
   const isCompanyActor = user && user.school_id == null;
-  const isTrueAdmin = !!(user?.is_super || ['CEO', 'SUPER_ADMIN'].includes(user?.active_role?.key));
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN' || user?.active_role?.key === 'SUPER_ADMIN' || user?.active_role?.key === 'CEO' || !!user?.is_super;
 
-  const baseGroups = (isCompanyActor && !isTrueAdmin)
-    ? ROLE_MENUS.EMPLOYEE
-    : (!isCompanyActor && (user?.role === 'SUPER_ADMIN' || user?.is_super))
-      ? ROLE_MENUS.PRINCIPAL
-      : (ROLE_MENUS[resolveMenuRole(user?.role, ROLE_MENUS)] || ROLE_MENUS.PRINCIPAL);
+  let baseGroups;
+  if (isSuperAdmin && isCompanyActor) {
+    baseGroups = ROLE_MENUS.SUPER_ADMIN;
+  } else if (isCompanyActor) {
+    baseGroups = ROLE_MENUS.EMPLOYEE;
+  } else {
+    baseGroups = ROLE_MENUS[resolveMenuRole(user?.role, ROLE_MENUS)] || ROLE_MENUS.PRINCIPAL;
+  }
 
-  // Static role bucket + jo bhi extra permission is user ko diya gaya hai
-  // (Staff Access page / Permission Matrix se) — ab dono merge hote hain,
-  // sirf role se nahi.
-  //
-  // EXCEPTION: a true admin (CEO, or the real platform SUPER_ADMIN role)
-  // is kept OUT of this merge. backend resolve_platform_permissions()
-  // (rbac.py) super role ke liye poora permission catalog return karta hai
-  // — 'fees.collect', 'students.profile.view', sab kuch — ye ek CEO-style
-  // full bypass hai, na ki genuine per-item grant. Agar dynamic merge yaha
-  // bhi chalta to har school-level item (Fees, Students, Marks, ...)
-  // admin ke sidebar me bhi dikhne lagta. A real (non-admin) company
-  // employee, on the other hand, SHOULD go through the dynamic merge —
-  // that's the whole point of the EMPLOYEE base menu above: it starts
-  // lean and grows only with whatever's actually been granted to them.
-  const groups     = useMemo(
-    () => (isCompanyActor && isTrueAdmin
-      ? baseGroups
+  // Super Admin (SaaS platform owner / Developer / CEO) only gets ROLE_MENUS.SUPER_ADMIN.
+  // Never merge school-level permissions (Student KYC, homework/assignments, deleted students, fee collection)
+  // into Super Admin's sidebar. Those belong exclusively to school Principal and school staff.
+  const groups = useMemo(
+    () => ((isCompanyActor && isSuperAdmin) || user?.role === 'SUPER_ADMIN'
+      ? ROLE_MENUS.SUPER_ADMIN
       : buildDynamicGroups(baseGroups, user?.permissions)),
-    [baseGroups, user?.permissions, isCompanyActor, isTrueAdmin]
+    [baseGroups, user?.permissions, isCompanyActor, isSuperAdmin, user?.role]
   );
   const [search,   setSearch]   = useState('');
   const [expanded, setExpanded] = useState(() => {

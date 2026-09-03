@@ -208,7 +208,7 @@ export default function App() {
               </ProtectedRoute>
             } />
             <Route path="/principal/deleted-items" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']}>
+              <ProtectedRoute roles={['PRINCIPAL', 'DIRECTOR', 'VICE_PRINCIPAL']}>
                 <DeletedItemsPage />
               </ProtectedRoute>
             } />
