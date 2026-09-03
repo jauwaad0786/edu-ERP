@@ -400,6 +400,21 @@ def recover_deleted_item(item_id, school_id, actor_user):
     }
 
 
+def _safe_exec(fn, desc=''):
+    """
+    Executes a database block inside a nested transaction (SAVEPOINT).
+    In PostgreSQL, any failure inside a normal block aborts the entire transaction.
+    A savepoint ensures that if an optional or dependent operation fails,
+    only that savepoint is rolled back, and the parent transaction remains healthy.
+    """
+    try:
+        with db.session.begin_nested():
+            return fn()
+    except Exception as e:
+        logger.warning(f"[ArchiveSafeExec] {desc} skipped: {e}")
+        return None
+
+
 def permanently_purge_item(item_id, school_id, actor_user=None, confirmation_name='', force=False):
     """
     Permanently purges an archived item:
@@ -434,7 +449,7 @@ def permanently_purge_item(item_id, school_id, actor_user=None, confirmation_nam
             # Check if student has financial records across Central Fees, Hostel, Transport, Library
             has_financials = _check_student_financial_history(sid)
 
-            # Clean up non-financial operational records
+            # Clean up non-financial operational records safely
             _cleanup_student_operational_records(student, user)
 
             if has_financials:
@@ -460,62 +475,64 @@ def permanently_purge_item(item_id, school_id, actor_user=None, confirmation_nam
                 # Free up admission_no by prefixing with ANON- so school can reuse it
                 student.admission_no = f"ANON-{sid}-{now.strftime('%Y%m%d%H%M')}"
                 student.is_deleted = True
-                student.is_anonymized = True
+                if hasattr(student, 'is_anonymized'):
+                    student.is_anonymized = True
 
                 if user:
                     user.name = f"Former Student #STU-{sid}"
                     user.email = f"anonymized_{user.id}_{now.strftime('%Y%m%d%H%M')}@eduerp.internal"
-                    user.username = f"anon_stu_{user.id}"
+                    user.username = f"anon_stu_{user.id}_{now.strftime('%Y%m%d%H%M')}"
                     user.phone = None
                     user.is_active = False
                     user.is_deleted = True
-                    user.is_anonymized = True
+                    if hasattr(user, 'is_anonymized'):
+                        user.is_anonymized = True
                     user.plain_password_temp = None
             else:
                 # ZERO financials: safe to completely hard delete
-                db.session.delete(student)
-                db.session.flush()
+                _safe_exec(lambda: db.session.delete(student), 'delete_student')
                 if user:
-                    db.session.delete(user)
+                    _safe_exec(lambda: db.session.delete(user), 'delete_user')
 
     elif item.item_type == DeletedItemType.TEACHER.value:
         teacher = Teacher.query.filter_by(id=item.original_id, school_id=school_id).first()
         if teacher:
             user = teacher.user
             # Unlink classes and subjects
-            Class.query.filter_by(teacher_id=teacher.id).update({'teacher_id': None}, synchronize_session=False)
-            Subject.query.filter_by(teacher_id=teacher.id).update({'teacher_id': None}, synchronize_session=False)
+            _safe_exec(lambda: Class.query.filter_by(teacher_id=teacher.id).update({'teacher_id': None}, synchronize_session=False), 'unlink_classes')
+            _safe_exec(lambda: Subject.query.filter_by(teacher_id=teacher.id).update({'teacher_id': None}, synchronize_session=False), 'unlink_subjects')
 
             # Check if teacher has payroll/salary records
             has_payroll = _check_teacher_payroll_history(teacher.id)
 
             # Cleanup attendance & notes
-            try:
+            def _clean_teacher_ops():
                 from app.models.academic import TeacherAttendance, Note
                 TeacherAttendance.query.filter_by(teacher_id=teacher.id).delete(synchronize_session=False)
                 if user:
                     Note.query.filter_by(uploaded_by=user.id).update({'uploaded_by': None}, synchronize_session=False)
-            except Exception as e:
-                logger.warning(f"Teacher cleanup warning: {e}")
+            _safe_exec(_clean_teacher_ops, 'teacher_ops')
 
             if has_payroll:
                 # Anonymize teacher and user
                 teacher.employee_id = f"ANON-TCH-{teacher.id}-{now.strftime('%Y%m%d%H%M')}"
                 teacher.is_deleted = True
-                teacher.is_anonymized = True
+                if hasattr(teacher, 'is_anonymized'):
+                    teacher.is_anonymized = True
                 if user:
                     user.name = f"Former Teacher #TCH-{teacher.id}"
                     user.email = f"anonymized_tch_{user.id}_{now.strftime('%Y%m%d%H%M')}@eduerp.internal"
+                    user.username = f"anon_tch_{user.id}_{now.strftime('%Y%m%d%H%M')}"
                     user.phone = None
                     user.is_active = False
                     user.is_deleted = True
-                    user.is_anonymized = True
+                    if hasattr(user, 'is_anonymized'):
+                        user.is_anonymized = True
                     user.plain_password_temp = None
             else:
-                db.session.delete(teacher)
-                db.session.flush()
+                _safe_exec(lambda: db.session.delete(teacher), 'delete_teacher')
                 if user:
-                    db.session.delete(user)
+                    _safe_exec(lambda: db.session.delete(user), 'delete_teacher_user')
 
     elif item.item_type == DeletedItemType.STAFF.value:
         user = User.query.filter_by(id=item.original_id, school_id=school_id).first()
@@ -524,21 +541,24 @@ def permanently_purge_item(item_id, school_id, actor_user=None, confirmation_nam
             if has_staff_financials:
                 user.name = f"Former Staff #STF-{user.id}"
                 user.email = f"anonymized_stf_{user.id}_{now.strftime('%Y%m%d%H%M')}@eduerp.internal"
+                user.username = f"anon_stf_{user.id}_{now.strftime('%Y%m%d%H%M')}"
                 user.employee_id = f"ANON-STF-{user.id}-{now.strftime('%Y%m%d%H%M')}"
                 user.phone = None
                 user.is_active = False
                 user.is_deleted = True
-                user.is_anonymized = True
+                if hasattr(user, 'is_anonymized'):
+                    user.is_anonymized = True
                 user.plain_password_temp = None
             else:
-                db.session.delete(user)
+                _safe_exec(lambda: db.session.delete(user), 'delete_staff_user')
 
     item.status = DeletedItemStatus.PURGED.value
-    item.purged_at = now
+    if hasattr(item, 'purged_at'):
+        item.purged_at = now
     item.updated_at = now
 
-    # Audit Log
-    try:
+    # Audit Log (wrapped in savepoint so audit failure never aborts deletion transaction)
+    def _log_audit():
         import json
         audit = AuditLog(
             school_id=school_id,
@@ -549,8 +569,7 @@ def permanently_purge_item(item_id, school_id, actor_user=None, confirmation_nam
             ip_address='127.0.0.1'
         )
         db.session.add(audit)
-    except Exception as e:
-        logger.warning(f"Audit log skipped: {e}")
+    _safe_exec(_log_audit, 'audit_log')
 
     db.session.commit()
     return {
@@ -597,124 +616,148 @@ def run_one_year_cleanup_job():
 
 def _check_student_financial_history(student_id):
     """Checks if student has any past financial bills, payments, transactions, or ledger entries."""
-    try:
-        from app.models.financial import FeeRecord, FeeTransaction
-        if FeeRecord.query.filter_by(student_id=student_id).first():
-            return True
-        if FeeTransaction.query.filter_by(student_id=student_id).first():
-            return True
-    except Exception:
-        pass
+    checks = []
 
-    try:
-        from app.models.fee_finance import FeeBill, StudentLedger, FeePayment
-        if FeeBill.query.filter_by(student_id=student_id).first():
-            return True
-        if StudentLedger.query.filter_by(student_id=student_id).first():
-            return True
-        if FeePayment.query.filter_by(student_id=student_id).first():
-            return True
-    except Exception:
-        pass
+    def _chk_fee_record():
+        from app.models.financial import FeeRecord
+        return FeeRecord.query.filter_by(student_id=student_id).first() is not None
+    checks.append(('fee_record', _chk_fee_record))
 
-    try:
+    def _chk_fee_txn():
+        from app.models.financial import FeeTransaction
+        return FeeTransaction.query.filter_by(student_id=student_id).first() is not None
+    checks.append(('fee_txn', _chk_fee_txn))
+
+    def _chk_fee_bill():
+        from app.models.fee_finance import FeeBill
+        return FeeBill.query.filter_by(student_id=student_id).first() is not None
+    checks.append(('fee_bill', _chk_fee_bill))
+
+    def _chk_student_ledger():
+        from app.models.fee_finance import StudentLedger
+        return StudentLedger.query.filter_by(student_id=student_id).first() is not None
+    checks.append(('student_ledger', _chk_student_ledger))
+
+    def _chk_fee_payment():
+        from app.models.fee_finance import FeePayment
+        return FeePayment.query.filter_by(student_id=student_id).first() is not None
+    checks.append(('fee_payment', _chk_fee_payment))
+
+    def _chk_transport_fee():
         from app.models.transport_student import TransportFeeRecord
-        if TransportFeeRecord.query.filter_by(student_id=student_id).first():
+        return TransportFeeRecord.query.filter_by(student_id=student_id).first() is not None
+    checks.append(('transport_fee', _chk_transport_fee))
+
+    def _chk_hostel_fine():
+        from app.models.hostel import HostelFineTransaction
+        return HostelFineTransaction.query.filter_by(student_id=student_id).first() is not None
+    checks.append(('hostel_fine', _chk_hostel_fine))
+
+    for name, fn in checks:
+        result = _safe_exec(fn, f"financial_check_{name}")
+        if result is True:
             return True
-    except Exception:
-        pass
 
     return False
 
 
 def _check_teacher_payroll_history(teacher_id):
     """Checks if teacher has historical payroll records."""
-    try:
+    def _chk_salary():
         from app.models.financial import TeacherSalaryRecord
-        if TeacherSalaryRecord.query.filter_by(teacher_id=teacher_id).first():
-            return True
-    except Exception:
-        pass
-    return False
+        return TeacherSalaryRecord.query.filter_by(teacher_id=teacher_id).first() is not None
+    result = _safe_exec(_chk_salary, 'teacher_payroll_check')
+    return bool(result)
 
 
 def _check_staff_financial_history(user_id):
     """Checks if staff user collected fees or has payroll records."""
-    try:
+    def _chk_fee_collected():
         from app.models.fee_finance import FeePayment
-        if FeePayment.query.filter_by(collected_by_id=user_id).first():
-            return True
-    except Exception:
-        pass
-    return False
+        return FeePayment.query.filter_by(collected_by_id=user_id).first() is not None
+    result = _safe_exec(_chk_fee_collected, 'staff_financial_check')
+    return bool(result)
 
 
 def _cleanup_student_operational_records(student, user):
-    """Cleans up operational records: hostel, library, transport, attendance, marks, documents."""
+    """Cleans up operational records: hostel, library, transport, attendance, marks, documents safely using savepoints."""
     sid = student.id
 
-    # Attendance & Marks
-    Attendance.query.filter_by(student_id=sid).delete(synchronize_session=False)
-    Marks.query.filter_by(student_id=sid).delete(synchronize_session=False)
+    # 1. Attendance & Marks
+    _safe_exec(lambda: Attendance.query.filter_by(student_id=sid).delete(synchronize_session=False), 'attendance')
+    _safe_exec(lambda: Marks.query.filter_by(student_id=sid).delete(synchronize_session=False), 'marks')
 
-    # Documents & KYC
-    try:
+    # 2. Documents & KYC
+    def _clean_docs():
         from app.models.documents import StudentDocument, IssuedDocument
         StudentDocument.query.filter_by(student_id=sid).delete(synchronize_session=False)
         IssuedDocument.query.filter_by(student_id=sid).delete(synchronize_session=False)
-    except Exception:
-        pass
+    _safe_exec(_clean_docs, 'documents')
 
-    # Hostel
-    try:
+    # 3. Academic logs (Assignment submissions)
+    def _clean_academic_logs():
+        from app.models.academic import AssignmentSubmission
+        AssignmentSubmission.query.filter_by(student_id=sid).delete(synchronize_session=False)
+        try:
+            from app.models.academic_resources import InternalMark
+            InternalMark.query.filter_by(student_id=sid).delete(synchronize_session=False)
+        except Exception:
+            pass
+    _safe_exec(_clean_academic_logs, 'academic_logs')
+
+    # 4. Hostel
+    def _clean_hostel():
         from app.models.hostel import (
             HostelBed, HostelBedAllocation, HostelAttendance,
-            HostelComplaint, HostelVisitor, HostelOutPass
+            HostelComplaint, HostelVisitorLog, HostelOutPass,
+            HostelInventory
         )
         HostelBed.query.filter_by(current_student_id=sid).update(
             {'current_student_id': None, 'status': 'VACANT'}, synchronize_session=False
         )
+        HostelInventory.query.filter_by(assigned_student_id=sid).update(
+            {'assigned_student_id': None}, synchronize_session=False
+        )
         HostelBedAllocation.query.filter_by(student_id=sid).delete(synchronize_session=False)
         HostelAttendance.query.filter_by(student_id=sid).delete(synchronize_session=False)
         HostelComplaint.query.filter_by(student_id=sid).delete(synchronize_session=False)
-        HostelVisitor.query.filter_by(student_id=sid).delete(synchronize_session=False)
+        HostelVisitorLog.query.filter_by(student_id=sid).delete(synchronize_session=False)
         HostelOutPass.query.filter_by(student_id=sid).delete(synchronize_session=False)
-    except Exception:
-        pass
+    _safe_exec(_clean_hostel, 'hostel')
 
-    # Transport
-    try:
-        from app.models.transport_student import StudentTransport, TransportAttendance
-        from app.models.transport_gps import RfidScanLog
+    # 5. Transport
+    def _clean_transport():
+        from app.models.transport_student import StudentTransport, TransportTransferHistory
+        from app.models.transport_gps import TripStudentAttendance
         StudentTransport.query.filter_by(student_id=sid).delete(synchronize_session=False)
-        TransportAttendance.query.filter_by(student_id=sid).delete(synchronize_session=False)
-        RfidScanLog.query.filter_by(student_id=sid).delete(synchronize_session=False)
-    except Exception:
-        pass
+        TransportTransferHistory.query.filter_by(student_id=sid).delete(synchronize_session=False)
+        TripStudentAttendance.query.filter_by(student_id=sid).delete(synchronize_session=False)
+    _safe_exec(_clean_transport, 'transport')
 
-    # Library
+    # 6. Library
     if user:
-        try:
-            from app.models.library import LibraryMember, LibraryVisit
+        def _clean_library():
+            from app.models.library import LibraryMember, LibraryVisit, BookIssue
             LibraryVisit.query.filter_by(student_id=sid).delete(synchronize_session=False)
-            LibraryMember.query.filter_by(user_id=user.id).delete(synchronize_session=False)
-        except Exception:
-            pass
+            member = LibraryMember.query.filter_by(user_id=user.id).first()
+            if member:
+                has_active = BookIssue.query.filter_by(member_id=member.id, status='ISSUED').first() is not None
+                if has_active:
+                    member.status = 'SUSPENDED'
+                else:
+                    db.session.delete(member)
+        _safe_exec(_clean_library, 'library')
 
-    # Communication hub
+    # 7. Communication
     if user:
-        try:
+        def _clean_communication():
             from app.models.communication import (
                 SupportTicket, TicketReply, ChatMessage,
-                SupportNotification, MeetingRequest, SupportAttachment
+                SupportNotification, SupportAttachment
             )
-            TicketReply.query.filter_by(replied_by=user.id).delete(synchronize_session=False)
-            SupportAttachment.query.filter_by(uploaded_by=user.id).delete(synchronize_session=False)
-            SupportTicket.query.filter_by(raised_by=user.id).delete(synchronize_session=False)
             ChatMessage.query.filter(
                 db.or_(ChatMessage.sender_id == user.id, ChatMessage.receiver_id == user.id)
             ).delete(synchronize_session=False)
             SupportNotification.query.filter_by(user_id=user.id).delete(synchronize_session=False)
-            MeetingRequest.query.filter_by(requested_by=user.id).delete(synchronize_session=False)
-        except Exception:
-            pass
+        _safe_exec(_clean_communication, 'communication')
+

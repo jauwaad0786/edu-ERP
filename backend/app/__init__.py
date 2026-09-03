@@ -1062,7 +1062,7 @@ def _seed_super_admin():
 def _ensure_deleted_items_schema():
     """
     Ensure soft delete columns exist on students, teachers, users,
-    and deleted_items table exists across both SQLite and PostgreSQL.
+    and all columns exist on deleted_items table across both SQLite and PostgreSQL.
     """
     from sqlalchemy import text, inspect
     try:
@@ -1086,8 +1086,37 @@ def _ensure_deleted_items_schema():
                             try:
                                 conn.execute(text(f'ALTER TABLE {tbl} ADD COLUMN {col} {defn}'))
                                 conn.commit()
-                            except Exception:
-                                pass
+                                print(f'[OK] Added column {tbl}.{col}')
+                            except Exception as ex:
+                                print(f'[WARN] Failed to add {tbl}.{col}: {ex}')
+
+            if 'deleted_items' in table_names:
+                existing_di = {c['name'] for c in inspector.get_columns('deleted_items')}
+                di_cols = {
+                    'purged_at':       'TIMESTAMP',
+                    'recovery_data':   'JSON',
+                    'status':          "VARCHAR(20) DEFAULT 'ARCHIVED'",
+                    'student_type':    'VARCHAR(50)',
+                    'department':      'VARCHAR(100)',
+                    'designation':     'VARCHAR(100)',
+                    'role':            'VARCHAR(50)',
+                    'session':         'VARCHAR(50)',
+                    'deleted_by_name': 'VARCHAR(120)',
+                    'delete_reason':   'VARCHAR(255)',
+                    'identifier':      'VARCHAR(50)',
+                    'class_name':      'VARCHAR(100)',
+                    'section':         'VARCHAR(20)',
+                    'auto_delete_at':  'TIMESTAMP',
+                }
+                for col, defn in di_cols.items():
+                    if col not in existing_di:
+                        try:
+                            conn.execute(text(f'ALTER TABLE deleted_items ADD COLUMN {col} {defn}'))
+                            conn.commit()
+                            print(f'[OK] Added column deleted_items.{col}')
+                        except Exception as ex:
+                            print(f'[WARN] Failed to add deleted_items.{col}: {ex}')
     except Exception as e:
         print(f'[WARN] _ensure_deleted_items_schema: {e}')
+
 
