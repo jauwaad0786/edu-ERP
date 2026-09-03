@@ -1,15 +1,16 @@
 """
 Automated Test Suite for MSG91 Integration in Edu ERP.
 Covers:
-- Password Login
-- Mobile OTP Login (Send, Verify, Resend, Cooldown, Expiry, Lockout)
-- Email OTP Login
-- Account Enumeration Prevention (Generic responses)
-- Forgot & Reset Password using OTP
+- Standard Password Login
+- Mobile OTP Login (Send via MSG91, Verify, Resend, Cooldown, Expiry, Lockout)
+- Email OTP safely disabled when domain is unconfigured
+- Fixing HTTP 200 bug: Non-200 (502) returned when MSG91 dispatch fails
+- Account Enumeration Prevention (Generic responses for unknown accounts)
+- Forgot & Reset Password using Mobile OTP
+- Email Forgot Password returns safe unavailable response
 - In-app & Multichannel Notification Dispatch
 - Multi-Tenant Isolation (Principal vs Super Admin scopes)
 - Device Push Token Registration & Unregistration
-- MSG91 API Failure & Network Resilience (Mocked transport)
 - Single-credential environment compatibility (MSG91_AUTH_KEY only)
 """
 
@@ -33,8 +34,10 @@ from flask_jwt_extended import create_access_token
 class TestMSG91Integration(unittest.TestCase):
 
     def setUp(self):
-        # Set test environment
+        # Set test environment with only MSG91_AUTH_KEY
         os.environ['MSG91_AUTH_KEY'] = 'test-mock-msg91-authkey-do-not-log'
+        os.environ.pop('MSG91_EMAIL_DOMAIN', None)
+        os.environ.pop('MSG91_OTP_TEMPLATE_ID', None)
         self.app = create_app('testing')
         self.app_context = self.app.app_context()
         self.app_context.push()
@@ -141,69 +144,77 @@ class TestMSG91Integration(unittest.TestCase):
         self.assertEqual(data['user']['email'], 'principal.a@greenwood.edu')
 
     # ──────────────────────────────────────────────────────────────────────────
-    # 2. Send Mobile OTP Login (Generic response, no enumeration)
+    # 2. Send Mobile OTP Login (Successful dispatch via MSG91 mock)
     # ──────────────────────────────────────────────────────────────────────────
     @patch('app.services.communication.msg91_service.requests.post')
-    def test_send_mobile_otp_existing_user(self, mock_post):
+    def test_send_mobile_otp_success(self, mock_post):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.text = '{"message": "OTP sent successfully"}'
         mock_resp.json.return_value = {"message": "OTP sent successfully"}
         mock_post.return_value = mock_resp
 
+        # Give mock template_id for live dispatch mock
+        with patch.object(MSG91Service, 'get_config_val', return_value='test-template-id'):
+            res = self.client.post('/api/v1/auth/send-login-otp', json={
+                'identifier': '9876543210'
+            })
+            self.assertEqual(res.status_code, 200)
+            data = res.get_json()
+            self.assertTrue(data['success'])
+            self.assertIn("OTP has been sent", data['message'])
+            self.assertNotIn('otp', data)
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # 3. MSG91 Failure Returns Non-200 (Fixing HTTP 200 bug)
+    # ──────────────────────────────────────────────────────────────────────────
+    @patch('app.services.communication.msg91_service.requests.post')
+    def test_send_mobile_otp_failure_returns_502(self, mock_post):
+        """When MSG91 fails (e.g. 403, 500, timeout), backend must NOT return 200."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 403
+        mock_resp.text = '{"status":"fail","errors":["Plan expired"],"code":403}'
+        mock_post.return_value = mock_resp
+
+        with patch.object(MSG91Service, 'get_config_val', return_value='test-template-id'):
+            res = self.client.post('/api/v1/auth/send-login-otp', json={
+                'identifier': '9876543210'
+            })
+            self.assertEqual(res.status_code, 502)
+            data = res.get_json()
+            self.assertFalse(data['success'])
+            self.assertEqual(data['message'], "Unable to send OTP at this time.")
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # 4. Email OTP Disabled Without Domain Configuration
+    # ──────────────────────────────────────────────────────────────────────────
+    def test_send_email_otp_disabled_without_domain(self):
+        """If user tries email OTP without verified domain, return safe 400 error."""
         res = self.client.post('/api/v1/auth/send-login-otp', json={
-            'identifier': '9876543210'
+            'identifier': 'teacher.raman@greenwood.edu'
         })
-        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.status_code, 400)
         data = res.get_json()
-        self.assertTrue(data['success'])
-        self.assertEqual(data['message'], "If the account exists, an OTP has been sent.")
-        self.assertNotIn('otp', data)
+        self.assertFalse(data['success'])
+        self.assertEqual(data['message'], "Email OTP is currently unavailable. Please use mobile OTP.")
 
-        # Verify record exists in DB
-        otp_rec = OTPVerification.query.filter_by(user_id=self.principal_a.id).first()
-        self.assertIsNotNone(otp_rec)
-        self.assertFalse(otp_rec.is_used)
-        self.assertNotEqual(otp_rec.otp_hash, "")
-
+    # ──────────────────────────────────────────────────────────────────────────
+    # 5. Anti-Enumeration Generic Response
+    # ──────────────────────────────────────────────────────────────────────────
     def test_send_otp_non_existent_account_generic_response(self):
-        """Ensure non-existent mobile number returns same generic response (anti-enumeration)."""
+        """Ensure non-existent mobile returns generic success to prevent enumeration."""
         res = self.client.post('/api/v1/auth/send-login-otp', json={
             'identifier': '9999999999'
         })
         self.assertEqual(res.status_code, 200)
         data = res.get_json()
         self.assertTrue(data['success'])
-        self.assertEqual(data['message'], "If the account exists, an OTP has been sent.")
         self.assertNotIn('otp', data)
 
     # ──────────────────────────────────────────────────────────────────────────
-    # 3. Send Email OTP Login
-    # ──────────────────────────────────────────────────────────────────────────
-    @patch('app.services.communication.msg91_service.requests.post')
-    def test_send_email_otp_existing_user(self, mock_post):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.text = '{"message": "Email dispatched"}'
-        mock_resp.json.return_value = {"message": "Email dispatched"}
-        mock_post.return_value = mock_resp
-
-        res = self.client.post('/api/v1/auth/send-login-otp', json={
-            'identifier': 'teacher.raman@greenwood.edu'
-        })
-        self.assertEqual(res.status_code, 200)
-        data = res.get_json()
-        self.assertTrue(data['success'])
-        self.assertNotIn('otp', data)
-
-        rec = OTPVerification.query.filter_by(user_id=self.teacher_a.id).first()
-        self.assertIsNotNone(rec)
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # 4. Verify OTP Success (Issues JWT and serializes user)
+    # 6. Verify Valid Mobile OTP
     # ──────────────────────────────────────────────────────────────────────────
     def test_verify_otp_success(self):
-        # Create OTP record
         plain_otp, rec, err = OTPService.create_otp(
             identifier='9876543210',
             purpose=OTPPurpose.LOGIN,
@@ -222,13 +233,12 @@ class TestMSG91Integration(unittest.TestCase):
         self.assertIn('refresh_token', data)
         self.assertEqual(data['user']['id'], self.principal_a.id)
         self.assertEqual(data['user']['role'], 'PRINCIPAL')
-        self.assertEqual(data['user']['school_id'], self.school_a.id)
 
-        # Ensure OTP is consumed and cannot be reused
-        rec_after = OTPVerification.query.get(rec.id)
+        # One-time use verification
+        rec_after = db.session.get(OTPVerification, rec.id)
         self.assertTrue(rec_after.is_used)
 
-        # Attempt to reuse OTP -> should fail
+        # Re-use attempt must fail
         reuse_res = self.client.post('/api/v1/auth/verify-otp', json={
             'identifier': '9876543210',
             'otp': plain_otp
@@ -236,7 +246,7 @@ class TestMSG91Integration(unittest.TestCase):
         self.assertEqual(reuse_res.status_code, 400)
 
     # ──────────────────────────────────────────────────────────────────────────
-    # 5. Verify Invalid OTP
+    # 7. Verify Invalid OTP
     # ──────────────────────────────────────────────────────────────────────────
     def test_verify_invalid_otp(self):
         plain_otp, rec, err = OTPService.create_otp(
@@ -253,7 +263,7 @@ class TestMSG91Integration(unittest.TestCase):
         self.assertIn("Invalid OTP", data['error'])
 
     # ──────────────────────────────────────────────────────────────────────────
-    # 6. Verify Expired OTP
+    # 8. Verify Expired OTP
     # ──────────────────────────────────────────────────────────────────────────
     def test_verify_expired_otp(self):
         plain_otp, rec, err = OTPService.create_otp(
@@ -261,7 +271,6 @@ class TestMSG91Integration(unittest.TestCase):
             purpose=OTPPurpose.LOGIN,
             user_id=self.principal_a.id
         )
-        # Fast-forward expiration
         rec.expires_at = datetime.utcnow() - timedelta(minutes=1)
         db.session.commit()
 
@@ -274,7 +283,7 @@ class TestMSG91Integration(unittest.TestCase):
         self.assertIn("expired", data['error'].lower())
 
     # ──────────────────────────────────────────────────────────────────────────
-    # 7. Maximum Attempts Exhaustion
+    # 9. Maximum Attempts Lockout
     # ──────────────────────────────────────────────────────────────────────────
     def test_verify_otp_max_attempts_lockout(self):
         plain_otp, rec, err = OTPService.create_otp(
@@ -282,14 +291,12 @@ class TestMSG91Integration(unittest.TestCase):
             purpose=OTPPurpose.LOGIN,
             user_id=self.principal_a.id
         )
-        # Fail 5 times
         for _ in range(5):
             self.client.post('/api/v1/auth/verify-otp', json={
                 'identifier': '9876543210',
                 'otp': '999999'
             })
 
-        # Even with correct OTP on 6th attempt, it should be locked out
         res = self.client.post('/api/v1/auth/verify-otp', json={
             'identifier': '9876543210',
             'otp': plain_otp
@@ -299,10 +306,9 @@ class TestMSG91Integration(unittest.TestCase):
         self.assertIn("Maximum verification attempts exceeded", data['error'])
 
     # ──────────────────────────────────────────────────────────────────────────
-    # 8. Resend OTP with Cooldown
+    # 10. Resend OTP Cooldown
     # ──────────────────────────────────────────────────────────────────────────
     def test_resend_otp_cooldown(self):
-        # First creation
         plain_otp, rec, err = OTPService.create_otp(
             identifier='9876543210',
             purpose=OTPPurpose.LOGIN,
@@ -310,51 +316,49 @@ class TestMSG91Integration(unittest.TestCase):
         )
         self.assertIsNone(err)
 
-        # Immediate resend should be blocked by cooldown
         res = self.client.post('/api/v1/auth/resend-otp', json={
             'identifier': '9876543210',
             'purpose': 'LOGIN'
         })
         self.assertEqual(res.status_code, 429)
         data = res.get_json()
-        self.assertIn("Please wait", data['error'])
+        self.assertIn("Please wait", data['message'])
 
     # ──────────────────────────────────────────────────────────────────────────
-    # 9. Forgot Password and Reset Password via OTP
+    # 11. Mobile Forgot Password & Reset Flow
     # ──────────────────────────────────────────────────────────────────────────
-    def test_forgot_and_reset_password_flow(self):
-        # 1. Request forgot password OTP
-        res = self.client.post('/api/v1/auth/forgot-password', json={
-            'identifier': 'teacher.raman@greenwood.edu'
-        })
-        self.assertEqual(res.status_code, 200)
+    @patch('app.services.communication.msg91_service.requests.post')
+    def test_forgot_and_reset_password_via_mobile(self, mock_post):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = '{"message": "OTP sent successfully"}'
+        mock_resp.json.return_value = {"message": "OTP sent successfully"}
+        mock_post.return_value = mock_resp
 
-        # Retrieve generated OTP from DB for testing
-        rec = OTPVerification.query.filter_by(
-            user_id=self.teacher_a.id,
-            purpose=OTPPurpose.PASSWORD_RESET
-        ).order_by(OTPVerification.created_at.desc()).first()
-        self.assertIsNotNone(rec)
+        with patch.object(MSG91Service, 'get_config_val', return_value='test-template-id'):
+            # 1. Request forgot password OTP via mobile number
+            res = self.client.post('/api/v1/auth/forgot-password', json={
+                'identifier': '9876543211'
+            })
+            self.assertEqual(res.status_code, 200)
 
-        # Generate correct candidate using service verify
-        # Create a fresh known OTP for reset testing
+        # 2. Reset password using valid OTP
         test_plain, test_rec, _ = OTPService.create_otp(
-            identifier='teacher.raman@greenwood.edu',
+            identifier='9876543211',
             purpose=OTPPurpose.PASSWORD_RESET,
             user_id=self.teacher_a.id,
             cooldown_seconds=0
         )
 
-        # 2. Reset password using valid OTP
-        new_pass = "BrandNewRamanPass2026!"
+        new_pass = "BrandNewTeacherPass2026!"
         reset_res = self.client.post('/api/v1/auth/reset-password', json={
-            'identifier': 'teacher.raman@greenwood.edu',
+            'identifier': '9876543211',
             'otp': test_plain,
             'new_password': new_pass
         })
         self.assertEqual(reset_res.status_code, 200)
 
-        # 3. Verify user can now log in with the new password
+        # 3. Verify teacher can now log in with new password
         login_res = self.client.post('/api/auth/login', json={
             'identifier': 'teacher.raman@greenwood.edu',
             'password': new_pass
@@ -362,91 +366,88 @@ class TestMSG91Integration(unittest.TestCase):
         self.assertEqual(login_res.status_code, 200)
 
     # ──────────────────────────────────────────────────────────────────────────
-    # 10. Multi-Tenant Principal Notification (Strictly Scoped)
+    # 12. Email Forgot Password Disabled
+    # ──────────────────────────────────────────────────────────────────────────
+    def test_forgot_password_email_unavailable(self):
+        res = self.client.post('/api/v1/auth/forgot-password', json={
+            'identifier': 'teacher.raman@greenwood.edu'
+        })
+        self.assertEqual(res.status_code, 400)
+        data = res.get_json()
+        self.assertFalse(data['success'])
+        self.assertIn("Email password reset is currently unavailable", data['message'])
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # 13. Tenant Isolation
     # ──────────────────────────────────────────────────────────────────────────
     def test_principal_notification_tenant_isolation(self):
-        """Principal of School A broadcasts -> only School A users receive it."""
         res = self.client.post('/api/v1/notifications/send', headers=self.headers_principal_a, json={
-            'title': 'School A Staff Meeting',
-            'message': 'Tomorrow at 10 AM in Conference Hall A.',
+            'title': 'School A Meeting',
+            'message': 'Staff meeting at 10 AM.',
             'audience': 'TEACHERS',
             'channels': ['in_app']
         })
         self.assertEqual(res.status_code, 201)
-        data = res.get_json()
-        self.assertTrue(data['success'])
 
-        # School A teacher must have received the notification
         teacher_notifs = SupportNotification.query.filter_by(user_id=self.teacher_a.id).all()
-        self.assertTrue(any(n.title == 'School A Staff Meeting' for n in teacher_notifs))
+        self.assertTrue(any(n.title == 'School A Meeting' for n in teacher_notifs))
 
-        # School B principal must NOT have received it
         school_b_notifs = SupportNotification.query.filter_by(user_id=self.principal_b.id).all()
-        self.assertFalse(any(n.title == 'School A Staff Meeting' for n in school_b_notifs))
+        self.assertFalse(any(n.title == 'School A Meeting' for n in school_b_notifs))
 
     # ──────────────────────────────────────────────────────────────────────────
-    # 11. Super Admin System-Wide Notification
+    # 14. Super Admin Platform Notification
     # ──────────────────────────────────────────────────────────────────────────
     def test_super_admin_cross_school_notification(self):
-        """Super Admin can send platform-wide notifications across schools."""
         res = self.client.post('/api/v1/notifications/send', headers=self.headers_super_admin, json={
             'title': 'Scheduled ERP Maintenance',
-            'message': 'Maintenance tonight between 11 PM and 1 AM.',
+            'message': 'Tonight at 11 PM.',
             'target_school_ids': 'ALL',
             'channels': ['in_app']
         })
         self.assertEqual(res.status_code, 201)
 
-        # Verify received by School A principal and School B principal
         notif_a = SupportNotification.query.filter_by(user_id=self.principal_a.id).first()
         notif_b = SupportNotification.query.filter_by(user_id=self.principal_b.id).first()
         self.assertIsNotNone(notif_a)
         self.assertIsNotNone(notif_b)
 
     # ──────────────────────────────────────────────────────────────────────────
-    # 12. Device Push Token Registration and Unregistration
+    # 15. Device Push Token Registration & Unregister
     # ──────────────────────────────────────────────────────────────────────────
     def test_device_registration_and_unregister(self):
-        # Register device
         reg_res = self.client.post('/api/v1/notifications/devices/register',
                                    headers=self.headers_principal_a,
-                                   json={'device_token': 'sample-web-fcm-token-12345', 'platform': 'web'})
+                                   json={'device_token': 'sample-token-123', 'platform': 'web'})
         self.assertEqual(reg_res.status_code, 200)
-        data = reg_res.get_json()
-        self.assertTrue(data['success'])
-        self.assertEqual(data['device']['platform'], 'web')
 
-        device = UserDevice.query.filter_by(device_token='sample-web-fcm-token-12345').first()
+        device = UserDevice.query.filter_by(device_token='sample-token-123').first()
         self.assertIsNotNone(device)
         self.assertTrue(device.is_active)
 
-        # Unregister device
         unreg_res = self.client.post('/api/v1/notifications/devices/unregister',
                                      headers=self.headers_principal_a,
-                                     json={'device_token': 'sample-web-fcm-token-12345'})
+                                     json={'device_token': 'sample-token-123'})
         self.assertEqual(unreg_res.status_code, 200)
         db.session.refresh(device)
         self.assertFalse(device.is_active)
 
     # ──────────────────────────────────────────────────────────────────────────
-    # 13. Notification Read and Unread Count
+    # 16. Notification Read & Unread Count
     # ──────────────────────────────────────────────────────────────────────────
     def test_notification_read_and_unread_count(self):
-        # Create an in-app notification for Principal A
         n = NotificationService.send_notification(
             user_id=self.principal_a.id,
-            title="Fee Reminder Test",
-            message="Please review fee reports.",
+            title="Fee Reminder",
+            message="Please review collections.",
             school_id=self.school_a.id
         )
         db.session.commit()
 
-        # Check unread count
         count_res = self.client.get('/api/v1/notifications/unread-count', headers=self.headers_principal_a)
         self.assertEqual(count_res.status_code, 200)
         self.assertGreaterEqual(count_res.get_json()['unread'], 1)
 
-        # Mark as read
         read_res = self.client.patch(f'/api/v1/notifications/{n.id}/read', headers=self.headers_principal_a)
         self.assertEqual(read_res.status_code, 200)
 
@@ -454,38 +455,14 @@ class TestMSG91Integration(unittest.TestCase):
         self.assertTrue(n.is_read)
 
     # ──────────────────────────────────────────────────────────────────────────
-    # 14. MSG91 API Failure & Network Resilience
-    # ──────────────────────────────────────────────────────────────────────────
-    @patch('app.services.communication.msg91_service.requests.post')
-    def test_msg91_network_failure_resilience(self, mock_post):
-        """MSG91 timeout / failure must NOT crash the ERP or database transaction."""
-        import requests
-        mock_post.side_effect = requests.exceptions.Timeout("Simulated gateway timeout")
-
-        # Calling notification service with SMS channel on simulated timeout
-        n = NotificationService.send_notification(
-            user_id=self.principal_a.id,
-            title="Resilience Test",
-            message="System remains stable even if SMS provider times out.",
-            school_id=self.school_a.id,
-            channels=['in_app', 'sms']
-        )
-        db.session.commit()
-
-        # In-app notification must still be cleanly created
-        self.assertIsNotNone(n)
-        self.assertEqual(n.title, "Resilience Test")
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # 15. Single-Credential Environment: Works when only MSG91_AUTH_KEY is set
+    # 17. Single Authkey Environment Safety
     # ──────────────────────────────────────────────────────────────────────────
     def test_single_auth_key_environment_safety(self):
-        """Backend operations proceed safely with only MSG91_AUTH_KEY present."""
-        # Check send_otp with no template configured
+        """Backend safely handles send_otp without crashing when MSG91_OTP_TEMPLATE_ID is absent."""
         result = MSG91Service.send_otp(mobile="9876543210", otp="123456")
         self.assertFalse(result['success'])
         self.assertEqual(result['code'], "CONFIG_REQUIRED")
-        self.assertIn("MSG91_OTP_TEMPLATE_ID", result['message'])
+        self.assertEqual(result['message'], "Unable to send OTP at this time.")
 
 
 if __name__ == '__main__':

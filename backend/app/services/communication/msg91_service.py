@@ -59,6 +59,15 @@ class MSG91Service:
         return clean
 
     @classmethod
+    def is_email_configured(cls):
+        """
+        Checks if Email dispatch is genuinely configured with a verified domain.
+        Returns False if custom domain is absent.
+        """
+        domain = cls.get_config_val('MSG91_EMAIL_DOMAIN')
+        return bool(domain and domain.strip() and not domain.endswith('onrender.com'))
+
+    @classmethod
     def send_otp(cls, mobile, otp, template_id=None):
         """
         Dispatches custom 6-digit OTP via MSG91 OTP API.
@@ -76,7 +85,7 @@ class MSG91Service:
             logger.warning("[MSG91] Authkey is not configured in environment (MSG91_AUTH_KEY). Skipping external dispatch.")
             return {
                 "success": False,
-                "message": "SMS gateway is currently not configured",
+                "message": "Unable to send OTP at this time.",
                 "code": "MISSING_AUTH_KEY"
             }
 
@@ -90,10 +99,10 @@ class MSG91Service:
 
         tpl_id = template_id or cls.get_config_val('MSG91_OTP_TEMPLATE_ID')
         if not tpl_id:
-            logger.info("[MSG91] Note: MSG91 OTP API requires an OTP Template ID (MSG91_OTP_TEMPLATE_ID) created in your MSG91 dashboard for live SMS transmission. OTP has been securely generated and saved in ERP database.")
+            logger.info("[MSG91] Mobile OTP: MSG91_OTP_TEMPLATE_ID not configured in environment. MSG91 OTP API requires an OTP Template ID.")
             return {
                 "success": False,
-                "message": "MSG91 OTP Template ID is required for live SMS delivery (MSG91_OTP_TEMPLATE_ID)",
+                "message": "Unable to send OTP at this time.",
                 "code": "CONFIG_REQUIRED"
             }
 
@@ -102,7 +111,6 @@ class MSG91Service:
             "Content-Type": "application/json"
         }
 
-        # MSG91 v5 OTP parameter format
         params = {
             "template_id": tpl_id,
             "mobile": norm_mobile,
@@ -110,40 +118,42 @@ class MSG91Service:
         }
 
         try:
+            logger.info(f"[MSG91] Mobile OTP request initiated for mobile ending in ...{norm_mobile[-4:]}")
             response = requests.post(
                 cls.BASE_OTP_URL,
                 params=params,
+                json=params,
                 headers=headers,
                 timeout=6.0
             )
 
             if response.status_code == 200:
                 resp_json = response.json() if response.text else {}
-                logger.info(f"[MSG91] OTP sent successfully to ending in ...{norm_mobile[-4:]}")
+                logger.info("[MSG91] Mobile OTP response status: 200")
                 return {
                     "success": True,
                     "message": "OTP sent successfully",
                     "provider_ref": resp_json.get('request_id') or resp_json.get('message')
                 }
             else:
-                logger.error(f"[MSG91] OTP dispatch error HTTP {response.status_code}: {response.text[:200]}")
+                logger.error(f"[MSG91] Mobile OTP failed: {response.status_code}")
                 return {
                     "success": False,
-                    "message": "Provider failed to dispatch OTP",
+                    "message": "Unable to send OTP at this time.",
                     "status_code": response.status_code
                 }
         except requests.exceptions.Timeout:
-            logger.error("[MSG91] Connection timeout while contacting OTP gateway")
+            logger.error("[MSG91] Mobile OTP failed: timeout")
             return {
                 "success": False,
-                "message": "Gateway timeout during OTP dispatch",
+                "message": "Unable to send OTP at this time.",
                 "code": "TIMEOUT"
             }
         except Exception as ex:
-            logger.error(f"[MSG91] Unexpected error during OTP dispatch: {type(ex).__name__}")
+            logger.error(f"[MSG91] Mobile OTP failed: {type(ex).__name__}")
             return {
                 "success": False,
-                "message": "Unexpected error dispatching OTP",
+                "message": "Unable to send OTP at this time.",
                 "code": "ERROR"
             }
 
@@ -151,13 +161,21 @@ class MSG91Service:
     def send_email_otp(cls, email, otp, template_id=None):
         """
         Dispatches OTP to email address using MSG91 Email API.
+        If email service is unconfigured, returns safe unavailable message without calling gateway.
         """
-        auth_key = cls.get_auth_key()
-        if not auth_key:
-            logger.warning("[MSG91] Authkey is not configured for Email OTP.")
+        if not cls.is_email_configured():
+            logger.info("[MSG91] Email OTP requested, but email domain is not configured. Email OTP is disabled.")
             return {
                 "success": False,
-                "message": "Email gateway is not configured",
+                "message": "Email OTP is currently unavailable. Please use mobile OTP.",
+                "code": "EMAIL_UNAVAILABLE"
+            }
+
+        auth_key = cls.get_auth_key()
+        if not auth_key:
+            return {
+                "success": False,
+                "message": "Email OTP is currently unavailable. Please use mobile OTP.",
                 "code": "MISSING_AUTH_KEY"
             }
 
@@ -169,9 +187,9 @@ class MSG91Service:
             }
 
         tpl_id = template_id or cls.get_config_val('MSG91_EMAIL_TEMPLATE_ID')
-        from_email = cls.get_config_val('MSG91_EMAIL_FROM_EMAIL', 'noreply@eduerp.com')
-        from_name = cls.get_config_val('MSG91_EMAIL_FROM_NAME', 'Edu ERP Security')
         domain = cls.get_config_val('MSG91_EMAIL_DOMAIN')
+        from_email = cls.get_config_val('MSG91_EMAIL_FROM_EMAIL', f"noreply@{domain}")
+        from_name = cls.get_config_val('MSG91_EMAIL_FROM_NAME', 'Edu ERP')
 
         headers = {
             "authkey": auth_key,
@@ -202,30 +220,30 @@ class MSG91Service:
             )
 
             if response.status_code in (200, 201, 202):
-                logger.info(f"[MSG91] Email OTP dispatched to user with domain @{email.split('@')[-1]}")
+                logger.info(f"[MSG91] Email OTP dispatched to domain ending in @{email.split('@')[-1]}")
                 return {
                     "success": True,
                     "message": "Email OTP dispatched successfully"
                 }
             else:
-                logger.error(f"[MSG91] Email OTP error HTTP {response.status_code}: {response.text[:200]}")
+                logger.error(f"[MSG91] Email OTP failed: {response.status_code}")
                 return {
                     "success": False,
-                    "message": "Failed to send email OTP",
+                    "message": "Unable to send email OTP at this time.",
                     "status_code": response.status_code
                 }
         except requests.exceptions.Timeout:
-            logger.error("[MSG91] Connection timeout while contacting Email gateway")
+            logger.error("[MSG91] Email OTP failed: timeout")
             return {
                 "success": False,
-                "message": "Gateway timeout during Email OTP dispatch",
+                "message": "Unable to send email OTP at this time.",
                 "code": "TIMEOUT"
             }
         except Exception as ex:
-            logger.error(f"[MSG91] Unexpected error during Email OTP dispatch: {type(ex).__name__}")
+            logger.error(f"[MSG91] Email OTP failed: {type(ex).__name__}")
             return {
                 "success": False,
-                "message": "Unexpected error dispatching Email OTP",
+                "message": "Unable to send email OTP at this time.",
                 "code": "ERROR"
             }
 

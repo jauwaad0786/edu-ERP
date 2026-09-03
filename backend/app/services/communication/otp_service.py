@@ -164,5 +164,67 @@ class OTPService:
 
         return True, "OTP verified successfully.", record
 
+    @classmethod
+    def send_mobile_otp(cls, mobile, purpose=OTPPurpose.LOGIN, user_id=None, school_id=None, template_id=None):
+        """
+        Generates and stores OTP, then dispatches via MSG91 Mobile OTP API.
+        
+        Returns:
+            tuple: (success: bool, message: str, status_code: int)
+        """
+        from app.services.communication.msg91_service import MSG91Service
+
+        clean_mobile = str(mobile).strip()
+        if not clean_mobile:
+            return False, "Mobile number is required.", 400
+
+        plain_otp, record, err = cls.create_otp(
+            identifier=clean_mobile,
+            purpose=purpose,
+            user_id=user_id,
+            school_id=school_id
+        )
+        if err:
+            return False, err, 429
+
+        dispatch_res = MSG91Service.send_otp(clean_mobile, plain_otp, template_id=template_id)
+        if not dispatch_res.get('success'):
+            status_code = 400 if dispatch_res.get('code') == 'INVALID_PHONE' else 502
+            return False, dispatch_res.get('message', 'Unable to send OTP at this time.'), status_code
+
+        return True, "OTP sent successfully to your mobile number.", 200
+
+    @classmethod
+    def send_email_otp(cls, email, purpose=OTPPurpose.LOGIN, user_id=None, school_id=None, template_id=None):
+        """
+        Dispatches OTP to email. If email service is unconfigured, returns safe unavailable message.
+        
+        Returns:
+            tuple: (success: bool, message: str, status_code: int)
+        """
+        from app.services.communication.msg91_service import MSG91Service
+
+        if not MSG91Service.is_email_configured():
+            return False, "Email OTP is currently unavailable. Please use mobile OTP.", 400
+
+        clean_email = str(email).strip().lower()
+        if not clean_email or '@' not in clean_email:
+            return False, "Invalid email address format.", 400
+
+        plain_otp, record, err = cls.create_otp(
+            identifier=clean_email,
+            purpose=purpose,
+            user_id=user_id,
+            school_id=school_id
+        )
+        if err:
+            return False, err, 429
+
+        dispatch_res = MSG91Service.send_email_otp(clean_email, plain_otp, template_id=template_id)
+        if not dispatch_res.get('success'):
+            return False, dispatch_res.get('message', 'Unable to send OTP at this time.'), 502
+
+        return True, "OTP sent successfully to your email address.", 200
+
 
 otp_service = OTPService

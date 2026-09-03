@@ -69,22 +69,6 @@ def _find_user_by_identifier(raw_identifier):
     return None
 
 
-def _dispatch_otp(ident, email, phone_num, code):
-    """
-    Dispatches OTP with automatic multichannel fallback.
-    """
-    if _is_email(ident) and email:
-        res = MSG91Service.send_email_otp(email, code)
-        if not res.get('success') and phone_num:
-            MSG91Service.send_otp(phone_num, code)
-    elif phone_num:
-        res = MSG91Service.send_otp(phone_num, code)
-        if not res.get('success') and email:
-            MSG91Service.send_email_otp(email, code)
-    elif email:
-        MSG91Service.send_email_otp(email, code)
-
-
 def _serialize_user(user):
     # Heal any user still missing a UserRoleAssignment (e.g. staff created
     # before this fix, or created via a flow that doesn't wire it yet) —
@@ -398,38 +382,68 @@ def send_login_otp():
     """
     POST /api/v1/auth/send-login-otp
     Accepts identifier (mobile or email).
-    Sends 6-digit OTP via MSG91 (SMS or Email).
-    Returns generic response to prevent account enumeration.
+    Sends 6-digit OTP via MSG91 Mobile OTP API.
+    Returns safe generic message or non-200 if MSG91 fails.
     """
     data = request.get_json() or {}
     raw_identifier = (data.get('identifier') or data.get('mobile_number') or data.get('email') or '').strip()
 
     if not raw_identifier:
-        return jsonify({'error': 'Mobile number or email identifier is required'}), 400
+        return jsonify({'success': False, 'message': 'Mobile number is required'}), 400
 
+    # 1. If email is provided, check if email service is available
+    if _is_email(raw_identifier):
+        if not MSG91Service.is_email_configured():
+            return jsonify({
+                'success': False,
+                'message': 'Email OTP is currently unavailable. Please use mobile OTP.'
+            }), 400
+
+    # 2. Find user
     user = _find_user_by_identifier(raw_identifier)
+    if not user or not user.is_active:
+        return jsonify({
+            'success': True,
+            'message': 'If the mobile number is registered, an OTP has been sent.'
+        }), 200
 
-    if user and user.is_active:
-        user_id = user.id
-        school_id = user.school_id
-        target_phone = user.phone or (None if _is_email(raw_identifier) else raw_identifier)
-        target_email = user.email
-
-        otp, record, err = OTPService.create_otp(
-            identifier=raw_identifier,
+    # 3. Mobile OTP is the primary channel
+    target_mobile = user.phone or (None if _is_email(raw_identifier) else raw_identifier)
+    if target_mobile:
+        success, msg, status_code = OTPService.send_mobile_otp(
+            mobile=target_mobile,
             purpose=OTPPurpose.LOGIN,
-            user_id=user_id,
-            school_id=school_id
+            user_id=user.id,
+            school_id=user.school_id
         )
-        if err:
-            return jsonify({'error': err}), 429
+        if not success:
+            return jsonify({'success': False, 'message': msg}), status_code
 
-        _dispatch_otp(raw_identifier, target_email, target_phone, otp)
+        return jsonify({
+            'success': True,
+            'message': 'If the mobile number is registered, an OTP has been sent.'
+        }), 200
+
+    # 4. If only email exists and email is configured
+    if user.email and MSG91Service.is_email_configured():
+        success, msg, status_code = OTPService.send_email_otp(
+            email=user.email,
+            purpose=OTPPurpose.LOGIN,
+            user_id=user.id,
+            school_id=user.school_id
+        )
+        if not success:
+            return jsonify({'success': False, 'message': msg}), status_code
+
+        return jsonify({
+            'success': True,
+            'message': 'If the account exists, an OTP has been sent.'
+        }), 200
 
     return jsonify({
-        'success': True,
-        'message': 'If the account exists, an OTP has been sent.'
-    }), 200
+        'success': False,
+        'message': 'Email OTP is currently unavailable. Please use mobile OTP.'
+    }), 400
 
 
 # ── Verify Login OTP ──────────────────────────────────────────────────────────
@@ -496,28 +510,57 @@ def resend_otp():
     purpose = (data.get('purpose') or OTPPurpose.LOGIN).upper()
 
     if not raw_identifier:
-        return jsonify({'error': 'Identifier is required'}), 400
+        return jsonify({'success': False, 'message': 'Mobile number is required'}), 400
+
+    if _is_email(raw_identifier):
+        if not MSG91Service.is_email_configured():
+            return jsonify({
+                'success': False,
+                'message': 'Email OTP is currently unavailable. Please use mobile OTP.'
+            }), 400
 
     user = _find_user_by_identifier(raw_identifier)
-    if user and user.is_active:
-        otp, record, err = OTPService.create_otp(
-            identifier=raw_identifier,
+    if not user or not user.is_active:
+        return jsonify({
+            'success': True,
+            'message': 'If the mobile number is registered, a new OTP has been sent.'
+        }), 200
+
+    target_mobile = user.phone or (None if _is_email(raw_identifier) else raw_identifier)
+    if target_mobile:
+        success, msg, status_code = OTPService.send_mobile_otp(
+            mobile=target_mobile,
             purpose=purpose,
             user_id=user.id,
             school_id=user.school_id
         )
-        if err:
-            return jsonify({'error': err}), 429
+        if not success:
+            return jsonify({'success': False, 'message': msg}), status_code
 
-        target_phone = user.phone or (None if _is_email(raw_identifier) else raw_identifier)
-        target_email = user.email
+        return jsonify({
+            'success': True,
+            'message': 'If the mobile number is registered, a new OTP has been sent.'
+        }), 200
 
-        _dispatch_otp(raw_identifier, target_email, target_phone, otp)
+    if user.email and MSG91Service.is_email_configured():
+        success, msg, status_code = OTPService.send_email_otp(
+            email=user.email,
+            purpose=purpose,
+            user_id=user.id,
+            school_id=user.school_id
+        )
+        if not success:
+            return jsonify({'success': False, 'message': msg}), status_code
+
+        return jsonify({
+            'success': True,
+            'message': 'If the account exists, a new OTP has been sent.'
+        }), 200
 
     return jsonify({
-        'success': True,
-        'message': 'If the account exists, a new OTP has been sent.'
-    }), 200
+        'success': False,
+        'message': 'Email OTP is currently unavailable. Please use mobile OTP.'
+    }), 400
 
 
 # ── Forgot password (OTP-powered self-service) ───────────────────────────────
@@ -526,33 +569,40 @@ def resend_otp():
 def forgot_password():
     """
     POST /api/v1/auth/forgot-password
-    Generates password reset OTP for registered mobile or email.
+    Generates password reset OTP for registered mobile number.
     """
     data = request.get_json() or {}
     raw_identifier = (data.get('identifier') or data.get('mobile_number') or data.get('email') or '').strip()
 
     if not raw_identifier:
-        return jsonify({'error': 'Identifier (email or mobile number) is required'}), 400
+        return jsonify({'success': False, 'message': 'Mobile number is required'}), 400
+
+    if _is_email(raw_identifier):
+        return jsonify({
+            'success': False,
+            'message': 'Email password reset is currently unavailable. Please use your registered mobile number.'
+        }), 400
 
     user = _find_user_by_identifier(raw_identifier)
-    if user and user.is_active:
-        otp, record, err = OTPService.create_otp(
-            identifier=raw_identifier,
-            purpose=OTPPurpose.PASSWORD_RESET,
-            user_id=user.id,
-            school_id=user.school_id
-        )
-        if err:
-            return jsonify({'error': err}), 429
+    if not user or not user.is_active:
+        return jsonify({
+            'success': True,
+            'message': 'If the mobile number is registered, a password reset OTP has been sent.'
+        }), 200
 
-        target_phone = user.phone or (None if _is_email(raw_identifier) else raw_identifier)
-        target_email = user.email
-
-        _dispatch_otp(raw_identifier, target_email, target_phone, otp)
+    target_mobile = user.phone or raw_identifier
+    success, msg, status_code = OTPService.send_mobile_otp(
+        mobile=target_mobile,
+        purpose=OTPPurpose.PASSWORD_RESET,
+        user_id=user.id,
+        school_id=user.school_id
+    )
+    if not success:
+        return jsonify({'success': False, 'message': msg}), status_code
 
     return jsonify({
         'success': True,
-        'message': 'If the account exists, a password reset OTP has been sent.'
+        'message': 'If the mobile number is registered, a password reset OTP has been sent.'
     }), 200
 
 

@@ -37,7 +37,8 @@ function ForgotPasswordModal({ onClose }) {
       setCooldown(60);
       setStep(2);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to send reset code. Please check your details.');
+      const serverMsg = err.response?.data?.message || err.response?.data?.error;
+      setError(serverMsg || 'Unable to send reset code. Please use your registered mobile number.');
     } finally {
       setLoading(false);
     }
@@ -254,7 +255,8 @@ export default function Login() {
       setOtpCooldown(60);
       setOtpStep(2);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to send OTP. Please try again.');
+      const serverMsg = err.response?.data?.message || err.response?.data?.error;
+      setError(serverMsg || 'Unable to send OTP at this time. Please try again or use password login.');
     } finally {
       setLoading(false);
     }
