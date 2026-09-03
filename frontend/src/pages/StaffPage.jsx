@@ -121,7 +121,7 @@ export default function StaffPage() {
     setDeleting(true);
     try {
       await api.delete(`/principal/users/${deleteTarget.id}`);
-      toast.success(`${deleteTarget.name} removed`);
+      toast.success(`${deleteTarget.name} moved to Deleted Items for 1 year`);
       setDeleteTarget(null);
       load();
     } catch (err) {
@@ -421,12 +421,11 @@ export default function StaffPage() {
             </div>
             <div className="modal-body">
               <p style={{ fontSize: 14, marginBottom: 8 }}>
-                Are you sure you want to permanently remove <strong>{deleteTarget.name}</strong>
+                Are you sure you want to remove <strong>{deleteTarget.name}</strong>
                 {' '}({STAFF_ROLES.find(r => r.value === deleteTarget.role)?.label || deleteTarget.role})?
               </p>
-              <p style={{ fontSize: 12, color: 'var(--neutral-6)' }}>
-                This cannot be undone. If you don't have sufficient hierarchy to remove this person
-                (e.g. trying to delete a Principal/Director), the server will block it.
+              <p style={{ fontSize: 12, color: '#1e40af', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 6, padding: '8px 12px' }}>
+                ℹ️ This staff member will be moved to <strong>Deleted Items</strong> for <strong>1 year (365 days)</strong> and can be recovered anytime.
               </p>
             </div>
             <div className="modal-footer">

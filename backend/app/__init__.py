@@ -176,6 +176,7 @@ def create_app(config_name='default'):
                 app.logger.warning(f'AI models import skipped: {ai_e}')
             db.create_all()
             _seed_super_admin()
+            _ensure_deleted_items_schema()
 
         except Exception as e:
             app.logger.error(f'Startup schema initialization error: {e}')
@@ -231,6 +232,21 @@ def create_app(config_name='default'):
             )
             scheduler.start()
             app.logger.info('✅ Delegation auto-expiry scheduler started (runs every 5 min)')
+
+            # ── 1-YEAR DELETED ITEMS RETENTION CLEANUP JOB (Requirement #4 & #16) ──
+            def _archive_cleanup_runner():
+                with app.app_context():
+                    from app.services.archive_service import run_one_year_cleanup_job
+                    run_one_year_cleanup_job()
+
+            scheduler.add_job(
+                func=_archive_cleanup_runner,
+                trigger='interval',
+                hours=24,
+                id='deleted_items_retention_cleanup',
+                replace_existing=True
+            )
+            app.logger.info('✅ 1-Year Deleted Items Auto-Cleanup scheduler started (runs daily)')
 
             # Shutdown scheduler when app context tears down
             import atexit
@@ -920,3 +936,37 @@ def _seed_super_admin():
     db.session.add(admin)
     db.session.commit()
     print('[OK] Super Admin seeded')
+
+
+def _ensure_deleted_items_schema():
+    """
+    Ensure soft delete columns exist on students, teachers, users,
+    and deleted_items table exists across both SQLite and PostgreSQL.
+    """
+    from sqlalchemy import text, inspect
+    try:
+        inspector = inspect(db.engine)
+        table_names = inspector.get_table_names()
+
+        common_cols = {
+            'is_deleted':    'BOOLEAN DEFAULT FALSE',
+            'deleted_at':    'TIMESTAMP',
+            'deleted_by':    'INTEGER',
+            'delete_reason': 'VARCHAR(255)',
+            'is_anonymized': 'BOOLEAN DEFAULT FALSE',
+        }
+
+        with db.engine.connect() as conn:
+            for tbl in ['students', 'teachers', 'users']:
+                if tbl in table_names:
+                    existing = {c['name'] for c in inspector.get_columns(tbl)}
+                    for col, defn in common_cols.items():
+                        if col not in existing:
+                            try:
+                                conn.execute(text(f'ALTER TABLE {tbl} ADD COLUMN {col} {defn}'))
+                                conn.commit()
+                            except Exception:
+                                pass
+    except Exception as e:
+        print(f'[WARN] _ensure_deleted_items_schema: {e}')
+

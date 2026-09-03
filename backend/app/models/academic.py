@@ -75,6 +75,13 @@ class Teacher(db.Model):
     salary        = db.Column(db.Float, default=0.0)
     photo_url     = db.Column(db.String(500))
 
+    # Soft-delete & Archive metadata
+    is_deleted    = db.Column(db.Boolean, default=False, nullable=False, index=True)
+    deleted_at    = db.Column(db.DateTime, nullable=True)
+    deleted_by    = db.Column(db.Integer, nullable=True)
+    delete_reason = db.Column(db.String(255), nullable=True)
+    is_anonymized = db.Column(db.Boolean, default=False, nullable=False)
+
     classes_taught = db.relationship('Subject', backref='teacher_ref', lazy='dynamic',
                                      foreign_keys='Subject.teacher_id', overlaps="assigned_teacher,teacher_ref")
 
@@ -94,6 +101,9 @@ class Teacher(db.Model):
             'joining_date':  self.joining_date.isoformat() if self.joining_date else None,
             'qualification': self.qualification,
             'salary':        self.salary,
+            'is_deleted':    getattr(self, 'is_deleted', False),
+            'deleted_at':    self.deleted_at.isoformat() if getattr(self, 'deleted_at', None) else None,
+            'is_anonymized': getattr(self, 'is_anonymized', False),
         }
 
 
@@ -138,6 +148,13 @@ class Student(db.Model):
     previous_tc_no       = db.Column(db.String(100))
     previous_tc_date     = db.Column(db.Date)
     previous_reason      = db.Column(db.String(250))
+
+    # Soft-delete & Archive metadata
+    is_deleted           = db.Column(db.Boolean, default=False, nullable=False, index=True)
+    deleted_at           = db.Column(db.DateTime, nullable=True)
+    deleted_by           = db.Column(db.Integer, nullable=True)
+    delete_reason        = db.Column(db.String(255), nullable=True)
+    is_anonymized        = db.Column(db.Boolean, default=False, nullable=False)
 
     attendance = db.relationship('Attendance', backref='student', lazy='dynamic')
     marks      = db.relationship('Marks', backref='student', lazy='dynamic')
@@ -187,6 +204,9 @@ class Student(db.Model):
             'previous_tc_date':     self.previous_tc_date.strftime('%Y-%m-%d') if self.previous_tc_date else '',
             'previous_reason':      self.previous_reason or '',
             'photo_url':            self.photo_url,
+            'is_deleted':           getattr(self, 'is_deleted', False),
+            'deleted_at':           self.deleted_at.isoformat() if getattr(self, 'deleted_at', None) else None,
+            'is_anonymized':        getattr(self, 'is_anonymized', False),
         }
 
 

@@ -80,10 +80,14 @@ class User(db.Model):
     # Teachers use Teacher.salary instead; this stays null for TEACHER/STUDENT/PARENT roles.
     salary      = db.Column(db.Float, nullable=True)
 
-    # One-time plain-text password stored ONLY at creation / reset time.
-    # Cleared when user changes their own password.
-    # Allows admin to see/copy credentials for newly created accounts.
     plain_password_temp = db.Column(db.String(256), nullable=True)
+
+    # Soft-delete & Archive metadata
+    is_deleted          = db.Column(db.Boolean, default=False, nullable=False, index=True)
+    deleted_at          = db.Column(db.DateTime, nullable=True)
+    deleted_by          = db.Column(db.Integer, nullable=True)
+    delete_reason       = db.Column(db.String(255), nullable=True)
+    is_anonymized       = db.Column(db.Boolean, default=False, nullable=False)
 
     # FK to school (null for SUPER_ADMIN)
     school_id   = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=True)
@@ -129,6 +133,9 @@ class User(db.Model):
             'salary':      self.salary,
             'last_login':  self.last_login.isoformat() if self.last_login else None,
             'created_at':  self.created_at.isoformat(),
+            'is_deleted':  getattr(self, 'is_deleted', False),
+            'deleted_at':  self.deleted_at.isoformat() if getattr(self, 'deleted_at', None) else None,
+            'is_anonymized': getattr(self, 'is_anonymized', False),
         }
 
     def to_dict_with_credentials(self):

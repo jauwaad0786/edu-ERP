@@ -99,7 +99,7 @@ useEffect(() => {
     setDeleting(true);
     try {
       await api.delete(`/principal/students/${deleteTarget.id}`);
-      toast.success(`${deleteTarget.name} deleted successfully`);
+      toast.success(`${deleteTarget.name} moved to Deleted Items for 1 year`);
       setStudents(prev => prev.filter(s => s.id !== deleteTarget.id));
       setDeleteTarget(null);
     } catch (err) {
@@ -504,12 +504,10 @@ useEffect(() => {
             </div>
             <div className="modal-body">
               <div style={{
-                background: '#fef2f2', border: '1px solid #fecaca',
-                borderRadius: 8, padding: '14px 16px', fontSize: 13, color: '#991b1b',
+                background: '#eff6ff', border: '1px solid #bfdbfe',
+                borderRadius: 8, padding: '14px 16px', fontSize: 13, color: '#1e40af',
               }}>
-                ⚠️ Kya aap sach mein <strong>{deleteTarget.name}</strong> ko delete karna
-                chahte hain? Iske saath uska attendance, fee records, aur marks bhi
-                permanently delete ho jayenge. Ye action undo nahi ho sakta.
+                ℹ️ <strong>{deleteTarget.name}</strong> ko <strong>DELETED ITEMS</strong> archive mein move kiya jayega. Yeh active lists se hat jayega par <strong>1 saal (365 din)</strong> tak Deleted Items mein surakshit rahega aur kabhi bhi <strong>Recover</strong> kiya ja sakta hai.
               </div>
             </div>
             <div className="modal-footer">

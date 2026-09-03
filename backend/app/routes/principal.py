@@ -271,7 +271,7 @@ def assign_class_teacher(class_id):
 @role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
 @feature_required('teacher_management')
 def list_teachers():
-    teachers = Teacher.query.filter_by(school_id=_school_id()).all()
+    teachers = Teacher.query.filter_by(school_id=_school_id()).filter(Teacher.is_deleted == False).all()
     return jsonify([t.to_dict() for t in teachers]), 200
 
 
@@ -694,7 +694,7 @@ def add_staff_salary_record(user_id):
 def list_students():
     class_id = request.args.get('class_id')
     search   = (request.args.get('search') or '').strip()
-    q = Student.query.filter_by(school_id=_school_id())
+    q = Student.query.filter_by(school_id=_school_id()).filter(Student.is_deleted == False)
     if class_id:
         q = q.filter_by(class_id=class_id)
     if search:
@@ -726,7 +726,7 @@ def create_student():
     plan   = get_school_plan(sid)
     limit  = get_limit(plan, 'students')
 
-    current_count = Student.query.filter_by(school_id=sid).count()
+    current_count = Student.query.filter_by(school_id=sid).filter(Student.is_deleted == False).count()
     if current_count >= limit:
         return jsonify({
             'error':   'student_limit_reached',
@@ -4172,30 +4172,22 @@ def update_teacher(t_id):
 @principal_bp.route('/teachers/<int:t_id>', methods=['DELETE'])
 @role_required('PRINCIPAL')
 def delete_teacher(t_id):
-    t = Teacher.query.get_or_404(t_id)
-    if t.school_id != _school_id():
-        return jsonify({'error': 'Unauthorized'}), 403
-
-    # Unlink from classes and subjects
-    Class.query.filter_by(teacher_id=t_id).update({'teacher_id': None})
-    Subject.query.filter_by(teacher_id=t_id).update({'teacher_id': None})
-
-    # Delete attendance records
-    TeacherAttendance.query.filter_by(teacher_id=t_id).delete()
-    TeacherAttendanceRequest.query.filter_by(teacher_id=t_id).delete()
-    db.session.flush()
-
-    user = t.user
-    db.session.delete(t)
-    db.session.flush()
-
-    if user:
-        Note.query.filter_by(uploaded_by=user.id).update({'uploaded_by': None})
-        db.session.flush()
-        db.session.delete(user)
-
-    db.session.commit()
-    return jsonify({'message': 'Teacher removed'}), 200
+    """Soft delete / archive a teacher into DELETED ITEMS (1-year retention)."""
+    from app.services.archive_service import soft_delete_teacher
+    sid = _school_id()
+    actor = get_current_user()
+    reason = request.args.get('reason') or (request.get_json(silent=True) or {}).get('reason', '')
+    try:
+        archived_item = soft_delete_teacher(teacher_id=t_id, school_id=sid, actor_user=actor, reason=reason)
+        return jsonify({
+            'message': f"{archived_item.name} has been moved to Deleted Items for 1 year.",
+            'item': archived_item.to_dict()
+        }), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Failed to delete teacher: {str(e)}'}), 500
 
 
 @principal_bp.route('/attendance/weekly', methods=['GET'])
@@ -5155,7 +5147,7 @@ def principal_list_users():
     from app.models.user import User, UserRole
     sid = _school_id()
 
-    q       = User.query.filter(User.school_id == sid)
+    q       = User.query.filter(User.school_id == sid, User.is_deleted == False)
     role_f  = request.args.get('role')
     status_f = request.args.get('status')
     search  = (request.args.get('search') or '').strip().lower()
@@ -5380,14 +5372,9 @@ def principal_update_user(user_id):
 @principal_bp.route('/users/<int:user_id>', methods=['DELETE'])
 @role_required('PRINCIPAL')
 def principal_delete_user(user_id):
-    """
-    Deletes a staff account from the Principal's own school. Hierarchy-
-    gated via can_manage_role() -- once VICE_PRINCIPAL gains access to
-    this route (decorator-level fix, next step), a VP can delete any
-    staff member except another PRINCIPAL/DIRECTOR, enforced by rbac.py's
-    hierarchy comparison, not a hardcoded role-name check here.
-    """
+    """Soft delete / archive a staff account into DELETED ITEMS (1-year retention)."""
     from app.models.user import User
+    from app.services.archive_service import soft_delete_staff
     sid   = _school_id()
     actor = get_current_user()
     user  = User.query.get_or_404(user_id)
@@ -5399,78 +5386,162 @@ def principal_delete_user(user_id):
     if not _actor_can_manage_target(actor, user):
         return jsonify({'error': 'You do not have sufficient hierarchy to delete this user'}), 403
 
-    db.session.delete(user)
-    db.session.commit()
-    return jsonify({'message': 'User deleted'}), 200
+    reason = request.args.get('reason') or (request.get_json(silent=True) or {}).get('reason', '')
+    try:
+        archived_item = soft_delete_staff(user_id=user_id, school_id=sid, actor_user=actor, reason=reason)
+        return jsonify({
+            'message': f"{archived_item.name} has been moved to Deleted Items for 1 year.",
+            'item': archived_item.to_dict()
+        }), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Failed to delete staff member: {str(e)}'}), 500
+
+
 @principal_bp.route('/students/<int:student_id>', methods=['DELETE'])
 @role_required('PRINCIPAL')
 def delete_student(student_id):
-    """Delete a student — cascades through academic records + Communication Hub."""
-    student = Student.query.get_or_404(student_id)
-    if student.school_id != _school_id():
-        return jsonify({'error': 'Unauthorized'}), 403
+    """Soft delete / archive a student into DELETED ITEMS (1-year retention)."""
+    from app.services.archive_service import soft_delete_student
+    sid = _school_id()
+    actor = get_current_user()
+    reason = request.args.get('reason') or (request.get_json(silent=True) or {}).get('reason', '')
+    try:
+        archived_item = soft_delete_student(student_id=student_id, school_id=sid, actor_user=actor, reason=reason)
+        return jsonify({
+            'message': f"{archived_item.name} has been moved to Deleted Items for 1 year.",
+            'item': archived_item.to_dict()
+        }), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Failed to delete student: {str(e)}'}), 500
 
-    user = student.user
-    # Delete related records first
-    Attendance.query.filter_by(student_id=student_id).delete()
-    FeeRecord.query.filter_by(student_id=student_id).delete()
-    Marks.query.filter_by(student_id=student_id).delete()
-    IssuedDocument.query.filter_by(student_id=student_id).delete()
-    StudentDocument.query.filter_by(student_id=student_id).delete()
+
+# ─── DELETED ITEMS ARCHIVE & RECOVERY API (Centralized Trash System) ─────────
+
+@principal_bp.route('/deleted-items', methods=['GET'])
+@role_required('PRINCIPAL', 'SUPER_ADMIN')
+def list_deleted_items():
+    """
+    List archived deleted items (Students, Teachers, Staff) with 1-year retention.
+    Supports filtering by item_type ('STUDENT', 'TEACHER', 'STAFF', or empty for all),
+    search term, and pagination.
+    """
+    from app.models.deleted_item import DeletedItem, DeletedItemStatus
+    sid = _school_id()
+
+    item_type = (request.args.get('type') or '').strip().upper()
+    search = (request.args.get('search') or '').strip().lower()
+    status = (request.args.get('status') or 'ARCHIVED').strip().upper()
+    page = max(1, int(request.args.get('page', 1)))
+    per_page = min(100, int(request.args.get('per_page', 50)))
+
+    q = DeletedItem.query.filter_by(school_id=sid)
+    if status != 'ALL':
+        q = q.filter_by(status=status)
+    if item_type in ['STUDENT', 'TEACHER', 'STAFF']:
+        q = q.filter_by(item_type=item_type)
+
+    if search:
+        like = f"%{search}%"
+        q = q.filter(db.or_(
+            DeletedItem.name.ilike(like),
+            DeletedItem.identifier.ilike(like),
+            DeletedItem.class_name.ilike(like),
+            DeletedItem.department.ilike(like),
+            DeletedItem.designation.ilike(like),
+        ))
+
+    paginated = q.order_by(DeletedItem.deleted_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
+
+    # Breakdown metrics for tabs
+    counts = {
+        'students': DeletedItem.query.filter_by(school_id=sid, item_type='STUDENT', status='ARCHIVED').count(),
+        'teachers': DeletedItem.query.filter_by(school_id=sid, item_type='TEACHER', status='ARCHIVED').count(),
+        'staff':    DeletedItem.query.filter_by(school_id=sid, item_type='STAFF', status='ARCHIVED').count(),
+        'total':    DeletedItem.query.filter_by(school_id=sid, status='ARCHIVED').count(),
+    }
+
+    return jsonify({
+        'data':     [item.to_dict() for item in paginated.items],
+        'counts':   counts,
+        'total':    paginated.total,
+        'page':     paginated.page,
+        'pages':    paginated.pages,
+        'has_next': paginated.has_next,
+        'has_prev': paginated.has_prev,
+    }), 200
+
+
+@principal_bp.route('/deleted-items/<int:item_id>/recover', methods=['POST'])
+@role_required('PRINCIPAL', 'SUPER_ADMIN')
+def recover_item_endpoint(item_id):
+    """
+    Restores an archived person back to active status.
+    Gracefully validates class existence for students without crashing.
+    """
+    from app.services.archive_service import recover_deleted_item
+    sid = _school_id()
+    actor = get_current_user()
+    try:
+        res = recover_deleted_item(item_id=item_id, school_id=sid, actor_user=actor)
+        return jsonify(res), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Recovery failed: {str(e)}'}), 500
+
+
+@principal_bp.route('/deleted-items/<int:item_id>/permanent', methods=['DELETE'])
+@role_required('PRINCIPAL', 'SUPER_ADMIN')
+def permanent_delete_item_endpoint(item_id):
+    """
+    Permanently purges an archived person.
+    Requires strong confirmation: user must send confirmation_name matching person's exact name.
+    Preserves and anonymizes financial history if student/user has transaction history.
+    """
+    from app.services.archive_service import permanently_purge_item
+    sid = _school_id()
+    actor = get_current_user()
+    payload = request.get_json(silent=True) or {}
+    confirmation_name = payload.get('confirmation_name') or request.args.get('confirmation_name', '')
 
     try:
-        from app.models.financial import FeeTransaction
-        FeeTransaction.query.filter_by(student_id=student_id).delete()
-    except Exception:
-        pass
-
-    db.session.flush()
-
-    # ── Communication Hub — NOT NULL FKs to users.id must be deleted, not nullified ──
-    if user:
-        from app.models.communication import (
-            SupportTicket, TicketReply, ChatMessage,
-            SupportNotification, MeetingRequest, SupportAttachment
+        res = permanently_purge_item(
+            item_id=item_id,
+            school_id=sid,
+            actor_user=actor,
+            confirmation_name=confirmation_name,
+            force=False
         )
+        return jsonify(res), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Permanent deletion failed: {str(e)}'}), 500
 
-        # Ticket replies authored by this user (replied_by NOT NULL)
-        TicketReply.query.filter_by(replied_by=user.id).delete(synchronize_session=False)
 
-        # Attachments uploaded by this user (uploaded_by NOT NULL)
-        SupportAttachment.query.filter_by(uploaded_by=user.id).delete(synchronize_session=False)
-
-        # Tickets raised by this user (raised_by NOT NULL) — cascades to that
-        # ticket's own replies/attachments/notifications via model-level cascade
-        SupportTicket.query.filter_by(raised_by=user.id).delete(synchronize_session=False)
-
-        # Nullable FKs on tickets — clear references without deleting the ticket
-        SupportTicket.query.filter_by(assigned_to=user.id)\
-            .update({'assigned_to': None}, synchronize_session=False)
-        SupportTicket.query.filter_by(resolved_by=user.id)\
-            .update({'resolved_by': None}, synchronize_session=False)
-
-        # Chat messages — sender_id / receiver_id both NOT NULL
-        ChatMessage.query.filter(
-            db.or_(ChatMessage.sender_id == user.id, ChatMessage.receiver_id == user.id)
-        ).delete(synchronize_session=False)
-
-        # In-app notifications (user_id NOT NULL)
-        SupportNotification.query.filter_by(user_id=user.id).delete(synchronize_session=False)
-
-        # Meeting requests raised by this user (requested_by NOT NULL)
-        MeetingRequest.query.filter_by(requested_by=user.id).delete(synchronize_session=False)
-        # Nullable handled_by reference
-        MeetingRequest.query.filter_by(handled_by=user.id)\
-            .update({'handled_by': None}, synchronize_session=False)
-
-        db.session.flush()
-
-    db.session.delete(student)
-    db.session.flush()
-    if user:
-        db.session.delete(user)
-    db.session.commit()
-    return jsonify({'message': 'Student deleted'}), 200
+@principal_bp.route('/deleted-items/cleanup', methods=['POST'])
+@role_required('PRINCIPAL', 'SUPER_ADMIN')
+def trigger_archive_cleanup():
+    """
+    Manually triggers 1-year auto-cleanup job (also runs daily via APScheduler).
+    """
+    from app.services.archive_service import run_one_year_cleanup_job
+    try:
+        summary = run_one_year_cleanup_job()
+        return jsonify({
+            'message': f"Cleanup executed successfully. {summary['purged_count']} expired records purged.",
+            'summary': summary
+        }), 200
+    except Exception as e:
+        return jsonify({'error': f'Cleanup job error: {str(e)}'}), 500
 
 @principal_bp.route('/teacher/my-assignments', methods=['GET'])
 @role_required('TEACHER')

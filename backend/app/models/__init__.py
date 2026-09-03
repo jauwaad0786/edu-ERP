@@ -15,6 +15,8 @@ from app.models.staff_attendance import (
     StaffAttendanceAuditLog, StaffMonthlyAttendanceSummary,
 )
 
+from app.models.deleted_item import DeletedItem, DeletedItemType, DeletedItemStatus
+
 __all__ = [
     'User', 'UserRole', 'School', 'Product',
     'Role', 'Permission', 'RolePermission', 'UserRoleAssignment', 'UserPermissionOverride',
@@ -24,4 +26,6 @@ __all__ = [
     'ExamClass', 'ExamSubject', 'ExamTeacherDelegation', 'ResultVersion',
     'StaffAttendanceSettings', 'StaffAttendance', 'StaffAttendanceRegularization',
     'StaffAttendanceAuditLog', 'StaffMonthlyAttendanceSummary',
+    'DeletedItem', 'DeletedItemType', 'DeletedItemStatus',
 ]
+

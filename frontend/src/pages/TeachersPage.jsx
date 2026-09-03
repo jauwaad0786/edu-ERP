@@ -96,11 +96,11 @@ async function deleteTeacherPhoto(teacherId) {
   };
 
   const removeTeacher = async (id) => {
-    if (!window.confirm('Are you sure? This will remove the teacher permanently.')) return;
+    if (!window.confirm('Are you sure? This teacher will be moved to Deleted Items for 1 year and can be recovered anytime.')) return;
     setDeleting(id);
     try {
       await api.delete(`/principal/teachers/${id}`);
-      toast.success('Teacher removed');
+      toast.success('Teacher moved to Deleted Items for 1 year');
       load();
     } catch {
       setMsg('❌ Remove failed');

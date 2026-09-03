@@ -45,6 +45,7 @@ import StaffProfile     from './pages/StaffProfile';
 import ExpensesPage     from './pages/finance/ExpensesPage';
 import InventoryPage    from './pages/finance/InventoryPage';
 import VendorsPage      from './pages/finance/VendorsPage';
+import DeletedItemsPage from './pages/principal/DeletedItemsPage';
 
 import PayrollPage       from './pages/PayrollPage';
 import WhatsAppSettings  from './pages/settings/WhatsAppSettings';
@@ -202,6 +203,11 @@ export default function App() {
             <Route path="/staff/:id" element={
               <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/staff']}>
                 <StaffProfile />
+              </ProtectedRoute>
+            } />
+            <Route path="/principal/deleted-items" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']}>
+                <DeletedItemsPage />
               </ProtectedRoute>
             } />
             {/* ── Unified Finance & Fee Management Suite ── */}

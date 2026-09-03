@@ -99,6 +99,14 @@ const ROLE_MENUS = {
             { icon: 'ti-currency-rupee',   label: 'Fees & Fines',           path: '/transport/fees' },
           ],
         },
+        {
+          icon: 'ti-trash', label: 'Deleted Items', path: '/principal/deleted-items',
+          children: [
+            { icon: 'ti-school',     label: 'Deleted Students', path: '/principal/deleted-items?tab=student' },
+            { icon: 'ti-chalkboard', label: 'Deleted Teachers', path: '/principal/deleted-items?tab=teacher' },
+            { icon: 'ti-briefcase',  label: 'Deleted Staff',    path: '/principal/deleted-items?tab=staff' },
+          ],
+        },
       ],
     },
     {
@@ -297,6 +305,15 @@ const ROLE_MENUS = {
 
         // ── 1P360 BOT ──
         { icon: 'ti-robot', label: '1P360 BOT', path: '/ai/chat', badge: 'AI' },
+
+        {
+          icon: 'ti-trash', label: 'Deleted Items', path: '/principal/deleted-items',
+          children: [
+            { icon: 'ti-school',     label: 'Deleted Students', path: '/principal/deleted-items?tab=student' },
+            { icon: 'ti-chalkboard', label: 'Deleted Teachers', path: '/principal/deleted-items?tab=teacher' },
+            { icon: 'ti-briefcase',  label: 'Deleted Staff',    path: '/principal/deleted-items?tab=staff' },
+          ],
+        },
 
         {
           icon: 'ti-settings', label: 'Settings', path: '/school-settings',
