@@ -1146,32 +1146,55 @@ def delete_fee_structure(fs_id):
 def generate_monthly_hostel_fees():
     """
     Bulk-generate this/next month's hostel fee for every ACTIVE allocation —
-    same intent as principal.generate_fees() but hostel-scoped and structure-driven
-    (no amount input needed — resolve_fee_structure decides it per student).
-    Body: { month: "2026-08" }  (optional — defaults to current month)
+    supports flexible frequency (MONTHLY, QUARTERLY, HALF_YEARLY, YEARLY, ONE_TIME).
+    Body: { month: "2026-09", frequency: "HALF_YEARLY", student_id: 123 }
     """
     sid   = _school_id()
     data  = request.get_json() or {}
     month = data.get('month') or date.today().strftime('%Y-%m')
+    frequency = data.get('frequency')
+    student_id = data.get('student_id')
+    allocation_id = data.get('allocation_id')
+    custom_amount = data.get('custom_amount')
+    custom_start = data.get('custom_start')
+    custom_end = data.get('custom_end')
 
-    allocations = HostelBedAllocation.query.filter_by(school_id=sid, status='ACTIVE').all()
+    q = HostelBedAllocation.query.filter_by(school_id=sid, status='ACTIVE')
+    if allocation_id:
+        q = q.filter_by(id=allocation_id)
+    elif student_id:
+        q = q.filter_by(student_id=student_id)
+    allocations = q.all()
+
     created, skipped, no_structure = 0, 0, 0
+    records_out = []
 
     for alloc in allocations:
-        rec, reason = generate_hostel_fee_record(alloc, get_current_user().id, month=month)
+        alloc_freq = frequency or alloc.billing_frequency or 'MONTHLY'
+        rec, reason = generate_hostel_fee_record(
+            alloc, get_current_user().id,
+            month=month,
+            frequency=alloc_freq,
+            custom_amount=custom_amount,
+            custom_start=custom_start,
+            custom_end=custom_end
+        )
         if reason == 'created':
             created += 1
-        elif reason == 'already_exists':
+            if rec:
+                records_out.append(rec.to_dict())
+        elif reason in ('already_exists', 'already_covered'):
             skipped += 1
         else:
             no_structure += 1
 
     db.session.commit()
     return jsonify({
-        'message':      f'{created} hostel fee records generated for {month}',
+        'message':      f'{created} hostel fee records generated ({skipped} already covered/skipped)',
         'created':      created,
         'skipped':      skipped,
         'no_structure': no_structure,
+        'records':      records_out,
     }), 201
 # NEW — append at end of file
 
@@ -1658,12 +1681,16 @@ def list_hostel_dues():
             'amount_due':   effective_due,
             'amount_paid':  paid,
             'outstanding':  outstanding,
-            'status':       r.status,
-            'due_date':     str(r.due_date) if r.due_date else '',
-            'paid_date':    str(r.paid_date) if r.paid_date else '',
-            'receipt_no':   r.receipt_no or '',
-            'payment_mode': r.payment_mode or '',
-            'remarks':      r.remarks or '',
+            'status':            r.status,
+            'billing_frequency': r.billing_frequency or 'MONTHLY',
+            'period_start':      str(r.period_start) if r.period_start else '',
+            'period_end':        str(r.period_end) if r.period_end else '',
+            'coverage_label':    r.coverage_label or '',
+            'due_date':          str(r.due_date) if r.due_date else '',
+            'paid_date':         str(r.paid_date) if r.paid_date else '',
+            'receipt_no':        r.receipt_no or '',
+            'payment_mode':      r.payment_mode or '',
+            'remarks':           r.remarks or '',
         })
 
     return jsonify(results), 200

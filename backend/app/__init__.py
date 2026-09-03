@@ -420,6 +420,8 @@ def _ensure_hostel_columns():
                 'expected_checkout_date': 'DATE',
                 'checkout_remarks':       'VARCHAR(300)',
                 'checkout_approved_by':   'INTEGER',
+                'billing_frequency':      "VARCHAR(20) DEFAULT 'MONTHLY'",
+                'custom_fee':             'FLOAT',
             }
             with db.engine.connect() as conn:
                 for col, defn in to_add.items():
@@ -430,6 +432,23 @@ def _ensure_hostel_columns():
                             print(f'[OK] Added column hostel_bed_allocations.{col}')
                         except Exception as e:
                             print(f'[WARN] hostel_bed_allocations.{col}: {e}')
+
+        # 1b. hostel_fee_structures
+        if 'hostel_fee_structures' in table_names:
+            existing_fs = {c['name'] for c in inspector.get_columns('hostel_fee_structures')}
+            to_add_fs = {
+                'half_yearly_fee': 'FLOAT DEFAULT 0.0',
+                'one_time_fee':    'FLOAT DEFAULT 0.0',
+            }
+            with db.engine.connect() as conn:
+                for col, defn in to_add_fs.items():
+                    if col not in existing_fs:
+                        try:
+                            conn.execute(text(f'ALTER TABLE hostel_fee_structures ADD COLUMN {col} {defn}'))
+                            conn.commit()
+                            print(f'[OK] Added column hostel_fee_structures.{col}')
+                        except Exception as e:
+                            print(f'[WARN] hostel_fee_structures.{col}: {e}')
 
         # 2. hostel_fine_records
         if 'hostel_fine_records' in table_names:
@@ -562,10 +581,21 @@ def _ensure_fee_record_columns():
 
     existing = {c['name'] for c in inspector.get_columns('fee_records')}
     to_add = {
-        'source':        "VARCHAR(20) DEFAULT 'ACADEMIC'",
-        'source_ref_id': 'INTEGER',
+        'source':            "VARCHAR(20) DEFAULT 'ACADEMIC'",
+        'source_ref_id':     'INTEGER',
+        'billing_frequency': "VARCHAR(20) DEFAULT 'MONTHLY'",
+        'period_start':      'DATE',
+        'period_end':        'DATE',
+        'coverage_label':    'VARCHAR(100)',
     }
     with db.engine.connect() as conn:
+        # Drop PostgreSQL unique constraint on receipt_no if present
+        try:
+            conn.execute(text('ALTER TABLE fee_records DROP CONSTRAINT IF EXISTS fee_records_receipt_no_key'))
+            conn.commit()
+        except Exception:
+            pass
+
         for col, defn in to_add.items():
             if col not in existing:
                 try:
@@ -574,6 +604,25 @@ def _ensure_fee_record_columns():
                     print(f'[OK] Added column fee_records.{col}')
                 except Exception as e:
                     print(f'[WARN] fee_records.{col}: {e}')
+
+    # Also ensure fee_bill_items has billing_frequency and coverage columns
+    if 'fee_bill_items' in inspector.get_table_names():
+        existing_bi = {c['name'] for c in inspector.get_columns('fee_bill_items')}
+        bi_to_add = {
+            'billing_frequency': "VARCHAR(20) DEFAULT 'MONTHLY'",
+            'period_start':      'DATE',
+            'period_end':        'DATE',
+            'coverage_label':    'VARCHAR(100)',
+        }
+        with db.engine.connect() as conn:
+            for col, defn in bi_to_add.items():
+                if col not in existing_bi:
+                    try:
+                        conn.execute(text(f'ALTER TABLE fee_bill_items ADD COLUMN {col} {defn}'))
+                        conn.commit()
+                        print(f'[OK] Added column fee_bill_items.{col}')
+                    except Exception as e:
+                        print(f'[WARN] fee_bill_items.{col}: {e}')
 
 
 def _ensure_library_columns():

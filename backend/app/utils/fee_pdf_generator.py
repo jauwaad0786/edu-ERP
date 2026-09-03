@@ -219,9 +219,17 @@ def generate_fee_bill_pdf(bill, school, student=None):
 
     item_rows = [items_header]
     for idx, itm in enumerate(bill.items, 1):
+        h_name = itm.fee_head.name if itm.fee_head else 'Fee Item'
+        cov_lbl = getattr(itm, 'coverage_label', None)
+        freq_lbl = getattr(itm, 'billing_frequency', None)
+        detail_p = f"<b>{h_name}</b>"
+        if cov_lbl:
+            freq_str = f" • {freq_lbl.replace('_', ' ').title()}" if freq_lbl and freq_lbl != 'MONTHLY' else ""
+            detail_p += f"<br/><font size=6.5 color='#4B5563'>Coverage: {cov_lbl}{freq_str}</font>"
+
         item_rows.append([
             Paragraph(str(idx), ParagraphStyle('TD1', fontName='Helvetica', fontSize=8, alignment=TA_CENTER)),
-            Paragraph(f"<b>{itm.fee_head.name}</b>" if itm.fee_head else 'Fee Item', ParagraphStyle('TD2', fontName='Helvetica', fontSize=8)),
+            Paragraph(detail_p, ParagraphStyle('TD2', fontName='Helvetica', fontSize=8)),
             Paragraph(itm.department or 'ACCOUNTS', ParagraphStyle('TD3', fontName='Helvetica', fontSize=7.5, alignment=TA_CENTER, textColor=MUTED_TEXT)),
             Paragraph(f"{itm.original_amount:,.2f}", ParagraphStyle('TD4', fontName='Helvetica', fontSize=8, alignment=TA_RIGHT)),
             Paragraph(f"{itm.discount_amount:,.2f}" if itm.discount_amount else "0.00", ParagraphStyle('TD5', fontName='Helvetica', fontSize=8, alignment=TA_RIGHT, textColor=GREEN_ACCENT if itm.discount_amount else DARK_TEXT)),

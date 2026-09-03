@@ -17,6 +17,13 @@ export default function DeletedItemsPage() {
   const [search, setSearch] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
 
+  // Recovery modal state
+  const [recoverTarget, setRecoverTarget] = useState(null);
+
+  // Force delete confirmation modal state
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [confirmationInput, setConfirmationInput] = useState('');
+
   useEffect(() => {
     if (urlTab && ['STUDENT', 'TEACHER', 'STAFF'].includes(urlTab)) {
       setActiveTab(urlTab);
@@ -27,13 +34,6 @@ export default function DeletedItemsPage() {
     setActiveTab(tab);
     setSearchParams({ tab: tab.toLowerCase() });
   };
-
-  // Recovery modal state
-  const [recoverTarget, setRecoverTarget] = useState(null);
-
-  // Force delete confirmation modal state
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  const [confirmationInput, setConfirmationInput] = useState('');
 
   // Fetch deleted items
   const fetchDeletedItems = async () => {
@@ -64,9 +64,9 @@ export default function DeletedItemsPage() {
       toast.success(res.data.message || 'Restored successfully');
       if (res.data.warning) {
         toast((t) => (
-          <div className="text-xs">
-            <p className="font-bold text-amber-600">⚠️ Notice</p>
-            <p>{res.data.warning}</p>
+          <div style={{ fontSize: 13 }}>
+            <strong style={{ color: '#d97706', display: 'block', marginBottom: 2 }}>⚠️ Notice</strong>
+            <span>{res.data.warning}</span>
           </div>
         ), { duration: 6000 });
       }
@@ -120,294 +120,338 @@ export default function DeletedItemsPage() {
   const isDeleteConfirmed = deleteTarget && confirmationInput.trim().toLowerCase() === deleteTarget.name.trim().toLowerCase();
 
   return (
-    <div className="app-shell flex bg-slate-50 min-h-screen">
+    <div className="app-shell">
       <Sidebar />
-      <div className="main-content flex-1 flex flex-col min-w-0">
+      <div className="main-content">
         <Navbar title="Deleted Items Archive & Recovery" />
 
-        <div className="page-body p-6 space-y-6 max-w-7xl mx-auto w-full">
+        <div className="page-body">
 
-          {/* Top Banner & Summary Cards */}
-          <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-6 text-white shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border border-slate-800">
+          {/* Page Header */}
+          <div className="page-header flex justify-between items-center" style={{ marginBottom: 20 }}>
             <div>
-              <div className="flex items-center gap-2 mb-2">
-                <span className="p-2 bg-indigo-500/20 text-indigo-300 rounded-lg text-lg border border-indigo-500/30">
-                  <i className="ti ti-trash"></i>
-                </span>
-                <span className="text-xs font-semibold uppercase tracking-wider text-indigo-300 bg-indigo-900/50 px-2.5 py-0.5 rounded-full border border-indigo-400/20">
-                  1-Year Retention System
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <span className="badge badge-warning" style={{ fontSize: 11, padding: '3px 9px' }}>
+                  ⏳ 1-Year Retention Archive
                 </span>
               </div>
-              <h1 className="text-2xl font-bold tracking-tight text-white">Centralized Deleted Items</h1>
-              <p className="text-slate-400 text-sm mt-1 max-w-2xl">
-                Deleted students, teachers, and staff remain safely recoverable here for <strong>365 days</strong>.
-                After 1 year, records are automatically purged. Financial history and receipts are permanently preserved and anonymized.
+              <h2 className="page-title">Deleted Items Archive</h2>
+              <p className="page-subtitle">
+                Deleted records stay recoverable for <strong>365 days</strong>. Historical financial ledgers and receipts are permanently preserved.
               </p>
             </div>
 
-            <div className="flex items-center gap-3 w-full md:w-auto">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <button
+                type="button"
                 onClick={handleRunCleanup}
                 disabled={actionLoading}
-                className="w-full md:w-auto px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-sm font-medium transition flex items-center justify-center gap-2 border border-slate-700 shadow-sm"
+                className="btn btn-neutral btn-sm"
                 title="Execute 1-year auto-cleanup job now"
               >
-                <i className={`ti ti-refresh ${actionLoading ? 'animate-spin' : ''}`}></i>
-                Run Auto-Cleanup
+                <i className={`ti ti-refresh ${actionLoading ? 'ti-spin' : ''}`}></i>
+                {actionLoading ? 'Cleaning up...' : 'Run Auto-Cleanup'}
               </button>
             </div>
           </div>
 
-          {/* Metric Summary Counters */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {/* Stat Cards Row */}
+          <div className="grid-4 mb-6">
             <div
+              className="stat-card"
+              style={{
+                cursor: 'pointer',
+                borderColor: activeTab === 'STUDENT' ? 'var(--blue-60)' : 'var(--neutral-2)',
+                background: activeTab === 'STUDENT' ? 'var(--blue-10)' : '#fff',
+              }}
               onClick={() => switchTab('STUDENT')}
-              className={`cursor-pointer p-4 rounded-xl border transition duration-150 ${
-                activeTab === 'STUDENT'
-                  ? 'bg-blue-50/80 border-blue-400 shadow-sm ring-2 ring-blue-400/20'
-                  : 'bg-white border-slate-200 hover:border-slate-300 shadow-sm'
-              }`}
             >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Deleted Students</span>
-                <span className="p-1.5 rounded-lg bg-blue-100 text-blue-600 text-base">
-                  <i className="ti ti-school"></i>
-                </span>
-              </div>
-              <div className="mt-2 flex items-baseline gap-2">
-                <span className="text-2xl font-bold text-slate-900">{counts.students}</span>
-                <span className="text-xs text-blue-600 font-medium">In Trash</span>
-              </div>
-            </div>
-
-            <div
-              onClick={() => switchTab('TEACHER')}
-              className={`cursor-pointer p-4 rounded-xl border transition duration-150 ${
-                activeTab === 'TEACHER'
-                  ? 'bg-emerald-50/80 border-emerald-400 shadow-sm ring-2 ring-emerald-400/20'
-                  : 'bg-white border-slate-200 hover:border-slate-300 shadow-sm'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Deleted Teachers</span>
-                <span className="p-1.5 rounded-lg bg-emerald-100 text-emerald-600 text-base">
-                  <i className="ti ti-chalkboard"></i>
-                </span>
-              </div>
-              <div className="mt-2 flex items-baseline gap-2">
-                <span className="text-2xl font-bold text-slate-900">{counts.teachers}</span>
-                <span className="text-xs text-emerald-600 font-medium">In Trash</span>
-              </div>
-            </div>
-
-            <div
-              onClick={() => switchTab('STAFF')}
-              className={`cursor-pointer p-4 rounded-xl border transition duration-150 ${
-                activeTab === 'STAFF'
-                  ? 'bg-amber-50/80 border-amber-400 shadow-sm ring-2 ring-amber-400/20'
-                  : 'bg-white border-slate-200 hover:border-slate-300 shadow-sm'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Deleted Staff</span>
-                <span className="p-1.5 rounded-lg bg-amber-100 text-amber-600 text-base">
-                  <i className="ti ti-briefcase"></i>
-                </span>
-              </div>
-              <div className="mt-2 flex items-baseline gap-2">
-                <span className="text-2xl font-bold text-slate-900">{counts.staff}</span>
-                <span className="text-xs text-amber-600 font-medium">In Trash</span>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Total In Archive</span>
-                <span className="p-1.5 rounded-lg bg-purple-100 text-purple-600 text-base">
-                  <i className="ti ti-archive"></i>
-                </span>
-              </div>
-              <div className="mt-2 flex items-baseline gap-2">
-                <span className="text-2xl font-bold text-slate-900">{counts.total}</span>
-                <span className="text-xs text-slate-400 font-medium">All Types</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Search & Filter Toolbar */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
-            {/* Tabs */}
-            <div className="flex items-center p-1 bg-slate-100 rounded-xl w-full md:w-auto">
-              <button
-                onClick={() => switchTab('STUDENT')}
-                className={`flex-1 md:flex-none px-5 py-2 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2 ${
-                  activeTab === 'STUDENT'
-                    ? 'bg-white text-blue-700 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
+              <div className="stat-icon" style={{ background: '#e0f2fe', color: '#0284c7' }}>
                 <i className="ti ti-school"></i>
-                Students ({counts.students})
-              </button>
-
-              <button
-                onClick={() => switchTab('TEACHER')}
-                className={`flex-1 md:flex-none px-5 py-2 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2 ${
-                  activeTab === 'TEACHER'
-                    ? 'bg-white text-emerald-700 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <i className="ti ti-chalkboard"></i>
-                Teachers ({counts.teachers})
-              </button>
-
-              <button
-                onClick={() => switchTab('STAFF')}
-                className={`flex-1 md:flex-none px-5 py-2 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2 ${
-                  activeTab === 'STAFF'
-                    ? 'bg-white text-amber-700 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <i className="ti ti-briefcase"></i>
-                Staff ({counts.staff})
-              </button>
+              </div>
+              <div className="stat-label">Deleted Students</div>
+              <div className="stat-value">{counts.students}</div>
+              <div className="stat-sub">Recoverable in archive</div>
             </div>
 
-            {/* Search Box */}
-            <div className="relative w-full md:w-80">
-              <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                <i className="ti ti-search text-base"></i>
-              </span>
-              <input
-                type="text"
-                placeholder={`Search deleted ${activeTab.toLowerCase()}s...`}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
-              />
-              {search && (
-                <button
-                  onClick={() => setSearch('')}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
-                >
-                  <i className="ti ti-x text-sm"></i>
-                </button>
-              )}
+            <div
+              className="stat-card"
+              style={{
+                cursor: 'pointer',
+                borderColor: activeTab === 'TEACHER' ? 'var(--blue-60)' : 'var(--neutral-2)',
+                background: activeTab === 'TEACHER' ? 'var(--blue-10)' : '#fff',
+              }}
+              onClick={() => switchTab('TEACHER')}
+            >
+              <div className="stat-icon" style={{ background: '#dcfce7', color: '#16a34a' }}>
+                <i className="ti ti-chalkboard"></i>
+              </div>
+              <div className="stat-label">Deleted Teachers</div>
+              <div className="stat-value">{counts.teachers}</div>
+              <div className="stat-sub">Recoverable in archive</div>
+            </div>
+
+            <div
+              className="stat-card"
+              style={{
+                cursor: 'pointer',
+                borderColor: activeTab === 'STAFF' ? 'var(--blue-60)' : 'var(--neutral-2)',
+                background: activeTab === 'STAFF' ? 'var(--blue-10)' : '#fff',
+              }}
+              onClick={() => switchTab('STAFF')}
+            >
+              <div className="stat-icon" style={{ background: '#fef3c7', color: '#d97706' }}>
+                <i className="ti ti-briefcase"></i>
+              </div>
+              <div className="stat-label">Deleted Staff</div>
+              <div className="stat-value">{counts.staff}</div>
+              <div className="stat-sub">Recoverable in archive</div>
+            </div>
+
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#f3e8ff', color: '#9333ea' }}>
+                <i className="ti ti-archive"></i>
+              </div>
+              <div className="stat-label">Total In Archive</div>
+              <div className="stat-value">{counts.total}</div>
+              <div className="stat-sub">Auto-purged after 365 days</div>
             </div>
           </div>
 
-          {/* Main Content Table */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          {/* Main Card with Tabs, Search, and Table */}
+          <div className="card">
+            {/* Header Tabs */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '0 16px',
+              borderBottom: '1px solid var(--neutral-2)',
+              background: '#fff',
+              flexWrap: 'wrap',
+              gap: 12,
+            }}>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button
+                  type="button"
+                  onClick={() => switchTab('STUDENT')}
+                  style={{
+                    padding: '12px 18px',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    border: 'none',
+                    background: 'none',
+                    color: activeTab === 'STUDENT' ? 'var(--blue-60)' : 'var(--neutral-6)',
+                    borderBottom: activeTab === 'STUDENT' ? '2px solid var(--blue-60)' : '2px solid transparent',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <i className="ti ti-school"></i>
+                  Students ({counts.students})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => switchTab('TEACHER')}
+                  style={{
+                    padding: '12px 18px',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    border: 'none',
+                    background: 'none',
+                    color: activeTab === 'TEACHER' ? 'var(--blue-60)' : 'var(--neutral-6)',
+                    borderBottom: activeTab === 'TEACHER' ? '2px solid var(--blue-60)' : '2px solid transparent',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <i className="ti ti-chalkboard"></i>
+                  Teachers ({counts.teachers})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => switchTab('STAFF')}
+                  style={{
+                    padding: '12px 18px',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    border: 'none',
+                    background: 'none',
+                    color: activeTab === 'STAFF' ? 'var(--blue-60)' : 'var(--neutral-6)',
+                    borderBottom: activeTab === 'STAFF' ? '2px solid var(--blue-60)' : '2px solid transparent',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <i className="ti ti-briefcase"></i>
+                  Staff ({counts.staff})
+                </button>
+              </div>
+
+              {/* Search Toolbar */}
+              <div style={{ padding: '8px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="text"
+                  className="form-input"
+                  style={{ width: 280, height: 34, fontSize: 13 }}
+                  placeholder={`Search deleted ${activeTab.toLowerCase()}s...`}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                {search && (
+                  <button
+                    type="button"
+                    className="btn btn-neutral btn-sm"
+                    onClick={() => setSearch('')}
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Table or Empty State */}
             {loading ? (
-              <div className="p-16 text-center text-slate-400">
-                <i className="ti ti-loader-2 text-3xl animate-spin mx-auto mb-3 text-indigo-500"></i>
-                <p className="text-sm font-medium">Loading deleted records...</p>
+              <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--neutral-6)' }}>
+                <i className="ti ti-loader-2" style={{ fontSize: 28, animation: 'spin 1s linear infinite', color: 'var(--blue-60)', display: 'block', margin: '0 auto 10px' }}></i>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>Loading deleted {activeTab.toLowerCase()}s...</span>
               </div>
             ) : items.length === 0 ? (
-              <div className="p-16 text-center">
-                <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto text-slate-400 text-2xl mb-3">
+              <div style={{ padding: '60px 20px', textAlign: 'center' }}>
+                <div style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: '50%',
+                  background: 'var(--neutral-1)',
+                  color: 'var(--neutral-6)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 24,
+                  margin: '0 auto 12px',
+                }}>
                   <i className="ti ti-archive-off"></i>
                 </div>
-                <h3 className="text-base font-semibold text-slate-800">No Deleted {activeTab}s Found</h3>
-                <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                <h4 style={{ fontSize: 15, fontWeight: 700, color: 'var(--neutral-9)', marginBottom: 4 }}>
+                  No Deleted {activeTab}s Found
+                </h4>
+                <p style={{ fontSize: 13, color: 'var(--neutral-6)', maxWidth: 360, margin: '0 auto' }}>
                   {search ? 'Try adjusting your search criteria.' : `There are currently no deleted ${activeTab.toLowerCase()}s in the 1-year archive.`}
                 </p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-sm">
+              <div className="table-container" style={{ border: 'none', borderRadius: 0 }}>
+                <table>
                   <thead>
-                    <tr className="bg-slate-50/75 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                      <th className="px-5 py-3.5">Person / Name</th>
-                      <th className="px-5 py-3.5">Identifier</th>
-                      <th className="px-5 py-3.5">
-                        {activeTab === 'STUDENT' ? 'Class & Section' : 'Department & Role'}
-                      </th>
-                      <th className="px-5 py-3.5">Deleted Date & By</th>
-                      <th className="px-5 py-3.5">Auto-Delete / Retention</th>
-                      <th className="px-5 py-3.5">Reason</th>
-                      <th className="px-5 py-3.5 text-right">Actions</th>
+                    <tr>
+                      <th>Person / Name</th>
+                      <th>Identifier</th>
+                      <th>{activeTab === 'STUDENT' ? 'Class & Section' : 'Department & Role'}</th>
+                      <th>Deleted Date &amp; By</th>
+                      <th>Auto-Delete / Retention</th>
+                      <th>Reason</th>
+                      <th style={{ textAlign: 'right' }}>Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody>
                     {items.map((item) => (
-                      <tr key={item.id} className="hover:bg-slate-50/80 transition">
-                        <td className="px-5 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 font-bold text-sm">
+                      <tr key={item.id}>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <div className="avatar avatar-md">
                               {item.name ? item.name.charAt(0).toUpperCase() : '?'}
                             </div>
                             <div>
-                              <div className="font-semibold text-slate-900">{item.name}</div>
-                              <div className="text-xs text-slate-400">ID #{item.original_id}</div>
+                              <strong style={{ display: 'block', color: 'var(--neutral-9)', fontSize: 13 }}>
+                                {item.name}
+                              </strong>
+                              <span style={{ fontSize: 11, color: 'var(--neutral-6)' }}>
+                                ID #{item.original_id}
+                              </span>
                             </div>
                           </div>
                         </td>
 
-                        <td className="px-5 py-4 font-mono text-xs">
+                        <td>
                           {item.identifier ? (
-                            <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md border border-slate-200">
+                            <span className="badge badge-info" style={{ fontFamily: 'monospace' }}>
                               {item.identifier}
                             </span>
                           ) : (
-                            <span className="text-slate-400">—</span>
+                            <span style={{ color: 'var(--neutral-4)' }}>—</span>
                           )}
                         </td>
 
-                        <td className="px-5 py-4">
+                        <td>
                           {activeTab === 'STUDENT' ? (
-                            <span className="font-medium text-slate-700">
+                            <span style={{ fontWeight: 600, color: 'var(--neutral-9)' }}>
                               {item.class_name || 'No Class Assigned'}
                             </span>
                           ) : (
                             <div>
-                              <div className="font-medium text-slate-800">{item.designation || item.role}</div>
-                              <div className="text-xs text-slate-400">{item.department || 'General'}</div>
+                              <div style={{ fontWeight: 600, color: 'var(--neutral-9)' }}>
+                                {item.designation || item.role}
+                              </div>
+                              <div style={{ fontSize: 11, color: 'var(--neutral-6)' }}>
+                                {item.department || 'General'}
+                              </div>
                             </div>
                           )}
                         </td>
 
-                        <td className="px-5 py-4">
-                          <div className="text-slate-800 font-medium">{item.deleted_date}</div>
-                          <div className="text-xs text-slate-400">by {item.deleted_by_name}</div>
-                        </td>
-
-                        <td className="px-5 py-4">
-                          <div className="text-slate-800 text-xs font-semibold">{item.auto_delete_date}</div>
-                          <div className="mt-1">
-                            <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-                              <i className="ti ti-clock-hour-4 text-xs"></i>
-                              {item.days_remaining} days remaining
-                            </span>
+                        <td>
+                          <div style={{ color: 'var(--neutral-9)', fontWeight: 600, fontSize: 12 }}>
+                            {item.deleted_date}
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--neutral-6)' }}>
+                            by {item.deleted_by_name}
                           </div>
                         </td>
 
-                        <td className="px-5 py-4 text-xs text-slate-600 max-w-xs truncate" title={item.delete_reason}>
+                        <td>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--neutral-9)', marginBottom: 2 }}>
+                            {item.auto_delete_date}
+                          </div>
+                          <span className="badge badge-warning" style={{ fontSize: 10, padding: '2px 7px' }}>
+                            {item.days_remaining} days left
+                          </span>
+                        </td>
+
+                        <td style={{ fontSize: 12, color: 'var(--neutral-6)', maxWidth: 220 }}>
                           {item.delete_reason || '—'}
                         </td>
 
-                        <td className="px-5 py-4 text-right whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-2">
+                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
                             <button
+                              type="button"
                               onClick={() => setRecoverTarget(item)}
-                              className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-semibold transition border border-emerald-200 flex items-center gap-1.5"
+                              className="btn btn-neutral btn-sm"
+                              style={{ color: 'var(--success)', borderColor: 'var(--success)' }}
                               title="Restore back to active roster"
                             >
-                              <i className="ti ti-arrow-back-up text-sm"></i>
+                              <i className="ti ti-arrow-back-up"></i>
                               Recover
                             </button>
 
                             <button
+                              type="button"
                               onClick={() => {
                                 setDeleteTarget(item);
                                 setConfirmationInput('');
                               }}
-                              className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-semibold transition border border-rose-200 flex items-center gap-1.5"
+                              className="btn btn-destructive btn-sm"
                               title="Permanently remove now"
                             >
-                              <i className="ti ti-trash text-sm"></i>
+                              <i className="ti ti-trash"></i>
                               Permanent Delete
                             </button>
                           </div>
@@ -425,40 +469,62 @@ export default function DeletedItemsPage() {
 
       {/* ── RECOVER CONFIRMATION MODAL ── */}
       {recoverTarget && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border border-slate-200">
-            <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-4 text-2xl">
-              <i className="ti ti-arrow-back-up"></i>
-            </div>
-
-            <h3 className="text-lg font-bold text-slate-900 text-center">
-              Recover {recoverTarget.name}?
-            </h3>
-
-            <p className="text-xs text-slate-500 text-center mt-2 leading-relaxed">
-              This will restore <strong>{recoverTarget.name}</strong> back to active status in the school ERP.
-              {recoverTarget.item_type === 'STUDENT' && (
-                <> The student will be restored into <strong>{recoverTarget.class_name || 'their original class'}</strong> if the class is still active.</>
-              )}
-            </p>
-
-            <div className="mt-6 flex items-center gap-3">
+        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && !actionLoading && setRecoverTarget(null)}>
+          <div className="modal" style={{ maxWidth: 440 }}>
+            <div className="modal-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--success)' }}>
+                <i className="ti ti-arrow-back-up"></i>
+                Recover {recoverTarget.name}?
+              </h3>
               <button
                 type="button"
-                onClick={() => setRecoverTarget(null)}
+                className="modal-close"
                 disabled={actionLoading}
-                className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-medium transition"
+                onClick={() => setRecoverTarget(null)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <div style={{
+                background: 'var(--success-bg)',
+                border: '1px solid #bbf7d0',
+                borderRadius: 'var(--radius-md)',
+                padding: '14px 16px',
+                fontSize: 13,
+                color: 'var(--success)',
+                marginBottom: 12,
+              }}>
+                ✅ This will restore <strong>{recoverTarget.name}</strong> back to active status in the school ERP.
+                {recoverTarget.item_type === 'STUDENT' && (
+                  <span style={{ display: 'block', marginTop: 4 }}>
+                    The student will be restored into <strong>{recoverTarget.class_name || 'their original class'}</strong>.
+                  </span>
+                )}
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--neutral-6)' }}>
+                Their login access will be reactivated, and they will reappear in active class lists and dashboards.
+              </p>
+            </div>
+
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-neutral"
+                disabled={actionLoading}
+                onClick={() => setRecoverTarget(null)}
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={handleRecover}
+                className="btn btn-primary"
+                style={{ background: 'var(--success)', borderColor: 'var(--success)' }}
                 disabled={actionLoading}
-                className="flex-1 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold transition shadow-md shadow-emerald-500/20 flex items-center justify-center gap-2"
+                onClick={handleRecover}
               >
-                {actionLoading ? <i className="ti ti-loader-2 animate-spin"></i> : <i className="ti ti-check"></i>}
-                Restore Person
+                {actionLoading ? 'Restoring...' : '✅ Confirm Recover'}
               </button>
             </div>
           </div>
@@ -467,71 +533,94 @@ export default function DeletedItemsPage() {
 
       {/* ── FORCE DELETE / PERMANENT DELETE MODAL (Requires typing person's name) ── */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 border border-rose-200">
-            <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-4 text-2xl border border-rose-200">
-              <i className="ti ti-alert-triangle"></i>
-            </div>
-
-            <h3 className="text-lg font-bold text-slate-900 text-center">
-              Permanently Delete {deleteTarget.name}?
-            </h3>
-
-            <div className="mt-3 p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 space-y-2">
-              <p className="font-semibold flex items-center gap-1.5 text-rose-900">
-                <i className="ti ti-shield-alert text-sm"></i>
-                Critical Action — Permanent Deletion cannot be undone!
-              </p>
-              <ul className="list-disc pl-4 space-y-1 text-rose-700">
-                <li>Personal information, login credentials, and uploaded documents will be permanently purged.</li>
-                <li>Operational enrollments (Hostel beds, Transport routes, Library) will be unlinked.</li>
-                <li><strong>Financial Security:</strong> Any past fee receipts, payments, and ledger balances will be safely anonymized to preserve school accounting integrity.</li>
-              </ul>
-            </div>
-
-            <div className="mt-4">
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                To confirm permanent deletion, type the person's exact name:
-                <span className="ml-1 font-bold text-slate-900 select-all font-mono bg-slate-100 px-2 py-0.5 rounded border border-slate-300">
-                  {deleteTarget.name}
-                </span>
-              </label>
-
-              <input
-                type="text"
-                value={confirmationInput}
-                onChange={(e) => setConfirmationInput(e.target.value)}
-                placeholder={`Type "${deleteTarget.name}" to unlock`}
-                autoFocus
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition"
-              />
-            </div>
-
-            <div className="mt-6 flex items-center gap-3">
+        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && !actionLoading && setDeleteTarget(null)}>
+          <div className="modal" style={{ maxWidth: 480 }}>
+            <div className="modal-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--error)' }}>
+                <i className="ti ti-alert-triangle"></i>
+                Permanently Delete {deleteTarget.name}?
+              </h3>
               <button
                 type="button"
+                className="modal-close"
+                disabled={actionLoading}
+                onClick={() => setDeleteTarget(null)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <div style={{
+                background: 'var(--error-bg)',
+                border: '1px solid #fecaca',
+                borderRadius: 'var(--radius-md)',
+                padding: '14px 16px',
+                fontSize: 13,
+                color: 'var(--error)',
+                marginBottom: 14,
+              }}>
+                <strong>⚠️ Warning: Permanent deletion cannot be undone!</strong>
+                <ul style={{ paddingLeft: 18, marginTop: 6, fontSize: 12, lineHeight: 1.6 }}>
+                  <li>Personal details, login credentials, and profile records will be permanently removed.</li>
+                  <li><strong>Financial Safety:</strong> Any past fee receipts and payment ledgers will be anonymized to maintain audit and accounting integrity.</li>
+                </ul>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: 12, marginBottom: 6 }}>
+                  To confirm permanent deletion, type the person's exact name:
+                  <span style={{
+                    marginLeft: 6,
+                    fontFamily: 'monospace',
+                    fontWeight: 700,
+                    background: 'var(--neutral-1)',
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                    border: '1px solid var(--neutral-2)',
+                    color: 'var(--neutral-9)',
+                  }}>
+                    {deleteTarget.name}
+                  </span>
+                </label>
+
+                <input
+                  type="text"
+                  className="form-input"
+                  value={confirmationInput}
+                  onChange={(e) => setConfirmationInput(e.target.value)}
+                  placeholder={`Type "${deleteTarget.name}" to unlock`}
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-neutral"
+                disabled={actionLoading}
                 onClick={() => {
                   setDeleteTarget(null);
                   setConfirmationInput('');
                 }}
-                disabled={actionLoading}
-                className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-medium transition"
               >
                 Cancel
               </button>
 
               <button
                 type="button"
-                onClick={handlePermanentDelete}
+                className="btn btn-destructive"
+                style={{
+                  background: isDeleteConfirmed ? 'var(--error)' : 'var(--neutral-2)',
+                  color: isDeleteConfirmed ? '#fff' : 'var(--neutral-6)',
+                  borderColor: isDeleteConfirmed ? 'var(--error)' : 'var(--neutral-2)',
+                  cursor: isDeleteConfirmed ? 'pointer' : 'not-allowed',
+                }}
                 disabled={!isDeleteConfirmed || actionLoading}
-                className={`flex-1 py-2.5 px-4 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 ${
-                  isDeleteConfirmed && !actionLoading
-                    ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-md shadow-rose-500/20'
-                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                }`}
+                onClick={handlePermanentDelete}
               >
-                {actionLoading ? <i className="ti ti-loader-2 animate-spin"></i> : <i className="ti ti-trash"></i>}
-                PERMANENTLY DELETE NOW
+                {actionLoading ? 'Deleting...' : '🗑️ PERMANENTLY DELETE NOW'}
               </button>
             </div>
           </div>

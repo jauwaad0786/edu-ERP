@@ -53,6 +53,15 @@ export default function HostelFees() {
   const [payRemarks, setPayRemarks]     = useState('');
   const [submitting, setSubmitting]     = useState(false);
 
+  // Flexible Frequency Generation Modal
+  const [genModal, setGenModal]         = useState(false);
+  const [genFreq, setGenFreq]           = useState('MONTHLY');
+  const [genMonth, setGenMonth]         = useState(monthFilter);
+
+  useEffect(() => {
+    setGenMonth(monthFilter);
+  }, [monthFilter]);
+
   useEffect(() => {
     localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light');
   }, [darkMode]);
@@ -80,18 +89,25 @@ export default function HostelFees() {
     fetchDues();
   };
 
-  const handleGenerateMonthly = async () => {
-    const formatted = formatMonthName(monthFilter);
-    if (!window.confirm(`Generate monthly hostel fee billing demand for all active residents for ${formatted}?\n\nBills will automatically sync with Central Finance and debit the Student Financial Ledger.`)) {
-      return;
-    }
+  const handleExecuteGenerate = async () => {
+    const formatted = formatMonthName(genMonth);
+    const freqLabels = {
+      'MONTHLY': '1 Month (Monthly)',
+      'QUARTERLY': '3 Months (Quarterly)',
+      'HALF_YEARLY': '6 Months (Half-Yearly)',
+      'YEARLY': '12 Months (Annual)',
+    };
     try {
       setGenerating(true);
-      const res = await api.post('/hostel/fees/generate-monthly', { month: monthFilter });
-      toast.success(res.data?.message || `Hostel fees generated successfully for ${formatted}`);
+      const res = await api.post('/hostel/fees/generate-monthly', {
+        month: genMonth,
+        frequency: genFreq
+      });
+      toast.success(res.data?.message || `Hostel billing demands created for ${formatted}`);
+      setGenModal(false);
       fetchDues();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to generate monthly fees');
+      toast.error(err.response?.data?.error || 'Failed to generate hostel bills');
     } finally {
       setGenerating(false);
     }
@@ -248,7 +264,7 @@ export default function HostelFees() {
 
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button
-                  onClick={handleGenerateMonthly}
+                  onClick={() => setGenModal(true)}
                   disabled={generating}
                   style={{
                     background: '#ffffff', color: '#4f46e5', border: 'none', borderRadius: '10px',
@@ -257,7 +273,7 @@ export default function HostelFees() {
                   }}
                 >
                   <i className="ti ti-calendar-plus" />
-                  {generating ? `Generating ${formatMonthName(monthFilter)}...` : `⚡ Generate ${formatMonthName(monthFilter)} Bills`}
+                  ⚡ Generate Flexible Bills
                 </button>
               </div>
             </div>
@@ -425,7 +441,7 @@ export default function HostelFees() {
                   <tr style={{ background: darkMode ? '#0f172a' : '#f8fafc', borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, textAlign: 'left' }}>
                     <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 800, fontSize: 11 }}>RESIDENT STUDENT</th>
                     <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 800, fontSize: 11 }}>HOSTEL &amp; BED</th>
-                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 800, fontSize: 11 }}>BILLING MONTH</th>
+                    <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 800, fontSize: 11 }}>FREQUENCY &amp; COVERAGE</th>
                     <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 800, fontSize: 11, textAlign: 'right' }}>BILLED (₹)</th>
                     <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 800, fontSize: 11, textAlign: 'right' }}>PAID (₹)</th>
                     <th style={{ padding: '12px 16px', color: '#94a3b8', fontWeight: 800, fontSize: 11, textAlign: 'right' }}>BALANCE DUE</th>
@@ -449,7 +465,7 @@ export default function HostelFees() {
                           No fee records found for {formatMonthName(monthFilter)}
                         </div>
                         <div style={{ fontSize: 12, marginTop: 4 }}>
-                          Click "⚡ Generate {formatMonthName(monthFilter)} Bills" above to create charges for this month.
+                          Click "⚡ Generate Flexible Hostel Bills" above to create billing demands.
                         </div>
                       </td>
                     </tr>
@@ -465,12 +481,19 @@ export default function HostelFees() {
                           <div style={{ fontSize: 11, color: '#94a3b8' }}>Room {d.room_number} &bull; Bed {d.bed_number}</div>
                         </td>
                         <td style={{ padding: '12px 16px' }}>
-                          <span style={{
-                            background: darkMode ? '#334155' : '#f1f5f9', color: darkMode ? '#cbd5e1' : '#475569',
-                            padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 700
-                          }}>
-                            {formatMonthName(d.month)}
-                          </span>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            <span style={{
+                              background: d.billing_frequency === 'HALF_YEARLY' ? '#ede9fe' : d.billing_frequency === 'YEARLY' ? '#fef3c7' : (darkMode ? '#334155' : '#f1f5f9'),
+                              color: d.billing_frequency === 'HALF_YEARLY' ? '#6d28d9' : d.billing_frequency === 'YEARLY' ? '#b45309' : (darkMode ? '#cbd5e1' : '#475569'),
+                              padding: '2px 8px', borderRadius: 6, fontSize: 10.5, fontWeight: 800, alignSelf: 'flex-start',
+                              border: `1px solid ${d.billing_frequency === 'HALF_YEARLY' ? '#ddd6fe' : d.billing_frequency === 'YEARLY' ? '#fde68a' : (darkMode ? '#475569' : '#e2e8f0')}`
+                            }}>
+                              {d.billing_frequency ? d.billing_frequency.replace('_', ' ') : 'MONTHLY'}
+                            </span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
+                              {d.coverage_label || formatMonthName(d.month)}
+                            </span>
+                          </div>
                         </td>
                         <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600 }}>₹{d.amount_due?.toLocaleString('en-IN')}</td>
                         <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 600, color: '#16a34a' }}>₹{d.amount_paid?.toLocaleString('en-IN')}</td>
@@ -625,6 +648,80 @@ export default function HostelFees() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ══ Flexible Billing Generation Modal ══ */}
+      {genModal && (
+        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setGenModal(false)}>
+          <div className="modal" style={{ maxWidth: 460, background: darkMode ? '#1e293b' : '#fff' }}>
+            <div className="modal-header">
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
+                Generate Hostel Billing Demands
+              </h3>
+              <button className="modal-close" onClick={() => setGenModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div style={{
+                background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10,
+                padding: '12px 14px', marginBottom: 16, fontSize: 12, color: '#1e40af'
+              }}>
+                ℹ️ <strong>Multi-Frequency &amp; Duplicate Protection</strong>:
+                <div style={{ marginTop: 4 }}>
+                  Bills will be created using each resident's rate card. Residents already covered by a past multi-month charge (e.g., Half-Yearly or Yearly) will be <strong>automatically skipped</strong> to prevent duplicate dues.
+                </div>
+              </div>
+
+              <label style={labelStyle}>Billing Start Month *</label>
+              <input
+                type="month"
+                value={genMonth}
+                onChange={(e) => setGenMonth(e.target.value)}
+                style={inputStyle}
+              />
+
+              <label style={labelStyle}>Billing Frequency *</label>
+              <select
+                value={genFreq}
+                onChange={(e) => setGenFreq(e.target.value)}
+                style={inputStyle}
+              >
+                <option value="MONTHLY">1 Month (Monthly Standard)</option>
+                <option value="QUARTERLY">3 Months (Quarterly)</option>
+                <option value="HALF_YEARLY">6 Months (Half-Yearly • e.g. Sep–Feb)</option>
+                <option value="YEARLY">12 Months (Yearly / Annual)</option>
+              </select>
+
+              <div style={{
+                background: darkMode ? '#0f172a' : '#f8fafc',
+                border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                borderRadius: 8, padding: '10px 12px', marginTop: 10, fontSize: 12
+              }}>
+                <div style={{ fontWeight: 700, color: '#64748b' }}>COVERAGE WINDOW PREVIEW:</div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: '#4f46e5', marginTop: 2 }}>
+                  {formatMonthName(genMonth)} ({genFreq.replace('_', ' ')})
+                </div>
+                <div style={{ fontSize: 11, color: '#16a34a', marginTop: 2 }}>
+                  ✓ Central Finance synced under head <strong>HOSTEL</strong>
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-footer" style={{ borderTop: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, padding: '14px 20px' }}>
+              <button type="button" className="btn btn-neutral" onClick={() => setGenModal(false)}>Cancel</button>
+              <button
+                type="button"
+                onClick={handleExecuteGenerate}
+                disabled={generating}
+                style={{
+                  background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 8,
+                  padding: '9px 24px', fontSize: 13, fontWeight: 800, cursor: generating ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {generating ? 'Generating...' : `Generate ${genFreq.replace('_', ' ')} Demands`}
+              </button>
+            </div>
           </div>
         </div>
       )}

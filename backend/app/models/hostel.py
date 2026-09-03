@@ -316,9 +316,11 @@ class HostelBedAllocation(db.Model):
     checkout_remarks       = db.Column(db.String(300), default='')
     checkout_approved_by   = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
 
-    status         = db.Column(db.String(20), default='ACTIVE')  # ACTIVE / TRANSFERRED / VACATED / CHECKED_IN
-    transfer_type  = db.Column(db.String(20), nullable=True)      # BED/ROOM/FLOOR/BUILDING/HOSTEL (set on close)
-    transfer_reason= db.Column(db.String(300), default='')
+    status            = db.Column(db.String(20), default='ACTIVE')  # ACTIVE / TRANSFERRED / VACATED / CHECKED_IN
+    transfer_type     = db.Column(db.String(20), nullable=True)      # BED/ROOM/FLOOR/BUILDING/HOSTEL (set on close)
+    transfer_reason   = db.Column(db.String(300), default='')
+    billing_frequency = db.Column(db.String(20), default='MONTHLY') # MONTHLY / QUARTERLY / HALF_YEARLY / YEARLY / ONE_TIME
+    custom_fee        = db.Column(db.Float, nullable=True)
 
     allocated_by = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at   = db.Column(db.DateTime, default=datetime.utcnow)
@@ -353,6 +355,8 @@ class HostelBedAllocation(db.Model):
             'expected_checkout_date': str(self.expected_checkout_date) if self.expected_checkout_date else None,
             'vacate_date':            str(self.vacate_date) if self.vacate_date else None,
             'status':                 self.status,
+            'billing_frequency':      self.billing_frequency or 'MONTHLY',
+            'custom_fee':             self.custom_fee,
             'transfer_type':          self.transfer_type,
             'transfer_reason':        self.transfer_reason or '',
             'checkout_remarks':       self.checkout_remarks or '',
@@ -432,7 +436,9 @@ class HostelFeeStructure(db.Model):
 
     monthly_fee         = db.Column(db.Float, nullable=False, default=0)
     quarterly_fee       = db.Column(db.Float, default=0)
+    half_yearly_fee     = db.Column(db.Float, default=0)
     yearly_fee          = db.Column(db.Float, default=0)
+    one_time_fee        = db.Column(db.Float, default=0)
     security_deposit    = db.Column(db.Float, default=0)
     electricity_charges = db.Column(db.Float, default=0)
     laundry_charges     = db.Column(db.Float, default=0)
@@ -455,6 +461,21 @@ class HostelFeeStructure(db.Model):
             (self.laundry_charges or 0) + (self.mess_charges or 0) +
             (self.maintenance_charges or 0) - (self.discount or 0), 2
         )
+
+    def get_fee_for_frequency(self, frequency='MONTHLY'):
+        freq = (frequency or 'MONTHLY').upper()
+        base_monthly = self.total_monthly()
+        if freq == 'MONTHLY':
+            return base_monthly
+        elif freq == 'QUARTERLY':
+            return round(self.quarterly_fee if (self.quarterly_fee and self.quarterly_fee > 0) else (base_monthly * 3), 2)
+        elif freq == 'HALF_YEARLY':
+            return round(self.half_yearly_fee if (self.half_yearly_fee and self.half_yearly_fee > 0) else (base_monthly * 6), 2)
+        elif freq == 'YEARLY':
+            return round(self.yearly_fee if (self.yearly_fee and self.yearly_fee > 0) else (base_monthly * 12), 2)
+        elif freq == 'ONE_TIME':
+            return round(self.one_time_fee if (self.one_time_fee and self.one_time_fee > 0) else base_monthly, 2)
+        return base_monthly
 
     def is_used(self):
         """Checks whether any hostel resident or fee record is currently bound to this structure."""
@@ -482,7 +503,9 @@ class HostelFeeStructure(db.Model):
             'sharing_type':        self.sharing_type,
             'monthly_fee':         self.monthly_fee,
             'quarterly_fee':       self.quarterly_fee or 0,
+            'half_yearly_fee':     self.half_yearly_fee or 0,
             'yearly_fee':          self.yearly_fee or 0,
+            'one_time_fee':        self.one_time_fee or 0,
             'security_deposit':    self.security_deposit or 0,
             'electricity_charges': self.electricity_charges or 0,
             'laundry_charges':     self.laundry_charges or 0,

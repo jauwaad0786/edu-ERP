@@ -400,29 +400,37 @@ class FeeBillItem(db.Model):
     fee_head_id     = db.Column(db.Integer, db.ForeignKey('fee_heads.id'), nullable=False)
     department      = db.Column(db.String(30), default='ACCOUNTS') # ACCOUNTS / TRANSPORT / HOSTEL / LIBRARY
 
-    original_amount = db.Column(db.Float, nullable=False, default=0.0)
-    discount_amount = db.Column(db.Float, default=0.0)
-    fine_amount     = db.Column(db.Float, default=0.0)
-    net_amount      = db.Column(db.Float, nullable=False, default=0.0)
-    paid_amount     = db.Column(db.Float, default=0.0)
-    balance_amount  = db.Column(db.Float, default=0.0)
+    original_amount   = db.Column(db.Float, nullable=False, default=0.0)
+    discount_amount   = db.Column(db.Float, default=0.0)
+    fine_amount       = db.Column(db.Float, default=0.0)
+    net_amount        = db.Column(db.Float, nullable=False, default=0.0)
+    paid_amount       = db.Column(db.Float, default=0.0)
+    balance_amount    = db.Column(db.Float, default=0.0)
+    billing_frequency = db.Column(db.String(20), default='MONTHLY')
+    period_start      = db.Column(db.Date, nullable=True)
+    period_end        = db.Column(db.Date, nullable=True)
+    coverage_label    = db.Column(db.String(100), nullable=True)
 
     fee_head        = db.relationship('FeeHead', foreign_keys=[fee_head_id])
 
     def to_dict(self):
         return {
-            'id':              self.id,
-            'bill_id':         self.bill_id,
-            'fee_head_id':     self.fee_head_id,
-            'fee_head_name':   self.fee_head.name if self.fee_head else '',
-            'fee_head_code':   self.fee_head.code if self.fee_head else '',
-            'department':      self.department,
-            'original_amount': self.original_amount,
-            'discount_amount': self.discount_amount,
-            'fine_amount':     self.fine_amount,
-            'net_amount':      self.net_amount,
-            'paid_amount':     self.paid_amount,
-            'balance_amount':  self.balance_amount,
+            'id':                self.id,
+            'bill_id':           self.bill_id,
+            'fee_head_id':       self.fee_head_id,
+            'fee_head_name':     self.fee_head.name if self.fee_head else '',
+            'fee_head_code':     self.fee_head.code if self.fee_head else '',
+            'department':        self.department,
+            'original_amount':   self.original_amount,
+            'discount_amount':   self.discount_amount,
+            'fine_amount':       self.fine_amount,
+            'net_amount':        self.net_amount,
+            'paid_amount':       self.paid_amount,
+            'balance_amount':    self.balance_amount,
+            'billing_frequency': self.billing_frequency or 'MONTHLY',
+            'period_start':      str(self.period_start) if self.period_start else None,
+            'period_end':        str(self.period_end) if self.period_end else None,
+            'coverage_label':    self.coverage_label or '',
         }
 
 

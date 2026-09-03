@@ -1539,6 +1539,11 @@ def generate_fee_receipt_pdf(student, school, transactions, receipt_no):
         for idx, t in enumerate(transactions, 1):
             r = getattr(t, 'fee_record', None)
             name = r.fee_type if r and getattr(r, 'fee_type', None) else 'Tuition Fee'
+            cov_lbl = getattr(r, 'coverage_label', None) if r else None
+            freq = getattr(r, 'billing_frequency', None) if r else None
+            if cov_lbl:
+                freq_str = f" • {freq.replace('_', ' ').title()}" if freq and freq != 'MONTHLY' else ""
+                name = f"{name} ({cov_lbl}{freq_str})"
             t_amt = getattr(t, 'amount', 0)
             pay_m = getattr(t, 'payment_mode', 'Online')
             txn_id = getattr(t, 'transaction_id', getattr(t, 'receipt_no', f'TXN-{t.id}'))

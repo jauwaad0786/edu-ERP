@@ -62,44 +62,51 @@ class FeeRecord(db.Model):
     fine_reason     = db.Column(db.String(200))
     adjusted_by     = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     adjusted_at     = db.Column(db.DateTime, nullable=True)
-    status       = db.Column(db.String(20), default='PENDING')
-    month        = db.Column(db.String(20))
-    due_date     = db.Column(db.Date)
-    paid_date    = db.Column(db.Date)
-    receipt_no   = db.Column(db.String(50), unique=True)
-    payment_mode = db.Column(db.String(30))
-    collected_by = db.Column(db.Integer, db.ForeignKey('users.id'))
-    session      = db.Column(db.String(20), default='2024-25')
-    remarks      = db.Column(db.String(300))
-    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
-    student      = db.relationship('Student', foreign_keys=[student_id], backref='fee_records_rel', overlaps="fee_records_rel,student_ref,fees")
+    status            = db.Column(db.String(20), default='PENDING')
+    month             = db.Column(db.String(20))
+    billing_frequency = db.Column(db.String(20), default='MONTHLY', index=True)
+    period_start      = db.Column(db.Date, nullable=True, index=True)
+    period_end        = db.Column(db.Date, nullable=True, index=True)
+    coverage_label    = db.Column(db.String(100), nullable=True)
+    due_date          = db.Column(db.Date)
+    paid_date         = db.Column(db.Date)
+    receipt_no        = db.Column(db.String(50), index=True)
+    payment_mode      = db.Column(db.String(30))
+    collected_by      = db.Column(db.Integer, db.ForeignKey('users.id'))
+    session           = db.Column(db.String(20), default='2024-25')
+    remarks           = db.Column(db.String(300))
+    created_at        = db.Column(db.DateTime, default=datetime.utcnow)
+    student           = db.relationship('Student', foreign_keys=[student_id], backref='fee_records_rel', overlaps="fee_records_rel,student_ref,fees")
 
     def to_dict(self):
         return {
-            'id':           self.id,
-            'student_id':   self.student_id,
-            'fee_type':     self.fee_type,
-            'amount_due':   self.amount_due,
-            'amount_paid':  self.amount_paid,
-            'status':       self.status,
-            'month':        self.month,
-            'session':      self.session,
-            'discount':        self.discount or 0,
-            'fine':            self.fine or 0,
-            'discount_reason': self.discount_reason or '',
-            'fine_reason':     self.fine_reason or '',
-            'effective_due':   self.effective_due(),
-            'balance':         round(self.effective_due() - (self.amount_paid or 0), 2),
-            'adjusted_at':     self.adjusted_at.isoformat() if self.adjusted_at else None,
-            'due_date':     str(self.due_date)  if self.due_date  else None,
-            'paid_date':    str(self.paid_date) if self.paid_date else None,
-            'receipt_no':   self.receipt_no,
-            'payment_mode': self.payment_mode,
-            # NEW
-            'remarks':      self.remarks or '',
-            'collected_by': self.collected_by,
-            'source':         self.source or 'ACADEMIC',
-            'source_ref_id':  self.source_ref_id,
+            'id':                self.id,
+            'student_id':        self.student_id,
+            'fee_type':          self.fee_type,
+            'amount_due':        self.amount_due,
+            'amount_paid':       self.amount_paid,
+            'status':            self.status,
+            'month':             self.month,
+            'billing_frequency': self.billing_frequency or 'MONTHLY',
+            'period_start':      str(self.period_start) if self.period_start else None,
+            'period_end':        str(self.period_end) if self.period_end else None,
+            'coverage_label':    self.coverage_label or '',
+            'session':           self.session,
+            'discount':          self.discount or 0,
+            'fine':              self.fine or 0,
+            'discount_reason':   self.discount_reason or '',
+            'fine_reason':       self.fine_reason or '',
+            'effective_due':     self.effective_due(),
+            'balance':           round(self.effective_due() - (self.amount_paid or 0), 2),
+            'adjusted_at':       self.adjusted_at.isoformat() if self.adjusted_at else None,
+            'due_date':          str(self.due_date)  if self.due_date  else None,
+            'paid_date':         str(self.paid_date) if self.paid_date else None,
+            'receipt_no':        self.receipt_no,
+            'payment_mode':      self.payment_mode,
+            'remarks':           self.remarks or '',
+            'collected_by':      self.collected_by,
+            'source':            self.source or 'ACADEMIC',
+            'source_ref_id':     self.source_ref_id,
         }
 # NEW — add this method inside FeeRecord class, right after to_dict()
     def effective_due(self):

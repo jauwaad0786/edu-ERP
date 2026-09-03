@@ -9,8 +9,8 @@ const SHARING_TYPES = ['SINGLE', 'DOUBLE', 'TRIPLE', 'FOUR_SHARING', 'SIX_SHARIN
 
 const EMPTY_FORM = {
   hostel_id: '', building_id: '', floor_id: '', is_ac: false, sharing_type: 'DOUBLE',
-  monthly_fee: '', quarterly_fee: '', yearly_fee: '', security_deposit: '',
-  electricity_charges: '', laundry_charges: '', mess_charges: '',
+  monthly_fee: '', quarterly_fee: '', half_yearly_fee: '', yearly_fee: '', one_time_fee: '',
+  security_deposit: '', electricity_charges: '', laundry_charges: '', mess_charges: '',
   maintenance_charges: '', late_fine: '', discount: '',
 };
 
@@ -657,6 +657,22 @@ export default function HostelFeeStructures() {
                       )}
                     </div>
 
+                    {/* Multi-Frequency Pricing Preview */}
+                    <div style={{
+                      background: darkMode ? '#0f172a' : '#f8fafc',
+                      border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                      borderRadius: 8, padding: '8px 10px', marginBottom: 12, fontSize: 11
+                    }}>
+                      <div style={{ fontWeight: 800, color: '#7c3aed', marginBottom: 4, textTransform: 'uppercase', fontSize: 10 }}>
+                        Flexible Payment Options:
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', color: darkMode ? '#cbd5e1' : '#475569', fontWeight: 600 }}>
+                        <span>3 mo: <strong>₹{(fs.quarterly_fee || (fs.total_monthly * 3))?.toLocaleString('en-IN')}</strong></span>
+                        <span>6 mo: <strong style={{ color: '#7c3aed' }}>₹{(fs.half_yearly_fee || (fs.total_monthly * 6))?.toLocaleString('en-IN')}</strong></span>
+                        <span>12 mo: <strong style={{ color: '#059669' }}>₹{(fs.yearly_fee || (fs.total_monthly * 12))?.toLocaleString('en-IN')}</strong></span>
+                      </div>
+                    </div>
+
                     <div style={{ display: 'flex', gap: 8 }}>
                       <button
                         onClick={() => openEdit(fs)}
@@ -971,6 +987,69 @@ export default function HostelFeeStructures() {
                     value={form.discount}
                     onChange={e => setForm({ ...form, discount: e.target.value })}
                   />
+                </div>
+              </div>
+
+              {/* Flexible Billing Rates (Multi-Month / Frequency Options) */}
+              <div style={{
+                marginTop: 16, paddingTop: 14, borderTop: `1px dashed ${darkMode ? '#334155' : '#cbd5e1'}`
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#7c3aed', textTransform: 'uppercase' }}>
+                    ⚡ Flexible Billing Rates (Quarterly / Half-Yearly / Yearly)
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const m = modalMonthlyTotal || (parseFloat(form.monthly_fee) || 0);
+                      setForm(prev => ({
+                        ...prev,
+                        quarterly_fee: String(Math.round(m * 3)),
+                        half_yearly_fee: String(Math.round(m * 6)),
+                        yearly_fee: String(Math.round(m * 12)),
+                      }));
+                      toast.success(`Auto-calculated: 3mo=₹${m*3}, 6mo=₹${m*6}, 12mo=₹${m*12}`);
+                    }}
+                    style={{
+                      background: '#7c3aed15', color: '#7c3aed', border: '1px solid #7c3aed40',
+                      borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 800, cursor: 'pointer'
+                    }}
+                  >
+                    ⚡ Auto-Calculate from Monthly
+                  </button>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                  <div>
+                    <label style={labelStyle}>Quarterly Fee (3 mo) (₹)</label>
+                    <input
+                      type="number"
+                      style={inputStyle}
+                      placeholder={modalMonthlyTotal ? String(modalMonthlyTotal * 3) : "0"}
+                      value={form.quarterly_fee}
+                      onChange={e => setForm({ ...form, quarterly_fee: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Half-Yearly Fee (6 mo) (₹)</label>
+                    <input
+                      type="number"
+                      style={inputStyle}
+                      placeholder={modalMonthlyTotal ? String(modalMonthlyTotal * 6) : "0"}
+                      value={form.half_yearly_fee}
+                      onChange={e => setForm({ ...form, half_yearly_fee: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Yearly Fee (12 mo) (₹)</label>
+                    <input
+                      type="number"
+                      style={inputStyle}
+                      placeholder={modalMonthlyTotal ? String(modalMonthlyTotal * 12) : "0"}
+                      value={form.yearly_fee}
+                      onChange={e => setForm({ ...form, yearly_fee: e.target.value })}
+                    />
+                  </div>
                 </div>
               </div>
 

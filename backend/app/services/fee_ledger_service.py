@@ -562,7 +562,9 @@ def register_or_sync_service_charge(
     department='ACCOUNTS', source_module='SCHOOL_FEES',
     source_type='CHARGE', source_ref_id=None,
     description='', session='2026-27', due_date=None,
-    billing_period=None, actor_user_id=None
+    billing_period=None, actor_user_id=None,
+    billing_frequency='MONTHLY', period_start=None,
+    period_end=None, coverage_label=None
 ):
     """
     Registers a new departmental charge or fine into Central Finance.
@@ -612,7 +614,7 @@ def register_or_sync_service_charge(
             student_id=student_id,
             session=session,
             bill_month=b_month,
-            bill_period_label=m_label,
+            bill_period_label=coverage_label or m_label,
             generation_date=date.today(),
             due_date=d_date,
             status=BillStatus.ISSUED.value,
@@ -635,6 +637,14 @@ def register_or_sync_service_charge(
         existing_item.original_amount = round(existing_item.original_amount + amount, 2)
         existing_item.net_amount = round(max(0.0, existing_item.original_amount - (existing_item.discount_amount or 0.0)), 2)
         existing_item.balance_amount = round(max(0.0, existing_item.net_amount - (existing_item.paid_amount or 0.0)), 2)
+        if billing_frequency:
+            existing_item.billing_frequency = billing_frequency
+        if period_start:
+            existing_item.period_start = period_start
+        if period_end:
+            existing_item.period_end = period_end
+        if coverage_label:
+            existing_item.coverage_label = coverage_label
     else:
         new_item = FeeBillItem(
             bill_id=bill.id,
@@ -646,12 +656,17 @@ def register_or_sync_service_charge(
             net_amount=amount,
             paid_amount=0.0,
             balance_amount=amount,
+            billing_frequency=billing_frequency or 'MONTHLY',
+            period_start=period_start,
+            period_end=period_end,
+            coverage_label=coverage_label or bill.bill_period_label,
         )
         db.session.add(new_item)
 
     bill.calculate_totals()
 
     # Post Debit entry to Student Ledger
+    ledger_period = coverage_label or f"{department} {date.today().strftime('%b %Y')}"
     ledger_entry = StudentLedger(
         school_id=school_id,
         student_id=student_id,
@@ -659,7 +674,7 @@ def register_or_sync_service_charge(
         department=department,
         entry_type='DEBIT',
         entry_date=date.today(),
-        period_label=f"{department} {date.today().strftime('%b %Y')}",
+        period_label=ledger_period,
         session=session,
         amount=amount,
         bill_id=bill.id,
@@ -854,8 +869,13 @@ def collect_fee_payment(
         raise ValueError("Payment amount must be greater than zero.")
 
     # Unique Receipt Number Generation (REC-2026-000452)
-    rcpt_count = FeePayment.query.filter_by(school_id=student.school_id).count() + 1
-    receipt_no = f"REC-{date.today().year}-{rcpt_count:06d}"
+    seq = FeePayment.query.filter_by(school_id=student.school_id).count() + 1
+    while True:
+        candidate = f"REC-{date.today().year}-{seq:06d}"
+        if not FeePayment.query.filter_by(receipt_no=candidate).first():
+            receipt_no = candidate
+            break
+        seq += 1
 
     payment = FeePayment(
         receipt_no=receipt_no,
