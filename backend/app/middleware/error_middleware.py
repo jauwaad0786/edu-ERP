@@ -84,10 +84,19 @@ def register_error_middleware(app):
             app.logger.error(f'error_middleware failed to log the original error: {log_failure}')
 
         request_id = getattr(g, '_request_context_cache', {}).get('request_id')
-        return jsonify({
+        resp = jsonify({
             'error': 'Internal server error',
             'request_id': request_id,
-        }), status_code
+        })
+        origin = request.headers.get('Origin')
+        if origin:
+            resp.headers['Access-Control-Allow-Origin'] = origin
+            resp.headers['Access-Control-Allow-Credentials'] = 'true'
+            resp.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+            req_headers = request.headers.get('Access-Control-Request-Headers')
+            resp.headers['Access-Control-Allow-Headers'] = req_headers or 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Client-Page, X-Client-Action'
+            resp.headers['Access-Control-Expose-Headers'] = 'Content-Type, Authorization'
+        return resp, status_code
 
     return app
 

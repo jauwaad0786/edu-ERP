@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, request, make_response, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager
 from flask_cors import CORS
@@ -42,11 +42,24 @@ def create_app(config_name='default'):
     CORS(app,
         resources={r"/*": {"origins": "*"}},
         supports_credentials=True,
-        allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+        allow_headers=["*"],
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         expose_headers=["Content-Type", "Authorization"],
-        max_age=3600,
+        max_age=86400,
     )
+
+    @app.before_request
+    def handle_options_preflight():
+        if request.method == 'OPTIONS':
+            origin = request.headers.get('Origin') or '*'
+            response = make_response('', 204)
+            response.headers['Access-Control-Allow-Origin'] = origin
+            response.headers['Access-Control-Allow-Credentials'] = 'true'
+            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+            req_headers = request.headers.get('Access-Control-Request-Headers')
+            response.headers['Access-Control-Allow-Headers'] = req_headers or '*'
+            response.headers['Access-Control-Max-Age'] = '86400'
+            return response
 
     @app.after_request
     def add_cors_headers(response):
@@ -55,7 +68,9 @@ def create_app(config_name='default'):
             response.headers['Access-Control-Allow-Origin'] = origin
             response.headers['Access-Control-Allow-Credentials'] = 'true'
             response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
-            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
+            req_headers = request.headers.get('Access-Control-Request-Headers')
+            response.headers['Access-Control-Allow-Headers'] = req_headers or 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Client-Page, X-Client-Action'
+            response.headers['Access-Control-Expose-Headers'] = 'Content-Type, Authorization'
         return response
 
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)

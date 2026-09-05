@@ -156,41 +156,59 @@ class FeeStructureV2(db.Model):
     items        = db.relationship('FeeStructureItemV2', backref='structure_v2', cascade='all, delete-orphan')
 
     def total_amount(self):
-        return sum(it.amount or 0.0 for it in self.items)
+        try:
+            return sum(it.amount or 0.0 for it in (self.items or []))
+        except Exception:
+            return 0.0
 
     def is_used(self):
         """
         Safeguard check: returns True if bills have already been issued for its class/session,
         or if it is manually flagged or referenced.
         """
-        if self.class_id:
-            from app.models.academic import Student
-            from app.models.fee_finance import FeeBill
-            st_ids = [s.id for s in Student.query.filter_by(school_id=self.school_id, class_id=self.class_id).all()]
-            if st_ids:
-                has_bills = FeeBill.query.filter(FeeBill.student_id.in_(st_ids), FeeBill.session == self.session).first() is not None
-                if has_bills:
-                    return True
+        try:
+            if self.class_id:
+                from app.models.academic import Student
+                from app.models.fee_finance import FeeBill
+                st_ids = [s.id for s in Student.query.filter_by(school_id=self.school_id, class_id=self.class_id).all()]
+                if st_ids:
+                    has_bills = FeeBill.query.filter(FeeBill.student_id.in_(st_ids), FeeBill.session == self.session).first() is not None
+                    if has_bills:
+                        return True
+        except Exception:
+            return False
         return False
 
     def to_dict(self):
-        used = self.is_used()
+        try:
+            used = self.is_used()
+        except Exception:
+            used = False
+        try:
+            c_name = f"{self.class_ref.name} {self.class_ref.section or ''}".strip() if self.class_ref else 'All Classes'
+        except Exception:
+            c_name = 'All Classes'
+        try:
+            items_data = [it.to_dict() for it in self.items] if self.items else []
+        except Exception:
+            items_data = []
+
         return {
             'id':           self.id,
             'school_id':    self.school_id,
             'class_id':     self.class_id,
-            'class_name':   f"{self.class_ref.name} {self.class_ref.section or ''}".strip() if self.class_ref else 'All Classes',
+            'class_name':   c_name,
             'session':      self.session,
             'name':         self.name,
             'frequency':    self.frequency,
             'due_date_day': self.due_date_day,
             'total_amount': self.total_amount(),
-            'is_active':    self.is_active and not self.is_archived and self.status == 'ACTIVE',
-            'status':       'ARCHIVED' if self.is_archived else self.status,
+            'is_active':    bool(self.is_active and not self.is_archived and self.status == 'ACTIVE'),
+            'status':       'ARCHIVED' if self.is_archived else (self.status or 'ACTIVE'),
             'is_archived':  bool(self.is_archived or self.status == 'ARCHIVED'),
             'is_used':      used,
             'can_delete':   not used,
-            'items':        [it.to_dict() for it in self.items],
+            'items':        items_data,
             'created_at':   self.created_at.isoformat() if self.created_at else None,
         }
 

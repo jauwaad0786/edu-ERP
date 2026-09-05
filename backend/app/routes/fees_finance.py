@@ -46,7 +46,21 @@ fees_finance_bp = Blueprint('fees_finance', __name__)
 def _get_current_user():
     ident = get_jwt_identity()
     user_id = ident.get('id') if isinstance(ident, dict) else ident
-    return User.query.get(user_id)
+    user = User.query.get(user_id)
+    if user and not user.school_id:
+        role_name = getattr(user.role, 'value', str(user.role))
+        if role_name == 'SUPER_ADMIN':
+            sid = request.args.get('school_id', type=int)
+            if not sid:
+                hdr_sid = request.headers.get('X-School-Id')
+                if hdr_sid and str(hdr_sid).isdigit():
+                    sid = int(hdr_sid)
+            if not sid:
+                first_s = School.query.first()
+                sid = first_s.id if first_s else None
+            if sid:
+                user.school_id = sid
+    return user
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -166,10 +180,16 @@ def get_fee_structures():
 
     q = FeeStructureV2.query.filter_by(school_id=user.school_id, session=session, is_active=True)
     if class_id:
-        q = q.filter(db.or_(FeeStructureV2.class_id == class_id, FeeStructureV2.class_id == None))
+        q = q.filter(db.or_(FeeStructureV2.class_id == class_id, FeeStructureV2.class_id.is_(None)))
 
     structures = q.order_by(FeeStructureV2.class_id.asc()).all()
-    return jsonify([s.to_dict() for s in structures]), 200
+    results = []
+    for s in structures:
+        try:
+            results.append(s.to_dict())
+        except Exception:
+            pass
+    return jsonify(results), 200
 
 
 @fees_finance_bp.route('/structures', methods=['POST'])

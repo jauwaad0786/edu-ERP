@@ -51,8 +51,14 @@ export default function FeeSetupPage() {
     try {
       setLoading(true);
       const [headsRes, structRes, classRes, concRes] = await Promise.all([
-        api.get('/fees-finance/heads'),
-        api.get('/fees-finance/structures'),
+        api.get('/fees-finance/heads').catch(err => {
+          console.warn('Fee heads load error:', err);
+          return { data: [] };
+        }),
+        api.get('/fees-finance/structures').catch(err => {
+          console.warn('Fee structures load error:', err);
+          return { data: [] };
+        }),
         api.get('/principal/classes').catch(() => ({ data: [] })),
         api.get('/fees-finance/concessions').catch(() => ({ data: [] })),
       ]);
