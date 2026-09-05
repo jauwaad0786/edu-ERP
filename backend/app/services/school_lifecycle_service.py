@@ -354,16 +354,18 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
 
         def _safe_delete_or_update(query, params=None):
             """Executes SQL within a subtransaction SAVEPOINT so failures never abort the outer transaction in PostgreSQL."""
+            nested = db.session.begin_nested()
             try:
-                with db.session.begin_nested():
-                    if params:
-                        db.session.execute(query, params)
-                    else:
-                        db.session.execute(query)
+                if params:
+                    db.session.execute(query, params)
+                else:
+                    db.session.execute(query)
+                nested.commit()
             except Exception as sql_e:
+                nested.rollback()
                 logger.debug(f"Cascade cleanup step skipped: {sql_e}")
 
-        # ── Level 1: Deepest child tables (referenced by other child tables) ──
+        # ── Level 1: Deepest child tables without direct school_id or dependent on parents ──
         if 'fee_payment_allocations' in all_tables:
             _safe_delete_or_update(text("""
                 DELETE FROM fee_payment_allocations 
@@ -407,22 +409,28 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
                 WHERE structure_id IN (SELECT id FROM salary_structures WHERE school_id = :sid)
             """), {'sid': school_id})
 
-        if 'exam_timetable' in all_tables:
-            _safe_delete_or_update(text("""
-                DELETE FROM exam_timetable 
-                WHERE exam_id IN (SELECT id FROM exam_schedules WHERE school_id = :sid)
-            """), {'sid': school_id})
-
         if 'result_return_items' in all_tables:
             _safe_delete_or_update(text("""
                 DELETE FROM result_return_items 
                 WHERE subject_status_id IN (SELECT id FROM result_subject_status WHERE school_id = :sid)
+                   OR student_id IN (SELECT id FROM students WHERE school_id = :sid)
             """), {'sid': school_id})
 
         if 'timetable_periods' in all_tables:
             _safe_delete_or_update(text("""
                 DELETE FROM timetable_periods 
                 WHERE timetable_id IN (SELECT id FROM timetables WHERE school_id = :sid)
+                   OR teacher_id IN (SELECT id FROM teachers WHERE school_id = :sid)
+                   OR subject_id IN (SELECT id FROM subjects WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'exam_timetable' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM exam_timetable 
+                WHERE exam_id IN (SELECT id FROM exam_schedules WHERE school_id = :sid)
+                   OR class_id IN (SELECT id FROM classes WHERE school_id = :sid)
+                   OR subject_id IN (SELECT id FROM subjects WHERE school_id = :sid)
+                   OR invigilator_id IN (SELECT id FROM teachers WHERE school_id = :sid)
             """), {'sid': school_id})
 
         if 'transport_route_stops' in all_tables:
@@ -605,40 +613,152 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
                 _safe_delete_or_update(q, {'uids': uids})
 
         # ── Level 1.5: Break circular and self-referencing foreign key locks ──
+        # 1. Nullify all teacher references in child tables
         if 'classes' in all_tables and 'teacher_id' in table_columns.get('classes', set()):
-            _safe_delete_or_update(text("UPDATE classes SET teacher_id = NULL WHERE school_id = :sid"), {'sid': school_id})
+            _safe_delete_or_update(text("""
+                UPDATE classes SET teacher_id = NULL 
+                WHERE school_id = :sid OR teacher_id IN (SELECT id FROM teachers WHERE school_id = :sid)
+            """), {'sid': school_id})
 
         if 'subjects' in all_tables and 'teacher_id' in table_columns.get('subjects', set()):
-            _safe_delete_or_update(text("UPDATE subjects SET teacher_id = NULL WHERE school_id = :sid"), {'sid': school_id})
+            _safe_delete_or_update(text("""
+                UPDATE subjects SET teacher_id = NULL 
+                WHERE school_id = :sid OR teacher_id IN (SELECT id FROM teachers WHERE school_id = :sid)
+            """), {'sid': school_id})
 
+        if 'notes' in all_tables and 'teacher_id' in table_columns.get('notes', set()):
+            _safe_delete_or_update(text("""
+                UPDATE notes SET teacher_id = NULL 
+                WHERE school_id = :sid OR teacher_id IN (SELECT id FROM teachers WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'assignments' in all_tables and 'teacher_id' in table_columns.get('assignments', set()):
+            _safe_delete_or_update(text("""
+                UPDATE assignments SET teacher_id = NULL 
+                WHERE school_id = :sid OR teacher_id IN (SELECT id FROM teachers WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'internal_marks' in all_tables and 'teacher_id' in table_columns.get('internal_marks', set()):
+            _safe_delete_or_update(text("""
+                UPDATE internal_marks SET teacher_id = NULL 
+                WHERE school_id = :sid OR teacher_id IN (SELECT id FROM teachers WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'result_subject_status' in all_tables and 'teacher_id' in table_columns.get('result_subject_status', set()):
+            _safe_delete_or_update(text("""
+                UPDATE result_subject_status SET teacher_id = NULL 
+                WHERE school_id = :sid OR teacher_id IN (SELECT id FROM teachers WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'exam_teacher_delegations' in all_tables and 'original_teacher_id' in table_columns.get('exam_teacher_delegations', set()):
+            _safe_delete_or_update(text("""
+                UPDATE exam_teacher_delegations SET original_teacher_id = NULL 
+                WHERE school_id = :sid OR original_teacher_id IN (SELECT id FROM teachers WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        # 2. Nullify class and subject references in child tables
         if 'students' in all_tables and 'class_id' in table_columns.get('students', set()):
-            _safe_delete_or_update(text("UPDATE students SET class_id = NULL WHERE school_id = :sid"), {'sid': school_id})
+            _safe_delete_or_update(text("""
+                UPDATE students SET class_id = NULL 
+                WHERE school_id = :sid OR class_id IN (SELECT id FROM classes WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'notes' in all_tables and 'class_id' in table_columns.get('notes', set()):
+            _safe_delete_or_update(text("""
+                UPDATE notes SET class_id = NULL 
+                WHERE school_id = :sid OR class_id IN (SELECT id FROM classes WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'notes' in all_tables and 'subject_id' in table_columns.get('notes', set()):
+            _safe_delete_or_update(text("""
+                UPDATE notes SET subject_id = NULL 
+                WHERE school_id = :sid OR subject_id IN (SELECT id FROM subjects WHERE school_id = :sid)
+            """), {'sid': school_id})
 
         if 'books' in all_tables and 'class_id' in table_columns.get('books', set()):
-            _safe_delete_or_update(text("UPDATE books SET class_id = NULL WHERE school_id = :sid"), {'sid': school_id})
+            _safe_delete_or_update(text("""
+                UPDATE books SET class_id = NULL 
+                WHERE school_id = :sid OR class_id IN (SELECT id FROM classes WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'fee_structures' in all_tables and 'class_id' in table_columns.get('fee_structures', set()):
+            _safe_delete_or_update(text("""
+                UPDATE fee_structures SET class_id = NULL 
+                WHERE school_id = :sid OR class_id IN (SELECT id FROM classes WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'fee_structures_v2' in all_tables and 'class_id' in table_columns.get('fee_structures_v2', set()):
+            _safe_delete_or_update(text("""
+                UPDATE fee_structures_v2 SET class_id = NULL 
+                WHERE school_id = :sid OR class_id IN (SELECT id FROM classes WHERE school_id = :sid)
+            """), {'sid': school_id})
 
         if 'stock_movements' in all_tables and 'target_class_id' in table_columns.get('stock_movements', set()):
-            _safe_delete_or_update(text("UPDATE stock_movements SET target_class_id = NULL WHERE school_id = :sid"), {'sid': school_id})
+            _safe_delete_or_update(text("""
+                UPDATE stock_movements SET target_class_id = NULL 
+                WHERE school_id = :sid OR target_class_id IN (SELECT id FROM classes WHERE school_id = :sid)
+            """), {'sid': school_id})
 
         if 'student_documents' in all_tables and 'class_id_at_upload' in table_columns.get('student_documents', set()):
-            _safe_delete_or_update(text("UPDATE student_documents SET class_id_at_upload = NULL WHERE school_id = :sid"), {'sid': school_id})
+            _safe_delete_or_update(text("""
+                UPDATE student_documents SET class_id_at_upload = NULL 
+                WHERE school_id = :sid OR class_id_at_upload IN (SELECT id FROM classes WHERE school_id = :sid)
+            """), {'sid': school_id})
 
         if 'issued_documents' in all_tables and 'class_id_at_issue' in table_columns.get('issued_documents', set()):
-            _safe_delete_or_update(text("UPDATE issued_documents SET class_id_at_issue = NULL WHERE school_id = :sid"), {'sid': school_id})
-
-        if 'timetable_periods' in all_tables:
             _safe_delete_or_update(text("""
-                DELETE FROM timetable_periods 
-                WHERE timetable_id IN (SELECT id FROM timetables WHERE school_id = :sid)
+                UPDATE issued_documents SET class_id_at_issue = NULL 
+                WHERE school_id = :sid OR class_id_at_issue IN (SELECT id FROM classes WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        # 3. Nullify student references in hostel and library
+        if 'hostel_beds' in all_tables and 'current_student_id' in table_columns.get('hostel_beds', set()):
+            _safe_delete_or_update(text("""
+                UPDATE hostel_beds SET current_student_id = NULL 
+                WHERE hostel_id IN (SELECT id FROM hostels WHERE school_id = :sid)
+                   OR current_student_id IN (SELECT id FROM students WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'hostel_inventory' in all_tables and 'assigned_student_id' in table_columns.get('hostel_inventory', set()):
+            _safe_delete_or_update(text("""
+                UPDATE hostel_inventory SET assigned_student_id = NULL 
+                WHERE hostel_id IN (SELECT id FROM hostels WHERE school_id = :sid)
+                   OR assigned_student_id IN (SELECT id FROM students WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'library_members' in all_tables and 'student_id' in table_columns.get('library_members', set()):
+            _safe_delete_or_update(text("""
+                UPDATE library_members SET student_id = NULL 
+                WHERE school_id = :sid OR student_id IN (SELECT id FROM students WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        # 4. Explicitly delete non-nullable child tables referencing teachers
+        if 'exam_teacher_delegations' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM exam_teacher_delegations 
+                WHERE school_id = :sid 
+                   OR delegated_teacher_id IN (SELECT id FROM teachers WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'salary_records' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM salary_records 
+                WHERE school_id = :sid 
                    OR teacher_id IN (SELECT id FROM teachers WHERE school_id = :sid)
             """), {'sid': school_id})
 
-        if 'exam_timetable' in all_tables:
+        if 'teacher_attendance_requests' in all_tables:
             _safe_delete_or_update(text("""
-                DELETE FROM exam_timetable 
-                WHERE exam_id IN (SELECT id FROM exam_schedules WHERE school_id = :sid)
-                   OR class_id IN (SELECT id FROM classes WHERE school_id = :sid)
-                   OR invigilator_id IN (SELECT id FROM teachers WHERE school_id = :sid)
+                DELETE FROM teacher_attendance_requests 
+                WHERE school_id = :sid 
+                   OR teacher_id IN (SELECT id FROM teachers WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'teacher_attendance' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM teacher_attendance 
+                WHERE school_id = :sid 
+                   OR teacher_id IN (SELECT id FROM teachers WHERE school_id = :sid)
             """), {'sid': school_id})
 
         if 'schools' in all_tables:
@@ -647,6 +767,18 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
         # ── Level 2: Delete from all direct tables having school_id column ──
         # Specific deletion order for tables with internal cross-references
         priority_tables = [
+            # Deep leaf references
+            'result_return_items', 'timetable_periods', 'exam_timetable',
+            # Exams & Marks
+            'marks_audit_logs', 'marks', 'internal_marks',
+            'result_subject_status', 'result_versions', 'class_result_publication',
+            'exam_teacher_delegations', 'exam_subjects', 'exam_classes', 'exam_schedules',
+            # Academics & Attendance
+            'assignment_submissions', 'assignments', 'notes', 'timetables',
+            'attendance', 'holidays',
+            # Teacher payroll & records
+            'salary_records', 'staff_salary_records',
+            'teacher_attendance_requests', 'teacher_attendance',
             # Financial & Procurement
             'vendor_payments', 'vendor_bills', 'vendors', 'goods_receipt_notes', 'purchase_orders',
             'stock_movements', 'inventory_items', 'expenses', 'service_charges',
@@ -668,17 +800,13 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
             'library_fine_transactions', 'library_visits', 'book_reservations', 'book_issues',
             'book_copies', 'books', 'book_categories', 'library_members', 'library_settings',
             'library_activity_logs',
-            # Exams & Marks
-            'result_subject_status', 'result_versions', 'class_result_publication', 'internal_marks',
-            'marks_audit_logs', 'marks', 'exam_teacher_delegations', 'exam_subjects',
-            'exam_classes', 'exam_schedules',
             # Communication & Documents
-            'assignment_submissions', 'assignments', 'notes', 'announcements', 'chat_messages',
-            'meeting_requests', 'issued_documents', 'student_documents', 'employee_documents',
+            'announcements', 'chat_messages', 'meeting_requests',
+            'issued_documents', 'student_documents', 'employee_documents',
             'school_document_requirements',
             # HRMS & Payroll
             'staff_attendance_regularization', 'staff_attendance_audit_logs', 'staff_attendance',
-            'staff_monthly_attendance_summary', 'staff_salary_records', 'salary_records',
+            'staff_monthly_attendance_summary',
             'payroll_slips', 'payroll_runs', 'employee_salary_structures', 'salary_structures',
             'salary_components', 'employee_shift_assignments', 'shifts', 'leave_requests',
             'leave_balances', 'leave_types', 'official_duties', 'employee_profiles',
@@ -691,9 +819,8 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
             # AI
             'ai_document_chunks', 'ai_documents', 'ai_query_cache', 'ai_conversations',
             'ai_role_quota', 'ai_usage',
-            # Academics, Attendance, Calendar & Students
-            'teacher_attendance_requests', 'teacher_attendance', 'attendance', 'holidays',
-            'subjects', 'timetables', 'students', 'classes', 'teachers',
+            # Academics Core Entities (Strict reverse dependency: Subjects -> Students -> Classes -> Teachers)
+            'subjects', 'students', 'classes', 'teachers',
             # Logs & Deleted items
             'deleted_items', 'deleted_logs_archive', 'financial_audit_logs', 'hrms_audit_logs',
             'audit_logs', 'error_logs', 'login_history', 'otp_verifications', 'user_devices',
@@ -713,6 +840,11 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
                     continue
                 q = delete(table(t_name, column('school_id'))).where(column('school_id') == school_id)
                 _safe_delete_or_update(q)
+
+        # Ensure core tables are definitely cleaned in strict reverse dependency order
+        for core_t in ['subjects', 'students', 'classes', 'teachers']:
+            if core_t in tables_with_school_id:
+                _safe_delete_or_update(delete(table(core_t, column('school_id'))).where(column('school_id') == school_id))
 
         # ── Level 3: Delete school users (never delete SUPER_ADMIN) ──
         _safe_delete_or_update(text("""
@@ -735,10 +867,20 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
                 continue
             try:
                 t_obj = table(t_name, column('school_id'))
-                cnt = db.session.execute(select(func.count()).select_from(t_obj).where(column('school_id') == school_id)).scalar()
+                cnt = None
+                nested = db.session.begin_nested()
+                try:
+                    cnt = db.session.execute(
+                        select(func.count()).select_from(t_obj).where(column('school_id') == school_id)
+                    ).scalar()
+                    nested.commit()
+                except Exception:
+                    nested.rollback()
+
                 if cnt and cnt > 0:
                     logger.warning(f"[LIFECYCLE] Table '{t_name}' still has {cnt} rows for school {school_id}. Force-cleaning...")
-                    db.session.execute(delete(t_obj).where(column('school_id') == school_id))
+                    q = delete(t_obj).where(column('school_id') == school_id)
+                    _safe_delete_or_update(q)
             except Exception as sweep_e:
                 logger.debug(f"[LIFECYCLE] Sweep check for {t_name}: {sweep_e}")
 
@@ -756,7 +898,6 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
 
         actor_id_val = actor_user.id if actor_user else None
         role_snap = actor_user.role.value if actor_user and getattr(actor_user, 'role', None) else 'SUPER_ADMIN'
-        import json
         old_val_json = json.dumps({'school_id': school_db_id, 'name': school_name, 'code': school_code})
         new_val_json = json.dumps({'deleted_summary': summary['counts']})
         remarks_txt = f"Permanently and irreversibly deleted school '{school_name}' (Code: {school_code}, ID: {school_db_id})."
