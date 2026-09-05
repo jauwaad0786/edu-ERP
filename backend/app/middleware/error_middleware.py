@@ -89,13 +89,15 @@ def register_error_middleware(app):
             'request_id': request_id,
         })
         origin = request.headers.get('Origin')
-        if origin:
+        from app.utils.security_headers import is_cors_origin_allowed, apply_security_headers
+        if origin and is_cors_origin_allowed(origin):
             resp.headers['Access-Control-Allow-Origin'] = origin
             resp.headers['Access-Control-Allow-Credentials'] = 'true'
             resp.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
             req_headers = request.headers.get('Access-Control-Request-Headers')
             resp.headers['Access-Control-Allow-Headers'] = req_headers or 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Client-Page, X-Client-Action'
             resp.headers['Access-Control-Expose-Headers'] = 'Content-Type, Authorization'
+        apply_security_headers(resp)
         return resp, status_code
 
     return app

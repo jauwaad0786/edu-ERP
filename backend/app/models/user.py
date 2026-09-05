@@ -99,17 +99,14 @@ class User(db.Model):
     student_profile = db.relationship('Student', backref='user', uselist=False)
 
     # ── Password helpers ────────────────────────────────────────────────────
+    # ── Password helpers ────────────────────────────────────────────────────
     def set_password(self, plain_text, store_plain=False):
         """
-        Hash and store password.
-        store_plain=True  → also save plain text in plain_password_temp (creation / reset).
-        store_plain=False → clear plain_password_temp (user changed own password).
+        Hash and store password using bcrypt.
+        Never store plaintext passwords in the database.
         """
         self.password = bcrypt.generate_password_hash(plain_text).decode('utf-8')
-        if store_plain:
-            self.plain_password_temp = plain_text
-        else:
-            self.plain_password_temp = None
+        self.plain_password_temp = None
 
     def check_password(self, plain_text):
         return bcrypt.check_password_hash(self.password, plain_text)
@@ -134,14 +131,14 @@ class User(db.Model):
             'designation': self.designation,
             'salary':      self.salary,
             'last_login':  self.last_login.isoformat() if self.last_login else None,
-            'created_at':  self.created_at.isoformat(),
+            'created_at':  self.created_at.isoformat() if self.created_at else None,
             'is_deleted':  getattr(self, 'is_deleted', False),
             'deleted_at':  self.deleted_at.isoformat() if getattr(self, 'deleted_at', None) else None,
             'is_anonymized': getattr(self, 'is_anonymized', False),
         }
 
     def to_dict_with_credentials(self):
-        """Used only by admin/principal when returning newly created / reset user."""
+        """Safe user dictionary without leaking stored credentials."""
         d = self.to_dict()
-        d['plain_password_temp'] = self.plain_password_temp
+        d['plain_password_temp'] = None
         return d

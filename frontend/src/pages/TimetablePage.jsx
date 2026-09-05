@@ -20,6 +20,16 @@ const SUBJECT_COLORS = [
   '#06b6d4','#f97316','#84cc16','#ec4899','#6366f1',
 ];
 // ─── PDF Generator ───────────────────────────────────────────────────────────
+const escapeHtml = (str) => {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+};
+
 function generateTimetablePDF({ timetable, periods, subjects, teachers, className, schoolName }) {
   const doc = document.createElement('div');
   doc.id = '__tt_pdf_root';
@@ -36,23 +46,31 @@ function generateTimetablePDF({ timetable, periods, subjects, teachers, classNam
   const subjectMap = {};
   subjects.forEach(s => { subjectMap[s.id] = s.name; });
 
-  const now = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+  const now = escapeHtml(new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }));
+  const safeSchoolName = escapeHtml(schoolName || 'EduERP School');
+  const safeTitle = escapeHtml(timetable.title || 'Timetable');
+  const safeClassName = escapeHtml(className || '');
+  const safeSession = escapeHtml(timetable.session || '');
+  const safeStatus = escapeHtml(timetable.status || '');
 
   const rows = PERIODS.map(pNo => {
     const cells = DAYS.map(day => {
       const p = periodMap[`${day}-${pNo}`];
       if (!p) return `<td style="padding:5px 4px;border:1px solid #e2e8f0;min-width:90px;height:52px;background:#f8fafc;"></td>`;
       if (p.is_break) return `<td style="padding:5px 4px;border:1px solid #e2e8f0;background:#fffbeb;text-align:center;">
-        <div style="font-size:9px;font-weight:700;color:#92400e;">☕ ${p.break_label || 'Break'}</div>
-        ${p.start_time ? `<div style="font-size:8px;color:#a16207;">${p.start_time}–${p.end_time}</div>` : ''}
+        <div style="font-size:9px;font-weight:700;color:#92400e;">☕ ${escapeHtml(p.break_label || 'Break')}</div>
+        ${p.start_time ? `<div style="font-size:8px;color:#a16207;">${escapeHtml(p.start_time)}–${escapeHtml(p.end_time)}</div>` : ''}
       </td>`;
       const color = subjectColorMap[p.subject_id] || '#64748b';
-      const subName = subjectMap[p.subject_id] || p.subject_name || '—';
-      const tchName = teacherMap[p.teacher_id] || p.teacher_name || '';
+      const subName = escapeHtml(subjectMap[p.subject_id] || p.subject_name || '—');
+      const tchName = escapeHtml(teacherMap[p.teacher_id] || p.teacher_name || '');
+      const startTime = escapeHtml(p.start_time || '');
+      const endTime = escapeHtml(p.end_time || '');
+      const room = escapeHtml(p.room || '');
       return `<td style="padding:5px 4px;border:1px solid #e2e8f0;background:${color}10;">
         <div style="font-weight:700;font-size:9px;color:${color};line-height:1.2;">${subName}</div>
         ${tchName ? `<div style="font-size:8px;color:#64748b;margin-top:1px;">👤 ${tchName}</div>` : ''}
-        ${p.start_time ? `<div style="font-size:7px;color:#94a3b8;margin-top:2px;">${p.start_time}–${p.end_time}${p.room ? ` · ${p.room}` : ''}</div>` : ''}
+        ${startTime ? `<div style="font-size:7px;color:#94a3b8;margin-top:2px;">${startTime}–${endTime}${room ? ` · ${room}` : ''}</div>` : ''}
       </td>`;
     }).join('');
     return `<tr>
@@ -64,7 +82,7 @@ function generateTimetablePDF({ timetable, periods, subjects, teachers, classNam
   const legend = subjects.slice(0, 10).map((s, i) => {
     const c = SUBJECT_COLORS[i % SUBJECT_COLORS.length];
     return `<span style="display:inline-flex;align-items:center;gap:4px;background:${c}15;border:1px solid ${c}44;border-radius:20px;padding:2px 8px;font-size:9px;font-weight:600;color:${c};margin:2px;">
-      <span style="width:6px;height:6px;border-radius:50%;background:${c};display:inline-block;"></span>${s.name}
+      <span style="width:6px;height:6px;border-radius:50%;background:${c};display:inline-block;"></span>${escapeHtml(s.name)}
     </span>`;
   }).join('');
 
@@ -81,13 +99,13 @@ function generateTimetablePDF({ timetable, periods, subjects, teachers, classNam
     <!-- Header -->
     <div style="background:linear-gradient(135deg,#032d60,#0176d3);padding:14px 20px;display:flex;justify-content:space-between;align-items:center;">
       <div>
-        <div style="color:#fff;font-size:18px;font-weight:800;letter-spacing:0.02em;">${schoolName || 'EduERP School'}</div>
-        <div style="color:rgba(255,255,255,0.75);font-size:11px;margin-top:2px;">Weekly Timetable — ${timetable.title || 'Timetable'}</div>
+        <div style="color:#fff;font-size:18px;font-weight:800;letter-spacing:0.02em;">${safeSchoolName}</div>
+        <div style="color:rgba(255,255,255,0.75);font-size:11px;margin-top:2px;">Weekly Timetable — ${safeTitle}</div>
       </div>
       <div style="text-align:right;">
-        <div style="color:#fff;font-size:14px;font-weight:700;">${className}</div>
-        <div style="color:rgba(255,255,255,0.75);font-size:10px;">Session: ${timetable.session}</div>
-        <span style="background:${timetable.status === 'PUBLISHED' ? '#10b981' : '#f59e0b'};color:#fff;font-size:9px;font-weight:700;padding:2px 8px;border-radius:20px;">${timetable.status}</span>
+        <div style="color:#fff;font-size:14px;font-weight:700;">${safeClassName}</div>
+        <div style="color:rgba(255,255,255,0.75);font-size:10px;">Session: ${safeSession}</div>
+        <span style="background:${timetable.status === 'PUBLISHED' ? '#10b981' : '#f59e0b'};color:#fff;font-size:9px;font-weight:700;padding:2px 8px;border-radius:20px;">${safeStatus}</span>
       </div>
     </div>
 
@@ -116,7 +134,7 @@ function generateTimetablePDF({ timetable, periods, subjects, teachers, classNam
       ].map(s => `
         <div style="flex:1;text-align:center;">
           <div style="height:36px;border-bottom:1.5px solid #334155;margin-bottom:4px;"></div>
-          <div style="font-size:10px;font-weight:700;color:#0f172a;">${s.label}</div>
+          <div style="font-size:10px;font-weight:700;color:#0f172a;">${escapeHtml(s.label)}</div>
           <div style="font-size:8px;color:#94a3b8;margin-top:1px;">Signature &amp; Seal</div>
         </div>
       `).join('')}

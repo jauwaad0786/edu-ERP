@@ -15,6 +15,8 @@ from app.utils.decorators import role_required, get_current_user
 
 academic_resources_bp = Blueprint('academic_resources', __name__, url_prefix='/api/academic')
 
+from app.utils.file_security import validate_and_sanitize_upload
+
 ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx', 'ppt', 'pptx', 'txt', 'png', 'jpg', 'jpeg', 'zip'}
 MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024  # 25 MB
 
@@ -37,16 +39,11 @@ def _get_school_id(user):
 
 
 def _upload_to_storage(file, folder_name):
-    filename = secure_filename(file.filename or 'file')
-    ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
-    
-    # Read file size
-    file.seek(0, 2)
-    file_size = file.tell()
-    file.seek(0)
-
-    if file_size > MAX_FILE_SIZE_BYTES:
-        raise ValueError(f"File size exceeds 25 MB limit ({file_size // (1024*1024)} MB)")
+    filename, ext, file_size = validate_and_sanitize_upload(
+        file,
+        allowed_types=('image', 'pdf', 'document'),
+        max_size_bytes=MAX_FILE_SIZE_BYTES
+    )
 
     result = cloudinary.uploader.upload(
         file,

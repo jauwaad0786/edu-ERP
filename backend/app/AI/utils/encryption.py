@@ -13,11 +13,23 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 def _get_fernet() -> Fernet:
     """Derive a Fernet key from Flask's SECRET_KEY."""
     from flask import current_app
-    secret = current_app.config.get('SECRET_KEY', 'default-secret-change-me')
+    secret = None
+    try:
+        if current_app:
+            secret = current_app.config.get('SECRET_KEY')
+    except Exception:
+        pass
+    if not secret:
+        secret = os.environ.get('SECRET_KEY')
+    if not secret:
+        is_prod = os.environ.get('FLASK_ENV') == 'production' or os.environ.get('ENV') == 'production'
+        if is_prod:
+            raise RuntimeError("CRITICAL: SECRET_KEY must be set in production environment for AI encryption.")
+        secret = os.environ.get('DEV_AI_SECRET', 'dev-local-ai-secret-do-not-use-in-prod')
     if isinstance(secret, str):
         secret = secret.encode('utf-8')
 
-    # Use a fixed salt (stored in config ideally, but derived from secret itself for simplicity)
+    # Use a fixed salt for key derivation
     salt = b'1p360-ai-salt-v1'
 
     kdf = PBKDF2HMAC(

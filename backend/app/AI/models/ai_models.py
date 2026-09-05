@@ -45,18 +45,7 @@ class AIProviderConfig(db.Model):
 
     def to_dict_safe(self):
         """Return config with masked key info — safe for frontend."""
-        masked = ''
-        if self.encrypted_api_key:
-            try:
-                from app.AI.utils.encryption import decrypt_secret
-                raw = decrypt_secret(self.encrypted_api_key)
-                if raw and len(raw) > 8:
-                    masked = f"{raw[:4]}••••••••••••{raw[-4:]}"
-                elif raw:
-                    masked = "••••••••••••"
-            except Exception:
-                masked = "•••••••••••• (Saved)"
-
+        masked = "Configured ✓" if (self.encrypted_api_key or self.key_configured) else ""
         return {
             'id':               self.id,
             'is_active':        self.is_active,

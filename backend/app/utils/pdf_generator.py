@@ -13,6 +13,8 @@ import urllib.request, tempfile
 import qrcode
 from datetime import datetime, date
 from app.models.academic import Class
+from app.models.documents import StudentDocument
+from app.models.financial import FeeRecord
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  BRAND PALETTE — Premium Educational Theme
@@ -118,13 +120,10 @@ def _fetch_remote_image(url, width, height):
     if not url:
         return None
     try:
-        req = urllib.request.Request(
-            url,
-            headers={'User-Agent': 'Mozilla/5.0'}
-        )
-        # Timeout reduced to 2s for faster PDF generation
-        with urllib.request.urlopen(req, timeout=2) as resp:
-            data = resp.read()
+        from app.utils.file_security import fetch_safe_remote_image
+        data = fetch_safe_remote_image(url, timeout=2)
+        if not data:
+            return None
         
         # Compress: scale down + save as JPEG for minimal file size
         from PIL import Image as PILImage

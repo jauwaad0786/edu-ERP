@@ -16,9 +16,12 @@ Key features:
   6. Protected roles — CEO/DIRECTOR/PRINCIPAL cannot be delegated
 """
 
+import logging
 from datetime import datetime, timedelta
 from flask import g
 from app import db
+
+logger = logging.getLogger(__name__)
 from app.models.rbac import (
     Role, UserRoleAssignment, TemporaryRoleDelegation,
     get_user_roles, can_manage_role

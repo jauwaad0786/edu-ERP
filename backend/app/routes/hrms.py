@@ -23,6 +23,7 @@ from flask import Blueprint, request, jsonify, send_file
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from werkzeug.utils import secure_filename
 import cloudinary.uploader
+from sqlalchemy import func
 
 from app import db
 from app.models.user import User, UserRole

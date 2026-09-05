@@ -110,10 +110,15 @@ def create_expense():
 
     pay_date = date.fromisoformat(data['payment_date']) if data.get('payment_date') else date.today()
 
-    # Principal creates directly as APPROVED/PAID; other staff defaults to PENDING_APPROVAL
-    initial_status = data.get('status')
-    if not initial_status:
-        initial_status = 'PAID' if user.role in ['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT'] else 'PENDING_APPROVAL'
+    user_role_str = getattr(user.role, 'value', str(user.role))
+    is_finance_admin = user_role_str in ['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR']
+    if is_finance_admin:
+        initial_status = data.get('status') or 'PAID'
+        if initial_status not in EXPENSE_STATUSES:
+            initial_status = 'PAID'
+    else:
+        # Security: Non-finance staff cannot self-approve or mark PAID; strictly forced to PENDING_APPROVAL
+        initial_status = 'PENDING_APPROVAL'
 
     sid = _school_id()
     year = date.today().year

@@ -16,28 +16,57 @@ teacher_bp = Blueprint('teacher', __name__)
 @role_required('TEACHER')
 def mark_attendance():
     """Mark attendance for entire class for a date."""
-    data = request.get_json()
-    class_id    = data['class_id']
-    att_date    = date.fromisoformat(data['date'])
-    records     = data['records']   # [{'student_id': 1, 'status': 'PRESENT'}, ...]
+    data = request.get_json() or {}
+    class_id    = data.get('class_id')
+    raw_date    = data.get('date')
+    records     = data.get('records', [])   # [{'student_id': 1, 'status': 'PRESENT'}, ...]
     user        = get_current_user()
 
+    if not class_id or not raw_date or not records:
+        return jsonify({'error': 'class_id, date, and records are required'}), 400
+
+    # Multi-tenant scoping: verify class belongs to teacher's school
+    cls = Class.query.filter_by(id=class_id, school_id=user.school_id).first()
+    if not cls:
+        return jsonify({'error': 'Class not found or unauthorized'}), 403
+
+    try:
+        att_date = date.fromisoformat(raw_date)
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Invalid date format'}), 400
+
+    marked_count = 0
     for rec in records:
-        existing = Attendance.query.filter_by(student_id=rec['student_id'], date=att_date).first()
+        s_id = rec.get('student_id')
+        if not s_id:
+            continue
+        # Verify student belongs to this school
+        student = Student.query.filter_by(id=s_id, school_id=user.school_id).first()
+        if not student:
+            return jsonify({'error': f'Student ID {s_id} does not belong to this school'}), 400
+
+        existing = Attendance.query.filter_by(student_id=s_id, date=att_date).first()
         if existing:
-            existing.status = rec['status']
+            existing.status = rec.get('status', 'PRESENT')
         else:
-            a = Attendance(student_id=rec['student_id'], class_id=class_id,
-                           date=att_date, status=rec['status'], marked_by=user.id,
+            a = Attendance(student_id=s_id, class_id=class_id,
+                           date=att_date, status=rec.get('status', 'PRESENT'), marked_by=user.id,
                            remarks=rec.get('remarks', ''))
             db.session.add(a)
+        marked_count += 1
+
     db.session.commit()
-    return jsonify({'message': f'Attendance marked for {len(records)} students'}), 200
+    return jsonify({'message': f'Attendance marked for {marked_count} students'}), 200
 
 
 @teacher_bp.route('/attendance/<int:class_id>', methods=['GET'])
 @role_required('TEACHER')
 def get_attendance(class_id):
+    user = get_current_user()
+    cls = Class.query.filter_by(id=class_id, school_id=user.school_id).first()
+    if not cls:
+        return jsonify({'error': 'Class not found or unauthorized'}), 403
+
     att_date = request.args.get('date', str(date.today()))
     records = Attendance.query.filter_by(class_id=class_id, date=att_date).all()
     return jsonify([r.to_dict() for r in records]), 200
@@ -46,6 +75,11 @@ def get_attendance(class_id):
 @teacher_bp.route('/attendance/monthly/<int:student_id>', methods=['GET'])
 @role_required('TEACHER', 'PRINCIPAL')
 def monthly_attendance(student_id):
+    user = get_current_user()
+    student = Student.query.filter_by(id=student_id, school_id=user.school_id).first()
+    if not student:
+        return jsonify({'error': 'Student not found or unauthorized'}), 404
+
     month = request.args.get('month')  # e.g. "2024-04"
     records = Attendance.query.filter_by(student_id=student_id).all()
     if month:

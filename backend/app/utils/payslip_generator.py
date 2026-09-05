@@ -196,9 +196,11 @@ def generate_payslip_pdf(payroll_slip, school, employee_profile=None):
     logo_img = None
     if school and getattr(school, 'logo_url', None):
         try:
-            with urllib.request.urlopen(school.logo_url, timeout=3) as resp:
+            from app.utils.file_security import fetch_safe_remote_image
+            img_data = fetch_safe_remote_image(school.logo_url, timeout=3)
+            if img_data:
                 tf = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
-                tf.write(resp.read())
+                tf.write(img_data)
                 tf.flush()
                 logo_img = RLImage(tf.name, width=1.6 * cm, height=1.6 * cm)
         except Exception:

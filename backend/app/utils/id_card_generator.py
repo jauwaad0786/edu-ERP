@@ -11,8 +11,11 @@ Changes:
 import io
 import os
 import json
-import urllib.request
+import socket
+import ipaddress
+from urllib.parse import urlparse
 from datetime import datetime
+import requests
 
 import qrcode
 from reportlab.lib.pagesizes import A4
@@ -34,19 +37,63 @@ LGREY  = colors.HexColor('#f1f5f9')
 DGREY  = colors.HexColor('#0f172a')
 
 
+def _is_safe_public_url(url: str) -> bool:
+    """Validate that the URL is public and does not point to internal networks or loopback (SSRF protection)."""
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ('http', 'https'):
+            return False
+        host = parsed.hostname
+        if not host:
+            return False
+        host_lower = host.lower()
+        if host_lower in ('localhost', 'metadata.google.internal') or host_lower.endswith('.internal') or host_lower.endswith('.local'):
+            return False
+        addr_info = socket.getaddrinfo(host, None)
+        for family, _, _, _, sockaddr in addr_info:
+            ip_str = sockaddr[0]
+            ip = ipaddress.ip_address(ip_str)
+            if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+                return False
+        return True
+    except Exception:
+        return False
+
+
+def _is_safe_local_path(path: str) -> bool:
+    """Validate that the local path is strictly confined to allowed static/upload directories."""
+    try:
+        real_path = os.path.realpath(path)
+        current_dir = os.path.realpath(os.path.dirname(__file__))
+        allowed_dirs = [
+            os.path.realpath(os.path.join(current_dir, '..', 'static')),
+            os.path.realpath(os.path.join(current_dir, '..', 'uploads')),
+        ]
+        return any(real_path.startswith(d + os.path.sep) or real_path == d for d in allowed_dirs)
+    except Exception:
+        return False
+
+
 def _load_image_bytes(url):
     if not url:
         return None
     try:
-        if url.startswith('http'):
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=8) as r:
-                return r.read()
-        elif os.path.exists(url):
+        if url.startswith(('http://', 'https://')):
+            if not _is_safe_public_url(url):
+                return None
+            resp = requests.get(url, timeout=5, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}, stream=True)
+            if resp.status_code == 200:
+                content = b''
+                for chunk in resp.iter_content(chunk_size=65536):
+                    content += chunk
+                    if len(content) > 10 * 1024 * 1024:
+                        return None
+                return content
+        elif os.path.exists(url) and _is_safe_local_path(url):
             with open(url, 'rb') as f:
                 return f.read()
-    except Exception as e:
-        print(f"[id_card] image load failed: {e}")
+    except Exception:
+        pass
     return None
 
 

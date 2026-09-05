@@ -1,95 +1,193 @@
-# backend/app/utils/file_security.py
 """
-Central file upload validation and sanitization utility.
-Protects against:
-- Malicious executable and script uploads (.exe, .sh, .py, .php, .js, etc.)
-- Path traversal attacks via filename manipulation
-- Oversized file payloads
-- Content-type mismatches
+File Upload Security & Content Validation Layer
+Enforces:
+1. Strict file extension allowlists by media type (image, document, pdf, etc.)
+2. Filename sanitization via secure_filename (prevents path traversal)
+3. File size limits (rejects oversized payloads)
+4. Magic byte signature verification (prevents MIME spoofing & executable uploads)
+5. Explicit blocklist for dangerous/executable files (SVG/HTML/PHP/EXE/etc.)
 """
-
 import os
-import re
 from werkzeug.utils import secure_filename
 
-# ── Allowlist of safe file extensions ─────────────────────────────────────────
-ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'}
-ALLOWED_DOC_EXTENSIONS   = {'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'zip', 'rar'}
-ALLOWED_ALL_EXTENSIONS   = ALLOWED_IMAGE_EXTENSIONS | ALLOWED_DOC_EXTENSIONS
+# Default limits
+DEFAULT_IMAGE_MAX_SIZE_BYTES = 5 * 1024 * 1024    # 5 MB
+DEFAULT_DOC_MAX_SIZE_BYTES   = 25 * 1024 * 1024   # 25 MB
 
-# ── Explicit blocklist of dangerous extensions (defense in depth) ──────────────
-FORBIDDEN_EXTENSIONS = {
-    'exe', 'bat', 'cmd', 'sh', 'bash', 'zsh', 'ps1', 'psm1', 'msi', 'dll',
-    'vbs', 'vbe', 'js', 'jse', 'wsf', 'wsh', 'py', 'pyc', 'pyw', 'php',
-    'php3', 'php4', 'php5', 'phtml', 'jsp', 'jspx', 'asp', 'aspx', 'cgi',
-    'pl', 'jar', 'bin', 'com', 'scr', 'pif', 'hta', 'htm', 'html', 'xhtml',
-    'svgz', 'action', 'apk', 'app', 'elf', 'deb', 'rpm'
+ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp', 'gif'}
+ALLOWED_PDF_EXTENSIONS   = {'pdf'}
+ALLOWED_DOC_EXTENSIONS   = {'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'csv', 'zip'}
+
+# Explicitly disallowed extensions (XSS / RCE vectors)
+DISALLOWED_EXTENSIONS = {
+    'exe', 'bat', 'cmd', 'sh', 'php', 'phtml', 'php3', 'php4', 'php5', 'py', 'pl',
+    'cgi', 'js', 'vbs', 'jar', 'msi', 'com', 'scr', 'hta', 'ps1', 'dll', 'so',
+    'bin', 'apk', 'app', 'dmg', 'iso', 'jsp', 'asp', 'aspx', 'svg', 'html', 'htm'
 }
 
-# Max default size: 15 MB
-DEFAULT_MAX_FILE_SIZE = 15 * 1024 * 1024
+# Magic signatures
+MAGIC_SIGNATURES = {
+    'png': [b'\x89PNG\r\n\x1a\n'],
+    'jpg': [b'\xff\xd8\xff'],
+    'jpeg': [b'\xff\xd8\xff'],
+    'gif': [b'GIF87a', b'GIF89a'],
+    'pdf': [b'%PDF-'],
+    'docx': [b'PK\x03\x04'],
+    'xlsx': [b'PK\x03\x04'],
+    'pptx': [b'PK\x03\x04'],
+    'zip': [b'PK\x03\x04'],
+    'doc': [b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'],
+    'xls': [b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'],
+    'ppt': [b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'],
+}
 
 
-def get_file_extension(filename):
-    """Extract lowercase extension without leading dot."""
-    if not filename or '.' not in filename:
-        return ''
-    return filename.rsplit('.', 1)[1].lower().strip()
-
-
-def validate_uploaded_file(file_storage, allowed_extensions=None, max_size_bytes=DEFAULT_MAX_FILE_SIZE):
+def validate_and_sanitize_upload(file_storage, allowed_types=('image',), max_size_bytes=None):
     """
-    Validates an uploaded Werkzeug FileStorage object.
-    
-    Returns:
-        (is_valid: bool, error_msg: str or None, sanitized_filename: str, file_type_category: str)
+    Validates an uploaded file:
+      - Non-empty filename
+      - secure_filename sanitization
+      - Extension allowlist verification
+      - File size limit
+      - Magic byte signature checking
+    Returns (sanitized_filename, extension, size_bytes).
+    Raises ValueError on validation failure.
     """
-    if not file_storage or not file_storage.filename:
-        return False, "No file provided", "", "UNKNOWN"
+    if not file_storage or not getattr(file_storage, 'filename', None):
+        raise ValueError("No file uploaded or missing filename")
 
-    raw_filename = file_storage.filename
-    # Prevent path traversal e.g. ../../etc/passwd
-    safe_name = secure_filename(raw_filename)
-    if not safe_name:
-        # If secure_filename stripped everything, generate a safe fallback
-        safe_name = f"upload_{os.urandom(4).hex()}"
+    raw_filename = file_storage.filename.strip()
+    if not raw_filename or '.' not in raw_filename:
+        raise ValueError("File must have a valid filename with an extension")
 
-    ext = get_file_extension(raw_filename)
-    if not ext:
-        return False, "Files without an extension are not permitted", safe_name, "UNKNOWN"
+    sanitized = secure_filename(raw_filename)
+    if not sanitized or '.' not in sanitized:
+        raise ValueError("Invalid file name")
 
-    # Check forbidden extensions
-    if ext in FORBIDDEN_EXTENSIONS:
-        return False, f"File type '.{ext}' is strictly prohibited for security reasons", safe_name, "FORBIDDEN"
+    ext = sanitized.rsplit('.', 1)[1].lower()
 
-    # Check allowlist
-    target_allowlist = allowed_extensions if allowed_extensions is not None else ALLOWED_ALL_EXTENSIONS
-    if ext not in target_allowlist:
-        return False, f"File type '.{ext}' is not allowed. Allowed types: {', '.join(sorted(target_allowlist))}", safe_name, "UNKNOWN"
+    if ext in DISALLOWED_EXTENSIONS:
+        raise ValueError(f"File extension .{ext} is prohibited for security reasons")
 
-    # Size check
+    # Build allowed extensions set
+    allowed_extensions = set()
+    for cat in allowed_types:
+        cat_lower = cat.lower()
+        if cat_lower == 'image':
+            allowed_extensions.update(ALLOWED_IMAGE_EXTENSIONS)
+        elif cat_lower == 'pdf':
+            allowed_extensions.update(ALLOWED_PDF_EXTENSIONS)
+        elif cat_lower in ('doc', 'document'):
+            allowed_extensions.update(ALLOWED_DOC_EXTENSIONS)
+
+    if ext not in allowed_extensions:
+        raise ValueError(f"File extension .{ext} is not allowed. Permitted: {sorted(list(allowed_extensions))}")
+
+    # Determine size limit
+    if max_size_bytes is None:
+        if 'document' in allowed_types or 'doc' in allowed_types:
+            max_size_bytes = DEFAULT_DOC_MAX_SIZE_BYTES
+        else:
+            max_size_bytes = DEFAULT_IMAGE_MAX_SIZE_BYTES
+
+    # Check size
+    file_storage.seek(0, os.SEEK_END)
+    size = file_storage.tell()
+    file_storage.seek(0)
+
+    if size == 0:
+        raise ValueError("Uploaded file is empty (0 bytes)")
+
+    if size > max_size_bytes:
+        mb_limit = max_size_bytes // (1024 * 1024)
+        raise ValueError(f"File size exceeds the {mb_limit} MB limit ({size // (1024 * 1024)} MB)")
+
+    # Check magic byte signatures (if applicable)
+    header = file_storage.read(16)
+    file_storage.seek(0)
+
+    if ext == 'webp':
+        if not (header.startswith(b'RIFF') and header[8:12] == b'WEBP'):
+            raise ValueError("File contents do not match WebP image signature")
+    elif ext in MAGIC_SIGNATURES:
+        signatures = MAGIC_SIGNATURES[ext]
+        if not any(header.startswith(sig) for sig in signatures):
+            raise ValueError(f"File contents do not match expected signature for .{ext}")
+
+    return sanitized, ext, size
+
+
+def validate_uploaded_file(file_storage, allowed_types=('image', 'pdf', 'document'), max_size_bytes=None):
+    """
+    Convenience wrapper returning (is_valid: bool, err_msg: str, safe_name: str, file_category: str).
+    Matches caller contract in chat and tickets routes.
+    """
     try:
-        file_storage.seek(0, os.SEEK_END)
-        size = file_storage.tell()
-        file_storage.seek(0)
-        if size > max_size_bytes:
-            max_mb = max_size_bytes / (1024 * 1024)
-            return False, f"File size ({size / (1024 * 1024):.1f} MB) exceeds limit of {max_mb:.0f} MB", safe_name, "UNKNOWN"
-        if size == 0:
-            return False, "Empty files cannot be uploaded", safe_name, "UNKNOWN"
+        safe_name, ext, size = validate_and_sanitize_upload(
+            file_storage,
+            allowed_types=allowed_types,
+            max_size_bytes=max_size_bytes
+        )
+        cat = 'image' if ext in ALLOWED_IMAGE_EXTENSIONS else ('pdf' if ext in ALLOWED_PDF_EXTENSIONS else 'document')
+        return True, None, safe_name, cat
+    except ValueError as ve:
+        return False, str(ve), None, None
+    except Exception as ex:
+        return False, f"Invalid file: {str(ex)}", None, None
+
+
+def is_safe_public_url(url: str) -> bool:
+    """Validate that the URL is public and does not point to internal networks or loopback (SSRF protection)."""
+    if not url or not isinstance(url, str):
+        return False
+    try:
+        import socket
+        import ipaddress
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        if parsed.scheme not in ('http', 'https'):
+            return False
+        host = parsed.hostname
+        if not host:
+            return False
+        host_lower = host.lower()
+        if host_lower in ('localhost', 'metadata.google.internal') or host_lower.endswith('.internal') or host_lower.endswith('.local'):
+            return False
+        addr_info = socket.getaddrinfo(host, None)
+        for family, _, _, _, sockaddr in addr_info:
+            ip_str = sockaddr[0]
+            ip = ipaddress.ip_address(ip_str)
+            if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+                return False
+        return True
     except Exception:
-        # Fallback if tell/seek fails on non-seekable streams
+        return False
+
+
+def fetch_safe_remote_image(url: str, timeout: int = 3, max_bytes: int = 5 * 1024 * 1024):
+    """
+    Safely fetch remote image bytes with SSRF checks, timeout, and size limits.
+    Returns bytes or None on failure.
+    """
+    if not url or not is_safe_public_url(url):
+        return None
+    try:
+        import requests
+        resp = requests.get(
+            url,
+            timeout=timeout,
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'},
+            stream=True
+        )
+        if resp.status_code == 200:
+            content = b''
+            for chunk in resp.iter_content(chunk_size=32768):
+                content += chunk
+                if len(content) > max_bytes:
+                    return None
+            return content
+    except Exception:
         pass
+    return None
 
-    # Categorize file
-    content_type = (file_storage.content_type or '').lower()
-    if ext in ALLOWED_IMAGE_EXTENSIONS or 'image' in content_type:
-        category = 'IMAGE'
-    elif ext == 'pdf' or 'pdf' in content_type:
-        category = 'PDF'
-    elif ext in {'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv'}:
-        category = 'DOCUMENT'
-    else:
-        category = 'OTHER'
 
-    return True, None, safe_name, category

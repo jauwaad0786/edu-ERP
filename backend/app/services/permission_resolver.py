@@ -158,10 +158,11 @@ def role_or_permission_required(*args, roles=(), permissions=(), **kwargs):
     def decorator(fn):
         @wraps(fn)
         def wrapper(*args, **kwargs):
-            from app.utils.decorators import get_current_user
+            from app.utils.decorators import get_current_user, validate_user_and_school_lifecycle
             user = get_current_user()
-            if not user or not getattr(user, 'is_active', True):
-                return jsonify({'error': 'Access denied'}), 403
+            is_valid, err_resp = validate_user_and_school_lifecycle(user)
+            if not is_valid:
+                return err_resp[0], err_resp[1]
 
             allowed_enum = set()
             for k in allowed_keys:

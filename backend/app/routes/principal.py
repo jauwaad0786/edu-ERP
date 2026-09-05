@@ -3048,24 +3048,6 @@ def delete_exam(exam_id):
         except Exception:
             pass
 
-        # 2. Delete Result Audit Logs
-        try:
-            ResultAuditLog.query.filter_by(exam_id=exam_id).delete(synchronize_session=False)
-        except Exception:
-            pass
-
-        # 3. Delete Result Locks
-        try:
-            ResultLock.query.filter_by(exam_id=exam_id).delete(synchronize_session=False)
-        except Exception:
-            pass
-
-        # 4. Delete Result Versions
-        try:
-            ResultVersion.query.filter_by(exam_id=exam_id).delete(synchronize_session=False)
-        except Exception:
-            pass
-
         # 5. Delete Result Return Items & Result Subject Status
         try:
             from app.routes.result_management import ResultReturnItem, ResultSubjectStatus
@@ -3111,13 +3093,23 @@ def delete_exam(exam_id):
 
         # 10. Fallback raw SQL cleanup in case any extra FK references exam_id
         from sqlalchemy import text
-        for table in (
-            'marks_audit_logs', 'result_audit_logs', 'result_locks', 'result_versions',
-            'result_return_items', 'result_subject_status', 'class_result_publication',
-            'marks', 'exam_teacher_delegations', 'exam_timetable', 'exam_classes', 'exam_subjects'
-        ):
+        cleanup_statements = [
+            text("DELETE FROM marks_audit_logs WHERE exam_id = :eid"),
+            text("DELETE FROM result_audit_logs WHERE exam_id = :eid"),
+            text("DELETE FROM result_locks WHERE exam_id = :eid"),
+            text("DELETE FROM result_versions WHERE exam_id = :eid"),
+            text("DELETE FROM result_return_items WHERE exam_id = :eid"),
+            text("DELETE FROM result_subject_status WHERE exam_id = :eid"),
+            text("DELETE FROM class_result_publication WHERE exam_id = :eid"),
+            text("DELETE FROM marks WHERE exam_id = :eid"),
+            text("DELETE FROM exam_teacher_delegations WHERE exam_id = :eid"),
+            text("DELETE FROM exam_timetable WHERE exam_id = :eid"),
+            text("DELETE FROM exam_classes WHERE exam_id = :eid"),
+            text("DELETE FROM exam_subjects WHERE exam_id = :eid"),
+        ]
+        for stmt in cleanup_statements:
             try:
-                db.session.execute(text(f"DELETE FROM {table} WHERE exam_id = :eid"), {'eid': exam_id})
+                db.session.execute(stmt, {'eid': exam_id})
             except Exception:
                 pass
 
@@ -4428,6 +4420,12 @@ def student_photo(student_id):
     file = request.files.get('photo')
     if not file:
         return jsonify({'error': 'No file'}), 400
+    try:
+        from app.utils.file_security import validate_and_sanitize_upload
+        validate_and_sanitize_upload(file, allowed_types=('image',), max_size_bytes=5 * 1024 * 1024)
+    except ValueError as ve:
+        return jsonify({'error': str(ve)}), 400
+
     result = cloudinary.uploader.upload(
         file,
         folder=f'eduerp/students',
@@ -4455,6 +4453,12 @@ def teacher_photo(teacher_id):
     file = request.files.get('photo')
     if not file:
         return jsonify({'error': 'No file'}), 400
+    try:
+        from app.utils.file_security import validate_and_sanitize_upload
+        validate_and_sanitize_upload(file, allowed_types=('image',), max_size_bytes=5 * 1024 * 1024)
+    except ValueError as ve:
+        return jsonify({'error': str(ve)}), 400
+
     result = cloudinary.uploader.upload(
         file,
         folder=f'eduerp/teachers',
@@ -5085,6 +5089,11 @@ def school_logo():
     file = request.files.get('logo')
     if not file:
         return jsonify({'error': 'File nahi mila — field name: logo'}), 400
+    try:
+        from app.utils.file_security import validate_and_sanitize_upload
+        validate_and_sanitize_upload(file, allowed_types=('image',), max_size_bytes=5 * 1024 * 1024)
+    except ValueError as ve:
+        return jsonify({'error': str(ve)}), 400
 
     result = cloudinary.uploader.upload(
         file,
@@ -5124,6 +5133,11 @@ def school_principal_signature():
     file = request.files.get('signature')
     if not file:
         return jsonify({'error': 'File nahi mila — field name: signature'}), 400
+    try:
+        from app.utils.file_security import validate_and_sanitize_upload
+        validate_and_sanitize_upload(file, allowed_types=('image',), max_size_bytes=5 * 1024 * 1024)
+    except ValueError as ve:
+        return jsonify({'error': str(ve)}), 400
 
     result = cloudinary.uploader.upload(
         file,
@@ -5158,6 +5172,11 @@ def school_director_signature():
     file = request.files.get('signature')
     if not file:
         return jsonify({'error': 'File nahi mila — field name: signature'}), 400
+    try:
+        from app.utils.file_security import validate_and_sanitize_upload
+        validate_and_sanitize_upload(file, allowed_types=('image',), max_size_bytes=5 * 1024 * 1024)
+    except ValueError as ve:
+        return jsonify({'error': str(ve)}), 400
 
     result = cloudinary.uploader.upload(
         file,
@@ -5306,7 +5325,7 @@ def principal_list_users():
               .offset((page - 1) * per_page).limit(per_page).all()
 
     return jsonify({
-        'users':    [u.to_dict_with_credentials() for u in users],
+        'users':    [u.to_dict() for u in users],
         'total':    total,
         'page':     page,
         'per_page': per_page,
@@ -5718,14 +5737,12 @@ def _current_academic_year():
 
 def _upload_file_to_cloudinary(file, folder):
     """Upload file to cloudinary and return (url, filename, size_bytes)."""
-    try:
-        file.seek(0, os.SEEK_END)
-        size = file.tell()
-        file.seek(0)
-    except Exception:
-        size = None
-    if size and size > 10 * 1024 * 1024:
-        raise ValueError('File size 10 MB se zyada nahi honi chahiye')
+    from app.utils.file_security import validate_and_sanitize_upload
+    filename, ext, size = validate_and_sanitize_upload(
+        file,
+        allowed_types=('image', 'pdf', 'document'),
+        max_size_bytes=10 * 1024 * 1024
+    )
     result = cloudinary.uploader.upload(
         file,
         folder=folder,
@@ -5733,7 +5750,7 @@ def _upload_file_to_cloudinary(file, folder):
         use_filename=True,
         unique_filename=True,
     )
-    return result['secure_url'], file.filename, size
+    return result['secure_url'], filename, size
 
 
 # ─── 1. Documents Analytics Dashboard ──────────────────────────────────────────

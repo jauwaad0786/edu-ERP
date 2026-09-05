@@ -15,7 +15,12 @@ from cryptography.fernet import Fernet, InvalidToken
 def _get_cipher():
     key = os.environ.get('ENCRYPTION_KEY')
     if not key:
-        secret = os.environ.get('SECRET_KEY', 'eduerp-production-secret-encryption-salt-2026')
+        secret = os.environ.get('SECRET_KEY')
+        if not secret:
+            is_prod = os.environ.get('FLASK_ENV') == 'production' or os.environ.get('ENV') == 'production'
+            if is_prod:
+                raise RuntimeError("CRITICAL SECURITY CONFIGURATION: SECRET_KEY or ENCRYPTION_KEY must be set in production environment.")
+            secret = os.environ.get('DEV_ENCRYPTION_SALT', 'dev-local-secret-salt-do-not-use-in-prod')
         derived = hashlib.sha256(secret.encode('utf-8')).digest()
         key = base64.urlsafe_b64encode(derived).decode('utf-8')
     return Fernet(key.encode() if isinstance(key, str) else key)

@@ -483,6 +483,10 @@ def rebuild_monthly_summary(school_id, user, month, year):
             unpaid_leaves += days
 
     # Total loss of pay = unexcused absences + unpaid leaves + 0.5 * half_days
+    monthly_salary = float(getattr(user, 'salary', 0.0) or 0.0)
+    if not monthly_salary and hasattr(user, 'teacher_profile') and user.teacher_profile and getattr(user.teacher_profile, 'salary', None):
+        monthly_salary = float(user.teacher_profile.salary or 0.0)
+    per_day_salary = (monthly_salary / working_days) if (working_days and monthly_salary > 0) else 0.0
     total_lop = absent + unpaid_leaves + (0.5 * half)
     salary_impact = round(per_day_salary * total_lop, 2)
 

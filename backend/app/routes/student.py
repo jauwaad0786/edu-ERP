@@ -62,14 +62,17 @@ def _class_result_is_published(exam_id, class_id):
 def my_children():
     user = get_current_user()
     if getattr(user.role, 'value', str(user.role)) == 'STUDENT':
-        s = Student.query.filter_by(user_id=user.id).first()
+        s = Student.query.filter_by(user_id=user.id, school_id=user.school_id).first()
         return jsonify([s.to_dict()] if s else []), 200
 
-    # Parent: find all students matching email or phone or user_id
+    # Parent: find all students matching email or phone or user_id within parent's school
     students = Student.query.filter(
-        (Student.parent_email == user.email) |
-        (Student.parent_phone == user.phone) |
-        (Student.user_id == user.id)
+        Student.school_id == user.school_id,
+        (
+            (Student.parent_email == user.email) |
+            (Student.parent_phone == user.phone) |
+            (Student.user_id == user.id)
+        )
     ).all()
     return jsonify([s.to_dict() for s in students]), 200
 
@@ -82,17 +85,20 @@ def my_marks():
 
     if getattr(user.role, 'value', str(user.role)) == 'PARENT':
         if student_id:
-            student = Student.query.get(student_id)
+            student = Student.query.filter_by(id=student_id, school_id=user.school_id).first()
             if not student or (student.parent_email != user.email and student.parent_phone != user.phone and student.user_id != user.id):
                 return jsonify({'error': 'Unauthorized child access'}), 403
         else:
             student = Student.query.filter(
-                (Student.parent_email == user.email) |
-                (Student.parent_phone == user.phone) |
-                (Student.user_id == user.id)
+                Student.school_id == user.school_id,
+                (
+                    (Student.parent_email == user.email) |
+                    (Student.parent_phone == user.phone) |
+                    (Student.user_id == user.id)
+                )
             ).first()
     else:
-        student = Student.query.filter_by(user_id=user.id).first()
+        student = Student.query.filter_by(user_id=user.id, school_id=user.school_id).first()
 
     if not student:
         return jsonify({'error': 'Student profile not found'}), 404

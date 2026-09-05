@@ -29,6 +29,33 @@ def _expand(role_key):
     return ROLE_EQUIVALENCE.get(role_key, {role_key})
 
 
+def validate_user_and_school_lifecycle(user):
+    """
+    Validates user active status, account_status, and school lifecycle status.
+    Returns (True, None) or (False, (json_response, 403))
+    """
+    if not user or not getattr(user, 'is_active', True):
+        return False, (jsonify({'error': 'Access denied'}), 403)
+
+    if getattr(user, 'account_status', 'ACTIVE') == 'SUSPENDED':
+        return False, (jsonify({'error': 'Your user account has been suspended.'}), 403)
+
+    role_str = getattr(user.role, 'value', str(user.role))
+    if user.school_id and role_str != 'SUPER_ADMIN':
+        from app.models.school import School
+        school = School.query.get(user.school_id)
+        if school:
+            s_status = getattr(school, 'status', 'ACTIVE')
+            if s_status == 'ARCHIVED':
+                return False, (jsonify({'error': 'This school account is currently archived. Please contact the administrator.'}), 403)
+            if s_status == 'SUSPENDED':
+                return False, (jsonify({'error': 'This school account has been suspended. Please contact the administrator.'}), 403)
+            if s_status in ('INACTIVE', 'DRAFT', 'ONBOARDING'):
+                return False, (jsonify({'error': 'This school account is inactive. Please contact the administrator.'}), 403)
+
+    return True, None
+
+
 def role_required(*roles):
     """Decorator: restrict endpoint to given roles (dashboard-equivalent
     roles from ROLE_EQUIVALENCE are always included automatically).
@@ -53,14 +80,9 @@ def role_required(*roles):
             verify_jwt_in_request()
             user_id = int(get_jwt_identity())
             user = User.query.get(user_id)
-            if not user or not user.is_active:
-                return jsonify({'error': 'Access denied'}), 403
-
-            if user.school_id and getattr(user.role, 'value', str(user.role)) != 'SUPER_ADMIN':
-                from app.models.school import School
-                school = School.query.get(user.school_id)
-                if school and getattr(school, 'status', None) == 'ARCHIVED':
-                    return jsonify({'error': 'This school account is currently archived. Please contact the administrator.'}), 403
+            is_valid, err_resp = validate_user_and_school_lifecycle(user)
+            if not is_valid:
+                return err_resp[0], err_resp[1]
             allowed_enum = set()
             for k in allowed_keys:
                 try:

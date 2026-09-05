@@ -38,12 +38,12 @@ def create_app(config_name='default'):
     bcrypt.init_app(app)
     migrate.init_app(app, db)
     limiter.init_app(app)
-    _extra_origins = [o.strip() for o in os.environ.get('EXTRA_CORS_ORIGINS', '').split(',') if o.strip()]
+    from app.utils.security_headers import is_cors_origin_allowed, apply_security_headers, get_allowed_origins
 
     CORS(app,
-        resources={r"/*": {"origins": "*"}},
+        resources={r"/*": {"origins": list(get_allowed_origins())}},
         supports_credentials=True,
-        allow_headers=["*"],
+        allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin", "X-Client-Page", "X-Client-Action"],
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         expose_headers=["Content-Type", "Authorization"],
         max_age=86400,
@@ -52,26 +52,29 @@ def create_app(config_name='default'):
     @app.before_request
     def handle_options_preflight():
         if request.method == 'OPTIONS':
-            origin = request.headers.get('Origin') or '*'
+            origin = request.headers.get('Origin')
             response = make_response('', 204)
-            response.headers['Access-Control-Allow-Origin'] = origin
-            response.headers['Access-Control-Allow-Credentials'] = 'true'
-            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
-            req_headers = request.headers.get('Access-Control-Request-Headers')
-            response.headers['Access-Control-Allow-Headers'] = req_headers or '*'
-            response.headers['Access-Control-Max-Age'] = '86400'
+            if origin and is_cors_origin_allowed(origin):
+                response.headers['Access-Control-Allow-Origin'] = origin
+                response.headers['Access-Control-Allow-Credentials'] = 'true'
+                response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+                req_headers = request.headers.get('Access-Control-Request-Headers')
+                response.headers['Access-Control-Allow-Headers'] = req_headers or 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Client-Page, X-Client-Action'
+                response.headers['Access-Control-Max-Age'] = '86400'
+            apply_security_headers(response)
             return response
 
     @app.after_request
     def add_cors_headers(response):
         origin = request.headers.get('Origin')
-        if origin:
+        if origin and is_cors_origin_allowed(origin):
             response.headers['Access-Control-Allow-Origin'] = origin
             response.headers['Access-Control-Allow-Credentials'] = 'true'
             response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
             req_headers = request.headers.get('Access-Control-Request-Headers')
             response.headers['Access-Control-Allow-Headers'] = req_headers or 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Client-Page, X-Client-Action'
             response.headers['Access-Control-Expose-Headers'] = 'Content-Type, Authorization'
+        apply_security_headers(response)
         return response
 
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -1006,6 +1009,14 @@ def _ensure_user_columns():
                 print('[OK] Added UNIQUE constraint on users.employee_id')
             except Exception as e:
                 print(f'[WARN] UNIQUE constraint (employee_id): {e}')
+
+        # Security Remediation: Scrub any legacy plaintext passwords stored in DB
+        if 'plain_password_temp' in existing:
+            try:
+                conn.execute(text('UPDATE users SET plain_password_temp = NULL WHERE plain_password_temp IS NOT NULL'))
+                conn.commit()
+            except Exception:
+                pass
 
     # PostgreSQL only: add new enum values to userrole type
     _ensure_userrole_enum()

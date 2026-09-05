@@ -18,7 +18,7 @@ import os
 import json
 import logging
 from datetime import datetime, timedelta
-from sqlalchemy import text, inspect
+from sqlalchemy import text, inspect, bindparam, table, column, delete
 
 from app import db
 from app.models.school import School
@@ -450,79 +450,98 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
             except Exception:
                 table_columns[t_name] = set()
 
-        def _safe_delete_or_update(sql_statement):
+        def _safe_delete_or_update(query, params=None):
             try:
-                db.session.execute(text(sql_statement))
+                if params:
+                    db.session.execute(query, params)
+                else:
+                    db.session.execute(query)
             except Exception as sql_e:
                 logger.debug(f"Cascade cleanup step skipped: {sql_e}")
 
         # User-linked sub-tables & FK cleanup for users of this school
         if school_user_ids:
-            uid_list = ','.join(str(u) for u in school_user_ids)
+            uids = list(school_user_ids)
             # Tables linking directly to user_id
             for u_tab in [
                 'user_role_assignments', 'user_permission_overrides', 'session_history',
                 'user_devices', 'otp_verifications', 'login_history', 'employee_profiles'
             ]:
                 if u_tab in all_tables and 'user_id' in table_columns.get(u_tab, set()):
-                    _safe_delete_or_update(f"DELETE FROM {u_tab} WHERE user_id IN ({uid_list})")
+                    q = delete(table(u_tab, column('user_id'))).where(column('user_id').in_(uids))
+                    _safe_delete_or_update(q)
 
             # Employee & Student documents
             if 'employee_documents' in all_tables:
-                _safe_delete_or_update(f"DELETE FROM employee_documents WHERE user_id IN ({uid_list})")
+                q = text("DELETE FROM employee_documents WHERE user_id IN :uids").bindparams(bindparam('uids', expanding=True))
+                _safe_delete_or_update(q, {'uids': uids})
             if 'student_documents' in all_tables:
-                _safe_delete_or_update(f"DELETE FROM student_documents WHERE school_id = {school_id}")
+                q = text("DELETE FROM student_documents WHERE school_id = :sid")
+                _safe_delete_or_update(q, {'sid': school_id})
 
             # Temporary role delegations
             if 'temporary_role_delegations' in all_tables:
-                _safe_delete_or_update(f"DELETE FROM temporary_role_delegations WHERE delegator_user_id IN ({uid_list}) OR delegatee_user_id IN ({uid_list})")
+                q = text("DELETE FROM temporary_role_delegations WHERE delegator_user_id IN :uids OR delegatee_user_id IN :uids").bindparams(bindparam('uids', expanding=True))
+                _safe_delete_or_update(q, {'uids': uids})
 
             # Developer center issue assignments
             if 'issue_assignments' in all_tables:
-                _safe_delete_or_update(f"DELETE FROM issue_assignments WHERE assigned_to_user_id IN ({uid_list}) OR assigned_by_user_id IN ({uid_list})")
+                q = text("DELETE FROM issue_assignments WHERE assigned_to_user_id IN :uids OR assigned_by_user_id IN :uids").bindparams(bindparam('uids', expanding=True))
+                _safe_delete_or_update(q, {'uids': uids})
 
             # Error logs reported by or affecting these users
             if 'error_logs' in all_tables and 'user_id' in table_columns.get('error_logs', set()):
-                _safe_delete_or_update(f"UPDATE error_logs SET user_id = NULL WHERE user_id IN ({uid_list})")
+                q = text("UPDATE error_logs SET user_id = NULL WHERE user_id IN :uids").bindparams(bindparam('uids', expanding=True))
+                _safe_delete_or_update(q, {'uids': uids})
 
             # Company activity logs
             if 'company_activity_logs' in all_tables and 'actor_user_id' in table_columns.get('company_activity_logs', set()):
-                _safe_delete_or_update(f"UPDATE company_activity_logs SET actor_user_id = NULL WHERE actor_user_id IN ({uid_list})")
+                q = text("UPDATE company_activity_logs SET actor_user_id = NULL WHERE actor_user_id IN :uids").bindparams(bindparam('uids', expanding=True))
+                _safe_delete_or_update(q, {'uids': uids})
 
             # Schools created_by or archived_by
             if 'schools' in all_tables:
                 if 'created_by' in table_columns.get('schools', set()):
-                    _safe_delete_or_update(f"UPDATE schools SET created_by = NULL WHERE created_by IN ({uid_list})")
+                    q = text("UPDATE schools SET created_by = NULL WHERE created_by IN :uids").bindparams(bindparam('uids', expanding=True))
+                    _safe_delete_or_update(q, {'uids': uids})
                 if 'archived_by' in table_columns.get('schools', set()):
-                    _safe_delete_or_update(f"UPDATE schools SET archived_by = NULL WHERE archived_by IN ({uid_list})")
+                    q = text("UPDATE schools SET archived_by = NULL WHERE archived_by IN :uids").bindparams(bindparam('uids', expanding=True))
+                    _safe_delete_or_update(q, {'uids': uids})
 
             # Support tickets
             if 'support_tickets' in all_tables:
                 cols = table_columns.get('support_tickets', set())
                 if 'created_by' in cols:
-                    _safe_delete_or_update(f"UPDATE support_tickets SET created_by = NULL WHERE created_by IN ({uid_list})")
+                    q = text("UPDATE support_tickets SET created_by = NULL WHERE created_by IN :uids").bindparams(bindparam('uids', expanding=True))
+                    _safe_delete_or_update(q, {'uids': uids})
                 if 'assigned_to' in cols:
-                    _safe_delete_or_update(f"UPDATE support_tickets SET assigned_to = NULL WHERE assigned_to IN ({uid_list})")
+                    q = text("UPDATE support_tickets SET assigned_to = NULL WHERE assigned_to IN :uids").bindparams(bindparam('uids', expanding=True))
+                    _safe_delete_or_update(q, {'uids': uids})
 
             # Ticket replies
             if 'ticket_replies' in all_tables and 'user_id' in table_columns.get('ticket_replies', set()):
-                _safe_delete_or_update(f"UPDATE ticket_replies SET user_id = NULL WHERE user_id IN ({uid_list})")
+                q = text("UPDATE ticket_replies SET user_id = NULL WHERE user_id IN :uids").bindparams(bindparam('uids', expanding=True))
+                _safe_delete_or_update(q, {'uids': uids})
 
             # Chat messages
             if 'chat_messages' in all_tables:
-                _safe_delete_or_update(f"DELETE FROM chat_messages WHERE sender_id IN ({uid_list}) OR receiver_id IN ({uid_list})")
+                q = text("DELETE FROM chat_messages WHERE sender_id IN :uids OR receiver_id IN :uids").bindparams(bindparam('uids', expanding=True))
+                _safe_delete_or_update(q, {'uids': uids})
 
             # Meeting requests
             if 'meeting_requests' in all_tables:
-                _safe_delete_or_update(f"DELETE FROM meeting_requests WHERE teacher_id IN ({uid_list}) OR parent_id IN ({uid_list})")
+                q = text("DELETE FROM meeting_requests WHERE teacher_id IN :uids OR parent_id IN :uids").bindparams(bindparam('uids', expanding=True))
+                _safe_delete_or_update(q, {'uids': uids})
 
             # Audit logs
             if 'audit_logs' in all_tables and 'user_id' in table_columns.get('audit_logs', set()):
-                _safe_delete_or_update(f"DELETE FROM audit_logs WHERE user_id IN ({uid_list})")
+                q = text("DELETE FROM audit_logs WHERE user_id IN :uids").bindparams(bindparam('uids', expanding=True))
+                _safe_delete_or_update(q, {'uids': uids})
 
             # Deleted logs archive
             if 'deleted_logs_archive' in all_tables and 'deleted_by' in table_columns.get('deleted_logs_archive', set()):
-                _safe_delete_or_update(f"DELETE FROM deleted_logs_archive WHERE deleted_by IN ({uid_list})")
+                q = text("DELETE FROM deleted_logs_archive WHERE deleted_by IN :uids").bindparams(bindparam('uids', expanding=True))
+                _safe_delete_or_update(q, {'uids': uids})
 
         # ── Level 2: Delete from all direct tables having school_id column ──
         # Specific deletion order for tables with internal cross-references
@@ -583,13 +602,15 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
         # Execute priority deletions
         for t_name in priority_tables:
             if t_name in tables_with_school_id:
-                db.session.execute(text(f"DELETE FROM {t_name} WHERE school_id = :sid"), {'sid': school_id})
+                q = delete(table(t_name, column('school_id'))).where(column('school_id') == school_id)
+                db.session.execute(q)
 
         # Catch any remaining tables with school_id column
         for t_name in tables_with_school_id:
             if t_name in priority_tables or t_name in ('schools', 'company_activity_logs'):
                 continue
-            db.session.execute(text(f"DELETE FROM {t_name} WHERE school_id = :sid"), {'sid': school_id})
+            q = delete(table(t_name, column('school_id'))).where(column('school_id') == school_id)
+            db.session.execute(q)
 
         # ── Level 3: Delete school users (never delete SUPER_ADMIN) ──
         db.session.execute(text("""

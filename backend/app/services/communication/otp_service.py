@@ -22,12 +22,20 @@ class OTPService:
     @classmethod
     def _get_secret_salt(cls):
         """Retrieve backend secret key to salt OTP hashes."""
+        secret = None
         try:
             if current_app and current_app.config.get('SECRET_KEY'):
-                return current_app.config.get('SECRET_KEY').encode('utf-8')
+                secret = current_app.config.get('SECRET_KEY')
         except Exception:
             pass
-        return os.getenv('SECRET_KEY', 'default-edu-erp-otp-salt').encode('utf-8')
+        if not secret:
+            secret = os.getenv('SECRET_KEY')
+        if not secret:
+            is_prod = os.getenv('FLASK_ENV') == 'production' or os.getenv('ENV') == 'production'
+            if is_prod:
+                raise RuntimeError("CRITICAL: SECRET_KEY must be set in production for OTP cryptographic salting.")
+            secret = os.getenv('DEV_OTP_SALT', 'dev-local-otp-salt-do-not-use-in-prod')
+        return secret.encode('utf-8') if isinstance(secret, str) else secret
 
     @classmethod
     def generate_otp(cls, length=6):

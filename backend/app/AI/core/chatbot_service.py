@@ -45,6 +45,34 @@ def _get_analytics_data(intent: str, params: dict, school_id: int,
     year  = params.get('year')
     class_name = params.get('class')
 
+    user_role = (role or '').upper()
+
+    # RBAC Guard: Financial Intents
+    financial_intents = {
+        Intent.FEE_COLLECTION,
+        Intent.FEE_OUTSTANDING,
+        Intent.FEE_COMPARISON,
+        Intent.FEE_PENDING_STUDENTS,
+        Intent.STUDENT_FEE_STATUS,
+        Intent.EXPENSE_SUMMARY,
+        Intent.STAFF_SALARY_STATUS,
+        Intent.TRANSPORT_FEE,
+        Intent.HOSTEL_FEE,
+    }
+    allowed_financial_roles = {'SUPER_ADMIN', 'PRINCIPAL', 'DIRECTOR', 'ACCOUNTANT', 'ADMIN', 'FINANCE_OFFICER'}
+    if intent in financial_intents and user_role not in allowed_financial_roles:
+        return {'error': 'UNAUTHORIZED', 'message': 'You do not have permission to access financial analytics.'}
+
+    # RBAC Guard: Platform Intents
+    platform_intents = {
+        Intent.PLATFORM_SCHOOLS_COUNT,
+        Intent.PLATFORM_PAID_SCHOOLS,
+        Intent.PLATFORM_USER_STATS,
+        Intent.PLATFORM_HEALTH,
+    }
+    if intent in platform_intents and user_role != 'SUPER_ADMIN':
+        return {'error': 'UNAUTHORIZED', 'message': 'You do not have permission to access platform analytics.'}
+
     # Resolve class_id from class name if provided
     class_id = None
     if class_name:
@@ -348,6 +376,22 @@ def process_chat(user_id: int, role: str, school_id: int,
         t_db = time.monotonic()
         analytics_data = _get_analytics_data(intent, params, school_id, user_id, role)
         db_ms = int((time.monotonic() - t_db) * 1000)
+
+        if analytics_data.get('error') == 'UNAUTHORIZED':
+            total_ms = int((time.monotonic() - t_total_start) * 1000)
+            quota = check_quota(user_id, role, school_id)
+            unauth_msg = analytics_data.get('message', 'You do not have permission to access this information.')
+            return {
+                'answer':              unauth_msg,
+                'intent':              intent,
+                'cached':              False,
+                'source':              'ACCESS_CONTROL',
+                'error':               'UNAUTHORIZED',
+                'data':                {},
+                'suggested_followups': [],
+                'usage':               quota,
+                'latency':             {'total_ms': total_ms, 'intent_ms': intent_ms, 'db_ms': db_ms, 'llm_ms': 0},
+            }
 
         # ── Deterministic Response Fast-Path (Guarantees zero hallucination and 100% accurate currency/numbers) ──
         from app.AI.core.deterministic_responder import format_deterministic_response, validate_and_sanitize_response
