@@ -18,7 +18,7 @@ import os
 import json
 import logging
 from datetime import datetime, timedelta
-from sqlalchemy import text, inspect, bindparam, table, column, delete
+from sqlalchemy import text, inspect, bindparam, table, column, delete, or_
 
 from app import db
 from app.models.school import School
@@ -333,13 +333,15 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
     inspector = inspect(db.engine)
     all_tables = set(inspector.get_table_names())
     tables_with_school_id = set()
+    table_columns = {}
     for t_name in all_tables:
         try:
             col_names = {c['name'] for c in inspector.get_columns(t_name)}
+            table_columns[t_name] = col_names
             if 'school_id' in col_names:
                 tables_with_school_id.add(t_name)
         except Exception:
-            pass
+            table_columns[t_name] = set()
 
     # 3. Transactional cascade deletion in reverse dependency order
     try:
@@ -350,114 +352,122 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
         # Expunge all objects from session so SQLAlchemy identity map doesn't re-insert them on autoflush
         db.session.expunge_all()
 
-        # ── Level 1: Deepest child tables (referenced by other child tables) ──
-        # Fee child tables
-        db.session.execute(text("""
-            DELETE FROM fee_payment_allocations 
-            WHERE payment_id IN (SELECT id FROM fee_payments WHERE school_id = :sid)
-               OR bill_id IN (SELECT id FROM fee_bills WHERE school_id = :sid)
-        """), {'sid': school_id})
-
-        db.session.execute(text("""
-            DELETE FROM fee_bill_items 
-            WHERE bill_id IN (SELECT id FROM fee_bills WHERE school_id = :sid)
-        """), {'sid': school_id})
-
-        db.session.execute(text("""
-            DELETE FROM fee_structure_items_v2 
-            WHERE structure_id IN (SELECT id FROM fee_structures_v2 WHERE school_id = :sid)
-        """), {'sid': school_id})
-
-        # Payroll & Finance child tables
-        db.session.execute(text("""
-            DELETE FROM payroll_slip_items 
-            WHERE payroll_slip_id IN (SELECT id FROM payroll_slips WHERE school_id = :sid)
-        """), {'sid': school_id})
-
-        db.session.execute(text("""
-            DELETE FROM goods_receipt_items 
-            WHERE grn_id IN (SELECT id FROM goods_receipt_notes WHERE school_id = :sid)
-        """), {'sid': school_id})
-
-        db.session.execute(text("""
-            DELETE FROM purchase_order_items 
-            WHERE purchase_order_id IN (SELECT id FROM purchase_orders WHERE school_id = :sid)
-        """), {'sid': school_id})
-
-        db.session.execute(text("""
-            DELETE FROM salary_structure_items 
-            WHERE structure_id IN (SELECT id FROM salary_structures WHERE school_id = :sid)
-        """), {'sid': school_id})
-
-        # Academic child tables
-        db.session.execute(text("""
-            DELETE FROM exam_timetable 
-            WHERE exam_id IN (SELECT id FROM exam_schedules WHERE school_id = :sid)
-        """), {'sid': school_id})
-
-        db.session.execute(text("""
-            DELETE FROM result_return_items 
-            WHERE subject_status_id IN (SELECT id FROM result_subject_status WHERE school_id = :sid)
-        """), {'sid': school_id})
-
-        db.session.execute(text("""
-            DELETE FROM timetable_periods 
-            WHERE timetable_id IN (SELECT id FROM timetables WHERE school_id = :sid)
-        """), {'sid': school_id})
-
-        db.session.execute(text("""
-            DELETE FROM transport_route_stops 
-            WHERE route_id IN (SELECT id FROM transport_routes WHERE school_id = :sid)
-        """), {'sid': school_id})
-
-        db.session.execute(text("""
-            DELETE FROM support_attachments 
-            WHERE ticket_id IN (SELECT id FROM support_tickets WHERE school_id = :sid)
-        """), {'sid': school_id})
-
-        db.session.execute(text("""
-            DELETE FROM ticket_replies 
-            WHERE ticket_id IN (SELECT id FROM support_tickets WHERE school_id = :sid)
-        """), {'sid': school_id})
-
-        db.session.execute(text("""
-            DELETE FROM ai_messages 
-            WHERE conversation_id IN (SELECT id FROM ai_conversations WHERE school_id = :sid)
-        """), {'sid': school_id})
-
-        db.session.execute(text("""
-            DELETE FROM asset_assignment_history 
-            WHERE asset_id IN (SELECT id FROM school_assets WHERE school_id = :sid)
-        """), {'sid': school_id})
-
-        db.session.execute(text("""
-            DELETE FROM asset_condition_logs 
-            WHERE asset_id IN (SELECT id FROM school_assets WHERE school_id = :sid)
-        """), {'sid': school_id})
-
-        # Academic attendance
-        db.session.execute(text("""
-            DELETE FROM attendance 
-            WHERE class_id IN (SELECT id FROM classes WHERE school_id = :sid)
-               OR student_id IN (SELECT id FROM students WHERE school_id = :sid)
-        """), {'sid': school_id})
-
-        # Pre-compute all table columns before beginning cascade transaction
-        table_columns = {}
-        for t_name in all_tables:
-            try:
-                table_columns[t_name] = {c['name'] for c in inspector.get_columns(t_name)}
-            except Exception:
-                table_columns[t_name] = set()
-
         def _safe_delete_or_update(query, params=None):
+            """Executes SQL within a subtransaction SAVEPOINT so failures never abort the outer transaction in PostgreSQL."""
             try:
-                if params:
-                    db.session.execute(query, params)
-                else:
-                    db.session.execute(query)
+                with db.session.begin_nested():
+                    if params:
+                        db.session.execute(query, params)
+                    else:
+                        db.session.execute(query)
             except Exception as sql_e:
                 logger.debug(f"Cascade cleanup step skipped: {sql_e}")
+
+        # ── Level 1: Deepest child tables (referenced by other child tables) ──
+        if 'fee_payment_allocations' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM fee_payment_allocations 
+                WHERE payment_id IN (SELECT id FROM fee_payments WHERE school_id = :sid)
+                   OR bill_id IN (SELECT id FROM fee_bills WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'fee_bill_items' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM fee_bill_items 
+                WHERE bill_id IN (SELECT id FROM fee_bills WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'fee_structure_items_v2' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM fee_structure_items_v2 
+                WHERE structure_id IN (SELECT id FROM fee_structures_v2 WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'payroll_slip_items' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM payroll_slip_items 
+                WHERE payroll_slip_id IN (SELECT id FROM payroll_slips WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'goods_receipt_items' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM goods_receipt_items 
+                WHERE grn_id IN (SELECT id FROM goods_receipt_notes WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'purchase_order_items' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM purchase_order_items 
+                WHERE purchase_order_id IN (SELECT id FROM purchase_orders WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'salary_structure_items' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM salary_structure_items 
+                WHERE structure_id IN (SELECT id FROM salary_structures WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'exam_timetable' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM exam_timetable 
+                WHERE exam_id IN (SELECT id FROM exam_schedules WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'result_return_items' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM result_return_items 
+                WHERE subject_status_id IN (SELECT id FROM result_subject_status WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'timetable_periods' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM timetable_periods 
+                WHERE timetable_id IN (SELECT id FROM timetables WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'transport_route_stops' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM transport_route_stops 
+                WHERE route_id IN (SELECT id FROM transport_routes WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'support_attachments' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM support_attachments 
+                WHERE ticket_id IN (SELECT id FROM support_tickets WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'ticket_replies' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM ticket_replies 
+                WHERE ticket_id IN (SELECT id FROM support_tickets WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'ai_messages' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM ai_messages 
+                WHERE conversation_id IN (SELECT id FROM ai_conversations WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'asset_assignment_history' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM asset_assignment_history 
+                WHERE asset_id IN (SELECT id FROM school_assets WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'asset_condition_logs' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM asset_condition_logs 
+                WHERE asset_id IN (SELECT id FROM school_assets WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        # Academic attendance
+        if 'attendance' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM attendance 
+                WHERE class_id IN (SELECT id FROM classes WHERE school_id = :sid)
+                   OR student_id IN (SELECT id FROM students WHERE school_id = :sid)
+            """), {'sid': school_id})
 
         # User-linked sub-tables & FK cleanup for users of this school
         if school_user_ids:
@@ -481,13 +491,36 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
 
             # Temporary role delegations
             if 'temporary_role_delegations' in all_tables:
-                q = text("DELETE FROM temporary_role_delegations WHERE delegator_user_id IN :uids OR delegatee_user_id IN :uids").bindparams(bindparam('uids', expanding=True))
-                _safe_delete_or_update(q, {'uids': uids})
+                trd_cols = table_columns.get('temporary_role_delegations', set())
+                trd_conds = []
+                trd_fields = []
+                if 'delegator_user_id' in trd_cols:
+                    trd_conds.append(column('delegator_user_id').in_(uids))
+                    trd_fields.append(column('delegator_user_id'))
+                if 'delegatee_user_id' in trd_cols:
+                    trd_conds.append(column('delegatee_user_id').in_(uids))
+                    trd_fields.append(column('delegatee_user_id'))
+                if trd_conds:
+                    q = delete(table('temporary_role_delegations', *trd_fields)).where(or_(*trd_conds))
+                    _safe_delete_or_update(q)
 
             # Developer center issue assignments
             if 'issue_assignments' in all_tables:
-                q = text("DELETE FROM issue_assignments WHERE assigned_to_user_id IN :uids OR assigned_by_user_id IN :uids").bindparams(bindparam('uids', expanding=True))
-                _safe_delete_or_update(q, {'uids': uids})
+                ia_cols = table_columns.get('issue_assignments', set())
+                ia_conds = []
+                ia_fields = []
+                if 'assigned_to_user_id' in ia_cols:
+                    ia_conds.append(column('assigned_to_user_id').in_(uids))
+                    ia_fields.append(column('assigned_to_user_id'))
+                if 'assigned_by_user_id' in ia_cols:
+                    ia_conds.append(column('assigned_by_user_id').in_(uids))
+                    ia_fields.append(column('assigned_by_user_id'))
+                if 'resolved_by_user_id' in ia_cols:
+                    ia_conds.append(column('resolved_by_user_id').in_(uids))
+                    ia_fields.append(column('resolved_by_user_id'))
+                if ia_conds:
+                    q = delete(table('issue_assignments', *ia_fields)).where(or_(*ia_conds))
+                    _safe_delete_or_update(q)
 
             # Error logs reported by or affecting these users
             if 'error_logs' in all_tables and 'user_id' in table_columns.get('error_logs', set()):
@@ -518,20 +551,47 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
                     q = text("UPDATE support_tickets SET assigned_to = NULL WHERE assigned_to IN :uids").bindparams(bindparam('uids', expanding=True))
                     _safe_delete_or_update(q, {'uids': uids})
 
+            # Support attachments uploaded by these users
+            if 'support_attachments' in all_tables:
+                sa_cols = table_columns.get('support_attachments', set())
+                if 'uploaded_by' in sa_cols:
+                    q = text("DELETE FROM support_attachments WHERE uploaded_by IN :uids").bindparams(bindparam('uids', expanding=True))
+                    _safe_delete_or_update(q, {'uids': uids})
+
             # Ticket replies
-            if 'ticket_replies' in all_tables and 'user_id' in table_columns.get('ticket_replies', set()):
-                q = text("UPDATE ticket_replies SET user_id = NULL WHERE user_id IN :uids").bindparams(bindparam('uids', expanding=True))
-                _safe_delete_or_update(q, {'uids': uids})
+            if 'ticket_replies' in all_tables:
+                tr_cols = table_columns.get('ticket_replies', set())
+                if 'replied_by' in tr_cols:
+                    q = text("DELETE FROM ticket_replies WHERE replied_by IN :uids").bindparams(bindparam('uids', expanding=True))
+                    _safe_delete_or_update(q, {'uids': uids})
+                elif 'user_id' in tr_cols:
+                    q = text("UPDATE ticket_replies SET user_id = NULL WHERE user_id IN :uids").bindparams(bindparam('uids', expanding=True))
+                    _safe_delete_or_update(q, {'uids': uids})
 
             # Chat messages
             if 'chat_messages' in all_tables:
-                q = text("DELETE FROM chat_messages WHERE sender_id IN :uids OR receiver_id IN :uids").bindparams(bindparam('uids', expanding=True))
-                _safe_delete_or_update(q, {'uids': uids})
+                cm_cols = table_columns.get('chat_messages', set())
+                cm_conds = []
+                cm_fields = []
+                if 'sender_id' in cm_cols:
+                    cm_conds.append(column('sender_id').in_(uids))
+                    cm_fields.append(column('sender_id'))
+                if 'receiver_id' in cm_cols:
+                    cm_conds.append(column('receiver_id').in_(uids))
+                    cm_fields.append(column('receiver_id'))
+                if cm_conds:
+                    q = delete(table('chat_messages', *cm_fields)).where(or_(*cm_conds))
+                    _safe_delete_or_update(q)
 
-            # Meeting requests
+            # Meeting requests (schema uses requested_by / handled_by, not teacher_id / parent_id)
             if 'meeting_requests' in all_tables:
-                q = text("DELETE FROM meeting_requests WHERE teacher_id IN :uids OR parent_id IN :uids").bindparams(bindparam('uids', expanding=True))
-                _safe_delete_or_update(q, {'uids': uids})
+                mr_cols = table_columns.get('meeting_requests', set())
+                if 'requested_by' in mr_cols:
+                    q = text("DELETE FROM meeting_requests WHERE requested_by IN :uids").bindparams(bindparam('uids', expanding=True))
+                    _safe_delete_or_update(q, {'uids': uids})
+                if 'handled_by' in mr_cols:
+                    q = text("UPDATE meeting_requests SET handled_by = NULL WHERE handled_by IN :uids").bindparams(bindparam('uids', expanding=True))
+                    _safe_delete_or_update(q, {'uids': uids})
 
             # Audit logs
             if 'audit_logs' in all_tables and 'user_id' in table_columns.get('audit_logs', set()):
@@ -599,21 +659,22 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
             'user_permissions', 'role_permissions', 'platform_role_permissions',
         ]
 
-        # Execute priority deletions
-        for t_name in priority_tables:
-            if t_name in tables_with_school_id:
-                q = delete(table(t_name, column('school_id'))).where(column('school_id') == school_id)
-                db.session.execute(q)
+        # Execute priority deletions (2 passes safely cleans interdependent tables)
+        for _ in range(2):
+            for t_name in priority_tables:
+                if t_name in tables_with_school_id:
+                    q = delete(table(t_name, column('school_id'))).where(column('school_id') == school_id)
+                    _safe_delete_or_update(q)
 
         # Catch any remaining tables with school_id column
         for t_name in tables_with_school_id:
             if t_name in priority_tables or t_name in ('schools', 'company_activity_logs'):
                 continue
             q = delete(table(t_name, column('school_id'))).where(column('school_id') == school_id)
-            db.session.execute(q)
+            _safe_delete_or_update(q)
 
         # ── Level 3: Delete school users (never delete SUPER_ADMIN) ──
-        db.session.execute(text("""
+        _safe_delete_or_update(text("""
             DELETE FROM users 
             WHERE school_id = :sid 
               AND (role != 'SUPER_ADMIN' OR role IS NULL)
@@ -621,7 +682,7 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
 
         # ── Level 4: Clear affected_school_id on company_activity_logs to preserve audit trail ──
         if 'company_activity_logs' in all_tables:
-            db.session.execute(text("""
+            _safe_delete_or_update(text("""
                 UPDATE company_activity_logs 
                 SET affected_school_id = NULL 
                 WHERE affected_school_id = :sid
