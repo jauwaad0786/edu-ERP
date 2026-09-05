@@ -66,6 +66,7 @@ class User(db.Model):
     password    = db.Column(db.String(256), nullable=False)
     role        = db.Column(db.Enum(UserRole), nullable=False)
     is_active   = db.Column(db.Boolean, default=True)
+    account_status = db.Column(db.String(20), default='ACTIVE', index=True) # ACTIVE / INVITED / INACTIVE / SUSPENDED
     phone       = db.Column(db.String(20))
     avatar_url  = db.Column(db.String(255))
     created_at  = db.Column(db.DateTime, default=datetime.utcnow)
@@ -127,6 +128,7 @@ class User(db.Model):
             'role':        self.role.value,
             'school_id':   self.school_id,
             'is_active':   self.is_active,
+            'account_status': getattr(self, 'account_status', None) or ('ACTIVE' if self.is_active else 'INACTIVE'),
             'phone':       self.phone,
             'department':  self.department,
             'designation': self.designation,

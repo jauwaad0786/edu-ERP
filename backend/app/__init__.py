@@ -941,6 +941,9 @@ def _ensure_school_columns():
         'archived_by':                  "INTEGER NULL",
         'archive_reason':               "VARCHAR(255) NULL",
         'permanent_delete_eligible_at': "TIMESTAMP NULL",
+        'website':                      "VARCHAR(255) NULL",
+        'affiliation_board':            "VARCHAR(100) NULL",
+        'established_year':             "INTEGER NULL",
     }
     with db.engine.connect() as conn:
         for col, defn in to_add.items():
@@ -977,6 +980,7 @@ def _ensure_user_columns():
         'designation':         'VARCHAR(100)',
         'plain_password_temp': 'VARCHAR(256)',
         'employee_id':         'VARCHAR(30)',
+        'account_status':      "VARCHAR(20) DEFAULT 'ACTIVE'",
     }
 
     with db.engine.connect() as conn:

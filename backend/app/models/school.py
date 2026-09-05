@@ -13,6 +13,9 @@ class School(db.Model):
     pincode     = db.Column(db.String(10))
     phone       = db.Column(db.String(20))
     email       = db.Column(db.String(120))
+    website     = db.Column(db.String(255))
+    affiliation_board = db.Column(db.String(100))
+    established_year  = db.Column(db.Integer)
     logo_url               = db.Column(db.String(500))   # School logo
     principal_signature_url= db.Column(db.String(500))   # Principal signature image
     director_signature_url = db.Column(db.String(500))   # Director/Chairman signature image
@@ -83,6 +86,9 @@ class School(db.Model):
             'pincode':                      self.pincode  or '',
             'phone':                        self.phone    or '',
             'email':                        self.email    or '',
+            'website':                      self.website  or '',
+            'affiliation_board':            self.affiliation_board or '',
+            'established_year':             self.established_year,
             'type':                         self.type,
             'is_active':                    self.is_active,
             'status':                       effective_status,

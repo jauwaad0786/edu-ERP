@@ -35,7 +35,7 @@ from app.routes.admin import FEATURE_CATALOG, PLAN_PRESETS, PLAN_PRICING
 
 from sqlalchemy import func
 from datetime import date, datetime, timedelta
-import random, string
+import random, string, re
 import cloudinary.uploader
 import os
 principal_bp = Blueprint('principal', __name__)
@@ -716,12 +716,66 @@ def list_students():
     }), 200
 
 
+@principal_bp.route('/students/check-duplicate', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT', 'RECEPTIONIST')
+def check_duplicate_student():
+    """
+    Pre-admission duplicate student check:
+    Searches within the authenticated school for potential duplicates by:
+    - Student Name + DOB
+    - Parent Mobile Number
+    - Aadhaar Number
+    """
+    sid = _school_id()
+    name = (request.args.get('name') or '').strip().lower()
+    dob_str = (request.args.get('dob') or '').strip()
+    parent_phone = re.sub(r'\D', '', request.args.get('parent_phone') or '')
+    aadhar_no = (request.args.get('aadhar_no') or '').strip()
+
+    matches = []
+    query = Student.query.join(User, Student.user_id == User.id).filter(
+        Student.school_id == sid,
+        Student.is_deleted == False
+    )
+
+    conditions = []
+    if name and dob_str:
+        try:
+            d_val = date.fromisoformat(dob_str[:10])
+            conditions.append(db.and_(func.lower(User.name) == name, Student.dob == d_val))
+        except Exception:
+            pass
+    if parent_phone and len(parent_phone) >= 10:
+        conditions.append(Student.parent_phone.endswith(parent_phone[-10:]))
+    if aadhar_no and len(aadhar_no) >= 6:
+        conditions.append(Student.aadhar_no == aadhar_no)
+
+    if conditions:
+        query = query.filter(db.or_(*conditions))
+        found = query.limit(5).all()
+        for s in found:
+            matches.append({
+                'id': s.id,
+                'name': s.user.name if s.user else '',
+                'admission_no': s.admission_no or '',
+                'class_display': f"{s.class_ref.name} - {s.class_ref.section}".strip(' -') if s.class_ref else '',
+                'parent_name': s.parent_name or s.father_name or '',
+                'parent_phone': s.parent_phone or '',
+                'dob': str(s.dob) if s.dob else ''
+            })
+
+    return jsonify({
+        'has_duplicate': len(matches) > 0,
+        'matches': matches
+    }), 200
+
+
 @principal_bp.route('/students', methods=['POST'])
 @role_required('PRINCIPAL', 'TEACHER')
 def create_student():
     from app.utils.plan_limits import get_limit, get_school_plan
 
-    data   = request.get_json()
+    data   = request.get_json() or {}
     sid    = _school_id()
     plan   = get_school_plan(sid)
     limit  = get_limit(plan, 'students')
@@ -737,160 +791,226 @@ def create_student():
             'plan':    plan,
         }), 403
 
-    raw_email = (data.get('email') or '').strip().lower()
-    first = ''.join(c for c in (data.get('name') or 'student').lower().split()[0] if c.isalnum()) or 'student'
-    if not raw_email:
-        raw_email = f"{first}{random.randint(100, 999)}@eduerp.com"
-
-    final_email = raw_email
-    counter = 1
-    while User.query.filter_by(email=final_email).first():
-        base = raw_email.split('@')[0]
-        domain = raw_email.split('@')[1] if '@' in raw_email else 'eduerp.com'
-        final_email = f"{base}_{random.randint(100, 999)}@{domain}"
-        counter += 1
-        if counter > 10:
-            final_email = f"{first}_{int(datetime.utcnow().timestamp())}@{domain}"
-            break
-
-    user = User(
-        name=data['name'], email=final_email,
-        role=UserRole.STUDENT, school_id=sid
-    )
-    user.set_password(data.get('password', 'Student@123'), store_plain=True)
-    db.session.add(user)
-    db.session.flush()
-
-    # Parse dates safely
-    dob_val = None
-    if data.get('dob'):
-        try:
-            dob_val = date.fromisoformat(str(data['dob'])[:10])
-        except Exception:
-            dob_val = None
-
-    adm_date_val = None
-    if data.get('admission_date') or data.get('date_of_joining'):
-        try:
-            raw_adm = data.get('admission_date') or data.get('date_of_joining')
-            adm_date_val = date.fromisoformat(str(raw_adm)[:10])
-        except Exception:
-            adm_date_val = date.today()
-    else:
-        adm_date_val = date.today()
-
-    tc_date_val = None
-    if data.get('previous_tc_date'):
-        try:
-            tc_date_val = date.fromisoformat(str(data['previous_tc_date'])[:10])
-        except Exception:
-            tc_date_val = None
-
-    # Safe unique admission_no
-    session_str = data.get('session', '2024-25')
-    year_prefix = session_str[:4] if session_str else '2024'
-    adm_no = (data.get('admission_no') or '').strip()
-    if not adm_no:
-        while True:
-            candidate = f"ADM-{year_prefix}-{random.randint(1000, 9999)}"
-            if not Student.query.filter_by(admission_no=candidate).first():
-                adm_no = candidate
-                break
-    else:
-        if Student.query.filter_by(admission_no=adm_no).first():
-            adm_no = f"{adm_no}-{random.randint(10, 99)}"
-
-    roll_no = (data.get('roll_number') or '').strip()
-    if not roll_no and data.get('class_id'):
-        count_in_cls = Student.query.filter_by(school_id=sid, class_id=data.get('class_id')).count()
-        roll_no = str(count_in_cls + 1)
-
-    student = Student(
-        user_id=user.id, school_id=_school_id(),
-        class_id=data.get('class_id'),
-        roll_number=roll_no,
-        admission_no=adm_no,
-        parent_name=data.get('parent_name') or data.get('father_name'),
-        parent_phone=data.get('parent_phone'),
-        parent_email=data.get('parent_email'),
-        father_name=data.get('father_name'),
-        father_occupation=data.get('father_occupation'),
-        mother_name=data.get('mother_name'),
-        mother_occupation=data.get('mother_occupation'),
-        guardian_name=data.get('guardian_name'),
-        guardian_relation=data.get('guardian_relation') or data.get('emergency_relation'),
-        guardian_phone=data.get('guardian_phone') or data.get('emergency_phone'),
-        gender=data.get('gender'),
-        dob=dob_val,
-        blood_group=data.get('blood_group'),
-        category=data.get('category', 'General'),
-        nationality=data.get('nationality', 'Indian'),
-        religion=data.get('religion'),
-        address=data.get('address'),
-        session=session_str,
-        admission_date=adm_date_val,
-        aadhar_no=data.get('aadhar_no'),
-        parent_aadhar_no=data.get('parent_aadhar_no'),
-        is_first_school=bool(data.get('is_first_school')),
-        previous_school_name=data.get('previous_school_name') or data.get('previous_school'),
-        previous_class=data.get('previous_class'),
-        previous_tc_no=data.get('previous_tc_no'),
-        previous_tc_date=tc_date_val,
-        previous_reason=data.get('previous_reason'),
-    )
-    db.session.add(student)
-    db.session.flush()
+    # 15s Idempotency protection against rapid double-clicks
+    recent_cutoff = datetime.utcnow() - timedelta(seconds=15)
+    name_clean = (data.get('name') or '').strip()
+    phone_clean = (data.get('parent_phone') or '').strip()
+    if name_clean and phone_clean:
+        dup_recent = Student.query.join(User, Student.user_id == User.id).filter(
+            Student.school_id == sid,
+            func.lower(User.name) == name_clean.lower(),
+            Student.parent_phone == phone_clean,
+            Student.class_id == data.get('class_id'),
+            User.created_at >= recent_cutoff
+        ).first()
+        if dup_recent:
+            return jsonify(dup_recent.to_dict()), 200
 
     try:
-        admission_fs = FeeStructure.query.filter_by(
-            school_id=sid, class_id=student.class_id, fee_type='ADMISSION',
-            frequency='ONE_TIME', status='ACTIVE'
-        ).first() or FeeStructure.query.filter_by(
-            school_id=sid, class_id=None, fee_type='ADMISSION',
-            frequency='ONE_TIME', status='ACTIVE'
-        ).first()
+        raw_email = (data.get('email') or '').strip().lower()
+        first = ''.join(c for c in (name_clean or 'student').lower().split()[0] if c.isalnum()) or 'student'
+        if not raw_email:
+            raw_email = f"{first}{random.randint(100, 999)}@eduerp.com"
 
-        adm_fee_amt = 0.0
-        if data.get('admission_fee'):
+        final_email = raw_email
+        counter = 1
+        while User.query.filter_by(email=final_email).first():
+            base = raw_email.split('@')[0]
+            domain = raw_email.split('@')[1] if '@' in raw_email else 'eduerp.com'
+            final_email = f"{base}_{random.randint(100, 999)}@{domain}"
+            counter += 1
+            if counter > 10:
+                final_email = f"{first}_{int(datetime.utcnow().timestamp())}@{domain}"
+                break
+
+        user = User(
+            name=name_clean or 'Student',
+            email=final_email,
+            role=UserRole.STUDENT,
+            school_id=sid
+        )
+        user.set_password(data.get('password', 'Student@123'), store_plain=True)
+        db.session.add(user)
+        db.session.flush()
+
+        # Parse dates safely
+        dob_val = None
+        if data.get('dob'):
             try:
-                adm_fee_amt = float(data.get('admission_fee'))
-            except (ValueError, TypeError):
-                adm_fee_amt = 0.0
-        if adm_fee_amt <= 0 and admission_fs:
-            adm_fee_amt = float(admission_fs.amount or 0.0)
+                dob_val = date.fromisoformat(str(data['dob'])[:10])
+            except Exception:
+                dob_val = None
 
-        if adm_fee_amt > 0:
-            rec = FeeRecord(
-                school_id=sid, student_id=student.id, fee_type='ADMISSION',
-                amount_due=adm_fee_amt, amount_paid=0, status='PENDING',
-                due_date=date.today() + timedelta(days=7),
-                session=student.session, remarks='Admission Fee — auto-generated',
-                source='ADMISSION', source_ref_id=student.id,
-            )
-            db.session.add(rec)
-
+        adm_date_val = None
+        if data.get('admission_date') or data.get('date_of_joining'):
             try:
-                from app.services.fee_ledger_service import register_or_sync_service_charge
-                register_or_sync_service_charge(
+                raw_adm = data.get('admission_date') or data.get('date_of_joining')
+                adm_date_val = date.fromisoformat(str(raw_adm)[:10])
+            except Exception:
+                adm_date_val = date.today()
+        else:
+            adm_date_val = date.today()
+
+        tc_date_val = None
+        if data.get('previous_tc_date'):
+            try:
+                tc_date_val = date.fromisoformat(str(data['previous_tc_date'])[:10])
+            except Exception:
+                tc_date_val = None
+
+        # Safe monotonic admission_no
+        session_str = data.get('session', '2024-25')
+        year_prefix = session_str[:4] if session_str else '2024'
+        adm_no = (data.get('admission_no') or '').strip()
+        if not adm_no:
+            count_all = Student.query.filter_by(school_id=sid).count()
+            seq = count_all + 1
+            candidate = f"ADM-{year_prefix}-{seq:04d}"
+            while Student.query.filter_by(school_id=sid, admission_no=candidate).first():
+                seq += 1
+                candidate = f"ADM-{year_prefix}-{seq:04d}"
+            adm_no = candidate
+        else:
+            if Student.query.filter_by(school_id=sid, admission_no=adm_no).first():
+                adm_no = f"{adm_no}-{random.randint(10, 99)}"
+
+        roll_no = (data.get('roll_number') or '').strip()
+        if not roll_no and data.get('class_id'):
+            count_in_cls = Student.query.filter_by(school_id=sid, class_id=data.get('class_id')).count()
+            roll_no = str(count_in_cls + 1)
+
+        is_first = bool(data.get('is_first_school'))
+
+        student = Student(
+            user_id=user.id,
+            school_id=sid,
+            class_id=data.get('class_id'),
+            roll_number=roll_no,
+            admission_no=adm_no,
+            parent_name=data.get('parent_name') or data.get('father_name'),
+            parent_phone=phone_clean,
+            parent_email=data.get('parent_email'),
+            father_name=data.get('father_name'),
+            father_occupation=data.get('father_occupation'),
+            mother_name=data.get('mother_name'),
+            mother_occupation=data.get('mother_occupation'),
+            guardian_name=data.get('guardian_name'),
+            guardian_relation=data.get('guardian_relation') or data.get('emergency_relation'),
+            guardian_phone=data.get('guardian_phone') or data.get('emergency_phone'),
+            gender=data.get('gender'),
+            dob=dob_val,
+            blood_group=data.get('blood_group'),
+            category=data.get('category', 'General'),
+            nationality=data.get('nationality', 'Indian'),
+            religion=data.get('religion'),
+            address=data.get('address'),
+            session=session_str,
+            admission_date=adm_date_val,
+            aadhar_no=data.get('aadhar_no'),
+            parent_aadhar_no=data.get('parent_aadhar_no'),
+            is_first_school=is_first,
+            previous_school_name=None if is_first else (data.get('previous_school_name') or data.get('previous_school')),
+            previous_class=None if is_first else data.get('previous_class'),
+            previous_tc_no=None if is_first else data.get('previous_tc_no'),
+            previous_tc_date=None if is_first else tc_date_val,
+            previous_reason=None if is_first else data.get('previous_reason'),
+        )
+        db.session.add(student)
+        db.session.flush()
+
+        # Optional Transport Assignment
+        if data.get('transport_route_id') or data.get('transport_stop_id'):
+            try:
+                from app.models.transport_student import StudentTransport
+                trans = StudentTransport(
                     school_id=sid,
                     student_id=student.id,
-                    amount=adm_fee_amt,
-                    fee_head_code='ADMISSION',
-                    department='ACCOUNTS',
-                    source_module='ADMISSION',
-                    source_type='ADMISSION_FEE',
-                    source_ref_id=student.id,
-                    description='Admission Fee — auto-generated',
-                    session=student.session,
-                    actor_user_id=get_current_user().id if get_current_user() else None
+                    route_id=data.get('transport_route_id'),
+                    stop_id=data.get('transport_stop_id'),
+                    pickup_stop_id=data.get('transport_stop_id'),
+                    drop_stop_id=data.get('transport_stop_id'),
+                    academic_year=session_str,
+                    status='ACTIVE',
+                    created_by=get_current_user().id if get_current_user() else None
                 )
-            except Exception:
-                pass
-    except Exception:
-        pass
+                db.session.add(trans)
+            except Exception as trans_err:
+                print(f'[WARN] Transport assignment error: {trans_err}')
 
-    db.session.commit()
-    return jsonify(student.to_dict()), 201
+        # Optional Hostel Allocation
+        if data.get('hostel_bed_id'):
+            try:
+                from app.models.hostel import HostelBedAllocation, HostelBed
+                bed = HostelBed.query.filter_by(id=data.get('hostel_bed_id'), school_id=sid).first()
+                if bed and bed.status == 'AVAILABLE':
+                    alloc = HostelBedAllocation(
+                        school_id=sid,
+                        student_id=student.id,
+                        bed_id=bed.id,
+                        room_id=bed.room_id,
+                        status='ACTIVE',
+                        allocated_at=datetime.utcnow()
+                    )
+                    bed.status = 'OCCUPIED'
+                    db.session.add(alloc)
+            except Exception as hostel_err:
+                print(f'[WARN] Hostel allocation error: {hostel_err}')
+
+        # Integrated Fee Structure & Charge
+        try:
+            admission_fs = FeeStructure.query.filter_by(
+                school_id=sid, class_id=student.class_id, fee_type='ADMISSION',
+                frequency='ONE_TIME', status='ACTIVE'
+            ).first() or FeeStructure.query.filter_by(
+                school_id=sid, class_id=None, fee_type='ADMISSION',
+                frequency='ONE_TIME', status='ACTIVE'
+            ).first()
+
+            adm_fee_amt = 0.0
+            if data.get('admission_fee'):
+                try:
+                    adm_fee_amt = float(data.get('admission_fee'))
+                except (ValueError, TypeError):
+                    adm_fee_amt = 0.0
+            if adm_fee_amt <= 0 and admission_fs:
+                adm_fee_amt = float(admission_fs.amount or 0.0)
+
+            if adm_fee_amt > 0:
+                rec = FeeRecord(
+                    school_id=sid, student_id=student.id, fee_type='ADMISSION',
+                    amount_due=adm_fee_amt, amount_paid=0, status='PENDING',
+                    due_date=date.today() + timedelta(days=7),
+                    session=student.session, remarks='Admission Fee — auto-generated',
+                    source='ADMISSION', source_ref_id=student.id,
+                )
+                db.session.add(rec)
+
+                try:
+                    from app.services.fee_ledger_service import register_or_sync_service_charge
+                    register_or_sync_service_charge(
+                        school_id=sid,
+                        student_id=student.id,
+                        amount=adm_fee_amt,
+                        fee_head_code='ADMISSION',
+                        department='ACCOUNTS',
+                        source_module='ADMISSION',
+                        source_type='ADMISSION_FEE',
+                        source_ref_id=student.id,
+                        description='Admission Fee — auto-generated',
+                        session=student.session,
+                        actor_user_id=get_current_user().id if get_current_user() else None
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        db.session.commit()
+        return jsonify(student.to_dict()), 201
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Failed to admit student: {str(e)}'}), 500
     
 
 

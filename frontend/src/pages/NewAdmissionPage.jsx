@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Navbar  from '../components/Navbar';
 import api     from '../api/axios';
@@ -9,97 +10,119 @@ const SESSIONS = ['2024-25', '2025-26', '2026-27'];
 const CATEGORIES = ['General', 'OBC', 'SC', 'ST', 'EWS'];
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
 const RELIGIONS = ['Hinduism', 'Islam', 'Christianity', 'Sikhism', 'Buddhism', 'Jainism', 'Other'];
+const PAYMENT_MODES = ['Cash', 'Cheque', 'UPI / Online', 'Net Banking', 'Demand Draft'];
+const PAYMENT_STATUSES = ['PAID', 'PARTIAL', 'DUE'];
 
 const STEPS = [
   { id: 1, label: 'Student Details' },
   { id: 2, label: 'Parent / Guardian' },
-  { id: 3, label: 'Address' },
-  { id: 4, label: 'Previous School' },
-  { id: 5, label: 'Fee & Documents' },
-  { id: 6, label: 'Review & Submit' },
+  { id: 3, label: 'Previous School' },
+  { id: 4, label: 'Academic Admission' },
+  { id: 5, label: 'Services' },
+  { id: 6, label: 'Documents' },
+  { id: 7, label: 'Fee & Charges' },
+  { id: 8, label: 'Review & Submit' },
 ];
 
 export default function NewAdmissionPage() {
+  const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(1);
   const [classes, setClasses] = useState([]);
-  const [saving,  setSaving]  = useState(false);
-  const [done,    setDone]    = useState(null); // admitted student data
+  const [transportRoutes, setTransportRoutes] = useState([]);
+  const [transportStops, setTransportStops] = useState([]);
+  const [hostels, setHostels] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(null); // admitted student data
   const [photoUploading, setPhotoUploading] = useState(false);
-  const [photoPreview,   setPhotoPreview]   = useState(null);
-  const [schoolSlug,     setSchoolSlug]     = useState('school');
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const [schoolSlug, setSchoolSlug] = useState('school');
   const [schoolSettings, setSchoolSettings] = useState(null);
-  const [pendingPhoto,   setPendingPhoto]   = useState(null);
+  const [pendingPhoto, setPendingPhoto] = useState(null);
+
+  // Real-time duplicate check states
+  const [duplicates, setDuplicates] = useState([]);
+  const [checkingDuplicates, setCheckingDuplicates] = useState(false);
 
   // Optional admission KYC documents
   const [studentAadharFile, setStudentAadharFile] = useState(null);
-  const [parentAadharFile, setParentAadharFile]   = useState(null);
-  const [tcFile, setTcFile]                       = useState(null);
-  const [birthCertFile, setBirthCertFile]         = useState(null);
+  const [parentAadharFile, setParentAadharFile] = useState(null);
+  const [tcFile, setTcFile] = useState(null);
+  const [birthCertFile, setBirthCertFile] = useState(null);
+  const [medicalCertFile, setMedicalCertFile] = useState(null);
 
   const [form, setForm] = useState({
-    name:                 '',
-    dob:                  '2011-06-12',
-    gender:               'Male',
-    class_id:             '',
-    category:             'General',
-    nationality:          'Indian',
-    religion:             'Hinduism',
-    aadhar_no:            '',
-    parent_aadhar_no:     '',
-    blood_group:          'B+',
-    roll_number:          '',
-    admission_no:         '',
-    session:              '2024-25',
-    admission_date:       new Date().toISOString().split('T')[0],
-    
-    // Parent Details
-    father_name:          '',
-    father_occupation:    '',
-    parent_phone:         '',
-    parent_email:         '',
-    mother_name:          '',
-    mother_occupation:    '',
-    mother_phone:         '',
-    guardian_name:        '',
-    guardian_relation:    '',
-    guardian_phone:       '',
-    parent_name:          '',
-    
-    // Address Details
-    address:              '',
-    city:                 '',
-    state:                'Uttar Pradesh',
-    pincode:              '',
-    emergency_contact:    '',
-    emergency_phone:      '',
-    emergency_relation:   '',
-    
-    // Previous School
-    is_first_school:      false,
+    // Step 1: Student Details
+    name: '',
+    dob: '2012-05-15',
+    gender: 'Male',
+    category: 'General',
+    nationality: 'Indian',
+    religion: 'Hinduism',
+    aadhar_no: '',
+    blood_group: 'B+',
+
+    // Step 2: Parent & Address Details
+    father_name: '',
+    father_occupation: '',
+    parent_phone: '',
+    parent_email: '',
+    parent_aadhar_no: '',
+    mother_name: '',
+    mother_occupation: '',
+    mother_phone: '',
+    guardian_name: '',
+    guardian_relation: '',
+    guardian_phone: '',
+    parent_name: '',
+    address: '',
+    city: '',
+    state: 'Uttar Pradesh',
+    pincode: '',
+    emergency_contact: '',
+    emergency_phone: '',
+    emergency_relation: '',
+
+    // Step 3: Previous School
+    is_first_school: false,
     previous_school_name: '',
-    previous_class:       '',
-    previous_tc_no:       '',
-    previous_tc_date:     '',
-    previous_reason:      '',
-    transport_required:   'No',
-    
-    // Fee particulars
-    admission_fee:        5000,
-    caution_money:        3000,
-    tuition_fee:          12000,
-    development_fee:      2000,
-    activity_fee:         1000,
-    registration_fee:     1000,
-    smart_class_fee:      1500,
-    library_fee:          800,
-    examination_fee:      1200,
-    other_fee:            500,
-    payment_mode:         'Online',
-    payment_status:       'PAID',
-    password:             'Student@123',
+    previous_class: '',
+    previous_tc_no: '',
+    previous_tc_date: '',
+    previous_reason: '',
+
+    // Step 4: Academic Admission
+    class_id: '',
+    roll_number: '',
+    manual_admission_no: '',
+    session: '2025-26',
+    admission_date: new Date().toISOString().split('T')[0],
+
+    // Step 5: Services (Transport & Hostel)
+    transport_required: 'No',
+    transport_route_id: '',
+    transport_stop_id: '',
+    hostel_required: 'No',
+    hostel_id: '',
+    hostel_remarks: '',
+
+    // Step 7: Fee particulars
+    admission_fee: 5000,
+    caution_money: 3000,
+    tuition_fee: 12000,
+    development_fee: 2000,
+    activity_fee: 1000,
+    registration_fee: 1000,
+    smart_class_fee: 1500,
+    library_fee: 800,
+    examination_fee: 1200,
+    other_fee: 500,
+    payment_mode: 'Cash',
+    payment_status: 'PAID',
+    password: 'Student@123',
   });
 
   useEffect(() => {
+    // 1. Fetch Classes
     api.get('/principal/classes')
       .then(r => {
         const clsList = r.data || [];
@@ -110,6 +133,7 @@ export default function NewAdmissionPage() {
       })
       .catch(() => {});
 
+    // 2. Fetch School Settings
     api.get('/principal/school/settings')
       .then(r => {
         setSchoolSettings(r.data || null);
@@ -117,7 +141,59 @@ export default function NewAdmissionPage() {
         setSchoolSlug(name || 'school');
       })
       .catch(() => {});
+
+    // 3. Fetch Transport Routes (optional addon)
+    api.get('/transport/routes')
+      .then(r => setTransportRoutes(r.data?.routes || r.data || []))
+      .catch(() => {});
+
+    // 4. Fetch Transport Stops
+    api.get('/transport/stops')
+      .then(r => setTransportStops(r.data?.stops || r.data || []))
+      .catch(() => {});
+
+    // 5. Fetch Hostels (optional addon)
+    api.get('/hostels')
+      .then(r => setHostels(r.data?.hostels || r.data || []))
+      .catch(() => {});
   }, []);
+
+  // Real-time duplicate check debounced effect
+  useEffect(() => {
+    const hasSearchQuery = (form.name && form.name.trim().length >= 3) ||
+                           (form.parent_phone && form.parent_phone.trim().length >= 8) ||
+                           (form.aadhar_no && form.aadhar_no.trim().length >= 10);
+    if (!hasSearchQuery) {
+      setDuplicates([]);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setCheckingDuplicates(true);
+      const params = {};
+      if (form.name && form.name.trim().length >= 3) params.name = form.name.trim();
+      if (form.dob) params.dob = form.dob;
+      if (form.parent_phone && form.parent_phone.trim().length >= 8) params.parent_phone = form.parent_phone.trim();
+      if (form.aadhar_no && form.aadhar_no.trim().length >= 10) params.aadhar_no = form.aadhar_no.trim();
+
+      api.get('/principal/students/check-duplicate', { params })
+        .then(res => {
+          if (res.data && res.data.has_duplicates) {
+            setDuplicates(res.data.duplicates || []);
+          } else {
+            setDuplicates([]);
+          }
+        })
+        .catch(() => {
+          setDuplicates([]);
+        })
+        .finally(() => {
+          setCheckingDuplicates(false);
+        });
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [form.name, form.dob, form.parent_phone, form.aadhar_no]);
 
   function set(field, val) {
     setForm(f => ({ ...f, [field]: val }));
@@ -127,7 +203,7 @@ export default function NewAdmissionPage() {
     const file = e.target.files[0];
     if (file) {
       if (file.size > 5 * 1024 * 1024) {
-        toast.error('Photo 5MB se kam honi chahiye');
+        toast.error('Photo must be less than 5MB');
         return;
       }
       setPendingPhoto(file);
@@ -140,7 +216,7 @@ export default function NewAdmissionPage() {
       const file = e.target.files[0];
       if (file) {
         if (file.size > 10 * 1024 * 1024) {
-          toast.error('Document size 10MB se kam hona chahiye');
+          toast.error('Document file size must be less than 10MB');
           return;
         }
         setter(file);
@@ -152,23 +228,44 @@ export default function NewAdmissionPage() {
   function validateCurrentStep() {
     if (currentStep === 1) {
       if (!form.name.trim()) {
-        toast.error('Student name zaroori hai');
+        toast.error('Student full name is required');
         return false;
       }
-      if (!form.class_id) {
-        toast.error('Class select karein');
+      if (!form.dob) {
+        toast.error('Date of birth is required');
         return false;
       }
     }
     if (currentStep === 2) {
-      if (!form.father_name.trim() || !form.parent_phone.trim()) {
-        toast.error("Father's name aur Mobile number zaroori hai");
+      if (!form.father_name.trim() && !form.guardian_name.trim()) {
+        toast.error("Father's name or Guardian's name is required");
+        return false;
+      }
+      if (!form.parent_phone.trim() || form.parent_phone.replace(/\D/g, '').length < 10) {
+        toast.error('A valid 10-digit primary mobile number is required');
+        return false;
+      }
+      if (!form.address.trim() || !form.city.trim()) {
+        toast.error('Residential address and city are required');
         return false;
       }
     }
     if (currentStep === 3) {
-      if (!form.address.trim() || !form.city.trim()) {
-        toast.error('Address aur City zaroori hai');
+      if (!form.is_first_school && form.previous_school_name && !form.previous_class) {
+        toast.warning('Please indicate the last class passed at previous school');
+      }
+    }
+    if (currentStep === 4) {
+      if (!form.class_id) {
+        toast.error('Please select an admission class');
+        return false;
+      }
+      if (!form.session) {
+        toast.error('Academic session is required');
+        return false;
+      }
+      if (!form.admission_date) {
+        toast.error('Admission date is required');
         return false;
       }
     }
@@ -187,28 +284,32 @@ export default function NewAdmissionPage() {
 
   async function submit(e) {
     if (e) e.preventDefault();
-    if (!form.name || !form.parent_phone) {
-      toast.error('Student name aur parent phone zaroori hai');
+    if (!form.name || !form.parent_phone || !form.class_id) {
+      toast.error('Please fill in Student Name, Mobile Number and Class');
       return;
     }
+    if (saving) return; // Double-click protection
+
     setSaving(true);
     try {
       const firstName = (form.name || 'student').trim().split(/\s+/)[0].toLowerCase().replace(/[^a-z0-9]/g, '');
       const autoEmail = form.parent_email || `${firstName || 'student'}@${schoolSlug}.com`;
 
-      const res = await api.post('/principal/students', {
+      const payload = {
         ...form,
         email: autoEmail,
-        parent_name: form.father_name || form.parent_name,
-      });
+        parent_name: form.father_name || form.guardian_name || form.parent_name,
+        admission_no: form.manual_admission_no ? form.manual_admission_no.trim() : undefined,
+      };
 
+      const res = await api.post('/principal/students', payload);
       const studentId = res.data.id;
 
       if (pendingPhoto) {
         await uploadPhoto(studentId, pendingPhoto);
       }
 
-      // Upload optional KYC docs if selected
+      // Upload optional KYC docs if attached
       const uploadPromises = [];
       if (studentAadharFile) {
         const fd = new FormData();
@@ -234,18 +335,25 @@ export default function NewAdmissionPage() {
         fd.append('doc_type', 'TRANSFER_CERTIFICATE');
         uploadPromises.push(api.post(`/principal/students/${studentId}/documents/student`, fd));
       }
+      if (medicalCertFile) {
+        const fd = new FormData();
+        fd.append('file', medicalCertFile);
+        fd.append('doc_type', 'MEDICAL_CERTIFICATE');
+        uploadPromises.push(api.post(`/principal/students/${studentId}/documents/student`, fd));
+      }
 
       if (uploadPromises.length > 0) {
         await Promise.allSettled(uploadPromises);
       }
 
       setDone(res.data);
-      toast.success('🎉 Student successfully admitted!');
+      toast.success('🎉 Student admitted successfully! Admission No: ' + (res.data.admission_no || 'Generated'));
     } catch (err) {
       const errMsg = err.response?.data?.error || err.response?.data?.message || 'Error occurred while admitting student';
       toast.error(errMsg);
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   }
 
   async function uploadPhoto(studentId, file) {
@@ -258,9 +366,10 @@ export default function NewAdmissionPage() {
       });
       setPhotoPreview(res.data.photo_url);
     } catch {
-      toast.error('Photo upload nahi ho saki');
+      toast.error('Photo could not be uploaded');
+    } finally {
+      setPhotoUploading(false);
     }
-    setPhotoUploading(false);
   }
 
   async function downloadPDF(studentId, studentName) {
@@ -279,7 +388,7 @@ export default function NewAdmissionPage() {
       window.URL.revokeObjectURL(url);
       toast.success('2-Page Admission Form Downloaded!');
     } catch {
-      toast.error('PDF download nahi ho saka');
+      toast.error('Admission PDF download failed');
     }
   }
 
@@ -288,6 +397,10 @@ export default function NewAdmissionPage() {
   }
 
   const selectedClass = classes.find(c => String(c.id) === String(form.class_id));
+  const selectedRoute = transportRoutes.find(r => String(r.id) === String(form.transport_route_id));
+  const selectedStop  = transportStops.find(s => String(s.id) === String(form.transport_stop_id));
+  const selectedHostel = hostels.find(h => String(h.id) === String(form.hostel_id));
+
   const totalFee = Number(form.admission_fee || 0) +
     Number(form.caution_money || 0) +
     Number(form.tuition_fee || 0) +
@@ -303,7 +416,7 @@ export default function NewAdmissionPage() {
     <div className="app-shell">
       <Sidebar />
       <div className="main-content">
-        <Navbar title="New Admission" />
+        <Navbar title="New Student Admission" />
         <div className="page-body">
 
           {/* PRINT-ONLY CSS FOR CLEAN 2-PAGE ADMISSION FORM */}
@@ -331,16 +444,27 @@ export default function NewAdmissionPage() {
           `}</style>
 
           {/* PAGE HEADER */}
-          <div className="page-header" style={{ marginBottom: 24 }}>
-            <h2 className="page-title">📝 New Student Admission</h2>
-            <p className="page-subtitle">Dynamic 2-Page Admission Form, Fee Setup &amp; Permanent Student KYC Documents</p>
+          <div className="page-header" style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <h2 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span>📝</span> New Student Admission
+              </h2>
+              <p className="page-subtitle">
+                8-Step SaaS Workflow: KYC, Dynamic 1st School Logic, Services, Fee Ledger &amp; 2-Page Admission Form
+              </p>
+            </div>
+            {schoolSettings && (
+              <div style={{ background: '#f1f5f9', padding: '6px 14px', borderRadius: 8, fontSize: 12, color: '#334155', fontWeight: 600 }}>
+                🏫 {schoolSettings.name} ({schoolSettings.code || 'ACTIVE'})
+              </div>
+            )}
           </div>
 
           {!done ? (
             <div style={{ background: '#ffffff', borderRadius: 16, border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
               
               {/* STEP PROGRESS BAR */}
-              <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
+              <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', background: '#f8fafc', overflowX: 'auto' }}>
                 {STEPS.map((s) => {
                   const isActive = s.id === currentStep;
                   const isPassed = s.id < currentStep;
@@ -350,24 +474,26 @@ export default function NewAdmissionPage() {
                       onClick={() => { if (isPassed) setCurrentStep(s.id); }}
                       style={{
                         flex: 1,
-                        padding: '14px 10px',
+                        minWidth: 120,
+                        padding: '14px 8px',
                         textAlign: 'center',
                         borderBottom: isActive ? '3px solid #0B3B7B' : '3px solid transparent',
                         background: isActive ? '#ffffff' : 'transparent',
                         cursor: isPassed ? 'pointer' : 'default',
                         transition: 'all 0.2s',
+                        userSelect: 'none',
                       }}
                     >
                       <div style={{
                         display: 'inline-flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        width: 26,
-                        height: 26,
+                        width: 24,
+                        height: 24,
                         borderRadius: '50%',
                         background: isActive ? '#0B3B7B' : isPassed ? '#16A34A' : '#e2e8f0',
                         color: isActive || isPassed ? '#ffffff' : '#64748b',
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: 700,
                         marginRight: 6
                       }}>
@@ -376,7 +502,8 @@ export default function NewAdmissionPage() {
                       <span style={{
                         fontSize: 12,
                         fontWeight: isActive ? 700 : 500,
-                        color: isActive ? '#0B3B7B' : isPassed ? '#0f172a' : '#64748b'
+                        color: isActive ? '#0B3B7B' : isPassed ? '#0f172a' : '#64748b',
+                        whiteSpace: 'nowrap',
                       }}>
                         {s.label}
                       </span>
@@ -391,16 +518,59 @@ export default function NewAdmissionPage() {
                 {/* STEP 1: Student Details */}
                 {currentStep === 1 && (
                   <div>
-                    <h3 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 800, color: '#0B3B7B' }}>
-                      🎓 Basic Student Details
-                    </h3>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                      <div>
+                        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#0B3B7B' }}>
+                          Step 1: Student Personal Details
+                        </h3>
+                        <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#64748b' }}>
+                          Enter the student's legal name, date of birth, Aadhaar identity, and upload passport photo.
+                        </p>
+                      </div>
+                      {checkingDuplicates && (
+                        <div style={{ fontSize: 12, color: '#0284c7', display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span>🔍 Checking existing student records...</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* DUPLICATE STUDENT WARNING ALERT */}
+                    {duplicates.length > 0 && (
+                      <div style={{
+                        background: '#fffbeb',
+                        border: '1.5px solid #fcd34d',
+                        borderRadius: 10,
+                        padding: '12px 16px',
+                        marginBottom: 20,
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: 12
+                      }}>
+                        <span style={{ fontSize: 22 }}>⚠️</span>
+                        <div style={{ flex: 1 }}>
+                          <strong style={{ color: '#b45309', fontSize: 13, display: 'block', marginBottom: 2 }}>
+                            Possible Duplicate Student Found ({duplicates.length} match{duplicates.length > 1 ? 'es' : ''})
+                          </strong>
+                          <p style={{ margin: '0 0 6px', fontSize: 12, color: '#92400e' }}>
+                            A student with similar identity details is already enrolled in this school. Please verify before proceeding to prevent duplicate roll numbers or fee ledgers.
+                          </p>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {duplicates.map(d => (
+                              <div key={d.id} style={{ fontSize: 11.5, background: '#fef3c7', padding: '4px 10px', borderRadius: 6, color: '#78350f' }}>
+                                • <strong>{d.name}</strong> ({d.admission_no}) | Class: {d.class_name || 'N/A'} | Parent Phone: {d.parent_phone} — <span style={{ fontStyle: 'italic' }}>{d.reason}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 32 }}>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 20px' }}>
                         
                         <div style={{ gridColumn: '1 / -1' }}>
                           <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-                            Student Full Name (As per Aadhar) <span style={{ color: '#ef4444' }}>*</span>
+                            Student Full Name (As per Aadhaar / Birth Certificate) <span style={{ color: '#ef4444' }}>*</span>
                           </label>
                           <input
                             type="text"
@@ -409,35 +579,6 @@ export default function NewAdmissionPage() {
                             onChange={e => set('name', e.target.value)}
                             style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, outline: 'none' }}
                           />
-                        </div>
-
-                        <div>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-                            Class Applying For <span style={{ color: '#ef4444' }}>*</span>
-                          </label>
-                          <select
-                            value={form.class_id}
-                            onChange={e => set('class_id', e.target.value)}
-                            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, outline: 'none', background: '#fff' }}
-                          >
-                            <option value="">-- Select Class --</option>
-                            {classes.map(c => (
-                              <option key={c.id} value={c.id}>{c.name} {c.section ? `(${c.section})` : ''}</option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-                            Academic Session
-                          </label>
-                          <select
-                            value={form.session}
-                            onChange={e => set('session', e.target.value)}
-                            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, outline: 'none', background: '#fff' }}
-                          >
-                            {SESSIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                          </select>
                         </div>
 
                         <div>
@@ -454,7 +595,7 @@ export default function NewAdmissionPage() {
 
                         <div>
                           <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-                            Gender
+                            Gender <span style={{ color: '#ef4444' }}>*</span>
                           </label>
                           <select
                             value={form.gender}
@@ -467,7 +608,7 @@ export default function NewAdmissionPage() {
 
                         <div>
                           <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-                            Category
+                            Category / Social Reservation
                           </label>
                           <select
                             value={form.category}
@@ -493,7 +634,7 @@ export default function NewAdmissionPage() {
 
                         <div>
                           <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-                            Student Aadhaar Card No.
+                            Student Aadhaar Card No. (12 Digits)
                           </label>
                           <input
                             type="text"
@@ -517,7 +658,7 @@ export default function NewAdmissionPage() {
                           />
                         </div>
 
-                        <div>
+                        <div style={{ gridColumn: '1 / -1' }}>
                           <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                             Religion
                           </label>
@@ -528,18 +669,6 @@ export default function NewAdmissionPage() {
                           >
                             {RELIGIONS.map(r => <option key={r} value={r}>{r}</option>)}
                           </select>
-                        </div>
-
-                        <div>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-                            Date of Admission
-                          </label>
-                          <input
-                            type="date"
-                            value={form.admission_date}
-                            onChange={e => set('admission_date', e.target.value)}
-                            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, outline: 'none' }}
-                          />
                         </div>
 
                       </div>
@@ -556,8 +685,8 @@ export default function NewAdmissionPage() {
                         padding: 20
                       }}>
                         <div style={{
-                          width: 120,
-                          height: 140,
+                          width: 130,
+                          height: 150,
                           borderRadius: 8,
                           background: '#ffffff',
                           border: '1px solid #e2e8f0',
@@ -571,7 +700,7 @@ export default function NewAdmissionPage() {
                             <img src={photoPreview} alt="Student Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                           ) : (
                             <div style={{ textAlign: 'center', color: '#94a3b8' }}>
-                              <i className="ti ti-user" style={{ fontSize: 44, display: 'block', marginBottom: 4 }} />
+                              <span style={{ fontSize: 44, display: 'block', marginBottom: 4 }}>👤</span>
                               <span style={{ fontSize: 11 }}>Passport Photo</span>
                             </div>
                           )}
@@ -591,23 +720,27 @@ export default function NewAdmissionPage() {
                           <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoChange} />
                         </label>
                         <span style={{ fontSize: 11, color: '#94a3b8' }}>JPG, PNG (Max 5MB)</span>
+                        {pendingPhoto && <span style={{ fontSize: 11, color: '#16a34a', marginTop: 4 }}>✓ {pendingPhoto.name}</span>}
                       </div>
 
                     </div>
                   </div>
                 )}
 
-                {/* STEP 2: Parent / Guardian Details */}
+                {/* STEP 2: Parent / Guardian & Address Details */}
                 {currentStep === 2 && (
                   <div>
-                    <h3 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 800, color: '#0B3B7B' }}>
-                      👨‍👩‍👧 Parent &amp; Guardian Details
+                    <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 800, color: '#0B3B7B' }}>
+                      Step 2: Parent / Guardian &amp; Address Details
                     </h3>
+                    <p style={{ margin: '0 0 20px', fontSize: 12.5, color: '#64748b' }}>
+                      Primary parent phone is also used for SMS alerts, ERP notifications, and duplicate student validation.
+                    </p>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 24px' }}>
                       <div>
                         <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-                          Father's Name <span style={{ color: '#ef4444' }}>*</span>
+                          Father's Full Name <span style={{ color: '#ef4444' }}>*</span>
                         </label>
                         <input
                           type="text"
@@ -633,7 +766,7 @@ export default function NewAdmissionPage() {
 
                       <div>
                         <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-                          Primary Mobile Number <span style={{ color: '#ef4444' }}>*</span>
+                          Primary Mobile Number (SMS &amp; Login) <span style={{ color: '#ef4444' }}>*</span>
                         </label>
                         <input
                           type="text"
@@ -646,7 +779,7 @@ export default function NewAdmissionPage() {
 
                       <div>
                         <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-                          Parent Aadhaar Number
+                          Parent Aadhaar Number (12 Digits)
                         </label>
                         <input
                           type="text"
@@ -657,11 +790,22 @@ export default function NewAdmissionPage() {
                         />
                       </div>
 
-                      <div style={{ gridColumn: '1 / -1', borderTop: '1px dashed #e2e8f0', margin: '4px 0' }} />
+                      <div>
+                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                          Parent Email Address
+                        </label>
+                        <input
+                          type="email"
+                          placeholder="e.g. rajesh.sharma@gmail.com"
+                          value={form.parent_email}
+                          onChange={e => set('parent_email', e.target.value)}
+                          style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, outline: 'none' }}
+                        />
+                      </div>
 
                       <div>
                         <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-                          Mother's Name
+                          Mother's Full Name
                         </label>
                         <input
                           type="text"
@@ -678,69 +822,47 @@ export default function NewAdmissionPage() {
                         </label>
                         <input
                           type="text"
-                          placeholder="e.g. Homemaker / Teacher"
+                          placeholder="e.g. Teacher / Homemaker"
                           value={form.mother_occupation}
                           onChange={e => set('mother_occupation', e.target.value)}
                           style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, outline: 'none' }}
                         />
                       </div>
 
-                      <div style={{ gridColumn: '1 / -1', borderTop: '1px dashed #e2e8f0', margin: '4px 0' }} />
-
                       <div>
                         <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-                          Guardian Name (If Applicable)
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. Amit Sharma"
-                          value={form.guardian_name}
-                          onChange={e => set('guardian_name', e.target.value)}
-                          style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, outline: 'none' }}
-                        />
-                      </div>
-
-                      <div>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-                          Guardian Relationship &amp; Mobile No.
+                          Guardian Details (If living with local guardian)
                         </label>
                         <div style={{ display: 'flex', gap: 10 }}>
                           <input
                             type="text"
-                            placeholder="Uncle"
-                            value={form.guardian_relation}
-                            onChange={e => set('guardian_relation', e.target.value)}
-                            style={{ width: '40%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, outline: 'none' }}
+                            placeholder="Name & Relationship (e.g. Uncle)"
+                            value={form.guardian_name}
+                            onChange={e => set('guardian_name', e.target.value)}
+                            style={{ width: '60%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, outline: 'none' }}
                           />
                           <input
                             type="text"
-                            placeholder="Phone Number"
+                            placeholder="Guardian Phone"
                             value={form.guardian_phone}
                             onChange={e => set('guardian_phone', e.target.value)}
-                            style={{ width: '60%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, outline: 'none' }}
+                            style={{ width: '40%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, outline: 'none' }}
                           />
                         </div>
                       </div>
 
-                    </div>
-                  </div>
-                )}
+                      {/* Residential Address Section */}
+                      <div style={{ gridColumn: '1 / -1', borderTop: '1px solid #e2e8f0', paddingTop: 16, marginTop: 8 }}>
+                        <h4 style={{ margin: '0 0 12px', fontSize: 14, color: '#0B3B7B' }}>📍 Residential Address</h4>
+                      </div>
 
-                {/* STEP 3: Address Details */}
-                {currentStep === 3 && (
-                  <div>
-                    <h3 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 800, color: '#0B3B7B' }}>
-                      📍 Address Details
-                    </h3>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 24px' }}>
                       <div style={{ gridColumn: '1 / -1' }}>
                         <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-                          Residential Address <span style={{ color: '#ef4444' }}>*</span>
+                          House No., Street &amp; Colony <span style={{ color: '#ef4444' }}>*</span>
                         </label>
                         <input
                           type="text"
-                          placeholder="e.g. H-123, Sector 45"
+                          placeholder="e.g. House No. 44B, Sector 21"
                           value={form.address}
                           onChange={e => set('address', e.target.value)}
                           style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, outline: 'none' }}
@@ -749,11 +871,11 @@ export default function NewAdmissionPage() {
 
                       <div>
                         <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-                          City <span style={{ color: '#ef4444' }}>*</span>
+                          City / District <span style={{ color: '#ef4444' }}>*</span>
                         </label>
                         <input
                           type="text"
-                          placeholder="e.g. Noida"
+                          placeholder="e.g. Lucknow / Noida"
                           value={form.city}
                           onChange={e => set('city', e.target.value)}
                           style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, outline: 'none' }}
@@ -775,44 +897,61 @@ export default function NewAdmissionPage() {
 
                       <div>
                         <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-                          Pincode
+                          Postal PIN Code
                         </label>
                         <input
                           type="text"
-                          placeholder="201301"
+                          placeholder="e.g. 201301"
                           value={form.pincode}
                           onChange={e => set('pincode', e.target.value)}
                           style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, outline: 'none' }}
                         />
                       </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                          Emergency Contact Number
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 9811223344"
+                          value={form.emergency_phone}
+                          onChange={e => set('emergency_phone', e.target.value)}
+                          style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, outline: 'none' }}
+                        />
+                      </div>
+
                     </div>
                   </div>
                 )}
 
-                {/* STEP 4: Previous School Details (Dynamic 1st School Condition) */}
-                {currentStep === 4 && (
+                {/* STEP 3: Previous School Details (Dynamic 1st School Condition) */}
+                {currentStep === 3 && (
                   <div>
-                    <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 800, color: '#0B3B7B' }}>
-                      🏫 Previous School Details (If Applicable)
+                    <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 800, color: '#0B3B7B' }}>
+                      Step 3: Previous School &amp; Transfer Record
                     </h3>
+                    <p style={{ margin: '0 0 20px', fontSize: 12.5, color: '#64748b' }}>
+                      Indicate whether this is the student's very first school enrollment or a transfer from an earlier institution.
+                    </p>
 
-                    {/* 1st School Condition Toggle */}
+                    {/* DYNAMIC 1ST SCHOOL CONDITION TOGGLE */}
                     <div style={{
-                      background: '#eff6ff',
-                      border: '1.5px solid #93c5fd',
+                      background: form.is_first_school ? '#f0fdf4' : '#eff6ff',
+                      border: form.is_first_school ? '1.5px solid #86efac' : '1.5px solid #93c5fd',
                       borderRadius: 12,
-                      padding: '16px 20px',
+                      padding: '18px 24px',
                       marginBottom: 24,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between'
                     }}>
                       <div>
-                        <strong style={{ fontSize: 14, color: '#0B3B7B', display: 'block', marginBottom: 2 }}>
+                        <strong style={{ fontSize: 14, color: form.is_first_school ? '#166534' : '#0B3B7B', display: 'block', marginBottom: 3 }}>
                           Is this the student's 1st School? (Kya yeh student ka pehla school hai?)
                         </strong>
                         <span style={{ fontSize: 12, color: '#475569' }}>
-                          If Yes, previous school details will be omitted automatically in the form and PDF.
+                          If Yes, previous school details and TC will be completely omitted from records and the 2-page admission form.
                         </span>
                       </div>
 
@@ -821,23 +960,34 @@ export default function NewAdmissionPage() {
                           display: 'flex',
                           alignItems: 'center',
                           gap: 6,
-                          background: form.is_first_school ? '#0B3B7B' : '#ffffff',
+                          background: form.is_first_school ? '#16a34a' : '#ffffff',
                           color: form.is_first_school ? '#ffffff' : '#334155',
-                          padding: '6px 16px',
+                          padding: '8px 18px',
                           borderRadius: 8,
-                          border: '1px solid #93c5fd',
+                          border: form.is_first_school ? '1px solid #16a34a' : '1px solid #cbd5e1',
                           fontWeight: 700,
                           fontSize: 13,
                           cursor: 'pointer',
+                          boxShadow: form.is_first_school ? '0 2px 8px rgba(22,163,74,0.25)' : 'none'
                         }}>
                           <input
                             type="radio"
                             name="is_first_school"
                             checked={form.is_first_school}
-                            onChange={() => set('is_first_school', true)}
+                            onChange={() => {
+                              setForm(f => ({
+                                ...f,
+                                is_first_school: true,
+                                previous_school_name: '',
+                                previous_class: '',
+                                previous_tc_no: '',
+                                previous_tc_date: '',
+                                previous_reason: '',
+                              }));
+                            }}
                             style={{ display: 'none' }}
                           />
-                          Yes (1st School)
+                          ✓ Yes (1st School)
                         </label>
 
                         <label style={{
@@ -846,12 +996,13 @@ export default function NewAdmissionPage() {
                           gap: 6,
                           background: !form.is_first_school ? '#0B3B7B' : '#ffffff',
                           color: !form.is_first_school ? '#ffffff' : '#334155',
-                          padding: '6px 16px',
+                          padding: '8px 18px',
                           borderRadius: 8,
-                          border: '1px solid #93c5fd',
+                          border: !form.is_first_school ? '1px solid #0B3B7B' : '1px solid #cbd5e1',
                           fontWeight: 700,
                           fontSize: 13,
                           cursor: 'pointer',
+                          boxShadow: !form.is_first_school ? '0 2px 8px rgba(11,59,123,0.25)' : 'none'
                         }}>
                           <input
                             type="radio"
@@ -870,21 +1021,21 @@ export default function NewAdmissionPage() {
                         background: '#f8fafc',
                         border: '1px solid #e2e8f0',
                         borderRadius: 12,
-                        padding: 30,
+                        padding: '36px 20px',
                         textAlign: 'center',
                         color: '#64748b'
                       }}>
-                        <div style={{ fontSize: 36, marginBottom: 8 }}>🎒</div>
-                        <h4 style={{ margin: '0 0 4px', color: '#0B3B7B', fontSize: 15 }}>First School Admission</h4>
-                        <p style={{ margin: 0, fontSize: 13 }}>
-                          Student is entering school for the first time. No previous school or transfer certificate details required.
+                        <div style={{ fontSize: 42, marginBottom: 8 }}>🎒</div>
+                        <h4 style={{ margin: '0 0 6px', color: '#166534', fontSize: 16, fontWeight: 800 }}>First School Admission Confirmed</h4>
+                        <p style={{ margin: 0, fontSize: 13, maxWidth: 500, marginLeft: 'auto', marginRight: 'auto' }}>
+                          Student is entering formal education for the first time. No previous school name, mark sheets, or Transfer Certificate (TC) details are needed.
                         </p>
                       </div>
                     ) : (
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 24px' }}>
                         <div style={{ gridColumn: '1 / -1' }}>
                           <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-                            Previous School Name <span style={{ color: '#94a3b8' }}>(Optional)</span>
+                            Previous School Name <span style={{ color: '#94a3b8' }}>(Optional / Skippable)</span>
                           </label>
                           <input
                             type="text"
@@ -935,11 +1086,11 @@ export default function NewAdmissionPage() {
 
                         <div>
                           <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-                            Reason for Leaving
+                            Reason for Leaving Previous School
                           </label>
                           <input
                             type="text"
-                            placeholder="e.g. Relocation / Better Opportunity"
+                            placeholder="e.g. Parent Relocation / Better Facilities"
                             value={form.previous_reason}
                             onChange={e => set('previous_reason', e.target.value)}
                             style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, outline: 'none' }}
@@ -950,143 +1101,513 @@ export default function NewAdmissionPage() {
                   </div>
                 )}
 
-                {/* STEP 5: Fee & Optional Documents */}
-                {currentStep === 5 && (
+                {/* STEP 4: Academic Admission */}
+                {currentStep === 4 && (
                   <div>
-                    <h3 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 800, color: '#0B3B7B' }}>
-                      💰 Admission Fee &amp; Optional Document Upload
+                    <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 800, color: '#0B3B7B' }}>
+                      Step 4: Academic Admission &amp; Enrolment
                     </h3>
+                    <p style={{ margin: '0 0 20px', fontSize: 12.5, color: '#64748b' }}>
+                      Configure the academic session, grade/class allocation, roll number and admission sequence.
+                    </p>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 24 }}>
-                      {/* Left: Fee Breakdown */}
-                      <div style={{ background: '#f8fafc', padding: 20, borderRadius: 12, border: '1px solid #e2e8f0' }}>
-                        <h4 style={{ margin: '0 0 14px', fontSize: 14, color: '#0B3B7B' }}>Fee Particulars (₹)</h4>
-                        
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', fontSize: 12 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>Admission Fee:</span>
-                            <input type="number" value={form.admission_fee} onChange={e => set('admission_fee', e.target.value)} style={{ width: 85, padding: '4px 6px', borderRadius: 6, border: '1px solid #cbd5e1', textAlign: 'right' }} />
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>Registration Fee:</span>
-                            <input type="number" value={form.registration_fee} onChange={e => set('registration_fee', e.target.value)} style={{ width: 85, padding: '4px 6px', borderRadius: 6, border: '1px solid #cbd5e1', textAlign: 'right' }} />
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>Tuition Fee (Quarterly):</span>
-                            <input type="number" value={form.tuition_fee} onChange={e => set('tuition_fee', e.target.value)} style={{ width: 85, padding: '4px 6px', borderRadius: 6, border: '1px solid #cbd5e1', textAlign: 'right' }} />
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>Development Fee:</span>
-                            <input type="number" value={form.development_fee} onChange={e => set('development_fee', e.target.value)} style={{ width: 85, padding: '4px 6px', borderRadius: 6, border: '1px solid #cbd5e1', textAlign: 'right' }} />
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>Activity Fee:</span>
-                            <input type="number" value={form.activity_fee} onChange={e => set('activity_fee', e.target.value)} style={{ width: 85, padding: '4px 6px', borderRadius: 6, border: '1px solid #cbd5e1', textAlign: 'right' }} />
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>Smart Class Fee:</span>
-                            <input type="number" value={form.smart_class_fee} onChange={e => set('smart_class_fee', e.target.value)} style={{ width: 85, padding: '4px 6px', borderRadius: 6, border: '1px solid #cbd5e1', textAlign: 'right' }} />
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>Caution Money:</span>
-                            <input type="number" value={form.caution_money} onChange={e => set('caution_money', e.target.value)} style={{ width: 85, padding: '4px 6px', borderRadius: 6, border: '1px solid #cbd5e1', textAlign: 'right' }} />
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>Exam &amp; Library Fee:</span>
-                            <input type="number" value={form.examination_fee} onChange={e => set('examination_fee', e.target.value)} style={{ width: 85, padding: '4px 6px', borderRadius: 6, border: '1px solid #cbd5e1', textAlign: 'right' }} />
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 14, paddingTop: 12, borderTop: '2px solid #cbd5e1', fontSize: 14, fontWeight: 800, color: '#0B3B7B' }}>
-                          <span>Total Amount at Admission:</span>
-                          <span>₹ {totalFee.toLocaleString('en-IN')}.00</span>
-                        </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 24px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                          Admission Class &amp; Section <span style={{ color: '#ef4444' }}>*</span>
+                        </label>
+                        <select
+                          value={form.class_id}
+                          onChange={e => set('class_id', e.target.value)}
+                          style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, outline: 'none', background: '#fff' }}
+                        >
+                          <option value="">-- Select Class --</option>
+                          {classes.map(c => (
+                            <option key={c.id} value={c.id}>{c.name} {c.section ? `(Section ${c.section})` : ''}</option>
+                          ))}
+                        </select>
                       </div>
 
-                      {/* Right: Optional Document Uploads */}
-                      <div style={{ background: '#f8fafc', padding: 20, borderRadius: 12, border: '1px solid #e2e8f0' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                          <h4 style={{ margin: 0, fontSize: 14, color: '#0B3B7B' }}>📄 KYC Documents (Optional)</h4>
-                          <span style={{ fontSize: 10, background: '#e0f2fe', color: '#0369a1', padding: '2px 8px', borderRadius: 4, fontWeight: 600 }}>
-                            Max 10MB each
+                      <div>
+                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                          Academic Session <span style={{ color: '#ef4444' }}>*</span>
+                        </label>
+                        <select
+                          value={form.session}
+                          onChange={e => set('session', e.target.value)}
+                          style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, outline: 'none', background: '#fff' }}
+                        >
+                          {SESSIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                          Date of Admission <span style={{ color: '#ef4444' }}>*</span>
+                        </label>
+                        <input
+                          type="date"
+                          value={form.admission_date}
+                          onChange={e => set('admission_date', e.target.value)}
+                          style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, outline: 'none' }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                          Class Roll Number (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 15 (auto-assigned if blank)"
+                          value={form.roll_number}
+                          onChange={e => set('roll_number', e.target.value)}
+                          style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, outline: 'none' }}
+                        />
+                      </div>
+
+                      <div style={{ gridColumn: '1 / -1', background: '#f8fafc', padding: '16px 20px', borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                          <div>
+                            <strong style={{ fontSize: 13, color: '#0B3B7B' }}>Admission Number Generation</strong>
+                            <p style={{ margin: '2px 0 0', fontSize: 12, color: '#64748b' }}>
+                              Leave blank to generate a monotonic sequential number (e.g. <code>ADM-{form.session}-0001</code>) automatically.
+                            </p>
+                          </div>
+                          <span style={{ fontSize: 11, background: '#dbeafe', color: '#1d4ed8', padding: '4px 10px', borderRadius: 6, fontWeight: 700 }}>
+                            Monotonic Auto-Sequence
                           </span>
                         </div>
-                        <p style={{ margin: '0 0 12px', fontSize: 11.5, color: '#64748b' }}>
-                          Upload now or later via the sidebar Documents section.
-                        </p>
-
-                        {/* Student Aadhar */}
-                        <div style={{ marginBottom: 10, background: '#fff', padding: 8, borderRadius: 8, border: '1px solid #e2e8f0' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                            <span style={{ fontSize: 11.5, fontWeight: 600 }}>Student Aadhar Card</span>
-                            {studentAadharFile && <span style={{ fontSize: 10, color: '#16a34a' }}>✓ Selected</span>}
-                          </div>
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            <label style={{ flex: 1, textAlign: 'center', background: '#f1f5f9', padding: '5px 8px', borderRadius: 6, fontSize: 11, cursor: 'pointer', border: '1px solid #cbd5e1' }}>
-                              📁 Browse File
-                              <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={handleDocFile(setStudentAadharFile)} />
-                            </label>
-                            <label style={{ flex: 1, textAlign: 'center', background: '#eff6ff', color: '#0B3B7B', padding: '5px 8px', borderRadius: 6, fontSize: 11, cursor: 'pointer', border: '1px solid #93c5fd', fontWeight: 600 }}>
-                              📸 Camera / Scan
-                              <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleDocFile(setStudentAadharFile)} />
-                            </label>
-                          </div>
-                        </div>
-
-                        {/* Parent Aadhar */}
-                        <div style={{ marginBottom: 10, background: '#fff', padding: 8, borderRadius: 8, border: '1px solid #e2e8f0' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                            <span style={{ fontSize: 11.5, fontWeight: 600 }}>Parent / Guardian Aadhar</span>
-                            {parentAadharFile && <span style={{ fontSize: 10, color: '#16a34a' }}>✓ Selected</span>}
-                          </div>
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            <label style={{ flex: 1, textAlign: 'center', background: '#f1f5f9', padding: '5px 8px', borderRadius: 6, fontSize: 11, cursor: 'pointer', border: '1px solid #cbd5e1' }}>
-                              📁 Browse File
-                              <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={handleDocFile(setParentAadharFile)} />
-                            </label>
-                            <label style={{ flex: 1, textAlign: 'center', background: '#eff6ff', color: '#0B3B7B', padding: '5px 8px', borderRadius: 6, fontSize: 11, cursor: 'pointer', border: '1px solid #93c5fd', fontWeight: 600 }}>
-                              📸 Camera / Scan
-                              <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleDocFile(setParentAadharFile)} />
-                            </label>
-                          </div>
-                        </div>
-
+                        <input
+                          type="text"
+                          placeholder="Leave blank for automatic monotonic number, or enter legacy/manual admission no."
+                          value={form.manual_admission_no}
+                          onChange={e => set('manual_admission_no', e.target.value)}
+                          style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 12.5, outline: 'none' }}
+                        />
                       </div>
+
                     </div>
                   </div>
                 )}
 
-                {/* STEP 6: Review & Submit */}
-                {currentStep === 6 && (
+                {/* STEP 5: Services (Transport & Hostel) */}
+                {currentStep === 5 && (
                   <div>
-                    <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 800, color: '#0B3B7B' }}>
-                      📋 Review Admission Details
+                    <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 800, color: '#0B3B7B' }}>
+                      Step 5: Optional School Services
                     </h3>
+                    <p style={{ margin: '0 0 20px', fontSize: 12.5, color: '#64748b' }}>
+                      Opt-in to daily school bus transport routes or boarding hostel accommodations.
+                    </p>
 
-                    <div style={{ background: '#f8fafc', borderRadius: 12, border: '1px solid #e2e8f0', padding: 20 }}>
-                      <div style={{ display: 'flex', gap: 18, alignItems: 'center', marginBottom: 16, paddingBottom: 14, borderBottom: '1px solid #e2e8f0' }}>
-                        {photoPreview ? (
-                          <img src={photoPreview} alt="Student" style={{ width: 64, height: 74, borderRadius: 8, objectFit: 'cover', border: '1px solid #cbd5e1' }} />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+                      
+                      {/* Transport Box */}
+                      <div style={{ background: '#f8fafc', padding: 22, borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                          <h4 style={{ margin: 0, fontSize: 14, color: '#0B3B7B', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span>🚌</span> School Transport Service
+                          </h4>
+                          <select
+                            value={form.transport_required}
+                            onChange={e => set('transport_required', e.target.value)}
+                            style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 12, fontWeight: 700, background: '#fff' }}
+                          >
+                            <option value="No">No Transport</option>
+                            <option value="Yes">Yes, Opt-In</option>
+                          </select>
+                        </div>
+
+                        {form.transport_required === 'Yes' ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                            <div>
+                              <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                                Select Transport Route
+                              </label>
+                              <select
+                                value={form.transport_route_id}
+                                onChange={e => set('transport_route_id', e.target.value)}
+                                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 12.5, background: '#fff' }}
+                              >
+                                <option value="">-- Select Route --</option>
+                                {transportRoutes.map(r => (
+                                  <option key={r.id} value={r.id}>{r.route_name || r.name || `Route #${r.id}`}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div>
+                              <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                                Pickup / Drop Bus Stop
+                              </label>
+                              <select
+                                value={form.transport_stop_id}
+                                onChange={e => set('transport_stop_id', e.target.value)}
+                                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 12.5, background: '#fff' }}
+                              >
+                                <option value="">-- Select Stop --</option>
+                                {transportStops.map(s => (
+                                  <option key={s.id} value={s.id}>{s.stop_name || s.name || `Stop #${s.id}`}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div style={{ fontSize: 11, color: '#0369a1', background: '#e0f2fe', padding: '8px 12px', borderRadius: 6 }}>
+                              ℹ️ Transport assignment will automatically link the student to daily GPS route tracking and transport fee ledger.
+                            </div>
+                          </div>
                         ) : (
-                          <div style={{ width: 64, height: 74, borderRadius: 8, background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, color: '#64748b' }}>
-                            👤
+                          <div style={{ textAlign: 'center', padding: '24px 10px', color: '#94a3b8', fontSize: 12 }}>
+                            Student does not require school bus transport.
                           </div>
                         )}
-                        <div>
-                          <h2 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 800, color: '#0B3B7B' }}>{form.name}</h2>
-                          <div style={{ fontSize: 13, color: '#64748b' }}>
-                            Class: <strong>{selectedClass?.name || 'Class'}</strong> | Session: <strong>{form.session}</strong> | Gender: <strong>{form.gender}</strong>
+                      </div>
+
+                      {/* Hostel Box */}
+                      <div style={{ background: '#f8fafc', padding: 22, borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                          <h4 style={{ margin: 0, fontSize: 14, color: '#0B3B7B', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span>🏢</span> Boarding &amp; Hostel Facility
+                          </h4>
+                          <select
+                            value={form.hostel_required}
+                            onChange={e => set('hostel_required', e.target.value)}
+                            style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 12, fontWeight: 700, background: '#fff' }}
+                          >
+                            <option value="No">Day Scholar</option>
+                            <option value="Yes">Hostel Boarder</option>
+                          </select>
+                        </div>
+
+                        {form.hostel_required === 'Yes' ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                            <div>
+                              <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                                Select Hostel Building / Wing
+                              </label>
+                              <select
+                                value={form.hostel_id}
+                                onChange={e => set('hostel_id', e.target.value)}
+                                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 12.5, background: '#fff' }}
+                              >
+                                <option value="">-- Select Hostel --</option>
+                                {hostels.map(h => (
+                                  <option key={h.id} value={h.id}>{h.name} ({h.gender_type || 'Co-Ed'})</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div>
+                              <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                                Special Room Requests / Dietary Remarks
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="e.g. Ground floor preferred, vegetarian mess"
+                                value={form.hostel_remarks}
+                                onChange={e => set('hostel_remarks', e.target.value)}
+                                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 12.5, outline: 'none' }}
+                              />
+                            </div>
+
+                            <div style={{ fontSize: 11, color: '#0369a1', background: '#e0f2fe', padding: '8px 12px', borderRadius: 6 }}>
+                              ℹ️ Room/bed allocation can be finalized by the Hostel Warden via the Hostel Management section.
+                            </div>
                           </div>
+                        ) : (
+                          <div style={{ textAlign: 'center', padding: '24px 10px', color: '#94a3b8', fontSize: 12 }}>
+                            Student is registered as a Day Scholar (no hostel boarding).
+                          </div>
+                        )}
+                      </div>
+
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP 6: Documents */}
+                {currentStep === 6 && (
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                      <div>
+                        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#0B3B7B' }}>
+                          Step 6: Optional KYC &amp; Verification Documents
+                        </h3>
+                        <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#64748b' }}>
+                          Upload verification documents now or proceed directly. Documents can be uploaded anytime later from the Student Profile.
+                        </p>
+                      </div>
+                      <span style={{ fontSize: 11, background: '#ecfdf5', color: '#047857', padding: '4px 12px', borderRadius: 6, fontWeight: 700 }}>
+                        Upload Later Enabled (Skippable)
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                      
+                      {/* Student Aadhaar */}
+                      <div style={{ background: '#f8fafc', padding: 14, borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                          <span style={{ fontSize: 12.5, fontWeight: 700, color: '#1e293b' }}>1. Student Aadhaar Card</span>
+                          {studentAadharFile && <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 700 }}>✓ Attached</span>}
+                        </div>
+                        <p style={{ margin: '0 0 10px', fontSize: 11.5, color: '#64748b' }}>PDF or clear front/back photo (Max 10MB)</p>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <label style={{ flex: 1, textAlign: 'center', background: '#fff', padding: '7px 10px', borderRadius: 6, fontSize: 11.5, cursor: 'pointer', border: '1px solid #cbd5e1', fontWeight: 600 }}>
+                            📁 Browse File
+                            <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={handleDocFile(setStudentAadharFile)} />
+                          </label>
+                          <label style={{ flex: 1, textAlign: 'center', background: '#eff6ff', color: '#0B3B7B', padding: '7px 10px', borderRadius: 6, fontSize: 11.5, cursor: 'pointer', border: '1px solid #93c5fd', fontWeight: 600 }}>
+                            📸 Camera / Scan
+                            <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleDocFile(setStudentAadharFile)} />
+                          </label>
                         </div>
                       </div>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, fontSize: 12.5 }}>
-                        <div><span style={{ color: '#64748b' }}>Father's Name:</span> <strong>{form.father_name}</strong></div>
-                        <div><span style={{ color: '#64748b' }}>Parent Mobile:</span> <strong>{form.parent_phone}</strong></div>
-                        <div><span style={{ color: '#64748b' }}>Address:</span> <strong>{form.address}, {form.city}</strong></div>
-                        <div><span style={{ color: '#64748b' }}>First School:</span> <strong>{form.is_first_school ? 'Yes (1st School)' : (form.previous_school_name || 'No')}</strong></div>
-                        <div><span style={{ color: '#64748b' }}>Total Fee:</span> <strong style={{ color: '#16a34a' }}>₹ {totalFee.toLocaleString('en-IN')}</strong></div>
+                      {/* Parent Aadhaar */}
+                      <div style={{ background: '#f8fafc', padding: 14, borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                          <span style={{ fontSize: 12.5, fontWeight: 700, color: '#1e293b' }}>2. Parent / Guardian Aadhaar</span>
+                          {parentAadharFile && <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 700 }}>✓ Attached</span>}
+                        </div>
+                        <p style={{ margin: '0 0 10px', fontSize: 11.5, color: '#64748b' }}>Father, Mother, or Legal Guardian identity proof</p>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <label style={{ flex: 1, textAlign: 'center', background: '#fff', padding: '7px 10px', borderRadius: 6, fontSize: 11.5, cursor: 'pointer', border: '1px solid #cbd5e1', fontWeight: 600 }}>
+                            📁 Browse File
+                            <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={handleDocFile(setParentAadharFile)} />
+                          </label>
+                          <label style={{ flex: 1, textAlign: 'center', background: '#eff6ff', color: '#0B3B7B', padding: '7px 10px', borderRadius: 6, fontSize: 11.5, cursor: 'pointer', border: '1px solid #93c5fd', fontWeight: 600 }}>
+                            📸 Camera / Scan
+                            <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleDocFile(setParentAadharFile)} />
+                          </label>
+                        </div>
                       </div>
+
+                      {/* Birth Certificate */}
+                      <div style={{ background: '#f8fafc', padding: 14, borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                          <span style={{ fontSize: 12.5, fontWeight: 700, color: '#1e293b' }}>3. Birth Certificate</span>
+                          {birthCertFile && <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 700 }}>✓ Attached</span>}
+                        </div>
+                        <p style={{ margin: '0 0 10px', fontSize: 11.5, color: '#64748b' }}>Municipal or Gram Panchayat birth document</p>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <label style={{ flex: 1, textAlign: 'center', background: '#fff', padding: '7px 10px', borderRadius: 6, fontSize: 11.5, cursor: 'pointer', border: '1px solid #cbd5e1', fontWeight: 600 }}>
+                            📁 Browse File
+                            <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={handleDocFile(setBirthCertFile)} />
+                          </label>
+                          <label style={{ flex: 1, textAlign: 'center', background: '#eff6ff', color: '#0B3B7B', padding: '7px 10px', borderRadius: 6, fontSize: 11.5, cursor: 'pointer', border: '1px solid #93c5fd', fontWeight: 600 }}>
+                            📸 Camera / Scan
+                            <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleDocFile(setBirthCertFile)} />
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* Transfer Certificate (TC) - Skipped if 1st School */}
+                      {!form.is_first_school ? (
+                        <div style={{ background: '#f8fafc', padding: 14, borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                            <span style={{ fontSize: 12.5, fontWeight: 700, color: '#1e293b' }}>4. Transfer Certificate (TC)</span>
+                            {tcFile && <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 700 }}>✓ Attached</span>}
+                          </div>
+                          <p style={{ margin: '0 0 10px', fontSize: 11.5, color: '#64748b' }}>Issued and signed by previous school head</p>
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <label style={{ flex: 1, textAlign: 'center', background: '#fff', padding: '7px 10px', borderRadius: 6, fontSize: 11.5, cursor: 'pointer', border: '1px solid #cbd5e1', fontWeight: 600 }}>
+                              📁 Browse File
+                              <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={handleDocFile(setTcFile)} />
+                            </label>
+                            <label style={{ flex: 1, textAlign: 'center', background: '#eff6ff', color: '#0B3B7B', padding: '7px 10px', borderRadius: 6, fontSize: 11.5, cursor: 'pointer', border: '1px solid #93c5fd', fontWeight: 600 }}>
+                              📸 Camera / Scan
+                              <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleDocFile(setTcFile)} />
+                            </label>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ background: '#f0fdf4', padding: 14, borderRadius: 10, border: '1px solid #bbf7d0', display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <span style={{ fontSize: 24 }}>🎒</span>
+                          <div style={{ fontSize: 11.5, color: '#166534' }}>
+                            <strong>Transfer Certificate Not Required:</strong> Student is in their 1st school enrollment.
+                          </div>
+                        </div>
+                      )}
+
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP 7: Fee & Charges */}
+                {currentStep === 7 && (
+                  <div>
+                    <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 800, color: '#0B3B7B' }}>
+                      Step 7: Admission Fee Setup &amp; Payment Ledger
+                    </h3>
+                    <p style={{ margin: '0 0 20px', fontSize: 12.5, color: '#64748b' }}>
+                      Particulars are automatically recorded in the school fee ledger upon admission confirmation.
+                    </p>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 24 }}>
+                      
+                      {/* Left: Fee Particulars */}
+                      <div style={{ background: '#f8fafc', padding: 22, borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                        <h4 style={{ margin: '0 0 16px', fontSize: 14, color: '#0B3B7B' }}>Fee Head Breakdown (₹)</h4>
+                        
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 18px', fontSize: 12.5 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ color: '#475569' }}>Admission Fee:</span>
+                            <input type="number" value={form.admission_fee} onChange={e => set('admission_fee', e.target.value)} style={{ width: 90, padding: '5px 8px', borderRadius: 6, border: '1px solid #cbd5e1', textAlign: 'right', fontWeight: 600 }} />
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ color: '#475569' }}>Registration Fee:</span>
+                            <input type="number" value={form.registration_fee} onChange={e => set('registration_fee', e.target.value)} style={{ width: 90, padding: '5px 8px', borderRadius: 6, border: '1px solid #cbd5e1', textAlign: 'right', fontWeight: 600 }} />
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ color: '#475569' }}>Tuition Fee (Q1):</span>
+                            <input type="number" value={form.tuition_fee} onChange={e => set('tuition_fee', e.target.value)} style={{ width: 90, padding: '5px 8px', borderRadius: 6, border: '1px solid #cbd5e1', textAlign: 'right', fontWeight: 600 }} />
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ color: '#475569' }}>Development Fee:</span>
+                            <input type="number" value={form.development_fee} onChange={e => set('development_fee', e.target.value)} style={{ width: 90, padding: '5px 8px', borderRadius: 6, border: '1px solid #cbd5e1', textAlign: 'right', fontWeight: 600 }} />
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ color: '#475569' }}>Activity Fee:</span>
+                            <input type="number" value={form.activity_fee} onChange={e => set('activity_fee', e.target.value)} style={{ width: 90, padding: '5px 8px', borderRadius: 6, border: '1px solid #cbd5e1', textAlign: 'right', fontWeight: 600 }} />
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ color: '#475569' }}>Smart Class Fee:</span>
+                            <input type="number" value={form.smart_class_fee} onChange={e => set('smart_class_fee', e.target.value)} style={{ width: 90, padding: '5px 8px', borderRadius: 6, border: '1px solid #cbd5e1', textAlign: 'right', fontWeight: 600 }} />
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ color: '#475569' }}>Caution Deposit:</span>
+                            <input type="number" value={form.caution_money} onChange={e => set('caution_money', e.target.value)} style={{ width: 90, padding: '5px 8px', borderRadius: 6, border: '1px solid #cbd5e1', textAlign: 'right', fontWeight: 600 }} />
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ color: '#475569' }}>Exam &amp; Library:</span>
+                            <input type="number" value={form.examination_fee} onChange={e => set('examination_fee', e.target.value)} style={{ width: 90, padding: '5px 8px', borderRadius: 6, border: '1px solid #cbd5e1', textAlign: 'right', fontWeight: 600 }} />
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16, paddingTop: 14, borderTop: '2px solid #cbd5e1', fontSize: 15, fontWeight: 800, color: '#0B3B7B' }}>
+                          <span>Total Admission Demand:</span>
+                          <span style={{ color: '#15803d' }}>₹ {totalFee.toLocaleString('en-IN')}.00</span>
+                        </div>
+                      </div>
+
+                      {/* Right: Payment Setup */}
+                      <div style={{ background: '#f8fafc', padding: 22, borderRadius: 12, border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        <h4 style={{ margin: 0, fontSize: 14, color: '#0B3B7B' }}>💳 Payment Details</h4>
+
+                        <div>
+                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                            Payment Mode
+                          </label>
+                          <select
+                            value={form.payment_mode}
+                            onChange={e => set('payment_mode', e.target.value)}
+                            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, background: '#fff' }}
+                          >
+                            {PAYMENT_MODES.map(m => <option key={m} value={m}>{m}</option>)}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                            Initial Payment Status
+                          </label>
+                          <select
+                            value={form.payment_status}
+                            onChange={e => set('payment_status', e.target.value)}
+                            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, background: '#fff', fontWeight: 700 }}
+                          >
+                            <option value="PAID">PAID (Full Payment Received)</option>
+                            <option value="PARTIAL">PARTIAL (Partially Paid)</option>
+                            <option value="DUE">DUE / PENDING (Pay Later)</option>
+                          </select>
+                        </div>
+
+                        <div style={{ background: '#e0f2fe', padding: 12, borderRadius: 8, border: '1px solid #bae6fd', fontSize: 11.5, color: '#0369a1' }}>
+                          <strong>Ledger Synchronization:</strong> An official student ledger entry and printable fee receipt will be created simultaneously with the student profile.
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP 8: Review & Submit */}
+                {currentStep === 8 && (
+                  <div>
+                    <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 800, color: '#0B3B7B' }}>
+                      Step 8: Final Review &amp; Submit
+                    </h3>
+                    <p style={{ margin: '0 0 20px', fontSize: 12.5, color: '#64748b' }}>
+                      Review the student profile and configuration before generating the official admission record.
+                    </p>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                      
+                      {/* Card 1: Student Identity */}
+                      <div style={{ background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', padding: 18 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                          <strong style={{ color: '#0B3B7B', fontSize: 13.5 }}>👤 Student Identity</strong>
+                          <button onClick={() => setCurrentStep(1)} style={{ background: 'none', border: 'none', color: '#0284c7', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>Edit</button>
+                        </div>
+                        <div style={{ display: 'flex', gap: 14, alignItems: 'center', marginBottom: 10 }}>
+                          {photoPreview ? (
+                            <img src={photoPreview} alt="Student" style={{ width: 50, height: 60, borderRadius: 6, objectFit: 'cover', border: '1px solid #cbd5e1' }} />
+                          ) : (
+                            <div style={{ width: 50, height: 60, borderRadius: 6, background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>👤</div>
+                          )}
+                          <div>
+                            <div style={{ fontWeight: 800, fontSize: 15, color: '#1e293b' }}>{form.name}</div>
+                            <div style={{ fontSize: 12, color: '#64748b' }}>DOB: {form.dob} | Gender: {form.gender}</div>
+                            <div style={{ fontSize: 12, color: '#64748b' }}>Category: {form.category} | Blood: {form.blood_group}</div>
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 12, color: '#475569' }}>Aadhaar: <strong>{form.aadhar_no || 'Not provided'}</strong></div>
+                      </div>
+
+                      {/* Card 2: Academic Enrolment */}
+                      <div style={{ background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', padding: 18 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                          <strong style={{ color: '#0B3B7B', fontSize: 13.5 }}>🎓 Academic Enrolment</strong>
+                          <button onClick={() => setCurrentStep(4)} style={{ background: 'none', border: 'none', color: '#0284c7', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>Edit</button>
+                        </div>
+                        <div style={{ fontSize: 12.5, lineHeight: 1.8 }}>
+                          <div>Class: <strong>{selectedClass?.name || 'Class'}</strong> {selectedClass?.section ? `(Sec ${selectedClass.section})` : ''}</div>
+                          <div>Session: <strong>{form.session}</strong></div>
+                          <div>Admission Date: <strong>{form.admission_date}</strong></div>
+                          <div>Admission No: <strong>{form.manual_admission_no || 'Monotonic Auto-Generated'}</strong></div>
+                        </div>
+                      </div>
+
+                      {/* Card 3: Parent & Contact */}
+                      <div style={{ background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', padding: 18 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                          <strong style={{ color: '#0B3B7B', fontSize: 13.5 }}>👨‍👩‍👧 Parent &amp; Contact</strong>
+                          <button onClick={() => setCurrentStep(2)} style={{ background: 'none', border: 'none', color: '#0284c7', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>Edit</button>
+                        </div>
+                        <div style={{ fontSize: 12.5, lineHeight: 1.8 }}>
+                          <div>Father: <strong>{form.father_name || '—'}</strong> ({form.father_occupation || 'Occupation N/A'})</div>
+                          <div>Primary Phone: <strong>{form.parent_phone}</strong></div>
+                          <div>Mother: <strong>{form.mother_name || '—'}</strong></div>
+                          <div>Address: <strong>{form.address}, {form.city}</strong></div>
+                        </div>
+                      </div>
+
+                      {/* Card 4: Services & Previous School */}
+                      <div style={{ background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', padding: 18 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                          <strong style={{ color: '#0B3B7B', fontSize: 13.5 }}>🏫 School Record &amp; Services</strong>
+                          <button onClick={() => setCurrentStep(3)} style={{ background: 'none', border: 'none', color: '#0284c7', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>Edit</button>
+                        </div>
+                        <div style={{ fontSize: 12.5, lineHeight: 1.8 }}>
+                          <div>1st School Enrollment: <strong>{form.is_first_school ? 'Yes (1st School)' : 'No (Transfer)'}</strong></div>
+                          {!form.is_first_school && <div>Previous School: <strong>{form.previous_school_name || 'Not specified'}</strong></div>}
+                          <div>Transport Service: <strong>{form.transport_required === 'Yes' ? (selectedRoute?.route_name || 'Opted In') : 'No'}</strong></div>
+                          <div>Hostel Accommodation: <strong>{form.hostel_required === 'Yes' ? (selectedHostel?.name || 'Opted In') : 'Day Scholar'}</strong></div>
+                          <div>Total Admission Fee: <strong style={{ color: '#16a34a' }}>₹ {totalFee.toLocaleString('en-IN')}</strong> ({form.payment_status})</div>
+                        </div>
+                      </div>
+
                     </div>
                   </div>
                 )}
@@ -1122,9 +1643,19 @@ export default function NewAdmissionPage() {
                   <button
                     onClick={submit}
                     disabled={saving}
-                    style={{ background: '#16a34a', color: '#ffffff', border: 'none', padding: '11px 26px', borderRadius: 8, fontSize: 13.5, fontWeight: 800, cursor: saving ? 'wait' : 'pointer' }}
+                    style={{
+                      background: saving ? '#94a3b8' : '#16a34a',
+                      color: '#ffffff',
+                      border: 'none',
+                      padding: '11px 26px',
+                      borderRadius: 8,
+                      fontSize: 13.5,
+                      fontWeight: 800,
+                      cursor: saving ? 'wait' : 'pointer',
+                      boxShadow: '0 4px 12px rgba(22,163,74,0.3)'
+                    }}
                   >
-                    {saving ? 'Processing...' : '🎓 Submit & Generate 2-Page Admission Form'}
+                    {saving ? '⏳ Submitting Admission...' : '🎓 Confirm Admission & Generate Form'}
                   </button>
                 )}
               </div>
@@ -1152,7 +1683,7 @@ export default function NewAdmissionPage() {
                       Admission Confirmed Successfully!
                     </h3>
                     <p style={{ margin: 0, fontSize: 13, color: '#166534' }}>
-                      {done.name} has been enrolled in {selectedClass?.name || 'Class'}.
+                      {done.name} has been enrolled in {selectedClass?.name || 'Class'}. Admission No: <strong>{done.admission_no}</strong>
                     </p>
                   </div>
                 </div>
@@ -1176,10 +1707,22 @@ export default function NewAdmissionPage() {
                       setCurrentStep(1);
                       setPendingPhoto(null);
                       setPhotoPreview(null);
+                      setStudentAadharFile(null);
+                      setParentAadharFile(null);
+                      setTcFile(null);
+                      setBirthCertFile(null);
+                      setForm(f => ({
+                        ...f,
+                        name: '',
+                        parent_phone: '',
+                        father_name: '',
+                        aadhar_no: '',
+                        manual_admission_no: '',
+                      }));
                     }}
                     style={{ background: '#fff', color: '#475569', border: '1px solid #cbd5e1', padding: '9px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
                   >
-                    + New Admission
+                    + Admit Another
                   </button>
                 </div>
               </div>
@@ -1231,7 +1774,7 @@ export default function NewAdmissionPage() {
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 100px', padding: 8, gap: 8, fontSize: 11 }}>
                       <div>
-                        <div><span style={{ color: '#64748b' }}>Admission No.:</span> <strong>{done.admission_no || form.admission_no}</strong></div>
+                        <div><span style={{ color: '#64748b' }}>Admission No.:</span> <strong>{done.admission_no || form.manual_admission_no || 'ADM-AUTO'}</strong></div>
                         <div><span style={{ color: '#64748b' }}>Admission Date:</span> <strong>{form.admission_date}</strong></div>
                         <div><span style={{ color: '#64748b' }}>Class Applying For:</span> <strong>{selectedClass?.name || '—'}</strong></div>
                       </div>
@@ -1260,7 +1803,7 @@ export default function NewAdmissionPage() {
                     <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', padding: 8, gap: 8, fontSize: 11 }}>
                       <div>
                         <div><span style={{ color: '#64748b' }}>Student Name:</span> <strong>{form.name}</strong></div>
-                        <div><span style={{ color: '#64748b' }}>Aadhar No.:</span> <strong>{form.aadhar_no || '—'}</strong></div>
+                        <div><span style={{ color: '#64748b' }}>Aadhaar No.:</span> <strong>{form.aadhar_no || '—'}</strong></div>
                         <div><span style={{ color: '#64748b' }}>Address:</span> <strong>{form.address}, {form.city}</strong></div>
                       </div>
                       <div>
@@ -1294,7 +1837,7 @@ export default function NewAdmissionPage() {
                         {form.is_first_school ? (
                           <div style={{ textAlign: 'center', padding: '16px 8px', color: '#0B3B7B' }}>
                             <strong>First School Admission</strong><br />
-                            <span style={{ fontSize: 10, color: '#64748b' }}>This is the student's 1st school; no previous details applicable.</span>
+                            <span style={{ fontSize: 10, color: '#64748b' }}>This is the student's 1st school; no previous school or TC details applicable.</span>
                           </div>
                         ) : (
                           <>
@@ -1336,13 +1879,13 @@ export default function NewAdmissionPage() {
                         <tbody>
                           {[
                             ['1. Birth Certificate', birthCertFile ? '✓' : '—'],
-                            ['2. Aadhar Card (Student)', (studentAadharFile || form.aadhar_no) ? '✓' : '—'],
-                            ['3. Aadhar Card (Parents)', (parentAadharFile || form.parent_aadhar_no) ? '✓' : '—'],
-                            ['4. Passport Photographs', photoPreview ? '✓' : '—'],
-                            ['5. Transfer Certificate (TC)', tcFile ? '✓' : '—'],
+                            ['2. Aadhaar Card (Student)', (studentAadharFile || form.aadhar_no) ? '✓' : '—'],
+                            ['3. Aadhaar Card (Parents)', (parentAadharFile || form.parent_aadhar_no) ? '✓' : '—'],
+                            ['4. Passport Photographs', (photoPreview || pendingPhoto) ? '✓' : '—'],
+                            ['5. Transfer Certificate (TC)', (!form.is_first_school && (tcFile || form.previous_tc_no)) ? '✓' : '—'],
                             ['6. Address Proof', form.address ? '✓' : '—'],
-                            ['7. Caste Certificate', form.category !== 'General' ? '✓' : '—'],
-                            ['8. Medical Certificate', '—'],
+                            ['7. Category / Caste Certificate', form.category !== 'General' ? '✓' : '—'],
+                            ['8. Transport / Hostel Enrolment', (form.transport_required === 'Yes' || form.hostel_required === 'Yes') ? '✓' : '—'],
                           ].map(([item, status], idx) => (
                             <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
                               <td style={{ padding: '4px 6px' }}>{item}</td>
@@ -1363,11 +1906,11 @@ export default function NewAdmissionPage() {
                       <table style={{ width: '100%', fontSize: 10, borderCollapse: 'collapse' }}>
                         <tbody>
                           <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                            <td style={{ padding: '4px 6px' }}>Admission Fee</td>
-                            <td style={{ padding: '4px 6px', textAlign: 'right', fontWeight: 600 }}>₹ {Number(form.admission_fee || 0).toLocaleString('en-IN')}</td>
+                            <td style={{ padding: '4px 6px' }}>Admission &amp; Registration Fee</td>
+                            <td style={{ padding: '4px 6px', textAlign: 'right', fontWeight: 600 }}>₹ {(Number(form.admission_fee || 0) + Number(form.registration_fee || 0)).toLocaleString('en-IN')}</td>
                           </tr>
                           <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                            <td style={{ padding: '4px 6px' }}>Tuition Fee (1st Qtr)</td>
+                            <td style={{ padding: '4px 6px' }}>Tuition Fee (Quarterly)</td>
                             <td style={{ padding: '4px 6px', textAlign: 'right', fontWeight: 600 }}>₹ {Number(form.tuition_fee || 0).toLocaleString('en-IN')}</td>
                           </tr>
                           <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
@@ -1375,11 +1918,11 @@ export default function NewAdmissionPage() {
                             <td style={{ padding: '4px 6px', textAlign: 'right', fontWeight: 600 }}>₹ {Number(form.caution_money || 0).toLocaleString('en-IN')}</td>
                           </tr>
                           <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                            <td style={{ padding: '4px 6px' }}>Development &amp; Activity</td>
-                            <td style={{ padding: '4px 6px', textAlign: 'right', fontWeight: 600 }}>₹ {(Number(form.development_fee || 0) + Number(form.activity_fee || 0)).toLocaleString('en-IN')}</td>
+                            <td style={{ padding: '4px 6px' }}>Development &amp; Smart Class</td>
+                            <td style={{ padding: '4px 6px', textAlign: 'right', fontWeight: 600 }}>₹ {(Number(form.development_fee || 0) + Number(form.smart_class_fee || 0)).toLocaleString('en-IN')}</td>
                           </tr>
                           <tr style={{ background: '#eff6ff', fontWeight: 800, color: '#0B3B7B' }}>
-                            <td style={{ padding: '6px 6px' }}>TOTAL AMOUNT</td>
+                            <td style={{ padding: '6px 6px' }}>TOTAL ADMISSION AMOUNT</td>
                             <td style={{ padding: '6px 6px', textAlign: 'right' }}>₹ {totalFee.toLocaleString('en-IN')}.00</td>
                           </tr>
                         </tbody>
@@ -1392,7 +1935,7 @@ export default function NewAdmissionPage() {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px 1fr', gap: 10, alignItems: 'center', border: '1px solid #93c5fd', borderRadius: 6, padding: 10 }}>
                     <div style={{ fontSize: 9.5, color: '#334155', lineHeight: 1.4 }}>
                       <strong>DECLARATION:</strong><br />
-                      I/We declare that the information provided is true and correct. I/We agree to abide by all school rules.
+                      I/We declare that all information provided in this admission form is true and verified. I/We agree to abide by all school and board rules.
                       <div style={{ marginTop: 12 }}>
                         ________________________<br />
                         <strong>Signature of Parent / Guardian</strong>
@@ -1412,7 +1955,7 @@ export default function NewAdmissionPage() {
                     </div>
 
                     <div style={{ fontSize: 9.5, lineHeight: 1.6, borderLeft: '1px solid #e2e8f0', paddingLeft: 10 }}>
-                      <strong style={{ color: '#0B3B7B' }}>FOR SCHOOL USE ONLY:</strong><br />
+                      <strong style={{ color: '#0B3B7B' }}>FOR SCHOOL OFFICE USE:</strong><br />
                       Verified By: ____________________<br />
                       Approved By: ____________________<br />
                       Admission Date: {form.admission_date}

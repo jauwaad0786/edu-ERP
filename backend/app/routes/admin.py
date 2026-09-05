@@ -116,43 +116,186 @@ def list_schools():
     return jsonify(result), 200
 
 
+import re
+from app.models.financial import FeeStructure
+from app.services.permission_resolver import ensure_role_assignment_for_user
+
+
+@admin_bp.route('/schools/onboard', methods=['POST'])
 @admin_bp.route('/schools', methods=['POST'])
 @role_required('SUPER_ADMIN')
-def create_school():
-    data = request.get_json()
-    school = School(
-        name=data['name'],
-        code=data['code'].upper(),
-        address=data.get('address'),
-        city=data.get('city'),
-        state=data.get('state'),
-        pincode=data.get('pincode'),
-        phone=data.get('phone'),
-        email=data.get('email'),
-        type=data.get('type', 'SCHOOL'),
-        current_session=data.get('current_session', '2024-25')
-    )
-    db.session.add(school)
-    db.session.flush()
+def onboard_school():
+    """
+    Production SaaS School Onboarding:
+    Validates required fields, checks for duplicate school code, school email,
+    principal email, and principal phone.
+    Creates School + Principal User + Role Assignment + Default Classes + Default Fees
+    within a single atomic database transaction.
+    """
+    data = request.get_json() or {}
 
-    default_classes = [
-        'Nursery','LKG','UKG',
-        'Class 1','Class 2','Class 3','Class 4','Class 5',
-        'Class 6','Class 7','Class 8','Class 9',
-        'Class 10','Class 11','Class 12'
-    ]
-    for class_name in default_classes:
-        db.session.add(Class(
-            name=class_name,
-            section='A',
-            session=school.current_session,
-            school_id=school.id
-        ))
-    db.session.commit()
-    return jsonify({
-        'message': 'School created with default classes',
-        'school': school.to_dict()
-    }), 201
+    # Basic validations
+    name = (data.get('name') or '').strip()
+    code = (data.get('code') or '').strip().upper()
+    if not name:
+        return jsonify({'error': 'School name is required'}), 400
+    if not code:
+        return jsonify({'error': 'School code is required'}), 400
+
+    # Clean alphanumeric code
+    if not re.match(r'^[A-Z0-9_-]{2,20}$', code):
+        return jsonify({'error': 'School code must be 2-20 alphanumeric characters'}), 400
+
+    # Duplicate school code check
+    existing_school = School.query.filter(sqlfunc.upper(School.code) == code).first()
+    if existing_school:
+        return jsonify({'error': f"School code '{code}' is already registered"}), 409
+
+    # Principal info
+    principal_name = (data.get('principal_name') or '').strip()
+    principal_email = (data.get('principal_email') or '').strip().lower()
+    principal_phone_raw = str(data.get('principal_phone') or '').strip()
+    clean_p_phone = re.sub(r'\D', '', principal_phone_raw)
+    principal_password = data.get('principal_password') or 'School@123'
+    principal_status = (data.get('principal_status') or 'ACTIVE').upper()
+
+    # If principal info provided, validate it strictly
+    if principal_email or principal_name or clean_p_phone:
+        if not principal_name:
+            return jsonify({'error': 'Principal full name is required'}), 400
+        if not principal_email or '@' not in principal_email:
+            return jsonify({'error': 'Valid principal email is required'}), 400
+        if len(clean_p_phone) < 10:
+            return jsonify({'error': 'Principal mobile number must have at least 10 digits'}), 400
+
+        # Duplicate email check
+        if User.query.filter(sqlfunc.lower(User.email) == principal_email).first():
+            return jsonify({'error': f"User with email '{principal_email}' already exists"}), 409
+
+        # Duplicate phone check
+        last10 = clean_p_phone[-10:]
+        dup_phone = User.query.filter(
+            User.phone.endswith(last10),
+            User.role.in_([UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.VICE_PRINCIPAL])
+        ).first()
+        if dup_phone:
+            return jsonify({'error': f"A principal/admin with mobile '{last10}' is already registered"}), 409
+
+    # Atomic transaction
+    try:
+        current_session = data.get('current_session') or '2024-25'
+        school = School(
+            name=name,
+            code=code,
+            address=data.get('address') or '',
+            city=data.get('city') or '',
+            state=data.get('state') or '',
+            pincode=data.get('pincode') or '',
+            phone=data.get('phone') or (clean_p_phone[-10:] if clean_p_phone else ''),
+            email=data.get('email') or principal_email or '',
+            website=data.get('website') or '',
+            affiliation_board=data.get('affiliation_board') or '',
+            established_year=int(data['established_year']) if data.get('established_year') and str(data['established_year']).isdigit() else None,
+            type=data.get('type', 'SCHOOL'),
+            current_session=current_session,
+            plan=data.get('plan', 'BASIC'),
+            status='ACTIVE',
+            is_active=True
+        )
+        db.session.add(school)
+        db.session.flush()
+
+        principal_user = None
+        if principal_name and principal_email and clean_p_phone:
+            # Generate clean username
+            clean_name = re.sub(r'[^a-zA-Z0-9]', '', principal_name.lower())
+            base_username = f"prin.{clean_name[:10]}" if clean_name else f"prin.{code.lower()}"
+            cand_username = base_username
+            counter = 1
+            while User.query.filter_by(username=cand_username).first():
+                cand_username = f"{base_username}{counter}"
+                counter += 1
+
+            emp_id = (data.get('principal_employee_id') or '').strip()
+            if not emp_id:
+                emp_id = f"EMP-{code[:4]}-001"
+
+            principal_user = User(
+                name=principal_name,
+                email=principal_email,
+                phone=clean_p_phone[-10:],
+                username=cand_username,
+                employee_id=emp_id,
+                role=UserRole.PRINCIPAL,
+                account_status=principal_status,
+                is_active=(principal_status != 'INACTIVE' and principal_status != 'SUSPENDED'),
+                school_id=school.id
+            )
+            principal_user.set_password(principal_password, store_plain=True)
+            db.session.add(principal_user)
+            db.session.flush()
+
+            # Ensure RBAC Role assignment
+            ensure_role_assignment_for_user(principal_user)
+
+        # Default classes
+        classes_to_create = data.get('classes')
+        if not classes_to_create or not isinstance(classes_to_create, list):
+            classes_to_create = [
+                'Nursery','LKG','UKG',
+                'Class 1','Class 2','Class 3','Class 4','Class 5',
+                'Class 6','Class 7','Class 8','Class 9',
+                'Class 10','Class 11','Class 12'
+            ]
+        for class_name in classes_to_create:
+            db.session.add(Class(
+                name=class_name,
+                section='A',
+                session=school.current_session,
+                school_id=school.id
+            ))
+
+        # Default standard fee structures
+        default_fees = [
+            ('ADMISSION', 5000.0, 'ONE_TIME'),
+            ('TUITION',   2500.0, 'MONTHLY'),
+            ('EXAM',      1000.0, 'YEARLY'),
+        ]
+        for ftype, famt, freq in default_fees:
+            db.session.add(FeeStructure(
+                school_id=school.id,
+                session=school.current_session,
+                fee_type=ftype,
+                amount=famt,
+                frequency=freq,
+                status='ACTIVE',
+                source='ACADEMIC'
+            ))
+
+        db.session.commit()
+
+        principal_info = None
+        if principal_user:
+            principal_info = {
+                'id': principal_user.id,
+                'name': principal_user.name,
+                'email': principal_user.email,
+                'phone': principal_user.phone,
+                'username': principal_user.username,
+                'employee_id': principal_user.employee_id,
+                'account_status': principal_user.account_status,
+                'login_methods': ['EMAIL', 'MOBILE', 'USERNAME'],
+            }
+
+        return jsonify({
+            'message': 'School and Principal successfully onboarded',
+            'school': school.to_dict(),
+            'principal': principal_info
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Failed to onboard school: {str(e)}'}), 500
 
 
 @admin_bp.route('/schools/<int:school_id>', methods=['GET'])
@@ -162,11 +305,16 @@ def get_school_detail(school_id):
 
     total_students = User.query.filter_by(
         school_id=school_id, role=UserRole.STUDENT
-    ).count()
+    ).filter(User.is_deleted == False).count()
     total_teachers = User.query.filter_by(
         school_id=school_id, role=UserRole.TEACHER
-    ).count()
+    ).filter(User.is_deleted == False).count()
     total_classes = Class.query.filter_by(school_id=school_id).count()
+
+    # Principal account
+    principal = User.query.filter_by(
+        school_id=school_id, role=UserRole.PRINCIPAL
+    ).filter(User.is_deleted == False).first()
 
     # Fee stats via SQL SUM instead of loading all FeeRecord objects into RAM
     fee_totals = db.session.query(
@@ -187,6 +335,7 @@ def get_school_detail(school_id):
 
     return jsonify({
         **school.to_dict(),
+        'principal': principal.to_dict() if principal else None,
         'total_students':  total_students,
         'total_teachers':  total_teachers,
         'total_classes':   total_classes,
@@ -201,12 +350,43 @@ def get_school_detail(school_id):
 @role_required('SUPER_ADMIN')
 def update_school(school_id):
     school = School.query.get_or_404(school_id)
-    data = request.get_json()
-    for field in ['name', 'address', 'city', 'state', 'phone', 'email', 'current_session', 'is_active', 'plan']:
+    data = request.get_json() or {}
+    fields = [
+        'name', 'address', 'city', 'state', 'pincode', 'phone', 'email',
+        'website', 'affiliation_board', 'established_year', 'current_session',
+        'is_active', 'plan', 'type', 'status'
+    ]
+    for field in fields:
         if field in data:
             setattr(school, field, data[field])
     db.session.commit()
     return jsonify(school.to_dict()), 200
+
+
+@admin_bp.route('/schools/<int:school_id>/principal/status', methods=['PUT', 'PATCH'])
+@role_required('SUPER_ADMIN')
+def update_principal_status(school_id):
+    """Activate, Deactivate, or Suspend school Principal account."""
+    data = request.get_json() or {}
+    new_status = (data.get('status') or '').upper()
+    if new_status not in ('ACTIVE', 'INACTIVE', 'SUSPENDED', 'INVITED'):
+        return jsonify({'error': 'Invalid status. Choose ACTIVE, INACTIVE, SUSPENDED, or INVITED'}), 400
+
+    principal = User.query.filter_by(
+        school_id=school_id, role=UserRole.PRINCIPAL
+    ).filter(User.is_deleted == False).first()
+
+    if not principal:
+        return jsonify({'error': 'No principal account found for this school'}), 404
+
+    principal.account_status = new_status
+    principal.is_active = (new_status == 'ACTIVE' or new_status == 'INVITED')
+    db.session.commit()
+
+    return jsonify({
+        'message': f"Principal account status updated to {new_status}",
+        'principal': principal.to_dict()
+    }), 200
 
 @admin_bp.route('/schools/<int:school_id>/features', methods=['PUT'])
 @role_required('SUPER_ADMIN')

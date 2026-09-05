@@ -52,7 +52,13 @@ def _find_user_by_identifier(raw_identifier):
     clean_phone = re.sub(r'\D', '', raw_str)
     user = User.query.filter(User.phone == raw_str).first()
     if not user and clean_phone and len(clean_phone) >= 10:
-        user = User.query.filter(User.phone.endswith(clean_phone[-10:])).first()
+        last10 = clean_phone[-10:]
+        user = User.query.filter(
+            User.phone.endswith(last10),
+            User.role.in_([UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.VICE_PRINCIPAL, UserRole.TEACHER, UserRole.ACCOUNTANT])
+        ).first()
+        if not user:
+            user = User.query.filter(User.phone.endswith(last10)).first()
     if user:
         return user
 
@@ -137,7 +143,14 @@ def login():
         clean_phone = re.sub(r'\D', '', raw_identifier)
         user = User.query.filter(User.phone == raw_identifier).first()
         if not user and clean_phone and len(clean_phone) >= 10:
-            user = User.query.filter(User.phone.endswith(clean_phone[-10:])).first()
+            last10 = clean_phone[-10:]
+            # Prioritize principal/staff if multiple users share the phone
+            user = User.query.filter(
+                User.phone.endswith(last10),
+                User.role.in_([UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.VICE_PRINCIPAL, UserRole.TEACHER, UserRole.ACCOUNTANT])
+            ).first()
+            if not user:
+                user = User.query.filter(User.phone.endswith(last10)).first()
 
     # 4. Try Driver profile mobile_number lookup
     if not user:
@@ -154,10 +167,23 @@ def login():
     if user.school_id:
         from app.models.school import School
         user_school = School.query.get(user.school_id)
-        if user_school and getattr(user_school, 'status', None) == 'ARCHIVED':
-            return jsonify({'error': 'This school account is currently archived. Please contact the administrator.'}), 403
+        if user_school:
+            status = (getattr(user_school, 'status', None) or '').upper()
+            if status == 'SUSPENDED':
+                return jsonify({'error': 'This school account has been suspended. Please contact the administrator.'}), 403
+            if status == 'ARCHIVED':
+                return jsonify({'error': 'This school account is currently archived. Please contact the administrator.'}), 403
+            if status == 'INACTIVE':
+                return jsonify({'error': 'This school account is inactive. Please contact the administrator.'}), 403
+            if status in ('DRAFT', 'ONBOARDING'):
+                return jsonify({'error': 'This school onboarding is not complete. Please contact the administrator.'}), 403
+            if not user_school.is_active:
+                return jsonify({'error': 'This school is currently deactivated. Please contact the administrator.'}), 403
 
-    if not user.is_active:
+    user_status = (getattr(user, 'account_status', None) or ('ACTIVE' if user.is_active else 'INACTIVE')).upper()
+    if user_status == 'SUSPENDED':
+        return jsonify({'error': 'Account suspended. Contact your administrator.'}), 403
+    if user_status in ('INACTIVE', 'DEACTIVATED') or not user.is_active:
         return jsonify({'error': 'Account deactivated. Contact your administrator.'}), 403
 
     user.touch_last_login()
