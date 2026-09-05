@@ -442,14 +442,87 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
                OR student_id IN (SELECT id FROM students WHERE school_id = :sid)
         """), {'sid': school_id})
 
-        # User-linked sub-tables for users of this school
+        # Pre-compute all table columns before beginning cascade transaction
+        table_columns = {}
+        for t_name in all_tables:
+            try:
+                table_columns[t_name] = {c['name'] for c in inspector.get_columns(t_name)}
+            except Exception:
+                table_columns[t_name] = set()
+
+        def _safe_delete_or_update(sql_statement):
+            try:
+                db.session.execute(text(sql_statement))
+            except Exception as sql_e:
+                logger.debug(f"Cascade cleanup step skipped: {sql_e}")
+
+        # User-linked sub-tables & FK cleanup for users of this school
         if school_user_ids:
             uid_list = ','.join(str(u) for u in school_user_ids)
-            db.session.execute(text(f"DELETE FROM user_role_assignments WHERE user_id IN ({uid_list})"))
-            db.session.execute(text(f"DELETE FROM user_permission_overrides WHERE user_id IN ({uid_list})"))
-            db.session.execute(text(f"DELETE FROM temporary_role_delegations WHERE delegator_user_id IN ({uid_list}) OR delegatee_user_id IN ({uid_list})"))
-            db.session.execute(text(f"DELETE FROM session_history WHERE user_id IN ({uid_list})"))
-            db.session.execute(text(f"DELETE FROM issue_assignments WHERE assigned_to_user_id IN ({uid_list}) OR assigned_by_user_id IN ({uid_list})"))
+            # Tables linking directly to user_id
+            for u_tab in [
+                'user_role_assignments', 'user_permission_overrides', 'session_history',
+                'user_devices', 'otp_verifications', 'login_history', 'employee_profiles'
+            ]:
+                if u_tab in all_tables and 'user_id' in table_columns.get(u_tab, set()):
+                    _safe_delete_or_update(f"DELETE FROM {u_tab} WHERE user_id IN ({uid_list})")
+
+            # Employee & Student documents
+            if 'employee_documents' in all_tables:
+                _safe_delete_or_update(f"DELETE FROM employee_documents WHERE user_id IN ({uid_list})")
+            if 'student_documents' in all_tables:
+                _safe_delete_or_update(f"DELETE FROM student_documents WHERE school_id = {school_id}")
+
+            # Temporary role delegations
+            if 'temporary_role_delegations' in all_tables:
+                _safe_delete_or_update(f"DELETE FROM temporary_role_delegations WHERE delegator_user_id IN ({uid_list}) OR delegatee_user_id IN ({uid_list})")
+
+            # Developer center issue assignments
+            if 'issue_assignments' in all_tables:
+                _safe_delete_or_update(f"DELETE FROM issue_assignments WHERE assigned_to_user_id IN ({uid_list}) OR assigned_by_user_id IN ({uid_list})")
+
+            # Error logs reported by or affecting these users
+            if 'error_logs' in all_tables and 'user_id' in table_columns.get('error_logs', set()):
+                _safe_delete_or_update(f"UPDATE error_logs SET user_id = NULL WHERE user_id IN ({uid_list})")
+
+            # Company activity logs
+            if 'company_activity_logs' in all_tables and 'actor_user_id' in table_columns.get('company_activity_logs', set()):
+                _safe_delete_or_update(f"UPDATE company_activity_logs SET actor_user_id = NULL WHERE actor_user_id IN ({uid_list})")
+
+            # Schools created_by or archived_by
+            if 'schools' in all_tables:
+                if 'created_by' in table_columns.get('schools', set()):
+                    _safe_delete_or_update(f"UPDATE schools SET created_by = NULL WHERE created_by IN ({uid_list})")
+                if 'archived_by' in table_columns.get('schools', set()):
+                    _safe_delete_or_update(f"UPDATE schools SET archived_by = NULL WHERE archived_by IN ({uid_list})")
+
+            # Support tickets
+            if 'support_tickets' in all_tables:
+                cols = table_columns.get('support_tickets', set())
+                if 'created_by' in cols:
+                    _safe_delete_or_update(f"UPDATE support_tickets SET created_by = NULL WHERE created_by IN ({uid_list})")
+                if 'assigned_to' in cols:
+                    _safe_delete_or_update(f"UPDATE support_tickets SET assigned_to = NULL WHERE assigned_to IN ({uid_list})")
+
+            # Ticket replies
+            if 'ticket_replies' in all_tables and 'user_id' in table_columns.get('ticket_replies', set()):
+                _safe_delete_or_update(f"UPDATE ticket_replies SET user_id = NULL WHERE user_id IN ({uid_list})")
+
+            # Chat messages
+            if 'chat_messages' in all_tables:
+                _safe_delete_or_update(f"DELETE FROM chat_messages WHERE sender_id IN ({uid_list}) OR receiver_id IN ({uid_list})")
+
+            # Meeting requests
+            if 'meeting_requests' in all_tables:
+                _safe_delete_or_update(f"DELETE FROM meeting_requests WHERE teacher_id IN ({uid_list}) OR parent_id IN ({uid_list})")
+
+            # Audit logs
+            if 'audit_logs' in all_tables and 'user_id' in table_columns.get('audit_logs', set()):
+                _safe_delete_or_update(f"DELETE FROM audit_logs WHERE user_id IN ({uid_list})")
+
+            # Deleted logs archive
+            if 'deleted_logs_archive' in all_tables and 'deleted_by' in table_columns.get('deleted_logs_archive', set()):
+                _safe_delete_or_update(f"DELETE FROM deleted_logs_archive WHERE deleted_by IN ({uid_list})")
 
         # ── Level 2: Delete from all direct tables having school_id column ──
         # Specific deletion order for tables with internal cross-references
@@ -533,7 +606,10 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
                 WHERE affected_school_id = :sid
             """), {'sid': school_id})
 
-        # ── Level 5: Record immutable audit log for permanent deletion ──
+        # ── Level 5: Delete the school itself ──
+        db.session.execute(text("DELETE FROM schools WHERE id = :sid"), {'sid': school_id})
+
+        # ── Level 6: Record immutable audit log for permanent deletion via SQL ──
         meta = {}
         try:
             from flask import has_request_context
@@ -541,19 +617,38 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
                 meta = capture_request_context()
         except Exception:
             pass
-        log_company_action(
-            actor_user=actor_user,
-            module='SCHOOL_LIFECYCLE',
-            action='SCHOOL_PERMANENTLY_DELETED',
-            affected_school_id=None,
-            remarks=f"Permanently and irreversibly deleted school '{school_name}' (Code: {school_code}, ID: {school_db_id}).",
-            request_meta=meta,
-            old_value={'school_id': school_db_id, 'name': school_name, 'code': school_code},
-            new_value={'deleted_summary': summary['counts']}
-        )
 
-        # ── Level 6: Delete the school itself ──
-        db.session.execute(text("DELETE FROM schools WHERE id = :sid"), {'sid': school_id})
+        actor_id_val = actor_user.id if actor_user else None
+        role_snap = actor_user.role.value if actor_user and getattr(actor_user, 'role', None) else 'SUPER_ADMIN'
+        import json
+        old_val_json = json.dumps({'school_id': school_db_id, 'name': school_name, 'code': school_code})
+        new_val_json = json.dumps({'deleted_summary': summary['counts']})
+        remarks_txt = f"Permanently and irreversibly deleted school '{school_name}' (Code: {school_code}, ID: {school_db_id})."
+
+        if 'company_activity_logs' in all_tables:
+            db.session.execute(text("""
+                INSERT INTO company_activity_logs (
+                    actor_user_id, role_snapshot, module, action,
+                    old_value, new_value, affected_school_id,
+                    ip_address, browser, os, remarks, created_at
+                ) VALUES (
+                    :actor_id, :role_snapshot, :module, :action,
+                    :old_value, :new_value, NULL,
+                    :ip_address, :browser, :os, :remarks, :created_at
+                )
+            """), {
+                'actor_id': actor_id_val,
+                'role_snapshot': role_snap,
+                'module': 'SCHOOL_LIFECYCLE',
+                'action': 'SCHOOL_PERMANENTLY_DELETED',
+                'old_value': old_val_json,
+                'new_value': new_val_json,
+                'ip_address': meta.get('ip_address'),
+                'browser': meta.get('browser'),
+                'os': meta.get('os'),
+                'remarks': remarks_txt,
+                'created_at': datetime.utcnow()
+            })
 
         # Commit entire transaction atomically
         db.session.commit()

@@ -512,7 +512,12 @@ def list_bills():
     search  = (request.args.get('search') or '').strip()
     session = request.args.get('session', '2026-27')
 
-    q = FeeBill.query.filter_by(school_id=user.school_id, session=session).filter(FeeBill.status != BillStatus.CANCELLED.value)
+    from sqlalchemy.orm import joinedload
+    q = FeeBill.query.options(
+        joinedload(FeeBill.student).joinedload(Student.user),
+        joinedload(FeeBill.student).joinedload(Student.class_ref),
+        joinedload(FeeBill.items)
+    ).filter_by(school_id=user.school_id, session=session).filter(FeeBill.status != BillStatus.CANCELLED.value)
 
     if month:
         q = q.filter_by(bill_month=month)
@@ -531,7 +536,24 @@ def list_bills():
             )
         )
 
-    bills = q.order_by(FeeBill.due_date.asc(), FeeBill.id.desc()).all()
+    # Safe pagination: if page is provided or per_page requested, paginate; else return list capped at 150
+    page = request.args.get('page', type=int)
+    per_page = request.args.get('per_page', type=int) or request.args.get('limit', type=int)
+
+    if page is not None:
+        per_page = min(per_page or 50, 100)
+        p = q.order_by(FeeBill.due_date.asc(), FeeBill.id.desc()).paginate(page=page, per_page=per_page, error_out=False)
+        return jsonify({
+            'data': [b.to_dict() for b in p.items],
+            'total': p.total,
+            'page': p.page,
+            'pages': p.pages,
+            'has_next': p.has_next,
+            'has_prev': p.has_prev
+        }), 200
+
+    limit = min(per_page or 100, 100)
+    bills = q.order_by(FeeBill.due_date.asc(), FeeBill.id.desc()).limit(limit).all()
     return jsonify([b.to_dict() for b in bills]), 200
 
 
@@ -635,9 +657,16 @@ def list_payments():
 
     results = []
 
+    limit = min(request.args.get('limit', 150, type=int), 200)
+
     # 1. Money IN (Student Fee Collections)
     if log_type in ['ALL', 'INCOME']:
-        q = FeePayment.query.filter_by(school_id=user.school_id, session=session)
+        from sqlalchemy.orm import joinedload
+        q = FeePayment.query.options(
+            joinedload(FeePayment.student).joinedload(Student.user),
+            joinedload(FeePayment.student).joinedload(Student.class_ref),
+            joinedload(FeePayment.allocations)
+        ).filter_by(school_id=user.school_id, session=session)
         if status:
             q = q.filter_by(status=status)
         if mode:
@@ -667,7 +696,7 @@ def list_payments():
                 )
             )
 
-        payments = q.order_by(FeePayment.payment_date.desc(), FeePayment.id.desc()).all()
+        payments = q.order_by(FeePayment.payment_date.desc(), FeePayment.id.desc()).limit(limit).all()
         for p in payments:
             stu_name = p.student.user.name if p.student and p.student.user else f"Student #{p.student_id}"
             cls_name = p.student.class_ref.name if p.student and p.student.class_ref else ''
@@ -682,7 +711,10 @@ def list_payments():
 
     # 2. Money OUT (Staff/Teacher Salaries & Expenses)
     if log_type in ['ALL', 'EXPENSE', 'SALARY']:
-        eq = Expense.query.filter_by(school_id=user.school_id)
+        from sqlalchemy.orm import joinedload
+        eq = Expense.query.options(
+            joinedload(Expense.creator)
+        ).filter_by(school_id=user.school_id)
         if status:
             eq = eq.filter_by(status=status)
         if mode:
@@ -709,7 +741,7 @@ def list_payments():
                 )
             )
 
-        expenses = eq.order_by(Expense.payment_date.desc(), Expense.id.desc()).all()
+        expenses = eq.order_by(Expense.payment_date.desc(), Expense.id.desc()).limit(limit).all()
         for e in expenses:
             is_sal = 'SALARY' in (e.category or '').upper()
             creator_name = e.creator.name if hasattr(e, 'creator') and e.creator else 'Accountant'
@@ -786,7 +818,9 @@ def get_payroll_slips_for_finance():
                 )
             )
 
-    slips = q.order_by(PayrollSlip.id.desc()).all()
+        from sqlalchemy.orm import joinedload
+    limit = min(request.args.get('limit', 150, type=int), 200)
+    slips = q.options(joinedload(PayrollSlip.payroll_run), joinedload(PayrollSlip.user)).order_by(PayrollSlip.id.desc()).limit(limit).all()
     res = []
     for s in slips:
         d = s.to_dict()

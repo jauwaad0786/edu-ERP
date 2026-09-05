@@ -2,7 +2,7 @@
 
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
-from sqlalchemy import func as sqlfunc
+from sqlalchemy import func, func as sqlfunc
 from datetime import datetime
 from app import db
 from app.models.user import User, UserRole
@@ -85,19 +85,33 @@ def list_schools():
 
     schools = query.all()
     this_month = datetime.utcnow().replace(day=1)
+    school_ids = [s.id for s in schools]
+
+    # Pre-fetch total students per school in a single SQL GROUP BY query
+    student_counts = {}
+    paid_status_map = {}
+    if school_ids:
+        counts = db.session.query(
+            User.school_id, func.count(User.id)
+        ).filter(
+            User.school_id.in_(school_ids),
+            User.role == UserRole.STUDENT
+        ).group_by(User.school_id).all()
+        student_counts = {sid: cnt for sid, cnt in counts}
+
+        # Pre-fetch paid service charges for this month in a single query
+        paid_charges = db.session.query(ServiceCharge.school_id).filter(
+            ServiceCharge.school_id.in_(school_ids),
+            ServiceCharge.charge_date >= this_month,
+            ServiceCharge.is_paid == True
+        ).distinct().all()
+        paid_status_map = {sid for (sid,) in paid_charges}
+
     result = []
     for s in schools:
         d = s.to_dict()
-        # total students for chart
-        d['total_students'] = User.query.filter_by(
-            school_id=s.id, role=UserRole.STUDENT
-        ).count()
-        # service charge paid this month
-        charges = ServiceCharge.query.filter_by(school_id=s.id).all()
-        d['paid_this_month'] = any(
-            c for c in charges
-            if c.charge_date >= this_month and c.is_paid
-        )
+        d['total_students'] = student_counts.get(s.id, 0)
+        d['paid_this_month'] = s.id in paid_status_map
         result.append(d)
     return jsonify(result), 200
 
@@ -154,14 +168,17 @@ def get_school_detail(school_id):
     ).count()
     total_classes = Class.query.filter_by(school_id=school_id).count()
 
-    # Fee stats
-    fee_records = FeeRecord.query.filter_by(school_id=school_id).all()
-    total_due  = sum(r.amount_due  for r in fee_records)
-    total_paid = sum(r.amount_paid for r in fee_records)
+    # Fee stats via SQL SUM instead of loading all FeeRecord objects into RAM
+    fee_totals = db.session.query(
+        func.coalesce(func.sum(FeeRecord.amount_due), 0),
+        func.coalesce(func.sum(FeeRecord.amount_paid), 0)
+    ).filter(FeeRecord.school_id == school_id).first()
+    total_due  = float(fee_totals[0] if fee_totals else 0)
+    total_paid = float(fee_totals[1] if fee_totals else 0)
 
-    # Service charges
+    # Service charges (limit to latest 20 to prevent unbounded growth)
     charges = ServiceCharge.query.filter_by(school_id=school_id)\
-                .order_by(ServiceCharge.charge_date.desc()).all()
+                .order_by(ServiceCharge.charge_date.desc()).limit(20).all()
     this_month = datetime.utcnow().replace(day=1)
     paid_this_month = any(
         c for c in charges
@@ -337,7 +354,9 @@ def permanent_delete_school_endpoint(school_id):
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
     except Exception as e:
-        return jsonify({'error': f"Permanent deletion failed: {e}"}), 500
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f"Permanent deletion failed: {str(e)}"}), 500
 
 
 

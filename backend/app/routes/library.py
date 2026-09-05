@@ -1486,7 +1486,8 @@ def get_fine_types():
 @role_required(*LIBRARY_ROLES)
 def report_inventory():
     sid = _school_id()
-    books = Book.query.filter_by(school_id=sid, is_active=True).all()
+    limit = min(request.args.get('limit', 100, type=int), 200)
+    books = Book.query.filter_by(school_id=sid, is_active=True).limit(limit).all()
     return jsonify([b.to_dict(include_counts=True) for b in books]), 200
 
 
@@ -1495,7 +1496,8 @@ def report_inventory():
 def report_currently_issued():
     sid = _school_id()
     settings = _get_or_create_settings(sid)
-    issues = BookIssue.query.filter_by(school_id=sid, status='ISSUED').order_by(BookIssue.due_date.asc()).all()
+    limit = min(request.args.get('limit', 100, type=int), 200)
+    issues = BookIssue.query.filter_by(school_id=sid, status='ISSUED').order_by(BookIssue.due_date.asc()).limit(limit).all()
     return jsonify([_enrich_issue_dict(i, settings) for i in issues]), 200
 
 
@@ -1504,10 +1506,11 @@ def report_currently_issued():
 def report_overdue():
     sid = _school_id()
     settings = _get_or_create_settings(sid)
+    limit = min(request.args.get('limit', 100, type=int), 200)
     issues = BookIssue.query.filter(
         BookIssue.school_id == sid, BookIssue.status == 'ISSUED',
         BookIssue.due_date < date.today()
-    ).order_by(BookIssue.due_date.asc()).all()
+    ).order_by(BookIssue.due_date.asc()).limit(limit).all()
     return jsonify([_enrich_issue_dict(i, settings) for i in issues]), 200
 
 

@@ -715,6 +715,14 @@ def system_health():
 
     schools_online = School.query.count()
 
+    process_rss_mb = None
+    if psutil:
+        try:
+            proc = psutil.Process()
+            process_rss_mb = round(proc.memory_info().rss / (1024 * 1024), 2)
+        except Exception:
+            pass
+
     return jsonify({
         'overall_status': overall_status,
         # No session/last-active tracking exists on User yet to compute a
@@ -727,6 +735,7 @@ def system_health():
             'cpu_usage': cpu_usage,
             'memory_usage': memory_usage,
             'total_memory': total_memory,
+            'process_rss_mb': process_rss_mb,
         },
         'services': {
             'database': 'up' if db_ok else 'down',

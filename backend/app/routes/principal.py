@@ -944,8 +944,18 @@ def fees_summary():
      .group_by(FeeTransaction.payment_mode).all()
     mode_map = {mode: amt for mode, amt in mode_agg}
 
-    # Department/Service breakdown of Today's collection
-    today_txns = FeeTransaction.query.filter_by(school_id=sid, transaction_date=today).all()
+    # Department/Service breakdown of Today's collection in a single joined query
+    today_txns = db.session.query(
+        FeeTransaction.amount,
+        FeeRecord.source,
+        FeeRecord.fee_type
+    ).outerjoin(
+        FeeRecord, FeeTransaction.fee_record_id == FeeRecord.id
+    ).filter(
+        FeeTransaction.school_id == sid,
+        FeeTransaction.transaction_date == today
+    ).all()
+
     today_by_dept = {
         'academic': 0.0,
         'hostel': 0.0,
@@ -955,10 +965,9 @@ def fees_summary():
         'other': 0.0,
         'total': float(today_collection or 0.0),
     }
-    for txn in today_txns:
-        rec = FeeRecord.query.get(txn.fee_record_id) if txn.fee_record_id else None
-        src = (rec.source if rec and rec.source else (rec.fee_type if rec else 'ACADEMIC')).upper()
-        amt = float(txn.amount or 0.0)
+    for amt_val, rec_source, rec_type in today_txns:
+        src = (rec_source if rec_source else (rec_type if rec_type else 'ACADEMIC')).upper()
+        amt = float(amt_val or 0.0)
         if 'HOSTEL' in src:
             today_by_dept['hostel'] += amt
         elif 'TRANSPORT' in src:
@@ -6584,11 +6593,11 @@ def document_requests_pending_count():
     sid = _school_id()
     MANDATORY_DOC_TYPES = ['AADHAR', 'BIRTH_CERTIFICATE']
 
-    students = Student.query.filter_by(school_id=sid).all()
-    if not students:
+    student_tuples = db.session.query(Student.id).filter_by(school_id=sid).all()
+    if not student_tuples:
         return jsonify({'count': 0}), 200
 
-    student_ids = [s.id for s in students]
+    student_ids = [s_id for (s_id,) in student_tuples]
     have_docs = db.session.query(
         StudentDocument.student_id, StudentDocument.doc_type
     ).filter(
@@ -6602,8 +6611,8 @@ def document_requests_pending_count():
         submitted_map.setdefault(sid_, set()).add(dtype)
 
     missing_count = sum(
-        1 for s in students
-        if len(submitted_map.get(s.id, set())) < len(MANDATORY_DOC_TYPES)
+        1 for s_id in student_ids
+        if len(submitted_map.get(s_id, set())) < len(MANDATORY_DOC_TYPES)
     )
 
     return jsonify({'count': missing_count}), 200

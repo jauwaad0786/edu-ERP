@@ -319,22 +319,11 @@ def auto_expire_delegations():
     Returns:
         int: Number of delegations expired
     """
-    from flask import has_app_context
+    from flask import has_app_context, current_app
     if not has_app_context():
-        try:
-            from app import create_app
-            # Use current application if available
-            import sys
-            main_mod = sys.modules.get('wsgi') or sys.modules.get('app')
-            app_instance = getattr(main_mod, 'app', None)
-            if not app_instance:
-                app_instance = create_app()
-            with app_instance.app_context():
-                return _do_auto_expire()
-        except Exception as e:
-            import logging
-            logging.error(f"Failed to acquire app context for auto_expire_delegations: {e}")
-            return 0
+        import logging
+        logging.warning("auto_expire_delegations called without active Flask application context; skipping.")
+        return 0
     return _do_auto_expire()
 
 

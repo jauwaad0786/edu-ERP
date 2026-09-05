@@ -1691,9 +1691,9 @@ def generate_bulk_notice_pdf(students, school, month, FeeRecordModel, Attendance
     all_elements = []
     for idx, student in enumerate(students):
         fee_records = FeeRecordModel.query.filter_by(student_id=student.id, month=month).filter(FeeRecordModel.status != 'DRAFT').all()
-        att_records = AttendanceModel.query.filter_by(student_id=student.id).all()
-        present = sum(1 for a in att_records if a.status == 'PRESENT')
-        total_m = len(att_records)
+        # Compute attendance count via SQL count instead of loading all historic records into RAM
+        total_m = AttendanceModel.query.filter_by(student_id=student.id).count()
+        present = AttendanceModel.query.filter_by(student_id=student.id, status='PRESENT').count()
         att_summary = {'present': present, 'total': total_m, 'percentage': round(present / total_m * 100, 1) if total_m else 0}
         
         # Single page elements

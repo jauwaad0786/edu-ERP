@@ -67,17 +67,27 @@ def get_hrms_dashboard():
     sid = _school_id()
     today = date.today()
 
-    # Total Employees Breakdown
-    all_users = User.query.filter(
+    # Total Employees Breakdown via SQL count instead of loading all User models into RAM
+    total_employees = User.query.filter(
         User.school_id == sid,
         User.role != UserRole.STUDENT,
         User.role != UserRole.PARENT,
-    ).all()
+    ).count()
 
-    total_employees = len(all_users)
-    active_employees = sum(1 for u in all_users if u.is_active)
-    teachers_count = sum(1 for u in all_users if u.role == UserRole.TEACHER and u.is_active)
-    staff_count = active_employees - teachers_count
+    active_employees = User.query.filter(
+        User.school_id == sid,
+        User.role != UserRole.STUDENT,
+        User.role != UserRole.PARENT,
+        User.is_active == True
+    ).count()
+
+    teachers_count = User.query.filter(
+        User.school_id == sid,
+        User.role == UserRole.TEACHER,
+        User.is_active == True
+    ).count()
+
+    staff_count = max(0, active_employees - teachers_count)
 
     # Today's Attendance stats
     att_rows = StaffAttendance.query.filter_by(school_id=sid, attendance_date=today).all()
@@ -104,12 +114,23 @@ def get_hrms_dashboard():
     cur_year = today.year
     cur_payroll = PayrollRun.query.filter_by(school_id=sid, month=cur_month, year=cur_year).first()
 
-    # Attendance Trend (Last 7 days)
+    # Attendance Trend (Last 7 days) in a single grouped query
+    start_dt = today - timedelta(days=6)
+    history_counts = db.session.query(
+        StaffAttendance.attendance_date,
+        func.count(StaffAttendance.id)
+    ).filter(
+        StaffAttendance.school_id == sid,
+        StaffAttendance.attendance_date >= start_dt,
+        StaffAttendance.attendance_date <= today,
+        StaffAttendance.status.in_(['PRESENT', 'LATE', 'HALF_DAY'])
+    ).group_by(StaffAttendance.attendance_date).all()
+    history_map = {dt: cnt for dt, cnt in history_counts}
+
     trend = []
     for i in range(6, -1, -1):
         dt = today - timedelta(days=i)
-        d_rows = StaffAttendance.query.filter_by(school_id=sid, attendance_date=dt).all()
-        p_ct = sum(1 for r in d_rows if r.status in ('PRESENT', 'LATE', 'HALF_DAY'))
+        p_ct = history_map.get(dt, 0)
         trend.append({
             'date': dt.strftime('%d %b'),
             'present': p_ct,

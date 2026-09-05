@@ -15,7 +15,10 @@ class Config:
     SQLALCHEMY_ENGINE_OPTIONS = {
         'pool_pre_ping': True,   # test connection before using it; reconnect if dead
         'pool_recycle': 280,     # recycle connections before Neon's idle timeout kicks in
-    }
+        'pool_size': 3,          # keep base connections low for Render 512MB RAM
+        'max_overflow': 2,       # cap max burst connections to 5 total per process
+        'pool_timeout': 20,      # fail fast if connection cannot be acquired
+    } if not (os.environ.get('DATABASE_URL', 'sqlite:///eduErp.db')).startswith('sqlite') else {}
     UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', 'uploads/')
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max upload
 

@@ -23,6 +23,7 @@ bcrypt = Bcrypt()
 migrate = Migrate()
 load_dotenv()
 limiter = Limiter(get_remote_address)
+_scheduler_instance = None
 
 
 def create_app(config_name='default'):
@@ -240,42 +241,53 @@ def create_app(config_name='default'):
         except Exception as e:
             app.logger.warning(f'Role backfill skipped: {e}')
 
-        # ── START DELEGATION AUTO-EXPIRY SCHEDULER ──
-        try:
-            from apscheduler.schedulers.background import BackgroundScheduler
-            from app.services.delegation_service import auto_expire_delegations
+        # ── START DELEGATION AUTO-EXPIRY SCHEDULER (Singleton Process Guarded) ──
+        global _scheduler_instance
+        is_scheduler_disabled = os.environ.get('DISABLE_SCHEDULER', '').lower() in ('true', '1', 'yes')
+        is_testing = app.config.get('TESTING', False)
 
-            scheduler = BackgroundScheduler()
-            scheduler.add_job(
-                func=auto_expire_delegations,
-                trigger='interval',
-                minutes=5,
-                id='delegation_expiry',
-                replace_existing=True
-            )
-            scheduler.start()
-            app.logger.info('✅ Delegation auto-expiry scheduler started (runs every 5 min)')
+        if not is_scheduler_disabled and not is_testing and _scheduler_instance is None:
+            try:
+                from apscheduler.schedulers.background import BackgroundScheduler
+                from app.services.delegation_service import auto_expire_delegations
 
-            # ── 1-YEAR DELETED ITEMS RETENTION CLEANUP JOB (Requirement #4 & #16) ──
-            def _archive_cleanup_runner():
-                with app.app_context():
-                    from app.services.archive_service import run_one_year_cleanup_job
-                    run_one_year_cleanup_job()
+                def _delegation_expiry_runner():
+                    with app.app_context():
+                        try:
+                            auto_expire_delegations()
+                        except Exception as ex:
+                            app.logger.error(f'Delegation expiry job error: {ex}')
 
-            scheduler.add_job(
-                func=_archive_cleanup_runner,
-                trigger='interval',
-                hours=24,
-                id='deleted_items_retention_cleanup',
-                replace_existing=True
-            )
-            app.logger.info('✅ 1-Year Deleted Items Auto-Cleanup scheduler started (runs daily)')
+                def _archive_cleanup_runner():
+                    with app.app_context():
+                        try:
+                            from app.services.archive_service import run_one_year_cleanup_job
+                            run_one_year_cleanup_job()
+                        except Exception as ex:
+                            app.logger.error(f'Archive cleanup job error: {ex}')
 
-            # Shutdown scheduler when app context tears down
-            import atexit
-            atexit.register(lambda: scheduler.shutdown())
-        except Exception as e:
-            app.logger.warning(f'Delegation scheduler skipped: {e}')
+                _scheduler_instance = BackgroundScheduler()
+                _scheduler_instance.add_job(
+                    func=_delegation_expiry_runner,
+                    trigger='interval',
+                    minutes=5,
+                    id='delegation_expiry',
+                    replace_existing=True
+                )
+                _scheduler_instance.add_job(
+                    func=_archive_cleanup_runner,
+                    trigger='interval',
+                    hours=24,
+                    id='deleted_items_retention_cleanup',
+                    replace_existing=True
+                )
+                _scheduler_instance.start()
+                app.logger.info('✅ Background schedulers started (delegation auto-expiry: 5m, archive cleanup: 24h)')
+
+                import atexit
+                atexit.register(lambda: _scheduler_instance.shutdown() if _scheduler_instance else None)
+            except Exception as e:
+                app.logger.warning(f'Background scheduler initialization skipped: {e}')
         # ── END DELEGATION AUTO-EXPIRY SCHEDULER ──
 
     return app
