@@ -46,20 +46,18 @@ export default function PrincipalDashboard() {
       api.get('/principal/dashboard').catch(() => ({ data: null })),
       api.get('/principal/classes').catch(() => ({ data: [] })),
       api.get('/principal/fees/class-summary').catch(() => ({ data: [] })),
-      api.get('/principal/attendance/class-summary').catch(() => ({ data: [] })),
-      api.get('/principal/teachers/attendance/today').catch(() => ({ data: null })),
       api.get('/finance/monthly-trend', { params: { months: 6 } }).catch(() => ({ data: [] })),
       api.get('/finance/profit-summary', { params: { month: financeMonth } }).catch(() => ({ data: null })),
       api.get('/principal/holidays').catch(() => ({ data: [] })),
       api.get('/support/announcements/latest').catch(() => ({ data: [] })),
       api.get('/principal/fees/recent-collections').catch(() => ({ data: [] })),
       api.get('/principal/fees/summary').catch(() => ({ data: null })),
-    ]).then(([s, c, f, att, tatt, trend, profit, hols, ann, recentFees, fSum]) => {
+    ]).then(([s, c, f, trend, profit, hols, ann, recentFees, fSum]) => {
       setStats(s.data);
       setClasses(c.data || []);
       setFees(f.data);
-      setAttClass(att.data || []);
-      setTeacherAtt(tatt.data);
+      setAttClass(s.data?.class_attendance_today || []);
+      setTeacherAtt(s.data ? { present: s.data.teachers_present, absent: s.data.teachers_absent } : null);
       setTrendData(trend.data || []);
       setProfitSummary(profit.data);
 

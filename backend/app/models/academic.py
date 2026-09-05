@@ -15,6 +15,11 @@ class Class(db.Model):
     students  = db.relationship('Student', backref='class_ref', lazy='dynamic')
     subjects  = db.relationship('Subject', backref='class_ref', lazy='dynamic')
 
+    __table_args__ = (
+        db.Index('idx_classes_school_id', 'school_id'),
+        db.Index('idx_classes_school_name_sec', 'school_id', 'name', 'section'),
+    )
+
     def to_dict(self):
         return {
             'id': self.id, 'name': self.name,
@@ -39,6 +44,11 @@ class Subject(db.Model):
     marks             = db.relationship('Marks', backref='subject', lazy='dynamic')
     notes             = db.relationship('Note', backref='subject', lazy='dynamic')
     assigned_teacher  = db.relationship('Teacher', foreign_keys=[teacher_id], lazy='select', overlaps="classes_taught,teacher_ref")
+
+    __table_args__ = (
+        db.Index('idx_subjects_school_id', 'school_id'),
+        db.Index('idx_subjects_school_class', 'school_id', 'class_id'),
+    )
 
     def to_dict(self):
         teacher_name = ''
@@ -84,6 +94,11 @@ class Teacher(db.Model):
 
     classes_taught = db.relationship('Subject', backref='teacher_ref', lazy='dynamic',
                                      foreign_keys='Subject.teacher_id', overlaps="assigned_teacher,teacher_ref")
+
+    __table_args__ = (
+        db.Index('idx_teachers_school_id', 'school_id'),
+        db.Index('idx_teachers_school_deleted', 'school_id', 'is_deleted'),
+    )
 
     def to_dict(self):
         return {
@@ -161,6 +176,12 @@ class Student(db.Model):
     fees = db.relationship('FeeRecord', backref=db.backref('student_ref', overlaps="fee_records_rel,student"), lazy='dynamic', overlaps="fee_records_rel,student")
     documents  = db.relationship('StudentDocument', backref='student_ref', lazy='dynamic', cascade='all, delete-orphan')
 
+    __table_args__ = (
+        db.Index('idx_students_school_id', 'school_id'),
+        db.Index('idx_students_school_class', 'school_id', 'class_id'),
+        db.Index('idx_students_school_deleted', 'school_id', 'is_deleted'),
+    )
+
     def to_dict(self):
         c_name = self.class_ref.name if self.class_ref else ''
         c_sec  = self.class_ref.section if self.class_ref else ''
@@ -221,7 +242,11 @@ class Attendance(db.Model):
     marked_by  = db.Column(db.Integer, db.ForeignKey('users.id'))
     remarks    = db.Column(db.String(200))
 
-    __table_args__ = (db.UniqueConstraint('student_id', 'date', name='uq_attendance'),)
+    __table_args__ = (
+        db.UniqueConstraint('student_id', 'date', name='uq_attendance'),
+        db.Index('idx_attendance_class_date', 'class_id', 'date'),
+        db.Index('idx_attendance_student_date', 'student_id', 'date'),
+    )
 
     def to_dict(self):
         return {
@@ -278,6 +303,8 @@ class Marks(db.Model):
     # NEW: one mark entry per student+subject+exam (prevents duplicate rows on re-save)
     __table_args__ = (
         db.UniqueConstraint('student_id', 'subject_id', 'exam_id', name='uq_marks_student_subject_exam'),
+        db.Index('idx_marks_school_id', 'school_id'),
+        db.Index('idx_marks_school_exam_class', 'school_id', 'exam_id', 'class_id'),
     )
 
     def to_dict(self):

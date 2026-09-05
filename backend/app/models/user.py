@@ -91,7 +91,13 @@ class User(db.Model):
     is_anonymized       = db.Column(db.Boolean, default=False, nullable=False)
 
     # FK to school (null for SUPER_ADMIN)
-    school_id   = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=True)
+    school_id   = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=True, index=True)
+
+    __table_args__ = (
+        db.Index('idx_users_school_role', 'school_id', 'role'),
+        db.Index('idx_users_school_active', 'school_id', 'is_active', 'is_deleted'),
+        db.Index('idx_users_school_email', 'school_id', 'email'),
+    )
 
     # Relationships
     school          = db.relationship('School', foreign_keys=[school_id], backref='members')

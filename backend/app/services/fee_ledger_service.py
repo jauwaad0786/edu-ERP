@@ -14,6 +14,8 @@ Core Workflows:
 
 from datetime import datetime, date
 import calendar
+from sqlalchemy import func, case
+from sqlalchemy.orm import joinedload
 from app import db
 from app.models.fee_finance import (
     FeeHead, FeeStructureV2, FeeStructureItemV2, StudentFeeAssignment,
@@ -1299,7 +1301,6 @@ def get_finance_dashboard_metrics(school_id, session='2026-27', month=None):
 
     if month:
         bill_query = bill_query.filter_by(bill_month=month)
-        # Match payments in this month
         try:
             yr, mo = map(int, month.split('-'))
             last_day = calendar.monthrange(yr, mo)[1]
@@ -1308,26 +1309,29 @@ def get_finance_dashboard_metrics(school_id, session='2026-27', month=None):
         except Exception:
             pass
 
-    bills_in_session = bill_query.all()
-    if not bills_in_session and not month:
-        # If no bills exist under this specific session tag, fallback to all active school bills
-        bills = FeeBill.query.filter_by(school_id=school_id).filter(FeeBill.status != BillStatus.CANCELLED.value).all()
-        payments = FeePayment.query.filter_by(school_id=school_id, status=PaymentStatus.VALID.value).all()
+    bills_in_session_count = bill_query.count()
+    use_fallback = (bills_in_session_count == 0 and not month)
+
+    if use_fallback:
+        active_bills = FeeBill.query.filter_by(school_id=school_id).filter(FeeBill.status != BillStatus.CANCELLED.value)
+        active_payments = FeePayment.query.filter_by(school_id=school_id, status=PaymentStatus.VALID.value)
+        total_billed = active_bills.with_entities(func.coalesce(func.sum(FeeBill.total_payable), 0.0)).scalar() or 0.0
+        total_collected = active_payments.with_entities(func.coalesce(func.sum(FeePayment.total_paid), 0.0)).scalar() or 0.0
+        outstanding = active_bills.with_entities(func.coalesce(func.sum(FeeBill.balance_due), 0.0)).scalar() or 0.0
     else:
-        bills = bills_in_session
-        payments = pay_query.all()
+        total_billed = bill_query.with_entities(func.coalesce(func.sum(FeeBill.total_payable), 0.0)).scalar() or 0.0
+        total_collected = pay_query.with_entities(func.coalesce(func.sum(FeePayment.total_paid), 0.0)).scalar() or 0.0
+        outstanding = bill_query.with_entities(func.coalesce(func.sum(FeeBill.balance_due), 0.0)).scalar() or 0.0
 
-    expenses = exp_query.all()
+    total_billed = float(total_billed)
+    total_collected = float(total_collected)
+    outstanding = float(outstanding)
 
-    total_billed    = sum(b.total_payable for b in bills)
-    total_collected = sum(p.total_paid for p in payments)
-    outstanding     = sum(b.balance_due for b in bills)
-    total_expenses  = sum(e.amount for e in expenses)
-    net_surplus     = round(total_collected - total_expenses, 2)
-    collection_pct  = round((total_collected / total_billed * 100.0), 1) if total_billed > 0 else 0.0
+    total_expenses = float(exp_query.with_entities(func.coalesce(func.sum(Expense.amount), 0.0)).scalar() or 0.0)
+    net_surplus = round(total_collected - total_expenses, 2)
+    collection_pct = round((total_collected / total_billed * 100.0), 1) if total_billed > 0 else 0.0
 
-    # ── Service-wise Breakdown ──────────────────────────────────────────
-    # Group allocations and bill items by department/category
+    # ── Service-wise Breakdown (Direct SQL Aggregation) ──────────────────
     service_stats = {
         'ACADEMIC':  {'name': 'School / Tuition Fees', 'department': 'ACCOUNTS',  'billed': 0.0, 'collected': 0.0, 'outstanding': 0.0},
         'TRANSPORT': {'name': 'Transport Service',     'department': 'TRANSPORT', 'billed': 0.0, 'collected': 0.0, 'outstanding': 0.0},
@@ -1337,17 +1341,34 @@ def get_finance_dashboard_metrics(school_id, session='2026-27', month=None):
         'OTHER':     {'name': 'Other & Activities',    'department': 'ACCOUNTS',  'billed': 0.0, 'collected': 0.0, 'outstanding': 0.0},
     }
 
-    for b in bills:
-        for itm in b.items:
-            cat = itm.fee_head.category if itm.fee_head else 'ACADEMIC'
-            if cat not in service_stats:
-                cat = 'OTHER'
-            service_stats[cat]['billed'] = round(service_stats[cat]['billed'] + itm.net_amount, 2)
-            service_stats[cat]['collected'] = round(service_stats[cat]['collected'] + (itm.paid_amount or 0.0), 2)
-            service_stats[cat]['outstanding'] = round(service_stats[cat]['outstanding'] + (itm.balance_amount or 0.0), 2)
+    item_query = db.session.query(
+        FeeHead.category,
+        func.coalesce(func.sum(FeeBillItem.net_amount), 0.0),
+        func.coalesce(func.sum(FeeBillItem.paid_amount), 0.0),
+        func.coalesce(func.sum(FeeBillItem.balance_amount), 0.0)
+    ).select_from(FeeBillItem).join(
+        FeeBill, FeeBillItem.bill_id == FeeBill.id
+    ).outerjoin(
+        FeeHead, FeeBillItem.fee_head_id == FeeHead.id
+    ).filter(
+        FeeBill.school_id == school_id,
+        FeeBill.status != BillStatus.CANCELLED.value
+    )
 
-    # ── Month-wise Financial Performance ─────────────────────────────────
-    # Standard Indian academic year: April (04) to March (03)
+    if not use_fallback:
+        item_query = item_query.filter(FeeBill.session == session)
+    if month:
+        item_query = item_query.filter(FeeBill.bill_month == month)
+
+    for cat_name, b_net, b_paid, b_bal in item_query.group_by(FeeHead.category).all():
+        cat_key = (cat_name or 'ACADEMIC').upper()
+        if cat_key not in service_stats:
+            cat_key = 'OTHER'
+        service_stats[cat_key]['billed'] = round(service_stats[cat_key]['billed'] + float(b_net), 2)
+        service_stats[cat_key]['collected'] = round(service_stats[cat_key]['collected'] + float(b_paid), 2)
+        service_stats[cat_key]['outstanding'] = round(service_stats[cat_key]['outstanding'] + float(b_bal), 2)
+
+    # ── Month-wise Financial Performance (Grouped SQL) ───────────────────
     try:
         start_year = int(session.split('-')[0])
     except Exception:
@@ -1368,18 +1389,61 @@ def get_finance_dashboard_metrics(school_id, session='2026-27', month=None):
         (start_year + 1, 3, f"{start_year+1}-03", f"March {start_year+1}"),
     ]
 
-    all_school_bills = FeeBill.query.filter_by(school_id=school_id, session=session).filter(FeeBill.status != BillStatus.CANCELLED.value).all()
-    all_school_payments = FeePayment.query.filter_by(school_id=school_id, session=session, status=PaymentStatus.VALID.value).all()
-    all_school_expenses = Expense.query.filter_by(school_id=school_id).all()
+    bill_month_map = {
+        row[0]: (float(row[1] or 0.0), float(row[2] or 0.0))
+        for row in db.session.query(
+            FeeBill.bill_month,
+            func.sum(FeeBill.total_payable),
+            func.sum(FeeBill.balance_due)
+        ).filter(
+            FeeBill.school_id == school_id,
+            FeeBill.session == session,
+            FeeBill.status != BillStatus.CANCELLED.value
+        ).group_by(FeeBill.bill_month).all()
+    }
+
+    start_date_range = date(start_year, 4, 1)
+    end_date_range = date(start_year + 1, 3, 31)
+
+    payments_in_range = db.session.query(
+        FeePayment.payment_date,
+        FeePayment.total_paid
+    ).filter(
+        FeePayment.school_id == school_id,
+        FeePayment.session == session,
+        FeePayment.status == PaymentStatus.VALID.value,
+        FeePayment.payment_date >= start_date_range,
+        FeePayment.payment_date <= end_date_range
+    ).all()
+
+    expenses_in_range = db.session.query(
+        Expense.payment_date,
+        Expense.amount
+    ).filter(
+        Expense.school_id == school_id,
+        Expense.payment_date >= start_date_range,
+        Expense.payment_date <= end_date_range
+    ).all()
+
+    pay_month_map = {}
+    for p_dt, p_amt in payments_in_range:
+        if p_dt:
+            mkey = (p_dt.year, p_dt.month)
+            pay_month_map[mkey] = pay_month_map.get(mkey, 0.0) + float(p_amt or 0.0)
+
+    exp_month_map = {}
+    for e_dt, e_amt in expenses_in_range:
+        if e_dt:
+            mkey = (e_dt.year, e_dt.month)
+            exp_month_map[mkey] = exp_month_map.get(mkey, 0.0) + float(e_amt or 0.0)
 
     monthly_summary = []
     for yr, mo, key, label in academic_months:
-        m_billed = sum(b.total_payable for b in all_school_bills if b.bill_month == key)
-        m_out    = sum(b.balance_due for b in all_school_bills if b.bill_month == key)
-        
-        # Filter payments and expenses falling in this calendar month
-        m_coll   = sum(p.total_paid for p in all_school_payments if p.payment_date and p.payment_date.year == yr and p.payment_date.month == mo)
-        m_exp    = sum(e.amount for e in all_school_expenses if e.payment_date and e.payment_date.year == yr and e.payment_date.month == mo)
+        b_info = bill_month_map.get(key, (0.0, 0.0))
+        m_billed = b_info[0]
+        m_out    = b_info[1]
+        m_coll   = pay_month_map.get((yr, mo), 0.0)
+        m_exp    = exp_month_map.get((yr, mo), 0.0)
         m_net    = round(m_coll - m_exp, 2)
 
         monthly_summary.append({
@@ -1394,7 +1458,11 @@ def get_finance_dashboard_metrics(school_id, session='2026-27', month=None):
 
     # ── Today's Collection Reconciliation ────────────────────────────────
     today = date.today()
-    today_payments = [p for p in payments if p.payment_date == today]
+    today_payments = FeePayment.query.filter(
+        FeePayment.school_id == school_id,
+        FeePayment.payment_date == today,
+        FeePayment.status == PaymentStatus.VALID.value
+    ).options(joinedload(FeePayment.collector)).all()
     today_total = sum(p.total_paid for p in today_payments)
 
     modes_breakdown = {'CASH': 0.0, 'UPI': 0.0, 'CARD': 0.0, 'CHEQUE': 0.0, 'BANK_TRANSFER': 0.0, 'ONLINE': 0.0}
@@ -1409,17 +1477,18 @@ def get_finance_dashboard_metrics(school_id, session='2026-27', month=None):
 
     # ── Department-wise Expense Breakdown ──────────────────────────────
     dept_expenses = {
-        'TEACHER_SALARY':        {'label': 'Teacher Salaries',           'department': 'ACADEMIC',    'amount': 0.0, 'count': 0},
-        'STAFF_SALARY':          {'label': 'Staff & Admin Salaries',     'department': 'ADMIN',       'amount': 0.0, 'count': 0},
+        'TEACHER_SALARY':        {'label': 'Teacher Salaries',            'department': 'ACADEMIC',    'amount': 0.0, 'count': 0},
+        'STAFF_SALARY':          {'label': 'Staff & Admin Salaries',      'department': 'ADMIN',       'amount': 0.0, 'count': 0},
         'TRANSPORT':             {'label': 'Transport Operations & Staff','department': 'TRANSPORT',   'amount': 0.0, 'count': 0},
-        'HOSTEL':                {'label': 'Hostel Operations & Staff',  'department': 'HOSTEL',      'amount': 0.0, 'count': 0},
-        'LIBRARY':               {'label': 'Library Books & Staff',      'department': 'LIBRARY',     'amount': 0.0, 'count': 0},
-        'UTILITIES_MAINTENANCE': {'label': 'Utilities & Maintenance',    'department': 'OPERATIONS',  'amount': 0.0, 'count': 0},
-        'OTHER':                 {'label': 'Vendor & Miscellaneous',     'department': 'OTHER',       'amount': 0.0, 'count': 0},
+        'HOSTEL':                {'label': 'Hostel Operations & Staff',   'department': 'HOSTEL',      'amount': 0.0, 'count': 0},
+        'LIBRARY':               {'label': 'Library Books & Staff',       'department': 'LIBRARY',     'amount': 0.0, 'count': 0},
+        'UTILITIES_MAINTENANCE': {'label': 'Utilities & Maintenance',     'department': 'OPERATIONS',  'amount': 0.0, 'count': 0},
+        'OTHER':                 {'label': 'Vendor & Miscellaneous',      'department': 'OTHER',       'amount': 0.0, 'count': 0},
     }
-    for e in expenses:
-        cat = (e.category or '').upper()
-        amt = e.amount or 0.0
+    expenses_tuples = exp_query.with_entities(Expense.category, Expense.amount).all()
+    for cat_val, amt_val in expenses_tuples:
+        cat = (cat_val or '').upper()
+        amt = float(amt_val or 0.0)
         if 'TEACH' in cat:
             dept_expenses['TEACHER_SALARY']['amount'] = round(dept_expenses['TEACHER_SALARY']['amount'] + amt, 2)
             dept_expenses['TEACHER_SALARY']['count'] += 1
@@ -1442,46 +1511,116 @@ def get_finance_dashboard_metrics(school_id, session='2026-27', month=None):
             dept_expenses['OTHER']['amount'] = round(dept_expenses['OTHER']['amount'] + amt, 2)
             dept_expenses['OTHER']['count'] += 1
 
-    # ── Class-wise Fee Collection Summary ──────────────────────────────
+    # ── Class-wise Fee Collection Summary (Batch Aggregation) ───────────
     classes = Class.query.filter_by(school_id=school_id).all()
+    student_counts = dict(
+        db.session.query(Student.class_id, func.count(Student.id))
+        .filter(Student.school_id == school_id)
+        .group_by(Student.class_id).all()
+    )
+
+    class_bill_query = db.session.query(
+        Student.class_id,
+        func.sum(FeeBill.total_payable),
+        func.sum(FeeBill.balance_due)
+    ).join(FeeBill, Student.id == FeeBill.student_id
+    ).filter(
+        FeeBill.school_id == school_id,
+        FeeBill.status != BillStatus.CANCELLED.value
+    )
+    if not use_fallback:
+        class_bill_query = class_bill_query.filter(FeeBill.session == session)
+    if month:
+        class_bill_query = class_bill_query.filter(FeeBill.bill_month == month)
+
+    class_bill_map = {
+        row[0]: (float(row[1] or 0.0), float(row[2] or 0.0))
+        for row in class_bill_query.group_by(Student.class_id).all()
+    }
+
+    class_pay_query = db.session.query(
+        Student.class_id,
+        func.sum(FeePayment.total_paid)
+    ).join(FeePayment, Student.id == FeePayment.student_id
+    ).filter(
+        FeePayment.school_id == school_id,
+        FeePayment.status == PaymentStatus.VALID.value
+    )
+    if not use_fallback:
+        class_pay_query = class_pay_query.filter(FeePayment.session == session)
+    if month:
+        try:
+            yr, mo = map(int, month.split('-'))
+            last_day = calendar.monthrange(yr, mo)[1]
+            class_pay_query = class_pay_query.filter(FeePayment.payment_date >= date(yr, mo, 1), FeePayment.payment_date <= date(yr, mo, last_day))
+        except Exception:
+            pass
+
+    class_pay_map = {
+        row[0]: float(row[1] or 0.0)
+        for row in class_pay_query.group_by(Student.class_id).all()
+    }
+
     class_stats = []
     for cls in classes:
-        cls_students = Student.query.filter_by(class_id=cls.id, school_id=school_id).all()
-        stu_ids = {s.id for s in cls_students}
-        c_billed = sum(b.total_payable for b in bills if b.student_id in stu_ids)
-        c_collected = sum(p.total_paid for p in payments if p.student_id in stu_ids)
-        c_out = sum(b.balance_due for b in bills if b.student_id in stu_ids)
+        stu_count = student_counts.get(cls.id, 0)
+        c_billed, c_out = class_bill_map.get(cls.id, (0.0, 0.0))
+        c_collected = class_pay_map.get(cls.id, 0.0)
         c_pct = round((c_collected / c_billed * 100.0), 1) if c_billed > 0 else 0.0
 
         class_stats.append({
             'class_id':       cls.id,
             'class_name':     f"{cls.name} {cls.section or ''}".strip(),
-            'students_count': len(cls_students),
+            'students_count': stu_count,
             'billed':         round(c_billed, 2),
             'collected':      round(c_collected, 2),
             'outstanding':    round(c_out, 2),
             'collection_pct': c_pct,
         })
 
-    # ── Phase 2: Inventory, Vendors & Asset Summary ──────────────────
+    # ── Phase 2: Inventory, Vendors & Asset Summary (SQL Aggregation) ────
     try:
         from app.models.finance import InventoryItem, Vendor, VendorBill, SchoolAsset
-        inv_items = InventoryItem.query.filter_by(school_id=school_id, status='ACTIVE').all()
-        total_inv_items = len(inv_items)
-        total_stock_val = sum((i.quantity or 0) * (i.unit_price or 0.0) for i in inv_items)
-        low_stock_count = sum(1 for i in inv_items if (i.quantity or 0) <= (i.min_stock or 0))
+        inv_stats = db.session.query(
+            func.count(InventoryItem.id),
+            func.coalesce(func.sum(InventoryItem.quantity * InventoryItem.unit_price), 0.0),
+            func.coalesce(func.sum(case((InventoryItem.quantity <= InventoryItem.min_stock, 1), else_=0)), 0)
+        ).filter(InventoryItem.school_id == school_id, InventoryItem.status == 'ACTIVE').first()
 
-        vendors = Vendor.query.filter_by(school_id=school_id, is_active=True).all()
-        total_vendors = len(vendors)
-        vendor_bills = VendorBill.query.filter_by(school_id=school_id).all()
-        total_payables = sum(b.balance_amount for b in vendor_bills if b.status != 'VOID')
-        pending_bills_count = sum(1 for b in vendor_bills if b.status in ['PENDING', 'PARTIAL'])
+        total_inv_items = int(inv_stats[0] or 0) if inv_stats else 0
+        total_stock_val = float(inv_stats[1] or 0.0) if inv_stats else 0.0
+        low_stock_count = int(inv_stats[2] or 0) if inv_stats else 0
 
-        assets = SchoolAsset.query.filter_by(school_id=school_id).all()
-        total_assets = len(assets)
-        assigned_assets = sum(1 for a in assets if a.status == 'ASSIGNED')
-        under_repair_assets = sum(1 for a in assets if a.status in ['UNDER_MAINTENANCE', 'IN_REPAIR', 'DAMAGED'])
-        warranty_expiring_assets = sum(1 for a in assets if a.is_warranty_expiring_soon)
+        total_vendors = Vendor.query.filter_by(school_id=school_id, is_active=True).count()
+
+        bill_stats = db.session.query(
+            func.coalesce(func.sum(case((VendorBill.status != 'VOID', VendorBill.balance_amount), else_=0.0)), 0.0),
+            func.coalesce(func.sum(case((VendorBill.status.in_(['PENDING', 'PARTIAL']), 1), else_=0)), 0)
+        ).filter(VendorBill.school_id == school_id).first()
+
+        total_payables = float(bill_stats[0] or 0.0) if bill_stats else 0.0
+        pending_bills_count = int(bill_stats[1] or 0) if bill_stats else 0
+
+        asset_stats = db.session.query(
+            func.count(SchoolAsset.id),
+            func.coalesce(func.sum(case((SchoolAsset.status == 'ASSIGNED', 1), else_=0)), 0),
+            func.coalesce(func.sum(case((SchoolAsset.status.in_(['UNDER_MAINTENANCE', 'IN_REPAIR', 'DAMAGED']), 1), else_=0)), 0)
+        ).filter(SchoolAsset.school_id == school_id).first()
+
+        total_assets = int(asset_stats[0] or 0) if asset_stats else 0
+        assigned_assets = int(asset_stats[1] or 0) if asset_stats else 0
+        under_repair_assets = int(asset_stats[2] or 0) if asset_stats else 0
+
+        # Expiring warranty check
+        today_val = date.today()
+        from datetime import timedelta
+        soon_limit = today_val + timedelta(days=30)
+        warranty_expiring_assets = SchoolAsset.query.filter(
+            SchoolAsset.school_id == school_id,
+            SchoolAsset.warranty_expiry.isnot(None),
+            SchoolAsset.warranty_expiry >= today_val,
+            SchoolAsset.warranty_expiry <= soon_limit
+        ).count()
     except Exception:
         total_inv_items = 0
         total_stock_val = 0.0

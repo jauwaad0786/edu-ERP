@@ -29,23 +29,23 @@ def get_transport_summary(school_id: int) -> dict:
 
 def get_hostel_summary(school_id: int, check_visitors: bool = False) -> dict:
     """Occupancy across all hostels and optional visitor checks."""
-    from app.models.hostel import Hostel, HostelBed, HostelRoom, HostelFloor, HostelBuilding
+    from app.models.hostel import Hostel, HostelBed
+    from sqlalchemy import case
 
-    hostels = Hostel.query.filter_by(school_id=school_id, status='ACTIVE').all()
-    total_beds = 0
-    occupied   = 0
+    total_hostels = Hostel.query.filter_by(school_id=school_id, status='ACTIVE').count()
+    bed_stats = db.session.query(
+        func.count(HostelBed.id),
+        func.sum(case((HostelBed.status == 'OCCUPIED', 1), else_=0))
+    ).filter(HostelBed.school_id == school_id).first()
 
-    for h in hostels:
-        beds = HostelBed.query.join(HostelRoom).join(HostelFloor).join(HostelBuilding)\
-                  .filter(HostelBuilding.hostel_id == h.id).all()
-        total_beds += len(beds)
-        occupied   += sum(1 for b in beds if b.status == 'OCCUPIED')
+    total_beds = int(bed_stats[0] or 0) if bed_stats else 0
+    occupied   = int(bed_stats[1] or 0) if bed_stats else 0
 
     vacant     = total_beds - occupied
     occ_pct    = round(occupied / total_beds * 100, 1) if total_beds > 0 else 0
 
     res = {
-        'total_hostels':    len(hostels),
+        'total_hostels':    total_hostels,
         'total_beds':       total_beds,
         'occupied_beds':    occupied,
         'vacant_beds':      vacant,

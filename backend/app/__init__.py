@@ -204,6 +204,11 @@ def create_app(config_name='default'):
             db.create_all()
             _seed_super_admin()
             _ensure_deleted_items_schema()
+            try:
+                from app.migrations.add_performance_indexes import ensure_performance_indexes
+                ensure_performance_indexes()
+            except Exception as idx_e:
+                app.logger.warning(f'Performance index migration note: {idx_e}')
 
         except Exception as e:
             app.logger.error(f'Startup schema initialization error: {e}')

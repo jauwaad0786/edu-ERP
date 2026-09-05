@@ -34,6 +34,7 @@ from app.utils.pdf_generator import (
 from app.routes.admin import FEATURE_CATALOG, PLAN_PRESETS, PLAN_PRICING
 
 from sqlalchemy import func
+from sqlalchemy.orm import joinedload, selectinload
 from datetime import date, datetime, timedelta
 import random, string, re
 import cloudinary.uploader
@@ -57,20 +58,49 @@ def _gen_receipt():
 @principal_bp.route('/classes', methods=['GET'])
 @role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT', 'SUPER_ADMIN', 'ADMIN')
 def list_classes():
-    classes = Class.query.filter_by(school_id=_school_id()).order_by(Class.name.asc(), Class.section.asc()).all()
+    sid = _school_id()
+    classes = Class.query.filter_by(school_id=sid).order_by(Class.name.asc(), Class.section.asc()).all()
+    if not classes:
+        return jsonify([]), 200
+
+    # Batch 1: Student counts per class in 1 query
+    stu_counts = dict(
+        db.session.query(Student.class_id, func.count(Student.id))
+        .filter(Student.school_id == sid, Student.is_deleted == False)
+        .group_by(Student.class_id)
+        .all()
+    )
+
+    # Batch 2: Subject counts per class in 1 query
+    subj_counts = dict(
+        db.session.query(Subject.class_id, func.count(Subject.id))
+        .filter(Subject.school_id == sid)
+        .group_by(Subject.class_id)
+        .all()
+    )
+
+    # Batch 3: Teacher names in 1 query with eager loaded users
+    teacher_ids = {c.teacher_id for c in classes if c.teacher_id}
+    teacher_names = {}
+    if teacher_ids:
+        teachers = (
+            Teacher.query.options(joinedload(Teacher.user))
+            .filter(Teacher.id.in_(teacher_ids))
+            .all()
+        )
+        for t in teachers:
+            if t.user:
+                teacher_names[t.id] = t.user.name
+
     result = []
     for c in classes:
         d = c.to_dict()
-        d['student_count'] = c.students.count()
-        d['subjects_count'] = c.subjects.count()
-        t_name = ''
-        if c.teacher_id:
-            t = Teacher.query.get(c.teacher_id)
-            if t and t.user:
-                t_name = t.user.name
-        d['teacher_name'] = t_name
+        d['student_count'] = stu_counts.get(c.id, 0)
+        d['subjects_count'] = subj_counts.get(c.id, 0)
+        d['teacher_name'] = teacher_names.get(c.teacher_id, '')
         result.append(d)
     return jsonify(result), 200
+
 @principal_bp.route('/classes/<int:class_id>', methods=['PATCH'])
 @role_required('PRINCIPAL', 'TEACHER')
 def update_class(class_id):
@@ -271,7 +301,7 @@ def assign_class_teacher(class_id):
 @role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
 @feature_required('teacher_management')
 def list_teachers():
-    teachers = Teacher.query.filter_by(school_id=_school_id()).filter(Teacher.is_deleted == False).all()
+    teachers = Teacher.query.options(joinedload(Teacher.user)).filter_by(school_id=_school_id()).filter(Teacher.is_deleted == False).all()
     return jsonify([t.to_dict() for t in teachers]), 200
 
 
@@ -694,7 +724,10 @@ def add_staff_salary_record(user_id):
 def list_students():
     class_id = request.args.get('class_id')
     search   = (request.args.get('search') or '').strip()
-    q = Student.query.filter_by(school_id=_school_id()).filter(Student.is_deleted == False)
+    q = Student.query.options(
+        joinedload(Student.user),
+        joinedload(Student.class_ref)
+    ).filter_by(school_id=_school_id()).filter(Student.is_deleted == False)
     if class_id:
         q = q.filter_by(class_id=class_id)
     if search:
@@ -2154,8 +2187,18 @@ def fees_class_summary():
     sid     = _school_id()
     month   = request.args.get('month')  # optional — "YYYY-MM"
     classes = Class.query.filter_by(school_id=sid).all()
-    # ONE query: aggregate per student
-    from sqlalchemy import case
+    if not classes:
+        return jsonify([]), 200
+
+    # Pre-fetch student counts per class in 1 query
+    stu_counts = dict(
+        db.session.query(Student.class_id, func.count(Student.id))
+        .filter(Student.school_id == sid, Student.is_deleted == False)
+        .group_by(Student.class_id)
+        .all()
+    )
+
+    # ONE query: aggregate fee due and paid per class
     agg_q = db.session.query(
         Student.class_id,
         func.sum(FeeRecord.amount_due).label('total_due'),
@@ -2172,9 +2215,10 @@ def fees_class_summary():
     result = []
     for c in classes:
         totals = agg_map.get(c.id, {'due': 0, 'paid': 0})
+        s_count = stu_counts.get(c.id, 0)
         result.append({
             'class_id': c.id, 'class_name': c.name, 'section': c.section,
-            'student_count': c.students.count(),
+            'student_count': s_count,
             'total_due': totals['due'], 'total_collected': totals['paid'],
             'pending': totals['due'] - totals['paid'],
             'collection_pct': round(totals['paid'] / totals['due'] * 100, 1)
@@ -2398,45 +2442,70 @@ def attendance_class_summary():
     target     = date.fromisoformat(date_param) if date_param else date.today()
 
     classes = Class.query.filter_by(school_id=sid).all()
-    result  = []
+    if not classes:
+        return jsonify([]), 200
 
+    # Batch 1: All active students for this school with eager-loaded user names
+    students = (
+        Student.query.options(joinedload(Student.user))
+        .filter_by(school_id=sid)
+        .filter(Student.is_deleted == False)
+        .all()
+    )
+    class_students = {}
+    for s in students:
+        class_students.setdefault(s.class_id, []).append(s)
+
+    # Batch 2: All attendance records for this school on the target date in 1 query
+    att_records = (
+        Attendance.query.join(Student, Attendance.student_id == Student.id)
+        .filter(Student.school_id == sid, Attendance.date == target)
+        .all()
+    )
+    att_map = {a.student_id: a.status for a in att_records}
+
+    result = []
     for c in classes:
-        students    = c.students.all()
-        total       = len(students)
-        student_ids = [s.id for s in students]
-
-        att = Attendance.query.filter(
-            Attendance.student_id.in_(student_ids),
-            Attendance.date == target
-        ).all()
-
-        present  = sum(1 for a in att if a.status == 'PRESENT')
-        absent   = sum(1 for a in att if a.status == 'ABSENT')
-        late     = sum(1 for a in att if a.status == 'LATE')
-        marked   = len(att)
-
-        # Student-wise detail
-        att_map = {a.student_id: a.status for a in att}
+        cls_students = class_students.get(c.id, [])
+        total = len(cls_students)
+        present = 0
+        absent = 0
+        late = 0
+        marked = 0
         students_detail = []
-        for s in students:
+
+        for s in cls_students:
+            st = att_map.get(s.id, 'NOT_MARKED')
+            if st == 'PRESENT':
+                present += 1
+                marked += 1
+            elif st == 'ABSENT':
+                absent += 1
+                marked += 1
+            elif st == 'LATE':
+                late += 1
+                marked += 1
+            elif st != 'NOT_MARKED':
+                marked += 1
+
             students_detail.append({
-                'student_id':   s.id,
+                'student_id': s.id,
                 'student_name': s.user.name if s.user else '',
-                'roll_number':  s.roll_number or '',
-                'status':       att_map.get(s.id, 'NOT_MARKED')
+                'roll_number': s.roll_number or '',
+                'status': st
             })
 
         result.append({
-            'class_id':    c.id,
-            'class_name':  c.name,
-            'section':     c.section,
-            'total':       total,
-            'present':     present,
-            'absent':      absent,
-            'late':        late,
-            'not_marked':  total - marked,
+            'class_id': c.id,
+            'class_name': c.name,
+            'section': c.section,
+            'total': total,
+            'present': present,
+            'absent': absent,
+            'late': late,
+            'not_marked': total - marked,
             'present_pct': round(present / total * 100, 1) if total else 0,
-            'students':    students_detail
+            'students': students_detail
         })
 
     return jsonify(result), 200
@@ -3937,17 +4006,37 @@ def dashboard():
     t_present = sum(1 for a in t_att_today if a.status == 'PRESENT')
     t_absent  = sum(1 for a in t_att_today if a.status == 'ABSENT')
 
-    # ── Class-wise student attendance breakdown today ────────────────────────
+    # ── Class-wise student attendance breakdown today (Optimized into 2 queries) ──
     classes = Class.query.filter_by(school_id=sid).order_by(Class.name, Class.section).all()
+
+    # Pre-fetch student counts per class
+    cls_student_counts = dict(
+        db.session.query(Student.class_id, func.count(Student.id))
+        .filter(Student.school_id == sid, Student.is_deleted == False)
+        .group_by(Student.class_id)
+        .all()
+    )
+
+    # Class-wise attendance status counts today in 1 query
+    cls_att_rows = (
+        db.session.query(Student.class_id, Attendance.status, func.count(Attendance.id))
+        .join(Student, Attendance.student_id == Student.id)
+        .filter(Student.school_id == sid, Attendance.date == today)
+        .group_by(Student.class_id, Attendance.status)
+        .all()
+    )
+    cls_att_map = {}
+    for cid, st, cnt in cls_att_rows:
+        cls_att_map.setdefault(cid, {})[st] = cnt
+
     class_att_list = []
     for c in classes:
-        cls_students = c.students.all()
-        cls_total = len(cls_students)
-        cls_sids = [s.id for s in cls_students]
-        cls_att = [a for a in att_today if a.student_id in cls_sids]
-        cls_p = sum(1 for a in cls_att if a.status == 'PRESENT')
-        cls_a = sum(1 for a in cls_att if a.status == 'ABSENT')
-        cls_l = sum(1 for a in cls_att if a.status == 'LATE')
+        cls_total = cls_student_counts.get(c.id, 0)
+        st_counts = cls_att_map.get(c.id, {})
+        cls_p = st_counts.get('PRESENT', 0)
+        cls_a = st_counts.get('ABSENT', 0)
+        cls_l = st_counts.get('LATE', 0)
+        cls_marked = sum(st_counts.values())
         cls_pct = round((cls_p / cls_total) * 100, 1) if cls_total > 0 else 0
         cls_name_full = f"{c.name}{' - ' + c.section if c.section else ''}"
         class_att_list.append({
@@ -3957,7 +4046,7 @@ def dashboard():
             'present':     cls_p,
             'absent':      cls_a,
             'late':        cls_l,
-            'not_marked':  cls_total - len(cls_att),
+            'not_marked':  max(0, cls_total - cls_marked),
             'percentage':  cls_pct
         })
 
@@ -3969,32 +4058,51 @@ def dashboard():
         if sorted_by_pct:
             best_class = sorted_by_pct[0]
 
-    # ── Attendance trend — last 7 calendar days, % present of marked ──────────
+    # ── Attendance trend — last 7 calendar days in 1 single grouped query ──────────
+    seven_days_ago = today - timedelta(days=6)
+    att_trend_rows = (
+        db.session.query(Attendance.date, Attendance.status, func.count(Attendance.id))
+        .join(Student, Attendance.student_id == Student.id)
+        .filter(Student.school_id == sid, Attendance.date >= seven_days_ago, Attendance.date <= today)
+        .group_by(Attendance.date, Attendance.status)
+        .all()
+    )
+    trend_map = {}
+    for dt, st, cnt in att_trend_rows:
+        trend_map.setdefault(dt, {})[st] = cnt
+
     attendance_trend = []
     for i in range(6, -1, -1):
-        d   = today - timedelta(days=i)
-        day = Attendance.query.join(
-                  Student, Attendance.student_id == Student.id
-              ).filter(Student.school_id == sid, Attendance.date == d).all()
-        marked  = len(day)
-        present = sum(1 for a in day if a.status == 'PRESENT')
+        d = today - timedelta(days=i)
+        day_st = trend_map.get(d, {})
+        marked = sum(day_st.values())
+        present = day_st.get('PRESENT', 0)
         attendance_trend.append({
             'date':    d.isoformat(),
             'label':   d.strftime('%a'),
             'percent': round(present / marked * 100, 1) if marked else 0,
         })
 
-    # ── Fee collection trend — last 6 weeks (Mon–Sun), amount actually paid ──
+    # ── Fee collection trend — last 6 weeks in 1 single grouped query ──────────
     fee_trend = []
     week_start = today - timedelta(days=today.weekday())  # is week ka Monday
+    six_weeks_ago = week_start - timedelta(weeks=5)
+    fee_records_trend = (
+        db.session.query(FeeRecord.paid_date, func.sum(FeeRecord.amount_paid))
+        .filter(
+            FeeRecord.school_id == sid,
+            FeeRecord.paid_date >= six_weeks_ago,
+            FeeRecord.paid_date <= today
+        )
+        .group_by(FeeRecord.paid_date)
+        .all()
+    )
+    paid_by_date = {dt: float(amt or 0) for dt, amt in fee_records_trend}
+
     for i in range(5, -1, -1):
         w_start = week_start - timedelta(weeks=i)
         w_end   = w_start + timedelta(days=6)
-        total   = db.session.query(func.sum(FeeRecord.amount_paid)).filter(
-                      FeeRecord.school_id  == sid,
-                      FeeRecord.paid_date  >= w_start,
-                      FeeRecord.paid_date  <= w_end,
-                  ).scalar() or 0
+        total   = sum(amt for dt, amt in paid_by_date.items() if dt and w_start <= dt <= w_end)
         fee_trend.append({
             'label':  f'{w_start.strftime("%d %b")}',
             'amount': round(total, 2),
@@ -4004,8 +4112,8 @@ def dashboard():
     class_rows = db.session.query(
                      Class.name, Class.section, func.count(Student.id)
                  ).outerjoin(
-                     Student, Student.class_id == Class.id
-                 ).filter(Class.school_id == sid).group_by(Class.id).all()
+                     Student, (Student.class_id == Class.id) & (Student.is_deleted == False)
+                 ).filter(Class.school_id == sid).group_by(Class.id, Class.name, Class.section).all()
     class_distribution = [
         {
             'name':  f'{name}' + (f' - {section}' if section else ''),
@@ -4014,7 +4122,7 @@ def dashboard():
         for name, section, count in class_rows
     ]
 
-    # ── Quick stats — Library / Hostel / Circulars (only real, wired modules) ─
+    # ── Quick stats — Library / Hostel / Circulars ────────────────────────────
     from app.models.library import BookIssue
     from app.models.hostel import HostelBed
     from app.models.communication import Announcement
@@ -4027,8 +4135,8 @@ def dashboard():
                             Announcement.is_active == True,
                         ).count()
 
-    # ── Teacher Celebrations: Birthdays & Work Anniversaries today ─────────────
-    teachers_all = Teacher.query.filter_by(school_id=sid).all()
+    # ── Teacher Celebrations: Birthdays & Work Anniversaries today (eager loaded user) ──
+    teachers_all = Teacher.query.options(joinedload(Teacher.user)).filter_by(school_id=sid).filter(Teacher.is_deleted == False).all()
     today_birthdays = []
     today_anniversaries = []
 
@@ -4063,7 +4171,7 @@ def dashboard():
                     'message': f"Happy {years}{'st' if years==1 else 'nd' if years==2 else 'rd' if years==3 else 'th'} Work Anniversary to {t_name}! 🌟"
                 })
 
-    # ── Fee Intelligence Metrics (This Month, This Year/Session, All Time) ─────
+    # ── Fee Intelligence Metrics (Database Aggregates — Zero In-Memory Table Scans) ─────
     curr_month_str = today.strftime('%Y-%m')
     curr_month_name = today.strftime('%B %Y')
     curr_session = '2024-25'
@@ -4071,15 +4179,17 @@ def dashboard():
     if school_obj and hasattr(school_obj, 'session') and school_obj.session:
         curr_session = school_obj.session
 
-    # This Month
-    # Match both '2026-08' and 'August 2026' or paid_date in current month
     m_start = date(today.year, today.month, 1)
     if today.month == 12:
         m_end = date(today.year + 1, 1, 1) - timedelta(days=1)
     else:
         m_end = date(today.year, today.month + 1, 1) - timedelta(days=1)
 
-    month_fee_records = FeeRecord.query.filter(
+    fee_due_expr = func.sum(FeeRecord.amount_due + func.coalesce(FeeRecord.fine, 0) - func.coalesce(FeeRecord.discount, 0))
+    fee_paid_expr = func.sum(FeeRecord.amount_paid)
+
+    # 1. Current Month Aggregates
+    month_fee_row = db.session.query(fee_due_expr, fee_paid_expr).filter(
         FeeRecord.school_id == sid,
         FeeRecord.status != 'DRAFT',
         db.or_(
@@ -4087,51 +4197,53 @@ def dashboard():
             FeeRecord.month == curr_month_name,
             db.and_(FeeRecord.due_date >= m_start, FeeRecord.due_date <= m_end)
         )
-    ).all()
+    ).first()
 
-    month_fees_generated = sum(r.effective_due() for r in month_fee_records)
-    # Month collection from transactions or records
-    month_fees_collected = db.session.query(func.sum(FeeTransaction.amount)).filter(
+    month_fees_generated = float(month_fee_row[0] or 0.0) if month_fee_row else 0.0
+    month_tx_collected = db.session.query(func.sum(FeeTransaction.amount)).filter(
         FeeTransaction.school_id == sid,
         FeeTransaction.transaction_date >= m_start,
         FeeTransaction.transaction_date <= m_end
-    ).scalar() or 0
-    if not month_fees_collected:
-        month_fees_collected = sum(r.amount_paid or 0 for r in month_fee_records)
+    ).scalar()
 
-    month_fees_pending = max(0.0, round(float(month_fees_generated) - float(month_fees_collected), 2))
-    month_col_pct = round((float(month_fees_collected) / float(month_fees_generated) * 100), 1) if month_fees_generated > 0 else 0.0
+    if month_tx_collected is not None and month_tx_collected > 0:
+        month_fees_collected = float(month_tx_collected)
+    else:
+        month_fees_collected = float(month_fee_row[1] or 0.0) if month_fee_row else 0.0
 
-    # This Year / Academic Session
-    session_fee_records = FeeRecord.query.filter(
+    month_fees_pending = max(0.0, round(month_fees_generated - month_fees_collected, 2))
+    month_col_pct = round((month_fees_collected / month_fees_generated * 100), 1) if month_fees_generated > 0 else 0.0
+
+    # 2. Session / Year Aggregates
+    session_fee_row = db.session.query(fee_due_expr, fee_paid_expr).filter(
         FeeRecord.school_id == sid,
         FeeRecord.status != 'DRAFT',
         FeeRecord.session == curr_session
-    ).all()
+    ).first()
 
-    if not session_fee_records:
-        # Fallback to all records in current year
+    if not session_fee_row or session_fee_row[0] is None:
         y_start = date(today.year if today.month >= 4 else today.year - 1, 4, 1)
-        session_fee_records = FeeRecord.query.filter(
+        session_fee_row = db.session.query(fee_due_expr, fee_paid_expr).filter(
             FeeRecord.school_id == sid,
             FeeRecord.status != 'DRAFT',
             FeeRecord.created_at >= y_start
-        ).all()
+        ).first()
 
-    year_fees_generated = sum(r.effective_due() for r in session_fee_records)
-    year_fees_collected = sum(r.amount_paid or 0 for r in session_fee_records)
-    year_fees_pending = max(0.0, round(float(year_fees_generated) - float(year_fees_collected), 2))
-    year_col_pct = round((float(year_fees_collected) / float(year_fees_generated) * 100), 1) if year_fees_generated > 0 else 0.0
+    year_fees_generated = float(session_fee_row[0] or 0.0) if session_fee_row else 0.0
+    year_fees_collected = float(session_fee_row[1] or 0.0) if session_fee_row else 0.0
+    year_fees_pending = max(0.0, round(year_fees_generated - year_fees_collected, 2))
+    year_col_pct = round((year_fees_collected / year_fees_generated * 100), 1) if year_fees_generated > 0 else 0.0
 
-    # All-Time
-    all_time_generated = db.session.query(func.sum(FeeRecord.amount_due + func.coalesce(FeeRecord.fine, 0) - func.coalesce(FeeRecord.discount, 0))).filter(
-        FeeRecord.school_id == sid, FeeRecord.status != 'DRAFT'
-    ).scalar() or 0
-    fee_collected_total = db.session.query(func.sum(FeeRecord.amount_paid)).filter(
-        FeeRecord.school_id == sid, FeeRecord.status != 'DRAFT'
-    ).scalar() or 0
-    fee_pending_total = max(0.0, round(float(all_time_generated) - float(fee_collected_total), 2))
-    all_time_col_pct = round((float(fee_collected_total) / float(all_time_generated) * 100), 1) if all_time_generated > 0 else 0.0
+    # 3. All-Time Aggregates
+    all_time_row = db.session.query(fee_due_expr, fee_paid_expr).filter(
+        FeeRecord.school_id == sid,
+        FeeRecord.status != 'DRAFT'
+    ).first()
+
+    all_time_generated = float(all_time_row[0] or 0.0) if all_time_row else 0.0
+    fee_collected_total = float(all_time_row[1] or 0.0) if all_time_row else 0.0
+    fee_pending_total = max(0.0, round(all_time_generated - fee_collected_total, 2))
+    all_time_col_pct = round((fee_collected_total / all_time_generated * 100), 1) if all_time_generated > 0 else 0.0
 
     teachers_marked_count = len(t_att_today)
     teachers_pct = round((t_present / total_teachers * 100), 1) if total_teachers > 0 else 0

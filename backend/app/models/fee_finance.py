@@ -363,6 +363,7 @@ class FeeBill(db.Model):
 
     __table_args__ = (
         db.UniqueConstraint('school_id', 'student_id', 'bill_month', name='uq_fee_bill_student_month'),
+        db.Index('idx_feebills_school_session_status', 'school_id', 'session', 'status'),
     )
 
     def calculate_totals(self):

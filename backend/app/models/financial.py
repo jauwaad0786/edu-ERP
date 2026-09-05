@@ -78,6 +78,14 @@ class FeeRecord(db.Model):
     created_at        = db.Column(db.DateTime, default=datetime.utcnow)
     student           = db.relationship('Student', foreign_keys=[student_id], backref='fee_records_rel', overlaps="fee_records_rel,student_ref,fees")
 
+    __table_args__ = (
+        db.Index('idx_feerec_school_id', 'school_id'),
+        db.Index('idx_feerec_school_session_status', 'school_id', 'session', 'status'),
+        db.Index('idx_feerec_school_student', 'school_id', 'student_id'),
+        db.Index('idx_feerec_school_month', 'school_id', 'month'),
+        db.Index('idx_feerec_school_paid_date', 'school_id', 'paid_date'),
+    )
+
     def to_dict(self):
         return {
             'id':                self.id,

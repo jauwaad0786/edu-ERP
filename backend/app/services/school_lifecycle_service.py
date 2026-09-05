@@ -18,7 +18,7 @@ import os
 import json
 import logging
 from datetime import datetime, timedelta
-from sqlalchemy import text, inspect, bindparam, table, column, delete, or_
+from sqlalchemy import text, inspect, bindparam, table, column, delete, or_, select, func
 
 from app import db
 from app.models.school import School
@@ -465,7 +465,8 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
         if 'attendance' in all_tables:
             _safe_delete_or_update(text("""
                 DELETE FROM attendance 
-                WHERE class_id IN (SELECT id FROM classes WHERE school_id = :sid)
+                WHERE school_id = :sid
+                   OR class_id IN (SELECT id FROM classes WHERE school_id = :sid)
                    OR student_id IN (SELECT id FROM students WHERE school_id = :sid)
             """), {'sid': school_id})
 
@@ -603,6 +604,46 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
                 q = text("DELETE FROM deleted_logs_archive WHERE deleted_by IN :uids").bindparams(bindparam('uids', expanding=True))
                 _safe_delete_or_update(q, {'uids': uids})
 
+        # ── Level 1.5: Break circular and self-referencing foreign key locks ──
+        if 'classes' in all_tables and 'teacher_id' in table_columns.get('classes', set()):
+            _safe_delete_or_update(text("UPDATE classes SET teacher_id = NULL WHERE school_id = :sid"), {'sid': school_id})
+
+        if 'subjects' in all_tables and 'teacher_id' in table_columns.get('subjects', set()):
+            _safe_delete_or_update(text("UPDATE subjects SET teacher_id = NULL WHERE school_id = :sid"), {'sid': school_id})
+
+        if 'students' in all_tables and 'class_id' in table_columns.get('students', set()):
+            _safe_delete_or_update(text("UPDATE students SET class_id = NULL WHERE school_id = :sid"), {'sid': school_id})
+
+        if 'books' in all_tables and 'class_id' in table_columns.get('books', set()):
+            _safe_delete_or_update(text("UPDATE books SET class_id = NULL WHERE school_id = :sid"), {'sid': school_id})
+
+        if 'stock_movements' in all_tables and 'target_class_id' in table_columns.get('stock_movements', set()):
+            _safe_delete_or_update(text("UPDATE stock_movements SET target_class_id = NULL WHERE school_id = :sid"), {'sid': school_id})
+
+        if 'student_documents' in all_tables and 'class_id_at_upload' in table_columns.get('student_documents', set()):
+            _safe_delete_or_update(text("UPDATE student_documents SET class_id_at_upload = NULL WHERE school_id = :sid"), {'sid': school_id})
+
+        if 'issued_documents' in all_tables and 'class_id_at_issue' in table_columns.get('issued_documents', set()):
+            _safe_delete_or_update(text("UPDATE issued_documents SET class_id_at_issue = NULL WHERE school_id = :sid"), {'sid': school_id})
+
+        if 'timetable_periods' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM timetable_periods 
+                WHERE timetable_id IN (SELECT id FROM timetables WHERE school_id = :sid)
+                   OR teacher_id IN (SELECT id FROM teachers WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'exam_timetable' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM exam_timetable 
+                WHERE exam_id IN (SELECT id FROM exam_schedules WHERE school_id = :sid)
+                   OR class_id IN (SELECT id FROM classes WHERE school_id = :sid)
+                   OR invigilator_id IN (SELECT id FROM teachers WHERE school_id = :sid)
+            """), {'sid': school_id})
+
+        if 'schools' in all_tables:
+            _safe_delete_or_update(text("UPDATE schools SET created_by = NULL, archived_by = NULL WHERE id = :sid"), {'sid': school_id})
+
         # ── Level 2: Delete from all direct tables having school_id column ──
         # Specific deletion order for tables with internal cross-references
         priority_tables = [
@@ -629,7 +670,7 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
             'library_activity_logs',
             # Exams & Marks
             'result_subject_status', 'result_versions', 'class_result_publication', 'internal_marks',
-            'marks', 'marks_audit_logs', 'exam_teacher_delegations', 'exam_subjects',
+            'marks_audit_logs', 'marks', 'exam_teacher_delegations', 'exam_subjects',
             'exam_classes', 'exam_schedules',
             # Communication & Documents
             'assignment_submissions', 'assignments', 'notes', 'announcements', 'chat_messages',
@@ -650,28 +691,28 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
             # AI
             'ai_document_chunks', 'ai_documents', 'ai_query_cache', 'ai_conversations',
             'ai_role_quota', 'ai_usage',
-            # Academics & Students
-            'teacher_attendance_requests', 'teacher_attendance', 'subjects', 'timetables',
-            'students', 'teachers', 'classes',
+            # Academics, Attendance, Calendar & Students
+            'teacher_attendance_requests', 'teacher_attendance', 'attendance', 'holidays',
+            'subjects', 'timetables', 'students', 'classes', 'teachers',
             # Logs & Deleted items
             'deleted_items', 'deleted_logs_archive', 'financial_audit_logs', 'hrms_audit_logs',
             'audit_logs', 'error_logs', 'login_history', 'otp_verifications', 'user_devices',
             'user_permissions', 'role_permissions', 'platform_role_permissions',
         ]
 
-        # Execute priority deletions (2 passes safely cleans interdependent tables)
-        for _ in range(2):
+        # Execute priority deletions (3 passes safely cleans interdependent tables)
+        for _ in range(3):
             for t_name in priority_tables:
                 if t_name in tables_with_school_id:
                     q = delete(table(t_name, column('school_id'))).where(column('school_id') == school_id)
                     _safe_delete_or_update(q)
 
-        # Catch any remaining tables with school_id column
-        for t_name in tables_with_school_id:
-            if t_name in priority_tables or t_name in ('schools', 'company_activity_logs'):
-                continue
-            q = delete(table(t_name, column('school_id'))).where(column('school_id') == school_id)
-            _safe_delete_or_update(q)
+            # Catch any remaining tables with school_id column
+            for t_name in tables_with_school_id:
+                if t_name in priority_tables or t_name in ('schools', 'company_activity_logs'):
+                    continue
+                q = delete(table(t_name, column('school_id'))).where(column('school_id') == school_id)
+                _safe_delete_or_update(q)
 
         # ── Level 3: Delete school users (never delete SUPER_ADMIN) ──
         _safe_delete_or_update(text("""
@@ -687,6 +728,19 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
                 SET affected_school_id = NULL 
                 WHERE affected_school_id = :sid
             """), {'sid': school_id})
+
+        # ── Level 4.5: Verification sweep ensuring NO table still holds records for this school_id ──
+        for t_name in tables_with_school_id:
+            if t_name in ('schools', 'company_activity_logs'):
+                continue
+            try:
+                t_obj = table(t_name, column('school_id'))
+                cnt = db.session.execute(select(func.count()).select_from(t_obj).where(column('school_id') == school_id)).scalar()
+                if cnt and cnt > 0:
+                    logger.warning(f"[LIFECYCLE] Table '{t_name}' still has {cnt} rows for school {school_id}. Force-cleaning...")
+                    db.session.execute(delete(t_obj).where(column('school_id') == school_id))
+            except Exception as sweep_e:
+                logger.debug(f"[LIFECYCLE] Sweep check for {t_name}: {sweep_e}")
 
         # ── Level 5: Delete the school itself ──
         db.session.execute(text("DELETE FROM schools WHERE id = :sid"), {'sid': school_id})
