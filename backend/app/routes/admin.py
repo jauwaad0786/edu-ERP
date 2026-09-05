@@ -75,7 +75,15 @@ def get_feature_catalog():
 @admin_bp.route('/schools', methods=['GET'])
 @role_required('SUPER_ADMIN')
 def list_schools():
-    schools = School.query.all()
+    status_filter = request.args.get('status', 'ACTIVE').upper()
+    query = School.query
+    if status_filter == 'ACTIVE':
+        query = query.filter(db.or_(School.status == 'ACTIVE', School.status.is_(None)))
+    elif status_filter == 'ARCHIVED':
+        query = query.filter(School.status == 'ARCHIVED')
+    # If status_filter == 'ALL', return all schools
+
+    schools = query.all()
     this_month = datetime.utcnow().replace(day=1)
     result = []
     for s in schools:
@@ -230,6 +238,107 @@ def toggle_school(school_id):
         'is_active': school.is_active,
         'message': f"School {'activated' if school.is_active else 'deactivated'}"
     }), 200
+
+
+# ─── School Archive, Recovery & Permanent Delete Lifecycle ────────────────────
+
+@admin_bp.route('/schools/archived', methods=['GET'])
+@role_required('SUPER_ADMIN')
+def list_archived_schools():
+    """Lists all archived schools with retention countdown and principal info."""
+    schools = School.query.filter(School.status == 'ARCHIVED').order_by(School.archived_at.desc()).all()
+    result = []
+    for s in schools:
+        d = s.to_dict()
+        principal_user = User.query.filter_by(school_id=s.id, role=UserRole.PRINCIPAL).first()
+        d['principal_name'] = principal_user.name if principal_user else 'N/A'
+        d['principal_email'] = principal_user.email if principal_user else 'N/A'
+
+        if s.archived_by:
+            archiver = User.query.get(s.archived_by)
+            d['archived_by_name'] = archiver.name if archiver else 'Super Admin'
+        else:
+            d['archived_by_name'] = 'Super Admin'
+
+        d['total_students'] = User.query.filter_by(school_id=s.id, role=UserRole.STUDENT).count()
+        d['total_teachers'] = User.query.filter_by(school_id=s.id, role=UserRole.TEACHER).count()
+        result.append(d)
+    return jsonify(result), 200
+
+
+@admin_bp.route('/schools/<int:school_id>/archive-summary', methods=['GET'])
+@role_required('SUPER_ADMIN')
+def school_archive_summary(school_id):
+    """Returns accurate counts across all modules for archive/delete modals and detail view."""
+    from app.services.school_lifecycle_service import get_school_archive_summary
+    try:
+        summary = get_school_archive_summary(school_id)
+        return jsonify(summary), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 404
+    except Exception as e:
+        return jsonify({'error': f"Failed to retrieve archive summary: {e}"}), 500
+
+
+@admin_bp.route('/schools/<int:school_id>/archive', methods=['POST'])
+@role_required('SUPER_ADMIN')
+def archive_school_endpoint(school_id):
+    """Soft deletes / archives a school into the 1-year recoverable retention window."""
+    from app.services.school_lifecycle_service import archive_school
+    current_user = get_current_user()
+    data = request.get_json(silent=True) or {}
+    reason = (data.get('reason') or '').strip()
+    try:
+        res = archive_school(school_id, current_user, reason=reason)
+        response_data = {
+            'message': f"School '{res['name']}' successfully archived.",
+            'school': res,
+            **res,
+        }
+        return jsonify(response_data), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': f"Failed to archive school: {e}"}), 500
+
+
+@admin_bp.route('/schools/<int:school_id>/recover', methods=['POST'])
+@role_required('SUPER_ADMIN')
+def recover_school_endpoint(school_id):
+    """Restores an archived school and all its ERP data back to ACTIVE status."""
+    from app.services.school_lifecycle_service import recover_school
+    current_user = get_current_user()
+    try:
+        res = recover_school(school_id, current_user)
+        response_data = {
+            'message': f"School '{res['name']}' successfully recovered to active status.",
+            'school': res,
+            **res,
+        }
+        return jsonify(response_data), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': f"Failed to recover school: {e}"}), 500
+
+
+@admin_bp.route('/schools/<int:school_id>/permanent', methods=['DELETE'])
+@role_required('SUPER_ADMIN')
+def permanent_delete_school_endpoint(school_id):
+    """Permanently and irreversibly deletes an archived school and its data."""
+    from app.services.school_lifecycle_service import permanently_delete_school
+    current_user = get_current_user()
+    data = request.get_json(silent=True) or {}
+    confirm_name = data.get('confirm_name', '')
+    force = bool(data.get('force', False))
+    try:
+        res = permanently_delete_school(school_id, current_user, confirm_name=confirm_name, force=force)
+        return jsonify(res), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': f"Permanent deletion failed: {e}"}), 500
+
 
 
 # ─── Service Charges ──────────────────────────────────────────────────────────

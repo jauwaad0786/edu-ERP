@@ -55,6 +55,12 @@ def role_required(*roles):
             user = User.query.get(user_id)
             if not user or not user.is_active:
                 return jsonify({'error': 'Access denied'}), 403
+
+            if user.school_id and getattr(user.role, 'value', str(user.role)) != 'SUPER_ADMIN':
+                from app.models.school import School
+                school = School.query.get(user.school_id)
+                if school and getattr(school, 'status', None) == 'ARCHIVED':
+                    return jsonify({'error': 'This school account is currently archived. Please contact the administrator.'}), 403
             allowed_enum = set()
             for k in allowed_keys:
                 try:

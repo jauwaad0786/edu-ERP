@@ -922,8 +922,13 @@ def _ensure_school_columns():
 
     existing = {c['name'] for c in inspector.get_columns('schools')}
     to_add = {
-        'plan':             "VARCHAR(20) DEFAULT 'BASIC'",
-        'enabled_features': "TEXT DEFAULT '[]'",
+        'plan':                         "VARCHAR(20) DEFAULT 'BASIC'",
+        'enabled_features':             "TEXT DEFAULT '[]'",
+        'status':                       "VARCHAR(30) DEFAULT 'ACTIVE'",
+        'archived_at':                  "TIMESTAMP NULL",
+        'archived_by':                  "INTEGER NULL",
+        'archive_reason':               "VARCHAR(255) NULL",
+        'permanent_delete_eligible_at': "TIMESTAMP NULL",
     }
     with db.engine.connect() as conn:
         for col, defn in to_add.items():

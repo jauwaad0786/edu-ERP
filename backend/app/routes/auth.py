@@ -151,6 +151,12 @@ def login():
     if not user or not user.check_password(password):
         return jsonify({'error': 'Invalid credentials'}), 401
 
+    if user.school_id:
+        from app.models.school import School
+        user_school = School.query.get(user.school_id)
+        if user_school and getattr(user_school, 'status', None) == 'ARCHIVED':
+            return jsonify({'error': 'This school account is currently archived. Please contact the administrator.'}), 403
+
     if not user.is_active:
         return jsonify({'error': 'Account deactivated. Contact your administrator.'}), 403
 
@@ -246,6 +252,12 @@ def student_login():
 
     if not user.check_password(password):
         return jsonify({'error': 'Incorrect password'}), 401
+
+    if student.school_id:
+        from app.models.school import School
+        student_school = School.query.get(student.school_id)
+        if student_school and getattr(student_school, 'status', None) == 'ARCHIVED':
+            return jsonify({'error': 'This school account is currently archived. Please contact the administrator.'}), 403
 
     if not user.is_active:
         return jsonify({'error': 'Account deactivated. Contact your school.'}), 403

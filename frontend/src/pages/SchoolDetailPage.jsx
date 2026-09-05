@@ -38,11 +38,25 @@ export default function SchoolDetail() {
 
   const [msg, setMsg] = useState('');
 
+  // ── School Lifecycle states ──
+  const [showArchive,    setShowArchive]    = useState(false);
+  const [archiveReason,  setArchiveReason]  = useState('');
+  const [archiveConfirm, setArchiveConfirm] = useState('');
+  const [archiveSummary, setArchiveSummary] = useState(null);
+  const [loadingSummary, setLoadingSummary] = useState(false);
+  const [actionLoading,  setActionLoading]  = useState(false);
+
+  const [showRecover,    setShowRecover]    = useState(false);
+
+  const [showPermanent,    setShowPermanent]    = useState(false);
+  const [permConfirmInput, setPermConfirmInput] = useState('');
+  const [permForce,        setPermForce]        = useState(false);
+
   const load = () => {
     setLoading(true);
     api.get(`/admin/schools/${id}`)
       .then(r => { setSchool(r.data); setEditForm(r.data); })
-      .catch(() => navigate('/dashboard'))
+      .catch(() => navigate('/schools'))
       .finally(() => setLoading(false));
   };
 
@@ -59,6 +73,99 @@ export default function SchoolDetail() {
       .then(r => setTenantRoles(r.data || []))
       .catch(() => {});
   }, [id]);
+
+  // ── Lifecycle Handlers ──
+  const openArchiveDialog = async () => {
+    if (!school) return;
+    setArchiveReason('');
+    setArchiveConfirm('');
+    setArchiveSummary(null);
+    setShowArchive(true);
+    setLoadingSummary(true);
+    try {
+      const res = await api.get(`/admin/schools/${id}/archive-summary`);
+      setArchiveSummary(res.data);
+    } catch {}
+    finally { setLoadingSummary(false); }
+  };
+
+  const handleArchive = async (e) => {
+    e.preventDefault();
+    if (!school) return;
+    if (archiveConfirm.trim() !== school.name.trim()) {
+      setMsg(`❌ Please type "${school.name}" exactly to confirm archiving.`);
+      return;
+    }
+    setActionLoading(true);
+    try {
+      await api.post(`/admin/schools/${id}/archive`, { reason: archiveReason });
+      setMsg(`✅ School "${school.name}" successfully archived.`);
+      setShowArchive(false);
+      load();
+    } catch (err) {
+      setMsg(`❌ ${err.response?.data?.error || 'Failed to archive school.'}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const openRecoverDialog = () => {
+    setShowRecover(true);
+  };
+
+  const handleRecover = async () => {
+    if (!school) return;
+    setActionLoading(true);
+    try {
+      await api.post(`/admin/schools/${id}/recover`);
+      setMsg(`✅ School "${school.name}" successfully recovered to ACTIVE.`);
+      setShowRecover(false);
+      load();
+    } catch (err) {
+      setMsg(`❌ ${err.response?.data?.error || 'Failed to recover school.'}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const openPermanentDialog = async () => {
+    if (!school) return;
+    setPermConfirmInput('');
+    setPermForce(school.is_permanent_delete_eligible ? false : true);
+    setArchiveSummary(null);
+    setShowPermanent(true);
+    setLoadingSummary(true);
+    try {
+      const res = await api.get(`/admin/schools/${id}/archive-summary`);
+      setArchiveSummary(res.data);
+    } catch {}
+    finally { setLoadingSummary(false); }
+  };
+
+  const handlePermanentDelete = async (e) => {
+    e.preventDefault();
+    if (!school) return;
+    const requiredPhrase = `DELETE ${school.name}`;
+    if (permConfirmInput.trim() !== requiredPhrase) {
+      setMsg(`❌ You must type "${requiredPhrase}" exactly to confirm permanent deletion.`);
+      return;
+    }
+    setActionLoading(true);
+    try {
+      await api.delete(`/admin/schools/${id}/permanent`, {
+        data: {
+          confirm_name: permConfirmInput.trim(),
+          force: permForce,
+        }
+      });
+      setShowPermanent(false);
+      navigate('/schools');
+    } catch (err) {
+      setMsg(`❌ ${err.response?.data?.error || 'Failed to permanently delete school.'}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   // ── Toggle activate/deactivate
   const toggleSchool = async () => {
@@ -190,39 +297,102 @@ export default function SchoolDetail() {
 
             {/* Action buttons */}
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
-              {/* Service charge this month badge */}
-              <div style={{
-                background: thisMonthPaid ? 'rgba(46,196,74,0.15)' : 'rgba(239,68,68,0.15)',
-                border: `1px solid ${thisMonthPaid ? '#22c55e' : '#ef4444'}`,
-                borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600,
-                color: thisMonthPaid ? '#4ade80' : '#f87171',
-              }}>
-                {thisMonthPaid ? '✅ Service Paid' : '⚠️ Service Due'}
-              </div>
+              {school?.status === 'ARCHIVED' ? (
+                <>
+                  <div style={{
+                    background: 'rgba(217,119,6,0.2)', border: '1px solid #f59e0b',
+                    borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 700,
+                    color: '#fef3c7',
+                  }}>
+                    📦 ARCHIVED ({school?.days_remaining_to_permanent_delete ?? 365}d left)
+                  </div>
+                  <button onClick={openRecoverDialog} style={{
+                    background: '#059669', border: '1px solid #10b981',
+                    color: '#fff', borderRadius: 8, padding: '8px 16px', fontSize: 13,
+                    fontWeight: 700, cursor: 'pointer',
+                  }}>♻️ Recover School</button>
+                  <button onClick={openPermanentDialog} style={{
+                    background: '#dc2626', border: '1px solid #ef4444',
+                    color: '#fff', borderRadius: 8, padding: '8px 16px', fontSize: 13,
+                    fontWeight: 700, cursor: 'pointer',
+                  }}>🗑️ Permanent Delete</button>
+                </>
+              ) : (
+                <>
+                  {/* Service charge this month badge */}
+                  <div style={{
+                    background: thisMonthPaid ? 'rgba(46,196,74,0.15)' : 'rgba(239,68,68,0.15)',
+                    border: `1px solid ${thisMonthPaid ? '#22c55e' : '#ef4444'}`,
+                    borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600,
+                    color: thisMonthPaid ? '#4ade80' : '#f87171',
+                  }}>
+                    {thisMonthPaid ? '✅ Service Paid' : '⚠️ Service Due'}
+                  </div>
 
-              <button onClick={() => setShowCharge(true)} style={{
-                background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.25)',
-                color: '#fff', borderRadius: 8, padding: '8px 16px', fontSize: 13,
-                fontWeight: 600, cursor: 'pointer',
-              }}>+ Service Charge</button>
+                  <button onClick={() => setShowCharge(true)} style={{
+                    background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.25)',
+                    color: '#fff', borderRadius: 8, padding: '8px 16px', fontSize: 13,
+                    fontWeight: 600, cursor: 'pointer',
+                  }}>+ Service Charge</button>
 
-              <button onClick={() => { setEditForm(school); setShowEdit(true); }} style={{
-                background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.25)',
-                color: '#fff', borderRadius: 8, padding: '8px 16px', fontSize: 13,
-                fontWeight: 600, cursor: 'pointer',
-              }}>✏️ Edit</button>
+                  <button onClick={() => { setEditForm(school); setShowEdit(true); }} style={{
+                    background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.25)',
+                    color: '#fff', borderRadius: 8, padding: '8px 16px', fontSize: 13,
+                    fontWeight: 600, cursor: 'pointer',
+                  }}>✏️ Edit</button>
 
-              <button onClick={toggleSchool} style={{
-                background: school?.is_active ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.2)',
-                border: `1px solid ${school?.is_active ? '#ef4444' : '#22c55e'}`,
-                color: school?.is_active ? '#f87171' : '#4ade80',
-                borderRadius: 8, padding: '8px 16px', fontSize: 13,
-                fontWeight: 700, cursor: 'pointer',
-              }}>
-                {school?.is_active ? '🔴 Deactivate' : '🟢 Activate'}
-              </button>
+                  <button onClick={toggleSchool} style={{
+                    background: school?.is_active ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.2)',
+                    border: `1px solid ${school?.is_active ? '#ef4444' : '#22c55e'}`,
+                    color: school?.is_active ? '#f87171' : '#4ade80',
+                    borderRadius: 8, padding: '8px 16px', fontSize: 13,
+                    fontWeight: 700, cursor: 'pointer',
+                  }}>
+                    {school?.is_active ? '🔴 Deactivate' : '🟢 Activate'}
+                  </button>
+
+                  <button onClick={openArchiveDialog} style={{
+                    background: '#d97706', border: '1px solid #f59e0b',
+                    color: '#fff', borderRadius: 8, padding: '8px 16px', fontSize: 13,
+                    fontWeight: 700, cursor: 'pointer',
+                  }}>
+                    📦 Archive
+                  </button>
+                </>
+              )}
             </div>
           </div>
+
+          {/* ── Archived Warning Banner ── */}
+          {school?.status === 'ARCHIVED' && (
+            <div style={{
+              background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12,
+              padding: '16px 20px', marginBottom: 24, display: 'flex', justifyContent: 'space-between',
+              alignItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <span style={{ fontSize: 28 }}>📦</span>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: '#92400e' }}>
+                    This school is currently ARCHIVED (Inactive)
+                  </div>
+                  <div style={{ fontSize: 13, color: '#78350f', marginTop: 2 }}>
+                    Archived on {school.archived_at ? new Date(school.archived_at).toLocaleDateString() : '—'}
+                    {school.archive_reason ? ` • Reason: ${school.archive_reason}` : ''}
+                    {school.days_remaining_to_permanent_delete !== undefined && ` • ${school.days_remaining_to_permanent_delete} days remaining in 1-year retention window`}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-sm btn-success" onClick={openRecoverDialog} style={{ fontWeight: 700 }}>
+                  ♻️ Recover School
+                </button>
+                <button className="btn btn-sm btn-error" onClick={openPermanentDialog} style={{ fontWeight: 700 }}>
+                  🗑️ Permanent Delete
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* ── Stat Cards ── */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16, marginBottom: 24 }}>
@@ -715,6 +885,246 @@ export default function SchoolDetail() {
             <div className="modal-footer">
               <button className="btn btn-primary" onClick={() => setStaffCreds(null)}>Done</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: ARCHIVE SCHOOL ── */}
+      {showArchive && school && (
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowArchive(false)}>
+          <div className="modal" style={{ maxWidth: 580 }}>
+            <div className="modal-header" style={{ borderBottom: '1px solid #fed7aa', background: '#fffbeb' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 24 }}>📦</span>
+                <div>
+                  <h3 style={{ margin: 0, color: '#92400e' }}>Archive School Account</h3>
+                  <div style={{ fontSize: 12, color: '#b45309' }}>1-Year Retention &amp; Recovery Protected</div>
+                </div>
+              </div>
+              <button className="modal-close" onClick={() => setShowArchive(false)}>✕</button>
+            </div>
+
+            <form onSubmit={handleArchive}>
+              <div className="modal-body" style={{ padding: 20 }}>
+                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: 14, marginBottom: 16 }}>
+                  <div style={{ fontWeight: 700, color: '#92400e', marginBottom: 4, fontSize: 13 }}>
+                    ⚠️ Archiving Impact:
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: '#78350f', lineHeight: 1.6 }}>
+                    <li>All school logins (Principal, Teachers, Students, Staff) will be immediately suspended.</li>
+                    <li>The school will be hidden from operational modules and normal queries.</li>
+                    <li><strong>100% of records are preserved</strong> (academic marks, fees, receipts, attendance).</li>
+                    <li>Can be <strong>restored anytime</strong> within the 1-year retention window.</li>
+                  </ul>
+                </div>
+
+                {/* Summary counts */}
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 8 }}>
+                    Records to be preserved in archive:
+                  </div>
+                  {loadingSummary ? (
+                    <div style={{ fontSize: 12, color: '#94a3b8' }}>Loading record breakdown...</div>
+                  ) : archiveSummary ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                      {Object.entries(archiveSummary.counts || {}).slice(0, 9).map(([k, v]) => (
+                        <div key={k} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 10px' }}>
+                          <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase' }}>{k.replace(/_/g, ' ')}</div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{fmt(v)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 14 }}>
+                  <label className="form-label" style={{ fontWeight: 600 }}>Reason for Archiving (Optional)</label>
+                  <input
+                    className="form-input"
+                    placeholder="e.g. Contract expired, School requested temporary freeze"
+                    value={archiveReason}
+                    onChange={e => setArchiveReason(e.target.value)}
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 8 }}>
+                  <label className="form-label" style={{ fontWeight: 600 }}>
+                    Type <span style={{ color: '#b45309', fontWeight: 800 }}>{school.name}</span> to confirm:
+                  </label>
+                  <input
+                    className="form-input"
+                    required
+                    placeholder={`Type ${school.name}`}
+                    value={archiveConfirm}
+                    onChange={e => setArchiveConfirm(e.target.value)}
+                    style={{ borderColor: archiveConfirm === school.name ? '#16a34a' : '#cbd5e1' }}
+                  />
+                </div>
+              </div>
+
+              <div className="modal-footer" style={{ background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+                <button type="button" className="btn btn-neutral" onClick={() => setShowArchive(false)}>
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn"
+                  disabled={actionLoading || archiveConfirm.trim() !== school.name.trim()}
+                  style={{
+                    background: '#d97706',
+                    color: '#fff',
+                    border: 'none',
+                    fontWeight: 700,
+                    opacity: archiveConfirm.trim() !== school.name.trim() ? 0.5 : 1
+                  }}
+                >
+                  {actionLoading ? 'Archiving...' : '📦 Confirm & Archive School'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: RECOVER SCHOOL ── */}
+      {showRecover && school && (
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowRecover(false)}>
+          <div className="modal" style={{ maxWidth: 520 }}>
+            <div className="modal-header" style={{ background: '#ecfdf5', borderBottom: '1px solid #a7f3d0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 24 }}>♻️</span>
+                <div>
+                  <h3 style={{ margin: 0, color: '#065f46' }}>Recover School</h3>
+                  <div style={{ fontSize: 12, color: '#047857' }}>Restore to Active ERP Operations</div>
+                </div>
+              </div>
+              <button className="modal-close" onClick={() => setShowRecover(false)}>✕</button>
+            </div>
+
+            <div className="modal-body" style={{ padding: 20 }}>
+              <p style={{ fontSize: 14, color: '#334155', lineHeight: 1.6, marginTop: 0 }}>
+                Are you sure you want to recover <strong>{school.name}</strong> ({school.code})?
+              </p>
+              <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: 14, fontSize: 12, color: '#166534', lineHeight: 1.5 }}>
+                ✅ <strong>Restoration Effects:</strong>
+                <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                  <li>School status will be restored to <strong>ACTIVE</strong>.</li>
+                  <li>User accounts (Principal, Teachers, Students) will be re-activated.</li>
+                  <li>Operational rosters, academic modules, and fee collection will resume normal function.</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="modal-footer" style={{ background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+              <button type="button" className="btn btn-neutral" onClick={() => setShowRecover(false)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-success"
+                disabled={actionLoading}
+                onClick={handleRecover}
+              >
+                {actionLoading ? 'Restoring...' : '♻️ Recover & Reactivate School'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: PERMANENT DELETE SCHOOL ── */}
+      {showPermanent && school && (
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowPermanent(false)}>
+          <div className="modal" style={{ maxWidth: 580, border: '2px solid #ef4444' }}>
+            <div className="modal-header" style={{ background: '#fef2f2', borderBottom: '1px solid #fecaca' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 24 }}>🚨</span>
+                <div>
+                  <h3 style={{ margin: 0, color: '#991b1b' }}>Permanently Delete School</h3>
+                  <div style={{ fontSize: 12, color: '#b91c1c' }}>DANGER: Irreversible Database Wipe</div>
+                </div>
+              </div>
+              <button className="modal-close" onClick={() => setShowPermanent(false)}>✕</button>
+            </div>
+
+            <form onSubmit={handlePermanentDelete}>
+              <div className="modal-body" style={{ padding: 20 }}>
+                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: 14, marginBottom: 16 }}>
+                  <div style={{ fontWeight: 800, color: '#991b1b', marginBottom: 4, fontSize: 13 }}>
+                    ⚠️ IRREVERSIBLE ACTION — READ CAREFULLY
+                  </div>
+                  <p style={{ margin: 0, fontSize: 12, color: '#7f1d1d', lineHeight: 1.5 }}>
+                    This will permanently and irreversibly wipe <strong>{school.name}</strong> and all affiliated student records, teacher profiles, examination results, fee bills, receipts, attendance logs, and uploaded files from the database.
+                  </p>
+                </div>
+
+                {!school.is_permanent_delete_eligible && (school.days_remaining_to_permanent_delete > 0 || school.days_remaining_to_permanent_delete !== undefined) && (
+                  <div style={{ background: '#fffbeb', border: '1px solid #fed7aa', borderRadius: 8, padding: 12, marginBottom: 16 }}>
+                    <div style={{ fontSize: 12, color: '#92400e', fontWeight: 600, marginBottom: 6 }}>
+                      ⏳ Retention Notice: {school.days_remaining_to_permanent_delete} days left in 1-year retention window.
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#78350f', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={permForce}
+                        onChange={e => setPermForce(e.target.checked)}
+                      />
+                      <span>Override retention policy &amp; force early permanent deletion</span>
+                    </label>
+                  </div>
+                )}
+
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 8 }}>
+                    Items to be permanently erased:
+                  </div>
+                  {loadingSummary ? (
+                    <div style={{ fontSize: 12, color: '#94a3b8' }}>Loading record breakdown...</div>
+                  ) : archiveSummary ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                      {Object.entries(archiveSummary.counts || {}).slice(0, 9).map(([k, v]) => (
+                        <div key={k} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 10px' }}>
+                          <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase' }}>{k.replace(/_/g, ' ')}</div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: '#dc2626' }}>{fmt(v)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 8 }}>
+                  <label className="form-label" style={{ fontWeight: 600, fontSize: 13 }}>
+                    To confirm, please type <code style={{ background: '#fee2e2', color: '#991b1b', padding: '2px 6px', borderRadius: 4, fontWeight: 800 }}>DELETE {school.name}</code>:
+                  </label>
+                  <input
+                    className="form-input"
+                    required
+                    placeholder={`Type DELETE ${school.name}`}
+                    value={permConfirmInput}
+                    onChange={e => setPermConfirmInput(e.target.value)}
+                    style={{ borderColor: permConfirmInput === `DELETE ${school.name}` ? '#dc2626' : '#cbd5e1' }}
+                  />
+                </div>
+              </div>
+
+              <div className="modal-footer" style={{ background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+                <button type="button" className="btn btn-neutral" onClick={() => setShowPermanent(false)}>
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-error"
+                  disabled={
+                    actionLoading ||
+                    permConfirmInput.trim() !== `DELETE ${school.name}` ||
+                    (!school.is_permanent_delete_eligible && !permForce)
+                  }
+                  style={{ fontWeight: 800 }}
+                >
+                  {actionLoading ? 'Deleting...' : '🚨 Permanently Delete School'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

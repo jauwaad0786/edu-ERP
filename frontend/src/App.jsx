@@ -21,6 +21,7 @@ import ClassesPage      from './pages/ClassesPage';
 import FeesPage         from './pages/FeesPage';
 import FeeStructures    from './pages/FeeStructures';
 import ExamsPage        from './pages/ExamsPage';
+import SchoolsPage      from './pages/SchoolsPage';
 import SchoolDetailPage from './pages/SchoolDetailPage';
 import AttendancePage   from './pages/AttendancePage';
 import NewAdmissionPage from './pages/NewAdmissionPage';
@@ -750,7 +751,7 @@ export default function App() {
             {/* ── Super Admin only ── */}
             <Route path="/schools" element={
               <ProtectedRoute roles={['SUPER_ADMIN']}>
-                <Navigate to="/dashboard" replace />
+                <SchoolsPage />
               </ProtectedRoute>
             } />
             <Route path="/schools/:id" element={

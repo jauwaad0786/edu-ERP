@@ -38,7 +38,14 @@ class ProductionConfig(Config):
 class TestingConfig(Config):
     TESTING = True
     SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
-    SQLALCHEMY_ENGINE_OPTIONS = {}
+    try:
+        from sqlalchemy.pool import StaticPool
+        SQLALCHEMY_ENGINE_OPTIONS = {
+            'poolclass': StaticPool,
+            'connect_args': {'check_same_thread': False},
+        }
+    except Exception:
+        SQLALCHEMY_ENGINE_OPTIONS = {}
 
 config = {
     'development': DevelopmentConfig,
