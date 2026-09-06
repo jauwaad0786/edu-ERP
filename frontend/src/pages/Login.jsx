@@ -315,46 +315,182 @@ export default function Login() {
     }
   };
 
+  // ── Ensure MSG91 widget SDK is loaded & initialized with exposeMethods ──
+  const ensureWidgetReady = () => {
+    return new Promise((resolve, reject) => {
+      const widgetConfig = {
+        widgetId: "366966687177323837373439",
+        tokenAuth: "567274TWJ7EfhCn6a9d222aP1",
+        exposeMethods: true,
+        success: async (data) => {
+          // This fires if the widget popup is used; handle token for programmatic verify
+          let token = '';
+          if (typeof data === 'string') {
+            token = data.trim();
+          } else if (data && typeof data === 'object') {
+            token = (data['access-token'] || data.accessToken || data.token || data.jwtToken || data.message || '').trim();
+          }
+          if (token) {
+            setLoading(true);
+            try {
+              await widgetOtpLogin(token, identifier.trim());
+              navigate('/dashboard');
+            } catch (err) {
+              setError(err.response?.data?.error || 'Login failed after OTP verification.');
+            } finally {
+              setLoading(false);
+            }
+          }
+        },
+        failure: (err) => {
+          const errMsg = typeof err === 'string' ? err : (err?.message || err?.error || '');
+          if (errMsg) setError(errMsg);
+        },
+      };
+
+      if (typeof window.initSendOTP === 'function') {
+        window.initSendOTP(widgetConfig);
+        resolve();
+      } else {
+        // Load the script first
+        const urls = [
+          'https://verify.msg91.com/otp-provider.js',
+          'https://verify.phone91.com/otp-provider.js'
+        ];
+        let i = 0;
+        function attempt() {
+          const s = document.createElement('script');
+          s.src = urls[i];
+          s.async = true;
+          s.onload = () => {
+            if (typeof window.initSendOTP === 'function') {
+              window.initSendOTP(widgetConfig);
+              resolve();
+            } else {
+              reject(new Error('initSendOTP not found after script load'));
+            }
+          };
+          s.onerror = () => {
+            i++;
+            if (i < urls.length) attempt();
+            else reject(new Error('Failed to load MSG91 script'));
+          };
+          document.head.appendChild(s);
+        }
+        attempt();
+      }
+    });
+  };
+
   const handleSendLoginOtp = async e => {
     if (e) e.preventDefault();
-    if (!identifier.trim()) {
-      setError('Please enter your registered mobile number or email.');
+    const mobile = identifier.trim();
+    if (!mobile) {
+      setError('Please enter your registered mobile number.');
       return;
     }
     setLoading(true);
     setError('');
     setOtpSentMsg('');
     try {
-      const res = await api.post('/auth/send-login-otp', { identifier: identifier.trim() });
-      setOtpSentMsg(res.data?.message || 'If the account exists, an OTP has been sent.');
-      if (res.data?.dev_otp) {
-        setOtpValue(String(res.data.dev_otp));
+      await ensureWidgetReady();
+      // Use MSG91 Widget SDK's programmatic sendOTP method
+      if (typeof window.sendOtp === 'function') {
+        window.sendOtp(
+          mobile,
+          (data) => {
+            setLoading(false);
+            setOtpSentMsg('OTP sent to your registered mobile number.');
+            setOtpCooldown(60);
+            setOtpStep(2);
+          },
+          (err) => {
+            setLoading(false);
+            const errMsg = typeof err === 'string' ? err : (err?.message || 'Failed to send OTP. Try the OTP Widget button.');
+            setError(errMsg);
+          }
+        );
+      } else if (typeof window.sendOTP === 'function') {
+        window.sendOTP(
+          mobile,
+          (data) => {
+            setLoading(false);
+            setOtpSentMsg('OTP sent to your registered mobile number.');
+            setOtpCooldown(60);
+            setOtpStep(2);
+          },
+          (err) => {
+            setLoading(false);
+            const errMsg = typeof err === 'string' ? err : (err?.message || 'Failed to send OTP. Try the OTP Widget button.');
+            setError(errMsg);
+          }
+        );
+      } else {
+        setLoading(false);
+        setError('MSG91 SDK not ready. Please use the "Verify via OTP Widget" button.');
       }
-      setOtpCooldown(60);
-      setOtpStep(2);
     } catch (err) {
-      const serverMsg = err.response?.data?.message || err.response?.data?.error;
-      setError(serverMsg || 'Unable to send OTP at this time. Please try again or use password login.');
-    } finally {
       setLoading(false);
+      setError('Could not connect to MSG91. Please use the "Verify via OTP Widget" button.');
     }
   };
 
   const handleVerifyLoginOtp = async e => {
     e.preventDefault();
-    if (!otpValue.trim()) {
+    const otp = otpValue.trim();
+    if (!otp) {
       setError('Please enter the 6-digit OTP code.');
       return;
     }
     setLoading(true);
     setError('');
-    try {
-      await otpLogin(identifier.trim(), otpValue.trim());
-      navigate('/dashboard');
-    } catch (err) {
-      setError(err.response?.data?.error || 'Verification failed. Please check the OTP.');
-    } finally {
-      setLoading(false);
+
+    // Use MSG91 Widget SDK's programmatic verifyOtp method
+    const verifyFn = window.verifyOtp || window.verifyOTP;
+    if (typeof verifyFn === 'function') {
+      verifyFn(
+        otp,
+        async (data) => {
+          // On successful verify, MSG91 returns an access token
+          let token = '';
+          if (typeof data === 'string') {
+            token = data.trim();
+          } else if (data && typeof data === 'object') {
+            token = (data['access-token'] || data.accessToken || data.token || data.jwtToken || data.message || '').trim();
+          }
+
+          if (!token) {
+            setLoading(false);
+            setError('OTP verified but could not get access token. Please try again.');
+            return;
+          }
+
+          try {
+            await widgetOtpLogin(token, identifier.trim());
+            navigate('/dashboard');
+          } catch (err) {
+            const serverMsg = err.response?.data?.error || err.response?.data?.message;
+            setError(serverMsg || 'Login failed after OTP verification.');
+          } finally {
+            setLoading(false);
+          }
+        },
+        (err) => {
+          setLoading(false);
+          const errMsg = typeof err === 'string' ? err : (err?.message || 'OTP verification failed. Please check and try again.');
+          setError(errMsg);
+        }
+      );
+    } else {
+      // Fallback: try backend verify-otp if widget methods not available
+      try {
+        await otpLogin(identifier.trim(), otp);
+        navigate('/dashboard');
+      } catch (err) {
+        setError(err.response?.data?.error || 'Verification failed. Please check the OTP.');
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -1184,36 +1320,40 @@ export default function Login() {
 
                 {otpStep === 1 ? (
                   <div>
-                    {/* Method 1: Official MSG91 Widget Modal */}
+                    {/* Primary: Send OTP inline via widget SDK */}
                     <button
                       type="button"
                       className="submit-btn"
-                      style={{
-                        background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
-                        boxShadow: '0 4px 14px rgba(5, 150, 105, 0.35)',
-                        marginBottom: 10
-                      }}
-                      onClick={() => openMsg91Widget()}
-                      disabled={loading}
-                    >
-                      <i className="ti ti-shield-check" />
-                      <span>{loading ? 'Connecting MSG91...' : 'Open MSG91 OTP Widget'}</span>
-                    </button>
-
-                    <div className="or-divider">
-                      <span>OR DIRECT SMS OTP</span>
-                    </div>
-
-                    {/* Method 2: Direct SMS Gateway Request */}
-                    <button
-                      type="button"
-                      className="switch-auth-btn"
-                      style={{ borderColor: '#0176d3', color: '#0176d3' }}
                       onClick={handleSendLoginOtp}
                       disabled={loading}
                     >
-                      <i className="ti ti-send" style={{ fontSize: 16 }} />
-                      <span>Send SMS OTP to Mobile</span>
+                      {loading ? (
+                        <>
+                          <i className="ti ti-loader-2 ti-spin" />
+                          <span>Sending OTP...</span>
+                        </>
+                      ) : (
+                        <>
+                          <i className="ti ti-send" />
+                          <span>Send OTP to Mobile</span>
+                        </>
+                      )}
+                    </button>
+
+                    <div className="or-divider">
+                      <span>OR</span>
+                    </div>
+
+                    {/* Secondary: Open MSG91 Widget popup */}
+                    <button
+                      type="button"
+                      className="switch-auth-btn"
+                      style={{ borderColor: '#059669', color: '#059669' }}
+                      onClick={() => openMsg91Widget()}
+                      disabled={loading}
+                    >
+                      <i className="ti ti-shield-check" style={{ fontSize: 16 }} />
+                      <span>Verify via OTP Widget</span>
                     </button>
                   </div>
                 ) : (
