@@ -353,16 +353,22 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
         db.session.expunge_all()
 
         def _safe_delete_or_update(query, params=None):
-            """Executes SQL within a subtransaction SAVEPOINT so failures never abort the outer transaction in PostgreSQL."""
-            nested = db.session.begin_nested()
+            """
+            Execute a DELETE/UPDATE using a fresh, isolated autocommit connection so that
+            a FK violation on one statement never poisons the outer transaction or any
+            subsequent savepoint.  PostgreSQL's savepoint/nested-transaction model breaks
+            when a prior savepoint rolled back an error — subsequent `begin_nested()` calls
+            inside the same session try to SAVEPOINT on an already-aborted transaction and
+            raise InternalError.  Using engine.connect() with its own begin() avoids this.
+            """
             try:
-                if params:
-                    db.session.execute(query, params)
-                else:
-                    db.session.execute(query)
-                nested.commit()
+                with db.engine.connect() as conn:
+                    with conn.begin():
+                        if params:
+                            conn.execute(query, params)
+                        else:
+                            conn.execute(query)
             except Exception as sql_e:
-                nested.rollback()
                 logger.debug(f"Cascade cleanup step skipped: {sql_e}")
 
         # ── Level 1: Deepest child tables without direct school_id or dependent on parents ──
@@ -439,6 +445,53 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
                 WHERE route_id IN (SELECT id FROM transport_routes WHERE school_id = :sid)
             """), {'sid': school_id})
 
+        # ── Transport: delete GPS logs → trip student attendance → trip logs BEFORE vehicles/drivers/routes ──
+        if 'transport_gps_logs' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM transport_gps_logs WHERE school_id = :sid
+            """), {'sid': school_id})
+
+        if 'transport_trip_student_attendance' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM transport_trip_student_attendance WHERE school_id = :sid
+            """), {'sid': school_id})
+
+        if 'transport_trip_logs' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM transport_trip_logs WHERE school_id = :sid
+            """), {'sid': school_id})
+
+        # ── transport_fee_structures references transport_routes → delete fee structures BEFORE routes ──
+        if 'transport_fee_transactions' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM transport_fee_transactions WHERE school_id = :sid
+            """), {'sid': school_id})
+
+        if 'transport_fee_records' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM transport_fee_records WHERE school_id = :sid
+            """), {'sid': school_id})
+
+        if 'transport_fee_structures' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM transport_fee_structures WHERE school_id = :sid
+            """), {'sid': school_id})
+
+        # ── Nullify vehicle driver_id/conductor_id before deleting drivers/conductors ──
+        if 'transport_vehicles' in all_tables:
+            _safe_delete_or_update(text("""
+                UPDATE transport_vehicles SET driver_id = NULL, conductor_id = NULL
+                WHERE school_id = :sid
+            """), {'sid': school_id})
+
+        # ── support_notifications has FK to support_tickets → delete notifications FIRST ──
+        if 'support_notifications' in all_tables:
+            _safe_delete_or_update(text("""
+                DELETE FROM support_notifications 
+                WHERE ticket_id IN (SELECT id FROM support_tickets WHERE school_id = :sid)
+                   OR school_id = :sid
+            """), {'sid': school_id})
+
         if 'support_attachments' in all_tables:
             _safe_delete_or_update(text("""
                 DELETE FROM support_attachments 
@@ -513,8 +566,14 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
                     q = delete(table('temporary_role_delegations', *trd_fields)).where(or_(*trd_conds))
                     _safe_delete_or_update(q)
 
-            # Developer center issue assignments
+            # Developer center issue assignments — delete ALL issue_assignments that reference
+            # error_logs belonging to this school (error_id FK), BEFORE error_logs are deleted.
+            # Also clean up issue_assignments referencing users of this school.
             if 'issue_assignments' in all_tables:
+                _safe_delete_or_update(text("""
+                    DELETE FROM issue_assignments
+                    WHERE error_id IN (SELECT id FROM error_logs WHERE school_id = :sid)
+                """), {'sid': school_id})
                 ia_cols = table_columns.get('issue_assignments', set())
                 ia_conds = []
                 ia_fields = []
@@ -765,7 +824,18 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
             _safe_delete_or_update(text("UPDATE schools SET created_by = NULL, archived_by = NULL WHERE id = :sid"), {'sid': school_id})
 
         # ── Level 2: Delete from all direct tables having school_id column ──
-        # Specific deletion order for tables with internal cross-references
+        # ORDER IS CRITICAL — child tables with FK references must be deleted BEFORE their parents.
+        # Key dependency chains:
+        #   issue_assignments.error_id → error_logs
+        #   support_notifications.ticket_id → support_tickets
+        #   transport_fee_structures.route_id → transport_routes
+        #   transport_trip_logs.vehicle_id → transport_vehicles
+        #   transport_trip_logs.driver_id → transport_drivers
+        #   transport_gps_logs.trip_id → transport_trip_logs
+        #   transport_gps_logs.vehicle_id → transport_vehicles
+        #   fee_generation_batches.class_id → classes
+        #   fee_records.student_id → students (via batch_id FK too)
+        #   students.user_id → users
         priority_tables = [
             # Deep leaf references
             'result_return_items', 'timetable_periods', 'exam_timetable',
@@ -782,20 +852,32 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
             # Financial & Procurement
             'vendor_payments', 'vendor_bills', 'vendors', 'goods_receipt_notes', 'purchase_orders',
             'stock_movements', 'inventory_items', 'expenses', 'service_charges',
-            'fee_refunds', 'fee_payments', 'fee_bills', 'fee_records', 'fee_transactions',
+            'fee_refunds', 'fee_payments', 'fee_bills',
+            # fee_records must be deleted BEFORE students (FK: fee_records.student_id → students)
+            # and BEFORE fee_generation_batches (FK: fee_records.batch_id → fee_generation_batches)
+            'fee_records', 'fee_transactions',
             'student_fee_assignments', 'student_concessions', 'student_ledgers', 'fee_receipt_groups',
-            'fee_generation_batches', 'fee_structures_v2', 'fee_structures', 'fee_heads',
+            # fee_generation_batches must be deleted BEFORE classes (FK: class_id → classes)
+            'fee_generation_batches',
+            'fee_structures_v2', 'fee_structures', 'fee_heads',
             # Hostel
             'hostel_complaints', 'hostel_out_passes', 'hostel_visitor_logs', 'hostel_attendance',
             'hostel_bed_allocations', 'hostel_beds', 'hostel_rooms', 'hostel_floors',
             'hostel_wings', 'hostel_buildings', 'hostel_inventory', 'hostel_fine_records',
             'hostel_fee_structures', 'hostel_settings', 'hostel_activity_logs', 'hostels',
-            # Transport
-            'transport_trip_student_attendance', 'transport_trip_logs', 'transport_gps_logs',
-            'transport_vehicle_maintenance', 'transport_fine_records', 'transport_fee_transactions',
-            'transport_fee_records', 'transport_transfer_history', 'transport_student_assignments',
-            'transport_stops', 'transport_routes', 'transport_vehicles', 'transport_conductors',
-            'transport_drivers', 'transport_fee_structures',
+            # Transport — STRICT order matters:
+            #   gps_logs → trip_logs → (vehicle_maintenance, student_assignments, transfer_history)
+            #   → fee_transactions → fee_records → fee_structures → routes → vehicles → conductors → drivers
+            # transport_fee_structures has FK to transport_routes so it MUST come before routes
+            'transport_trip_student_attendance', 'transport_gps_logs', 'transport_trip_logs',
+            'transport_vehicle_maintenance', 'transport_fine_records',
+            'transport_fee_transactions', 'transport_fee_records',
+            'transport_transfer_history', 'transport_student_assignments',
+            # Delete fee structures BEFORE routes (route_id FK)
+            'transport_fee_structures',
+            'transport_route_stops', 'transport_routes',
+            # Delete vehicles BEFORE drivers and conductors (driver_id / conductor_id FK)
+            'transport_vehicles', 'transport_conductors', 'transport_drivers', 'transport_stops',
             # Library
             'library_fine_transactions', 'library_visits', 'book_reservations', 'book_issues',
             'book_copies', 'books', 'book_categories', 'library_members', 'library_settings',
@@ -813,15 +895,18 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
             'employee_designations', 'employee_departments', 'staff_attendance_settings',
             # Assets & Infra
             'asset_maintenance_records', 'school_assets',
-            # Support & Communication
-            'support_usage', 'support_tickets', 'support_notifications', 'support_plans',
+            # Support — support_notifications has FK to support_tickets → MUST come BEFORE support_tickets
+            'support_usage', 'support_notifications', 'support_tickets', 'support_plans',
             'school_whatsapp_settings',
             # AI
             'ai_document_chunks', 'ai_documents', 'ai_query_cache', 'ai_conversations',
             'ai_role_quota', 'ai_usage',
             # Academics Core Entities (Strict reverse dependency: Subjects -> Students -> Classes -> Teachers)
+            # students must come BEFORE classes (no direct FK, but fee_generation_batches references both)
             'subjects', 'students', 'classes', 'teachers',
             # Logs & Deleted items
+            # issue_assignments has FK to error_logs → MUST come BEFORE error_logs
+            'issue_assignments',
             'deleted_items', 'deleted_logs_archive', 'financial_audit_logs', 'hrms_audit_logs',
             'audit_logs', 'error_logs', 'login_history', 'otp_verifications', 'user_devices',
             'user_permissions', 'role_permissions', 'platform_role_permissions',
@@ -866,28 +951,20 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
             if t_name in ('schools', 'company_activity_logs'):
                 continue
             try:
-                t_obj = table(t_name, column('school_id'))
-                cnt = None
-                nested = db.session.begin_nested()
-                try:
-                    cnt = db.session.execute(
-                        select(func.count()).select_from(t_obj).where(column('school_id') == school_id)
-                    ).scalar()
-                    nested.commit()
-                except Exception:
-                    nested.rollback()
-
-                if cnt and cnt > 0:
-                    logger.warning(f"[LIFECYCLE] Table '{t_name}' still has {cnt} rows for school {school_id}. Force-cleaning...")
-                    q = delete(t_obj).where(column('school_id') == school_id)
-                    _safe_delete_or_update(q)
+                with db.engine.connect() as _chk_conn:
+                    with _chk_conn.begin():
+                        t_obj = table(t_name, column('school_id'))
+                        cnt = _chk_conn.execute(
+                            select(func.count()).select_from(t_obj).where(column('school_id') == school_id)
+                        ).scalar()
+                        if cnt and cnt > 0:
+                            logger.warning(f"[LIFECYCLE] Table '{t_name}' still has {cnt} rows for school {school_id}. Force-cleaning...")
+                            _chk_conn.execute(delete(t_obj).where(column('school_id') == school_id))
             except Exception as sweep_e:
                 logger.debug(f"[LIFECYCLE] Sweep check for {t_name}: {sweep_e}")
 
-        # ── Level 5: Delete the school itself ──
-        db.session.execute(text("DELETE FROM schools WHERE id = :sid"), {'sid': school_id})
-
-        # ── Level 6: Record immutable audit log for permanent deletion via SQL ──
+        # ── Level 5 & 6: Delete school + insert immutable audit log in a single final transaction ──
+        # Capture request meta and build audit values before opening final connection
         meta = {}
         try:
             from flask import has_request_context
@@ -902,33 +979,35 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
         new_val_json = json.dumps({'deleted_summary': summary['counts']})
         remarks_txt = f"Permanently and irreversibly deleted school '{school_name}' (Code: {school_code}, ID: {school_db_id})."
 
-        if 'company_activity_logs' in all_tables:
-            db.session.execute(text("""
-                INSERT INTO company_activity_logs (
-                    actor_user_id, role_snapshot, module, action,
-                    old_value, new_value, affected_school_id,
-                    ip_address, browser, os, remarks, created_at
-                ) VALUES (
-                    :actor_id, :role_snapshot, :module, :action,
-                    :old_value, :new_value, NULL,
-                    :ip_address, :browser, :os, :remarks, :created_at
-                )
-            """), {
-                'actor_id': actor_id_val,
-                'role_snapshot': role_snap,
-                'module': 'SCHOOL_LIFECYCLE',
-                'action': 'SCHOOL_PERMANENTLY_DELETED',
-                'old_value': old_val_json,
-                'new_value': new_val_json,
-                'ip_address': meta.get('ip_address'),
-                'browser': meta.get('browser'),
-                'os': meta.get('os'),
-                'remarks': remarks_txt,
-                'created_at': datetime.utcnow()
-            })
+        with db.engine.connect() as _final_conn:
+            with _final_conn.begin():
+                _final_conn.execute(text("DELETE FROM schools WHERE id = :sid"), {'sid': school_id})
 
-        # Commit entire transaction atomically
-        db.session.commit()
+                if 'company_activity_logs' in all_tables:
+                    _final_conn.execute(text("""
+                        INSERT INTO company_activity_logs (
+                            actor_user_id, role_snapshot, module, action,
+                            old_value, new_value, affected_school_id,
+                            ip_address, browser, os, remarks, created_at
+                        ) VALUES (
+                            :actor_id, :role_snapshot, :module, :action,
+                            :old_value, :new_value, NULL,
+                            :ip_address, :browser, :os, :remarks, :created_at
+                        )
+                    """), {
+                        'actor_id': actor_id_val,
+                        'role_snapshot': role_snap,
+                        'module': 'SCHOOL_LIFECYCLE',
+                        'action': 'SCHOOL_PERMANENTLY_DELETED',
+                        'old_value': old_val_json,
+                        'new_value': new_val_json,
+                        'ip_address': meta.get('ip_address'),
+                        'browser': meta.get('browser'),
+                        'os': meta.get('os'),
+                        'remarks': remarks_txt,
+                        'created_at': datetime.utcnow()
+                    })
+
         logger.info(f"[LIFECYCLE] School '{school_name}' ({school_code}) successfully PERMANENTLY DELETED.")
 
     except Exception as e:
