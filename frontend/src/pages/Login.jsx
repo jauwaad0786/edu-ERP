@@ -3,187 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 
-function ForgotPasswordModal({ onClose }) {
-  const [step, setStep] = useState(1); // 1: Enter email/phone, 2: Enter OTP & New Password
-  const [identifier, setIdentifier] = useState('');
-  const [otp, setOtp] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState('');
-  const [error, setError] = useState('');
-  const [cooldown, setCooldown] = useState(0);
-
-  useEffect(() => {
-    let timer;
-    if (cooldown > 0) {
-      timer = setTimeout(() => setCooldown(c => c - 1), 1000);
-    }
-    return () => clearTimeout(timer);
-  }, [cooldown]);
-
-  const handleSendOtp = async (e) => {
-    e.preventDefault();
-    if (!identifier.trim()) {
-      setError('Please enter your registered mobile number or email.');
-      return;
-    }
-    setLoading(true);
-    setError('');
-    setMsg('');
-    try {
-      const res = await api.post('/auth/forgot-password', { identifier: identifier.trim() });
-      setMsg(res.data?.message || 'If the account exists, a password reset code has been sent.');
-      setCooldown(60);
-      setStep(2);
-    } catch (err) {
-      const serverMsg = err.response?.data?.message || err.response?.data?.error;
-      setError(serverMsg || 'Unable to send reset code. Please use your registered mobile number.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleResetPassword = async (e) => {
-    e.preventDefault();
-    if (!otp.trim() || !newPassword.trim()) {
-      setError('Please enter the verification OTP and new password.');
-      return;
-    }
-    if (newPassword.length < 6) {
-      setError('New password must be at least 6 characters long.');
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setError('Passwords do not match. Please re-enter.');
-      return;
-    }
-    setLoading(true);
-    setError('');
-    try {
-      const res = await api.post('/auth/reset-password', {
-        identifier: identifier.trim(),
-        otp: otp.trim(),
-        new_password: newPassword.trim(),
-      });
-      setMsg(res.data?.message || 'Password reset successfully! You can now log in.');
-      setTimeout(() => {
-        onClose();
-      }, 1800);
-    } catch (err) {
-      setError(err.response?.data?.error || 'Invalid or expired OTP. Please check and try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="fp-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="fp-card">
-        <div className="fp-header">
-          <h3>Reset Password</h3>
-          <button className="fp-close" onClick={onClose} aria-label="Close">&times;</button>
-        </div>
-
-        {error && (
-          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12 }}>
-            {error}
-          </div>
-        )}
-
-        {msg && (
-          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12 }}>
-            {msg}
-          </div>
-        )}
-
-        {step === 1 ? (
-          <form onSubmit={handleSendOtp}>
-            <p className="fp-text">
-              Enter your registered mobile number or email address. We will send you an OTP code to reset your password.
-            </p>
-            <div style={{ marginBottom: 14 }}>
-              <input
-                type="text"
-                className="input-field"
-                placeholder="Mobile number (10 digits) or Email"
-                value={identifier}
-                onChange={e => setIdentifier(e.target.value)}
-                required
-                autoFocus
-              />
-            </div>
-            <button type="submit" className="fp-ok" disabled={loading}>
-              {loading ? 'Sending Code...' : 'Send Reset OTP'}
-            </button>
-          </form>
-        ) : (
-          <form onSubmit={handleResetPassword}>
-            <p className="fp-text" style={{ marginBottom: 8 }}>
-              Enter the 6-digit OTP code sent to <strong>{identifier}</strong> and set your new password.
-            </p>
-            <div style={{ marginBottom: 10 }}>
-              <input
-                type="text"
-                className="input-field"
-                placeholder="6-Digit OTP"
-                maxLength={6}
-                value={otp}
-                onChange={e => setOtp(e.target.value)}
-                required
-                autoFocus
-              />
-            </div>
-            <div style={{ marginBottom: 10 }}>
-              <input
-                type="password"
-                className="input-field"
-                placeholder="New Password (min 6 characters)"
-                value={newPassword}
-                onChange={e => setNewPassword(e.target.value)}
-                required
-              />
-            </div>
-            <div style={{ marginBottom: 14 }}>
-              <input
-                type="password"
-                className="input-field"
-                placeholder="Confirm New Password"
-                value={confirmPassword}
-                onChange={e => setConfirmPassword(e.target.value)}
-                required
-              />
-            </div>
-            <button type="submit" className="fp-ok" disabled={loading}>
-              {loading ? 'Resetting Password...' : 'Save New Password'}
-            </button>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, fontSize: 12 }}>
-              <button
-                type="button"
-                onClick={handleSendOtp}
-                disabled={cooldown > 0 || loading}
-                style={{ background: 'none', border: 'none', color: cooldown > 0 ? '#94a3b8' : '#0176d3', cursor: cooldown > 0 ? 'default' : 'pointer', padding: 0 }}
-              >
-                {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend OTP'}
-              </button>
-              <button
-                type="button"
-                onClick={() => { setStep(1); setError(''); setMsg(''); }}
-                style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: 0 }}
-              >
-                Change identifier
-              </button>
-            </div>
-          </form>
-        )}
-
-        <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #f1f5f9', fontSize: 11, color: '#94a3b8', textAlign: 'center' }}>
-          For school administrator assistance, contact your institutional administration office.
-        </div>
-      </div>
-    </div>
-  );
-}
+// ForgotPasswordModal removed — "Forgot Password?" now switches to OTP login/reset mode
 
 export default function Login() {
   const [searchParams] = useSearchParams();
@@ -192,11 +12,13 @@ export default function Login() {
 
   // Role mode: 'staff' (Principal/Teacher/Admin) vs 'student' (Student/Parent)
   const [activeTab, setActiveTab] = useState('staff');
-  const [showForgot, setShowForgot] = useState(false);
 
   // Auth method: 'password' | 'otp'
   const [authMethod, setAuthMethod] = useState('password');
-  const [otpStep, setOtpStep] = useState(1); // 1: Send OTP, 2: Enter OTP
+  const [otpStep, setOtpStep] = useState(1); // 1: Send OTP, 2: Enter OTP, 3: Set New Password (for reset flow)
+  const [isResetFlow, setIsResetFlow] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [otpValue, setOtpValue] = useState('');
   const [otpCooldown, setOtpCooldown] = useState(0);
   const [otpSentMsg, setOtpSentMsg] = useState('');
@@ -221,81 +43,6 @@ export default function Login() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
-  const openMsg91Widget = (explicitIdentifier) => {
-    const rawTarget = (explicitIdentifier !== undefined ? explicitIdentifier : identifier).trim();
-    setError('');
-
-    const configuration = {
-      widgetId: "366966687177323837373439",
-      tokenAuth: "567274TWJ7EfhCn6a9d222aP1",
-      identifier: rawTarget || undefined,
-      exposeMethods: false,
-      success: async (data) => {
-        let token = '';
-        if (typeof data === 'string') {
-          token = data.trim();
-        } else if (data && typeof data === 'object') {
-          token = (data['access-token'] || data.accessToken || data.token || data.jwtToken || data.message || '').trim();
-        }
-
-        if (!token) {
-          setError('Could not extract access token from MSG91 OTP widget.');
-          return;
-        }
-
-        setLoading(true);
-        setError('');
-        try {
-          await widgetOtpLogin(token, rawTarget);
-          navigate('/dashboard');
-        } catch (err) {
-          const serverMsg = err.response?.data?.error || err.response?.data?.message;
-          setError(serverMsg || 'Widget verification token validation failed on server.');
-        } finally {
-          setLoading(false);
-        }
-      },
-      failure: (error) => {
-        const errMsg = typeof error === 'string' ? error : (error?.message || error?.error || 'OTP verification was closed or failed.');
-        setError(errMsg);
-      },
-    };
-
-    if (typeof window.initSendOTP === 'function') {
-      window.initSendOTP(configuration);
-    } else {
-      setLoading(true);
-      (function loadOtpScript(urls) {
-        let i = 0;
-        function attempt() {
-          const s = document.createElement('script');
-          s.src = urls[i];
-          s.async = true;
-          s.onload = () => {
-            setLoading(false);
-            if (typeof window.initSendOTP === 'function') {
-              window.initSendOTP(configuration);
-            }
-          };
-          s.onerror = () => {
-            i++;
-            if (i < urls.length) {
-              attempt();
-            } else {
-              setLoading(false);
-              setError('Failed to load MSG91 verification script. Please use SMS OTP.');
-            }
-          };
-          document.head.appendChild(s);
-        }
-        attempt();
-      })([
-        'https://verify.msg91.com/otp-provider.js',
-        'https://verify.phone91.com/otp-provider.js'
-      ]);
-    }
-  };
 
   const handleStaffLogin = async e => {
     e.preventDefault();
@@ -323,7 +70,6 @@ export default function Login() {
         tokenAuth: "567274TWJ7EfhCn6a9d222aP1",
         exposeMethods: true,
         success: async (data) => {
-          // This fires if the widget popup is used; handle token for programmatic verify
           let token = '';
           if (typeof data === 'string') {
             token = data.trim();
@@ -334,11 +80,16 @@ export default function Login() {
             setLoading(true);
             try {
               await widgetOtpLogin(token, identifier.trim());
-              navigate('/dashboard');
+              if (isResetFlow) {
+                setLoading(false);
+                setOtpStep(3);
+              } else {
+                navigate('/dashboard');
+              }
             } catch (err) {
               setError(err.response?.data?.error || 'Login failed after OTP verification.');
             } finally {
-              setLoading(false);
+              if (!isResetFlow) setLoading(false);
             }
           }
         },
@@ -352,7 +103,6 @@ export default function Login() {
         window.initSendOTP(widgetConfig);
         resolve();
       } else {
-        // Load the script first
         const urls = [
           'https://verify.msg91.com/otp-provider.js',
           'https://verify.phone91.com/otp-provider.js'
@@ -384,54 +134,53 @@ export default function Login() {
 
   const handleSendLoginOtp = async e => {
     if (e) e.preventDefault();
-    const mobile = identifier.trim();
-    if (!mobile) {
-      setError('Please enter your registered mobile number.');
+    const raw = identifier.trim();
+    if (!raw) {
+      setError('Please enter your registered mobile number or email.');
       return;
     }
+    const digits = raw.replace(/\D/g, '');
+    const mobile = (digits.length === 10) ? `91${digits}` : raw;
+
     setLoading(true);
     setError('');
     setOtpSentMsg('');
+
+    const proceedSuccess = () => {
+      setLoading(false);
+      setOtpSentMsg('OTP sent to your registered mobile number.');
+      setOtpCooldown(60);
+      setOtpStep(2);
+    };
+
+    const fallbackSend = async () => {
+      try {
+        await api.post('/auth/send-login-otp', { identifier: raw });
+        proceedSuccess();
+      } catch (backendErr) {
+        setLoading(false);
+        const msg = backendErr.response?.data?.message || backendErr.response?.data?.error || 'Failed to send OTP. Please check the number and try again.';
+        setError(msg);
+      }
+    };
+
     try {
       await ensureWidgetReady();
-      // Use MSG91 Widget SDK's programmatic sendOTP method
-      if (typeof window.sendOtp === 'function') {
-        window.sendOtp(
+      const sendFn = window.sendOtp || window.sendOTP;
+      if (typeof sendFn === 'function') {
+        sendFn(
           mobile,
-          (data) => {
-            setLoading(false);
-            setOtpSentMsg('OTP sent to your registered mobile number.');
-            setOtpCooldown(60);
-            setOtpStep(2);
-          },
+          () => proceedSuccess(),
           (err) => {
-            setLoading(false);
-            const errMsg = typeof err === 'string' ? err : (err?.message || 'Failed to send OTP. Try the OTP Widget button.');
-            setError(errMsg);
-          }
-        );
-      } else if (typeof window.sendOTP === 'function') {
-        window.sendOTP(
-          mobile,
-          (data) => {
-            setLoading(false);
-            setOtpSentMsg('OTP sent to your registered mobile number.');
-            setOtpCooldown(60);
-            setOtpStep(2);
-          },
-          (err) => {
-            setLoading(false);
-            const errMsg = typeof err === 'string' ? err : (err?.message || 'Failed to send OTP. Try the OTP Widget button.');
-            setError(errMsg);
+            console.warn('Widget send failed, trying backend fallback...', err);
+            fallbackSend();
           }
         );
       } else {
-        setLoading(false);
-        setError('MSG91 SDK not ready. Please use the "Verify via OTP Widget" button.');
+        await fallbackSend();
       }
     } catch (err) {
-      setLoading(false);
-      setError('Could not connect to MSG91. Please use the "Verify via OTP Widget" button.');
+      await fallbackSend();
     }
   };
 
@@ -445,13 +194,20 @@ export default function Login() {
     setLoading(true);
     setError('');
 
-    // Use MSG91 Widget SDK's programmatic verifyOtp method
+    const onVerifySuccess = () => {
+      if (isResetFlow) {
+        setLoading(false);
+        setOtpStep(3);
+      } else {
+        navigate('/dashboard');
+      }
+    };
+
     const verifyFn = window.verifyOtp || window.verifyOTP;
     if (typeof verifyFn === 'function') {
       verifyFn(
         otp,
         async (data) => {
-          // On successful verify, MSG91 returns an access token
           let token = '';
           if (typeof data === 'string') {
             token = data.trim();
@@ -459,38 +215,66 @@ export default function Login() {
             token = (data['access-token'] || data.accessToken || data.token || data.jwtToken || data.message || '').trim();
           }
 
-          if (!token) {
-            setLoading(false);
-            setError('OTP verified but could not get access token. Please try again.');
-            return;
+          if (token) {
+            try {
+              await widgetOtpLogin(token, identifier.trim());
+              onVerifySuccess();
+              return;
+            } catch (err) {
+              console.warn('Widget token verification login failed, trying fallback...', err);
+            }
           }
 
           try {
-            await widgetOtpLogin(token, identifier.trim());
-            navigate('/dashboard');
+            await otpLogin(identifier.trim(), otp);
+            onVerifySuccess();
           } catch (err) {
-            const serverMsg = err.response?.data?.error || err.response?.data?.message;
-            setError(serverMsg || 'Login failed after OTP verification.');
-          } finally {
             setLoading(false);
+            setError(err.response?.data?.error || 'Verification failed. Please check the OTP.');
           }
         },
-        (err) => {
-          setLoading(false);
-          const errMsg = typeof err === 'string' ? err : (err?.message || 'OTP verification failed. Please check and try again.');
-          setError(errMsg);
+        async (err) => {
+          try {
+            await otpLogin(identifier.trim(), otp);
+            onVerifySuccess();
+          } catch (backendErr) {
+            setLoading(false);
+            const errMsg = backendErr.response?.data?.error || (typeof err === 'string' ? err : err?.message) || 'OTP verification failed. Please check and try again.';
+            setError(errMsg);
+          }
         }
       );
     } else {
-      // Fallback: try backend verify-otp if widget methods not available
       try {
         await otpLogin(identifier.trim(), otp);
-        navigate('/dashboard');
+        onVerifySuccess();
       } catch (err) {
-        setError(err.response?.data?.error || 'Verification failed. Please check the OTP.');
-      } finally {
         setLoading(false);
+        setError(err.response?.data?.error || 'Verification failed. Please check the OTP.');
       }
+    }
+  };
+
+  const handleSetNewPassword = async e => {
+    e.preventDefault();
+    if (!newPassword || newPassword.length < 6) {
+      setError('New password must be at least 6 characters long.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      await api.post('/auth/set-new-password', { new_password: newPassword });
+      navigate('/dashboard');
+    } catch (err) {
+      const msg = err.response?.data?.error || err.response?.data?.message || 'Failed to update password. Please try again.';
+      setError(msg);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1243,7 +1027,7 @@ export default function Login() {
                     <button
                       type="button"
                       className="forgot-link"
-                      onClick={() => setShowForgot(true)}
+                      onClick={() => { setAuthMethod('otp'); setIsResetFlow(true); setOtpStep(1); setError(''); setOtpSentMsg(''); }}
                     >
                       Forgot Password?
                     </button>
@@ -1285,15 +1069,31 @@ export default function Login() {
                 <button
                   type="button"
                   className="switch-auth-btn"
-                  onClick={() => { setAuthMethod('otp'); setOtpStep(1); setError(''); }}
+                  onClick={() => { setAuthMethod('otp'); setIsResetFlow(false); setOtpStep(1); setError(''); setOtpSentMsg(''); }}
                 >
                   <i className="ti ti-device-mobile-message" style={{ fontSize: 16 }} />
                   <span>Login with OTP (Mobile / Email)</span>
                 </button>
               </form>
             ) : (
-              /* Staff OTP Login */
+              /* Staff OTP / Reset Password Flow */
               <div>
+                {isResetFlow && (
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <i className="ti ti-key" style={{ color: '#0176d3', fontSize: 15 }} />
+                      <strong>Password Reset via OTP</strong>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setIsResetFlow(false); setAuthMethod('password'); setOtpStep(1); setError(''); }}
+                      style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 12, textDecoration: 'underline' }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+
                 {otpSentMsg && (
                   <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 14 }}>
                     <i className="ti ti-circle-check" style={{ marginRight: 6 }} />
@@ -1301,85 +1101,41 @@ export default function Login() {
                   </div>
                 )}
 
-                <div className="input-group">
-                  <label className="input-label">Registered Mobile Number or Email</label>
-                  <div className="input-box-wrap">
-                    <i className="ti ti-user-check input-box-icon" />
-                    <input
-                      type="text"
-                      className="input-field"
-                      placeholder="e.g. 9876543210 or principal@school.com"
-                      value={identifier}
-                      onChange={e => setIdentifier(e.target.value)}
-                      required
-                      disabled={otpStep === 2}
-                      autoFocus={otpStep === 1}
-                    />
-                  </div>
-                </div>
-
-                {otpStep === 1 ? (
-                  <div>
-                    {/* Primary: Send OTP inline via widget SDK */}
-                    <button
-                      type="button"
-                      className="submit-btn"
-                      onClick={handleSendLoginOtp}
-                      disabled={loading}
-                    >
-                      {loading ? (
-                        <>
-                          <i className="ti ti-loader-2 ti-spin" />
-                          <span>Sending OTP...</span>
-                        </>
-                      ) : (
-                        <>
-                          <i className="ti ti-send" />
-                          <span>Send OTP to Mobile</span>
-                        </>
-                      )}
-                    </button>
-
-                    <div className="or-divider">
-                      <span>OR</span>
+                {otpStep === 3 ? (
+                  /* Step 3: Set New Password */
+                  <form onSubmit={handleSetNewPassword}>
+                    <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', padding: '10px 14px', borderRadius: 8, fontSize: 13, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <i className="ti ti-circle-check" style={{ fontSize: 18 }} />
+                      <span><strong>OTP Verified!</strong> Please enter your new password below.</span>
                     </div>
 
-                    {/* Secondary: Open MSG91 Widget popup */}
-                    <button
-                      type="button"
-                      className="switch-auth-btn"
-                      style={{ borderColor: '#059669', color: '#059669' }}
-                      onClick={() => openMsg91Widget()}
-                      disabled={loading}
-                    >
-                      <i className="ti ti-shield-check" style={{ fontSize: 16 }} />
-                      <span>Verify via OTP Widget</span>
-                    </button>
-                  </div>
-                ) : (
-                  <form onSubmit={handleVerifyLoginOtp}>
                     <div className="input-group">
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                        <label className="input-label" style={{ margin: 0 }}>Enter 6-Digit OTP</label>
-                        <button
-                          type="button"
-                          className="forgot-link"
-                          onClick={() => { setOtpStep(1); setOtpValue(''); setError(''); }}
-                        >
-                          Change identifier
-                        </button>
-                      </div>
+                      <label className="input-label">New Password</label>
                       <div className="input-box-wrap">
-                        <i className="ti ti-shield-check input-box-icon" />
+                        <i className="ti ti-lock input-box-icon" />
                         <input
-                          type="text"
+                          type="password"
                           className="input-field"
-                          placeholder="e.g. 123456"
-                          maxLength={6}
-                          value={otpValue}
-                          onChange={e => setOtpValue(e.target.value)}
+                          placeholder="Enter new password (min. 6 characters)"
+                          value={newPassword}
+                          onChange={e => setNewPassword(e.target.value)}
                           required
                           autoFocus
+                        />
+                      </div>
+                    </div>
+
+                    <div className="input-group">
+                      <label className="input-label">Confirm New Password</label>
+                      <div className="input-box-wrap">
+                        <i className="ti ti-lock-check input-box-icon" />
+                        <input
+                          type="password"
+                          className="input-field"
+                          placeholder="Re-enter new password"
+                          value={confirmPassword}
+                          onChange={e => setConfirmPassword(e.target.value)}
+                          required
                         />
                       </div>
                     </div>
@@ -1392,61 +1148,152 @@ export default function Login() {
                       {loading ? (
                         <>
                           <i className="ti ti-loader-2 ti-spin" />
-                          <span>Verifying OTP...</span>
+                          <span>Updating Password...</span>
                         </>
                       ) : (
                         <>
-                          <span>Verify &amp; Sign In</span>
+                          <span>Save Password &amp; Go to Dashboard</span>
                           <i className="ti ti-arrow-right" />
                         </>
                       )}
                     </button>
 
-                    <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12, gap: 16 }}>
+                    <div style={{ display: 'flex', justifyContent: 'center', marginTop: 14 }}>
                       <button
                         type="button"
-                        onClick={handleSendLoginOtp}
-                        disabled={otpCooldown > 0 || loading}
+                        onClick={() => navigate('/dashboard')}
                         style={{
                           background: 'none',
                           border: 'none',
-                          color: otpCooldown > 0 ? '#94a3b8' : '#0176d3',
-                          cursor: otpCooldown > 0 ? 'default' : 'pointer',
-                          fontSize: 13,
-                          fontWeight: 600
-                        }}
-                      >
-                        {otpCooldown > 0 ? `Resend OTP in ${otpCooldown}s` : 'Resend OTP'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openMsg91Widget()}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#059669',
+                          color: '#64748b',
                           cursor: 'pointer',
                           fontSize: 13,
-                          fontWeight: 600
+                          textDecoration: 'underline'
                         }}
                       >
-                        Try MSG91 Widget
+                        Skip &amp; Continue to Dashboard
                       </button>
                     </div>
                   </form>
-                )}
+                ) : (
+                  <>
+                    <div className="input-group">
+                      <label className="input-label">Registered Mobile Number or Email</label>
+                      <div className="input-box-wrap">
+                        <i className="ti ti-user-check input-box-icon" />
+                        <input
+                          type="text"
+                          className="input-field"
+                          placeholder="e.g. 9876543210 or principal@school.com"
+                          value={identifier}
+                          onChange={e => setIdentifier(e.target.value)}
+                          required
+                          disabled={otpStep === 2}
+                          autoFocus={otpStep === 1}
+                        />
+                      </div>
+                    </div>
 
-                <div className="or-divider">
-                  <span>OR</span>
-                </div>
-                <button
-                  type="button"
-                  className="switch-auth-btn"
-                  onClick={() => { setAuthMethod('password'); setError(''); }}
-                >
-                  <i className="ti ti-lock" style={{ fontSize: 16 }} />
-                  <span>Sign In with Password</span>
-                </button>
+                    {otpStep === 1 ? (
+                      <div>
+                        <button
+                          type="button"
+                          className="submit-btn"
+                          onClick={handleSendLoginOtp}
+                          disabled={loading}
+                        >
+                          {loading ? (
+                            <>
+                              <i className="ti ti-loader-2 ti-spin" />
+                              <span>Sending OTP...</span>
+                            </>
+                          ) : (
+                            <>
+                              <i className="ti ti-send" />
+                              <span>Send OTP</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    ) : (
+                      <form onSubmit={handleVerifyLoginOtp}>
+                        <div className="input-group">
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                            <label className="input-label" style={{ margin: 0 }}>Enter 6-Digit OTP</label>
+                            <button
+                              type="button"
+                              className="forgot-link"
+                              onClick={() => { setOtpStep(1); setOtpValue(''); setError(''); }}
+                            >
+                              Change identifier
+                            </button>
+                          </div>
+                          <div className="input-box-wrap">
+                            <i className="ti ti-shield-check input-box-icon" />
+                            <input
+                              type="text"
+                              className="input-field"
+                              placeholder="e.g. 123456"
+                              maxLength={6}
+                              value={otpValue}
+                              onChange={e => setOtpValue(e.target.value)}
+                              required
+                              autoFocus
+                            />
+                          </div>
+                        </div>
+
+                        <button
+                          type="submit"
+                          className="submit-btn"
+                          disabled={loading}
+                        >
+                          {loading ? (
+                            <>
+                              <i className="ti ti-loader-2 ti-spin" />
+                              <span>Verifying OTP...</span>
+                            </>
+                          ) : (
+                            <>
+                              <span>{isResetFlow ? 'Verify OTP & Set Password' : 'Verify & Sign In'}</span>
+                              <i className="ti ti-arrow-right" />
+                            </>
+                          )}
+                        </button>
+
+                        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
+                          <button
+                            type="button"
+                            onClick={handleSendLoginOtp}
+                            disabled={otpCooldown > 0 || loading}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: otpCooldown > 0 ? '#94a3b8' : '#0176d3',
+                              cursor: otpCooldown > 0 ? 'default' : 'pointer',
+                              fontSize: 13,
+                              fontWeight: 600
+                            }}
+                          >
+                            {otpCooldown > 0 ? `Resend OTP in ${otpCooldown}s` : 'Resend OTP'}
+                          </button>
+                        </div>
+                      </form>
+                    )}
+
+                    <div className="or-divider">
+                      <span>OR</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="switch-auth-btn"
+                      onClick={() => { setAuthMethod('password'); setIsResetFlow(false); setError(''); }}
+                    >
+                      <i className="ti ti-lock" style={{ fontSize: 16 }} />
+                      <span>Sign In with Password</span>
+                    </button>
+                  </>
+                )}
               </div>
             )
           ) : (
@@ -1501,13 +1348,13 @@ export default function Login() {
               <div className="input-group">
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                   <label className="input-label" style={{ margin: 0 }}>Password / PIN</label>
-                  <button
-                    type="button"
-                    className="forgot-link"
-                    onClick={() => setShowForgot(true)}
-                  >
-                    Forgot PIN?
-                  </button>
+                    <button
+                      type="button"
+                      className="forgot-link"
+                      onClick={() => { setActiveTab('staff'); setAuthMethod('otp'); setIsResetFlow(true); setOtpStep(1); setError(''); setOtpSentMsg(''); }}
+                    >
+                      Forgot PIN?
+                    </button>
                 </div>
                 <div className="input-box-wrap">
                   <i className="ti ti-lock input-box-icon" />
@@ -1545,7 +1392,6 @@ export default function Login() {
         </div>
       </div>
 
-      {showForgot && <ForgotPasswordModal onClose={() => setShowForgot(false)} />}
     </div>
   );
 }

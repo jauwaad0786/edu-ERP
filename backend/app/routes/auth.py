@@ -810,6 +810,35 @@ def reset_password():
 
 
 
+# ── Set new password (post-OTP reset) ──────────────────────────────────────────
+@auth_bp.route('/set-new-password', methods=['POST'])
+@jwt_required()
+def set_new_password():
+    """
+    POST /api/v1/auth/set-new-password
+    Allows an authenticated user (e.g. after OTP login / forgot password flow)
+    to set a new password without needing their old password.
+    """
+    user_id = get_jwt_identity()
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    data = request.get_json() or {}
+    new_password = (data.get('new_password') or '').strip()
+
+    if not new_password or len(new_password) < 6:
+        return jsonify({'error': 'New password must be at least 6 characters'}), 400
+
+    user.set_password(new_password, store_plain=False)
+    db.session.commit()
+
+    return jsonify({
+        'success': True,
+        'message': 'Password has been updated successfully.'
+    }), 200
+
+
 # ── Logout ───────────────────────────────────────────────────────────────────
 @auth_bp.route('/logout', methods=['POST'])
 def logout():
