@@ -34,5 +34,26 @@
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
+
+    <!-- MSG91 OTP Widget Provider -->
+    <script type="text/javascript">
+      (function loadOtpScript(urls) {
+        var i = 0;
+        function attempt() {
+          var s = document.createElement('script');
+          s.src = urls[i];
+          s.async = true;
+          s.onerror = function() {
+            i++;
+            if (i < urls.length) attempt();
+          };
+          document.head.appendChild(s);
+        }
+        attempt();
+      })([
+        'https://verify.msg91.com/otp-provider.js',
+        'https://verify.phone91.com/otp-provider.js'
+      ]);
+    </script>
   </body>
 </html>

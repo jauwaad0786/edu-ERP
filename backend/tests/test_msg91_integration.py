@@ -481,6 +481,48 @@ class TestMSG91Integration(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertIsInstance(res.get_json(), list)
 
+    # ──────────────────────────────────────────────────────────────────────────
+    # 19. MSG91 Widget OTP Access Token Verification
+    # ──────────────────────────────────────────────────────────────────────────
+    @patch('app.services.communication.msg91_service.requests.post')
+    def test_widget_otp_verification_success(self, mock_post):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "message": "Access Token Verified Successfully",
+            "type": "success",
+            "data": "919876543210"
+        }
+        mock_post.return_value = mock_resp
+
+        res = self.client.post('/api/v1/auth/verify-widget-otp', json={
+            'access_token': 'sample.jwt.widget.token',
+            'identifier': '9876543210'
+        })
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertIn('access_token', data)
+        self.assertIn('user', data)
+        self.assertEqual(data['user']['phone'], '9876543210')
+
+    @patch('app.services.communication.msg91_service.requests.post')
+    def test_widget_otp_verification_invalid(self, mock_post):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 400
+        mock_resp.json.return_value = {
+            "message": "Token expired or invalid",
+            "type": "error"
+        }
+        mock_post.return_value = mock_resp
+
+        res = self.client.post('/api/v1/auth/verify-widget-otp', json={
+            'access_token': 'invalid.token'
+        })
+        self.assertEqual(res.status_code, 400)
+        data = res.get_json()
+        self.assertIn('error', data)
+
 
 if __name__ == '__main__':
     unittest.main()
+

@@ -12,13 +12,15 @@ from app.models.user import User, UserRole
 from app.models.academic import Student
 from app.models.rbac import resolve_platform_permissions, get_user_roles, get_active_role
 from app.services.permission_resolver import ensure_role_assignment_for_user
-from datetime import datetime
+import logging
 import re
+from datetime import datetime
 
 from app.models.otp import OTPPurpose
 from app.services.communication.msg91_service import MSG91Service
 from app.services.communication.otp_service import OTPService
 
+logger = logging.getLogger('auth')
 auth_bp = Blueprint('auth', __name__)
 
 
@@ -441,15 +443,18 @@ def send_login_otp():
     Sends 6-digit OTP via MSG91 Mobile OTP API.
     Returns safe generic message or non-200 if MSG91 fails.
     """
+    logger.info("[OTP] Request received: /send-login-otp")
     data = request.get_json() or {}
     raw_identifier = (data.get('identifier') or data.get('mobile_number') or data.get('email') or '').strip()
 
     if not raw_identifier:
+        logger.warning("[OTP] Missing identifier in send-login-otp")
         return jsonify({'success': False, 'message': 'Mobile number is required'}), 400
 
     # 1. If email is provided, check if email service is available
     if _is_email(raw_identifier):
         if not MSG91Service.is_email_configured():
+            logger.info("[OTP] Email OTP attempted while domain unconfigured")
             return jsonify({
                 'success': False,
                 'message': 'Email OTP is currently unavailable. Please use mobile OTP.'
@@ -458,6 +463,7 @@ def send_login_otp():
     # 2. Find user
     user = _find_user_by_identifier(raw_identifier)
     if not user or not user.is_active:
+        logger.warning("[OTP] Account not found or inactive for identifier")
         return jsonify({
             'success': True,
             'message': 'If the mobile number is registered, an OTP has been sent.'
@@ -466,6 +472,7 @@ def send_login_otp():
     # 3. Mobile OTP is the primary channel
     target_mobile = user.phone or (None if _is_email(raw_identifier) else raw_identifier)
     if target_mobile:
+        logger.info("[OTP] Sending OTP request to MSG91")
         dispatch_res = OTPService.send_mobile_otp(
             mobile=target_mobile,
             purpose=OTPPurpose.LOGIN,
@@ -522,6 +529,7 @@ def verify_otp():
     Validates attempt limits, expiration, consumes OTP.
     Returns access_token, refresh_token, and serialized user.
     """
+    logger.info("[OTP] Request received: /verify-otp")
     data = request.get_json() or {}
     raw_identifier = (data.get('identifier') or data.get('mobile_number') or data.get('email') or '').strip()
     otp = (data.get('otp') or '').strip()
@@ -562,6 +570,63 @@ def verify_otp():
     return jsonify({
         'access_token':  access_token,
         'refresh_token': refresh_token,
+        'user':          _serialize_user(user),
+    }), 200
+
+
+# ── Verify MSG91 Widget OTP Access Token ────────────────────────────────────────
+@auth_bp.route('/verify-widget-otp', methods=['POST'])
+@limiter.limit("20 per minute")
+def verify_widget_otp():
+    """
+    POST /api/v1/auth/verify-widget-otp
+    Accepts access_token from client-side MSG91 OTP Widget.
+    Verifies token server-side via MSG91 verifyAccessToken API.
+    Resolves user by verified mobile and creates authenticated session.
+    """
+    logger.info("[OTP] Request received: /verify-widget-otp")
+    data = request.get_json() or {}
+    access_token = (data.get('access_token') or data.get('accessToken') or data.get('token') or '').strip()
+    client_identifier = (data.get('identifier') or data.get('mobile_number') or '').strip()
+
+    if not access_token:
+        logger.warning("[OTP] Widget verification attempt missing access_token")
+        return jsonify({'error': 'Widget access token is required'}), 400
+
+    verify_res = MSG91Service.verify_widget_access_token(access_token)
+    if not verify_res.get('success'):
+        logger.error(f"[OTP] Widget token verification rejected: {verify_res.get('message')}")
+        return jsonify({'error': verify_res.get('message', 'Invalid OTP verification token')}), 400
+
+    verified_mobile = verify_res.get('mobile') or client_identifier
+    logger.info("[OTP] MSG91 Widget access token successfully verified")
+
+    user = None
+    if verified_mobile:
+        user = _find_user_by_identifier(verified_mobile)
+    if not user and client_identifier:
+        user = _find_user_by_identifier(client_identifier)
+
+    if not user:
+        logger.warning("[OTP] Account lookup failed for verified mobile number")
+        return jsonify({
+            'error': f'Verified mobile ({verified_mobile or "unknown"}) is not linked to any registered active account. Please contact your administrator.'
+        }), 404
+
+    if not user.is_active:
+        logger.warning("[OTP] Account deactivated for verified user")
+        return jsonify({'error': 'Account deactivated. Contact your administrator.'}), 403
+
+    user.touch_last_login()
+    db.session.commit()
+
+    jwt_access  = create_access_token(identity=str(user.id))
+    jwt_refresh = create_refresh_token(identity=str(user.id))
+
+    logger.info(f"[OTP] Widget login completed successfully for user ID {user.id}")
+    return jsonify({
+        'access_token':  jwt_access,
+        'refresh_token': jwt_refresh,
         'user':          _serialize_user(user),
     }), 200
 

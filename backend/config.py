@@ -31,6 +31,8 @@ class Config:
     MSG91_EMAIL_FROM_EMAIL = os.environ.get('MSG91_EMAIL_FROM_EMAIL')
     MSG91_EMAIL_FROM_NAME = os.environ.get('MSG91_EMAIL_FROM_NAME', 'Edu ERP')
     MSG91_EMAIL_TEMPLATE_ID = os.environ.get('MSG91_EMAIL_TEMPLATE_ID')
+    MSG91_WIDGET_ID = os.environ.get('MSG91_WIDGET_ID', '366966687177323837373439')
+    MSG91_TOKEN_AUTH = os.environ.get('MSG91_TOKEN_AUTH', '567274TWJ7EfhCn6a9d222aP1')
 
 class DevelopmentConfig(Config):
     DEBUG = True

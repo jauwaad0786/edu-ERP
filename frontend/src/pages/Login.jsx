@@ -188,7 +188,7 @@ function ForgotPasswordModal({ onClose }) {
 export default function Login() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { login, otpLogin, studentLogin } = useAuth();
+  const { login, otpLogin, widgetOtpLogin, studentLogin } = useAuth();
 
   // Role mode: 'staff' (Principal/Teacher/Admin) vs 'student' (Student/Parent)
   const [activeTab, setActiveTab] = useState('staff');
@@ -221,6 +221,81 @@ export default function Login() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const openMsg91Widget = (explicitIdentifier) => {
+    const rawTarget = (explicitIdentifier !== undefined ? explicitIdentifier : identifier).trim();
+    setError('');
+
+    const configuration = {
+      widgetId: "366966687177323837373439",
+      tokenAuth: "567274TWJ7EfhCn6a9d222aP1",
+      identifier: rawTarget || undefined,
+      exposeMethods: false,
+      success: async (data) => {
+        let token = '';
+        if (typeof data === 'string') {
+          token = data.trim();
+        } else if (data && typeof data === 'object') {
+          token = (data['access-token'] || data.accessToken || data.token || data.jwtToken || data.message || '').trim();
+        }
+
+        if (!token) {
+          setError('Could not extract access token from MSG91 OTP widget.');
+          return;
+        }
+
+        setLoading(true);
+        setError('');
+        try {
+          await widgetOtpLogin(token, rawTarget);
+          navigate('/dashboard');
+        } catch (err) {
+          const serverMsg = err.response?.data?.error || err.response?.data?.message;
+          setError(serverMsg || 'Widget verification token validation failed on server.');
+        } finally {
+          setLoading(false);
+        }
+      },
+      failure: (error) => {
+        const errMsg = typeof error === 'string' ? error : (error?.message || error?.error || 'OTP verification was closed or failed.');
+        setError(errMsg);
+      },
+    };
+
+    if (typeof window.initSendOTP === 'function') {
+      window.initSendOTP(configuration);
+    } else {
+      setLoading(true);
+      (function loadOtpScript(urls) {
+        let i = 0;
+        function attempt() {
+          const s = document.createElement('script');
+          s.src = urls[i];
+          s.async = true;
+          s.onload = () => {
+            setLoading(false);
+            if (typeof window.initSendOTP === 'function') {
+              window.initSendOTP(configuration);
+            }
+          };
+          s.onerror = () => {
+            i++;
+            if (i < urls.length) {
+              attempt();
+            } else {
+              setLoading(false);
+              setError('Failed to load MSG91 verification script. Please use SMS OTP.');
+            }
+          };
+          document.head.appendChild(s);
+        }
+        attempt();
+      })([
+        'https://verify.msg91.com/otp-provider.js',
+        'https://verify.phone91.com/otp-provider.js'
+      ]);
+    }
+  };
 
   const handleStaffLogin = async e => {
     e.preventDefault();
@@ -1082,7 +1157,7 @@ export default function Login() {
               </form>
             ) : (
               /* Staff OTP Login */
-              <form onSubmit={otpStep === 1 ? handleSendLoginOtp : handleVerifyLoginOtp}>
+              <div>
                 {otpSentMsg && (
                   <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 14 }}>
                     <i className="ti ti-circle-check" style={{ marginRight: 6 }} />
@@ -1107,70 +1182,118 @@ export default function Login() {
                   </div>
                 </div>
 
-                {otpStep === 2 && (
-                  <div className="input-group">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                      <label className="input-label" style={{ margin: 0 }}>Enter 6-Digit OTP</label>
-                      <button
-                        type="button"
-                        className="forgot-link"
-                        onClick={() => { setOtpStep(1); setOtpValue(''); setError(''); }}
-                      >
-                        Change identifier
-                      </button>
-                    </div>
-                    <div className="input-box-wrap">
-                      <i className="ti ti-shield-check input-box-icon" />
-                      <input
-                        type="text"
-                        className="input-field"
-                        placeholder="e.g. 123456"
-                        maxLength={6}
-                        value={otpValue}
-                        onChange={e => setOtpValue(e.target.value)}
-                        required
-                        autoFocus
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  className="submit-btn"
-                  disabled={loading}
-                >
-                  {loading ? (
-                    <>
-                      <i className="ti ti-loader-2 ti-spin" />
-                      <span>{otpStep === 1 ? 'Sending OTP Code...' : 'Verifying OTP...'}</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>{otpStep === 1 ? 'Send Verification OTP' : 'Verify & Sign In'}</span>
-                      <i className="ti ti-arrow-right" />
-                    </>
-                  )}
-                </button>
-
-                {otpStep === 2 && (
-                  <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
+                {otpStep === 1 ? (
+                  <div>
+                    {/* Method 1: Official MSG91 Widget Modal */}
                     <button
                       type="button"
-                      onClick={handleSendLoginOtp}
-                      disabled={otpCooldown > 0 || loading}
+                      className="submit-btn"
                       style={{
-                        background: 'none',
-                        border: 'none',
-                        color: otpCooldown > 0 ? '#94a3b8' : '#0176d3',
-                        cursor: otpCooldown > 0 ? 'default' : 'pointer',
-                        fontSize: 13,
-                        fontWeight: 600
+                        background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                        boxShadow: '0 4px 14px rgba(5, 150, 105, 0.35)',
+                        marginBottom: 10
                       }}
+                      onClick={() => openMsg91Widget()}
+                      disabled={loading}
                     >
-                      {otpCooldown > 0 ? `Resend OTP in ${otpCooldown}s` : 'Resend OTP'}
+                      <i className="ti ti-shield-check" />
+                      <span>{loading ? 'Connecting MSG91...' : 'Open MSG91 OTP Widget'}</span>
+                    </button>
+
+                    <div className="or-divider">
+                      <span>OR DIRECT SMS OTP</span>
+                    </div>
+
+                    {/* Method 2: Direct SMS Gateway Request */}
+                    <button
+                      type="button"
+                      className="switch-auth-btn"
+                      style={{ borderColor: '#0176d3', color: '#0176d3' }}
+                      onClick={handleSendLoginOtp}
+                      disabled={loading}
+                    >
+                      <i className="ti ti-send" style={{ fontSize: 16 }} />
+                      <span>Send SMS OTP to Mobile</span>
                     </button>
                   </div>
+                ) : (
+                  <form onSubmit={handleVerifyLoginOtp}>
+                    <div className="input-group">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                        <label className="input-label" style={{ margin: 0 }}>Enter 6-Digit OTP</label>
+                        <button
+                          type="button"
+                          className="forgot-link"
+                          onClick={() => { setOtpStep(1); setOtpValue(''); setError(''); }}
+                        >
+                          Change identifier
+                        </button>
+                      </div>
+                      <div className="input-box-wrap">
+                        <i className="ti ti-shield-check input-box-icon" />
+                        <input
+                          type="text"
+                          className="input-field"
+                          placeholder="e.g. 123456"
+                          maxLength={6}
+                          value={otpValue}
+                          onChange={e => setOtpValue(e.target.value)}
+                          required
+                          autoFocus
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="submit-btn"
+                      disabled={loading}
+                    >
+                      {loading ? (
+                        <>
+                          <i className="ti ti-loader-2 ti-spin" />
+                          <span>Verifying OTP...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Verify &amp; Sign In</span>
+                          <i className="ti ti-arrow-right" />
+                        </>
+                      )}
+                    </button>
+
+                    <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12, gap: 16 }}>
+                      <button
+                        type="button"
+                        onClick={handleSendLoginOtp}
+                        disabled={otpCooldown > 0 || loading}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: otpCooldown > 0 ? '#94a3b8' : '#0176d3',
+                          cursor: otpCooldown > 0 ? 'default' : 'pointer',
+                          fontSize: 13,
+                          fontWeight: 600
+                        }}
+                      >
+                        {otpCooldown > 0 ? `Resend OTP in ${otpCooldown}s` : 'Resend OTP'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openMsg91Widget()}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#059669',
+                          cursor: 'pointer',
+                          fontSize: 13,
+                          fontWeight: 600
+                        }}
+                      >
+                        Try MSG91 Widget
+                      </button>
+                    </div>
+                  </form>
                 )}
 
                 <div className="or-divider">
@@ -1184,7 +1307,7 @@ export default function Login() {
                   <i className="ti ti-lock" style={{ fontSize: 16 }} />
                   <span>Sign In with Password</span>
                 </button>
-              </form>
+              </div>
             )
           ) : (
             /* Student / Parent Login Form */

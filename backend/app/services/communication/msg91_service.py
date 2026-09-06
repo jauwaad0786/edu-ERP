@@ -20,6 +20,7 @@ class MSG91Service:
     BASE_OTP_URL   = "https://control.msg91.com/api/v5/otp"
     BASE_FLOW_URL  = "https://control.msg91.com/api/v5/flow/"
     BASE_EMAIL_URL = "https://control.msg91.com/api/v5/email/send"
+    BASE_WIDGET_VERIFY_URL = "https://control.msg91.com/api/v5/widget/verifyAccessToken"
 
     @classmethod
     def get_auth_key(cls):
@@ -135,7 +136,7 @@ class MSG91Service:
         }
 
         try:
-            logger.info(f"[MSG91] Mobile OTP request initiated for mobile ending in ...{norm_mobile[-4:]}")
+            logger.info("[OTP] Sending OTP request to MSG91")
             response = requests.post(
                 cls.BASE_OTP_URL,
                 params=params,
@@ -143,6 +144,7 @@ class MSG91Service:
                 headers=headers,
                 timeout=8.0
             )
+            logger.info(f"[OTP] MSG91 response status: {response.status_code}")
 
             resp_text = response.text or ''
             try:
@@ -160,7 +162,7 @@ class MSG91Service:
             )
 
             if not is_provider_error:
-                logger.info(f"[MSG91] Mobile OTP response status: {response.status_code} (Success)")
+                logger.info(f"[OTP] MSG91 OTP request succeeded: HTTP {response.status_code}")
                 return {
                     "success": True,
                     "message": "OTP sent successfully",
@@ -168,12 +170,12 @@ class MSG91Service:
                 }
             else:
                 err_detail = resp_json.get('message') or resp_text[:200]
-                logger.error(f"[MSG91] Mobile OTP failed HTTP {response.status_code}: {err_detail}")
+                logger.error(f"[OTP] MSG91 request failed: status={response.status_code}, error={err_detail}")
 
                 # If MSG91 OTP Template failed, try fallback to Flow SMS API if configured
                 sms_flow_id = cls.get_config_val('MSG91_SMS_FLOW_ID')
                 if sms_flow_id:
-                    logger.info("[MSG91] Attempting fallback to SMS Flow API...")
+                    logger.info("[OTP] Attempting fallback to SMS Flow API...")
                     flow_res = cls.send_sms(
                         norm_mobile,
                         f"Your verification code is {otp}. Valid for 10 minutes.",
@@ -194,7 +196,7 @@ class MSG91Service:
                     "provider_detail": err_detail
                 }
         except requests.exceptions.Timeout:
-            logger.error("[MSG91] Mobile OTP failed: timeout")
+            logger.error("[OTP] MSG91 request failed: timeout")
             return {
                 "success": False,
                 "message": "Unable to send OTP at this time.",
@@ -202,12 +204,92 @@ class MSG91Service:
                 "status_code": 502
             }
         except Exception as ex:
-            logger.error(f"[MSG91] Mobile OTP failed: {type(ex).__name__}: {ex}")
+            logger.error(f"[OTP] MSG91 request failed: {type(ex).__name__}")
             return {
                 "success": False,
                 "message": "Unable to send OTP at this time.",
                 "code": "ERROR",
                 "status_code": 502
+            }
+
+    @classmethod
+    def verify_widget_access_token(cls, access_token):
+        """
+        Verifies client-side MSG91 OTP Widget JWT access-token against MSG91 API.
+        
+        Endpoint: POST https://control.msg91.com/api/v5/widget/verifyAccessToken
+        Payload: { "authkey": "<authkey>", "access-token": "<jwt_token>" }
+        
+        Returns:
+            dict: { "success": bool, "message": str, "mobile": str or None, "raw": dict }
+        """
+        auth_key = cls.get_auth_key()
+        if not auth_key:
+            logger.warning("[OTP] MSG91_AUTH_KEY not configured. Cannot verify widget token.")
+            return {
+                "success": False,
+                "message": "MSG91 SMS gateway is not configured.",
+                "code": "MISSING_AUTH_KEY"
+            }
+
+        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        payload = {
+            "authkey": auth_key,
+            "access-token": str(access_token).strip()
+        }
+
+        try:
+            logger.info("[OTP] Request received: verify_widget_access_token")
+            logger.info("[OTP] Sending verification request to MSG91 widget endpoint")
+            response = requests.post(cls.BASE_WIDGET_VERIFY_URL, json=payload, headers=headers, timeout=10.0)
+            logger.info(f"[OTP] MSG91 response status: {response.status_code}")
+
+            resp_json = {}
+            try:
+                resp_json = response.json()
+            except Exception:
+                pass
+
+            is_success = response.status_code in (200, 201) and (
+                resp_json.get('type') == 'success'
+                or resp_json.get('status') == 'success'
+                or 'Verified' in str(resp_json.get('message', ''))
+                or bool(resp_json.get('mobile'))
+            )
+
+            if is_success:
+                mobile = resp_json.get('mobile') or (resp_json.get('data') if isinstance(resp_json.get('data'), str) else None)
+                if not mobile and isinstance(resp_json.get('data'), dict):
+                    mobile = resp_json.get('data', {}).get('mobile') or resp_json.get('data', {}).get('identifier')
+
+                logger.info("[OTP] MSG91 widget token verified successfully")
+                return {
+                    "success": True,
+                    "message": resp_json.get('message', 'Access Token Verified Successfully'),
+                    "mobile": mobile,
+                    "raw": resp_json
+                }
+            else:
+                err_msg = resp_json.get('message') or resp_json.get('errors') or response.text[:200]
+                logger.error(f"[OTP] MSG91 request failed: status={response.status_code}, error={err_msg}")
+                return {
+                    "success": False,
+                    "message": str(err_msg) if err_msg else "Invalid or expired OTP token.",
+                    "status_code": response.status_code
+                }
+        except requests.exceptions.Timeout:
+            logger.error("[OTP] MSG91 widget verification timed out")
+            return {
+                "success": False,
+                "message": "Gateway timeout verifying OTP token.",
+                "status_code": 504
+            }
+        except Exception as ex:
+            logger.error(f"[OTP] MSG91 widget verification exception: {type(ex).__name__}")
+            return {
+                "success": False,
+                "message": "Unexpected error verifying OTP token.",
+                "status_code": 500
             }
 
 
