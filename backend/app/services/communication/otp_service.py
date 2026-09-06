@@ -5,6 +5,7 @@ cooldown enforcement, and verification lifecycle.
 """
 
 import os
+import re
 import secrets
 import hashlib
 import hmac
@@ -92,11 +93,15 @@ class OTPService:
             return None, None, f"Please wait {remaining} seconds before requesting a new OTP."
 
         # 2. Invalidate previous active OTPs for this identifier & purpose
-        OTPVerification.query.filter_by(
-            identifier=norm_id,
-            purpose=purpose,
-            is_used=False
-        ).update({'is_used': True, 'used_at': datetime.utcnow()})
+        query = OTPVerification.query.filter(
+            OTPVerification.purpose == purpose,
+            OTPVerification.is_used == False
+        )
+        if user_id:
+            query = query.filter((OTPVerification.identifier == norm_id) | (OTPVerification.user_id == user_id))
+        else:
+            query = query.filter(OTPVerification.identifier == norm_id)
+        query.update({'is_used': True, 'used_at': datetime.utcnow()}, synchronize_session=False)
 
         # 3. Generate new 6-digit OTP
         plain_otp = cls.generate_otp(6)
@@ -122,9 +127,10 @@ class OTPService:
         return plain_otp, otp_record, None
 
     @classmethod
-    def verify_otp(cls, identifier, raw_otp, purpose=OTPPurpose.LOGIN):
+    def verify_otp(cls, identifier, raw_otp, purpose=OTPPurpose.LOGIN, user_id=None):
         """
         Verifies entered OTP against stored active hash.
+        Supports matching by exact identifier, user_id, or mobile number ending digits.
         
         Returns:
             tuple: (is_valid: bool, message: str, otp_record: OTPVerification or None)
@@ -132,13 +138,36 @@ class OTPService:
         norm_id = str(identifier).strip().lower()
         clean_otp = str(raw_otp).strip()
 
-        # Find latest OTP record for this identifier and purpose
+        # 1. Exact match on identifier and purpose
         record = (
             OTPVerification.query
             .filter_by(identifier=norm_id, purpose=purpose)
             .order_by(OTPVerification.created_at.desc())
             .first()
         )
+
+        # 2. If user_id is provided, match by user_id
+        if not record and user_id:
+            record = (
+                OTPVerification.query
+                .filter_by(user_id=user_id, purpose=purpose)
+                .order_by(OTPVerification.created_at.desc())
+                .first()
+            )
+
+        # 3. If identifier is a phone number (contains digits), match by last 10 digits
+        digits = re.sub(r'\D', '', norm_id)
+        if not record and len(digits) >= 10:
+            last10 = digits[-10:]
+            record = (
+                OTPVerification.query
+                .filter(
+                    OTPVerification.purpose == purpose,
+                    OTPVerification.identifier.endswith(last10)
+                )
+                .order_by(OTPVerification.created_at.desc())
+                .first()
+            )
 
         if not record:
             return False, "No OTP request found. Please request an OTP first.", None
@@ -200,7 +229,13 @@ class OTPService:
             status_code = 400 if dispatch_res.get('code') == 'INVALID_PHONE' else 502
             return False, dispatch_res.get('message', 'Unable to send OTP at this time.'), status_code
 
-        return True, "OTP sent successfully to your mobile number.", 200
+        class OTPDispatchResult(tuple):
+            pass
+
+        res = OTPDispatchResult((True, dispatch_res.get('message', "OTP sent successfully to your mobile number."), 200))
+        res.dev_otp = dispatch_res.get('dev_otp')
+        res.plain_otp = plain_otp
+        return res
 
     @classmethod
     def send_email_otp(cls, email, purpose=OTPPurpose.LOGIN, user_id=None, school_id=None, template_id=None):

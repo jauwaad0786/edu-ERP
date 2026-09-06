@@ -29,8 +29,9 @@ def _is_email(identifier):
 
 
 def _find_user_by_identifier(raw_identifier):
-    """Find user by email, username, phone, or Driver mobile number."""
+    """Find user by email, username, phone, Driver mobile number, or Student parent phone."""
     from app.models.transport import Driver
+    from app.models.academic import Student
 
     if not raw_identifier:
         return None
@@ -59,16 +60,33 @@ def _find_user_by_identifier(raw_identifier):
         ).first()
         if not user:
             user = User.query.filter(User.phone.endswith(last10)).first()
+        if not user:
+            user = User.query.filter(User.phone.ilike(f"%{last10}")).first()
     if user:
         return user
 
     # 4. Try Driver profile mobile_number lookup
     if clean_phone and len(clean_phone) >= 10:
+        last10 = clean_phone[-10:]
         driver = Driver.query.filter(Driver.mobile_number == raw_str).first()
         if not driver:
-            driver = Driver.query.filter(Driver.mobile_number.endswith(clean_phone[-10:])).first()
+            driver = Driver.query.filter(Driver.mobile_number.endswith(last10)).first()
         if driver and driver.user_id:
             user = db.session.get(User, driver.user_id)
+            if user:
+                return user
+
+    # 5. Try Student parent_phone / guardian_phone lookup
+    if clean_phone and len(clean_phone) >= 10:
+        last10 = clean_phone[-10:]
+        student = Student.query.filter(
+            (Student.parent_phone == raw_str) |
+            (Student.parent_phone.endswith(last10)) |
+            (Student.guardian_phone == raw_str) |
+            (Student.guardian_phone.endswith(last10))
+        ).first()
+        if student and student.user_id:
+            user = db.session.get(User, student.user_id)
             if user:
                 return user
 
@@ -448,19 +466,29 @@ def send_login_otp():
     # 3. Mobile OTP is the primary channel
     target_mobile = user.phone or (None if _is_email(raw_identifier) else raw_identifier)
     if target_mobile:
-        success, msg, status_code = OTPService.send_mobile_otp(
+        dispatch_res = OTPService.send_mobile_otp(
             mobile=target_mobile,
             purpose=OTPPurpose.LOGIN,
             user_id=user.id,
             school_id=user.school_id
         )
+        success = dispatch_res[0]
+        msg = dispatch_res[1]
+        status_code = dispatch_res[2]
+        dev_otp = getattr(dispatch_res, 'dev_otp', None)
+
         if not success:
             return jsonify({'success': False, 'message': msg}), status_code
 
-        return jsonify({
+        resp_data = {
             'success': True,
             'message': 'If the mobile number is registered, an OTP has been sent.'
-        }), 200
+        }
+        if dev_otp:
+            resp_data['dev_otp'] = dev_otp
+            resp_data['message'] = f'OTP sent successfully. (Dev OTP: {dev_otp})'
+
+        return jsonify(resp_data), 200
 
     # 4. If only email exists and email is configured
     if user.email and MSG91Service.is_email_configured():
@@ -501,17 +529,20 @@ def verify_otp():
     if not raw_identifier or not otp:
         return jsonify({'error': 'Identifier and OTP are required'}), 400
 
+    user = _find_user_by_identifier(raw_identifier)
+    user_id = user.id if user else None
+
     is_valid, msg, record = OTPService.verify_otp(
         identifier=raw_identifier,
         raw_otp=otp,
-        purpose=OTPPurpose.LOGIN
+        purpose=OTPPurpose.LOGIN,
+        user_id=user_id
     )
 
     if not is_valid:
         return jsonify({'error': msg}), 400
 
-    user = None
-    if record and record.user_id:
+    if not user and record and record.user_id:
         user = User.query.get(record.user_id)
     if not user:
         user = _find_user_by_identifier(raw_identifier)
@@ -566,19 +597,29 @@ def resend_otp():
 
     target_mobile = user.phone or (None if _is_email(raw_identifier) else raw_identifier)
     if target_mobile:
-        success, msg, status_code = OTPService.send_mobile_otp(
+        dispatch_res = OTPService.send_mobile_otp(
             mobile=target_mobile,
             purpose=purpose,
             user_id=user.id,
             school_id=user.school_id
         )
+        success = dispatch_res[0]
+        msg = dispatch_res[1]
+        status_code = dispatch_res[2]
+        dev_otp = getattr(dispatch_res, 'dev_otp', None)
+
         if not success:
             return jsonify({'success': False, 'message': msg}), status_code
 
-        return jsonify({
+        resp_data = {
             'success': True,
             'message': 'If the mobile number is registered, a new OTP has been sent.'
-        }), 200
+        }
+        if dev_otp:
+            resp_data['dev_otp'] = dev_otp
+            resp_data['message'] = f'OTP sent successfully. (Dev OTP: {dev_otp})'
+
+        return jsonify(resp_data), 200
 
     if user.email and MSG91Service.is_email_configured():
         success, msg, status_code = OTPService.send_email_otp(
@@ -629,19 +670,29 @@ def forgot_password():
         }), 200
 
     target_mobile = user.phone or raw_identifier
-    success, msg, status_code = OTPService.send_mobile_otp(
+    dispatch_res = OTPService.send_mobile_otp(
         mobile=target_mobile,
         purpose=OTPPurpose.PASSWORD_RESET,
         user_id=user.id,
         school_id=user.school_id
     )
+    success = dispatch_res[0]
+    msg = dispatch_res[1]
+    status_code = dispatch_res[2]
+    dev_otp = getattr(dispatch_res, 'dev_otp', None)
+
     if not success:
         return jsonify({'success': False, 'message': msg}), status_code
 
-    return jsonify({
+    resp_data = {
         'success': True,
         'message': 'If the mobile number is registered, a password reset OTP has been sent.'
-    }), 200
+    }
+    if dev_otp:
+        resp_data['dev_otp'] = dev_otp
+        resp_data['message'] = f'Password reset OTP sent. (Dev OTP: {dev_otp})'
+
+    return jsonify(resp_data), 200
 
 
 # ── Reset password via OTP ───────────────────────────────────────────────────
@@ -663,17 +714,20 @@ def reset_password():
     if len(new_password) < 6:
         return jsonify({'error': 'New password must be at least 6 characters'}), 400
 
+    user = _find_user_by_identifier(raw_identifier)
+    user_id = user.id if user else None
+
     is_valid, msg, record = OTPService.verify_otp(
         identifier=raw_identifier,
         raw_otp=otp,
-        purpose=OTPPurpose.PASSWORD_RESET
+        purpose=OTPPurpose.PASSWORD_RESET,
+        user_id=user_id
     )
 
     if not is_valid:
         return jsonify({'error': msg}), 400
 
-    user = None
-    if record and record.user_id:
+    if not user and record and record.user_id:
         user = User.query.get(record.user_id)
     if not user:
         user = _find_user_by_identifier(raw_identifier)
@@ -688,6 +742,7 @@ def reset_password():
         'success': True,
         'message': 'Password has been reset successfully. Please login with your new password.'
     }), 200
+
 
 
 # ── Logout ───────────────────────────────────────────────────────────────────

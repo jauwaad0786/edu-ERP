@@ -81,14 +81,6 @@ class MSG91Service:
             dict: {"success": bool, "message": str, "provider_ref": str or None}
         """
         auth_key = cls.get_auth_key()
-        if not auth_key:
-            logger.warning("[MSG91] Authkey is not configured in environment (MSG91_AUTH_KEY). Skipping external dispatch.")
-            return {
-                "success": False,
-                "message": "Unable to send OTP at this time.",
-                "code": "MISSING_AUTH_KEY"
-            }
-
         norm_mobile = cls.normalize_phone(mobile)
         if not norm_mobile or len(norm_mobile) < 10:
             return {
@@ -97,59 +89,127 @@ class MSG91Service:
                 "code": "INVALID_PHONE"
             }
 
+        if not auth_key:
+            is_dev = False
+            try:
+                is_dev = bool(current_app and current_app.config.get('DEBUG')) or os.getenv('DEV_MOCK_OTP') == 'true'
+            except Exception:
+                is_dev = os.getenv('DEV_MOCK_OTP') == 'true'
+
+            if is_dev:
+                logger.warning(f"🔑 [DEV OTP] No MSG91_AUTH_KEY configured. Mobile: {norm_mobile} -> OTP: {otp}")
+                print(f"\n=========================================\n🔑 [DEV OTP] Mobile: {norm_mobile} | OTP: {otp}\n=========================================\n", flush=True)
+                return {
+                    "success": True,
+                    "message": f"OTP sent successfully. (Dev OTP: {otp})",
+                    "dev_otp": str(otp),
+                    "provider_ref": "DEV-MOCK"
+                }
+
+            logger.warning("[MSG91] Authkey is not configured in environment (MSG91_AUTH_KEY). Skipping external dispatch.")
+            return {
+                "success": False,
+                "message": "Unable to send OTP at this time.",
+                "code": "MISSING_AUTH_KEY"
+            }
+
         tpl_id = template_id or cls.get_config_val('MSG91_OTP_TEMPLATE_ID')
 
         headers = {
             "authkey": auth_key,
-            "Content-Type": "application/json"
+            "accept": "application/json",
+            "content-type": "application/json"
         }
 
         params = {
             "mobile": norm_mobile,
-            "otp": otp,
+            "otp": str(otp),
+            "authkey": auth_key,
         }
         if tpl_id:
             params["template_id"] = tpl_id
+
+        payload = {
+            "otp": str(otp),
+            "OTP": str(otp)
+        }
 
         try:
             logger.info(f"[MSG91] Mobile OTP request initiated for mobile ending in ...{norm_mobile[-4:]}")
             response = requests.post(
                 cls.BASE_OTP_URL,
                 params=params,
-                json=params,
+                json=payload,
                 headers=headers,
-                timeout=6.0
+                timeout=8.0
             )
 
-            if response.status_code == 200:
-                resp_json = response.json() if response.text else {}
-                logger.info("[MSG91] Mobile OTP response status: 200")
+            resp_text = response.text or ''
+            try:
+                resp_json = response.json()
+            except Exception:
+                resp_json = {}
+
+            # MSG91 v5 OTP API returns HTTP 200 on success with {"message":"...","type":"success"}.
+            # In case of bad authkey or template issues, it may return HTTP 200 with {"type":"error"}.
+            is_provider_error = (
+                response.status_code not in (200, 201)
+                or resp_json.get('type') == 'error'
+                or resp_json.get('status') == 'fail'
+                or 'errors' in resp_json
+            )
+
+            if not is_provider_error:
+                logger.info(f"[MSG91] Mobile OTP response status: {response.status_code} (Success)")
                 return {
                     "success": True,
                     "message": "OTP sent successfully",
                     "provider_ref": resp_json.get('request_id') or resp_json.get('message')
                 }
             else:
-                logger.error(f"[MSG91] Mobile OTP failed HTTP {response.status_code}: {response.text[:200]}")
+                err_detail = resp_json.get('message') or resp_text[:200]
+                logger.error(f"[MSG91] Mobile OTP failed HTTP {response.status_code}: {err_detail}")
+
+                # If MSG91 OTP Template failed, try fallback to Flow SMS API if configured
+                sms_flow_id = cls.get_config_val('MSG91_SMS_FLOW_ID')
+                if sms_flow_id:
+                    logger.info("[MSG91] Attempting fallback to SMS Flow API...")
+                    flow_res = cls.send_sms(
+                        norm_mobile,
+                        f"Your verification code is {otp}. Valid for 10 minutes.",
+                        template_id=sms_flow_id
+                    )
+                    if flow_res.get('success'):
+                        return {
+                            "success": True,
+                            "message": "OTP sent successfully",
+                            "provider_ref": "SMS_FLOW_FALLBACK"
+                        }
+
+                status_code = response.status_code if response.status_code != 200 else 502
                 return {
                     "success": False,
                     "message": "Unable to send OTP at this time.",
-                    "status_code": response.status_code
+                    "status_code": status_code,
+                    "provider_detail": err_detail
                 }
         except requests.exceptions.Timeout:
             logger.error("[MSG91] Mobile OTP failed: timeout")
             return {
                 "success": False,
                 "message": "Unable to send OTP at this time.",
-                "code": "TIMEOUT"
+                "code": "TIMEOUT",
+                "status_code": 502
             }
         except Exception as ex:
-            logger.error(f"[MSG91] Mobile OTP failed: {type(ex).__name__}")
+            logger.error(f"[MSG91] Mobile OTP failed: {type(ex).__name__}: {ex}")
             return {
                 "success": False,
                 "message": "Unable to send OTP at this time.",
-                "code": "ERROR"
+                "code": "ERROR",
+                "status_code": 502
             }
+
 
     @classmethod
     def send_email_otp(cls, email, otp, template_id=None):

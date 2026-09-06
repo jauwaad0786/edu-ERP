@@ -252,6 +252,9 @@ export default function Login() {
     try {
       const res = await api.post('/auth/send-login-otp', { identifier: identifier.trim() });
       setOtpSentMsg(res.data?.message || 'If the account exists, an OTP has been sent.');
+      if (res.data?.dev_otp) {
+        setOtpValue(String(res.data.dev_otp));
+      }
       setOtpCooldown(60);
       setOtpStep(2);
     } catch (err) {
