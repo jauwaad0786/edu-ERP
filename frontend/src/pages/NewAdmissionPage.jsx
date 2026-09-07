@@ -144,17 +144,29 @@ export default function NewAdmissionPage() {
 
     // 3. Fetch Transport Routes (optional addon)
     api.get('/transport/routes')
-      .then(r => setTransportRoutes(r.data?.routes || r.data || []))
+      .then(r => {
+        const raw = r.data;
+        const arr = Array.isArray(raw) ? raw : Array.isArray(raw?.data) ? raw.data : Array.isArray(raw?.routes) ? raw.routes : [];
+        setTransportRoutes(arr);
+      })
       .catch(() => {});
 
     // 4. Fetch Transport Stops
     api.get('/transport/stops')
-      .then(r => setTransportStops(r.data?.stops || r.data || []))
+      .then(r => {
+        const raw = r.data;
+        const arr = Array.isArray(raw) ? raw : Array.isArray(raw?.data) ? raw.data : Array.isArray(raw?.stops) ? raw.stops : [];
+        setTransportStops(arr);
+      })
       .catch(() => {});
 
     // 5. Fetch Hostels (optional addon)
-    api.get('/hostels')
-      .then(r => setHostels(r.data?.hostels || r.data || []))
+    api.get('/hostel/hostels')
+      .then(r => {
+        const raw = r.data;
+        const arr = Array.isArray(raw) ? raw : Array.isArray(raw?.data) ? raw.data : Array.isArray(raw?.hostels) ? raw.hostels : [];
+        setHostels(arr);
+      })
       .catch(() => {});
   }, []);
 
@@ -396,10 +408,10 @@ export default function NewAdmissionPage() {
     window.print();
   }
 
-  const selectedClass = classes.find(c => String(c.id) === String(form.class_id));
-  const selectedRoute = transportRoutes.find(r => String(r.id) === String(form.transport_route_id));
-  const selectedStop  = transportStops.find(s => String(s.id) === String(form.transport_stop_id));
-  const selectedHostel = hostels.find(h => String(h.id) === String(form.hostel_id));
+  const selectedClass = Array.isArray(classes) ? classes.find(c => String(c.id) === String(form.class_id)) : undefined;
+  const selectedRoute = Array.isArray(transportRoutes) ? transportRoutes.find(r => String(r.id) === String(form.transport_route_id)) : undefined;
+  const selectedStop  = Array.isArray(transportStops) ? transportStops.find(s => String(s.id) === String(form.transport_stop_id)) : undefined;
+  const selectedHostel = Array.isArray(hostels) ? hostels.find(h => String(h.id) === String(form.hostel_id)) : undefined;
 
   const totalFee = Number(form.admission_fee || 0) +
     Number(form.caution_money || 0) +
@@ -1231,7 +1243,7 @@ export default function NewAdmissionPage() {
                                 style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 12.5, background: '#fff' }}
                               >
                                 <option value="">-- Select Route --</option>
-                                {transportRoutes.map(r => (
+                                {Array.isArray(transportRoutes) && transportRoutes.map(r => (
                                   <option key={r.id} value={r.id}>{r.route_name || r.name || `Route #${r.id}`}</option>
                                 ))}
                               </select>
@@ -1247,7 +1259,7 @@ export default function NewAdmissionPage() {
                                 style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 12.5, background: '#fff' }}
                               >
                                 <option value="">-- Select Stop --</option>
-                                {transportStops.map(s => (
+                                {Array.isArray(transportStops) && transportStops.map(s => (
                                   <option key={s.id} value={s.id}>{s.stop_name || s.name || `Stop #${s.id}`}</option>
                                 ))}
                               </select>
@@ -1292,7 +1304,7 @@ export default function NewAdmissionPage() {
                                 style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 12.5, background: '#fff' }}
                               >
                                 <option value="">-- Select Hostel --</option>
-                                {hostels.map(h => (
+                                {Array.isArray(hostels) && hostels.map(h => (
                                   <option key={h.id} value={h.id}>{h.name} ({h.gender_type || 'Co-Ed'})</option>
                                 ))}
                               </select>

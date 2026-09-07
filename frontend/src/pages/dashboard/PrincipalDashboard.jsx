@@ -195,14 +195,7 @@ export default function PrincipalDashboard() {
     { name: 'No Data', value: 1, color: '#94a3b8' }
   ];
 
-  const financialTrend = trendData.length ? trendData : [
-    { month: 'Mar', revenue: 320000, expenses: 140000 },
-    { month: 'Apr', revenue: 750000, expenses: 380000 },
-    { month: 'May', revenue: 980000, expenses: 490000 },
-    { month: 'Jun', revenue: 1120000, expenses: 540000 },
-    { month: 'Jul', revenue: 1540000, expenses: 620000 },
-    { month: 'Aug', revenue: 2010000, expenses: 980000 },
-  ];
+  const financialTrend = trendData.length ? trendData : [];
 
   const recentFeesList = recentFeeCollections.length ? recentFeeCollections : [];
 
@@ -1164,6 +1157,7 @@ export default function PrincipalDashboard() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px', alignItems: 'center' }}>
                 <div style={{ height: '220px' }}>
+                  {financialTrend.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={financialTrend} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                       <defs>
@@ -1184,6 +1178,12 @@ export default function PrincipalDashboard() {
                       <Area type="monotone" dataKey="expenses" stroke="#ef4444" strokeWidth={2.5} fill="url(#finExpGrad)" name="Expenses" />
                     </AreaChart>
                   </ResponsiveContainer>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8', gap: '8px' }}>
+                      <i className="ti ti-chart-area-line" style={{ fontSize: '36px', opacity: 0.4 }} />
+                      <div style={{ fontSize: '12px', fontWeight: 600, textAlign: 'center' }}>No financial transactions recorded for this session yet.</div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Right side stats strip */}
@@ -1216,7 +1216,7 @@ export default function PrincipalDashboard() {
                     <div>
                       <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600 }}>Net Profit</div>
                       <div style={{ fontSize: '18px', fontWeight: 900, color: '#10b981' }}>
-                        {fmtK(profitSummary?.net_profit || totalFeeCollected)}
+                        {fmtK(profitSummary?.profit ?? profitSummary?.net_profit ?? 0)}
                       </div>
                     </div>
                     <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#ecfdf5', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1228,7 +1228,7 @@ export default function PrincipalDashboard() {
                     <div>
                       <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600 }}>Profit Margin</div>
                       <div style={{ fontSize: '18px', fontWeight: 900, color: '#8b5cf6' }}>
-                        {profitSummary?.profit_margin ? `${profitSummary.profit_margin}%` : '51.2%'}
+                        {`${profitSummary?.profit_margin_pct ?? profitSummary?.profit_margin ?? 0}%`}
                       </div>
                     </div>
                     <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f3f0ff', color: '#8b5cf6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

@@ -8,7 +8,7 @@ import api from '../api/axios';
 export default function Login() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { login, otpLogin, widgetOtpLogin, studentLogin } = useAuth();
+  const { login, otpLogin, studentLogin } = useAuth();
 
   // Role mode: 'staff' (Principal/Teacher/Admin) vs 'student' (Student/Parent)
   const [activeTab, setActiveTab] = useState('staff');
@@ -62,76 +62,6 @@ export default function Login() {
     }
   };
 
-  // ── Ensure MSG91 widget SDK is loaded & initialized with exposeMethods ──
-  const ensureWidgetReady = () => {
-    return new Promise((resolve, reject) => {
-      const widgetConfig = {
-        widgetId: "366966687177323837373439",
-        tokenAuth: "567274TWJ7EfhCn6a9d222aP1",
-        exposeMethods: true,
-        success: async (data) => {
-          let token = '';
-          if (typeof data === 'string') {
-            token = data.trim();
-          } else if (data && typeof data === 'object') {
-            token = (data['access-token'] || data.accessToken || data.token || data.jwtToken || data.message || '').trim();
-          }
-          if (token) {
-            setLoading(true);
-            try {
-              await widgetOtpLogin(token, identifier.trim());
-              if (isResetFlow) {
-                setLoading(false);
-                setOtpStep(3);
-              } else {
-                navigate('/dashboard');
-              }
-            } catch (err) {
-              setError(err.response?.data?.error || 'Login failed after OTP verification.');
-            } finally {
-              if (!isResetFlow) setLoading(false);
-            }
-          }
-        },
-        failure: (err) => {
-          const errMsg = typeof err === 'string' ? err : (err?.message || err?.error || '');
-          if (errMsg) setError(errMsg);
-        },
-      };
-
-      if (typeof window.initSendOTP === 'function') {
-        window.initSendOTP(widgetConfig);
-        resolve();
-      } else {
-        const urls = [
-          'https://verify.msg91.com/otp-provider.js',
-          'https://verify.phone91.com/otp-provider.js'
-        ];
-        let i = 0;
-        function attempt() {
-          const s = document.createElement('script');
-          s.src = urls[i];
-          s.async = true;
-          s.onload = () => {
-            if (typeof window.initSendOTP === 'function') {
-              window.initSendOTP(widgetConfig);
-              resolve();
-            } else {
-              reject(new Error('initSendOTP not found after script load'));
-            }
-          };
-          s.onerror = () => {
-            i++;
-            if (i < urls.length) attempt();
-            else reject(new Error('Failed to load MSG91 script'));
-          };
-          document.head.appendChild(s);
-        }
-        attempt();
-      }
-    });
-  };
-
   const handleSendLoginOtp = async e => {
     if (e) e.preventDefault();
     const raw = identifier.trim();
@@ -139,48 +69,20 @@ export default function Login() {
       setError('Please enter your registered mobile number or email.');
       return;
     }
-    const digits = raw.replace(/\D/g, '');
-    const mobile = (digits.length === 10) ? `91${digits}` : raw;
-
     setLoading(true);
     setError('');
     setOtpSentMsg('');
 
-    const proceedSuccess = () => {
-      setLoading(false);
-      setOtpSentMsg('OTP sent to your registered mobile number.');
+    try {
+      const res = await api.post('/auth/send-login-otp', { identifier: raw });
+      setOtpSentMsg(res.data?.message || 'OTP sent to your registered mobile number.');
       setOtpCooldown(60);
       setOtpStep(2);
-    };
-
-    const fallbackSend = async () => {
-      try {
-        await api.post('/auth/send-login-otp', { identifier: raw });
-        proceedSuccess();
-      } catch (backendErr) {
-        setLoading(false);
-        const msg = backendErr.response?.data?.message || backendErr.response?.data?.error || 'Failed to send OTP. Please check the number and try again.';
-        setError(msg);
-      }
-    };
-
-    try {
-      await ensureWidgetReady();
-      const sendFn = window.sendOtp || window.sendOTP;
-      if (typeof sendFn === 'function') {
-        sendFn(
-          mobile,
-          () => proceedSuccess(),
-          (err) => {
-            console.warn('Widget send failed, trying backend fallback...', err);
-            fallbackSend();
-          }
-        );
-      } else {
-        await fallbackSend();
-      }
     } catch (err) {
-      await fallbackSend();
+      const msg = err.response?.data?.message || err.response?.data?.error || 'Failed to send OTP. Please check the number and try again.';
+      setError(msg);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -194,64 +96,17 @@ export default function Login() {
     setLoading(true);
     setError('');
 
-    const onVerifySuccess = () => {
+    try {
+      await otpLogin(identifier.trim(), otp);
       if (isResetFlow) {
-        setLoading(false);
         setOtpStep(3);
       } else {
         navigate('/dashboard');
       }
-    };
-
-    const verifyFn = window.verifyOtp || window.verifyOTP;
-    if (typeof verifyFn === 'function') {
-      verifyFn(
-        otp,
-        async (data) => {
-          let token = '';
-          if (typeof data === 'string') {
-            token = data.trim();
-          } else if (data && typeof data === 'object') {
-            token = (data['access-token'] || data.accessToken || data.token || data.jwtToken || data.message || '').trim();
-          }
-
-          if (token) {
-            try {
-              await widgetOtpLogin(token, identifier.trim());
-              onVerifySuccess();
-              return;
-            } catch (err) {
-              console.warn('Widget token verification login failed, trying fallback...', err);
-            }
-          }
-
-          try {
-            await otpLogin(identifier.trim(), otp);
-            onVerifySuccess();
-          } catch (err) {
-            setLoading(false);
-            setError(err.response?.data?.error || 'Verification failed. Please check the OTP.');
-          }
-        },
-        async (err) => {
-          try {
-            await otpLogin(identifier.trim(), otp);
-            onVerifySuccess();
-          } catch (backendErr) {
-            setLoading(false);
-            const errMsg = backendErr.response?.data?.error || (typeof err === 'string' ? err : err?.message) || 'OTP verification failed. Please check and try again.';
-            setError(errMsg);
-          }
-        }
-      );
-    } else {
-      try {
-        await otpLogin(identifier.trim(), otp);
-        onVerifySuccess();
-      } catch (err) {
-        setLoading(false);
-        setError(err.response?.data?.error || 'Verification failed. Please check the OTP.');
-      }
+    } catch (err) {
+      setError(err.response?.data?.error || 'Verification failed. Please check the OTP.');
+    } finally {
+      setLoading(false);
     }
   };
 

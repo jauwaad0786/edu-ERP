@@ -465,9 +465,9 @@ def send_login_otp():
     if not user or not user.is_active:
         logger.warning("[OTP] Account not found or inactive for identifier")
         return jsonify({
-            'success': True,
-            'message': 'If the mobile number is registered, an OTP has been sent.'
-        }), 200
+            'success': False,
+            'message': 'No account found with this mobile number. Please contact your school administrator.'
+        }), 404
 
     # 3. Mobile OTP is the primary channel
     target_mobile = user.phone or (None if _is_email(raw_identifier) else raw_identifier)
