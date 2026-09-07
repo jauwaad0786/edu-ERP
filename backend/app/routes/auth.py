@@ -118,6 +118,13 @@ def _serialize_user(user):
     active_role = get_active_role(user)
     data['active_role'] = active_role.to_dict() if active_role else None
 
+    if user.school:
+        data['school'] = user.school.to_dict()
+        data['current_session'] = user.school.current_session
+        data['school_name'] = user.school.name
+        data['school_code'] = user.school.code
+        data['school_city'] = user.school.city
+
     return data
 
 

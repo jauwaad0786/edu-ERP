@@ -4135,22 +4135,27 @@ def dashboard():
                             Announcement.is_active == True,
                         ).count()
 
-    # ── Teacher Celebrations: Birthdays & Work Anniversaries today (eager loaded user) ──
+    # ── Teacher & Staff Celebrations: Birthdays & Work Anniversaries today ──
     teachers_all = Teacher.query.options(joinedload(Teacher.user)).filter_by(school_id=sid).filter(Teacher.is_deleted == False).all()
     today_birthdays = []
     today_anniversaries = []
+    celebrated_user_ids = set()
 
     for t in teachers_all:
         t_name = t.user.name if (t.user and t.user.name) else 'Faculty Member'
-        dept = t.department or t.designation or 'Faculty'
+        dept = t.department or t.designation or 'Teaching Faculty'
+        if t.user_id:
+            celebrated_user_ids.add(t.user_id)
         
         # Birthday Check
         if t.dob and t.dob.month == today.month and t.dob.day == today.day:
             today_birthdays.append({
                 'id': t.id,
+                'user_id': t.user_id,
                 'name': t_name,
                 'department': dept,
                 'designation': t.designation or 'Teacher',
+                'role': 'TEACHER',
                 'photo_url': t.photo_url,
                 'type': 'BIRTHDAY',
                 'message': f"Wishing {t_name} a very Happy Birthday! 🎂🎉"
@@ -4162,22 +4167,122 @@ def dashboard():
             if years >= 1:
                 today_anniversaries.append({
                     'id': t.id,
+                    'user_id': t.user_id,
                     'name': t_name,
                     'department': dept,
                     'designation': t.designation or 'Teacher',
+                    'role': 'TEACHER',
                     'photo_url': t.photo_url,
                     'years': years,
                     'type': 'ANNIVERSARY',
                     'message': f"Happy {years}{'st' if years==1 else 'nd' if years==2 else 'rd' if years==3 else 'th'} Work Anniversary to {t_name}! 🌟"
                 })
 
+    # Non-teaching staff celebrations from EmployeeProfile
+    try:
+        from app.models.hrms import EmployeeProfile
+        all_emp_profiles = EmployeeProfile.query.filter_by(school_id=sid).filter(EmployeeProfile.employment_status == 'ACTIVE').all()
+        for ep in all_emp_profiles:
+            if ep.user_id in celebrated_user_ids:
+                continue
+            u = db.session.get(User, ep.user_id)
+            if not u:
+                continue
+            celebrated_user_ids.add(ep.user_id)
+            emp_name = u.name or 'Staff Member'
+            emp_role = u.role.value if u.role else 'Staff'
+            emp_dept = u.department or 'Administration'
+            
+            if ep.dob and ep.dob.month == today.month and ep.dob.day == today.day:
+                today_birthdays.append({
+                    'id': ep.id,
+                    'user_id': ep.user_id,
+                    'name': emp_name,
+                    'department': emp_dept,
+                    'designation': u.designation or emp_role,
+                    'role': emp_role,
+                    'photo_url': None,
+                    'type': 'BIRTHDAY',
+                    'message': f"Wishing {emp_name} ({emp_role}) a very Happy Birthday! 🎂🎉"
+                })
+            
+            if ep.joining_date and ep.joining_date.month == today.month and ep.joining_date.day == today.day:
+                years = today.year - ep.joining_date.year
+                if years >= 1:
+                    today_anniversaries.append({
+                        'id': ep.id,
+                        'user_id': ep.user_id,
+                        'name': emp_name,
+                        'department': emp_dept,
+                        'designation': u.designation or emp_role,
+                        'role': emp_role,
+                        'photo_url': None,
+                        'years': years,
+                        'type': 'ANNIVERSARY',
+                        'message': f"Happy {years}{'st' if years==1 else 'nd' if years==2 else 'rd' if years==3 else 'th'} Work Anniversary to {emp_name}! 🌟"
+                    })
+    except Exception:
+        pass
+
+    # ── Staff on Leave Today (Approved & Pending leaves + attendance marked ON_LEAVE) ──
+    staff_on_leave_today = []
+    seen_leave_uids = set()
+    try:
+        from app.models.hrms import LeaveRequest
+        active_leaves = LeaveRequest.query.filter(
+            LeaveRequest.school_id == sid,
+            LeaveRequest.status.in_(['APPROVED', 'PENDING']),
+            LeaveRequest.from_date <= today,
+            LeaveRequest.to_date >= today
+        ).all()
+        for lr in active_leaves:
+            uid = lr.user_id
+            seen_leave_uids.add(uid)
+            u = lr.user
+            staff_on_leave_today.append({
+                'id': lr.id,
+                'user_id': uid,
+                'name': u.name if u else (lr.employee_name or 'Faculty / Staff'),
+                'role': u.role.value if (u and u.role) else (lr.role or 'Staff'),
+                'department': u.department if u else (lr.department or 'General'),
+                'leave_type': lr.leave_type_name or (lr.leave_type.name if lr.leave_type else 'Leave'),
+                'days_count': lr.days_count,
+                'is_half_day': lr.is_half_day,
+                'from_date': lr.from_date.isoformat() if lr.from_date else None,
+                'to_date': lr.to_date.isoformat() if lr.to_date else None,
+                'reason': lr.reason,
+                'status': lr.status
+            })
+    except Exception:
+        pass
+
+    for ta in t_att_today:
+        if ta.status == 'ON_LEAVE' and ta.teacher_id:
+            t = Teacher.query.get(ta.teacher_id)
+            uid = t.user_id if t else None
+            if uid and uid not in seen_leave_uids:
+                seen_leave_uids.add(uid)
+                t_name = t.user.name if (t and t.user) else 'Teacher'
+                staff_on_leave_today.append({
+                    'id': f"att_{ta.id}",
+                    'user_id': uid,
+                    'name': t_name,
+                    'role': 'TEACHER',
+                    'department': t.department or 'Faculty',
+                    'leave_type': 'On Leave Today',
+                    'days_count': 1,
+                    'is_half_day': False,
+                    'from_date': today.isoformat(),
+                    'to_date': today.isoformat(),
+                    'reason': 'Marked On Leave in Attendance',
+                    'status': 'APPROVED'
+                })
+
     # ── Fee Intelligence Metrics (Database Aggregates — Zero In-Memory Table Scans) ─────
     curr_month_str = today.strftime('%Y-%m')
     curr_month_name = today.strftime('%B %Y')
-    curr_session = '2024-25'
     school_obj = School.query.get(sid)
-    if school_obj and hasattr(school_obj, 'session') and school_obj.session:
-        curr_session = school_obj.session
+    curr_session = (school_obj.current_session if (school_obj and school_obj.current_session) else getattr(school_obj, 'session', None)) or '2026-27'
 
     m_start = date(today.year, today.month, 1)
     if today.month == 12:
@@ -4297,9 +4402,10 @@ def dashboard():
         # class-wise intelligence
         'class_attendance_today':  class_att_list,
         'best_attendance_class':   best_class,
-        # celebrations
+        # celebrations & leaves
         'today_birthdays':         today_birthdays,
         'today_anniversaries':     today_anniversaries,
+        'staff_on_leave_today':    staff_on_leave_today,
     }), 200
 
 

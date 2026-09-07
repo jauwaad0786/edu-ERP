@@ -301,7 +301,7 @@ export default function Navbar({ title, darkMode, onToggleDark }) {
             color: darkMode ? '#a5b4fc' : '#4f46e5',
             fontSize: 11, fontWeight: 600, padding: '3px 10px',
             borderRadius: 20, letterSpacing: '0.01em',
-          }}>2024-25</span>
+          }}>{user?.school?.current_session || user?.current_session || '2026-27'}</span>
 
           {/* ── Role Switch Dropdown ── */}
           <RoleSwitchDropdown darkMode={darkMode} />

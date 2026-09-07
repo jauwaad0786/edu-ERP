@@ -9,7 +9,6 @@ import {
   BarChart, Bar, AreaChart, Area, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
-import StudentTravelHistoryWidget from '../../components/transport/StudentTravelHistoryWidget';
 import OneP360BotDrawer from '../../AI/components/OneP360BotDrawer';
 
 export default function PrincipalDashboard() {
@@ -31,6 +30,8 @@ export default function PrincipalDashboard() {
   const [upcomingEvents, setUpcomingEvents] = useState([]);
   const [recentFeeCollections, setRecentFeeCollections] = useState([]);
   const [feesSummary, setFeesSummary] = useState(null);
+  const [teacherRequests, setTeacherRequests] = useState([]);
+  const [reviewingId, setReviewingId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [classViewMode, setClassViewMode] = useState('GRAPH'); // 'GRAPH' or 'GRID'
   const [feePeriod, setFeePeriod] = useState('MONTH'); // 'MONTH', 'YEAR', 'ALL'
@@ -52,7 +53,8 @@ export default function PrincipalDashboard() {
       api.get('/support/announcements/latest').catch(() => ({ data: [] })),
       api.get('/principal/fees/recent-collections').catch(() => ({ data: [] })),
       api.get('/principal/fees/summary').catch(() => ({ data: null })),
-    ]).then(([s, c, f, trend, profit, hols, ann, recentFees, fSum]) => {
+      api.get('/hrms/leaves/requests', { params: { status: 'PENDING' } }).catch(() => ({ data: [] })),
+    ]).then(([s, c, f, trend, profit, hols, ann, recentFees, fSum, tReqs]) => {
       setStats(s.data);
       setClasses(c.data || []);
       setFees(f.data);
@@ -70,9 +72,26 @@ export default function PrincipalDashboard() {
       setAnnouncements(ann.data || []);
       setRecentFeeCollections(Array.isArray(recentFees.data) ? recentFees.data : []);
       setFeesSummary(fSum?.data || null);
+      setTeacherRequests(Array.isArray(tReqs.data) ? tReqs.data : []);
       setLoading(false);
     });
   }, [financeMonth]);
+
+  const handleReviewRequest = async (requestId, approve) => {
+    setReviewingId(requestId);
+    try {
+      await api.post(`/hrms/leaves/requests/${requestId}/review`, {
+        approve,
+        remarks: approve ? 'Approved from Executive Dashboard' : 'Rejected from Executive Dashboard'
+      });
+      toast.success(approve ? 'Teacher request approved' : 'Teacher request rejected');
+      setTeacherRequests(prev => prev.filter(req => req.id !== requestId));
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to update request');
+    } finally {
+      setReviewingId(null);
+    }
+  };
 
   const fmt = n => n !== undefined && n !== null ? Number(n).toLocaleString('en-IN') : '0';
   const fmtK = n => {
@@ -139,7 +158,7 @@ export default function PrincipalDashboard() {
   const activePeriodLabel = feePeriod === 'MONTH'
     ? `This Month (${feeIntel.current_month_label || 'Current'})`
     : feePeriod === 'YEAR'
-    ? `This Academic Year (Session ${feeIntel.current_session || '2024-25'})`
+    ? `This Academic Year (Session ${feeIntel.current_session || user?.school?.current_session || user?.current_session || '2026-27'})`
     : 'All Time (Total History)';
 
   const handleDownloadFeeReport = async () => {
@@ -149,7 +168,7 @@ export default function PrincipalDashboard() {
       if (feePeriod === 'MONTH') {
         params.append('month', new Date().toISOString().slice(0, 7));
       } else if (feePeriod === 'YEAR') {
-        params.append('session', feeIntel.current_session || '2024-25');
+        params.append('session', feeIntel.current_session || user?.school?.current_session || user?.current_session || '2026-27');
       }
       const res = await api.get('/principal/fees/collection-report/pdf?' + params.toString(), { responseType: 'blob' });
       const link = document.createElement('a');
@@ -183,9 +202,21 @@ export default function PrincipalDashboard() {
     ? [...classAttendanceList].filter(c => c.total > 0).sort((a, b) => b.percentage - a.percentage)[0]
     : null);
 
-  // Celebrations (Birthdays & Anniversaries)
+  // Celebrations & Leaves (Birthdays, Anniversaries, Staff on Leave)
   const birthdays = stats?.today_birthdays || [];
   const anniversaries = stats?.today_anniversaries || [];
+  const staffOnLeave = stats?.staff_on_leave_today || [];
+
+  const handleSendWish = (name, type) => {
+    toast.success(`Wishes sent to ${name}! 🎉`, {
+      icon: type === 'BIRTHDAY' ? '🎂' : '🌟',
+      style: {
+        borderRadius: '10px',
+        background: darkMode ? '#1e293b' : '#333',
+        color: '#fff',
+      }
+    });
+  };
 
   const donutData = totalStudents > 0 ? [
     { name: 'Present', value: Number(studentsPresent), color: '#10b981' },
@@ -199,17 +230,9 @@ export default function PrincipalDashboard() {
 
   const recentFeesList = recentFeeCollections.length ? recentFeeCollections : [];
 
-  const eventsList = upcomingEvents.length ? upcomingEvents : [
-    { month: 'AUG', day: '15', title: 'Independence Day', sub: 'School Holiday', type: 'Holiday', badgeBg: '#e0e7ff', badgeColor: '#4f46e5' },
-    { month: 'AUG', day: '22', title: 'Parent-Teacher Meeting', sub: 'Saturday, 10:00 AM', type: 'Meeting', badgeBg: '#ffedd5', badgeColor: '#c2410c' },
-    { month: 'AUG', day: '28', title: 'Monthly Staff Meeting', sub: 'Thursday, 2:00 PM', type: 'Meeting', badgeBg: '#ffedd5', badgeColor: '#c2410c' },
-    { month: 'SEP', day: '05', title: "Teachers' Day Celebration", sub: 'Friday, 9:30 AM', type: 'Event', badgeBg: '#dcfce7', badgeColor: '#15803d' },
-  ];
+  const eventsList = upcomingEvents;
 
-  const announcementsList = announcements.length ? announcements : [
-    { id: 1, title: 'School Timings Update', desc: 'New school timing will be effective from 18th August 2026.', time: '2 hours ago' },
-    { id: 2, title: 'PTM – 22 August 2026', desc: 'Parent-Teacher Meeting will be held on 22nd August. Timings will be shared soon.', time: '5 hours ago' },
-  ];
+  const announcementsList = announcements;
 
   const handleExportCSV = () => {
     const rows = [
@@ -293,7 +316,7 @@ export default function PrincipalDashboard() {
                   background: 'rgba(255,255,255,0.12)', color: '#e0f2fe',
                   fontSize: '11.5px', fontWeight: 700, backdropFilter: 'blur(6px)'
                 }}>
-                  🏫 Academic Session 2024–25
+                  🏫 Academic Session {user?.school?.current_session || user?.current_session || feeIntel.current_session || '2026-27'}
                 </span>
               </div>
 
@@ -1304,6 +1327,358 @@ export default function PrincipalDashboard() {
             </div>
           </div>
 
+          {/* ══ 6.5 CAMPUS PULSE: LEAVES & CELEBRATIONS ══ */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
+            gap: '20px', marginBottom: '24px'
+          }}>
+            {/* Card 1: Faculty & Staff On Leave Today */}
+            <div style={{
+              background: darkMode ? '#111827' : '#ffffff',
+              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+              borderRadius: '18px', padding: '22px',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.02)',
+              display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
+            }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{
+                      width: '38px', height: '38px', borderRadius: '10px',
+                      background: staffOnLeave.length > 0 ? (darkMode ? '#372025' : '#fef2f2') : (darkMode ? '#132e27' : '#ecfdf5'),
+                      color: staffOnLeave.length > 0 ? '#ef4444' : '#10b981',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '19px'
+                    }}>
+                      <i className={staffOnLeave.length > 0 ? "ti ti-user-off" : "ti ti-user-check"} />
+                    </div>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                          Teachers & Staff On Leave
+                        </h3>
+                        <span style={{
+                          fontSize: '11px', fontWeight: 800, padding: '2px 8px', borderRadius: '20px',
+                          background: staffOnLeave.length > 0 ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                          color: staffOnLeave.length > 0 ? '#ef4444' : '#10b981',
+                        }}>
+                          {staffOnLeave.length} {staffOnLeave.length === 1 ? 'ON LEAVE' : 'ON LEAVE'}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
+                        Faculty and staff members absent or on approved leave today
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => navigate('/hrms/leaves')}
+                    style={{
+                      background: 'none', border: 'none', color: '#2563eb', fontSize: '12.5px', fontWeight: 700, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: '4px'
+                    }}
+                  >
+                    <span>Leave Desk</span>
+                    <i className="ti ti-arrow-right" />
+                  </button>
+                </div>
+
+                {staffOnLeave.length === 0 ? (
+                  <div style={{
+                    padding: '32px 16px', textAlign: 'center', borderRadius: '14px',
+                    background: darkMode ? 'rgba(16, 185, 129, 0.05)' : '#f0fdf4',
+                    border: `1px dashed ${darkMode ? 'rgba(16, 185, 129, 0.25)' : '#bbf7d0'}`
+                  }}>
+                    <div style={{
+                      width: '44px', height: '44px', borderRadius: '50%', margin: '0 auto 10px',
+                      background: 'rgba(16, 185, 129, 0.15)', color: '#10b981',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px'
+                    }}>
+                      <i className="ti ti-shield-check" />
+                    </div>
+                    <div style={{ fontSize: '14px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                      All Teachers & Staff Are On Duty Today!
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px', maxWidth: '380px', margin: '4px auto 0' }}>
+                      Full faculty attendance recorded with no active approved leaves for today.
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '290px', overflowY: 'auto' }}>
+                    {staffOnLeave.map((item, idx) => (
+                      <div
+                        key={item.id || idx}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '12px 14px', borderRadius: '12px',
+                          background: darkMode ? '#1e293b' : '#f8fafc',
+                          border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                          <div style={{
+                            width: '38px', height: '38px', borderRadius: '10px',
+                            background: darkMode ? '#0f172a' : '#ffffff',
+                            border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`,
+                            color: '#6366f1', fontWeight: 800, fontSize: '14px',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                          }}>
+                            {item.name ? item.name.charAt(0).toUpperCase() : 'S'}
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: '13.5px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {item.name}
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '1px' }}>
+                              <span style={{
+                                padding: '1px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 700,
+                                background: item.role === 'TEACHER' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(139, 92, 246, 0.12)',
+                                color: item.role === 'TEACHER' ? '#2563eb' : '#7c3aed'
+                              }}>
+                                {item.role === 'TEACHER' ? 'Teacher' : (item.role || 'Staff')}
+                              </span>
+                              <span>·</span>
+                              <span>{item.department || 'Academic'}</span>
+                            </div>
+                            {item.reason && (
+                              <div style={{ fontSize: '11px', color: darkMode ? '#94a3b8' : '#64748b', fontStyle: 'italic', marginTop: '3px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '240px' }}>
+                                "{item.reason}"
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '10px' }}>
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 800,
+                            background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444'
+                          }}>
+                            {item.leave_type || 'Leave'}
+                          </span>
+                          <div style={{ fontSize: '10.5px', color: '#94a3b8', marginTop: '3px', fontWeight: 600 }}>
+                            {item.is_half_day ? 'Half Day' : (item.days_count ? `${item.days_count} Day${item.days_count > 1 ? 's' : ''}` : 'Today')}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: '11.5px', color: '#94a3b8' }}>
+                  Total on Leave: <strong style={{ color: staffOnLeave.length > 0 ? '#ef4444' : '#10b981' }}>{staffOnLeave.length}</strong>
+                </div>
+                <button
+                  onClick={() => navigate('/hrms/attendance')}
+                  style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  View Staff Attendance →
+                </button>
+              </div>
+            </div>
+
+            {/* Card 2: Today's Celebrations (Birthdays & Work Anniversaries) */}
+            <div style={{
+              background: darkMode ? '#111827' : '#ffffff',
+              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+              borderRadius: '18px', padding: '22px',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.02)',
+              display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
+            }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{
+                      width: '38px', height: '38px', borderRadius: '10px',
+                      background: (birthdays.length + anniversaries.length > 0) ? (darkMode ? '#382512' : '#fef3c7') : (darkMode ? '#1e293b' : '#f1f5f9'),
+                      color: (birthdays.length + anniversaries.length > 0) ? '#d97706' : '#94a3b8',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px'
+                    }}>
+                      {(birthdays.length + anniversaries.length > 0) ? '🎉' : '🎂'}
+                    </div>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                          Today's Celebrations
+                        </h3>
+                        <span style={{
+                          fontSize: '11px', fontWeight: 800, padding: '2px 8px', borderRadius: '20px',
+                          background: (birthdays.length + anniversaries.length > 0) ? 'rgba(245, 158, 11, 0.15)' : (darkMode ? '#1e293b' : '#f1f5f9'),
+                          color: (birthdays.length + anniversaries.length > 0) ? '#f59e0b' : '#94a3b8',
+                        }}>
+                          {birthdays.length + anniversaries.length} CELEBRATING
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
+                        Birthdays & Work Anniversaries for teachers and staff
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => navigate('/teachers')}
+                    style={{
+                      background: 'none', border: 'none', color: '#2563eb', fontSize: '12.5px', fontWeight: 700, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: '4px'
+                    }}
+                  >
+                    <span>Staff Directory</span>
+                    <i className="ti ti-arrow-right" />
+                  </button>
+                </div>
+
+                {(birthdays.length === 0 && anniversaries.length === 0) ? (
+                  <div style={{
+                    padding: '32px 16px', textAlign: 'center', borderRadius: '14px',
+                    background: darkMode ? 'rgba(245, 158, 11, 0.04)' : '#fffbeb',
+                    border: `1px dashed ${darkMode ? 'rgba(245, 158, 11, 0.25)' : '#fde68a'}`
+                  }}>
+                    <div style={{
+                      width: '44px', height: '44px', borderRadius: '50%', margin: '0 auto 10px',
+                      background: 'rgba(245, 158, 11, 0.15)', color: '#d97706',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px'
+                    }}>
+                      ✨
+                    </div>
+                    <div style={{ fontSize: '14px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                      No Celebrations Scheduled For Today
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px', maxWidth: '380px', margin: '4px auto 0' }}>
+                      Birthdays and work milestones of teachers and staff will be prominently highlighted here every day.
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '290px', overflowY: 'auto' }}>
+                    {/* Birthdays */}
+                    {birthdays.map((b, idx) => (
+                      <div
+                        key={`bday_${b.id || idx}`}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '12px 14px', borderRadius: '12px',
+                          background: darkMode ? 'linear-gradient(135deg, rgba(236,72,153,0.12), rgba(139,92,246,0.08))' : 'linear-gradient(135deg, #fdf2f8, #f5f3ff)',
+                          border: `1px solid ${darkMode ? 'rgba(236,72,153,0.3)' : '#fbcfe8'}`
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                          <div style={{
+                            width: '40px', height: '40px', borderRadius: '12px',
+                            background: 'linear-gradient(135deg, #ec4899, #8b5cf6)',
+                            color: '#ffffff', fontSize: '20px',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                          }}>
+                            🎂
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ fontSize: '13.5px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {b.name}
+                              </span>
+                              <span style={{
+                                padding: '1px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 800,
+                                background: '#ec4899', color: '#ffffff'
+                              }}>
+                                Birthday!
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
+                              {b.designation || (b.role === 'TEACHER' ? 'Teacher' : 'Staff')} · {b.department || 'Faculty'}
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#ec4899', fontWeight: 600, marginTop: '2px' }}>
+                              Happy Birthday! Wishing them great joy 🥳
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => handleSendWish(b.name, 'BIRTHDAY')}
+                          style={{
+                            padding: '6px 12px', borderRadius: '8px',
+                            background: '#ec4899', color: '#ffffff',
+                            border: 'none', fontSize: '11.5px', fontWeight: 800,
+                            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0,
+                            boxShadow: '0 2px 6px rgba(236, 72, 153, 0.3)'
+                          }}
+                        >
+                          <span>Wish</span> 🎉
+                        </button>
+                      </div>
+                    ))}
+
+                    {/* Work Anniversaries */}
+                    {anniversaries.map((a, idx) => (
+                      <div
+                        key={`anniv_${a.id || idx}`}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '12px 14px', borderRadius: '12px',
+                          background: darkMode ? 'linear-gradient(135deg, rgba(245,158,11,0.12), rgba(234,179,8,0.08))' : 'linear-gradient(135deg, #fffbeb, #fef9c3)',
+                          border: `1px solid ${darkMode ? 'rgba(245,158,11,0.3)' : '#fde68a'}`
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                          <div style={{
+                            width: '40px', height: '40px', borderRadius: '12px',
+                            background: 'linear-gradient(135deg, #f59e0b, #eab308)',
+                            color: '#ffffff', fontSize: '20px',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                          }}>
+                            🌟
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ fontSize: '13.5px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {a.name}
+                              </span>
+                              <span style={{
+                                padding: '1px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 800,
+                                background: '#d97706', color: '#ffffff'
+                              }}>
+                                {a.years} {a.years === 1 ? 'Year' : 'Years'} Service!
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
+                              {a.designation || (a.role === 'TEACHER' ? 'Teacher' : 'Staff')} · {a.department || 'Faculty'}
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#d97706', fontWeight: 600, marginTop: '2px' }}>
+                              Celebrating {a.years} glorious {a.years === 1 ? 'year' : 'years'} at school 🏆
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => handleSendWish(a.name, 'ANNIVERSARY')}
+                          style={{
+                            padding: '6px 12px', borderRadius: '8px',
+                            background: '#d97706', color: '#ffffff',
+                            border: 'none', fontSize: '11.5px', fontWeight: 800,
+                            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0,
+                            boxShadow: '0 2px 6px rgba(217, 119, 6, 0.3)'
+                          }}
+                        >
+                          <span>Congratulate</span> 🌟
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: '11.5px', color: '#94a3b8' }}>
+                  🎂 {birthdays.length} Birthday{birthdays.length === 1 ? '' : 's'} · 🌟 {anniversaries.length} Work Anniversar{anniversaries.length === 1 ? 'y' : 'ies'}
+                </div>
+                <button
+                  onClick={() => navigate('/support/announcements')}
+                  style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  Post Campus Announcement →
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* ══ 7. LOWER 3-COLUMN INTELLIGENCE SECTION ══ */}
           <div style={{
             display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
@@ -1386,32 +1761,40 @@ export default function PrincipalDashboard() {
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {eventsList.map((e, idx) => (
-                    <div key={idx} style={{
-                      display: 'flex', alignItems: 'center', gap: '12px',
-                      paddingBottom: '8px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`
-                    }}>
-                      <div style={{
-                        width: '38px', textAlign: 'center', borderRadius: '8px',
-                        background: darkMode ? '#1e293b' : '#f1f5f9', padding: '4px 0'
-                      }}>
-                        <div style={{ fontSize: '9px', fontWeight: 800, color: '#3b82f6' }}>{e.month || (e.date ? new Date(e.date).toLocaleDateString('en-US', { month: 'short' }).toUpperCase() : 'AUG')}</div>
-                        <div style={{ fontSize: '15px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a' }}>{e.day || (e.date ? new Date(e.date).getDate() : '15')}</div>
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: '12.5px', fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {e.title}
-                        </div>
-                        <div style={{ fontSize: '11px', color: '#94a3b8' }}>{e.sub || e.holiday_type || 'Event'}</div>
-                      </div>
-                      <span style={{
-                        fontSize: '10.5px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px',
-                        background: e.badgeBg || '#e0e7ff', color: e.badgeColor || '#4f46e5'
-                      }}>
-                        {e.type || e.holiday_type || 'Holiday'}
-                      </span>
+                  {eventsList.length === 0 ? (
+                    <div style={{ padding: '28px 12px', textAlign: 'center', color: '#94a3b8' }}>
+                      <i className="ti ti-calendar-event" style={{ fontSize: '28px', opacity: 0.4, display: 'block', marginBottom: '8px' }} />
+                      <div style={{ fontSize: '13px', fontWeight: 600 }}>No upcoming events scheduled</div>
+                      <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Holidays and school functions will appear here.</div>
                     </div>
-                  ))}
+                  ) : (
+                    eventsList.map((e, idx) => (
+                      <div key={idx} style={{
+                        display: 'flex', alignItems: 'center', gap: '12px',
+                        paddingBottom: '8px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`
+                      }}>
+                        <div style={{
+                          width: '38px', textAlign: 'center', borderRadius: '8px',
+                          background: darkMode ? '#1e293b' : '#f1f5f9', padding: '4px 0'
+                        }}>
+                          <div style={{ fontSize: '9px', fontWeight: 800, color: '#3b82f6' }}>{e.month || (e.date ? new Date(e.date).toLocaleDateString('en-US', { month: 'short' }).toUpperCase() : 'AUG')}</div>
+                          <div style={{ fontSize: '15px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a' }}>{e.day || (e.date ? new Date(e.date).getDate() : '15')}</div>
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '12.5px', fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {e.title}
+                          </div>
+                          <div style={{ fontSize: '11px', color: '#94a3b8' }}>{e.sub || e.holiday_type || 'Event'}</div>
+                        </div>
+                        <span style={{
+                          fontSize: '10.5px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px',
+                          background: e.badgeBg || '#e0e7ff', color: e.badgeColor || '#4f46e5'
+                        }}>
+                          {e.type || e.holiday_type || 'Holiday'}
+                        </span>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
 
@@ -1441,25 +1824,33 @@ export default function PrincipalDashboard() {
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {announcementsList.map(a => (
-                    <div key={a.id} style={{
-                      display: 'flex', gap: '10px', alignItems: 'flex-start',
-                      paddingBottom: '8px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`
-                    }}>
-                      <div style={{
-                        width: '32px', height: '32px', borderRadius: '8px',
-                        background: '#eff6ff', color: '#2563eb',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-                      }}>
-                        <i className="ti ti-speakerphone" />
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: '12.5px', fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a' }}>{a.title}</div>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: 1.3 }}>{a.description || a.desc}</div>
-                        <div style={{ fontSize: '10px', color: '#cbd5e1', marginTop: '2px' }}>{a.time || 'Today'}</div>
-                      </div>
+                  {announcementsList.length === 0 ? (
+                    <div style={{ padding: '28px 12px', textAlign: 'center', color: '#94a3b8' }}>
+                      <i className="ti ti-speakerphone" style={{ fontSize: '28px', opacity: 0.4, display: 'block', marginBottom: '8px' }} />
+                      <div style={{ fontSize: '13px', fontWeight: 600 }}>No active announcements</div>
+                      <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Broadcast notices to staff, students, and parents.</div>
                     </div>
-                  ))}
+                  ) : (
+                    announcementsList.map(a => (
+                      <div key={a.id} style={{
+                        display: 'flex', gap: '10px', alignItems: 'flex-start',
+                        paddingBottom: '8px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`
+                      }}>
+                        <div style={{
+                          width: '32px', height: '32px', borderRadius: '8px',
+                          background: '#eff6ff', color: '#2563eb',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                        }}>
+                          <i className="ti ti-speakerphone" />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '12.5px', fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a' }}>{a.title}</div>
+                          <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: 1.3 }}>{a.description || a.desc}</div>
+                          <div style={{ fontSize: '10px', color: '#cbd5e1', marginTop: '2px' }}>{a.time || 'Today'}</div>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
 
@@ -1477,8 +1868,162 @@ export default function PrincipalDashboard() {
             </div>
           </div>
 
-          {/* ══ 7. STUDENT TRANSPORT & DAILY TRAVEL HISTORY (BOARDING & DROPOFF) ══ */}
-          <StudentTravelHistoryWidget darkMode={darkMode} />
+          {/* ══ 7. TEACHER REQUESTS & PENDING APPROVALS ══ */}
+          <div style={{
+            background: darkMode ? '#111827' : '#ffffff',
+            border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+            borderRadius: '18px', padding: '22px', marginBottom: '24px',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '38px', height: '38px', borderRadius: '10px',
+                  background: darkMode ? '#1e293b' : '#eff6ff',
+                  color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <i className="ti ti-user-check" style={{ fontSize: '20px' }} />
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                      Teacher Requests & Approvals
+                    </h3>
+                    <span style={{
+                      fontSize: '11px', fontWeight: 800, padding: '2px 8px', borderRadius: '20px',
+                      background: teacherRequests.length > 0 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                      color: teacherRequests.length > 0 ? '#ef4444' : '#10b981',
+                    }}>
+                      {teacherRequests.length} {teacherRequests.length === 1 ? 'REQUEST' : 'REQUESTS'} PENDING
+                    </span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
+                    Review leave applications, official duty permissions, and requests submitted by teachers.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => navigate('/hrms/leaves')}
+                style={{
+                  padding: '7px 14px', borderRadius: '8px', fontSize: '12.5px', fontWeight: 700,
+                  background: darkMode ? '#1e293b' : '#f1f5f9',
+                  color: darkMode ? '#93c5fd' : '#2563eb', border: 'none', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: '6px'
+                }}
+              >
+                <span>HRMS Leave Dashboard</span>
+                <i className="ti ti-arrow-right" />
+              </button>
+            </div>
+
+            {teacherRequests.length === 0 ? (
+              <div style={{
+                padding: '36px 20px', textAlign: 'center', borderRadius: '14px',
+                background: darkMode ? 'rgba(30, 41, 59, 0.3)' : '#f8fafc',
+                border: `1px dashed ${darkMode ? '#334155' : '#cbd5e1'}`
+              }}>
+                <div style={{
+                  width: '48px', height: '48px', borderRadius: '50%', margin: '0 auto 12px',
+                  background: 'rgba(16, 185, 129, 0.12)', color: '#10b981',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px'
+                }}>
+                  <i className="ti ti-circle-check" />
+                </div>
+                <div style={{ fontSize: '14.5px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                  All Teacher Requests Are Up to Date!
+                </div>
+                <div style={{ fontSize: '12.5px', color: '#94a3b8', maxWidth: '480px', margin: '4px auto 0', lineHeight: 1.4 }}>
+                  No pending teacher leave requests or duty applications. When faculty members submit requests from their portal, they appear here for one-click approval.
+                </div>
+              </div>
+            ) : (
+              <div style={{
+                display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+                gap: '14px'
+              }}>
+                {teacherRequests.map(req => (
+                  <div
+                    key={req.id}
+                    style={{
+                      borderRadius: '14px', padding: '16px',
+                      background: darkMode ? '#1e293b' : '#f8fafc',
+                      border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                      display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                      boxShadow: '0 1px 4px rgba(0,0,0,0.02)'
+                    }}
+                  >
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                        <div>
+                          <div style={{ fontSize: '14px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                            {req.employee_name || 'Faculty Member'}
+                          </div>
+                          <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                            {req.employee_id ? `ID: ${req.employee_id} · ` : ''}{req.department || req.role || 'Teacher'}
+                          </div>
+                        </div>
+                        <span style={{
+                          fontSize: '10.5px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px',
+                          background: 'rgba(59, 130, 246, 0.12)', color: '#3b82f6'
+                        }}>
+                          {req.leave_type_name || 'Leave Request'}
+                        </span>
+                      </div>
+
+                      <div style={{
+                        padding: '8px 10px', borderRadius: '8px',
+                        background: darkMode ? '#0f172a' : '#ffffff',
+                        border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                        fontSize: '12px', color: darkMode ? '#cbd5e1' : '#475569',
+                        marginBottom: '12px'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontWeight: 600 }}>
+                          <span>Duration: <strong>{req.days_count || 1} {req.days_count === 1 ? 'Day' : 'Days'}</strong></span>
+                          <span style={{ color: '#2563eb' }}>{req.from_date}{req.to_date && req.to_date !== req.from_date ? ` to ${req.to_date}` : ''}</span>
+                        </div>
+                        <div style={{ fontSize: '11.5px', color: darkMode ? '#94a3b8' : '#64748b', fontStyle: 'italic' }}>
+                          "{req.reason || 'No reason provided'}"
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px', marginTop: 'auto' }}>
+                      <button
+                        onClick={() => handleReviewRequest(req.id, true)}
+                        disabled={reviewingId === req.id}
+                        style={{
+                          flex: 1, padding: '7px 10px', borderRadius: '8px',
+                          background: '#10b981', color: '#ffffff',
+                          border: 'none', fontSize: '12px', fontWeight: 700,
+                          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                          opacity: reviewingId === req.id ? 0.7 : 1
+                        }}
+                      >
+                        <i className="ti ti-check" />
+                        <span>Accept</span>
+                      </button>
+                      <button
+                        onClick={() => handleReviewRequest(req.id, false)}
+                        disabled={reviewingId === req.id}
+                        style={{
+                          flex: 1, padding: '7px 10px', borderRadius: '8px',
+                          background: darkMode ? '#334155' : '#fee2e2',
+                          color: '#ef4444',
+                          border: 'none', fontSize: '12px', fontWeight: 700,
+                          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+                          opacity: reviewingId === req.id ? 0.7 : 1
+                        }}
+                      >
+                        <i className="ti ti-x" />
+                        <span>Reject</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* ══ 8. QUICK REPORTS BAR ══ */}
           <div style={{

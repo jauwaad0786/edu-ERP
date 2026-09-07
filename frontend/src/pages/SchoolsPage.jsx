@@ -56,7 +56,7 @@ export default function SchoolsPage() {
     phone: '',
     email: '',
     website: '',
-    current_session: '2024-25',
+    current_session: '2026-27',
     plan: 'BASIC',
     classes: [
       'Nursery', 'LKG', 'UKG',
@@ -1193,9 +1193,9 @@ export default function SchoolsPage() {
                       onChange={e => setOnboardForm(f => ({ ...f, current_session: e.target.value }))}
                       style={{ maxWidth: 300 }}
                     >
-                      <option value="2024-25">2024-25 (Current)</option>
-                      <option value="2025-26">2025-26 (Upcoming)</option>
-                      <option value="2026-27">2026-27</option>
+                      <option value="2026-27">2026-27 (Current)</option>
+                      <option value="2025-26">2025-26</option>
+                      <option value="2024-25">2024-25</option>
                     </select>
                   </div>
 

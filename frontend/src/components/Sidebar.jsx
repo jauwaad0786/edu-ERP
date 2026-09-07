@@ -64,10 +64,14 @@ const ROLE_MENUS = {
 
   PRINCIPAL: [
     {
-      group: '',
+      group: 'Overview',
       items: [
         { icon: 'ti-layout-dashboard', label: 'Dashboard', path: '/dashboard' },
-
+      ],
+    },
+    {
+      group: 'Academics & Students',
+      items: [
         {
           icon: 'ti-address-book', label: 'Student Management', path: '/students',
           children: [
@@ -79,9 +83,7 @@ const ROLE_MENUS = {
             { icon: 'ti-certificate',    label: 'Transfer Certificates', path: '/students/transfer-cert' },
           ],
         },
-
         { icon: 'ti-clipboard-check', label: 'Attendance', path: '/attendance' },
-
         {
           icon: 'ti-books', label: 'Academics', path: '/classes',
           children: [
@@ -90,7 +92,14 @@ const ROLE_MENUS = {
             { icon: 'ti-calendar-time', label: 'Timetable',          path: '/timetable' },
           ],
         },
-
+        {
+          icon: 'ti-notes', label: 'Academic Resources', path: '/notes',
+          children: [
+            { icon: 'ti-books',          label: 'Notes & Study Material', path: '/notes' },
+            { icon: 'ti-clipboard-list', label: 'Assignments',            path: '/assignments' },
+            { icon: 'ti-chart-dots',     label: 'Internal Marks',         path: '/internal-marks' },
+          ],
+        },
         {
           icon: 'ti-pencil', label: 'Examinations', path: '/exams',
           children: [
@@ -102,7 +111,35 @@ const ROLE_MENUS = {
             { icon: 'ti-file-certificate', label: 'Result Cards',       path: '/result-card' },
           ],
         },
-
+        {
+          icon: 'ti-file-certificate', label: 'Student Documents', path: '/documents',
+          children: [
+            { icon: 'ti-award',        label: 'Issue Certificates', path: '/issue-documents' },
+            { icon: 'ti-file-text',    label: 'Student Documents & KYC', path: '/documents' },
+          ],
+        },
+      ],
+    },
+    {
+      group: 'Staff & HRMS',
+      items: [
+        {
+          icon: 'ti-briefcase', label: 'Staff & HRMS', path: '/hrms',
+          children: [
+            { icon: 'ti-layout-dashboard', label: 'HRMS Command Center',   path: '/hrms' },
+            { icon: 'ti-users',            label: 'Employee Directory',    path: '/hrms/employees' },
+            { icon: 'ti-map-pin',          label: 'GPS Attendance',        path: '/staff/attendance' },
+            { icon: 'ti-calendar-event',   label: 'Leaves & Official Duty',path: '/hrms/leaves' },
+            { icon: 'ti-cash',             label: 'Payroll & Payslips',    path: '/hrms/payroll' },
+            { icon: 'ti-chart-bar',        label: 'Attendance Analytics',  path: '/staff/attendance/analytics' },
+            { icon: 'ti-settings',         label: 'Attendance Settings',   path: '/staff/attendance/settings' },
+          ],
+        },
+      ],
+    },
+    {
+      group: 'Finance & Accounts',
+      items: [
         {
           icon: 'ti-currency-rupee', label: 'Finance & Fees', path: '/finance/dashboard',
           children: [
@@ -118,33 +155,28 @@ const ROLE_MENUS = {
             { icon: 'ti-report-analytics', label: 'Reports',           path: '/finance/reports' },
           ],
         },
-
+      ],
+    },
+    {
+      group: 'Campus Operations',
+      items: [
         {
-          icon: 'ti-briefcase', label: 'Staff & HRMS', path: '/hrms',
+          icon: 'ti-bus', label: 'Transport', path: '/transport',
           children: [
-            { icon: 'ti-layout-dashboard', label: 'HRMS Command Center',   path: '/hrms' },
-            { icon: 'ti-users',            label: 'Employee Directory',    path: '/hrms/employees' },
-            { icon: 'ti-map-pin',          label: 'GPS Attendance',        path: '/staff/attendance' },
-            { icon: 'ti-calendar-event',   label: 'Leaves & Official Duty',path: '/hrms/leaves' },
-            { icon: 'ti-cash',             label: 'Payroll & Payslips',    path: '/hrms/payroll' },
-            { icon: 'ti-chart-bar',        label: 'Attendance Analytics',  path: '/staff/attendance/analytics' },
-            { icon: 'ti-settings',         label: 'Attendance Settings',   path: '/staff/attendance/settings' },
+            { icon: 'ti-layout-dashboard', label: 'Dashboard',              path: '/transport' },
+            { icon: 'ti-history',          label: 'Student Travel History', path: '/transport/travel-history' },
+            { icon: 'ti-bus',              label: 'Vehicles & Fleet',       path: '/transport/vehicles' },
+            { icon: 'ti-steering-wheel',   label: 'Drivers',                path: '/transport/drivers' },
+            { icon: 'ti-user-check',       label: 'Conductors',             path: '/transport/conductors' },
+            { icon: 'ti-route',            label: 'Routes',                 path: '/transport/routes' },
+            { icon: 'ti-map-pin',          label: 'Stops',                  path: '/transport/stops' },
+            { icon: 'ti-users',            label: 'Student Roster',         path: '/transport/students' },
+            { icon: 'ti-currency-rupee',   label: 'Fees & Fines',           path: '/transport/fees' },
+            { icon: 'ti-tool',             label: 'Maintenance',            path: '/transport/maintenance' },
+            { icon: 'ti-map-pin-filled',   label: 'Live Tracking',          path: '/transport/live' },
+            { icon: 'ti-report',           label: 'Reports',                path: '/transport/reports' },
           ],
         },
-
-        {
-          icon: 'ti-books', label: 'Library', path: '/library',
-          children: [
-            { icon: 'ti-layout-dashboard', label: 'Dashboard',      path: '/library' },
-            { icon: 'ti-books',            label: 'Book Master',    path: '/library/books' },
-            { icon: 'ti-arrows-exchange',  label: 'Issue / Return', path: '/library/issue-return' },
-            { icon: 'ti-clock',            label: 'Reservations',   path: '/library/reservations' },
-            { icon: 'ti-users',            label: 'Members',        path: '/library/members' },
-            { icon: 'ti-currency-rupee',   label: 'Fines & Dues',   path: '/library/fines' },
-            { icon: 'ti-report',           label: 'Reports',        path: '/library/reports' },
-          ],
-        },
-
         {
           icon: 'ti-bed', label: 'Hostel', path: '/hostel',
           children: [
@@ -164,25 +196,23 @@ const ROLE_MENUS = {
             { icon: 'ti-report',           label: 'Reports',            path: '/hostel/reports' },
           ],
         },
-
         {
-          icon: 'ti-bus', label: 'Transport', path: '/transport',
+          icon: 'ti-books', label: 'Library', path: '/library',
           children: [
-            { icon: 'ti-layout-dashboard', label: 'Dashboard',              path: '/transport' },
-            { icon: 'ti-history',          label: 'Student Travel History', path: '/transport/travel-history' },
-            { icon: 'ti-bus',              label: 'Vehicles & Fleet',       path: '/transport/vehicles' },
-            { icon: 'ti-steering-wheel',   label: 'Drivers',                path: '/transport/drivers' },
-            { icon: 'ti-user-check',       label: 'Conductors',             path: '/transport/conductors' },
-            { icon: 'ti-route',            label: 'Routes',                 path: '/transport/routes' },
-            { icon: 'ti-map-pin',          label: 'Stops',                  path: '/transport/stops' },
-            { icon: 'ti-users',            label: 'Student Roster',         path: '/transport/students' },
-            { icon: 'ti-currency-rupee',   label: 'Fees & Fines',           path: '/transport/fees' },
-            { icon: 'ti-tool',             label: 'Maintenance',            path: '/transport/maintenance' },
-            { icon: 'ti-map-pin-filled',   label: 'Live Tracking',          path: '/transport/live' },
-            { icon: 'ti-report',           label: 'Reports',                path: '/transport/reports' },
+            { icon: 'ti-layout-dashboard', label: 'Dashboard',      path: '/library' },
+            { icon: 'ti-books',            label: 'Book Master',    path: '/library/books' },
+            { icon: 'ti-arrows-exchange',  label: 'Issue / Return', path: '/library/issue-return' },
+            { icon: 'ti-clock',            label: 'Reservations',   path: '/library/reservations' },
+            { icon: 'ti-users',            label: 'Members',        path: '/library/members' },
+            { icon: 'ti-currency-rupee',   label: 'Fines & Dues',   path: '/library/fines' },
+            { icon: 'ti-report',           label: 'Reports',        path: '/library/reports' },
           ],
         },
-
+      ],
+    },
+    {
+      group: 'Communication & AI',
+      items: [
         {
           icon: 'ti-speakerphone', label: 'Communication', path: '/announcements',
           children: [
@@ -190,7 +220,20 @@ const ROLE_MENUS = {
             { icon: 'ti-message-2',    label: 'Messages',                   path: '/messages' },
           ],
         },
-
+        { icon: 'ti-robot', label: '1P360 BOT', path: '/ai/chat', badge: 'AI' },
+      ],
+    },
+    {
+      group: 'System & Support',
+      items: [
+        {
+          icon: 'ti-trash', label: 'Deleted Items', path: '/principal/deleted-items',
+          children: [
+            { icon: 'ti-school',     label: 'Deleted Students', path: '/principal/deleted-items?tab=student' },
+            { icon: 'ti-chalkboard', label: 'Deleted Teachers', path: '/principal/deleted-items?tab=teacher' },
+            { icon: 'ti-briefcase',  label: 'Deleted Staff',    path: '/principal/deleted-items?tab=staff' },
+          ],
+        },
         {
           icon: 'ti-headset', label: 'ERP Support', path: '/support/tickets',
           children: [
@@ -200,44 +243,6 @@ const ROLE_MENUS = {
             { icon: 'ti-help-circle',  label: 'Help Center',          path: '/help-center' },
           ],
         },
-
-        {
-          icon: 'ti-books', label: 'Academic Resources', path: '/notes',
-          children: [
-            { icon: 'ti-books',          label: 'Notes & Study Material', path: '/notes' },
-            { icon: 'ti-clipboard-list', label: 'Assignments',            path: '/assignments' },
-            { icon: 'ti-chart-dots',     label: 'Internal Marks',         path: '/internal-marks' },
-          ],
-        },
-
-        {
-          icon: 'ti-file-certificate', label: 'Student Documents', path: '/documents',
-          children: [
-            { icon: 'ti-award',        label: 'Issue Certificates', path: '/issue-documents' },
-            { icon: 'ti-file-text',    label: 'Student Documents & KYC', path: '/documents' },
-          ],
-        },
-
-        {
-          icon: 'ti-chart-bar', label: 'Reports & Analytics', path: '/library/reports',
-          children: [
-            { icon: 'ti-report', label: 'Library Reports', path: '/library/reports' },
-            { icon: 'ti-report', label: 'Hostel Reports',  path: '/hostel/reports' },
-          ],
-        },
-
-        // ── 1P360 BOT ──
-        { icon: 'ti-robot', label: '1P360 BOT', path: '/ai/chat', badge: 'AI' },
-
-        {
-          icon: 'ti-trash', label: 'Deleted Items', path: '/principal/deleted-items',
-          children: [
-            { icon: 'ti-school',     label: 'Deleted Students', path: '/principal/deleted-items?tab=student' },
-            { icon: 'ti-chalkboard', label: 'Deleted Teachers', path: '/principal/deleted-items?tab=teacher' },
-            { icon: 'ti-briefcase',  label: 'Deleted Staff',    path: '/principal/deleted-items?tab=staff' },
-          ],
-        },
-
         {
           icon: 'ti-settings', label: 'Settings', path: '/school-settings',
           children: [
@@ -905,32 +910,56 @@ export default function Sidebar({ darkMode }) {
           ))}
         </nav>
 
-        {/* Footer */}
+        {/* Footer: Attractive School Campus on green grass */}
         <div style={{
-          padding: '10px 12px', borderTop: `1px solid ${NAV.border}`,
-          background: NAV.footerBg, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
+          padding: '10px 12px 12px', borderTop: `1px solid ${NAV.border}`,
+          background: NAV.footerBg, flexShrink: 0,
         }}>
           <div style={{
-            width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
-            background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', color: '#fff',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 11, fontWeight: 800, boxShadow: '0 2px 6px rgba(59,130,246,0.4)',
-          }}>{userInitials}</div>
-          <div style={{ minWidth: 0, overflow: 'hidden', flex: 1 }}>
+            position: 'relative', borderRadius: 9, overflow: 'hidden',
+            border: '1px solid rgba(255,255,255,0.12)',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
+            marginBottom: 8,
+          }}>
+            <img
+              src="/school_campus.jpg"
+              alt="School Campus"
+              style={{
+                width: '100%', height: 72, objectFit: 'cover', display: 'block',
+              }}
+            />
             <div style={{
-              fontSize: 12, fontWeight: 700, color: '#e8f4ff',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>{user?.name}</div>
-            <div style={{ fontSize: 10, color: NAV.groupLabel, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              {(isCompanyActor && user?.active_role?.name) || ROLE_LABELS[user?.role] || user?.role}
+              position: 'absolute', bottom: 0, left: 0, right: 0,
+              background: 'linear-gradient(transparent, rgba(10, 30, 54, 0.94))',
+              padding: '8px 8px 3px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <span style={{
+                color: '#ffffff', fontSize: 10, fontWeight: 800,
+                letterSpacing: '0.02em', textShadow: '0 1px 3px rgba(0,0,0,0.9)',
+              }}>Campus 360°</span>
+              <span style={{
+                fontSize: 8.5, fontWeight: 700, color: '#38bdf8',
+                background: 'rgba(15, 23, 42, 0.75)', padding: '1px 5px', borderRadius: 4,
+              }}>ACTIVE</span>
             </div>
           </div>
-          <span style={{
-            fontSize: 9, fontWeight: 700,
-            background: 'rgba(34,197,94,0.2)', color: '#4ade80',
-            padding: '2px 7px', borderRadius: 99,
-            letterSpacing: '0.04em', flexShrink: 0,
-          }}>GROWTH</span>
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2px' }}>
+            <div style={{ minWidth: 0, overflow: 'hidden' }}>
+              <div style={{
+                fontSize: 12, fontWeight: 700, color: '#e8f4ff',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>{user?.name || 'School Principal'}</div>
+              <div style={{ fontSize: 9.5, color: NAV.groupLabel, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                {(isCompanyActor && user?.active_role?.name) || ROLE_LABELS[user?.role] || user?.role || 'Principal'}
+              </div>
+            </div>
+            <div style={{
+              fontSize: 10, color: '#60a5fa', fontWeight: 700, letterSpacing: '0.02em'
+            }}>
+              {user?.school?.current_session || user?.current_session || '2026-27'}
+            </div>
+          </div>
         </div>
       </aside>
 

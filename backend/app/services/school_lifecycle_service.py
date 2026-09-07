@@ -280,17 +280,22 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
     if not school:
         raise ValueError('School not found')
 
-    # Security guard 1: Must be archived first
+    # Security guard 1: If active and force is enabled, archive it first
     if getattr(school, 'status', None) != 'ARCHIVED':
-        raise ValueError(
-            f"Active school '{school.name}' cannot be permanently deleted. "
-            "It must first be archived into the 1-year retention state."
-        )
+        if force:
+            archive_school(school_id, actor_user, reason="Archived immediately for permanent deletion")
+            school = School.query.get(school_id)
+        else:
+            raise ValueError(
+                f"Active school '{school.name}' cannot be permanently deleted. "
+                "It must first be archived into the 1-year retention state."
+            )
 
     # Security guard 2: Explicit confirmation phrase
     expected_confirm = f"DELETE {school.name}".strip().upper()
     received_confirm = (confirm_name or '').strip().upper()
-    if received_confirm != expected_confirm and received_confirm != school.code.strip().upper():
+    valid_confirms = {expected_confirm, school.code.strip().upper(), school.name.strip().upper()}
+    if received_confirm not in valid_confirms:
         raise ValueError(
             f"Confirmation mismatch. Please type '{expected_confirm}' to confirm irreversible deletion."
         )
@@ -328,8 +333,6 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
         logger.warning(f"File path collection exception: {e}")
 
     # Pre-compute all tables containing 'school_id' BEFORE beginning cascade transaction
-    # Running PRAGMAs (like table_xinfo via inspector) inside an active transaction interferes
-    # with SQLite's internal transaction state and rolls back uncommitted DML.
     inspector = inspect(db.engine)
     all_tables = set(inspector.get_table_names())
     tables_with_school_id = set()
@@ -343,28 +346,12 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
         except Exception:
             table_columns[t_name] = set()
 
-    # 3. Transactional cascade deletion in reverse dependency order
-    # ──────────────────────────────────────────────────────────────────────────────────
-    # STRATEGY: Use ONE raw psycopg2 connection for all DELETE/UPDATE statements.
-    # Each statement is wrapped in its own SAVEPOINT so FK violations on one
-    # statement never abort the whole transaction — they just rollback that savepoint.
-    # This avoids opening 300+ separate connections to NeonDB (which caused timeouts).
-    #
-    # FK ORDERING (child tables deleted BEFORE their parents):
-    #   student_ledgers.bill_id/payment_id → fee_bills/fee_payments
-    #   fee_transactions.fee_record_id → fee_records
-    #   fee_records.batch_id → fee_generation_batches
-    #   fee_generation_batches.class_id → classes
-    #   hostel_fee_structures.floor_id → hostel_floors → hostel_buildings → hostels
-    #   transport_gps_logs/trip_logs → vehicles/drivers
-    #   support_notifications.ticket_id → support_tickets
-    #   issue_assignments.error_id → error_logs
-    # ──────────────────────────────────────────────────────────────────────────────────
     try:
         school_users = User.query.filter_by(school_id=school_id).all()
         school_user_ids = [u.id for u in school_users]
         db.session.expunge_all()
 
+        is_sqlite = db.engine.dialect.name == 'sqlite'
         raw_conn = db.engine.raw_connection()
         try:
             raw_conn.autocommit = False
@@ -372,16 +359,42 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
             _sp = [0]
 
             def _exec(sql, params=None):
-                """Execute sql inside a SAVEPOINT; on any error rollback only that savepoint."""
+                """Execute sql inside a SAVEPOINT; supports both SQLite (?) and PostgreSQL (%s)."""
                 _sp[0] += 1
                 sp = f"_d{_sp[0]}"
                 try:
                     cur.execute(f"SAVEPOINT {sp}")
-                    cur.execute(sql, params) if params else cur.execute(sql)
+                    if params:
+                        if is_sqlite:
+                            adapted_sql = sql
+                            adapted_params = []
+                            parts = adapted_sql.split('%s')
+                            if len(parts) - 1 == len(params):
+                                new_sql = []
+                                for idx, p in enumerate(params):
+                                    new_sql.append(parts[idx])
+                                    if isinstance(p, (list, tuple)):
+                                        if len(p) == 0:
+                                            new_sql.append('(SELECT 1 WHERE 1=0)')
+                                        else:
+                                            new_sql.append('(' + ', '.join(['?'] * len(p)) + ')')
+                                            adapted_params.extend(p)
+                                    else:
+                                        new_sql.append('?')
+                                        adapted_params.append(p)
+                                new_sql.append(parts[-1])
+                                cur.execute(''.join(new_sql), adapted_params)
+                            else:
+                                adapted_sql = adapted_sql.replace('%s', '?')
+                                cur.execute(adapted_sql, params)
+                        else:
+                            cur.execute(sql, params)
+                    else:
+                        cur.execute(sql)
                     cur.execute(f"RELEASE SAVEPOINT {sp}")
                 except Exception as e:
                     cur.execute(f"ROLLBACK TO SAVEPOINT {sp}")
-                    logger.debug(f"Cascade cleanup step skipped: {e}")
+                    logger.debug(f"Cascade cleanup step skipped ({e}): {sql[:60]}")
 
             sid = school_id
 
