@@ -964,7 +964,7 @@ export default function Login() {
                   <button
                     type="button"
                     className="forgot-link"
-                    onClick={() => setShowForgot(true)}
+                    onClick={() => { setActiveTab('staff'); setAuthMethod('otp'); setIsResetFlow(true); setOtpStep(1); setError(''); setOtpSentMsg(''); }}
                   >
                     Need Help?
                   </button>
