@@ -64,14 +64,10 @@ const ROLE_MENUS = {
 
   PRINCIPAL: [
     {
-      group: 'Overview',
+      group: '',
       items: [
         { icon: 'ti-layout-dashboard', label: 'Dashboard', path: '/dashboard' },
-      ],
-    },
-    {
-      group: 'Academics & Students',
-      items: [
+
         {
           icon: 'ti-address-book', label: 'Student Management', path: '/students',
           children: [
@@ -83,7 +79,9 @@ const ROLE_MENUS = {
             { icon: 'ti-certificate',    label: 'Transfer Certificates', path: '/students/transfer-cert' },
           ],
         },
+
         { icon: 'ti-clipboard-check', label: 'Attendance', path: '/attendance' },
+
         {
           icon: 'ti-books', label: 'Academics', path: '/classes',
           children: [
@@ -92,6 +90,7 @@ const ROLE_MENUS = {
             { icon: 'ti-calendar-time', label: 'Timetable',          path: '/timetable' },
           ],
         },
+
         {
           icon: 'ti-notes', label: 'Academic Resources', path: '/notes',
           children: [
@@ -100,6 +99,7 @@ const ROLE_MENUS = {
             { icon: 'ti-chart-dots',     label: 'Internal Marks',         path: '/internal-marks' },
           ],
         },
+
         {
           icon: 'ti-pencil', label: 'Examinations', path: '/exams',
           children: [
@@ -111,6 +111,7 @@ const ROLE_MENUS = {
             { icon: 'ti-file-certificate', label: 'Result Cards',       path: '/result-card' },
           ],
         },
+
         {
           icon: 'ti-file-certificate', label: 'Student Documents', path: '/documents',
           children: [
@@ -118,11 +119,7 @@ const ROLE_MENUS = {
             { icon: 'ti-file-text',    label: 'Student Documents & KYC', path: '/documents' },
           ],
         },
-      ],
-    },
-    {
-      group: 'Staff & HRMS',
-      items: [
+
         {
           icon: 'ti-briefcase', label: 'Staff & HRMS', path: '/hrms',
           children: [
@@ -135,11 +132,7 @@ const ROLE_MENUS = {
             { icon: 'ti-settings',         label: 'Attendance Settings',   path: '/staff/attendance/settings' },
           ],
         },
-      ],
-    },
-    {
-      group: 'Finance & Accounts',
-      items: [
+
         {
           icon: 'ti-currency-rupee', label: 'Finance & Fees', path: '/finance/dashboard',
           children: [
@@ -155,11 +148,7 @@ const ROLE_MENUS = {
             { icon: 'ti-report-analytics', label: 'Reports',           path: '/finance/reports' },
           ],
         },
-      ],
-    },
-    {
-      group: 'Campus Operations',
-      items: [
+
         {
           icon: 'ti-bus', label: 'Transport', path: '/transport',
           children: [
@@ -177,6 +166,7 @@ const ROLE_MENUS = {
             { icon: 'ti-report',           label: 'Reports',                path: '/transport/reports' },
           ],
         },
+
         {
           icon: 'ti-bed', label: 'Hostel', path: '/hostel',
           children: [
@@ -196,6 +186,7 @@ const ROLE_MENUS = {
             { icon: 'ti-report',           label: 'Reports',            path: '/hostel/reports' },
           ],
         },
+
         {
           icon: 'ti-books', label: 'Library', path: '/library',
           children: [
@@ -208,11 +199,7 @@ const ROLE_MENUS = {
             { icon: 'ti-report',           label: 'Reports',        path: '/library/reports' },
           ],
         },
-      ],
-    },
-    {
-      group: 'Communication & AI',
-      items: [
+
         {
           icon: 'ti-speakerphone', label: 'Communication', path: '/announcements',
           children: [
@@ -220,12 +207,10 @@ const ROLE_MENUS = {
             { icon: 'ti-message-2',    label: 'Messages',                   path: '/messages' },
           ],
         },
+
         { icon: 'ti-robot', label: '1P360 BOT', path: '/ai/chat', badge: 'AI' },
-      ],
-    },
-    {
-      group: 'System & Support',
-      items: [
+
+        // ── Bottom Modules: Deleted Items, ERP Support, Settings ──
         {
           icon: 'ti-trash', label: 'Deleted Items', path: '/principal/deleted-items',
           children: [
@@ -234,6 +219,7 @@ const ROLE_MENUS = {
             { icon: 'ti-briefcase',  label: 'Deleted Staff',    path: '/principal/deleted-items?tab=staff' },
           ],
         },
+
         {
           icon: 'ti-headset', label: 'ERP Support', path: '/support/tickets',
           children: [
@@ -243,6 +229,7 @@ const ROLE_MENUS = {
             { icon: 'ti-help-circle',  label: 'Help Center',          path: '/help-center' },
           ],
         },
+
         {
           icon: 'ti-settings', label: 'Settings', path: '/school-settings',
           children: [
@@ -553,15 +540,24 @@ function buildDynamicGroups(baseGroups, permissions) {
   if (!permissions || !permissions.length) return baseGroups;
 
   const existingPaths = new Set();
-  baseGroups.forEach(g => g.items.forEach(it => {
-    existingPaths.add(it.path);
-    (it.children || []).forEach(c => existingPaths.add(c.path));
+  const existingLabels = new Set();
+  baseGroups.forEach(g => (g.items || []).forEach(it => {
+    if (it.path) existingPaths.add(it.path);
+    if (it.label) existingLabels.add(it.label.trim().toLowerCase());
+    (it.children || []).forEach(c => {
+      if (c.path) existingPaths.add(c.path);
+      if (c.label) existingLabels.add(c.label.trim().toLowerCase());
+    });
   }));
 
   const extraByGroup = {};
   const addEntry = (entry) => {
-    if (!entry || existingPaths.has(entry.item.path)) return;
-    existingPaths.add(entry.item.path);
+    if (!entry || !entry.item) return;
+    const p = entry.item.path;
+    const l = (entry.item.label || '').trim().toLowerCase();
+    if (existingPaths.has(p) || existingLabels.has(l)) return;
+    if (p) existingPaths.add(p);
+    if (l) existingLabels.add(l);
     (extraByGroup[entry.group] ||= []).push(entry.item);
   };
 
@@ -622,6 +618,7 @@ export default function Sidebar({ darkMode }) {
   // platform_roles via UserRoleAssignment, see auth.py _serialize_user).
   const isCompanyActor = user && user.school_id == null;
   const isSuperAdmin = user?.role === 'SUPER_ADMIN' || user?.active_role?.key === 'SUPER_ADMIN' || user?.active_role?.key === 'CEO' || !!user?.is_super;
+  const isSchoolAdmin = user?.role === 'PRINCIPAL' || user?.role === 'DIRECTOR' || user?.role === 'VICE_PRINCIPAL';
 
   let baseGroups;
   if (isSuperAdmin && isCompanyActor) {
@@ -633,13 +630,19 @@ export default function Sidebar({ darkMode }) {
   }
 
   // Super Admin (SaaS platform owner / Developer / CEO) only gets ROLE_MENUS.SUPER_ADMIN.
-  // Never merge school-level permissions (Student KYC, homework/assignments, deleted students, fee collection)
-  // into Super Admin's sidebar. Those belong exclusively to school Principal and school staff.
+  // Principal / Director has full master menu (ROLE_MENUS.PRINCIPAL) without duplicate appended fragments.
+  // Other school staff (Teacher, Accountant, etc.) get dynamic permissions merged cleanly.
   const groups = useMemo(
-    () => ((isCompanyActor && isSuperAdmin) || user?.role === 'SUPER_ADMIN'
-      ? ROLE_MENUS.SUPER_ADMIN
-      : buildDynamicGroups(baseGroups, user?.permissions)),
-    [baseGroups, user?.permissions, isCompanyActor, isSuperAdmin, user?.role]
+    () => {
+      if ((isCompanyActor && isSuperAdmin) || user?.role === 'SUPER_ADMIN') {
+        return ROLE_MENUS.SUPER_ADMIN;
+      }
+      if (isSchoolAdmin) {
+        return ROLE_MENUS.PRINCIPAL;
+      }
+      return buildDynamicGroups(baseGroups, user?.permissions);
+    },
+    [baseGroups, user?.permissions, isCompanyActor, isSuperAdmin, isSchoolAdmin, user?.role]
   );
   const [search,   setSearch]   = useState('');
   const [expanded, setExpanded] = useState(() => {
@@ -912,33 +915,33 @@ export default function Sidebar({ darkMode }) {
 
         {/* Footer: Attractive School Campus on green grass */}
         <div style={{
-          padding: '10px 12px 12px', borderTop: `1px solid ${NAV.border}`,
+          padding: '8px 10px 10px', borderTop: `1px solid ${NAV.border}`,
           background: NAV.footerBg, flexShrink: 0,
         }}>
           <div style={{
-            position: 'relative', borderRadius: 9, overflow: 'hidden',
-            border: '1px solid rgba(255,255,255,0.12)',
-            boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
-            marginBottom: 8,
+            position: 'relative', borderRadius: 8, overflow: 'hidden',
+            border: '1px solid rgba(255,255,255,0.1)',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
+            marginBottom: 7,
           }}>
             <img
               src="/school_campus.jpg"
               alt="School Campus"
               style={{
-                width: '100%', height: 72, objectFit: 'cover', display: 'block',
+                width: '100%', height: 60, objectFit: 'cover', display: 'block',
               }}
             />
             <div style={{
               position: 'absolute', bottom: 0, left: 0, right: 0,
               background: 'linear-gradient(transparent, rgba(10, 30, 54, 0.94))',
-              padding: '8px 8px 3px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '6px 8px 3px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             }}>
               <span style={{
-                color: '#ffffff', fontSize: 10, fontWeight: 800,
+                color: '#ffffff', fontSize: 9.5, fontWeight: 800,
                 letterSpacing: '0.02em', textShadow: '0 1px 3px rgba(0,0,0,0.9)',
               }}>Campus 360°</span>
               <span style={{
-                fontSize: 8.5, fontWeight: 700, color: '#38bdf8',
+                fontSize: 8, fontWeight: 700, color: '#38bdf8',
                 background: 'rgba(15, 23, 42, 0.75)', padding: '1px 5px', borderRadius: 4,
               }}>ACTIVE</span>
             </div>
@@ -947,15 +950,15 @@ export default function Sidebar({ darkMode }) {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2px' }}>
             <div style={{ minWidth: 0, overflow: 'hidden' }}>
               <div style={{
-                fontSize: 12, fontWeight: 700, color: '#e8f4ff',
+                fontSize: 11.5, fontWeight: 700, color: '#e8f4ff',
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>{user?.name || 'School Principal'}</div>
-              <div style={{ fontSize: 9.5, color: NAV.groupLabel, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <div style={{ fontSize: 9, color: NAV.groupLabel, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                 {(isCompanyActor && user?.active_role?.name) || ROLE_LABELS[user?.role] || user?.role || 'Principal'}
               </div>
             </div>
             <div style={{
-              fontSize: 10, color: '#60a5fa', fontWeight: 700, letterSpacing: '0.02em'
+              fontSize: 9.5, color: '#60a5fa', fontWeight: 700, letterSpacing: '0.02em'
             }}>
               {user?.school?.current_session || user?.current_session || '2026-27'}
             </div>
