@@ -34,6 +34,11 @@ export default function UsersPage() {
   const [createdCreds, setCreatedCreds] = useState(null);
   const [copied,       setCopied]       = useState(false);
 
+  // Admin reset password modal
+  const [resetTarget,  setResetTarget]  = useState(null);
+  const [resetPw,      setResetPw]      = useState('');
+  const [resetting,    setResetting]    = useState(false);
+
   // Role catalog loads once — it doesn't depend on which school filter is
   // selected, and RoleManagement.jsx changes (create/edit/delete a role)
   // are picked up on next visit to this page.
@@ -73,6 +78,36 @@ export default function UsersPage() {
   const toggleUser = async id => {
     await api.put(`/admin/users/${id}/toggle`);
     load();
+  };
+
+  const submitAdminReset = async e => {
+    e.preventDefault();
+    const chosenPw = resetPw.trim() || 'EduErp@123';
+    if (chosenPw.length < 6) {
+      setMsg('❌ Password must be at least 6 characters');
+      return;
+    }
+    setResetting(true);
+    setMsg('');
+    try {
+      const res = await api.put(`/admin/users/${resetTarget.id}/reset-password`, {
+        password: chosenPw,
+      });
+      setCreatedCreds({
+        name:     resetTarget.name,
+        username: res.data.username || resetTarget.username,
+        email:    res.data.email || resetTarget.email,
+        password: chosenPw,
+        role:     roleLabel(resetTarget.role),
+        school:   schools.find(s => String(s.id) === String(resetTarget.school_id))?.name || '—',
+      });
+      setResetTarget(null);
+      setResetPw('');
+      load();
+    } catch (err) {
+      setMsg('❌ ' + (err.response?.data?.error || 'Reset failed'));
+    }
+    setResetting(false);
   };
 
   const createUser = async e => {
@@ -334,16 +369,28 @@ export default function UsersPage() {
                           </span>
                         </td>
                         <td>
-                          <button
-                            onClick={() => toggleUser(u.id)}
-                            style={{
-                              background: u.is_active ? '#fef1ee' : '#eaf5ea',
-                              color:      u.is_active ? 'var(--error)' : 'var(--success)',
-                              border: 'none', cursor: 'pointer', borderRadius: 4,
-                              padding: '4px 10px', fontSize: 11, fontWeight: 700,
-                            }}>
-                            {u.is_active ? 'Deactivate' : 'Activate'}
-                          </button>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button
+                              onClick={() => toggleUser(u.id)}
+                              style={{
+                                background: u.is_active ? '#fef1ee' : '#eaf5ea',
+                                color:      u.is_active ? 'var(--error)' : 'var(--success)',
+                                border: 'none', cursor: 'pointer', borderRadius: 4,
+                                padding: '4px 10px', fontSize: 11, fontWeight: 700,
+                              }}>
+                              {u.is_active ? 'Deactivate' : 'Activate'}
+                            </button>
+                            <button
+                              onClick={() => { setResetTarget(u); setResetPw(''); setMsg(''); }}
+                              style={{
+                                background: '#e0f2fe',
+                                color:      '#0369a1',
+                                border: 'none', cursor: 'pointer', borderRadius: 4,
+                                padding: '4px 10px', fontSize: 11, fontWeight: 700,
+                              }}>
+                              🔑 Reset
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -364,6 +411,40 @@ export default function UsersPage() {
 
         </div>
       </div>
+
+      {/* ── Admin Reset Password Modal ── */}
+      {resetTarget && (
+        <div className="modal-backdrop"
+          onClick={e => e.target === e.currentTarget && setResetTarget(null)}>
+          <div className="modal" style={{ maxWidth: 400 }}>
+            <div className="modal-header">
+              <h3>🔑 Reset Password — {resetTarget.name}</h3>
+              <button className="modal-close" onClick={() => setResetTarget(null)}>✕</button>
+            </div>
+            <form onSubmit={submitAdminReset}>
+              <div className="modal-body">
+                <div className="form-group">
+                  <label className="form-label">New Temporary Password (min 6 characters)</label>
+                  <input
+                    className="form-input"
+                    type="text"
+                    placeholder="Leave blank for default: EduErp@123"
+                    value={resetPw}
+                    onChange={e => setResetPw(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-neutral"
+                  onClick={() => setResetTarget(null)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={resetting}>
+                  {resetting ? 'Resetting...' : '🔑 Reset Password'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ── Create User Modal ── */}
       {showCreate && (

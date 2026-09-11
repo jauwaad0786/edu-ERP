@@ -243,17 +243,21 @@ export default function SchoolSettings() {
   };
 
   const resetPUserPw = async (u) => {
-    // SonarQube Hotspot javascript:S1813 / S2068 Audit: Standard default reset credential for password recovery in school management.
     const DEFAULT_RESET_PASSWORD = 'EduErp@123';
-    const pw = window.prompt("New password for " + u.name + ":\n(blank = " + DEFAULT_RESET_PASSWORD + ")");
+    const pw = window.prompt("New password for " + u.name + " (min 6 chars):\n(blank = " + DEFAULT_RESET_PASSWORD + ")");
     if (pw === null) return;
+    const chosenPw = (pw || DEFAULT_RESET_PASSWORD).trim();
+    if (chosenPw.length < 6) {
+      toast.error('Password must be at least 6 characters');
+      return;
+    }
     try {
-      const r = await api.put('/principal/users/' + u.id + '/reset-password', { password: pw || DEFAULT_RESET_PASSWORD });
-      toast.success('Password reset!');
-      navigator.clipboard.writeText('Username: ' + (r.data.username || u.email) + '\nPassword: ' + r.data.plain_password_temp);
+      const r = await api.put('/principal/users/' + u.id + '/reset-password', { password: chosenPw });
+      toast.success('Password reset successfully! Temporary password copied.');
+      navigator.clipboard.writeText('Username: ' + (r.data.username || u.email) + '\nTemporary Password: ' + chosenPw);
       loadPrincipalUsers();
-    } catch {
-      toast.error('Reset failed');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Reset failed');
     }
   };
 

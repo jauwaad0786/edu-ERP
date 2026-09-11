@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from app import limiter
+from app import limiter, db, bcrypt
 from flask_jwt_extended import (
     create_access_token,
     create_refresh_token,
@@ -7,7 +7,6 @@ from flask_jwt_extended import (
     get_jwt_identity
 )
 from sqlalchemy import func as sqlfunc
-from app import db
 from app.models.user import User, UserRole
 from app.models.academic import Student
 from app.models.rbac import resolve_platform_permissions, get_user_roles, get_active_role
@@ -23,6 +22,65 @@ from app.services.communication.otp_service import OTPService
 
 logger = logging.getLogger('auth')
 auth_bp = Blueprint('auth', __name__)
+
+# Pre-computed dummy hash to prevent timing-based user enumeration attacks
+DUMMY_BCRYPT_HASH = "$2b$12$e8YQ3L8R7F6dY5Vv4C3b2uK1o9I8U7Y6T5R4E3W2Q1Z0P9O8N7M6L"
+
+
+def _extract_client_meta():
+    """Extract client IP, browser, and OS for audit and security tracking."""
+    ip = request.headers.get('X-Forwarded-For', request.remote_addr or '')
+    if ',' in ip:
+        ip = ip.split(',')[0].strip()
+    ua = request.headers.get('User-Agent', '')
+    browser = 'Unknown'
+    os_name = 'Unknown'
+    if 'Chrome' in ua and 'Edg' not in ua:
+        browser = 'Chrome'
+    elif 'Safari' in ua and 'Chrome' not in ua:
+        browser = 'Safari'
+    elif 'Firefox' in ua:
+        browser = 'Firefox'
+    elif 'Edg' in ua:
+        browser = 'Edge'
+
+    if 'Windows' in ua:
+        os_name = 'Windows'
+    elif 'Macintosh' in ua:
+        os_name = 'macOS'
+    elif 'Linux' in ua and 'Android' not in ua:
+        os_name = 'Linux'
+    elif 'Android' in ua:
+        os_name = 'Android'
+    elif 'iPhone' in ua or 'iPad' in ua:
+        os_name = 'iOS'
+
+    return {'ip_address': ip[:45], 'browser': browser, 'os': os_name}
+
+
+def _record_login_attempt(user=None, identifier='', success=False, failure_reason=None, school_id=None):
+    """Safely log every login attempt without failing the request if logging table fails."""
+    try:
+        from app.models.audit import LoginHistory
+        meta = _extract_client_meta()
+        history = LoginHistory(
+            user_id=user.id if user else None,
+            identifier_attempted=str(identifier)[:120],
+            school_id=school_id or (user.school_id if user else None),
+            success=success,
+            failure_reason=failure_reason,
+            ip_address=meta.get('ip_address'),
+            browser=meta.get('browser'),
+            os=meta.get('os')
+        )
+        db.session.add(history)
+        db.session.commit()
+    except Exception as ex:
+        logger.warning(f"Login history logging failed: {ex}")
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
 
 
 def _is_email(identifier):
@@ -134,15 +192,17 @@ def _normalise(s):
     return re.sub(r'\s+', ' ', (s or '').strip()).lower()
 
 
-# ── Regular login (staff / principal / admin / driver) ────────────────────────
+# ── Unified login (all roles: Student, Parent, Teacher, Staff, Driver, Principal, Admin) ────
 @auth_bp.route('/login', methods=['POST'])
 @limiter.limit("20 per minute")
 def login():
     """
-    Accepts email, username, or phone / mobile number in the 'identifier' field.
-    Also accepts legacy 'email' or 'mobile_number' field for backward compatibility.
+    Unified authentication for ALL ERP roles.
+    Accepts Email, Mobile Number, or Username in the 'identifier' field.
+    Resolves Staff, Teachers, Principals, Super Admins, Drivers, and Students/Parents.
     """
     from app.models.transport import Driver
+    from app.models.academic import Student
 
     data = request.get_json() or {}
 
@@ -155,75 +215,119 @@ def login():
     if not raw_identifier or not password:
         return jsonify({'error': 'Identifier and password required'}), 400
 
-    # 1. Try email first
-    user = User.query.filter(
-        sqlfunc.lower(User.email) == identifier
-    ).first()
+    candidates = []
 
-    # 2. Try username
-    if not user:
-        user = User.query.filter(
-            sqlfunc.lower(User.username) == identifier
-        ).first()
+    # 1. Direct email lookup
+    user_email = User.query.filter(sqlfunc.lower(User.email) == identifier).first()
+    if user_email and user_email not in candidates:
+        candidates.append(user_email)
 
-    # 3. Try phone/mobile number on User model
-    if not user:
-        clean_phone = re.sub(r'\D', '', raw_identifier)
-        user = User.query.filter(User.phone == raw_identifier).first()
-        if not user and clean_phone and len(clean_phone) >= 10:
-            last10 = clean_phone[-10:]
-            # Prioritize principal/staff if multiple users share the phone
-            user = User.query.filter(
-                User.phone.endswith(last10),
-                User.role.in_([UserRole.PRINCIPAL, UserRole.SUPER_ADMIN, UserRole.VICE_PRINCIPAL, UserRole.TEACHER, UserRole.ACCOUNTANT])
-            ).first()
-            if not user:
-                user = User.query.filter(User.phone.endswith(last10)).first()
+    # 2. Direct username lookup
+    user_uname = User.query.filter(sqlfunc.lower(User.username) == identifier).first()
+    if user_uname and user_uname not in candidates:
+        candidates.append(user_uname)
 
-    # 4. Try Driver profile mobile_number lookup
-    if not user:
-        clean_phone = re.sub(r'\D', '', raw_identifier)
-        driver = Driver.query.filter(Driver.mobile_number == raw_identifier).first()
-        if not driver and clean_phone and len(clean_phone) >= 10:
-            driver = Driver.query.filter(Driver.mobile_number.endswith(clean_phone[-10:])).first()
-        if driver and driver.user_id:
-            user = db.session.get(User, driver.user_id)
+    # 3. Direct User phone lookup
+    clean_phone = re.sub(r'\D', '', raw_identifier)
+    phone_users = User.query.filter(User.phone == raw_identifier).all()
+    for u in phone_users:
+        if u not in candidates:
+            candidates.append(u)
 
-    if not user or not user.check_password(password):
+    if clean_phone and len(clean_phone) >= 10:
+        last10 = clean_phone[-10:]
+        p_users = User.query.filter(
+            (User.phone.endswith(last10)) | (User.phone == clean_phone)
+        ).all()
+        for u in p_users:
+            if u not in candidates:
+                candidates.append(u)
+
+        # 4. Driver profile mobile lookup
+        drivers = Driver.query.filter(
+            (Driver.mobile_number == raw_identifier) |
+            (Driver.mobile_number.endswith(last10)) |
+            (Driver.mobile_number == clean_phone)
+        ).all()
+        for d in drivers:
+            if d.user_id:
+                du = db.session.get(User, d.user_id) if hasattr(db.session, 'get') else User.query.get(d.user_id)
+                if du and du not in candidates:
+                    candidates.append(du)
+
+        # 5. Student parent/guardian phone lookup (handles sibling accounts with shared parent phone)
+        students = Student.query.filter(
+            (Student.parent_phone == raw_identifier) |
+            (Student.parent_phone.endswith(last10)) |
+            (Student.guardian_phone == raw_identifier) |
+            (Student.guardian_phone.endswith(last10))
+        ).all()
+        for s in students:
+            if s.user_id:
+                su = db.session.get(User, s.user_id) if hasattr(db.session, 'get') else User.query.get(s.user_id)
+                if su and su not in candidates:
+                    candidates.append(su)
+
+    # Find the candidate matching the password
+    matched_user = None
+    if candidates:
+        for c in candidates:
+            if c.check_password(password):
+                matched_user = c
+                break
+
+    if not matched_user:
+        # Constant-time dummy verification to protect against timing analysis attacks
+        try:
+            bcrypt.check_password_hash(DUMMY_BCRYPT_HASH, password)
+        except Exception:
+            pass
+        _record_login_attempt(user=None, identifier=raw_identifier, success=False, failure_reason='INVALID_CREDENTIALS')
         return jsonify({'error': 'Invalid credentials'}), 401
 
+    user = matched_user
+
+    # School status check
     if user.school_id:
         from app.models.school import School
-        user_school = School.query.get(user.school_id)
+        user_school = db.session.get(School, user.school_id) if hasattr(db.session, 'get') else School.query.get(user.school_id)
         if user_school:
             status = (getattr(user_school, 'status', None) or '').upper()
             if status == 'SUSPENDED':
+                _record_login_attempt(user=user, identifier=raw_identifier, success=False, failure_reason='SCHOOL_SUSPENDED')
                 return jsonify({'error': 'This school account has been suspended. Please contact the administrator.'}), 403
             if status == 'ARCHIVED':
+                _record_login_attempt(user=user, identifier=raw_identifier, success=False, failure_reason='SCHOOL_ARCHIVED')
                 return jsonify({'error': 'This school account is currently archived. Please contact the administrator.'}), 403
             if status == 'INACTIVE':
+                _record_login_attempt(user=user, identifier=raw_identifier, success=False, failure_reason='SCHOOL_INACTIVE')
                 return jsonify({'error': 'This school account is inactive. Please contact the administrator.'}), 403
             if status in ('DRAFT', 'ONBOARDING'):
+                _record_login_attempt(user=user, identifier=raw_identifier, success=False, failure_reason='SCHOOL_ONBOARDING')
                 return jsonify({'error': 'This school onboarding is not complete. Please contact the administrator.'}), 403
             if not user_school.is_active:
+                _record_login_attempt(user=user, identifier=raw_identifier, success=False, failure_reason='SCHOOL_DEACTIVATED')
                 return jsonify({'error': 'This school is currently deactivated. Please contact the administrator.'}), 403
 
     user_status = (getattr(user, 'account_status', None) or ('ACTIVE' if user.is_active else 'INACTIVE')).upper()
     if user_status == 'SUSPENDED':
+        _record_login_attempt(user=user, identifier=raw_identifier, success=False, failure_reason='ACCOUNT_SUSPENDED')
         return jsonify({'error': 'Account suspended. Contact your administrator.'}), 403
-    if user_status in ('INACTIVE', 'DEACTIVATED') or not user.is_active:
+    if user_status in ('INACTIVE', 'DEACTIVATED') or not user.is_active or getattr(user, 'is_deleted', False):
+        _record_login_attempt(user=user, identifier=raw_identifier, success=False, failure_reason='ACCOUNT_DEACTIVATED')
         return jsonify({'error': 'Account deactivated. Contact your administrator.'}), 403
 
     user.touch_last_login()
+    _record_login_attempt(user=user, identifier=raw_identifier, success=True, failure_reason=None)
     db.session.commit()
 
-    access_token  = create_access_token(identity=str(user.id))
-    refresh_token = create_refresh_token(identity=str(user.id))
+    token_ver = getattr(user, 'token_version', 0) or 0
+    access_token  = create_access_token(identity=str(user.id), additional_claims={'token_version': token_ver})
+    refresh_token = create_refresh_token(identity=str(user.id), additional_claims={'token_version': token_ver})
 
     return jsonify({
         'access_token':  access_token,
         'refresh_token': refresh_token,
-        
         'user':          _serialize_user(user),
     }), 200
 
@@ -344,8 +448,10 @@ def me():
 @auth_bp.route('/refresh', methods=['POST'])
 @jwt_required(refresh=True)
 def refresh():
-    user_id      = get_jwt_identity()
-    access_token = create_access_token(identity=str(user_id))
+    user_id = get_jwt_identity()
+    user = db.session.get(User, int(user_id)) if hasattr(db.session, 'get') else User.query.get(int(user_id))
+    token_ver = getattr(user, 'token_version', 0) or 0 if user else 0
+    access_token = create_access_token(identity=str(user_id), additional_claims={'token_version': token_ver})
     return jsonify({'access_token': access_token}), 200
 
 
@@ -434,9 +540,35 @@ def change_password():
     if not user.check_password(old_pw):
         return jsonify({'error': 'Current password is incorrect'}), 400
 
-    # store_plain=False → clears plain_password_temp
+    # store_plain=False → clears plain_password_temp and increments token_version
     user.set_password(new_pw, store_plain=False)
     db.session.commit()
+
+    try:
+        if user.school_id:
+            from app.models.audit import log_school_action
+            log_school_action(
+                school_id=user.school_id,
+                user=user,
+                module='auth',
+                submodule='profile',
+                action='PASSWORD_CHANGE',
+                remarks='User changed own password',
+                request_meta=_extract_client_meta()
+            )
+            db.session.commit()
+        else:
+            from app.models.audit import log_company_action
+            log_company_action(
+                actor_user=user,
+                module='auth',
+                action='PASSWORD_CHANGE',
+                remarks='Company user changed own password',
+                request_meta=_extract_client_meta()
+            )
+            db.session.commit()
+    except Exception as ex:
+        logger.warning(f"Audit log failed for password change: {ex}")
 
     return jsonify({'message': 'Password updated successfully'}), 200
 

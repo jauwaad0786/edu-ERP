@@ -82,6 +82,9 @@ class User(db.Model):
     # Teachers use Teacher.salary instead; this stays null for TEACHER/STUDENT/PARENT roles.
     salary      = db.Column(db.Float, nullable=True)
 
+    # Session revocation token version
+    token_version       = db.Column(db.Integer, default=0, nullable=False)
+
     plain_password_temp = db.Column(db.String(256), nullable=True)
 
     # Soft-delete & Archive metadata
@@ -106,14 +109,15 @@ class User(db.Model):
     student_profile = db.relationship('Student', backref='user', uselist=False)
 
     # ── Password helpers ────────────────────────────────────────────────────
-    # ── Password helpers ────────────────────────────────────────────────────
     def set_password(self, plain_text, store_plain=False):
         """
         Hash and store password using bcrypt.
+        Increments token_version to invalidate prior sessions.
         Never store plaintext passwords in the database.
         """
         self.password = bcrypt.generate_password_hash(plain_text).decode('utf-8')
         self.plain_password_temp = None
+        self.token_version = (self.token_version or 0) + 1
 
     def check_password(self, plain_text):
         return bcrypt.check_password_hash(self.password, plain_text)

@@ -5488,18 +5488,20 @@ def _gen_username_p(name: str, role: str) -> str:
 def _actor_can_manage_target(actor, target):
     """
     True if actor may delete/deactivate/edit target, using the same
-    platform_roles hierarchy as admin.py's delete_user(). Falls back to
-    the old hardcoded block (nobody may touch SUPER_ADMIN/PRINCIPAL) if
-    either side has no UserRoleAssignment yet -- fail-safe, not fail-open,
-    since a legacy account without a platform role link can't have its
-    hierarchy verified.
+    platform_roles hierarchy as admin.py's delete_user().
     """
+    if not actor or not target:
+        return False
+    if target.id == actor.id:
+        return False
     if target.role == UserRole.SUPER_ADMIN:
+        return False
+    if actor.role in (UserRole.PRINCIPAL, UserRole.VICE_PRINCIPAL) and target.role in (UserRole.PRINCIPAL, UserRole.SUPER_ADMIN):
         return False
     target_roles = get_user_roles(target)
     actor_roles = get_user_roles(actor)
     if not target_roles or not actor_roles:
-        return target.role not in (UserRole.SUPER_ADMIN, UserRole.PRINCIPAL, UserRole.DIRECTOR)
+        return target.role not in (UserRole.SUPER_ADMIN, UserRole.PRINCIPAL)
     return can_manage_role(actor_roles, target_roles)
 # ── List users of own school ───────────────────────────────────────────────────
 @principal_bp.route('/users', methods=['GET'])
@@ -5648,31 +5650,58 @@ def principal_create_user():
 
 
 # ── Reset password (own school only) ──────────────────────────────────────────
-# NEW
-@principal_bp.route('/users/<int:user_id>/reset-password', methods=['PUT'])
+@principal_bp.route('/users/<int:user_id>/reset-password', methods=['PUT', 'POST'])
 @role_required('PRINCIPAL')
 def principal_reset_password(user_id):
     from app.models.user import User, UserRole
-    sid   = _school_id()
     actor = get_current_user()
-    user  = User.query.get_or_404(user_id)
+    if not actor:
+        return jsonify({'error': 'Unauthorized'}), 401
+    sid = actor.school_id
+
+    user = User.query.get_or_404(user_id)
+
+    if user.id == actor.id:
+        return jsonify({'error': 'Cannot reset your own password via administrative reset. Please use Change Password.'}), 403
 
     if user.school_id != sid:
-        return jsonify({'error': 'Unauthorized: user belongs to a different school'}), 403
+        return jsonify({'error': 'Access denied: user belongs to a different school'}), 403
+
     if not _actor_can_manage_target(actor, user):
         return jsonify({'error': 'You do not have sufficient hierarchy to reset this user\'s password'}), 403
 
     data     = request.get_json() or {}
-    plain_pw = (data.get('password') or '').strip() or 'EduErp@123'
+    plain_pw = (data.get('password') or data.get('new_password') or '').strip()
+    if not plain_pw or len(plain_pw) < 6:
+        return jsonify({'error': 'New password must be at least 6 characters long'}), 400
 
-    user.set_password(plain_pw, store_plain=True)
+    # store_plain=False clears plaintext password and increments token_version
+    user.set_password(plain_pw, store_plain=False)
+
+    try:
+        from app.models.audit import log_school_action
+        from app.routes.auth import _extract_client_meta
+        role_label = user.role.value if hasattr(user.role, 'value') else str(user.role)
+        log_school_action(
+            school_id=sid,
+            user=actor,
+            module='auth',
+            submodule='user_management',
+            action='PASSWORD_RESET',
+            remarks=f"Administrator reset password for user ID {user.id} ({role_label})",
+            request_meta=_extract_client_meta()
+        )
+    except Exception as ex:
+        import logging
+        logging.getLogger('principal').warning(f"Failed to record password reset audit log: {ex}")
+
     db.session.commit()
 
     return jsonify({
-        'message':             'Password reset successful',
-        'plain_password_temp': user.plain_password_temp,
-        'username':            user.username,
-        'email':               user.email,
+        'success':  True,
+        'message':  'Password reset successful',
+        'username': user.username,
+        'email':    user.email,
     }), 200
 
 

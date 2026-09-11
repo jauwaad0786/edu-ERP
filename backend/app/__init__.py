@@ -41,6 +41,25 @@ def create_app(config_name='default'):
 
     db.init_app(app)
     jwt.init_app(app)
+
+    @jwt.token_in_blocklist_loader
+    def check_if_token_revoked(jwt_header, jwt_payload):
+        user_id = jwt_payload.get('sub')
+        if not user_id:
+            return True
+        from app.models.user import User
+        try:
+            user = db.session.get(User, int(user_id))
+        except Exception:
+            user = User.query.get(int(user_id))
+        if not user or not user.is_active or getattr(user, 'is_deleted', False):
+            return True
+        if 'token_version' in jwt_payload:
+            claim_version = jwt_payload.get('token_version', 0) or 0
+            user_version = getattr(user, 'token_version', 0) or 0
+            return claim_version < user_version
+        return False
+
     bcrypt.init_app(app)
     migrate.init_app(app, db)
     limiter.init_app(app)
@@ -996,6 +1015,7 @@ def _ensure_user_columns():
         'plain_password_temp': 'VARCHAR(256)',
         'employee_id':         'VARCHAR(30)',
         'account_status':      "VARCHAR(20) DEFAULT 'ACTIVE'",
+        'token_version':       'INTEGER DEFAULT 0',
     }
 
     with db.engine.connect() as conn:

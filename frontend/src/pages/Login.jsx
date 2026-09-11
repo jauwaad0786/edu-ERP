@@ -1,154 +1,50 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import api from '../api/axios';
-
-// ForgotPasswordModal removed — "Forgot Password?" now switches to OTP login/reset mode
 
 export default function Login() {
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { login, otpLogin, studentLogin } = useAuth();
+  const { login } = useAuth();
 
-  // Role mode: 'staff' (Principal/Teacher/Admin) vs 'student' (Student/Parent)
-  const [activeTab, setActiveTab] = useState('staff');
-
-  // Auth method: 'password' | 'otp'
-  const [authMethod, setAuthMethod] = useState('password');
-  const [otpStep, setOtpStep] = useState(1); // 1: Send OTP, 2: Enter OTP, 3: Set New Password (for reset flow)
-  const [isResetFlow, setIsResetFlow] = useState(false);
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [otpValue, setOtpValue] = useState('');
-  const [otpCooldown, setOtpCooldown] = useState(0);
-  const [otpSentMsg, setOtpSentMsg] = useState('');
-
-  useEffect(() => {
-    let timer;
-    if (otpCooldown > 0) {
-      timer = setTimeout(() => setOtpCooldown(c => c - 1), 1000);
-    }
-    return () => clearTimeout(timer);
-  }, [otpCooldown]);
-
-  // Staff credentials
+  // Unified login credentials
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
-
-  // Student credentials
-  const [stuName, setStuName] = useState('');
-  const [fatherName, setFatherName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [stuPass, setStuPass] = useState('');
-
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleStaffLogin = async e => {
+  // Forgot password modal state
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [copiedSupport, setCopiedSupport] = useState(false);
+
+  const handleUnifiedLogin = async e => {
     e.preventDefault();
-    if (!identifier.trim() || !password.trim()) {
-      setError('Please enter both username/email and password.');
+    const cleanId = identifier.trim();
+    if (!cleanId || !password.trim()) {
+      setError('Please enter your email, mobile number, or username, and your password.');
       return;
     }
     setLoading(true);
     setError('');
+
     try {
-      await login(identifier, password);
+      await login(cleanId, password);
       navigate('/dashboard');
     } catch (err) {
-      setError(err.response?.data?.error || 'Login failed. Please check your credentials.');
+      setError(
+        err.response?.data?.error ||
+        err.response?.data?.message ||
+        'Invalid credentials. Please verify your email/mobile and password.'
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSendLoginOtp = async e => {
-    if (e) e.preventDefault();
-    const raw = identifier.trim();
-    if (!raw) {
-      setError('Please enter your registered mobile number or email.');
-      return;
-    }
-    setLoading(true);
-    setError('');
-    setOtpSentMsg('');
-
-    try {
-      const res = await api.post('/auth/send-login-otp', { identifier: raw });
-      setOtpSentMsg(res.data?.message || 'OTP sent to your registered mobile number.');
-      setOtpCooldown(60);
-      setOtpStep(2);
-    } catch (err) {
-      const msg = err.response?.data?.message || err.response?.data?.error || 'Failed to send OTP. Please check the number and try again.';
-      setError(msg);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleVerifyLoginOtp = async e => {
-    e.preventDefault();
-    const otp = otpValue.trim();
-    if (!otp) {
-      setError('Please enter the 6-digit OTP code.');
-      return;
-    }
-    setLoading(true);
-    setError('');
-
-    try {
-      await otpLogin(identifier.trim(), otp);
-      if (isResetFlow) {
-        setOtpStep(3);
-      } else {
-        navigate('/dashboard');
-      }
-    } catch (err) {
-      setError(err.response?.data?.error || 'Verification failed. Please check the OTP.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSetNewPassword = async e => {
-    e.preventDefault();
-    if (!newPassword || newPassword.length < 6) {
-      setError('New password must be at least 6 characters long.');
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setError('Passwords do not match.');
-      return;
-    }
-    setLoading(true);
-    setError('');
-    try {
-      await api.post('/auth/set-new-password', { new_password: newPassword });
-      navigate('/dashboard');
-    } catch (err) {
-      const msg = err.response?.data?.error || err.response?.data?.message || 'Failed to update password. Please try again.';
-      setError(msg);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleStudentLogin = async e => {
-    e.preventDefault();
-    if (!stuName.trim() || !fatherName.trim() || !phone.trim() || !stuPass.trim()) {
-      setError('Please fill in all student login fields.');
-      return;
-    }
-    setLoading(true);
-    setError('');
-    try {
-      await studentLogin(stuName, fatherName, phone, stuPass);
-      navigate('/dashboard');
-    } catch (err) {
-      setError(err.response?.data?.error || 'Login failed. Please verify student credentials.');
-    } finally {
-      setLoading(false);
-    }
+  const copySupportEmail = () => {
+    navigator.clipboard.writeText('support@oneplatform360.com');
+    setCopiedSupport(true);
+    setTimeout(() => setCopiedSupport(false), 2500);
   };
 
   return (
@@ -165,39 +61,39 @@ export default function Login() {
           background: #f8fafc;
         }
 
-        /* ── Left Blue Hero Sidebar ── */
+        /* ── Left Hero Sidebar ── */
         .login-sidebar {
-          width: 45%;
+          width: 46%;
           background: linear-gradient(145deg, #032d60 0%, #084c8d 60%, #0176d3 100%);
           color: #ffffff;
-          padding: 40px 48px;
+          padding: 44px 50px;
           display: flex;
           flex-direction: column;
           justify-content: space-between;
           position: relative;
           overflow: hidden;
-          box-shadow: 4px 0 24px rgba(0, 0, 0, 0.08);
+          box-shadow: 4px 0 28px rgba(0, 0, 0, 0.09);
         }
 
         .sidebar-decor-1 {
           position: absolute;
-          width: 400px;
-          height: 400px;
+          width: 440px;
+          height: 440px;
           border-radius: 50%;
-          background: radial-gradient(circle, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0) 70%);
-          top: -120px;
-          right: -120px;
+          background: radial-gradient(circle, rgba(255,255,255,0.09) 0%, rgba(255,255,255,0) 70%);
+          top: -140px;
+          right: -140px;
           pointer-events: none;
         }
 
         .sidebar-decor-2 {
           position: absolute;
-          width: 320px;
-          height: 320px;
+          width: 360px;
+          height: 360px;
           border-radius: 50%;
-          background: radial-gradient(circle, rgba(56, 189, 248, 0.12) 0%, rgba(255,255,255,0) 70%);
-          bottom: -100px;
-          left: -80px;
+          background: radial-gradient(circle, rgba(56, 189, 248, 0.15) 0%, rgba(255,255,255,0) 70%);
+          bottom: -110px;
+          left: -90px;
           pointer-events: none;
         }
 
@@ -212,23 +108,23 @@ export default function Login() {
         .brand-badge {
           display: flex;
           align-items: center;
-          gap: 10px;
+          gap: 12px;
         }
 
         .brand-icon-box {
-          width: 36px;
-          height: 36px;
-          border-radius: 8px;
-          background: rgba(255, 255, 255, 0.2);
+          width: 40px;
+          height: 40px;
+          border-radius: 10px;
+          background: rgba(255, 255, 255, 0.22);
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 18px;
+          font-size: 20px;
           backdrop-filter: blur(8px);
         }
 
         .brand-title-text {
-          font-size: 16px;
+          font-size: 17px;
           font-weight: 800;
           letter-spacing: -0.02em;
         }
@@ -238,33 +134,33 @@ export default function Login() {
         }
 
         .change-module-link {
-          color: rgba(255, 255, 255, 0.85);
+          color: rgba(255, 255, 255, 0.9);
           font-size: 12px;
           font-weight: 700;
           text-decoration: none;
           display: flex;
           align-items: center;
           gap: 6px;
-          padding: 6px 12px;
-          border-radius: 6px;
-          background: rgba(255, 255, 255, 0.1);
-          border: 1px solid rgba(255, 255, 255, 0.18);
+          padding: 7px 14px;
+          border-radius: 8px;
+          background: rgba(255, 255, 255, 0.12);
+          border: 1px solid rgba(255, 255, 255, 0.2);
           transition: all 0.2s;
         }
 
         .change-module-link:hover {
-          background: rgba(255, 255, 255, 0.2);
+          background: rgba(255, 255, 255, 0.22);
           color: #ffffff;
         }
 
         .sidebar-center {
-          margin: 32px 0;
+          margin: 36px 0;
           position: relative;
           z-index: 2;
         }
 
         .sidebar-suite-title {
-          font-size: 2.1rem;
+          font-size: 2.3rem;
           font-weight: 900;
           line-height: 1.15;
           letter-spacing: -0.03em;
@@ -272,54 +168,52 @@ export default function Login() {
         }
 
         .sidebar-suite-subtitle {
-          font-size: 13.5px;
+          font-size: 14px;
           color: #bae6fd;
           font-weight: 600;
-          margin-bottom: 24px;
+          margin-bottom: 26px;
         }
 
-        /* ── School Classroom Visual Box ── */
         .school-visual-card {
-          background: rgba(255, 255, 255, 0.1);
-          border: 1px solid rgba(255, 255, 255, 0.2);
+          background: rgba(255, 255, 255, 0.11);
+          border: 1px solid rgba(255, 255, 255, 0.22);
           border-radius: 14px;
-          padding: 18px;
+          padding: 18px 20px;
           backdrop-filter: blur(12px);
           display: flex;
           align-items: center;
           gap: 16px;
-          margin-bottom: 20px;
+          margin-bottom: 22px;
         }
 
         .school-visual-avatar {
-          width: 56px;
-          height: 56px;
+          width: 54px;
+          height: 54px;
           border-radius: 12px;
           background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%);
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 30px;
+          font-size: 28px;
           flex-shrink: 0;
           box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
         }
 
         .school-visual-heading {
-          font-size: 14px;
+          font-size: 14.5px;
           font-weight: 800;
           color: #ffffff;
-          margin-bottom: 2px;
+          margin-bottom: 3px;
         }
 
         .school-visual-text {
-          font-size: 12px;
-          color: rgba(255, 255, 255, 0.85);
+          font-size: 12.5px;
+          color: rgba(255, 255, 255, 0.88);
           line-height: 1.45;
         }
 
-        /* ── Thoughts & Quote Box ── */
         .thought-card {
-          background: rgba(3, 45, 96, 0.4);
+          background: rgba(3, 45, 96, 0.45);
           border-left: 3.5px solid #38bdf8;
           border-radius: 8px;
           padding: 14px 18px;
@@ -342,14 +236,13 @@ export default function Login() {
           text-align: right;
         }
 
-        /* Features checklist */
         .features-list {
           list-style: none;
           padding: 0;
           margin: 0;
           display: flex;
           flex-direction: column;
-          gap: 10px;
+          gap: 11px;
         }
 
         .features-list li {
@@ -362,14 +255,14 @@ export default function Login() {
         }
 
         .feat-check {
-          width: 20px;
-          height: 20px;
+          width: 22px;
+          height: 22px;
           border-radius: 50%;
           background: rgba(255, 255, 255, 0.2);
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 11px;
+          font-size: 12px;
           color: #38bdf8;
           flex-shrink: 0;
         }
@@ -378,12 +271,12 @@ export default function Login() {
           position: relative;
           z-index: 2;
           border-top: 1px solid rgba(255, 255, 255, 0.15);
-          padding-top: 16px;
+          padding-top: 18px;
           display: flex;
           align-items: center;
           justify-content: space-between;
           font-size: 12px;
-          color: rgba(255, 255, 255, 0.75);
+          color: rgba(255, 255, 255, 0.78);
         }
 
         .sidebar-footer strong {
@@ -391,13 +284,13 @@ export default function Login() {
           font-weight: 800;
         }
 
-        /* ── Right Login Form Area ── */
+        /* ── Right Login Area ── */
         .login-main {
           flex: 1;
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 40px 32px;
+          padding: 44px 36px;
           background: #ffffff;
         }
 
@@ -407,66 +300,85 @@ export default function Login() {
         }
 
         .login-header-wrap {
-          margin-bottom: 24px;
+          margin-bottom: 28px;
+        }
+
+        .login-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 4px 10px;
+          border-radius: 6px;
+          background: #e0f2fe;
+          color: #0284c7;
+          font-size: 11.5px;
+          font-weight: 800;
+          letter-spacing: 0.5px;
+          text-transform: uppercase;
+          margin-bottom: 12px;
         }
 
         .login-main-title {
-          font-size: 1.8rem;
+          font-size: 1.95rem;
           font-weight: 900;
           color: #032d60;
-          letter-spacing: -0.02em;
-          margin-bottom: 4px;
+          letter-spacing: -0.025em;
+          margin: 0 0 6px 0;
         }
 
         .login-main-desc {
           font-size: 13.5px;
           color: #64748b;
+          margin: 0;
+          line-height: 1.5;
         }
 
-        /* Role Switcher Tabs */
-        .tab-switcher {
-          display: flex;
-          background: #f1f5f9;
-          padding: 4px;
+        .error-alert {
+          background: #fef2f2;
+          border: 1px solid #fecaca;
+          color: #991b1b;
+          padding: 11px 14px;
           border-radius: 10px;
-          margin-bottom: 24px;
-        }
-
-        .tab-item {
-          flex: 1;
-          padding: 10px;
-          text-align: center;
           font-size: 13px;
-          font-weight: 700;
-          border-radius: 8px;
-          cursor: pointer;
-          transition: all 0.2s;
-          border: none;
-          background: transparent;
-          color: #64748b;
+          font-weight: 600;
+          margin-bottom: 20px;
           display: flex;
           align-items: center;
-          justify-content: center;
-          gap: 6px;
+          gap: 10px;
         }
 
-        .tab-item.active {
-          background: #ffffff;
-          color: #0176d3;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        .form-group {
+          margin-bottom: 20px;
         }
 
-        /* Form elements */
-        .input-group {
-          margin-bottom: 18px;
+        .form-label-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 7px;
         }
 
-        .input-label {
-          display: block;
-          font-size: 12.5px;
+        .form-label {
+          font-size: 13px;
           font-weight: 700;
           color: #334155;
-          margin-bottom: 6px;
+          margin: 0;
+        }
+
+        .forgot-link-btn {
+          font-size: 12.5px;
+          font-weight: 700;
+          color: #0176d3;
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 0;
+          transition: color 0.15s;
+        }
+
+        .forgot-link-btn:hover {
+          color: #084c8d;
+          text-decoration: underline;
         }
 
         .input-box-wrap {
@@ -479,61 +391,56 @@ export default function Login() {
           top: 50%;
           transform: translateY(-50%);
           color: #94a3b8;
-          font-size: 16px;
+          font-size: 17px;
+          pointer-events: none;
         }
 
         .input-field {
           width: 100%;
-          padding: 12px 14px 12px 42px;
+          padding: 13px 42px 13px 44px;
           border-radius: 10px;
           border: 1.5px solid #cbd5e1;
-          font-size: 13.5px;
+          font-size: 14px;
           color: #0f172a;
           outline: none;
           transition: all 0.2s;
           font-family: inherit;
+          background: #fdfdfd;
         }
 
         .input-field:focus {
+          background: #ffffff;
           border-color: #0176d3;
-          box-shadow: 0 0 0 3px rgba(1, 118, 211, 0.12);
+          box-shadow: 0 0 0 3px rgba(1, 118, 211, 0.14);
         }
 
-        .error-alert {
-          background: #fef2f2;
-          border: 1px solid #fecaca;
-          color: #b91c1c;
-          padding: 10px 14px;
-          border-radius: 8px;
-          font-size: 13px;
-          font-weight: 600;
-          margin-bottom: 18px;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .forgot-link {
-          font-size: 12.5px;
-          font-weight: 600;
-          color: #0176d3;
+        .toggle-pw-btn {
+          position: absolute;
+          right: 12px;
+          top: 50%;
+          transform: translateY(-50%);
           background: none;
           border: none;
+          color: #94a3b8;
           cursor: pointer;
-          padding: 0;
+          padding: 4px;
+          font-size: 17px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
 
-        .forgot-link:hover {
-          text-decoration: underline;
+        .toggle-pw-btn:hover {
+          color: #475569;
         }
 
         .submit-btn {
           width: 100%;
-          padding: 13px;
+          padding: 14px;
           border-radius: 10px;
           background: linear-gradient(135deg, #0176d3 0%, #032d60 100%);
           color: #ffffff;
-          font-size: 14px;
+          font-size: 14.5px;
           font-weight: 800;
           border: none;
           cursor: pointer;
@@ -542,127 +449,220 @@ export default function Login() {
           align-items: center;
           justify-content: center;
           gap: 8px;
-          box-shadow: 0 4px 14px rgba(1, 118, 211, 0.3);
-          margin-top: 8px;
+          box-shadow: 0 4px 16px rgba(1, 118, 211, 0.32);
+          margin-top: 24px;
         }
 
         .submit-btn:hover {
           background: linear-gradient(135deg, #0284c7 0%, #014486 100%);
-          box-shadow: 0 6px 18px rgba(1, 118, 211, 0.4);
+          box-shadow: 0 6px 20px rgba(1, 118, 211, 0.42);
           transform: translateY(-1px);
         }
 
         .submit-btn:disabled {
-          opacity: 0.6;
+          opacity: 0.65;
           cursor: not-allowed;
           transform: none;
         }
 
-        /* ── Forgot Password Modal ── */
-        .fp-overlay {
-          position: fixed;
-          top: 0; left: 0; right: 0; bottom: 0;
-          background: rgba(0, 0, 0, 0.5);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 100;
-          backdrop-filter: blur(4px);
-        }
-
-        .fp-card {
-          background: #ffffff;
-          border-radius: 14px;
-          padding: 24px;
-          max-width: 400px;
-          width: 90%;
-          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-        }
-
-        .fp-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 14px;
-        }
-
-        .fp-header h3 {
-          margin: 0;
-          font-size: 16px;
-          font-weight: 800;
-          color: #032d60;
-        }
-
-        .fp-close {
-          background: none;
-          border: none;
-          font-size: 20px;
-          cursor: pointer;
-          color: #64748b;
-        }
-
-        .fp-text {
-          font-size: 13px;
-          color: #475569;
-          line-height: 1.5;
-          margin-bottom: 12px;
-        }
-
-        .fp-ok {
-          width: 100%;
-          padding: 10px;
-          border-radius: 8px;
-          background: #0176d3;
-          color: #ffffff;
-          border: none;
-          font-weight: 700;
-          cursor: pointer;
-          margin-top: 8px;
-        }
-
-        .or-divider {
-          display: flex;
-          align-items: center;
-          margin: 18px 0 14px;
-          text-align: center;
-        }
-
-        .or-divider::before,
-        .or-divider::after {
-          content: '';
-          flex: 1;
-          border-bottom: 1px solid #e2e8f0;
-        }
-
-        .or-divider span {
-          padding: 0 10px;
-          color: #94a3b8;
-          font-size: 11px;
-          font-weight: 700;
-          letter-spacing: 0.5px;
-        }
-
-        .switch-auth-btn {
-          width: 100%;
-          padding: 11px 16px;
-          border-radius: 9px;
-          background: #ffffff;
-          color: #032d60;
-          border: 1.5px solid #cbd5e1;
-          font-size: 13px;
-          font-weight: 700;
-          cursor: pointer;
+        .security-badge-footer {
+          margin-top: 28px;
+          padding-top: 20px;
+          border-top: 1px solid #e2e8f0;
           display: flex;
           align-items: center;
           justify-content: center;
           gap: 8px;
-          transition: all 0.15s ease-in-out;
+          font-size: 12px;
+          color: #64748b;
+          text-align: center;
         }
 
-        .switch-auth-btn:hover {
+        /* ── Professional Forgot Password Modal ── */
+        .modal-overlay {
+          position: fixed;
+          top: 0; left: 0; right: 0; bottom: 0;
+          background: rgba(15, 23, 42, 0.65);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 999;
+          backdrop-filter: blur(6px);
+          padding: 20px;
+        }
+
+        .modal-dialog {
+          background: #ffffff;
+          border-radius: 16px;
+          max-width: 520px;
+          width: 100%;
+          box-shadow: 0 20px 45px rgba(0, 0, 0, 0.25);
+          overflow: hidden;
+          animation: modalAppear 0.2s ease-out;
+        }
+
+        @keyframes modalAppear {
+          from { opacity: 0; transform: scale(0.96); }
+          to { opacity: 1; transform: scale(1); }
+        }
+
+        .modal-header {
+          padding: 20px 24px;
           background: #f8fafc;
-          border-color: #0176d3;
-          color: #0176d3;
+          border-bottom: 1px solid #e2e8f0;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+
+        .modal-title-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .modal-title-icon {
+          width: 32px;
+          height: 32px;
+          border-radius: 8px;
+          background: #e0f2fe;
+          color: #0284c7;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 16px;
+        }
+
+        .modal-title {
+          margin: 0;
+          font-size: 16px;
+          font-weight: 800;
+          color: #0f172a;
+        }
+
+        .modal-close-btn {
+          background: none;
+          border: none;
+          font-size: 20px;
+          color: #94a3b8;
+          cursor: pointer;
+          padding: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 6px;
+        }
+
+        .modal-close-btn:hover {
+          background: #e2e8f0;
+          color: #334155;
+        }
+
+        .modal-body {
+          padding: 24px;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+
+        .notice-card {
+          border-radius: 12px;
+          padding: 16px 18px;
+          display: flex;
+          gap: 14px;
+          align-items: flex-start;
+        }
+
+        .notice-card.school-users {
+          background: #f0fdf4;
+          border: 1px solid #bbf7d0;
+        }
+
+        .notice-card.principal-users {
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+        }
+
+        .notice-icon-box {
+          font-size: 24px;
+          line-height: 1;
+          flex-shrink: 0;
+          margin-top: 2px;
+        }
+
+        .notice-heading {
+          font-size: 14px;
+          font-weight: 800;
+          color: #0f172a;
+          margin-bottom: 4px;
+        }
+
+        .notice-text {
+          font-size: 12.5px;
+          line-height: 1.5;
+          color: #334155;
+          margin: 0;
+        }
+
+        .support-action-box {
+          margin-top: 8px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .support-email-badge {
+          background: #ffffff;
+          border: 1px solid #cbd5e1;
+          padding: 5px 10px;
+          border-radius: 6px;
+          font-family: monospace;
+          font-size: 12px;
+          font-weight: 700;
+          color: #032d60;
+        }
+
+        .copy-email-btn {
+          background: #0176d3;
+          color: #ffffff;
+          border: none;
+          padding: 6px 12px;
+          border-radius: 6px;
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          transition: background 0.15s;
+        }
+
+        .copy-email-btn:hover {
+          background: #0284c7;
+        }
+
+        .modal-footer {
+          padding: 14px 24px;
+          background: #f8fafc;
+          border-top: 1px solid #e2e8f0;
+          display: flex;
+          justify-content: flex-end;
+        }
+
+        .modal-ok-btn {
+          padding: 10px 22px;
+          border-radius: 8px;
+          background: #032d60;
+          color: #ffffff;
+          border: none;
+          font-size: 13px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: background 0.15s;
+        }
+
+        .modal-ok-btn:hover {
+          background: #0176d3;
         }
 
         @media (max-width: 900px) {
@@ -677,7 +677,7 @@ export default function Login() {
         <div className="sidebar-decor-1" />
         <div className="sidebar-decor-2" />
 
-        {/* Top brand & Back link */}
+        {/* Top brand */}
         <div className="sidebar-top">
           <div className="brand-badge">
             <div className="brand-icon-box">
@@ -705,9 +705,9 @@ export default function Login() {
               🎓
             </div>
             <div>
-              <div className="school-visual-heading">Smart Academic Campus</div>
+              <div className="school-visual-heading">Unified Academic Gateway</div>
               <div className="school-visual-text">
-                Empowering students, teachers &amp; principals with automated digital workflows.
+                One secure sign-in experience for Principals, Teachers, Staff, Drivers, Students and Parents.
               </div>
             </div>
           </div>
@@ -724,19 +724,19 @@ export default function Login() {
           <ul className="features-list">
             <li>
               <span className="feat-check"><i className="ti ti-check" /></span>
-              <span>Student Admissions, Roll Numbers &amp; ID Cards</span>
+              <span>Student Admissions, Roll Numbers &amp; Digital ID Cards</span>
             </li>
             <li>
               <span className="feat-check"><i className="ti ti-check" /></span>
-              <span>Daily Attendance, Timetable &amp; Leave Requests</span>
+              <span>Daily Attendance, Timetable &amp; Leave Tracking</span>
             </li>
             <li>
               <span className="feat-check"><i className="ti ti-check" /></span>
-              <span>Automated Fee Receipts &amp; Structure Management</span>
+              <span>Automated Fee Receipts &amp; Real-Time Financial Ledger</span>
             </li>
             <li>
               <span className="feat-check"><i className="ti ti-check" /></span>
-              <span>Exam Timetables, Admit Cards &amp; Result Cards</span>
+              <span>Bus Fleet Telemetry &amp; Driver Safety Tracking</span>
             </li>
           </ul>
         </div>
@@ -755,497 +755,194 @@ export default function Login() {
         <div className="login-card">
 
           <div className="login-header-wrap">
+            <div className="login-badge">
+              <i className="ti ti-shield-check" /> Unified Authentication
+            </div>
             <h2 className="login-main-title">Sign In</h2>
             <p className="login-main-desc">
-              Access your institutional dashboard and student records.
+              Enter your registered email address or mobile number to access your institutional dashboard.
             </p>
-          </div>
-
-          {/* Role Tabs */}
-          <div className="tab-switcher">
-            <button
-              className={`tab-item ${activeTab === 'staff' ? 'active' : ''}`}
-              onClick={() => { setActiveTab('staff'); setError(''); }}
-            >
-              <i className="ti ti-user-shield" />
-              Staff / Admin
-            </button>
-            <button
-              className={`tab-item ${activeTab === 'driver' ? 'active' : ''}`}
-              onClick={() => { setActiveTab('driver'); setError(''); }}
-            >
-              <i className="ti ti-steering-wheel" />
-              Driver (Bus App)
-            </button>
-            <button
-              className={`tab-item ${activeTab === 'student' ? 'active' : ''}`}
-              onClick={() => { setActiveTab('student'); setError(''); }}
-            >
-              <i className="ti ti-school" />
-              Student / Parent
-            </button>
           </div>
 
           {/* Error Alert */}
           {error && (
-            <div className="error-alert">
-              <i className="ti ti-alert-circle" />
+            <div className="error-alert" role="alert">
+              <i className="ti ti-alert-circle" style={{ fontSize: 18 }} />
               <span>{error}</span>
             </div>
           )}
 
-          {/* Driver Login Form */}
-          {activeTab === 'driver' ? (
-            <form onSubmit={handleStaffLogin}>
-              <div className="input-group">
-                <label className="input-label">Driver Mobile Number or Username</label>
-                <div className="input-box-wrap">
-                  <i className="ti ti-phone input-box-icon" />
-                  <input
-                    type="text"
-                    className="input-field"
-                    placeholder="e.g. 9876543210 or driver_ramesh"
-                    value={identifier}
-                    onChange={e => setIdentifier(e.target.value)}
-                    required
-                    autoFocus
-                  />
-                </div>
+          {/* 
+            Semantic HTML form fully compatible with Browser Password Managers
+            (Chrome/Google Password Manager, Safari Keychain, Edge, Firefox).
+          */}
+          <form
+            onSubmit={handleUnifiedLogin}
+            autoComplete="on"
+            method="POST"
+            action="#"
+            id="unified-login-form"
+          >
+            {/* Identifier: Email, Mobile or Username */}
+            <div className="form-group">
+              <div className="form-label-row">
+                <label htmlFor="login-identifier" className="form-label">
+                  Email or Mobile Number
+                </label>
               </div>
-
-              <div className="input-group">
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <label className="input-label" style={{ margin: 0 }}>Driver Password</label>
-                  <button
-                    type="button"
-                    className="forgot-link"
-                    onClick={() => { setActiveTab('staff'); setAuthMethod('otp'); setIsResetFlow(true); setOtpStep(1); setError(''); setOtpSentMsg(''); }}
-                  >
-                    Need Help?
-                  </button>
-                </div>
-                <div className="input-box-wrap">
-                  <i className="ti ti-lock input-box-icon" />
-                  <input
-                    type="password"
-                    className="input-field"
-                    placeholder="Enter your driver account password"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    required
-                  />
-                </div>
+              <div className="input-box-wrap">
+                <i className="ti ti-user input-box-icon" />
+                <input
+                  id="login-identifier"
+                  name="username"
+                  type="text"
+                  autoComplete="username"
+                  className="input-field"
+                  placeholder="e.g. principal@school.com or 9876543210"
+                  value={identifier}
+                  onChange={e => setIdentifier(e.target.value)}
+                  required
+                  autoFocus
+                />
               </div>
+            </div>
 
-              <button
-                type="submit"
-                className="submit-btn"
-                style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', boxShadow: '0 4px 14px rgba(217, 119, 6, 0.35)' }}
-                disabled={loading}
-              >
-                {loading ? (
-                  <>
-                    <i className="ti ti-loader-2 ti-spin" />
-                    <span>Opening Driver App...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Sign In to Driver App 🚌</span>
-                    <i className="ti ti-arrow-right" />
-                  </>
-                )}
-              </button>
-            </form>
-          ) : activeTab === 'staff' ? (
-            authMethod === 'password' ? (
-              /* Staff Password Login */
-              <form onSubmit={handleStaffLogin}>
-                <div className="input-group">
-                  <label className="input-label">Email, Mobile or Username</label>
-                  <div className="input-box-wrap">
-                    <i className="ti ti-user input-box-icon" />
-                    <input
-                      type="text"
-                      className="input-field"
-                      placeholder="e.g. principal@school.com, 9876543210, or user_01"
-                      value={identifier}
-                      onChange={e => setIdentifier(e.target.value)}
-                      required
-                      autoFocus
-                    />
-                  </div>
-                </div>
-
-                <div className="input-group">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <label className="input-label" style={{ margin: 0 }}>Password</label>
-                    <button
-                      type="button"
-                      className="forgot-link"
-                      onClick={() => { setAuthMethod('otp'); setIsResetFlow(true); setOtpStep(1); setError(''); setOtpSentMsg(''); }}
-                    >
-                      Forgot Password?
-                    </button>
-                  </div>
-                  <div className="input-box-wrap">
-                    <i className="ti ti-lock input-box-icon" />
-                    <input
-                      type="password"
-                      className="input-field"
-                      placeholder="Enter your account password"
-                      value={password}
-                      onChange={e => setPassword(e.target.value)}
-                      required
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  className="submit-btn"
-                  disabled={loading}
-                >
-                  {loading ? (
-                    <>
-                      <i className="ti ti-loader-2 ti-spin" />
-                      <span>Signing In...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Sign In to School ERP</span>
-                      <i className="ti ti-arrow-right" />
-                    </>
-                  )}
-                </button>
-
-                <div className="or-divider">
-                  <span>OR</span>
-                </div>
+            {/* Password */}
+            <div className="form-group">
+              <div className="form-label-row">
+                <label htmlFor="login-password" className="form-label">
+                  Password
+                </label>
                 <button
                   type="button"
-                  className="switch-auth-btn"
-                  onClick={() => { setAuthMethod('otp'); setIsResetFlow(false); setOtpStep(1); setError(''); setOtpSentMsg(''); }}
+                  className="forgot-link-btn"
+                  onClick={() => setShowForgotModal(true)}
                 >
-                  <i className="ti ti-device-mobile-message" style={{ fontSize: 16 }} />
-                  <span>Login with OTP (Mobile / Email)</span>
+                  Forgot Password?
                 </button>
-              </form>
-            ) : (
-              /* Staff OTP / Reset Password Flow */
-              <div>
-                {isResetFlow && (
-                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <i className="ti ti-key" style={{ color: '#0176d3', fontSize: 15 }} />
-                      <strong>Password Reset via OTP</strong>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => { setIsResetFlow(false); setAuthMethod('password'); setOtpStep(1); setError(''); }}
-                      style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 12, textDecoration: 'underline' }}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                )}
-
-                {otpSentMsg && (
-                  <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', padding: '8px 12px', borderRadius: 8, fontSize: 13, marginBottom: 14 }}>
-                    <i className="ti ti-circle-check" style={{ marginRight: 6 }} />
-                    {otpSentMsg}
-                  </div>
-                )}
-
-                {otpStep === 3 ? (
-                  /* Step 3: Set New Password */
-                  <form onSubmit={handleSetNewPassword}>
-                    <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', padding: '10px 14px', borderRadius: 8, fontSize: 13, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <i className="ti ti-circle-check" style={{ fontSize: 18 }} />
-                      <span><strong>OTP Verified!</strong> Please enter your new password below.</span>
-                    </div>
-
-                    <div className="input-group">
-                      <label className="input-label">New Password</label>
-                      <div className="input-box-wrap">
-                        <i className="ti ti-lock input-box-icon" />
-                        <input
-                          type="password"
-                          className="input-field"
-                          placeholder="Enter new password (min. 6 characters)"
-                          value={newPassword}
-                          onChange={e => setNewPassword(e.target.value)}
-                          required
-                          autoFocus
-                        />
-                      </div>
-                    </div>
-
-                    <div className="input-group">
-                      <label className="input-label">Confirm New Password</label>
-                      <div className="input-box-wrap">
-                        <i className="ti ti-lock-check input-box-icon" />
-                        <input
-                          type="password"
-                          className="input-field"
-                          placeholder="Re-enter new password"
-                          value={confirmPassword}
-                          onChange={e => setConfirmPassword(e.target.value)}
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    <button
-                      type="submit"
-                      className="submit-btn"
-                      disabled={loading}
-                    >
-                      {loading ? (
-                        <>
-                          <i className="ti ti-loader-2 ti-spin" />
-                          <span>Updating Password...</span>
-                        </>
-                      ) : (
-                        <>
-                          <span>Save Password &amp; Go to Dashboard</span>
-                          <i className="ti ti-arrow-right" />
-                        </>
-                      )}
-                    </button>
-
-                    <div style={{ display: 'flex', justifyContent: 'center', marginTop: 14 }}>
-                      <button
-                        type="button"
-                        onClick={() => navigate('/dashboard')}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#64748b',
-                          cursor: 'pointer',
-                          fontSize: 13,
-                          textDecoration: 'underline'
-                        }}
-                      >
-                        Skip &amp; Continue to Dashboard
-                      </button>
-                    </div>
-                  </form>
-                ) : (
-                  <>
-                    <div className="input-group">
-                      <label className="input-label">Registered Mobile Number or Email</label>
-                      <div className="input-box-wrap">
-                        <i className="ti ti-user-check input-box-icon" />
-                        <input
-                          type="text"
-                          className="input-field"
-                          placeholder="e.g. 9876543210 or principal@school.com"
-                          value={identifier}
-                          onChange={e => setIdentifier(e.target.value)}
-                          required
-                          disabled={otpStep === 2}
-                          autoFocus={otpStep === 1}
-                        />
-                      </div>
-                    </div>
-
-                    {otpStep === 1 ? (
-                      <div>
-                        <button
-                          type="button"
-                          className="submit-btn"
-                          onClick={handleSendLoginOtp}
-                          disabled={loading}
-                        >
-                          {loading ? (
-                            <>
-                              <i className="ti ti-loader-2 ti-spin" />
-                              <span>Sending OTP...</span>
-                            </>
-                          ) : (
-                            <>
-                              <i className="ti ti-send" />
-                              <span>Send OTP</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    ) : (
-                      <form onSubmit={handleVerifyLoginOtp}>
-                        <div className="input-group">
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                            <label className="input-label" style={{ margin: 0 }}>Enter 6-Digit OTP</label>
-                            <button
-                              type="button"
-                              className="forgot-link"
-                              onClick={() => { setOtpStep(1); setOtpValue(''); setError(''); }}
-                            >
-                              Change identifier
-                            </button>
-                          </div>
-                          <div className="input-box-wrap">
-                            <i className="ti ti-shield-check input-box-icon" />
-                            <input
-                              type="text"
-                              className="input-field"
-                              placeholder="e.g. 123456"
-                              maxLength={6}
-                              value={otpValue}
-                              onChange={e => setOtpValue(e.target.value)}
-                              required
-                              autoFocus
-                            />
-                          </div>
-                        </div>
-
-                        <button
-                          type="submit"
-                          className="submit-btn"
-                          disabled={loading}
-                        >
-                          {loading ? (
-                            <>
-                              <i className="ti ti-loader-2 ti-spin" />
-                              <span>Verifying OTP...</span>
-                            </>
-                          ) : (
-                            <>
-                              <span>{isResetFlow ? 'Verify OTP & Set Password' : 'Verify & Sign In'}</span>
-                              <i className="ti ti-arrow-right" />
-                            </>
-                          )}
-                        </button>
-
-                        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
-                          <button
-                            type="button"
-                            onClick={handleSendLoginOtp}
-                            disabled={otpCooldown > 0 || loading}
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              color: otpCooldown > 0 ? '#94a3b8' : '#0176d3',
-                              cursor: otpCooldown > 0 ? 'default' : 'pointer',
-                              fontSize: 13,
-                              fontWeight: 600
-                            }}
-                          >
-                            {otpCooldown > 0 ? `Resend OTP in ${otpCooldown}s` : 'Resend OTP'}
-                          </button>
-                        </div>
-                      </form>
-                    )}
-
-                    <div className="or-divider">
-                      <span>OR</span>
-                    </div>
-                    <button
-                      type="button"
-                      className="switch-auth-btn"
-                      onClick={() => { setAuthMethod('password'); setIsResetFlow(false); setError(''); }}
-                    >
-                      <i className="ti ti-lock" style={{ fontSize: 16 }} />
-                      <span>Sign In with Password</span>
-                    </button>
-                  </>
-                )}
               </div>
-            )
-          ) : (
-            /* Student / Parent Login Form */
-            <form onSubmit={handleStudentLogin}>
-              <div className="input-group">
-                <label className="input-label">Student Full Name</label>
-                <div className="input-box-wrap">
-                  <i className="ti ti-user input-box-icon" />
-                  <input
-                    type="text"
-                    className="input-field"
-                    placeholder="Student full name as per records"
-                    value={stuName}
-                    onChange={e => setStuName(e.target.value)}
-                    required
-                    autoFocus
-                  />
-                </div>
+              <div className="input-box-wrap">
+                <i className="ti ti-lock input-box-icon" />
+                <input
+                  id="login-password"
+                  name="password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
+                  className="input-field"
+                  placeholder="Enter your account password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  className="toggle-pw-btn"
+                  onClick={() => setShowPassword(!showPassword)}
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                  tabIndex={-1}
+                >
+                  <i className={showPassword ? 'ti ti-eye-off' : 'ti ti-eye'} />
+                </button>
               </div>
+            </div>
 
-              <div className="input-group">
-                <label className="input-label">Father's / Guardian's Name</label>
-                <div className="input-box-wrap">
-                  <i className="ti ti-user-check input-box-icon" />
-                  <input
-                    type="text"
-                    className="input-field"
-                    placeholder="Father's full name"
-                    value={fatherName}
-                    onChange={e => setFatherName(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
+            {/* Submit Button */}
+            <button
+              type="submit"
+              id="login-submit-btn"
+              className="submit-btn"
+              disabled={loading}
+            >
+              {loading ? (
+                <>
+                  <i className="ti ti-loader-2 ti-spin" />
+                  <span>Verifying Credentials...</span>
+                </>
+              ) : (
+                <>
+                  <span>Sign In to School ERP</span>
+                  <i className="ti ti-arrow-right" />
+                </>
+              )}
+            </button>
+          </form>
 
-              <div className="input-group">
-                <label className="input-label">Registered Phone Number</label>
-                <div className="input-box-wrap">
-                  <i className="ti ti-phone input-box-icon" />
-                  <input
-                    type="tel"
-                    className="input-field"
-                    placeholder="10-digit mobile number"
-                    value={phone}
-                    onChange={e => setPhone(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="input-group">
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <label className="input-label" style={{ margin: 0 }}>Password / PIN</label>
-                    <button
-                      type="button"
-                      className="forgot-link"
-                      onClick={() => { setActiveTab('staff'); setAuthMethod('otp'); setIsResetFlow(true); setOtpStep(1); setError(''); setOtpSentMsg(''); }}
-                    >
-                      Forgot PIN?
-                    </button>
-                </div>
-                <div className="input-box-wrap">
-                  <i className="ti ti-lock input-box-icon" />
-                  <input
-                    type="password"
-                    className="input-field"
-                    placeholder="Student portal password"
-                    value={stuPass}
-                    onChange={e => setStuPass(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                className="submit-btn"
-                disabled={loading}
-              >
-                {loading ? (
-                  <>
-                    <i className="ti ti-loader-2 ti-spin" />
-                    <span>Verifying Student Portal...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Sign In to Student Portal</span>
-                    <i className="ti ti-arrow-right" />
-                  </>
-                )}
-              </button>
-            </form>
-          )}
+          <div className="security-badge-footer">
+            <i className="ti ti-lock" style={{ color: '#059669' }} />
+            <span>Encrypted Authentication • Password Manager Compatible</span>
+          </div>
 
         </div>
       </div>
+
+      {/* ── Forgot Password Security Directive Modal ── */}
+      {showForgotModal && (
+        <div className="modal-overlay" onClick={() => setShowForgotModal(false)}>
+          <div className="modal-dialog" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title-row">
+                <div className="modal-title-icon">
+                  <i className="ti ti-key" />
+                </div>
+                <h3 className="modal-title">Password Reset &amp; Account Recovery</h3>
+              </div>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setShowForgotModal(false)}
+                title="Close"
+              >
+                <i className="ti ti-x" />
+              </button>
+            </div>
+
+            <div className="modal-body">
+              {/* For School Users (Students, Parents, Teachers, Staff, Drivers) */}
+              <div className="notice-card school-users">
+                <div className="notice-icon-box">🏫</div>
+                <div>
+                  <div className="notice-heading">Students, Teachers, Staff &amp; Drivers</div>
+                  <p className="notice-text">
+                    Password reset is managed by your school administrator. Please contact your <strong>Principal or School Administrator</strong> to reset your password. Once updated, your administrator will securely provide your new temporary credentials.
+                  </p>
+                </div>
+              </div>
+
+              {/* For Principals & Institutional Administrators */}
+              <div className="notice-card principal-users">
+                <div className="notice-icon-box">🛡️</div>
+                <div>
+                  <div className="notice-heading">Principal &amp; Institutional Administrator Accounts</div>
+                  <p className="notice-text">
+                    To maintain institution-wide data protection, public self-service password reset is restricted for Principal accounts. Please contact <strong>OnePlatform360 Authorized Support</strong> for identity verification and secure account recovery:
+                  </p>
+                  <div className="support-action-box">
+                    <span className="support-email-badge">support@oneplatform360.com</span>
+                    <button
+                      type="button"
+                      className="copy-email-btn"
+                      onClick={copySupportEmail}
+                    >
+                      <i className={copiedSupport ? 'ti ti-check' : 'ti ti-copy'} />
+                      {copiedSupport ? 'Copied!' : 'Copy Support Email'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="modal-ok-btn"
+                onClick={() => setShowForgotModal(false)}
+              >
+                Understood
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

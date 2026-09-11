@@ -135,24 +135,30 @@ export default function StaffPage() {
   };
 
   const submitReset = async e => {
-    e.preventDefault(); setResetting(true);
+    e.preventDefault();
+    const chosenPw = resetPw.trim() || 'EduErp@123';
+    if (chosenPw.length < 6) {
+      toast.error('Password must be at least 6 characters');
+      return;
+    }
+    setResetting(true);
     try {
       const res = await api.put(`/principal/users/${resetTarget.id}/reset-password`, {
-        password: resetPw || undefined,
+        password: chosenPw,
       });
-      toast.success('Password reset!');
+      toast.success('Password reset successfully!');
       setCreatedCreds({
         name:     resetTarget.name,
-        email:    res.data.email,
-        username: res.data.username,
-        password: res.data.plain_password_temp,
+        email:    res.data.email || resetTarget.email,
+        username: res.data.username || resetTarget.username,
+        password: chosenPw,
         role:     STAFF_ROLES.find(r => r.value === resetTarget.role)?.label || resetTarget.role,
       });
       setResetTarget(null);
       setResetPw('');
       load();
-    } catch {
-      toast.error('Reset failed');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Reset failed');
     }
     setResetting(false);
   };

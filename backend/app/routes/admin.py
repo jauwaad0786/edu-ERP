@@ -990,26 +990,54 @@ def toggle_user(user_id):
     }), 200
 
 
-@admin_bp.route('/users/<int:user_id>/reset-password', methods=['PUT'])
+@admin_bp.route('/users/<int:user_id>/reset-password', methods=['PUT', 'POST'])
 @role_required('SUPER_ADMIN')
 def reset_user_password(user_id):
     """
-    Admin resets a user's password.
-    Body: { "password": "NewPass@123" }  (optional — defaults to EduErp@123)
-    Returns the plain password so admin can share with user.
+    Admin resets a user's password with strict hierarchy check and session invalidation.
+    Body: { "password": "NewPass@123" }
     """
-    user     = User.query.get_or_404(user_id)
-    data     = request.get_json() or {}
-    plain_pw = (data.get('password') or '').strip() or 'EduErp@123'
+    actor = get_current_user()
+    if not actor:
+        return jsonify({'error': 'Unauthorized'}), 401
 
-    user.set_password(plain_pw, store_plain=True)
+    user = User.query.get_or_404(user_id)
+
+    blocked = _hierarchy_guard(actor, user, action='reset password of')
+    if blocked:
+        return blocked
+
+    data     = request.get_json() or {}
+    plain_pw = (data.get('password') or data.get('new_password') or '').strip()
+    if not plain_pw or len(plain_pw) < 6:
+        return jsonify({'error': 'New password must be at least 6 characters long'}), 400
+
+    # store_plain=False clears plain_password_temp and increments token_version
+    user.set_password(plain_pw, store_plain=False)
+
+    try:
+        from app.models.audit import log_company_action
+        from app.routes.auth import _extract_client_meta
+        role_label = user.role.value if hasattr(user.role, 'value') else str(user.role)
+        log_company_action(
+            actor_user=actor,
+            module='auth',
+            action='PASSWORD_RESET',
+            remarks=f"Super Admin reset password for user ID {user.id} ({role_label})",
+            affected_school_id=user.school_id,
+            request_meta=_extract_client_meta()
+        )
+    except Exception as ex:
+        import logging
+        logging.getLogger('admin').warning(f"Failed to record password reset audit log: {ex}")
+
     db.session.commit()
 
     return jsonify({
-        'message':           'Password reset successful',
-        'plain_password_temp': user.plain_password_temp,
-        'username':          user.username,
-        'email':             user.email,
+        'success':  True,
+        'message':  'Password reset successful',
+        'username': user.username,
+        'email':    user.email,
     }), 200
 
 

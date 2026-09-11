@@ -187,6 +187,7 @@ class Student(db.Model):
         c_sec  = self.class_ref.section if self.class_ref else ''
         return {
             'id':                   self.id,
+            'user_id':              self.user_id,
             'roll_number':          self.roll_number or '',
             'admission_no':         self.admission_no or '',
             'admission_number':     self.admission_no or '',

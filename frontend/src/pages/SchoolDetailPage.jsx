@@ -206,6 +206,7 @@ export default function SchoolDetail() {
   // school being viewed, so there's no separate "pick a school" step.
   const createStaff = async e => {
     e.preventDefault(); setSavingStaff(true); setMsg('');
+    try {
       // SonarQube Hotspot javascript:S1813 / S2068 Audit: Standard default temporary onboarding credential for new staff provisioning.
       const DEFAULT_TEMP_STAFF_PASSWORD = 'EduErp@123';
       const r = await api.post('/admin/users', { ...staffForm, school_id: id });

@@ -49,16 +49,21 @@ export default function StaffProfile() {
   };
 
   const submitReset = async () => {
+    const chosenPw = resetPw.trim() || 'EduErp@123';
+    if (chosenPw.length < 6) {
+      toast.error('Password must be at least 6 characters');
+      return;
+    }
     setResetting(true);
     try {
-      const res = await api.put(`/principal/users/${id}/reset-password`, {
-        password: resetPw || undefined,
+      await api.put(`/principal/users/${id}/reset-password`, {
+        password: chosenPw,
       });
-      toast.success('Password reset! New password: ' + res.data.plain_password_temp);
+      toast.success(`Password reset successfully! Temporary password: ${chosenPw}`, { duration: 6000 });
       setShowReset(false);
       setResetPw('');
-    } catch {
-      toast.error('Reset failed');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Reset failed');
     }
     setResetting(false);
   };
