@@ -23,10 +23,14 @@ function MapPicker({ lat, lng, onPick, darkMode }) {
         const css = document.createElement('link');
         css.rel = 'stylesheet';
         css.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+        css.integrity = 'sha384-c6Rcwz4e4CITMbu/NBmnNS8yN2sC3cUElMEMfP3vqqKFp7GOYaaBBCqmaWBjmkjb';
+        css.crossOrigin = 'anonymous';
         document.head.appendChild(css);
 
         const script = document.createElement('script');
         script.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+        script.integrity = 'sha384-NElt3Op+9NBMCYaef5HxeJmU4Xeard/Lku8ek6hoPTvYkQPh3zLIrJP7KiRocsxO';
+        script.crossOrigin = 'anonymous';
         script.onload = () => resolve();
         document.body.appendChild(script);
       });

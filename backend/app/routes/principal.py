@@ -36,7 +36,8 @@ from app.routes.admin import FEATURE_CATALOG, PLAN_PRESETS, PLAN_PRICING
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload, selectinload
 from datetime import date, datetime, timedelta
-import random, string, re
+from app.utils.timezone_util import utc_now
+import secrets, string, re
 import cloudinary.uploader
 import os
 principal_bp = Blueprint('principal', __name__)
@@ -49,7 +50,7 @@ def _school_id():
 def _gen_receipt():
     """Generate unique receipt number like RCP-20240518-AB12"""
     today = date.today().strftime('%Y%m%d')
-    suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+    suffix = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(4))
     return f"RCP-{today}-{suffix}"
 
 
@@ -825,7 +826,7 @@ def create_student():
         }), 403
 
     # 15s Idempotency protection against rapid double-clicks
-    recent_cutoff = datetime.utcnow() - timedelta(seconds=15)
+    recent_cutoff = utc_now() - timedelta(seconds=15)
     name_clean = (data.get('name') or '').strip()
     phone_clean = (data.get('parent_phone') or '').strip()
     if name_clean and phone_clean:
@@ -843,17 +844,17 @@ def create_student():
         raw_email = (data.get('email') or '').strip().lower()
         first = ''.join(c for c in (name_clean or 'student').lower().split()[0] if c.isalnum()) or 'student'
         if not raw_email:
-            raw_email = f"{first}{random.randint(100, 999)}@eduerp.com"
+            raw_email = f"{first}{secrets.randbelow(900) + 100}@eduerp.com"
 
         final_email = raw_email
         counter = 1
         while User.query.filter_by(email=final_email).first():
             base = raw_email.split('@')[0]
             domain = raw_email.split('@')[1] if '@' in raw_email else 'eduerp.com'
-            final_email = f"{base}_{random.randint(100, 999)}@{domain}"
+            final_email = f"{base}_{secrets.randbelow(900) + 100}@{domain}"
             counter += 1
             if counter > 10:
-                final_email = f"{first}_{int(datetime.utcnow().timestamp())}@{domain}"
+                final_email = f"{first}_{int(utc_now().timestamp())}@{domain}"
                 break
 
         user = User(
@@ -905,7 +906,7 @@ def create_student():
             adm_no = candidate
         else:
             if Student.query.filter_by(school_id=sid, admission_no=adm_no).first():
-                adm_no = f"{adm_no}-{random.randint(10, 99)}"
+                adm_no = f"{adm_no}-{secrets.randbelow(90) + 10}"
 
         roll_no = (data.get('roll_number') or '').strip()
         if not roll_no and data.get('class_id'):
@@ -982,7 +983,7 @@ def create_student():
                         bed_id=bed.id,
                         room_id=bed.room_id,
                         status='ACTIVE',
-                        allocated_at=datetime.utcnow()
+                        allocated_at=utc_now()
                     )
                     bed.status = 'OCCUPIED'
                     db.session.add(alloc)
@@ -1159,7 +1160,7 @@ def recent_fee_collections():
     sid = _school_id()
     try:
         from app.models.fee_finance import FeePayment
-        now = datetime.utcnow()
+        now = utc_now()
         result = []
 
         # 1. Fetch recent central payments
@@ -1910,7 +1911,7 @@ def publish_fee_batch(batch_id):
 
     batch.status       = 'PUBLISHED'
     batch.published_by = get_current_user().id
-    batch.published_at = datetime.utcnow()
+    batch.published_at = utc_now()
     db.session.commit()
     return jsonify({'message': 'Batch published — ab parents ko dikhega', 'batch': batch.to_dict()}), 200
 
@@ -1992,7 +1993,7 @@ def adjust_fee_record(record_id):
         rec.discount_reason = reason
 
     rec.adjusted_by = get_current_user().id
-    rec.adjusted_at = datetime.utcnow()
+    rec.adjusted_at = utc_now()
 
     # Status recompute — DRAFT record DRAFT hi rahega (publish se pehle),
     # baaki records ka status effective_due ke against refresh ho
@@ -2055,7 +2056,7 @@ def remove_fee_adjustment(record_id, field):
     setattr(rec, field, 0)
     setattr(rec, f'{field}_reason', None)
     rec.adjusted_by = get_current_user().id
-    rec.adjusted_at = datetime.utcnow()
+    rec.adjusted_at = utc_now()
     db.session.commit()
     return jsonify(rec.to_dict()), 200
 
@@ -2424,7 +2425,7 @@ def batch_bulk_adjust(batch_id):
             rec.fine, rec.fine_reason = (rec.fine or 0) + amount, reason
         else:
             rec.discount, rec.discount_reason = (rec.discount or 0) + amount, reason
-        rec.adjusted_by, rec.adjusted_at = get_current_user().id, datetime.utcnow()
+        rec.adjusted_by, rec.adjusted_at = get_current_user().id, utc_now()
         updated += 1
 
     db.session.commit()
@@ -3009,7 +3010,7 @@ def publish_exam(exam_id):
 
     exam.status       = 'PUBLISHED'
     exam.is_published = True
-    exam.published_at = datetime.utcnow()
+    exam.published_at = utc_now()
     exam.published_by = get_current_user().id
 
     # Auto-initialize participating classes if missing
@@ -3934,7 +3935,7 @@ def approve_attendance_request(req_id):
 
     req.approval    = 'APPROVED'
     req.reviewed_by = get_current_user().id
-    req.reviewed_at = datetime.utcnow()
+    req.reviewed_at = utc_now()
 
     # Upsert into TeacherAttendance
     existing = TeacherAttendance.query.filter_by(
@@ -3973,7 +3974,7 @@ def deny_attendance_request(req_id):
 
     req.approval    = 'DENIED'
     req.reviewed_by = get_current_user().id
-    req.reviewed_at = datetime.utcnow()
+    req.reviewed_at = utc_now()
     db.session.commit()
     return jsonify({'message': 'Denied', 'request': req.to_dict()}), 200
 
@@ -4768,7 +4769,7 @@ def publish_timetable(tt_id):
     if tt.school_id != _school_id():
         return jsonify({'error': 'Unauthorized'}), 403
     tt.status       = 'PUBLISHED'
-    tt.published_at = datetime.utcnow()
+    tt.published_at = utc_now()
     tt.published_by = get_current_user().id
     db.session.commit()
     return jsonify({'message': 'Timetable published', 'timetable': tt.to_dict()}), 200
@@ -5450,7 +5451,7 @@ def my_services():
 
 import re   as _re
 import string as _string
-import random  as _random
+import secrets as _secrets
 from app.models.user import PRINCIPAL_ALLOWED_ROLES
 from app.models.rbac import get_user_roles, can_manage_role
 
@@ -5478,11 +5479,11 @@ def _gen_username_p(name: str, role: str) -> str:
         return base
 
     for _ in range(20):
-        candidate = base + '.' + ''.join(_random.choices(_string.digits, k=3))
+        candidate = base + '.' + ''.join(_secrets.choice(_string.digits) for _ in range(3))
         if not User.query.filter_by(username=candidate).first():
             return candidate
 
-    return base + '.' + ''.join(_random.choices(_string.digits, k=6))
+    return base + '.' + ''.join(_secrets.choice(_string.digits) for _ in range(6))
 
 def _actor_can_manage_target(actor, target):
     """
@@ -6354,7 +6355,7 @@ def upload_student_document(student_id):
         existing.remarks           = remarks or existing.remarks
         existing.uploaded_by       = curr.id
         existing.uploaded_by_role  = curr_role
-        existing.uploaded_at       = datetime.utcnow()
+        existing.uploaded_at       = utc_now()
         doc = existing
     else:
         doc = StudentDocument(
@@ -6920,7 +6921,7 @@ def admissions_recent_count():
     """
     sid  = _school_id()
     days = request.args.get('days', 7, type=int)
-    since = datetime.utcnow() - timedelta(days=days)
+    since = utc_now() - timedelta(days=days)
 
     count = Student.query.join(User, Student.user_id == User.id) \
         .filter(Student.school_id == sid, User.created_at >= since) \

@@ -4,6 +4,7 @@ All AI-related tables. Isolated from core ERP models.
 """
 from app import db
 from datetime import datetime
+from app.utils.timezone_util import utc_now
 import json
 
 
@@ -190,7 +191,7 @@ class AIQueryCache(db.Model):
     )
 
     def is_valid(self):
-        return datetime.utcnow() < self.expires_at
+        return utc_now() < self.expires_at
 
     def get_response(self):
         try:

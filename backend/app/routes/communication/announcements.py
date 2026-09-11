@@ -4,6 +4,7 @@ School Announcements and Platform-wide Broadcast APIs with strict multi-tenant a
 """
 
 from datetime import datetime
+from app.utils.timezone_util import utc_now
 from flask import Blueprint, request, jsonify
 
 from app import db
@@ -156,7 +157,7 @@ def list_announcements():
     """
     user      = get_current_user()
     school_id = user.school_id
-    now       = datetime.utcnow()
+    now       = utc_now()
 
     q = Announcement.query.filter_by(is_active=True)
 
@@ -282,7 +283,7 @@ def update_announcement(ann_id):
         except ValueError:
             return jsonify({'error': 'Invalid expires_at format'}), 400
 
-    ann.updated_at = datetime.utcnow()
+    ann.updated_at = utc_now()
     db.session.commit()
     return jsonify(ann.to_dict()), 200
 
@@ -301,7 +302,7 @@ def toggle_pin(ann_id):
             return jsonify({'error': 'Unauthorized to pin this announcement'}), 403
 
     ann.is_pinned  = not ann.is_pinned
-    ann.updated_at = datetime.utcnow()
+    ann.updated_at = utc_now()
     db.session.commit()
     return jsonify({
         'message':   'Pinned' if ann.is_pinned else 'Unpinned',
@@ -326,7 +327,7 @@ def delete_announcement(ann_id):
             return jsonify({'error': 'Unauthorized to remove this announcement'}), 403
 
     ann.is_active  = False
-    ann.updated_at = datetime.utcnow()
+    ann.updated_at = utc_now()
     db.session.commit()
     return jsonify({'message': 'Announcement removed'}), 200
 
@@ -349,7 +350,7 @@ def broadcast_now(ann_id):
 
     ann.scheduled_at = None
     ann.is_active    = True
-    ann.updated_at   = datetime.utcnow()
+    ann.updated_at   = utc_now()
 
     _broadcast_notification(ann, ann.school_id)
 
@@ -371,7 +372,7 @@ def latest_announcements():
     """
     user      = get_current_user()
     school_id = user.school_id
-    now       = datetime.utcnow()
+    now       = utc_now()
 
     q = Announcement.query.filter(
         db.or_(Announcement.school_id == school_id, Announcement.school_id.is_(None)),

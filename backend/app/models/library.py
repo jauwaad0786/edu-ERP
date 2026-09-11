@@ -1,5 +1,6 @@
 from app import db
 from datetime import datetime, date
+from app.utils.timezone_util import utc_now
 
 
 class BookCategory(db.Model):
@@ -449,7 +450,7 @@ class LibraryVisit(db.Model):
     recorder = db.relationship('User', foreign_keys=[recorded_by])
 
     def checkout(self, exit_dt=None):
-        now = exit_dt or datetime.utcnow()
+        now = exit_dt or utc_now()
         self.exit_time = now
         self.status = 'EXITED'
         if self.entry_time:
@@ -483,7 +484,7 @@ class LibraryVisit(db.Model):
             'visit_date':       str(self.visit_date),
             'entry_time':       self.entry_time.isoformat() if self.entry_time else None,
             'exit_time':        self.exit_time.isoformat() if self.exit_time else None,
-            'duration_minutes': self.duration_minutes or (max(1, int((datetime.utcnow() - self.entry_time).total_seconds() / 60)) if self.status == 'INSIDE' and self.entry_time else None),
+            'duration_minutes': self.duration_minutes or (max(1, int((utc_now() - self.entry_time).total_seconds() / 60)) if self.status == 'INSIDE' and self.entry_time else None),
             'entry_method':     self.entry_method,
             'recorded_by':      self.recorded_by,
             'recorder_name':    rec.name if rec else '',

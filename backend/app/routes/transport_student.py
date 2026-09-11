@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
 from datetime import datetime, date
+from app.utils.timezone_util import utc_now
 from app import db
 from app.models.academic import Student, Class
 from app.models.transport import Vehicle, Route, Stop
@@ -226,7 +227,7 @@ def assign_students():
             existing.pickup_stop_id = pickup_stop_id or existing.pickup_stop_id
             existing.drop_stop_id = drop_stop_id or existing.drop_stop_id
             existing.academic_year = academic_year or existing.academic_year
-            existing.updated_at = datetime.utcnow()
+            existing.updated_at = utc_now()
             if changes:
                 transferred.append(student_id)
 
@@ -291,7 +292,7 @@ def transfer_student(student_id):
     existing.stop_id = pickup_stop_id or stop_id
     existing.pickup_stop_id = pickup_stop_id
     existing.drop_stop_id = drop_stop_id
-    existing.updated_at = datetime.utcnow()
+    existing.updated_at = utc_now()
     db.session.commit()
     return jsonify({'success': True, 'data': existing.to_dict()})
 
@@ -314,7 +315,7 @@ def remove_student(student_id):
         from_stop_id=existing.stop_id, remarks=remarks, created_by=user.id,
     ))
     existing.status = 'REMOVED'
-    existing.updated_at = datetime.utcnow()
+    existing.updated_at = utc_now()
     db.session.commit()
     return jsonify({'success': True, 'message': 'Removed from transport'})
 
@@ -617,7 +618,7 @@ def waive_fee(record_id):
         fee_rec.discount = (fee_rec.discount or 0.0) + waiver
         fee_rec.discount_reason = data.get('remarks', 'Transport Fee Waiver')
         fee_rec.adjusted_by = get_current_user().id
-        fee_rec.adjusted_at = datetime.utcnow()
+        fee_rec.adjusted_at = utc_now()
         if (fee_rec.amount_paid or 0.0) >= fee_rec.effective_due():
             fee_rec.status = 'WAIVED' if (fee_rec.amount_paid or 0.0) == 0 else 'PAID'
 

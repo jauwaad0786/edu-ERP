@@ -1,13 +1,14 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
+from app.utils.timezone_util import utc_now
 from app import db
 from app.utils.decorators import role_required, get_current_user
 from app.models.transport import (
     Vehicle, Driver, Conductor, Stop, Route, RouteStop, VehicleMaintenance,
     VEHICLE_TYPES, VEHICLE_STATUSES, MAINTENANCE_STATUSES
 )
-import re as _re, string as _string, random as _random
+import re as _re, string as _string, secrets as _secrets
 from app.models.user import User, UserRole
 from app.services.permission_resolver import ensure_role_assignment_for_user
 
@@ -41,10 +42,10 @@ def _gen_driver_username(name: str) -> str:
     if not User.query.filter_by(username=base).first():
         return base
     for _ in range(20):
-        candidate = base + '.' + ''.join(_random.choices(_string.digits, k=3))
+        candidate = base + '.' + ''.join(_secrets.choice(_string.digits) for _ in range(3))
         if not User.query.filter_by(username=candidate).first():
             return candidate
-    return base + '.' + ''.join(_random.choices(_string.digits, k=6))
+    return base + '.' + ''.join(_secrets.choice(_string.digits) for _ in range(6))
 
 
 from datetime import datetime, date
@@ -272,7 +273,7 @@ def update_vehicle(vehicle_id):
     if 'insurance_expiry' in data:
         v.insurance_expiry = parse_date(data['insurance_expiry'])
 
-    v.updated_at = datetime.utcnow()
+    v.updated_at = utc_now()
     db.session.commit()
     return jsonify({'success': True, 'data': v.to_dict()})
 
@@ -440,7 +441,7 @@ def update_driver(driver_id):
             if v:
                 v.driver_id = d.id
 
-    d.updated_at = datetime.utcnow()
+    d.updated_at = utc_now()
     db.session.commit()
     return jsonify({'success': True, 'data': d.to_dict()})
 
@@ -535,7 +536,7 @@ def update_conductor(conductor_id):
         if field in data:
             setattr(c, field, data[field])
 
-    c.updated_at = datetime.utcnow()
+    c.updated_at = utc_now()
     db.session.commit()
     return jsonify({'success': True, 'data': c.to_dict()})
 
@@ -745,7 +746,7 @@ def update_route(route_id):
         if field in data:
             setattr(r, field, data[field])
 
-    r.updated_at = datetime.utcnow()
+    r.updated_at = utc_now()
     db.session.commit()
     return jsonify({'success': True, 'data': r.to_dict()})
 
@@ -847,7 +848,7 @@ def create_maintenance():
         school_id=school_id,
         vehicle_id=vehicle_id,
         problem=problem,
-        reported_date=parse_date(data.get('reported_date')) or datetime.utcnow().date(),
+        reported_date=parse_date(data.get('reported_date')) or utc_now().date(),
         expected_completion=parse_date(data.get('expected_completion')),
         cost=data.get('cost', 0),
         remarks=data.get('remarks', ''),
@@ -879,7 +880,7 @@ def update_maintenance(record_id):
             return bad_request(f'status must be one of {MAINTENANCE_STATUSES}')
         m.status = data['status']
         if data['status'] == 'COMPLETED' and not m.completed_date:
-            m.completed_date = datetime.utcnow().date()
+            m.completed_date = utc_now().date()
             # auto-flip vehicle back to ACTIVE if no other open maintenance
             other_open = VehicleMaintenance.query.filter(
                 VehicleMaintenance.vehicle_id == m.vehicle_id,

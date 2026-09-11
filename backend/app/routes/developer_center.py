@@ -33,6 +33,7 @@ Endpoints:
 """
 
 from datetime import datetime, timedelta
+from app.utils.timezone_util import utc_now
 
 from flask import Blueprint, request, jsonify
 
@@ -190,7 +191,7 @@ def list_errors():
     since_days = request.args.get('since_days')
     if since_days:
         try:
-            cutoff = datetime.utcnow() - timedelta(days=int(since_days))
+            cutoff = utc_now() - timedelta(days=int(since_days))
             query = query.filter(ErrorLog.last_seen_at >= cutoff)
         except ValueError:
             pass
@@ -343,7 +344,7 @@ def update_error_status(error_id):
     old_status = row.status
     row.status = new_status
     if new_status == 'RESOLVED' and not row.resolved_at:
-        row.resolved_at = datetime.utcnow()
+        row.resolved_at = utc_now()
     if new_status == 'REOPENED':
         row.resolved_at = None
 
@@ -383,7 +384,7 @@ def resolve_error(error_id):
 
     old_status = row.status
     row.status = 'RESOLVED'
-    row.resolved_at = datetime.utcnow()
+    row.resolved_at = utc_now()
 
     latest = (IssueAssignment.query
               .filter_by(error_id=row.id)
@@ -417,7 +418,7 @@ def error_summary():
         return error
 
     open_statuses = ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'TESTING', 'REOPENED']
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = utc_now().replace(hour=0, minute=0, second=0, microsecond=0)
 
     can_triage = _can_triage(actor)
     base_query = ErrorLog.query
@@ -590,7 +591,7 @@ def update_issue_status(error_id):
     old_status = row.status
     row.status = new_status
     if new_status == 'RESOLVED' and not row.resolved_at:
-        row.resolved_at = datetime.utcnow()
+        row.resolved_at = utc_now()
     if new_status == 'REOPENED':
         row.resolved_at = None
 
@@ -687,13 +688,13 @@ def system_health():
     if error:
         return error
 
-    start = datetime.utcnow()
+    start = utc_now()
     db_ok = True
     try:
         db.session.execute(db.text('SELECT 1'))
     except Exception:
         db_ok = False
-    api_response_time = int((datetime.utcnow() - start).total_seconds() * 1000)
+    api_response_time = int((utc_now() - start).total_seconds() * 1000)
 
     if psutil:
         cpu_usage = round(psutil.cpu_percent(interval=0.3), 1)
@@ -742,5 +743,5 @@ def system_health():
             'application': 'up',
         },
         'queues': None,
-        'last_updated': datetime.utcnow().isoformat(),
+        'last_updated': utc_now().isoformat(),
     }), 200

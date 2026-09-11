@@ -20,6 +20,7 @@ Design decisions:
 
 from app import db
 from datetime import datetime
+from app.utils.timezone_util import utc_now
 import hashlib
 
 ERROR_TYPES = [
@@ -183,7 +184,7 @@ def log_error(fingerprint, defaults):
     ).first()
     if existing:
         existing.occurrence_count += 1
-        existing.last_seen_at = datetime.utcnow()
+        existing.last_seen_at = utc_now()
         return existing
 
     row = ErrorLog(fingerprint=fingerprint, **defaults)

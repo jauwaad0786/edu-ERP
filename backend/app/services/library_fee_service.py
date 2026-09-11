@@ -116,9 +116,9 @@ def record_library_fine_payment(fine_txn, payment_amount, payment_mode='CASH', c
 
         # Generate receipt_no if not present
         if not fee_rec.receipt_no:
-            import random
+            import secrets
             import string
-            rno = f"LIB-REC-{today.strftime('%Y%m')}-{fine_txn.id:04d}-{''.join(random.choices(string.digits, k=4))}"
+            rno = f"LIB-REC-{today.strftime('%Y%m')}-{fine_txn.id:04d}-{''.join(secrets.choice(string.digits) for _ in range(4))}"
             fee_rec.receipt_no = rno
 
         fine_txn.receipt_no = fee_rec.receipt_no

@@ -1,5 +1,6 @@
 from app import db
 from datetime import datetime
+from app.utils.timezone_util import utc_now
 
 
 # NEW
@@ -334,7 +335,7 @@ class ExamTeacherDelegation(db.Model):
     exam_ref             = db.relationship('ExamSchedule', lazy='select')
 
     def is_active(self):
-        return self.status == 'ACTIVE' and self.end_date >= datetime.utcnow()
+        return self.status == 'ACTIVE' and self.end_date >= utc_now()
 
     def to_dict(self):
         del_user_name = self.delegated_teacher.user.name if self.delegated_teacher and self.delegated_teacher.user else ''
@@ -355,7 +356,7 @@ class ExamTeacherDelegation(db.Model):
             'start_date':             self.start_date.isoformat() if self.start_date else None,
             'end_date':               self.end_date.isoformat() if self.end_date else None,
             'reason':                 self.reason,
-            'status':                 'EXPIRED' if (self.status == 'ACTIVE' and self.end_date < datetime.utcnow()) else self.status,
+            'status':                 'EXPIRED' if (self.status == 'ACTIVE' and self.end_date < utc_now()) else self.status,
             'is_currently_active':    self.is_active(),
             'created_at':             self.created_at.isoformat() if self.created_at else None,
         }

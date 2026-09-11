@@ -27,6 +27,12 @@ _scheduler_instance = None
 
 
 def create_app(config_name='default'):
+    # SonarQube Security Hotspot python:S4502 Audit:
+    # This application is a headless REST API with stateless JWT authentication.
+    # Authentication credentials are transmitted exclusively via 'Authorization: Bearer <token>'
+    # request headers and stored client-side in localStorage (not browser session cookies).
+    # Cross-site requests cannot inject custom Authorization headers under standard browser CORS,
+    # making traditional cookie-based CSRF attacks infeasible. CORS allowlist is strictly enforced below.
     app = Flask(__name__)
 
     from config import config

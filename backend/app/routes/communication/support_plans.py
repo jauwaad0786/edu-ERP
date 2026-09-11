@@ -5,6 +5,7 @@ from app.models.communication import SupportPlan, SupportUsage
 from app.services.notification_service import send_notification
 from app.utils.decorators import role_required, get_current_user
 from datetime import datetime, date, timedelta
+from app.utils.timezone_util import utc_now
 
 support_plans_bp = Blueprint('support_plans', __name__)
 
@@ -34,7 +35,7 @@ def _get_active_plan(school_id):
         return None, 'BASIC'
     if not plan.is_active:
         return plan, 'BASIC'
-    if plan.expires_at and plan.expires_at < datetime.utcnow():
+    if plan.expires_at and plan.expires_at < utc_now():
         return plan, 'BASIC'   # expired
     return plan, plan.plan
 
@@ -81,8 +82,8 @@ def my_plan():
         'expires_at':      plan_obj.expires_at.isoformat()
                            if plan_obj and plan_obj.expires_at else None,
         'days_remaining':  (
-            (plan_obj.expires_at - datetime.utcnow()).days
-            if plan_obj and plan_obj.expires_at and plan_obj.expires_at > datetime.utcnow()
+            (plan_obj.expires_at - utc_now()).days
+            if plan_obj and plan_obj.expires_at and plan_obj.expires_at > utc_now()
             else 0
         ),
 
@@ -150,7 +151,7 @@ def list_all_plans():
 
         # Is it actually active (not expired)?
         is_expired = (
-            p.expires_at and p.expires_at < datetime.utcnow()
+            p.expires_at and p.expires_at < utc_now()
         )
         d['is_expired']      = bool(is_expired)
         d['effective_plan']  = 'BASIC' if (not p.is_active or is_expired) else p.plan
@@ -195,7 +196,7 @@ def activate_plan():
     if plan not in ('BASIC', 'PREMIUM'):
         return jsonify({'error': 'plan must be BASIC or PREMIUM'}), 400
 
-    expires_at = datetime.utcnow() + timedelta(days=30 * months)
+    expires_at = utc_now() + timedelta(days=30 * months)
 
     existing = SupportPlan.query.filter_by(school_id=school_id).first()
     if existing:
@@ -206,7 +207,7 @@ def activate_plan():
         existing.amount       = amount
         existing.expires_at   = expires_at
         existing.billing_date = date.today()
-        existing.updated_at   = datetime.utcnow()
+        existing.updated_at   = utc_now()
         plan_obj = existing
     else:
         plan_obj = SupportPlan(
@@ -258,7 +259,7 @@ def deactivate_plan(plan_id):
     """
     plan_obj = SupportPlan.query.get_or_404(plan_id)
     plan_obj.is_active  = False
-    plan_obj.updated_at = datetime.utcnow()
+    plan_obj.updated_at = utc_now()
 
     # Notify principal
     principal = User.query.filter_by(
@@ -291,8 +292,8 @@ def expiring_soon():
     Default: next 7 days.
     """
     days       = request.args.get('days', 7, type=int)
-    cutoff     = datetime.utcnow() + timedelta(days=days)
-    now        = datetime.utcnow()
+    cutoff     = utc_now() + timedelta(days=days)
+    now        = utc_now()
 
     plans = SupportPlan.query.filter(
         SupportPlan.is_active   == True,
@@ -392,7 +393,7 @@ def reset_usage():
 
     if usage:
         usage.ticket_count = 0
-        usage.updated_at   = datetime.utcnow()
+        usage.updated_at   = utc_now()
         db.session.commit()
 
     # Notify principal

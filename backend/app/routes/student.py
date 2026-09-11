@@ -260,7 +260,7 @@ def my_documents():
 def upload_my_document():
     """Student uploads their own KYC document (Aadhaar, birth cert, etc.)."""
     import os, cloudinary.uploader
-    from datetime import datetime
+    from app.utils.timezone_util import utc_now
 
     user = get_current_user()
     student = Student.query.filter_by(user_id=user.id).first()
@@ -328,7 +328,7 @@ def upload_my_document():
         existing.remarks         = remarks or existing.remarks
         existing.uploaded_by     = user.id
         existing.uploaded_by_role = 'STUDENT'
-        existing.uploaded_at     = datetime.utcnow()
+        existing.uploaded_at     = utc_now()
         doc = existing
     else:
         doc = StudentDocument(

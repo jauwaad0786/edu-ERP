@@ -5,7 +5,7 @@ from app.models.hostel import (
 )
 from app.models.financial import FeeRecord, FeeTransaction
 from datetime import date, datetime
-import random
+import secrets
 import string
 
 
@@ -213,7 +213,7 @@ def generate_hostel_fee_record(
 
 def _generate_receipt_no():
     """Generates unique receipt identifier: RCP-YYYYMMDD-XXXX."""
-    return 'RCP-' + date.today().strftime('%Y%m%d') + '-' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+    return 'RCP-' + date.today().strftime('%Y%m%d') + '-' + ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(4))
 
 
 import threading

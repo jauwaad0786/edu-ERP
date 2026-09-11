@@ -4,6 +4,7 @@ Meeting Request APIs with tenant isolation, Principal school-level oversight, an
 """
 
 from datetime import datetime, date
+from app.utils.timezone_util import utc_now
 from flask import Blueprint, request, jsonify
 
 from app import db
@@ -233,7 +234,7 @@ def accept_meeting(meeting_id):
     meeting.meeting_link  = data.get('meeting_link', '')
     meeting.response_note = data.get('response_note', '')
     meeting.handled_by    = user.id
-    meeting.updated_at    = datetime.utcnow()
+    meeting.updated_at    = utc_now()
 
     mode_labels = {
         'GOOGLE_MEET': 'Google Meet',
@@ -284,7 +285,7 @@ def reject_meeting(meeting_id):
     meeting.status        = 'REJECTED'
     meeting.response_note = data.get('response_note', '')
     meeting.handled_by    = user.id
-    meeting.updated_at    = datetime.utcnow()
+    meeting.updated_at    = utc_now()
 
     send_notification(
         user_id    = meeting.requested_by,
@@ -337,7 +338,7 @@ def reschedule_meeting(meeting_id):
     meeting.reschedule_time = r_time
     meeting.response_note   = data.get('response_note', '')
     meeting.handled_by      = user.id
-    meeting.updated_at      = datetime.utcnow()
+    meeting.updated_at      = utc_now()
 
     send_notification(
         user_id    = meeting.requested_by,
@@ -380,7 +381,7 @@ def complete_meeting(meeting_id):
     meeting.status        = 'COMPLETED'
     meeting.response_note = data.get('response_note', '')
     meeting.handled_by    = user.id
-    meeting.updated_at    = datetime.utcnow()
+    meeting.updated_at    = utc_now()
 
     send_notification(
         user_id    = meeting.requested_by,
@@ -442,7 +443,7 @@ def cancel_meeting(meeting_id):
 
     meeting.status        = 'REJECTED'
     meeting.response_note = 'Cancelled by requester'
-    meeting.updated_at    = datetime.utcnow()
+    meeting.updated_at    = utc_now()
 
     # Notify SUPER_ADMINs
     admins = User.query.filter_by(role=UserRole.SUPER_ADMIN).all()

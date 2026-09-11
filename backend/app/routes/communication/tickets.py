@@ -11,7 +11,8 @@ Multi-Tenancy & Authorization Rules:
 """
 
 from datetime import datetime, date
-import random
+from app.utils.timezone_util import utc_now
+import secrets
 import string
 import cloudinary.uploader
 from flask import Blueprint, request, jsonify
@@ -34,7 +35,7 @@ tickets_bp = Blueprint('tickets', __name__)
 def _gen_ticket_no():
     """Generates TKT-YYYYMMDD-XXXX unique ticket code."""
     today  = date.today().strftime('%Y%m%d')
-    suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+    suffix = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(4))
     return f"TKT-{today}-{suffix}"
 
 
@@ -57,7 +58,7 @@ def _get_plan(school_id):
     plan = SupportPlan.query.filter_by(school_id=school_id).first()
     if not plan or not plan.is_active:
         return 'BASIC'
-    if plan.expires_at and plan.expires_at < datetime.utcnow():
+    if plan.expires_at and plan.expires_at < utc_now():
         return 'BASIC'
     return plan.plan
 
@@ -389,7 +390,7 @@ def reply_ticket(ticket_id):
         if ticket.status in ('IN_PROGRESS', 'WAITING'):
             ticket.status = 'WAITING'
 
-    ticket.updated_at = datetime.utcnow()
+    ticket.updated_at = utc_now()
     db.session.flush()
 
     # Dispatch notifications
@@ -439,9 +440,9 @@ def assign_ticket(ticket_id):
     engineer = User.query.get_or_404(engineer_id)
 
     ticket.assigned_to = engineer_id
-    ticket.assigned_at = datetime.utcnow()
+    ticket.assigned_at = utc_now()
     ticket.status      = 'IN_PROGRESS'
-    ticket.updated_at  = datetime.utcnow()
+    ticket.updated_at  = utc_now()
 
     send_notification(
         user_id    = engineer_id,
@@ -499,10 +500,10 @@ def update_ticket_status(ticket_id):
         ticket.resolution_notes = data['resolution_notes']
 
     if new_status in ('RESOLVED', 'CLOSED'):
-        ticket.resolved_at = datetime.utcnow()
+        ticket.resolved_at = utc_now()
         ticket.resolved_by = user.id
 
-    ticket.updated_at = datetime.utcnow()
+    ticket.updated_at = utc_now()
 
     status_messages = {
         'RESOLVED':    'Aapka ticket resolve ho gaya hai. Please confirm karo.',

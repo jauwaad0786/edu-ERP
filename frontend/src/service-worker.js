@@ -138,6 +138,10 @@ setCatchHandler(async ({ event }) => {
 
 // ── Auto-update: let the app trigger activation of a waiting worker ────
 self.addEventListener('message', (event) => {
+  // Verify message origin to prevent untrusted cross-origin execution (javascript:S2819)
+  if (event.origin !== self.location.origin) {
+    return;
+  }
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }

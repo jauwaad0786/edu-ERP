@@ -10,6 +10,7 @@ Security:
 """
 
 from datetime import datetime
+from app.utils.timezone_util import utc_now
 from flask import Blueprint, request, jsonify
 import cloudinary.uploader
 
@@ -187,7 +188,7 @@ def get_conversation(other_user_id):
         if m.receiver_id == user.id and not m.is_read
     ]
     if unread_ids:
-        now = datetime.utcnow()
+        now = utc_now()
         ChatMessage.query.filter(
             ChatMessage.id.in_(unread_ids)
         ).update({'is_read': True, 'read_at': now}, synchronize_session=False)
@@ -304,7 +305,7 @@ def mark_conversation_read(other_user_id):
     Marks all unread messages from other_user_id as read.
     """
     user = get_current_user()
-    now  = datetime.utcnow()
+    now  = utc_now()
 
     ChatMessage.query.filter_by(
         sender_id   = other_user_id,

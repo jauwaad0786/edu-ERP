@@ -5,6 +5,7 @@ EduERP / OnePlatform360 — Centralized Soft-Delete & 1-Year Retention System
 
 from app import db
 from datetime import datetime, timedelta
+from app.utils.timezone_util import utc_now
 import enum
 
 
@@ -86,5 +87,5 @@ class DeletedItem(db.Model):
             'auto_delete_date': self.auto_delete_at.strftime('%d %b %Y') if self.auto_delete_at else '',
             'status':           self.status,
             'purged_at':        self.purged_at.strftime('%Y-%m-%d %H:%M') if self.purged_at else None,
-            'days_remaining':   max(0, (self.auto_delete_at - datetime.utcnow()).days) if self.auto_delete_at else 0,
+            'days_remaining':   max(0, (self.auto_delete_at - utc_now()).days) if self.auto_delete_at else 0,
         }

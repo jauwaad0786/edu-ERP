@@ -24,6 +24,7 @@ from app.services.hostel_fee_service import (
 from sqlalchemy import func
 from app.utils.decorators import role_required, get_current_user
 from datetime import date, datetime
+from app.utils.timezone_util import utc_now
 
 hostel_bp = Blueprint('hostel', __name__)
 
@@ -214,7 +215,14 @@ def create_floor(building_id):
     db.session.commit()
     return jsonify(f.to_dict()), 201
 
-# NEW — paste right after create_room() function
+MAX_BULK_ROOMS = 100
+MAX_BEDS_PER_ROOM = 26
+
+ROOM_TYPE_BED_COUNT = {
+    'SINGLE': 1, 'DOUBLE': 2, 'TRIPLE': 3,
+    'FOUR_SHARING': 4, 'SIX_SHARING': 6, 'CUSTOM': None,
+}
+
 
 @hostel_bp.route('/floors/<int:floor_id>/rooms/bulk', methods=['POST'])
 @role_required('PRINCIPAL')
@@ -224,6 +232,7 @@ def create_rooms_bulk(floor_id):
             has_wifi, bed_count(only for CUSTOM) }
     Creates `count` rooms numbered start_number..start_number+count-1,
     auto-generating beds for each — same rule as single create_room.
+    Loop boundaries strictly bounded against injection (pythonsecurity:S6680).
     """
     f   = HostelFloor.query.get_or_404(floor_id)
     sid = _school_id()
@@ -231,13 +240,24 @@ def create_rooms_bulk(floor_id):
         return jsonify({'error': 'Unauthorized'}), 403
 
     data  = request.get_json() or {}
-    count = int(data.get('count', 0))
+    try:
+        count = int(data.get('count', 0))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'count ek valid integer hona chahiye'}), 400
+
     start_number = data.get('start_number')
-    if count <= 0 or start_number is None:
-        return jsonify({'error': 'count aur start_number zaroori hai'}), 400
+    if count <= 0 or count > MAX_BULK_ROOMS or start_number is None:
+        return jsonify({'error': f'count 1 se {MAX_BULK_ROOMS} ke beech aur start_number zaroori hai'}), 400
 
     room_type = data.get('room_type', 'DOUBLE')
-    bed_count = ROOM_TYPE_BED_COUNT.get(room_type) or int(data.get('bed_count', 2))
+    raw_bed_count = ROOM_TYPE_BED_COUNT.get(room_type) or data.get('bed_count', 2)
+    try:
+        bed_count = int(raw_bed_count)
+    except (TypeError, ValueError):
+        bed_count = 2
+
+    # Clamp bed_count to safe bounds (1..26) to prevent loop injection / DoS (pythonsecurity:S6680)
+    bed_count = max(1, min(bed_count, MAX_BEDS_PER_ROOM))
 
     created_count = 0
     skipped_room_numbers = []
@@ -418,7 +438,14 @@ def create_room(floor_id):
         return jsonify({'error': 'Is floor pe ye room number already hai'}), 409
 
     room_type = data.get('room_type', 'DOUBLE')
-    bed_count = ROOM_TYPE_BED_COUNT.get(room_type) or int(data.get('bed_count', 2))
+    raw_bed_count = ROOM_TYPE_BED_COUNT.get(room_type) or data.get('bed_count', 2)
+    try:
+        bed_count = int(raw_bed_count)
+    except (TypeError, ValueError):
+        bed_count = 2
+
+    # Clamp bed_count to safe bounds (1..26) to prevent loop injection / DoS (pythonsecurity:S6680)
+    bed_count = max(1, min(bed_count, MAX_BEDS_PER_ROOM))
 
     room = HostelRoom(
         floor_id=floor_id, wing_id=data.get('wing_id'), school_id=sid,
@@ -1895,7 +1922,7 @@ def waive_hostel_fine(fine_id):
     user = get_current_user()
     fine.waived_amount = round((fine.waived_amount or 0.0) + waived_amt, 2)
     fine.waived_by = user.id
-    fine.waived_at = datetime.utcnow()
+    fine.waived_at = utc_now()
     fine.waive_reason = reason
 
     if fine.outstanding_amount <= 0:
@@ -2005,7 +2032,7 @@ def update_complaint_status(complaint_id):
         if new_status in ('RESOLVED', 'CLOSED'):
             comp.resolution = data.get('resolution', comp.resolution)
             comp.resolved_by = get_current_user().id
-            comp.resolved_at = datetime.utcnow()
+            comp.resolved_at = utc_now()
 
     log_hostel_activity(sid, get_current_user().id, 'COMPLAINT_UPDATED', f'Complaint #{comp.id} status → {comp.status}')
     db.session.commit()
@@ -2099,14 +2126,14 @@ def update_out_pass_status(pass_id):
     if new_status in ('APPROVED', 'REJECTED'):
         pass_entry.status = new_status
         pass_entry.approved_by = user.id
-        pass_entry.approved_at = datetime.utcnow()
+        pass_entry.approved_at = utc_now()
         if new_status == 'REJECTED':
             pass_entry.rejection_reason = data.get('rejection_reason', '')
     elif new_status == 'OUT':
         pass_entry.status = 'OUT'
     elif new_status == 'RETURNED':
         pass_entry.status = 'RETURNED'
-        pass_entry.actual_return = datetime.utcnow()
+        pass_entry.actual_return = utc_now()
 
     log_hostel_activity(sid, user.id, 'OUTPASS_UPDATED', f'Out-pass #{pass_entry.id} → {pass_entry.status}')
     db.session.commit()
@@ -2156,7 +2183,7 @@ def create_visitor_entry():
         id_proof_type=data.get('id_proof_type', 'AADHAAR'),
         id_proof_no=data.get('id_proof_no', ''),
         visit_date=date.today(),
-        in_time=datetime.utcnow(),
+        in_time=utc_now(),
         purpose=data.get('purpose', ''),
         recorded_by=get_current_user().id,
     )
@@ -2172,7 +2199,7 @@ def checkout_visitor(visitor_id):
     v = HostelVisitorLog.query.get_or_404(visitor_id)
     if v.school_id != _school_id():
         return jsonify({'error': 'Unauthorized'}), 403
-    v.out_time = datetime.utcnow()
+    v.out_time = utc_now()
     db.session.commit()
     return jsonify(v.to_dict()), 200
 

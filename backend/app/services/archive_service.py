@@ -9,6 +9,7 @@ from app.models.user import User
 from app.models.deleted_item import DeletedItem, DeletedItemType, DeletedItemStatus
 from app.models.audit import AuditLog
 from datetime import datetime, timedelta
+from app.utils.timezone_util import utc_now
 import logging
 
 logger = logging.getLogger(__name__)
@@ -31,14 +32,14 @@ def soft_delete_student(student_id, school_id, actor_user, reason=''):
 
     # 1. Mark soft delete on Student & User
     student.is_deleted = True
-    student.deleted_at = datetime.utcnow()
+    student.deleted_at = utc_now()
     student.deleted_by = actor_user.id if actor_user else None
     student.delete_reason = reason
 
     if user:
         user.is_active = False
         user.is_deleted = True
-        user.deleted_at = datetime.utcnow()
+        user.deleted_at = utc_now()
         user.deleted_by = actor_user.id if actor_user else None
         user.delete_reason = reason
         user.plain_password_temp = None  # Security: clear temp credentials
@@ -78,7 +79,7 @@ def soft_delete_student(student_id, school_id, actor_user, reason=''):
     # 3. Create lightweight DeletedItem Archive Record (1-Year Retention)
     class_name = f"{student.class_ref.name} {student.class_ref.section}" if student.class_ref else ''
     section = student.class_ref.section if student.class_ref else ''
-    now = datetime.utcnow()
+    now = utc_now()
     auto_delete = now + timedelta(days=365)
 
     recovery_data = {
@@ -152,14 +153,14 @@ def soft_delete_teacher(teacher_id, school_id, actor_user, reason=''):
 
     # 1. Mark soft delete
     teacher.is_deleted = True
-    teacher.deleted_at = datetime.utcnow()
+    teacher.deleted_at = utc_now()
     teacher.deleted_by = actor_user.id if actor_user else None
     teacher.delete_reason = reason
 
     if user:
         user.is_active = False
         user.is_deleted = True
-        user.deleted_at = datetime.utcnow()
+        user.deleted_at = utc_now()
         user.deleted_by = actor_user.id if actor_user else None
         user.delete_reason = reason
         user.plain_password_temp = None
@@ -169,7 +170,7 @@ def soft_delete_teacher(teacher_id, school_id, actor_user, reason=''):
     Subject.query.filter_by(teacher_id=teacher_id).update({'teacher_id': None}, synchronize_session=False)
 
     # 3. Create DeletedItem archive record
-    now = datetime.utcnow()
+    now = utc_now()
     auto_delete = now + timedelta(days=365)
     name = user.name if user else f"Teacher #{teacher.id}"
 
@@ -236,7 +237,7 @@ def soft_delete_staff(user_id, school_id, actor_user, reason=''):
     # 1. Mark soft delete
     user.is_active = False
     user.is_deleted = True
-    user.deleted_at = datetime.utcnow()
+    user.deleted_at = utc_now()
     user.deleted_by = actor_user.id if actor_user else None
     user.delete_reason = reason
     user.plain_password_temp = None
@@ -251,7 +252,7 @@ def soft_delete_staff(user_id, school_id, actor_user, reason=''):
         logger.warning(f"Delegation revoke warning for user {user.id}: {e}")
 
     # 2. Create DeletedItem archive record
-    now = datetime.utcnow()
+    now = utc_now()
     auto_delete = now + timedelta(days=365)
     role_str = user.role.value if hasattr(user.role, 'value') else str(user.role)
 
@@ -375,7 +376,7 @@ def recover_deleted_item(item_id, school_id, actor_user):
         raise ValueError(f"Unknown item type: {item.item_type}")
 
     item.status = DeletedItemStatus.RECOVERED.value
-    item.updated_at = datetime.utcnow()
+    item.updated_at = utc_now()
 
     # Audit Log
     try:
@@ -438,7 +439,7 @@ def permanently_purge_item(item_id, school_id, actor_user=None, confirmation_nam
         if not confirmation_name or confirmation_name.strip().lower() != item.name.strip().lower():
             raise ValueError(f"Confirmation name mismatch. You must type '{item.name}' exactly to confirm permanent deletion.")
 
-    now = datetime.utcnow()
+    now = utc_now()
 
     if item.item_type == DeletedItemType.STUDENT.value:
         student = Student.query.filter_by(id=item.original_id, school_id=school_id).first()
@@ -584,7 +585,7 @@ def run_one_year_cleanup_job():
     Finds all archived items where auto_delete_at <= now() (older than 1 year)
     and permanently deletes them automatically.
     """
-    now = datetime.utcnow()
+    now = utc_now()
     expired_items = DeletedItem.query.filter(
         DeletedItem.status == DeletedItemStatus.ARCHIVED.value,
         DeletedItem.auto_delete_at <= now

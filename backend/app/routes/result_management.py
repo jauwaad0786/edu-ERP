@@ -23,6 +23,7 @@ ALTER TABLE needed for these; only Marks got 2 new columns, see academic.py):
   - ClassResultPublication  publish / reopen / republish state per (exam, class)
 """
 from datetime import datetime
+from app.utils.timezone_util import utc_now
 import json
 from flask import Blueprint, request, jsonify
 from app import db
@@ -73,8 +74,8 @@ class ResultSubjectStatus(db.Model):
     # stops "teacher double-clicks Submit" from double-processing.
     version       = db.Column(db.Integer, default=0)
 
-    created_at    = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at    = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at    = db.Column(db.DateTime, default=utc_now)
+    updated_at    = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
 
     __table_args__ = (
         db.UniqueConstraint('exam_id', 'class_id', 'subject_id', name='uq_result_subject_status'),
@@ -110,7 +111,7 @@ class ResultReturnItem(db.Model):
     subject_status_id  = db.Column(db.Integer, db.ForeignKey('result_subject_status.id'), nullable=False, index=True)
     student_id         = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     resolved           = db.Column(db.Boolean, default=False)
-    created_at         = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at         = db.Column(db.DateTime, default=utc_now)
 
 
 class MarksAuditLog(db.Model):
@@ -154,7 +155,7 @@ class MarksAuditLog(db.Model):
     # RESUBMITTED / APPROVED / RESULT_PUBLISHED / RESULT_REOPENED / RESULT_REPUBLISHED
     action_type         = db.Column(db.String(30), index=True)
 
-    created_at          = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    created_at          = db.Column(db.DateTime, default=utc_now, index=True)
 
     __table_args__ = (
         db.Index('ix_marks_audit_student_subject_exam', 'student_id', 'subject_id', 'exam_id'),
@@ -263,7 +264,7 @@ def _teacher_subject_ids(user, exam_id=None, class_id=None):
     assigned = {s.id for s in Subject.query.filter_by(teacher_id=t.id).all()}
 
     # 2. Active temporary delegations for this teacher
-    now = datetime.utcnow()
+    now = utc_now()
     q_del = ExamTeacherDelegation.query.filter_by(
         delegated_teacher_id=t.id, status='ACTIVE'
     ).filter(ExamTeacherDelegation.end_date >= now)
@@ -609,7 +610,7 @@ def submit_to_principal():
 
     was_return = status_row.status == 'RETURNED_FOR_CORRECTION'
     status_row.status       = 'RESUBMITTED' if was_return else 'SUBMITTED'
-    status_row.submitted_at = datetime.utcnow()
+    status_row.submitted_at = utc_now()
     status_row.submitted_by = user.id
     status_row.version      = (status_row.version or 0) + 1
 
@@ -709,9 +710,9 @@ def approve_subject():
         return jsonify({'message': f'Subject is already {row.status}', 'status': row.to_dict()}), 200
 
     row.status      = 'APPROVED'
-    row.approved_at = datetime.utcnow()
+    row.approved_at = utc_now()
     row.approved_by = user.id
-    row.reviewed_at = datetime.utcnow()
+    row.reviewed_at = utc_now()
     row.reviewed_by = user.id
     row.version     = (row.version or 0) + 1
     _log_audit(user, None, subject, exam, cls, action_type='APPROVED')
@@ -743,7 +744,7 @@ def return_subject():
 
     row.status        = 'RETURNED_FOR_CORRECTION'
     row.return_reason = reason
-    row.reviewed_at    = datetime.utcnow()
+    row.reviewed_at    = utc_now()
     row.reviewed_by    = user.id
     row.version        = (row.version or 0) + 1
 
@@ -869,7 +870,7 @@ def publish_result():
             return jsonify({'error': 'A reason is required to force-publish with pending subjects'}), 400
         for r in blocked:
             old = r.status
-            r.status, r.approved_at, r.approved_by = 'APPROVED', datetime.utcnow(), user.id
+            r.status, r.approved_at, r.approved_by = 'APPROVED', utc_now(), user.id
             _log_audit(user, None, Subject.query.get(r.subject_id), exam, cls, action_type='APPROVED',
                        old_status=old, new_status='APPROVED', reason=f'FORCE-APPROVED at publish: {reason}')
 
@@ -879,7 +880,7 @@ def publish_result():
         db.session.add(pub)
 
     pub.status       = 'PUBLISHED'
-    pub.published_at = datetime.utcnow()
+    pub.published_at = utc_now()
     pub.published_by  = user.id
 
     for r in rows:
@@ -902,7 +903,7 @@ def publish_result():
     ]
     ver_entry = ResultVersion(
         school_id=sid, exam_id=exam_id, class_id=class_id,
-        version_number=1, published_by=user.id, published_at=datetime.utcnow(),
+        version_number=1, published_by=user.id, published_at=utc_now(),
         reason='Initial publication', snapshot_json=json.dumps(snapshot_data)
     )
     db.session.add(ver_entry)
@@ -938,7 +939,7 @@ def reopen_result():
         return jsonify({'error': 'Result is not currently published'}), 409
 
     pub.status        = 'REOPENED'
-    pub.reopened_at    = datetime.utcnow()
+    pub.reopened_at    = utc_now()
     pub.reopened_by    = user.id
     pub.reopen_reason  = reason
 
@@ -953,7 +954,7 @@ def reopen_result():
     last_ver = ResultVersion.query.filter_by(exam_id=exam_id, class_id=class_id).order_by(ResultVersion.version_number.desc()).first()
     if last_ver:
         last_ver.reopened_by = user.id
-        last_ver.reopened_at = datetime.utcnow()
+        last_ver.reopened_at = utc_now()
         last_ver.reason = reason
 
     _log_audit(user, None, None, exam, cls, action_type='RESULT_REOPENED', reason=reason)
@@ -978,7 +979,7 @@ def republish_result():
         return jsonify({'error': 'Result is not currently reopened'}), 409
 
     pub.status          = 'PUBLISHED'
-    pub.published_at     = datetime.utcnow()
+    pub.published_at     = utc_now()
     pub.published_by     = user.id
     pub.republish_count  = (pub.republish_count or 0) + 1
 
@@ -1005,7 +1006,7 @@ def republish_result():
     ]
     new_ver = ResultVersion(
         school_id=sid, exam_id=exam_id, class_id=class_id,
-        version_number=pub.republish_count + 1, published_by=user.id, published_at=datetime.utcnow(),
+        version_number=pub.republish_count + 1, published_by=user.id, published_at=utc_now(),
         reason='Republished after correction', snapshot_json=json.dumps(snapshot_data)
     )
     db.session.add(new_ver)
@@ -1064,7 +1065,7 @@ def manage_delegations():
     except Exception:
         return jsonify({'error': 'Invalid end_date format'}), 400
 
-    if end_dt <= datetime.utcnow():
+    if end_dt <= utc_now():
         return jsonify({'error': 'End date must be in the future'}), 400
 
     delegation = ExamTeacherDelegation(
@@ -1074,7 +1075,7 @@ def manage_delegations():
         subject_id=subject_id,
         original_teacher_id=subject.teacher_id,
         delegated_teacher_id=delegated_teacher_id,
-        start_date=datetime.utcnow(),
+        start_date=utc_now(),
         end_date=end_dt,
         reason=reason,
         status='ACTIVE',
@@ -1107,7 +1108,7 @@ def revoke_delegation(delegation_id):
         return jsonify({'error': 'Unauthorized'}), 403
 
     del_rec.status = 'REVOKED'
-    del_rec.updated_at = datetime.utcnow()
+    del_rec.updated_at = utc_now()
     db.session.commit()
     return jsonify({'message': 'Delegation revoked successfully'}), 200
 
@@ -1132,7 +1133,7 @@ def notify_teacher_pending():
         return jsonify({'error': 'Unauthorized'}), 403
 
     # Find recipient: check active delegation first, fallback to subject teacher
-    now = datetime.utcnow()
+    now = utc_now()
     delegation = ExamTeacherDelegation.query.filter_by(
         exam_id=exam_id, class_id=class_id, subject_id=subject_id, status='ACTIVE'
     ).filter(ExamTeacherDelegation.end_date >= now).first()

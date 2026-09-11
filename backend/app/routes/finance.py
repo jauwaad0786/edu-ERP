@@ -24,6 +24,7 @@ from app.services.asset_service import (
 from app.utils.decorators import role_required, get_current_user
 from sqlalchemy import func, extract
 from datetime import date, datetime
+from app.utils.timezone_util import utc_now
 import cloudinary.uploader
 
 finance_bp = Blueprint('finance', __name__)
@@ -139,7 +140,7 @@ def create_expense():
         month            = _month_label(pay_date),
         status           = initial_status,
         approved_by      = user.id if initial_status in ['APPROVED', 'PAID'] else None,
-        approved_at      = datetime.utcnow() if initial_status in ['APPROVED', 'PAID'] else None,
+        approved_at      = utc_now() if initial_status in ['APPROVED', 'PAID'] else None,
         source           = 'MANUAL',
         remarks          = data.get('remarks', ''),
         created_by       = user.id,
@@ -196,7 +197,7 @@ def approve_expense(exp_id):
     user = get_current_user()
     exp.status = 'APPROVED'
     exp.approved_by = user.id
-    exp.approved_at = datetime.utcnow()
+    exp.approved_at = utc_now()
     exp.rejection_reason = None
     db.session.commit()
     return jsonify(exp.to_dict()), 200

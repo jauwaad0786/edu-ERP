@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
 from datetime import datetime, date
+from app.utils.timezone_util import utc_now
 import math
 
 from app import db
@@ -361,7 +362,7 @@ def start_trip():
         school_id=driver.school_id or vehicle.school_id, vehicle_id=vehicle.id, driver_id=driver.id,
         route_id=vehicle.route.id if vehicle.route else None,
         trip_date=date.today(), status='RUNNING',
-        start_time=datetime.utcnow(), start_latitude=lat, start_longitude=lng,
+        start_time=utc_now(), start_latitude=lat, start_longitude=lng,
         students_count=students_count,
     )
     db.session.add(trip)
@@ -369,7 +370,7 @@ def start_trip():
 
     db.session.add(GPSLog(
         school_id=driver.school_id or vehicle.school_id, trip_id=trip.id, vehicle_id=vehicle.id,
-        latitude=lat, longitude=lng, recorded_at=datetime.utcnow(),
+        latitude=lat, longitude=lng, recorded_at=utc_now(),
     ))
     db.session.commit()
     return jsonify({'success': True, 'data': trip.to_dict()}), 201
@@ -401,7 +402,7 @@ def ping_gps(trip_id):
         school_id=trip.school_id, trip_id=trip.id, vehicle_id=trip.vehicle_id,
         latitude=lat, longitude=lng, speed=data.get('speed', 0), heading=data.get('heading'),
         battery_level=data.get('battery_level'), network_status=data.get('network_status', 'ONLINE'),
-        recorded_at=datetime.utcnow(),
+        recorded_at=utc_now(),
     )
     db.session.add(log)
     db.session.commit()
@@ -437,7 +438,7 @@ def end_trip(trip_id):
     data = request.get_json(silent=True) or {}
     trip.end_latitude = data.get('latitude')
     trip.end_longitude = data.get('longitude')
-    trip.end_time = datetime.utcnow()
+    trip.end_time = utc_now()
     trip.status = 'COMPLETED'
     trip.total_distance_km = _trip_distance_km(trip)
     if trip.start_time:
@@ -456,7 +457,7 @@ def trigger_sos(trip_id):
         return not_found('Trip not found')
 
     trip.status = 'SOS'
-    trip.sos_triggered_at = datetime.utcnow()
+    trip.sos_triggered_at = utc_now()
     db.session.commit()
     return jsonify({'success': True, 'message': 'SOS triggered', 'data': trip.to_dict()})
 
@@ -472,7 +473,7 @@ def report_breakdown(trip_id):
 
     data = request.get_json(silent=True) or {}
     trip.status = 'BREAKDOWN'
-    trip.breakdown_reported_at = datetime.utcnow()
+    trip.breakdown_reported_at = utc_now()
     trip.remarks = data.get('remarks', trip.remarks)
     db.session.commit()
     return jsonify({'success': True, 'message': 'Breakdown reported', 'data': trip.to_dict()})
@@ -720,7 +721,7 @@ def driver_record_student_event(trip_id):
 
     if existing_event:
         existing_event.event_type = event_type
-        existing_event.recorded_at = datetime.utcnow()
+        existing_event.recorded_at = utc_now()
         if stop_id:
             existing_event.stop_id = stop_id
         if lat is not None:
@@ -738,7 +739,7 @@ def driver_record_student_event(trip_id):
         student_id=student_id,
         stop_id=stop_id,
         event_type=event_type,
-        recorded_at=datetime.utcnow(),
+        recorded_at=utc_now(),
         latitude=lat,
         longitude=lng,
         recorded_by=get_current_user().id,

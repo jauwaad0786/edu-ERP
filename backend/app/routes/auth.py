@@ -15,6 +15,7 @@ from app.services.permission_resolver import ensure_role_assignment_for_user
 import logging
 import re
 from datetime import datetime
+from app.utils.timezone_util import utc_now
 
 from app.models.otp import OTPPurpose
 from app.services.communication.msg91_service import MSG91Service
@@ -410,7 +411,7 @@ def acknowledge_salary_record(record_type, record_id):
         return jsonify({'error': 'Invalid record_type'}), 400
 
     rec.is_acknowledged = True
-    rec.acknowledged_at = datetime.utcnow()
+    rec.acknowledged_at = utc_now()
     db.session.commit()
 
     return jsonify(rec.to_dict()), 200

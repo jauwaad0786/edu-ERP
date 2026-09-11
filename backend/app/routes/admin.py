@@ -4,6 +4,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
 from sqlalchemy import func, func as sqlfunc
 from datetime import datetime
+from app.utils.timezone_util import utc_now
 from app import db
 from app.models.user import User, UserRole
 from app.models.school import School
@@ -84,7 +85,7 @@ def list_schools():
     # If status_filter == 'ALL', return all schools
 
     schools = query.all()
-    this_month = datetime.utcnow().replace(day=1)
+    this_month = utc_now().replace(day=1)
     school_ids = [s.id for s in schools]
 
     # Pre-fetch total students per school in a single SQL GROUP BY query
@@ -327,7 +328,7 @@ def get_school_detail(school_id):
     # Service charges (limit to latest 20 to prevent unbounded growth)
     charges = ServiceCharge.query.filter_by(school_id=school_id)\
                 .order_by(ServiceCharge.charge_date.desc()).limit(20).all()
-    this_month = datetime.utcnow().replace(day=1)
+    this_month = utc_now().replace(day=1)
     paid_this_month = any(
         c for c in charges
         if c.charge_date >= this_month and c.is_paid
@@ -561,7 +562,7 @@ def add_service_charge(school_id):
         amount=data['amount'],
         label=data.get('label', 'Monthly Service Charge'),
         charge_date=datetime.strptime(data['charge_date'], '%Y-%m-%d')
-                    if data.get('charge_date') else datetime.utcnow(),
+                    if data.get('charge_date') else utc_now(),
         is_paid=data.get('is_paid', False),
         note=data.get('note', '')
     )
@@ -583,7 +584,7 @@ def toggle_charge_paid(charge_id):
 
 import re as _re
 import string as _string
-import random as _random
+import secrets as _secrets
 
 
 def _gen_username(name: str, role: str, school_id=None) -> str:
@@ -616,12 +617,12 @@ def _gen_username(name: str, role: str, school_id=None) -> str:
         return base
 
     for _ in range(20):
-        candidate = base + '.' + ''.join(_random.choices(_string.digits, k=3))
+        candidate = base + '.' + ''.join(_secrets.choice(_string.digits) for _ in range(3))
         if not User.query.filter_by(username=candidate).first():
             return candidate
 
     # absolute fallback
-    return base + '.' + ''.join(_random.choices(_string.digits, k=6))
+    return base + '.' + ''.join(_secrets.choice(_string.digits) for _ in range(6))
 
 
 def _validate_create_payload_loose(data: dict):

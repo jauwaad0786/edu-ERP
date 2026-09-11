@@ -6,6 +6,7 @@ from app.models.device import UserDevice
 from app.services.communication.notification_service import NotificationService
 from app.utils.decorators import role_required, get_current_user
 from datetime import datetime
+from app.utils.timezone_util import utc_now
 
 notifications_bp = Blueprint('notifications', __name__)
 
@@ -97,7 +98,7 @@ def mark_read(notif_id):
         return jsonify({'error': 'Unauthorized'}), 403
 
     notif.is_read = True
-    notif.read_at = datetime.utcnow()
+    notif.read_at = utc_now()
     db.session.commit()
 
     return jsonify({'message': 'Marked as read', 'id': notif_id}), 200
@@ -114,7 +115,7 @@ def mark_all_read():
     Bell panel mein 'Mark all read' button ke liye.
     """
     user = get_current_user()
-    now  = datetime.utcnow()
+    now  = utc_now()
 
     SupportNotification.query.filter_by(
         user_id=user.id,
@@ -257,13 +258,13 @@ def register_device():
             device_token=device_token,
             platform=platform,
             is_active=True,
-            last_seen=datetime.utcnow()
+            last_seen=utc_now()
         )
         db.session.add(device)
     else:
         device.is_active = True
         device.platform = platform
-        device.last_seen = datetime.utcnow()
+        device.last_seen = utc_now()
 
     db.session.commit()
     return jsonify({'success': True, 'device': device.to_dict()}), 200

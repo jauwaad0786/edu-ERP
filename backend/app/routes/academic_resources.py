@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
 from datetime import datetime
+from app.utils.timezone_util import utc_now
 import json
 from werkzeug.utils import secure_filename
 import cloudinary.uploader
@@ -290,7 +291,7 @@ def list_assignments():
             item = a.to_dict(include_stats=False)
             my_sub = sub_map.get(a.id)
             item['my_submission'] = my_sub
-            item['submission_status'] = my_sub['status'] if my_sub else ('EXPIRED' if a.due_date and a.due_date < datetime.utcnow() else 'PENDING')
+            item['submission_status'] = my_sub['status'] if my_sub else ('EXPIRED' if a.due_date and a.due_date < utc_now() else 'PENDING')
             results.append(item)
 
         return jsonify({'assignments': results, 'total': len(results)}), 200
@@ -447,7 +448,7 @@ def get_assignment_details(assignment_id):
             'photo_url':      st.photo_url,
             'is_submitted':   sub is not None,
             'submission':     sub,
-            'status':         sub['status'] if sub else ('OVERDUE' if assignment.due_date < datetime.utcnow() else 'PENDING'),
+            'status':         sub['status'] if sub else ('OVERDUE' if assignment.due_date < utc_now() else 'PENDING'),
             'marks_obtained': sub['marks_obtained'] if sub else None,
             'feedback':       sub['teacher_feedback'] if sub else None,
         })
@@ -542,7 +543,7 @@ def submit_assignment(assignment_id):
         return jsonify({'error': f"Submission upload failed: {str(ex)}"}), 400
 
     # Determine status: SUBMITTED or LATE
-    status = 'LATE' if assignment.due_date and datetime.utcnow() > assignment.due_date else 'SUBMITTED'
+    status = 'LATE' if assignment.due_date and utc_now() > assignment.due_date else 'SUBMITTED'
 
     # Check if existing submission (re-submission)
     sub = AssignmentSubmission.query.filter_by(
@@ -555,7 +556,7 @@ def submit_assignment(assignment_id):
         sub.file_size = file_size
         sub.file_type = file_type
         sub.student_comment = comment
-        sub.submitted_at = datetime.utcnow()
+        sub.submitted_at = utc_now()
         sub.status = status if status == 'LATE' else 'RESUBMITTED'
     else:
         sub = AssignmentSubmission(
@@ -567,7 +568,7 @@ def submit_assignment(assignment_id):
             file_size       = file_size,
             file_type       = file_type,
             student_comment = comment,
-            submitted_at    = datetime.utcnow(),
+            submitted_at    = utc_now(),
             status          = status,
         )
         db.session.add(sub)
@@ -607,7 +608,7 @@ def grade_submission(assignment_id, submission_id):
     submission.marks_obtained   = marks
     submission.teacher_feedback = feedback
     submission.marked_by        = curr.id
-    submission.marked_at        = datetime.utcnow()
+    submission.marked_at        = utc_now()
     submission.status           = 'MARKED'
 
     db.session.commit()
@@ -727,7 +728,7 @@ def batch_save_internal_marks():
             rec.class_id       = class_id
             rec.entered_by     = curr.id
             rec.teacher_id     = teacher_id or rec.teacher_id
-            rec.updated_at     = datetime.utcnow()
+            rec.updated_at     = utc_now()
         else:
             rec = InternalMarks(
                 school_id      = sid,

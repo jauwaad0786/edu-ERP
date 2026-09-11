@@ -12,7 +12,8 @@ from app.services.library_fee_service import (
     generate_library_fine_fee_record, record_library_fine_payment
 )
 from datetime import datetime, date
-import random
+from app.utils.timezone_util import utc_now
+import secrets
 import string
 
 library_bp = Blueprint('library', __name__)
@@ -59,7 +60,7 @@ def _gen_accession_no(sid):
 def _gen_barcode():
     """13-digit numeric barcode, EAN-13 style — collision-checked."""
     while True:
-        code = ''.join(random.choices(string.digits, k=13))
+        code = ''.join(secrets.choice(string.digits) for _ in range(13))
         if not BookCopy.query.filter_by(barcode=code).first():
             return code
 
@@ -316,8 +317,14 @@ def create_book():
     db.session.add(book)
     db.session.flush()
 
-    # Initial physical copies creation
-    copies_to_add = int(data.get('initial_copies') or 0)
+    # Initial physical copies creation (bounded against injection: pythonsecurity:S6680)
+    MAX_INITIAL_COPIES = 100
+    try:
+        raw_copies = int(data.get('initial_copies') or 0)
+    except (TypeError, ValueError):
+        raw_copies = 0
+    copies_to_add = max(0, min(raw_copies, MAX_INITIAL_COPIES))
+
     for _ in range(copies_to_add):
         copy = BookCopy(
             book_id=book.id,
@@ -395,7 +402,13 @@ def add_book_copies(book_id):
         return jsonify({'error': 'Unauthorized'}), 403
 
     data  = request.get_json() or {}
-    count = int(data.get('count') or 1)
+    # Bounded against injection: pythonsecurity:S6680
+    MAX_ADD_COPIES = 100
+    try:
+        raw_count = int(data.get('count') or 1)
+    except (TypeError, ValueError):
+        raw_count = 1
+    count = max(1, min(raw_count, MAX_ADD_COPIES))
     condition_note = (data.get('condition_note') or 'New physical copy').strip()
 
     created_copies = []
@@ -1024,7 +1037,7 @@ def waive_fine(fine_id):
 
     fine.waived_amount = round((fine.waived_amount or 0.0) + waive_amt, 2)
     fine.waived_by     = get_current_user().id
-    fine.waived_at     = datetime.utcnow()
+    fine.waived_at     = utc_now()
     fine.waive_reason  = reason
 
     if fine.outstanding_amount <= 0:
@@ -1072,7 +1085,7 @@ def resolve_fine_with_replacement(fine_id):
     fine.waived_amount = fine.amount
     fine.status        = 'WAIVED'
     fine.waived_by     = get_current_user().id
-    fine.waived_at     = datetime.utcnow()
+    fine.waived_at     = utc_now()
     fine.waive_reason  = remarks
 
     from app.models.financial import FeeRecord
@@ -1713,7 +1726,7 @@ def library_check_in():
         school_id=sid,
         student_id=student.id,
         visit_date=date.today(),
-        entry_time=datetime.utcnow(),
+        entry_time=utc_now(),
         entry_method=entry_method,
         recorded_by=get_current_user().id,
         status='INSIDE',
@@ -1809,7 +1822,7 @@ def library_scan():
             school_id=sid,
             student_id=student.id,
             visit_date=date.today(),
-            entry_time=datetime.utcnow(),
+            entry_time=utc_now(),
             entry_method=method,
             recorded_by=get_current_user().id,
             status='INSIDE',

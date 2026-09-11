@@ -7,6 +7,7 @@ import json
 import hashlib
 from datetime import datetime, timedelta
 from app import db
+from app.utils.timezone_util import utc_now
 from app.AI.models.ai_models import AIQueryCache
 from app.AI.config.ai_config import CACHE_TTL_SECONDS
 
@@ -62,7 +63,7 @@ def lookup_cache(school_id: int, normalized_query: str,
         AIQueryCache.normalized_query == key,
         AIQueryCache.parameters_hash  == phash,
         AIQueryCache.permission_scope == permission_scope,
-        AIQueryCache.expires_at       >  datetime.utcnow(),
+        AIQueryCache.expires_at       >  utc_now(),
     )
 
     # For USER-scoped cache, match user exactly
@@ -94,7 +95,7 @@ def write_cache(school_id: int, normalized_query: str, intent: str,
     key    = _make_cache_key(normalized_query)
     phash  = _params_hash(params or {})
     ttl    = get_ttl_seconds(intent)
-    exp    = datetime.utcnow() + timedelta(seconds=ttl)
+    exp    = utc_now() + timedelta(seconds=ttl)
 
     # Upsert — replace if exists for same key
     existing = AIQueryCache.query.filter(
@@ -149,7 +150,7 @@ def build_normalized_key(intent: str, params: dict) -> str:
 
 def purge_expired_cache(school_id: int = None):
     """Remove expired cache entries (can be run periodically)."""
-    q = AIQueryCache.query.filter(AIQueryCache.expires_at <= datetime.utcnow())
+    q = AIQueryCache.query.filter(AIQueryCache.expires_at <= utc_now())
     if school_id:
         q = q.filter(AIQueryCache.school_id == school_id)
     count = q.delete()

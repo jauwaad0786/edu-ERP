@@ -1,6 +1,7 @@
 from app import db, bcrypt
 import enum
 from datetime import datetime
+from app.utils.timezone_util import utc_now
 
 
 class UserRole(str, enum.Enum):
@@ -118,7 +119,7 @@ class User(db.Model):
         return bcrypt.check_password_hash(self.password, plain_text)
 
     def touch_last_login(self):
-        self.last_login = datetime.utcnow()
+        self.last_login = utc_now()
 
     # ── Serialisation ───────────────────────────────────────────────────────
     def to_dict(self):

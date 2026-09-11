@@ -17,6 +17,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
 from app import db
+from app.utils.timezone_util import utc_now
 from app.models.user import User, UserRole
 from app.AI.models.ai_models import (
     AIProviderConfig, AIRoleQuota, AIUsage,
@@ -182,7 +183,7 @@ def chat():
             db.session.add(asst_msg)
 
         conversation.message_count = (conversation.message_count or 0) + 2
-        conversation.updated_at    = datetime.utcnow()
+        conversation.updated_at    = utc_now()
 
         try:
             db.session.commit()
@@ -310,7 +311,7 @@ def upload_document():
     doc = AIDocument(
         school_id    = user.school_id,
         uploaded_by  = user.id,
-        filename     = f"doc_{user.id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.{file_ext}",
+        filename     = f"doc_{user.id}_{utc_now().strftime('%Y%m%d%H%M%S')}.{file_ext}",
         original_name = filename,
         file_type    = file_ext,
         file_size    = file_size,
@@ -419,7 +420,7 @@ def save_ai_config():
     config.temperature = temperature
     config.max_tokens  = max_tokens
     config.updated_by  = user.id
-    config.updated_at  = datetime.utcnow()
+    config.updated_at  = utc_now()
 
     if api_key_plain:
         config.encrypted_api_key = encrypt_secret(api_key_plain)
@@ -501,7 +502,7 @@ def set_quota():
     if existing:
         existing.daily_limit = limit
         existing.is_active   = True
-        existing.updated_at  = datetime.utcnow()
+        existing.updated_at  = utc_now()
     else:
         quota = AIRoleQuota(school_id=school_id, role=role, daily_limit=limit)
         db.session.add(quota)
@@ -572,7 +573,7 @@ def get_ai_analytics():
     # Cache stats
     cache_total = AIQueryCache.query.count()
     cache_valid = AIQueryCache.query.filter(
-        AIQueryCache.expires_at > datetime.utcnow()
+        AIQueryCache.expires_at > utc_now()
     ).count()
 
     return jsonify({

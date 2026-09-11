@@ -4,6 +4,7 @@ from app.utils.decorators import role_required, get_current_user
 from app.models.whatsapp import SchoolWhatsAppSettings
 from app.utils.crypto import encrypt_value
 from datetime import datetime
+from app.utils.timezone_util import utc_now
 import requests
 
 whatsapp_settings_bp = Blueprint('whatsapp_settings', __name__)
@@ -62,7 +63,7 @@ def save_settings():
     if data.get('app_secret'):
         settings.app_secret_encrypted = encrypt_value(data['app_secret'].strip())
 
-    settings.updated_at = datetime.utcnow()
+    settings.updated_at = utc_now()
     db.session.commit()
 
     d = settings.to_dict()
@@ -82,7 +83,7 @@ def disconnect():
     settings.is_active         = False
     settings.connection_status = 'DISCONNECTED'
     settings.last_test_result  = 'Disconnected by Principal'
-    settings.updated_at = datetime.utcnow()
+    settings.updated_at = utc_now()
     db.session.commit()
 
     return jsonify({'message': 'WhatsApp disconnected', 'connection_status': 'DISCONNECTED'}), 200
@@ -117,7 +118,7 @@ def verify_connection():
         payload = resp.json()
     except requests.RequestException as e:
         settings.connection_status = 'FAILED'
-        settings.last_test         = datetime.utcnow()
+        settings.last_test         = utc_now()
         settings.last_test_result  = f'Network error: {str(e)[:200]}'
         db.session.commit()
         return jsonify({'error': 'Meta API tak pahunch nahi paya', 'details': str(e)}), 502
@@ -125,8 +126,8 @@ def verify_connection():
     if resp.status_code == 200 and 'id' in payload:
         settings.connection_status = 'CONNECTED'
         settings.is_active         = True
-        settings.last_sync         = datetime.utcnow()
-        settings.last_test         = datetime.utcnow()
+        settings.last_sync         = utc_now()
+        settings.last_test         = utc_now()
         settings.last_test_result  = f"Verified — {payload.get('display_phone_number', settings.business_phone)}"
         # Auto-fill business phone if Meta returns it and it's not set yet
         if payload.get('display_phone_number') and not settings.business_phone:
@@ -142,7 +143,7 @@ def verify_connection():
         error_msg = payload.get('error', {}).get('message', 'Authentication failed — token ya Phone Number ID galat hai')
         settings.connection_status = 'FAILED'
         settings.is_active         = False
-        settings.last_test         = datetime.utcnow()
+        settings.last_test         = utc_now()
         settings.last_test_result  = error_msg[:300]
         db.session.commit()
         return jsonify({'connection_status': 'FAILED', 'error': error_msg}), 400

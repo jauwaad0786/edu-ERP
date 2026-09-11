@@ -1,5 +1,6 @@
 from app import db
 from datetime import datetime
+from app.utils.timezone_util import utc_now
 
 
 class School(db.Model):
@@ -60,7 +61,7 @@ class School(db.Model):
     students = db.relationship('Student', backref='school', lazy='dynamic')
 
     def to_dict(self):
-        now = datetime.utcnow()
+        now = utc_now()
         effective_status = self.status or ('ACTIVE' if self.is_active else 'INACTIVE')
         days_remaining = None
         is_eligible = False

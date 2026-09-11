@@ -4,6 +4,7 @@ from app.models.user import User, UserRole
 from app.models.communication import KnowledgeBase
 from app.utils.decorators import role_required, get_current_user
 from datetime import datetime
+from app.utils.timezone_util import utc_now
 import cloudinary.uploader
 
 knowledge_base_bp = Blueprint('knowledge_base', __name__)
@@ -159,7 +160,7 @@ def update_article(article_id):
     if data.get('video_url')    is not None: article.video_url    = data['video_url'] or None
     if 'is_published' in data:               article.is_published = bool(data['is_published'])
 
-    article.updated_at = datetime.utcnow()
+    article.updated_at = utc_now()
     db.session.commit()
     return jsonify(article.to_dict()), 200
 
@@ -187,7 +188,7 @@ def toggle_publish(article_id):
     """
     article              = KnowledgeBase.query.get_or_404(article_id)
     article.is_published = not article.is_published
-    article.updated_at   = datetime.utcnow()
+    article.updated_at   = utc_now()
     db.session.commit()
     return jsonify({
         'message':      'Published' if article.is_published else 'Unpublished',
@@ -302,7 +303,7 @@ def upload_pdf(article_id):
 
     article.file_url     = result['secure_url']
     article.article_type = 'PDF_MANUAL'
-    article.updated_at   = datetime.utcnow()
+    article.updated_at   = utc_now()
     db.session.commit()
 
     return jsonify({

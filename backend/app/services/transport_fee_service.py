@@ -12,7 +12,7 @@ Features:
 - Fine creation, collection, and permanent audit-trailed waiver lifecycle
 """
 
-import random
+import secrets
 import string
 import threading
 from datetime import date, datetime
@@ -29,7 +29,7 @@ _transport_payment_mutex = threading.Lock()
 
 def _generate_receipt_no():
     """Generates unique receipt identifier: RCP-YYYYMMDD-TRN-XXXX."""
-    return 'RCP-' + date.today().strftime('%Y%m%d') + '-T' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+    return 'RCP-' + date.today().strftime('%Y%m%d') + '-T' + ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(4))
 
 
 def generate_transport_fee_record(assignment, created_by_id=None, month=None, fee_structure_id=None, due_date=None):

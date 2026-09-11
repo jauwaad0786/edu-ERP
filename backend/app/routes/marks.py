@@ -579,10 +579,10 @@ def publish_results():
     if total_marks == 0:
         return jsonify({'error': 'Koi marks enter nahi hue — pehle marks save karo'}), 400
 
-    from datetime import datetime
+    from app.utils.timezone_util import utc_now
     exam.is_published = True
     exam.status       = 'PUBLISHED'
-    exam.published_at = datetime.utcnow()
+    exam.published_at = utc_now()
     exam.published_by = get_current_user().id
     db.session.commit()
 

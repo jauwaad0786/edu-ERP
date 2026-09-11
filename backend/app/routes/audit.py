@@ -40,6 +40,7 @@ import csv
 import io
 import json
 from datetime import datetime, timedelta
+from app.utils.timezone_util import utc_now
 
 from flask import Blueprint, request, jsonify, Response
 
@@ -257,7 +258,7 @@ def export_school_logs():
     rows = _build_school_query(actor).limit(5000).all()
     logs = _attach_actor_names(rows, [r.to_dict() for r in rows], 'user_id', 'user_name')
     csv_rows = [_flatten_for_csv(d) for d in logs]
-    filename = f'audit_log_school_{actor.school_id}_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.csv'
+    filename = f'audit_log_school_{actor.school_id}_{utc_now().strftime("%Y%m%d_%H%M%S")}.csv'
     return _csv_response(csv_rows, AUDIT_CSV_FIELDS, filename)
 
 
@@ -275,7 +276,7 @@ def purge_school_logs_route():
         return jsonify({'error': 'older_than_days is required and must be an integer >= 30'}), 400
 
     reason = data.get('reason')
-    cutoff = datetime.utcnow() - timedelta(days=older_than_days)
+    cutoff = utc_now() - timedelta(days=older_than_days)
 
     deleted_count = purge_school_logs(
         school_id=actor.school_id,
@@ -363,5 +364,5 @@ def export_company_logs():
     rows = _build_company_query().limit(5000).all()
     logs = _attach_actor_names(rows, [r.to_dict() for r in rows], 'actor_user_id', 'actor_name')
     csv_rows = [_flatten_for_csv(d) for d in logs]
-    filename = f'company_activity_log_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.csv'
+    filename = f'company_activity_log_{utc_now().strftime("%Y%m%d_%H%M%S")}.csv'
     return _csv_response(csv_rows, COMPANY_CSV_FIELDS, filename)
