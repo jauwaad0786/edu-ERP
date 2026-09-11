@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Navbar  from '../components/Navbar';
 import api     from '../api/axios';
@@ -333,11 +333,325 @@ function TransportTab({ studentId }) {
   );
 }
 
+function AcademicHistoryTab({ studentId }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setLoading(true);
+    setError('');
+    api.get(`/principal/students/${studentId}/history`)
+      .then(r => setData(r.data))
+      .catch(err => setError(err.response?.data?.error || 'Failed to load academic history'))
+      .finally(() => setLoading(false));
+  }, [studentId]);
+
+  if (loading) {
+    return (
+      <div style={{ padding: 48, textAlign: 'center', color: 'var(--neutral-5)' }}>
+        <div style={{ fontSize: 28, marginBottom: 8 }}>⏳</div>
+        <div>Loading lifetime academic dossier...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="card" style={{ margin: 0, padding: 32, textAlign: 'center' }}>
+        <div style={{ fontSize: 32, marginBottom: 8 }}>⚠️</div>
+        <div style={{ color: '#dc2626', fontWeight: 600 }}>{error}</div>
+      </div>
+    );
+  }
+
+  const { permanent_profile, timeline, audit_trail, current_active_enrollment } = data || {};
+
+  const STATUS_COLORS = {
+    ACTIVE:    { bg: '#dcfce7', text: '#15803d', border: '#86efac' },
+    PROMOTED:  { bg: '#e0e7ff', text: '#3730a3', border: '#a5b4fc' },
+    RETAINED:  { bg: '#fef3c7', text: '#92400e', border: '#fcd34d' },
+    GRADUATED: { bg: '#f3e8ff', text: '#6b21a8', border: '#d8b4fe' },
+    WITHDRAWN: { bg: '#fee2e2', text: '#991b1b', border: '#fca5a5' },
+    LEFT:      { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1' },
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {/* ── 1. Permanent Student Identity Dossier Card ── */}
+      <div className="card" style={{ margin: 0, borderTop: '4px solid #0284c7', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+        <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <div>
+            <h4 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: 16 }}>
+              <span>🪪</span> Permanent Student Master Profile
+            </h4>
+            <span style={{ fontSize: 12, color: 'var(--neutral-5)' }}>
+              Master identity record created once upon initial admission. Preserved across all annual academic years.
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ padding: '4px 12px', borderRadius: 16, fontSize: 11, fontWeight: 700, background: '#e0f2fe', color: '#0369a1' }}>
+              Adm No: {permanent_profile?.admission_no || '—'}
+            </span>
+            <span style={{ padding: '4px 12px', borderRadius: 16, fontSize: 11, fontWeight: 700, background: '#f0fdf4', color: '#166534' }}>
+              Initial Adm Year: {permanent_profile?.original_admission_year || '—'}
+            </span>
+          </div>
+        </div>
+        <div className="card-body">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+            {[
+              ['Full Legal Name', permanent_profile?.name],
+              ['Date of Birth', permanent_profile?.dob],
+              ['Gender', permanent_profile?.gender],
+              ['Blood Group', permanent_profile?.blood_group || '—'],
+              ['Admission Date', permanent_profile?.admission_date || '—'],
+              ['Aadhaar / National ID', permanent_profile?.aadhar_no || '—'],
+              ['Father Name', permanent_profile?.father_name || permanent_profile?.parent_name || '—'],
+              ['Mother Name', permanent_profile?.mother_name || '—'],
+              ['Parent Phone', permanent_profile?.parent_phone || '—'],
+              ['Parent Email', permanent_profile?.parent_email || '—'],
+              ['Category / Caste', permanent_profile?.category || 'General'],
+              ['Nationality', permanent_profile?.nationality || 'Indian'],
+              ['Permanent Address', permanent_profile?.address || '—'],
+            ].map(([lbl, val]) => (
+              <div key={lbl} style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: 11, color: 'var(--neutral-5)', fontWeight: 600 }}>{lbl}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--neutral-8)', marginTop: 2 }}>{val || '—'}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── 2. Lifetime Academic Progression Timeline ── */}
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <h4 style={{ margin: 0, fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>📈</span> Multi-Year Academic Progression Timeline
+          </h4>
+          <span style={{ fontSize: 12, color: 'var(--neutral-5)' }}>
+            Showing {timeline?.length || 0} enrolled academic {timeline?.length === 1 ? 'session' : 'sessions'}
+          </span>
+        </div>
+
+        {(!timeline || timeline.length === 0) ? (
+          <div className="card" style={{ margin: 0, padding: 32, textAlign: 'center', color: 'var(--neutral-5)' }}>
+            No enrollment records found for this student.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {timeline.map((en, idx) => {
+              const stStyle = STATUS_COLORS[en.enrollment_status] || STATUS_COLORS.ACTIVE;
+              const isCurrent = current_active_enrollment?.id === en.enrollment_id;
+
+              return (
+                <div key={en.enrollment_id || idx} className="card" style={{
+                  margin: 0,
+                  borderLeft: `5px solid ${stStyle.text}`,
+                  borderRadius: 10,
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                  position: 'relative'
+                }}>
+                  {/* Top Bar of Session Card */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, borderBottom: '1px solid #e2e8f0', paddingBottom: 12, marginBottom: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <span style={{
+                        background: '#1e293b', color: '#fff', padding: '4px 12px',
+                        borderRadius: 6, fontSize: 13, fontWeight: 800, letterSpacing: 0.5
+                      }}>
+                        Session {en.session}
+                      </span>
+                      <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--neutral-9)' }}>
+                        {en.class_display || en.class_name || 'Class'}
+                      </span>
+                      {en.roll_number && (
+                        <span style={{ fontSize: 12, color: 'var(--neutral-6)', background: '#f1f5f9', padding: '3px 8px', borderRadius: 6, fontWeight: 600 }}>
+                          Roll No: {en.roll_number}
+                        </span>
+                      )}
+                      {en.house && (
+                        <span style={{ fontSize: 12, color: '#0369a1', background: '#e0f2fe', padding: '3px 8px', borderRadius: 6, fontWeight: 600 }}>
+                          🏠 {en.house}
+                        </span>
+                      )}
+                      {en.stream && (
+                        <span style={{ fontSize: 12, color: '#7c3aed', background: '#ede9fe', padding: '3px 8px', borderRadius: 6, fontWeight: 600 }}>
+                          🧪 {en.stream}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {isCurrent && (
+                        <span style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '4px 10px', borderRadius: 12, fontSize: 11, fontWeight: 800 }}>
+                          ⭐ Current Active
+                        </span>
+                      )}
+                      <span style={{
+                        padding: '4px 10px', borderRadius: 12, fontSize: 11, fontWeight: 800,
+                        background: stStyle.bg, color: stStyle.text, border: `1px solid ${stStyle.border}`
+                      }}>
+                        {en.enrollment_status}
+                      </span>
+                      <span style={{ padding: '4px 10px', borderRadius: 12, fontSize: 11, fontWeight: 600, background: '#f8fafc', color: 'var(--neutral-6)', border: '1px solid #e2e8f0' }}>
+                        {en.enrollment_type}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 4 Multi-Metric Cards */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+                    {/* Attendance */}
+                    <div style={{ background: '#f8fafc', borderRadius: 8, padding: '12px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--neutral-5)', textTransform: 'uppercase' }}>📅 Attendance</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
+                        <span style={{ fontSize: 20, fontWeight: 800, color: en.attendance_summary?.percentage >= 75 ? '#15803d' : '#b91c1c' }}>
+                          {en.attendance_summary?.percentage ?? 0}%
+                        </span>
+                        <span style={{ fontSize: 12, color: 'var(--neutral-5)' }}>
+                          ({en.attendance_summary?.present_days ?? 0}/{en.attendance_summary?.total_days ?? 0} days)
+                        </span>
+                      </div>
+                      <div style={{ height: 6, background: '#e2e8f0', borderRadius: 99, marginTop: 6, overflow: 'hidden' }}>
+                        <div style={{
+                          height: '100%',
+                          width: `${Math.min(en.attendance_summary?.percentage || 0, 100)}%`,
+                          background: en.attendance_summary?.percentage >= 75 ? '#16a34a' : '#dc2626'
+                        }} />
+                      </div>
+                    </div>
+
+                    {/* RMS Academics */}
+                    <div style={{ background: '#f8fafc', borderRadius: 8, padding: '12px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--neutral-5)', textTransform: 'uppercase' }}>📝 RMS Academics</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
+                        <span style={{ fontSize: 20, fontWeight: 800, color: en.academic_summary?.avg_percentage >= 33 ? '#1e293b' : '#b91c1c' }}>
+                          {en.academic_summary?.avg_percentage ? `${en.academic_summary.avg_percentage}%` : '—'}
+                        </span>
+                        {en.academic_summary?.total_obtained ? (
+                          <span style={{ fontSize: 12, color: 'var(--neutral-5)' }}>
+                            ({en.academic_summary.total_obtained}/{en.academic_summary.total_max})
+                          </span>
+                        ) : null}
+                      </div>
+                      <div style={{ marginTop: 4 }}>
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
+                          background: en.academic_summary?.result_status === 'PASS' ? '#dcfce7' : en.academic_summary?.result_status === 'FAIL' ? '#fee2e2' : '#f1f5f9',
+                          color: en.academic_summary?.result_status === 'PASS' ? '#15803d' : en.academic_summary?.result_status === 'FAIL' ? '#b91c1c' : '#64748b',
+                        }}>
+                          {en.academic_summary?.result_status || 'No Exam Record'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Fees Ledger */}
+                    <div style={{ background: '#f8fafc', borderRadius: 8, padding: '12px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--neutral-5)', textTransform: 'uppercase' }}>💰 Fee Ledger</div>
+                      <div style={{ marginTop: 4 }}>
+                        {en.fee_summary?.pending_dues > 0 ? (
+                          <div>
+                            <span style={{ fontSize: 18, fontWeight: 800, color: '#dc2626' }}>
+                              ₹{Number(en.fee_summary.pending_dues).toLocaleString('en-IN')}
+                            </span>
+                            <div style={{ fontSize: 11, color: '#dc2626', fontWeight: 600, marginTop: 2 }}>
+                              Pending Dues (Paid: ₹{Number(en.fee_summary.total_paid || 0).toLocaleString('en-IN')})
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <span style={{ fontSize: 15, fontWeight: 800, color: '#15803d' }}>
+                              ✅ All Fees Cleared
+                            </span>
+                            <div style={{ fontSize: 11, color: 'var(--neutral-5)', marginTop: 2 }}>
+                              Total Paid: ₹{Number(en.fee_summary?.total_paid || 0).toLocaleString('en-IN')}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Transport */}
+                    <div style={{ background: '#f8fafc', borderRadius: 8, padding: '12px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--neutral-5)', textTransform: 'uppercase' }}>🚌 Transport</div>
+                      {en.transport_summary?.vehicle_number || en.transport_summary?.route_name ? (
+                        <div style={{ marginTop: 4 }}>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--neutral-8)' }}>
+                            {en.transport_summary.vehicle_number ? `Bus: ${en.transport_summary.vehicle_number}` : en.transport_summary.route_name}
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--neutral-5)', marginTop: 2 }}>
+                            {en.transport_summary.stop_name ? `Stop: ${en.transport_summary.stop_name}` : en.transport_summary.route_name}
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 12, color: 'var(--neutral-4)', marginTop: 8 }}>
+                          Self Commuter / Not Enrolled
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {en.remarks && (
+                    <div style={{ marginTop: 12, fontSize: 12, color: 'var(--neutral-6)', fontStyle: 'italic', background: '#f1f5f9', padding: '6px 10px', borderRadius: 6 }}>
+                      Note: {en.remarks}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── 3. Lifecycle Audit Trail ── */}
+      {audit_trail && audit_trail.length > 0 && (
+        <div className="card" style={{ margin: 0 }}>
+          <div className="card-header">
+            <h4>📜 Administrative Lifecycle History & Logs</h4>
+          </div>
+          <div className="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>Remarks / Transition</th>
+                  <th>Admin / Teacher</th>
+                  <th>Timestamp</th>
+                </tr>
+              </thead>
+              <tbody>
+                {audit_trail.map(a => (
+                  <tr key={a.id}>
+                    <td>
+                      <span style={{
+                        padding: '3px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700,
+                        background: '#e0f2fe', color: '#0369a1'
+                      }}>
+                        {a.action}
+                      </span>
+                    </td>
+                    <td style={{ fontSize: 13, color: 'var(--neutral-8)' }}>{a.remarks || '—'}</td>
+                    <td style={{ fontSize: 12, color: 'var(--neutral-6)' }}>{a.actor || 'System'}</td>
+                    <td style={{ fontSize: 12, color: 'var(--neutral-5)' }}>
+                      {a.created_at ? new Date(a.created_at).toLocaleString('en-IN') : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function StudentProfile() {
   const { id }     = useParams();
   const navigate   = useNavigate();
+  const [searchParams] = useSearchParams();
   const [data,     setData]     = useState(null);
-  const [tab,      setTab]      = useState('overview');
+  const [tab,      setTab]      = useState(searchParams.get('tab') || 'overview');
   const [loading,  setLoading]  = useState(true);
   const [dlLoading,setDlLoading]= useState(false);
 
@@ -478,6 +792,7 @@ export default function StudentProfile() {
 
   const TABS = [
     { key: 'overview',    label: '📊 Overview'    },
+    { key: 'history',     label: '📜 Academic History' },
     { key: 'attendance',  label: '📅 Attendance'  },
     { key: 'fees',        label: '💰 Fees'        },
     { key: 'marks',       label: '📝 Marks'       },
@@ -580,6 +895,11 @@ export default function StudentProfile() {
               }}>{t.label}</button>
             ))}
           </div>
+
+          {/* ══ ACADEMIC HISTORY ══ */}
+          {tab === 'history' && (
+            <AcademicHistoryTab studentId={id} />
+          )}
 
           {/* ══ OVERVIEW ══ */}
           {tab === 'overview' && (

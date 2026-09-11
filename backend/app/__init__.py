@@ -180,6 +180,8 @@ def create_app(config_name='default'):
     app.register_blueprint(auth_bp,         url_prefix='/api/v1/auth', name='auth_v1_bp')
     app.register_blueprint(admin_bp,        url_prefix='/api/admin')
     app.register_blueprint(principal_bp,    url_prefix='/api/principal')
+    from app.routes.student_lifecycle import student_lifecycle_bp
+    app.register_blueprint(student_lifecycle_bp, url_prefix='/api/principal/students')
     app.register_blueprint(teacher_bp,      url_prefix='/api/teacher')
     app.register_blueprint(teacher_self_bp, url_prefix='/api/teacher')
     app.register_blueprint(student_bp,      url_prefix='/api/student')
@@ -205,6 +207,7 @@ def create_app(config_name='default'):
             _ensure_user_columns()
             _ensure_teacher_columns()
             _ensure_student_columns()
+            _ensure_enrollment_table()
             _ensure_communication_columns()
             _ensure_academic_resource_columns()
             _ensure_fee_record_columns()
@@ -1123,23 +1126,27 @@ def _ensure_student_columns():
 
     existing = {c['name'] for c in inspector.get_columns('students')}
     to_add = {
-        'admission_date':       'DATE',
-        'aadhar_no':            'VARCHAR(30)',
-        'parent_aadhar_no':     'VARCHAR(30)',
-        'category':             "VARCHAR(50) DEFAULT 'General'",
-        'nationality':          "VARCHAR(50) DEFAULT 'Indian'",
-        'religion':             'VARCHAR(50)',
-        'father_occupation':    'VARCHAR(100)',
-        'mother_occupation':    'VARCHAR(100)',
-        'guardian_name':        'VARCHAR(120)',
-        'guardian_relation':    'VARCHAR(50)',
-        'guardian_phone':       'VARCHAR(20)',
-        'is_first_school':      'BOOLEAN DEFAULT FALSE',
-        'previous_school_name': 'VARCHAR(200)',
-        'previous_class':       'VARCHAR(50)',
-        'previous_tc_no':       'VARCHAR(100)',
-        'previous_tc_date':     'DATE',
-        'previous_reason':      'VARCHAR(250)',
+        'admission_date':          'DATE',
+        'aadhar_no':               'VARCHAR(30)',
+        'parent_aadhar_no':        'VARCHAR(30)',
+        'category':                "VARCHAR(50) DEFAULT 'General'",
+        'nationality':             "VARCHAR(50) DEFAULT 'Indian'",
+        'religion':                'VARCHAR(50)',
+        'father_occupation':       'VARCHAR(100)',
+        'mother_occupation':       'VARCHAR(100)',
+        'guardian_name':           'VARCHAR(120)',
+        'guardian_relation':       'VARCHAR(50)',
+        'guardian_phone':          'VARCHAR(20)',
+        'is_first_school':         'BOOLEAN DEFAULT FALSE',
+        'previous_school_name':    'VARCHAR(200)',
+        'previous_class':          'VARCHAR(50)',
+        'previous_tc_no':          'VARCHAR(100)',
+        'previous_tc_date':        'DATE',
+        'previous_reason':         'VARCHAR(250)',
+        'original_admission_year': 'VARCHAR(20)',
+        'status':                  "VARCHAR(30) DEFAULT 'ACTIVE'",
+        'house':                   'VARCHAR(50)',
+        'stream':                  'VARCHAR(50)',
     }
     with db.engine.connect() as conn:
         for col, defn in to_add.items():
@@ -1150,6 +1157,48 @@ def _ensure_student_columns():
                     print(f'[OK] Added column students.{col}')
                 except Exception as e:
                     print(f'[WARN] students.{col}: {e}')
+
+
+def _ensure_enrollment_table():
+    """
+    Ensure student_enrollments table exists and backfill baseline enrollments for existing students.
+    """
+    from sqlalchemy import text, inspect
+    try:
+        inspector = inspect(db.engine)
+        table_names = inspector.get_table_names()
+        if 'student_enrollments' not in table_names:
+            from app.models.academic import StudentEnrollment
+            StudentEnrollment.__table__.create(db.engine, checkfirst=True)
+            print('[OK] Created student_enrollments table')
+
+        # Baseline backfill: any student without an enrollment in their current session gets one
+        with db.engine.connect() as conn:
+            # Check if students exist
+            if 'students' in table_names:
+                conn.execute(text("""
+                    INSERT INTO student_enrollments (
+                        school_id, student_id, session, class_id, section,
+                        roll_number, stream, house, enrollment_status,
+                        enrollment_type, created_at, updated_at
+                    )
+                    SELECT 
+                        s.school_id, s.id, COALESCE(s.session, '2024-25'), COALESCE(s.class_id, 1),
+                        COALESCE(c.section, 'A'), COALESCE(s.roll_number, ''),
+                        s.stream, s.house, COALESCE(s.status, 'ACTIVE'),
+                        'REGULAR', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                    FROM students s
+                    LEFT JOIN classes c ON s.class_id = c.id
+                    WHERE s.class_id IS NOT NULL
+                      AND NOT EXISTS (
+                          SELECT 1 FROM student_enrollments se 
+                          WHERE se.student_id = s.id 
+                            AND se.session = COALESCE(s.session, '2024-25')
+                      )
+                """))
+                conn.commit()
+    except Exception as e:
+        print(f'[WARN] _ensure_enrollment_table: {e}')
 
 
 # ── Seed super admin ──────────────────────────────────────────────────────────

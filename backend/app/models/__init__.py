@@ -9,7 +9,7 @@ from app.models.financial import (
     FeeStructure, FeeRecord, ExamSchedule, ExamTimetable,
     ExamClass, ExamSubject, ExamTeacherDelegation, ResultVersion
 )
-from app.models.academic import Class, Teacher, Student, Subject, Marks, Attendance, Note, TeacherAttendance
+from app.models.academic import Class, Teacher, Student, StudentEnrollment, Subject, Marks, Attendance, Note, TeacherAttendance
 from app.models.staff_attendance import (
     StaffAttendanceSettings, StaffAttendance, StaffAttendanceRegularization,
     StaffAttendanceAuditLog, StaffMonthlyAttendanceSummary,

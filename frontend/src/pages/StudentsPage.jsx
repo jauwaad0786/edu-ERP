@@ -5,33 +5,85 @@ import Navbar  from '../components/Navbar';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
 
+// New Student Lifecycle Sub-Modals
+import PromotionModal from '../components/students/PromotionModal';
+import ShuffleModal from '../components/students/ShuffleModal';
+import BulkEditModal from '../components/students/BulkEditModal';
+import AnnualRegisterModal from '../components/students/AnnualRegisterModal';
+import ImportCsvModal from '../components/students/ImportCsvModal';
+
 export default function StudentsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  const [students,     setStudents]     = useState([]);
-  const [classes,      setClasses]      = useState([]);
-  const [filter,       setFilter]       = useState('');
-  // Fix #3 — URL se class_id padho
-  const [classFilter,  setClassFilter]  = useState(searchParams.get('class_id') || '');
-  const [showModal,    setShowModal]    = useState(false);
+  const [students, setStudents] = useState([]);
+  const [classes, setClasses] = useState([]);
+  const [sessions, setSessions] = useState([]);
+
+  // Filters
+  const [filter, setFilter] = useState('');
+  const [classFilter, setClassFilter] = useState(searchParams.get('class_id') || '');
+  const [sessionFilter, setSessionFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+
+  // Bulk Selection
+  const [selectedIds, setSelectedIds] = useState(new Set());
+
+  // Rollback Token for Section Shuffle
+  const [lastRollbackToken, setLastRollbackToken] = useState(() => sessionStorage.getItem('sis_last_shuffle_token') || null);
+  const [revertingShuffle, setRevertingShuffle] = useState(false);
+
+  // Modals state
+  const [showModal, setShowModal] = useState(false); // Enroll new student
+  const [showPromoteModal, setShowPromoteModal] = useState(false);
+  const [showShuffleModal, setShowShuffleModal] = useState(false);
+  const [showBulkEditModal, setShowBulkEditModal] = useState(false);
+  const [showAnnualRegModal, setShowAnnualRegModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+
   const [createdCreds, setCreatedCreds] = useState(null);
-  const [copied,       setCopied]       = useState(false);
-  const [form,         setForm]         = useState({});
-  const [saving,       setSaving]       = useState(false);
-  const [msg,          setMsg]          = useState('');
-  // Fix #2 — downloading state
+  const [copied, setCopied] = useState(false);
+  const [form, setForm] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState('');
+
   const [downloading, setDownloading] = useState(null);
-  const [deleteTarget, setDeleteTarget] = useState(null); // { id, name }
+  const [exporting, setExporting] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
-useEffect(() => {
-  const q = classFilter ? `?class_id=${classFilter}` : '';
-  api.get(`/principal/students${q}`).then(r => {   setStudents(Array.isArray(r.data) ? r.data : (r.data.data || [])); }).catch(() => {});
-  api.get('/principal/classes').then(r => setClasses(r.data)).catch(() => {});
-}, [classFilter]);
+  // Fetch initial data
+  const loadStudents = () => {
+    const params = [];
+    if (classFilter) params.push(`class_id=${classFilter}`);
+    if (sessionFilter) params.push(`session=${encodeURIComponent(sessionFilter)}`);
+    const q = params.length ? `?${params.join('&')}` : '';
 
-useEffect(() => {
+    api.get(`/principal/students${q}`)
+      .then(r => setStudents(Array.isArray(r.data) ? r.data : (r.data.data || [])))
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    loadStudents();
+    setSelectedIds(new Set());
+  }, [classFilter, sessionFilter]);
+
+  useEffect(() => {
+    api.get('/principal/classes').then(r => setClasses(r.data)).catch(() => {});
+    api.get('/principal/students/sessions')
+      .then(r => {
+        const sess = r.data.sessions || [];
+        setSessions(sess);
+        if (sess.length > 0 && !sessionFilter) {
+          // Default to first session
+          setSessionFilter(sess[0]);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     if (classFilter) {
       setSearchParams({ class_id: classFilter });
     } else {
@@ -39,7 +91,7 @@ useEffect(() => {
     }
   }, [classFilter, setSearchParams]);
 
-  // Fix #2 — axios blob download (JWT token automatically jata hai)
+  // Download admission card
   async function downloadAdmissionCard(studentId, studentName) {
     setDownloading(studentId);
     try {
@@ -58,10 +110,55 @@ useEffect(() => {
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch {
-      setMsg('❌ Admission card generate nahi hua');
       toast.error('Admission card generate nahi hua');
     }
     setDownloading(null);
+  }
+
+  // Export CSV
+  async function handleExportCSV() {
+    setExporting(true);
+    try {
+      const q = [];
+      if (sessionFilter) q.push(`session=${encodeURIComponent(sessionFilter)}`);
+      if (classFilter) q.push(`class_id=${encodeURIComponent(classFilter)}`);
+      const qs = q.length ? `?${q.join('&')}` : '';
+
+      const res = await api.get(`/principal/students/export${qs}`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'text/csv' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Students_Export_${sessionFilter || 'all'}_${Date.now()}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      toast.success('Students exported to CSV successfully!');
+    } catch {
+      toast.error('Export failed');
+    }
+    setExporting(false);
+  }
+
+  // Revert last shuffle
+  async function handleRollbackShuffle() {
+    if (!lastRollbackToken) return;
+    if (!window.confirm('Are you sure you want to revert the last section shuffle? Students will be restored to their previous sections.')) {
+      return;
+    }
+    setRevertingShuffle(true);
+    try {
+      const res = await api.post('/principal/students/shuffle/rollback', {
+        rollback_token: lastRollbackToken,
+      });
+      toast.success(res.data.message || 'Section shuffle reverted successfully!');
+      sessionStorage.removeItem('sis_last_shuffle_token');
+      setLastRollbackToken(null);
+      loadStudents();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Rollback failed');
+    }
+    setRevertingShuffle(false);
   }
 
   const createStudent = async e => {
@@ -83,9 +180,8 @@ useEffect(() => {
         parentPhone: form.parent_phone || '—',
         password:    form.password     || 'Student@123',
       });
-    setForm({});
-      const q = classFilter ? `?class_id=${classFilter}` : '';
-      api.get(`/principal/students${q}`).then(r => {   setStudents(Array.isArray(r.data) ? r.data : (r.data.data || [])); }).catch(() => {});
+      setForm({});
+      loadStudents();
     } catch (err) {
       const errMsg = err.response?.data?.error || 'Error';
       setMsg('❌ ' + errMsg);
@@ -108,49 +204,214 @@ useEffect(() => {
     setDeleting(false);
   }
 
-  const filtered = students.filter(s =>
-    s.name?.toLowerCase().includes(filter.toLowerCase()) ||
-    s.roll_number?.includes(filter) ||
-    s.admission_no?.includes(filter)
-  );
+  // Selection toggle
+  function toggleStudentSelection(id) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map(s => s.id)));
+    }
+  }
+
+  // Filtering
+  const filtered = students.filter(s => {
+    const matchesSearch =
+      s.name?.toLowerCase().includes(filter.toLowerCase()) ||
+      s.roll_number?.toLowerCase().includes(filter.toLowerCase()) ||
+      s.admission_no?.toLowerCase().includes(filter.toLowerCase());
+
+    const matchesStatus = !statusFilter || (s.status || 'ACTIVE') === statusFilter;
+
+    return matchesSearch && matchesStatus;
+  });
+
+  const STATUS_BADGES = {
+    ACTIVE:    { bg: '#dcfce7', text: '#15803d', label: 'Active' },
+    PROMOTED:  { bg: '#e0e7ff', text: '#3730a3', label: 'Promoted' },
+    RETAINED:  { bg: '#fef3c7', text: '#92400e', label: 'Retained' },
+    GRADUATED: { bg: '#f3e8ff', text: '#6b21a8', label: 'Graduated' },
+    WITHDRAWN: { bg: '#fee2e2', text: '#991b1b', label: 'Withdrawn' },
+    LEFT:      { bg: '#f1f5f9', text: '#475569', label: 'Left' },
+  };
 
   return (
     <div className="app-shell">
       <Sidebar />
       <div className="main-content">
-        <Navbar title="Students" />
+        <Navbar title="Student Management & Lifecycle" />
         <div className="page-body">
 
-          <div className="page-header flex justify-between items-center">
+          {/* ── Page Header & Lifecycle Toolbar ── */}
+          <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 14, marginBottom: 16 }}>
             <div>
-              <h2 className="page-title">Students</h2>
-              <p className="page-subtitle">{students.length} enrolled this session</p>
+              <h2 className="page-title" style={{ fontSize: 22, fontWeight: 800 }}>
+                Student Management & SIS Lifecycle
+              </h2>
+              <p className="page-subtitle" style={{ fontSize: 13, color: 'var(--neutral-5)' }}>
+                Permanent student master profiles, annual session rollover, section shuffle, bulk editing, and multi-year academic history.
+              </p>
             </div>
-            <button className="btn btn-primary btn-sm"
-              onClick={() => { setForm({}); setShowModal(true); }}>
-              + Enroll Student
-            </button>
+
+            {/* Action Buttons Toolbar */}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => { setForm({}); setShowModal(true); }}
+                style={{ background: '#0176d3', borderColor: '#0176d3' }}
+              >
+                + New Admission
+              </button>
+              <button
+                type="button"
+                className="btn btn-neutral"
+                onClick={() => setShowAnnualRegModal(true)}
+                style={{ background: '#f0fdf4', color: '#166534', borderColor: '#bbf7d0', fontWeight: 700 }}
+              >
+                🎓 Annual Re-Registration
+              </button>
+              <button
+                type="button"
+                className="btn btn-neutral"
+                onClick={() => setShowPromoteModal(true)}
+                style={{ background: '#f5f3ff', color: '#6d28d9', borderColor: '#ddd6fe', fontWeight: 700 }}
+              >
+                🚀 Promote / Rollover
+              </button>
+              <button
+                type="button"
+                className="btn btn-neutral"
+                onClick={() => setShowShuffleModal(true)}
+                style={{ background: '#fffbeb', color: '#b45309', borderColor: '#fde68a', fontWeight: 700 }}
+              >
+                🔀 Section Shuffle
+              </button>
+              <button
+                type="button"
+                className="btn btn-neutral"
+                onClick={() => setShowImportModal(true)}
+              >
+                📥 Import CSV
+              </button>
+              <button
+                type="button"
+                className="btn btn-neutral"
+                disabled={exporting}
+                onClick={handleExportCSV}
+              >
+                {exporting ? 'Exporting...' : '📤 Export CSV'}
+              </button>
+            </div>
           </div>
 
+          {/* ── Rollback Notification Banner ── */}
+          {lastRollbackToken && (
+            <div style={{
+              background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: 8,
+              padding: '10px 16px', marginBottom: 14, display: 'flex',
+              justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8
+            }}>
+              <div style={{ fontSize: 13, color: '#1e40af' }}>
+                ⚡ <strong>Recent Section Shuffle Active</strong> (Token: <code>{lastRollbackToken.slice(0, 10)}...</code>). You can revert student sections to their previous state if needed.
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={handleRollbackShuffle}
+                  disabled={revertingShuffle}
+                  style={{
+                    background: '#2563eb', color: '#fff', border: 'none',
+                    borderRadius: 6, padding: '4px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer'
+                  }}
+                >
+                  {revertingShuffle ? 'Reverting...' : '↩️ Undo / Revert Last Shuffle'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { sessionStorage.removeItem('sis_last_shuffle_token'); setLastRollbackToken(null); }}
+                  style={{ background: 'none', border: 'none', fontSize: 12, color: '#64748b', cursor: 'pointer' }}
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Bulk Action Floating / Inline Toolbar ── */}
+          {selectedIds.size > 0 && (
+            <div style={{
+              background: '#1e293b', color: '#fff', borderRadius: 8,
+              padding: '10px 16px', marginBottom: 14, display: 'flex',
+              justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+            }}>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>
+                📋 {selectedIds.size} student{selectedIds.size === 1 ? '' : 's'} selected
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => setShowBulkEditModal(true)}
+                  style={{ background: '#0284c7', borderColor: '#0284c7' }}
+                >
+                  ✏️ Bulk Edit Selection
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-neutral btn-sm"
+                  onClick={() => setSelectedIds(new Set())}
+                  style={{ background: '#334155', color: '#fff', borderColor: '#475569' }}
+                >
+                  Clear Selection
+                </button>
+              </div>
+            </div>
+          )}
+
           {msg && (
-            <div className={`alert ${msg.startsWith('✅') ? 'alert-success' : 'alert-error'}`}>
+            <div className={`alert ${msg.startsWith('✅') ? 'alert-success' : 'alert-error'}`} style={{ marginBottom: 14 }}>
               {msg}
             </div>
           )}
 
-          <div className="card mb-6">
-            <div className="card-body" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          {/* ── Filters Card ── */}
+          <div className="card mb-6" style={{ margin: '0 0 16px 0' }}>
+            <div className="card-body" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
               <input
                 className="form-input"
-                placeholder="🔍 Search by name, roll no..."
+                placeholder="🔍 Search name, admission no, roll no..."
                 style={{ maxWidth: 280 }}
                 value={filter}
                 onChange={e => setFilter(e.target.value)}
               />
-              {/* Fix #3 — String() wrap for proper value match */}
+
+              {/* Session Filter */}
               <select
                 className="form-select"
-                style={{ maxWidth: 200 }}
+                style={{ maxWidth: 170 }}
+                value={sessionFilter}
+                onChange={e => setSessionFilter(e.target.value)}
+              >
+                <option value="">All Sessions</option>
+                {sessions.map(s => (
+                  <option key={s} value={s}>Session {s}</option>
+                ))}
+              </select>
+
+              {/* Class Filter */}
+              <select
+                className="form-select"
+                style={{ maxWidth: 180 }}
                 value={String(classFilter)}
                 onChange={e => setClassFilter(e.target.value)}
               >
@@ -162,150 +423,229 @@ useEffect(() => {
                 ))}
               </select>
 
-              {/* Clear filter button — URL se aaya ho to */}
-              {classFilter && (
+              {/* Status Filter */}
+              <select
+                className="form-select"
+                style={{ maxWidth: 150 }}
+                value={statusFilter}
+                onChange={e => setStatusFilter(e.target.value)}
+              >
+                <option value="">All Statuses</option>
+                <option value="ACTIVE">Active</option>
+                <option value="PROMOTED">Promoted</option>
+                <option value="RETAINED">Retained</option>
+                <option value="GRADUATED">Graduated</option>
+                <option value="WITHDRAWN">Withdrawn</option>
+                <option value="LEFT">Left</option>
+              </select>
+
+              {(classFilter || sessionFilter || statusFilter || filter) && (
                 <button
+                  type="button"
                   className="btn btn-neutral btn-sm"
-                  onClick={() => setClassFilter('')}
+                  onClick={() => { setClassFilter(''); setStatusFilter(''); setFilter(''); }}
                 >
-                  ✕ Clear Filter
+                  ✕ Clear Filters
                 </button>
               )}
 
-              <div style={{
-                marginLeft: 'auto', display: 'flex',
-                alignItems: 'center', fontSize: 13, color: 'var(--neutral-6)',
-              }}>
-                Showing {filtered.length} of {students.length}
+              <div style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--neutral-6)' }}>
+                Showing <strong>{filtered.length}</strong> of {students.length} students
               </div>
             </div>
           </div>
 
-          <div className="card">
+          {/* ── Students Table ── */}
+          <div className="card" style={{ margin: 0 }}>
             <div className="table-container">
               <table>
                 <thead>
                   <tr>
+                    <th style={{ width: 40 }}>
+                      <input
+                        type="checkbox"
+                        checked={filtered.length > 0 && selectedIds.size === filtered.length}
+                        onChange={toggleSelectAll}
+                        title="Select All"
+                      />
+                    </th>
                     <th>Roll No</th>
-                    <th>Name</th>
+                    <th>Student Name</th>
                     <th>Admission No</th>
+                    <th>Session</th>
                     <th>Class</th>
-                    <th>Parent</th>
-                    <th>Contact</th>
+                    <th>Stream / House</th>
                     <th>Status</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map(s => (
-                    <tr key={s.id}>
-                      <td>
-                        <span className="badge badge-info">
-                          {s.roll_number || '—'}
-                        </span>
-                      </td>
-                      <td>
-                        <div
-                          style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
-                          onClick={() => navigate(`/students/${s.id}`)}
-                          title="Profile dekhne ke liye click karein">
-                          <div style={{
-                            width: 30, height: 30, borderRadius: '50%',
-                            background: 'var(--blue-10)', color: 'var(--blue-80)',
-                            display: 'flex', alignItems: 'center',
-                            justifyContent: 'center', fontSize: 12, fontWeight: 700,
-                          }}>
-                            {s.name?.charAt(0).toUpperCase()}
-                          </div>
-                          <div>
+                  {filtered.map(s => {
+                    const st = STATUS_BADGES[s.status || 'ACTIVE'] || STATUS_BADGES.ACTIVE;
+                    const isSelected = selectedIds.has(s.id);
+
+                    return (
+                      <tr key={s.id} style={{ background: isSelected ? '#f0f9ff' : 'inherit' }}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleStudentSelection(s.id)}
+                          />
+                        </td>
+                        <td>
+                          <span className="badge badge-info" style={{ fontWeight: 700 }}>
+                            {s.roll_number || '—'}
+                          </span>
+                        </td>
+                        <td>
+                          <div
+                            style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+                            onClick={() => navigate(`/students/${s.id}`)}
+                            title="Click to view full dossier"
+                          >
                             <div style={{
-                              fontWeight: 600, fontSize: 13,
-                              color: 'var(--blue-60)',
-                              borderBottom: '1px dashed var(--blue-30)',
-                            }}>{s.name}</div>
-                            <div style={{ fontSize: 11, color: 'var(--neutral-6)' }}>
-                              {s.email}
+                              width: 32, height: 32, borderRadius: '50%',
+                              background: 'var(--blue-10)', color: 'var(--blue-80)',
+                              display: 'flex', alignItems: 'center',
+                              justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0
+                            }}>
+                              {s.name?.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <div style={{
+                                fontWeight: 700, fontSize: 13,
+                                color: 'var(--blue-60)',
+                              }}>
+                                {s.name}
+                              </div>
+                              <div style={{ fontSize: 11, color: 'var(--neutral-5)' }}>
+                                {s.email || (s.parent_phone ? `Parent: ${s.parent_phone}` : '')}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </td>
-                      <td style={{ color: 'var(--neutral-6)', fontSize: 12 }}>
-                        {s.admission_no || '—'}
-                      </td>
-                      {/* Fix #3 — String() comparison for class name lookup */}
-                      <td style={{ fontSize: 12 }}>
-                        {classes.find(c => String(c.id) === String(s.class_id))?.name || '—'}
-                      </td>
-                      <td style={{ fontSize: 12 }}>{s.parent_name || '—'}</td>
-                      <td style={{ fontSize: 12, color: 'var(--neutral-6)' }}>
-                        {s.parent_phone || '—'}
-                      </td>
-                      <td>
-                        <span className="badge badge-success">Active</span>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <button
-                            onClick={() => navigate(`/students/${s.id}`)}
-                            style={{
-                              background: '#eff6ff', color: '#0176d3',
-                              border: 'none', borderRadius: 4,
-                              padding: '4px 10px', fontSize: 11,
-                              fontWeight: 700, cursor: 'pointer',
-                            }}>
-                            👤 Profile
-                          </button>
-                          <button
-                            onClick={() => downloadAdmissionCard(s.id, s.name)}
-                            disabled={downloading === s.id}
-                            style={{
-                              background: downloading === s.id ? '#f1f5f9' : '#e8f4fd',
-                              color: '#0176d3',
-                              border: 'none',
-                              borderRadius: 4,
-                              padding: '4px 10px',
-                              fontSize: 11,
-                              fontWeight: 700,
-                              cursor: downloading === s.id ? 'not-allowed' : 'pointer',
-                              opacity: downloading === s.id ? 0.6 : 1,
-                              transition: 'all 0.15s',
-                            }}
-                          >
-                            {downloading === s.id ? '⏳ Loading...' : '🎓 Admission Card'}
-                          </button>
-                          <button
-                            onClick={() => setDeleteTarget({ id: s.id, name: s.name })}
-                            style={{
-                              background: '#fef2f2', color: '#dc2626',
-                              border: 'none', borderRadius: 4,
-                              padding: '4px 10px', fontSize: 11,
-                              fontWeight: 700, cursor: 'pointer',
-                            }}
-                          >
-                            🗑️ Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td>
+                          <div style={{ fontWeight: 600, fontSize: 12 }}>{s.admission_no || '—'}</div>
+                          {s.original_admission_year && (
+                            <div style={{ fontSize: 10, color: 'var(--neutral-4)' }}>
+                              Admitted: {s.original_admission_year}
+                            </div>
+                          )}
+                        </td>
+                        <td>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f1f5f9', padding: '2px 8px', borderRadius: 4 }}>
+                            {s.session || 'Current'}
+                          </span>
+                        </td>
+                        <td style={{ fontSize: 12, fontWeight: 600 }}>
+                          {classes.find(c => String(c.id) === String(s.class_id))?.name
+                            ? `${classes.find(c => String(c.id) === String(s.class_id)).name} - ${classes.find(c => String(c.id) === String(s.class_id)).section}`
+                            : (s.class_name || '—')}
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                            {s.house && (
+                              <span style={{ fontSize: 10, fontWeight: 600, color: '#0369a1', background: '#e0f2fe', padding: '2px 6px', borderRadius: 4 }}>
+                                🏠 {s.house}
+                              </span>
+                            )}
+                            {s.stream && s.stream !== 'General' && (
+                              <span style={{ fontSize: 10, fontWeight: 600, color: '#7c3aed', background: '#f3e8ff', padding: '2px 6px', borderRadius: 4 }}>
+                                🧪 {s.stream}
+                              </span>
+                            )}
+                            {!s.house && (!s.stream || s.stream === 'General') && (
+                              <span style={{ fontSize: 11, color: 'var(--neutral-4)' }}>—</span>
+                            )}
+                          </div>
+                        </td>
+                        <td>
+                          <span style={{
+                            padding: '3px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700,
+                            background: st.bg, color: st.text
+                          }}>
+                            {st.label}
+                          </span>
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            {/* Academic History Button */}
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/students/${s.id}?tab=history`)}
+                              style={{
+                                background: '#f5f3ff', color: '#6d28d9',
+                                border: 'none', borderRadius: 4,
+                                padding: '4px 8px', fontSize: 11,
+                                fontWeight: 700, cursor: 'pointer',
+                              }}
+                              title="View Multi-Year Academic History"
+                            >
+                              📜 History
+                            </button>
+
+                            {/* Profile */}
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/students/${s.id}`)}
+                              style={{
+                                background: '#eff6ff', color: '#0176d3',
+                                border: 'none', borderRadius: 4,
+                                padding: '4px 8px', fontSize: 11,
+                                fontWeight: 700, cursor: 'pointer',
+                              }}
+                            >
+                              👤 Profile
+                            </button>
+
+                            {/* Admission Card */}
+                            <button
+                              type="button"
+                              onClick={() => downloadAdmissionCard(s.id, s.name)}
+                              disabled={downloading === s.id}
+                              style={{
+                                background: downloading === s.id ? '#f1f5f9' : '#e8f4fd',
+                                color: '#0176d3', border: 'none', borderRadius: 4,
+                                padding: '4px 8px', fontSize: 11, fontWeight: 700,
+                                cursor: downloading === s.id ? 'not-allowed' : 'pointer',
+                              }}
+                            >
+                              {downloading === s.id ? '⏳' : '🎓 Card'}
+                            </button>
+
+                            {/* Delete */}
+                            <button
+                              type="button"
+                              onClick={() => setDeleteTarget({ id: s.id, name: s.name })}
+                              style={{
+                                background: '#fef2f2', color: '#dc2626',
+                                border: 'none', borderRadius: 4,
+                                padding: '4px 8px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                              }}
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
 
                   {!filtered.length && (
                     <tr>
-                      <td colSpan={8}>
-                        <div className="empty-state">
+                      <td colSpan={9}>
+                        <div className="empty-state" style={{ padding: 48 }}>
                           <div className="empty-state-icon">🎒</div>
-                          <p>
-                            {classFilter
-                              ? 'Is class mein koi student nahi mila'
-                              : 'No students found'}
-                          </p>
-                          {classFilter && (
+                          <p style={{ margin: 0 }}>No students found matching your criteria</p>
+                          {(classFilter || sessionFilter || statusFilter || filter) && (
                             <button
+                              type="button"
                               className="btn btn-neutral btn-sm"
                               style={{ marginTop: 12 }}
-                              onClick={() => setClassFilter('')}
+                              onClick={() => { setClassFilter(''); setSessionFilter(''); setStatusFilter(''); setFilter(''); }}
                             >
-                              Sab students dekho
+                              Reset All Filters
                             </button>
                           )}
                         </div>
@@ -320,20 +660,77 @@ useEffect(() => {
         </div>
       </div>
 
-      {/* ── Enroll Student Modal ── */}
+      {/* ── Sub-Modals ── */}
+
+      {/* 1. Annual Rollover & Promotion Modal */}
+      <PromotionModal
+        isOpen={showPromoteModal}
+        onClose={() => setShowPromoteModal(false)}
+        onSuccess={loadStudents}
+        classes={classes}
+        sessions={sessions}
+      />
+
+      {/* 2. Section Shuffle Modal */}
+      <ShuffleModal
+        isOpen={showShuffleModal}
+        onClose={() => setShowShuffleModal(false)}
+        onSuccess={(token) => {
+          if (token) {
+            setLastRollbackToken(token);
+            sessionStorage.setItem('sis_last_shuffle_token', token);
+          }
+          loadStudents();
+        }}
+        classes={classes}
+        sessions={sessions}
+      />
+
+      {/* 3. Bulk Edit Modal */}
+      <BulkEditModal
+        isOpen={showBulkEditModal}
+        onClose={() => setShowBulkEditModal(false)}
+        onSuccess={() => {
+          setSelectedIds(new Set());
+          loadStudents();
+        }}
+        selectedStudentIds={Array.from(selectedIds)}
+        session={sessionFilter || '2024-25'}
+      />
+
+      {/* 4. Annual Re-Registration Modal */}
+      <AnnualRegisterModal
+        isOpen={showAnnualRegModal}
+        onClose={() => setShowAnnualRegModal(false)}
+        onSuccess={loadStudents}
+        classes={classes}
+        sessions={sessions}
+      />
+
+      {/* 5. Import CSV Modal */}
+      <ImportCsvModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onSuccess={loadStudents}
+        sessions={sessions}
+      />
+
+      {/* ── Enroll Student Modal (New Admission) ── */}
       {showModal && (
-        <div className="modal-backdrop"
-          onClick={e => e.target === e.currentTarget && setShowModal(false)}>
-          <div className="modal" style={{ maxWidth: 600 }}>
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowModal(false)}>
+          <div className="modal" style={{ maxWidth: 640 }}>
             <div className="modal-header">
               <h3>🎒 Enroll New Student</h3>
               <button className="modal-close" onClick={() => setShowModal(false)}>✕</button>
             </div>
             <form onSubmit={createStudent}>
               <div className="modal-body">
+                <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#1e40af', marginBottom: 14 }}>
+                  ℹ️ Creates a <strong>permanent student profile</strong> and initial enrollment for the active academic session.
+                </div>
                 <div className="grid-2">
                   <div className="form-group">
-                    <label className="form-label">Full Name *</label>
+                    <label className="form-label">Full Legal Name *</label>
                     <input className="form-input" required placeholder="Student name"
                       onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
                   </div>
@@ -343,13 +740,13 @@ useEffect(() => {
                       onChange={e => setForm(f => ({ ...f, roll_number: e.target.value }))} />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Admission No</label>
+                    <label className="form-label">Admission No *</label>
                     <input className="form-input" placeholder="e.g. ADM2024001"
                       onChange={e => setForm(f => ({ ...f, admission_no: e.target.value }))} />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Class</label>
-                    <select className="form-select"
+                    <label className="form-label">Class & Section *</label>
+                    <select className="form-select" required
                       onChange={e => setForm(f => ({ ...f, class_id: e.target.value || null }))}>
                       <option value="">Select class</option>
                       {classes.map(c => (
@@ -366,6 +763,26 @@ useEffect(() => {
                       <option value="Female">Female</option>
                       <option value="Other">Other</option>
                     </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Academic Session</label>
+                    <input className="form-input" defaultValue={sessionFilter || '2024-25'}
+                      onChange={e => setForm(f => ({ ...f, session: e.target.value }))} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Stream</label>
+                    <select className="form-select"
+                      onChange={e => setForm(f => ({ ...f, stream: e.target.value }))}>
+                      <option value="General">General</option>
+                      <option value="Science">Science</option>
+                      <option value="Commerce">Commerce</option>
+                      <option value="Arts / Humanities">Arts / Humanities</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">House</label>
+                    <input className="form-input" placeholder="e.g. Red Tigers"
+                      onChange={e => setForm(f => ({ ...f, house: e.target.value }))} />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Father Name</label>
@@ -387,22 +804,12 @@ useEffect(() => {
                     <input className="form-input" type="email" placeholder="parent@email.com"
                       onChange={e => setForm(f => ({ ...f, parent_email: e.target.value }))} />
                   </div>
-                  <div className="form-group">
-                    <label className="form-label">Session</label>
-                    <input className="form-input" defaultValue="2024-25"
-                      onChange={e => setForm(f => ({ ...f, session: e.target.value }))} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Custom Password</label>
-                    <input className="form-input" type="password"
-                      placeholder="Leave blank → Student@123"
-                      onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
-                  </div>
                 </div>
               </div>
               <div className="modal-footer">
-                <button type="button" className="btn btn-neutral"
-                  onClick={() => setShowModal(false)}>Cancel</button>
+                <button type="button" className="btn btn-neutral" onClick={() => setShowModal(false)}>
+                  Cancel
+                </button>
                 <button type="submit" className="btn btn-primary" disabled={saving}>
                   {saving ? 'Saving...' : '🎒 Enroll Student'}
                 </button>
@@ -418,8 +825,7 @@ useEffect(() => {
           <div className="modal" style={{ maxWidth: 400 }}>
             <div className="modal-header">
               <h3>✅ Student Enrolled!</h3>
-              <button className="modal-close"
-                onClick={() => { setCreatedCreds(null); setCopied(false); }}>✕</button>
+              <button className="modal-close" onClick={() => { setCreatedCreds(null); setCopied(false); }}>✕</button>
             </div>
             <div className="modal-body">
               <div style={{
@@ -427,7 +833,7 @@ useEffect(() => {
                 borderRadius: 10, padding: '16px 20px', marginBottom: 14,
               }}>
                 <p style={{ fontSize: 12, color: '#166534', fontWeight: 600, marginBottom: 12 }}>
-                  📋 Student / Parent ko ye credentials share karein:
+                  📋 Student / Parent credentials:
                 </p>
                 {[
                   ['👤 Name',        createdCreds.name],
@@ -454,13 +860,6 @@ useEffect(() => {
                   </div>
                 ))}
               </div>
-              <div style={{
-                background: '#fffbeb', border: '1px solid #fde68a',
-                borderRadius: 8, padding: '10px 14px',
-                fontSize: 12, color: '#92400e', marginBottom: 14,
-              }}>
-                ⚠️ Pehli login ke baad password change karne ko bolein.
-              </div>
               <button onClick={() => {
                 const text =
                   `EduERP Student Login\n` +
@@ -483,8 +882,7 @@ useEffect(() => {
               </button>
             </div>
             <div className="modal-footer">
-              <button className="btn btn-primary"
-                onClick={() => { setCreatedCreds(null); setCopied(false); }}>
+              <button className="btn btn-primary" onClick={() => { setCreatedCreds(null); setCopied(false); }}>
                 Done
               </button>
             </div>
@@ -494,29 +892,22 @@ useEffect(() => {
 
       {/* ── Delete Confirmation Modal ── */}
       {deleteTarget && (
-        <div className="modal-backdrop"
-          role="button"
-          tabIndex={0}
-          aria-label="Close modal"
-          onClick={e => e.target === e.currentTarget && !deleting && setDeleteTarget(null)}
-          onKeyDown={e => e.key === 'Escape' && !deleting && setDeleteTarget(null)}>
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && !deleting && setDeleteTarget(null)}>
           <div className="modal" style={{ maxWidth: 400 }}>
             <div className="modal-header">
               <h3>🗑️ Delete Student</h3>
-              <button className="modal-close" disabled={deleting}
-                onClick={() => setDeleteTarget(null)}>✕</button>
+              <button className="modal-close" disabled={deleting} onClick={() => setDeleteTarget(null)}>✕</button>
             </div>
             <div className="modal-body">
               <div style={{
                 background: '#eff6ff', border: '1px solid #bfdbfe',
                 borderRadius: 8, padding: '14px 16px', fontSize: 13, color: '#1e40af',
               }}>
-                ℹ️ <strong>{deleteTarget.name}</strong> ko <strong>DELETED ITEMS</strong> archive mein move kiya jayega. Yeh active lists se hat jayega par <strong>1 saal (365 din)</strong> tak Deleted Items mein surakshit rahega aur kabhi bhi <strong>Recover</strong> kiya ja sakta hai.
+                ℹ️ <strong>{deleteTarget.name}</strong> will be moved to <strong>DELETED ITEMS</strong>. It remains recoverable for 1 year (365 days).
               </div>
             </div>
             <div className="modal-footer">
-              <button className="btn btn-neutral" disabled={deleting}
-                onClick={() => setDeleteTarget(null)}>
+              <button className="btn btn-neutral" disabled={deleting} onClick={() => setDeleteTarget(null)}>
                 Cancel
               </button>
               <button
@@ -537,4 +928,3 @@ useEffect(() => {
     </div>
   );
 }
-      

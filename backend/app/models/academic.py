@@ -12,8 +12,9 @@ class Class(db.Model):
     school_id  = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False)
     teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=True)
 
-    students  = db.relationship('Student', backref='class_ref', lazy='dynamic')
-    subjects  = db.relationship('Subject', backref='class_ref', lazy='dynamic')
+    students    = db.relationship('Student', backref='class_ref', lazy='dynamic')
+    subjects    = db.relationship('Subject', backref='class_ref', lazy='dynamic')
+    enrollments = db.relationship('StudentEnrollment', backref='class_ref', lazy='dynamic')
 
     __table_args__ = (
         db.Index('idx_classes_school_id', 'school_id'),
@@ -171,64 +172,148 @@ class Student(db.Model):
     delete_reason        = db.Column(db.String(255), nullable=True)
     is_anonymized        = db.Column(db.Boolean, default=False, nullable=False)
 
-    attendance = db.relationship('Attendance', backref='student', lazy='dynamic')
-    marks      = db.relationship('Marks', backref='student', lazy='dynamic')
-    fees = db.relationship('FeeRecord', backref=db.backref('student_ref', overlaps="fee_records_rel,student"), lazy='dynamic', overlaps="fee_records_rel,student")
-    documents  = db.relationship('StudentDocument', backref='student_ref', lazy='dynamic', cascade='all, delete-orphan')
+    # Student Lifecycle & Classification fields
+    original_admission_year = db.Column(db.String(20))
+    status                  = db.Column(db.String(30), default='ACTIVE', index=True)  # ACTIVE / PROMOTED / RETAINED / GRADUATED / WITHDRAWN / LEFT
+    house                   = db.Column(db.String(50))
+    stream                  = db.Column(db.String(50))
+
+    attendance  = db.relationship('Attendance', backref='student', lazy='dynamic')
+    marks       = db.relationship('Marks', backref='student', lazy='dynamic')
+    fees        = db.relationship('FeeRecord', backref=db.backref('student_ref', overlaps="fee_records_rel,student"), lazy='dynamic', overlaps="fee_records_rel,student")
+    documents   = db.relationship('StudentDocument', backref='student_ref', lazy='dynamic', cascade='all, delete-orphan')
+    enrollments = db.relationship('StudentEnrollment', backref='student_ref', lazy='dynamic', cascade='all, delete-orphan')
 
     __table_args__ = (
         db.Index('idx_students_school_id', 'school_id'),
         db.Index('idx_students_school_class', 'school_id', 'class_id'),
         db.Index('idx_students_school_deleted', 'school_id', 'is_deleted'),
+        db.Index('idx_students_school_status', 'school_id', 'status'),
     )
 
     def to_dict(self):
         c_name = self.class_ref.name if self.class_ref else ''
         c_sec  = self.class_ref.section if self.class_ref else ''
+        adm_year = self.original_admission_year
+        if not adm_year and self.admission_date:
+            adm_year = str(self.admission_date.year)
+        elif not adm_year and self.session:
+            adm_year = self.session[:4]
+
         return {
-            'id':                   self.id,
-            'user_id':              self.user_id,
-            'roll_number':          self.roll_number or '',
-            'admission_no':         self.admission_no or '',
-            'admission_number':     self.admission_no or '',
-            'admission_date':       self.admission_date.strftime('%Y-%m-%d') if self.admission_date else '',
-            'class_id':             self.class_id,
-            'class_name':           c_name,
-            'section':              c_sec,
-            'class_display':        f"{c_name} - {c_sec}".strip(' -') if c_name else '',
-            'school_id':            self.school_id,
-            'session':              self.session,
-            'dob':                  self.dob.strftime('%Y-%m-%d') if self.dob else '',
-            'gender':               self.gender or '',
-            'blood_group':          self.blood_group or '',
-            'address':              self.address or '',
-            'name':                 self.user.name  if self.user else '',
-            'email':                self.user.email if self.user else '',
-            'parent_name':          self.parent_name or self.father_name or '',
-            'parent_phone':         self.parent_phone or '',
-            'parent_email':         self.parent_email or '',
-            'father_name':          self.father_name or '',
-            'father_occupation':    self.father_occupation or '',
-            'mother_name':          self.mother_name or '',
-            'mother_occupation':    self.mother_occupation or '',
-            'guardian_name':        self.guardian_name or '',
-            'guardian_relation':    self.guardian_relation or '',
-            'guardian_phone':       self.guardian_phone or '',
-            'aadhar_no':            self.aadhar_no or '',
-            'parent_aadhar_no':     self.parent_aadhar_no or '',
-            'category':             self.category or 'General',
-            'nationality':          self.nationality or 'Indian',
-            'religion':             self.religion or '',
-            'is_first_school':      bool(self.is_first_school),
-            'previous_school_name': self.previous_school_name or '',
-            'previous_class':       self.previous_class or '',
-            'previous_tc_no':       self.previous_tc_no or '',
-            'previous_tc_date':     self.previous_tc_date.strftime('%Y-%m-%d') if self.previous_tc_date else '',
-            'previous_reason':      self.previous_reason or '',
-            'photo_url':            self.photo_url,
-            'is_deleted':           getattr(self, 'is_deleted', False),
-            'deleted_at':           self.deleted_at.isoformat() if getattr(self, 'deleted_at', None) else None,
-            'is_anonymized':        getattr(self, 'is_anonymized', False),
+            'id':                      self.id,
+            'user_id':                 self.user_id,
+            'roll_number':             self.roll_number or '',
+            'admission_no':            self.admission_no or '',
+            'admission_number':        self.admission_no or '',
+            'admission_date':          self.admission_date.strftime('%Y-%m-%d') if self.admission_date else '',
+            'original_admission_year': adm_year or '',
+            'class_id':                self.class_id,
+            'class_name':              c_name,
+            'section':                 c_sec,
+            'class_display':           f"{c_name} - {c_sec}".strip(' -') if c_name else '',
+            'school_id':               self.school_id,
+            'session':                 self.session,
+            'dob':                     self.dob.strftime('%Y-%m-%d') if self.dob else '',
+            'gender':                  self.gender or '',
+            'blood_group':             self.blood_group or '',
+            'address':                 self.address or '',
+            'name':                    self.user.name  if self.user else '',
+            'email':                   self.user.email if self.user else '',
+            'parent_name':             self.parent_name or self.father_name or '',
+            'parent_phone':            self.parent_phone or '',
+            'parent_email':            self.parent_email or '',
+            'father_name':             self.father_name or '',
+            'father_occupation':       self.father_occupation or '',
+            'mother_name':             self.mother_name or '',
+            'mother_occupation':       self.mother_occupation or '',
+            'guardian_name':           self.guardian_name or '',
+            'guardian_relation':       self.guardian_relation or '',
+            'guardian_phone':          self.guardian_phone or '',
+            'aadhar_no':               self.aadhar_no or '',
+            'parent_aadhar_no':        self.parent_aadhar_no or '',
+            'category':                self.category or 'General',
+            'nationality':             self.nationality or 'Indian',
+            'religion':                self.religion or '',
+            'is_first_school':         bool(self.is_first_school),
+            'previous_school_name':    self.previous_school_name or '',
+            'previous_class':          self.previous_class or '',
+            'previous_tc_no':          self.previous_tc_no or '',
+            'previous_tc_date':        self.previous_tc_date.strftime('%Y-%m-%d') if self.previous_tc_date else '',
+            'previous_reason':         self.previous_reason or '',
+            'photo_url':               self.photo_url,
+            'status':                  getattr(self, 'status', 'ACTIVE') or 'ACTIVE',
+            'house':                   getattr(self, 'house', '') or '',
+            'stream':                  getattr(self, 'stream', '') or '',
+            'is_deleted':              getattr(self, 'is_deleted', False),
+            'deleted_at':              self.deleted_at.isoformat() if getattr(self, 'deleted_at', None) else None,
+            'is_anonymized':           getattr(self, 'is_anonymized', False),
+        }
+
+
+class StudentEnrollment(db.Model):
+    """
+    Academic-year-specific enrollment ledger.
+    Every academic year a student spends in the school creates exactly one enrollment row here.
+    Permanent personal identity lives in Student; annual academic context lives here.
+    """
+    __tablename__ = 'student_enrollments'
+
+    id                  = db.Column(db.Integer, primary_key=True)
+    school_id           = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    student_id          = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
+    session             = db.Column(db.String(20), nullable=False, index=True)  # e.g. '2024-25'
+    class_id            = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=False, index=True)
+    section             = db.Column(db.String(10), nullable=True)
+    roll_number         = db.Column(db.String(20), nullable=True)
+    stream              = db.Column(db.String(50), nullable=True)
+    house               = db.Column(db.String(50), nullable=True)
+    enrollment_status   = db.Column(db.String(30), default='ACTIVE', index=True)  # ACTIVE, PROMOTED, RETAINED, GRADUATED, WITHDRAWN, LEFT
+    enrollment_type     = db.Column(db.String(30), default='REGULAR')             # NEW_ADMISSION, PROMOTION, RETENTION, RE_REGISTRATION, SHUFFLED, TRANSFER
+    previous_class_id   = db.Column(db.Integer, nullable=True)
+    previous_section    = db.Column(db.String(10), nullable=True)
+    previous_roll_no    = db.Column(db.String(20), nullable=True)
+    enrolled_date       = db.Column(db.Date, default=datetime.utcnow)
+    remarks             = db.Column(db.String(255), nullable=True)
+    created_by          = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    created_at          = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at          = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('school_id', 'student_id', 'session', name='uq_student_session_enrollment'),
+        db.Index('idx_enroll_school_session_class', 'school_id', 'session', 'class_id'),
+        db.Index('idx_enroll_school_status', 'school_id', 'enrollment_status'),
+    )
+
+    @property
+    def class_display(self):
+        c_name = self.class_ref.name if self.class_ref else ''
+        c_sec  = self.section or (self.class_ref.section if self.class_ref else '')
+        return f"{c_name} - {c_sec}".strip(' -') if c_name else ''
+
+    def to_dict(self):
+        c_name = self.class_ref.name if self.class_ref else ''
+        c_sec  = self.section or (self.class_ref.section if self.class_ref else '')
+        return {
+            'id':                self.id,
+            'school_id':         self.school_id,
+            'student_id':        self.student_id,
+            'session':           self.session,
+            'class_id':          self.class_id,
+            'class_name':        c_name,
+            'section':           c_sec,
+            'class_display':     f"{c_name} - {c_sec}".strip(' -') if c_name else '',
+            'roll_number':       self.roll_number or '',
+            'stream':            self.stream or '',
+            'house':             self.house or '',
+            'enrollment_status': self.enrollment_status or 'ACTIVE',
+            'enrollment_type':   self.enrollment_type or 'REGULAR',
+            'previous_class_id': self.previous_class_id,
+            'previous_section':  self.previous_section or '',
+            'previous_roll_no':  self.previous_roll_no or '',
+            'enrolled_date':     self.enrolled_date.isoformat() if self.enrolled_date else '',
+            'remarks':           self.remarks or '',
+            'created_at':        self.created_at.isoformat() if self.created_at else '',
         }
 
 

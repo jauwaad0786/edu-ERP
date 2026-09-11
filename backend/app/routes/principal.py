@@ -4,7 +4,7 @@ from app import db
 from app.models.school import School
 from app.models.user import User, UserRole
 from app.models.academic import (
-    Class, Teacher, Student, Subject, Marks,
+    Class, Teacher, Student, StudentEnrollment, Subject, Marks,
     Attendance, TeacherAttendance, TeacherAttendanceRequest, Note
 )
 from app.models.financial import (
@@ -940,6 +940,10 @@ def create_student():
             address=data.get('address'),
             session=session_str,
             admission_date=adm_date_val,
+            original_admission_year=str(adm_date_val.year) if adm_date_val else session_str[:4],
+            status=data.get('status', 'ACTIVE') or 'ACTIVE',
+            house=data.get('house'),
+            stream=data.get('stream'),
             aadhar_no=data.get('aadhar_no'),
             parent_aadhar_no=data.get('parent_aadhar_no'),
             is_first_school=is_first,
@@ -951,6 +955,27 @@ def create_student():
         )
         db.session.add(student)
         db.session.flush()
+
+        # Create baseline StudentEnrollment
+        if student.class_id:
+            c_obj = Class.query.get(student.class_id)
+            c_sec = c_obj.section if c_obj else ''
+            init_enroll = StudentEnrollment(
+                school_id=sid,
+                student_id=student.id,
+                session=session_str,
+                class_id=student.class_id,
+                section=c_sec,
+                roll_number=roll_no,
+                stream=data.get('stream'),
+                house=data.get('house'),
+                enrollment_status='ACTIVE',
+                enrollment_type='NEW_ADMISSION',
+                enrolled_date=adm_date_val,
+                remarks='Initial school admission',
+                created_by=get_current_user().id if get_current_user() else None
+            )
+            db.session.add(init_enroll)
 
         # Optional Transport Assignment
         if data.get('transport_route_id') or data.get('transport_stop_id'):
