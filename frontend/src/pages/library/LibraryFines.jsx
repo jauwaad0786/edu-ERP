@@ -476,12 +476,16 @@ export default function LibraryFines() {
              ══════════════════════════════════════════════════════════════════════ */}
           {collectModal && (
             <div
+              role="button"
+              tabIndex={0}
+              aria-label="Close modal"
               style={{
                 position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999,
                 backdropFilter: 'blur(6px)'
               }}
               onClick={e => e.target === e.currentTarget && setCollectModal(null)}
+              onKeyDown={e => e.key === 'Escape' && setCollectModal(null)}
             >
               <div style={{
                 background: darkMode ? '#111827' : '#ffffff', borderRadius: '20px', padding: '28px',
@@ -589,12 +593,16 @@ export default function LibraryFines() {
              ══════════════════════════════════════════════════════════════════════ */}
           {waiveModal && (
             <div
+              role="button"
+              tabIndex={0}
+              aria-label="Close modal"
               style={{
                 position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999,
                 backdropFilter: 'blur(6px)'
               }}
               onClick={e => e.target === e.currentTarget && setWaiveModal(null)}
+              onKeyDown={e => e.key === 'Escape' && setWaiveModal(null)}
             >
               <div style={{
                 background: darkMode ? '#111827' : '#ffffff', borderRadius: '20px', padding: '28px',
@@ -677,12 +685,16 @@ export default function LibraryFines() {
              ══════════════════════════════════════════════════════════════════════ */}
           {manualModal && (
             <div
+              role="button"
+              tabIndex={0}
+              aria-label="Close modal"
               style={{
                 position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999,
                 backdropFilter: 'blur(6px)'
               }}
               onClick={e => e.target === e.currentTarget && setManualModal(false)}
+              onKeyDown={e => e.key === 'Escape' && setManualModal(false)}
             >
               <div style={{
                 background: darkMode ? '#111827' : '#ffffff', borderRadius: '20px', padding: '28px',
@@ -733,7 +745,16 @@ export default function LibraryFines() {
                             {manualMemberResults.map(m => (
                               <div
                                 key={m.id}
+                                role="button"
+                                tabIndex={0}
                                 onClick={() => { setManualSelectedMember(m); setManualMemberResults([]); }}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    setManualSelectedMember(m);
+                                    setManualMemberResults([]);
+                                  }
+                                }}
                                 style={{
                                   padding: '8px 12px', cursor: 'pointer', fontSize: '12.5px',
                                   borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}`,

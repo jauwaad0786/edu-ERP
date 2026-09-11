@@ -869,10 +869,20 @@ export default function LibraryAttendance() {
                     {students.map((st) => (
                       <div
                         key={st.id}
+                        role="button"
+                        tabIndex={0}
                         onClick={() => {
                           setSelectedStudent(st);
                           setStudentSearch(`${st.name} (${st.admission_no})`);
                           setStudents([]);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setSelectedStudent(st);
+                            setStudentSearch(`${st.name} (${st.admission_no})`);
+                            setStudents([]);
+                          }
                         }}
                         style={{
                           padding: '8px 12px',

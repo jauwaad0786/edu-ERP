@@ -47,12 +47,18 @@ const STUDENT_STATUS_OPTIONS = [
 /* Small modal shell shared by History / Return / Preview / Reopen */
 function Modal({ title, onClose, children, width = 620 }) {
   return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', zIndex: 1000,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-    }} onClick={onClose}>
-      <div className="card" style={{ margin: 0, width: '100%', maxWidth: width, maxHeight: '86vh', display: 'flex', flexDirection: 'column' }}
-           onClick={e => e.stopPropagation()}>
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label="Close modal"
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', zIndex: 1000,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+      }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      onKeyDown={e => { if (e.key === 'Escape') onClose(); }}
+    >
+      <div className="card" style={{ margin: 0, width: '100%', maxWidth: width, maxHeight: '86vh', display: 'flex', flexDirection: 'column' }}>
         <div className="card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <strong>{title}</strong>
           <button className="btn btn-neutral btn-sm" onClick={onClose}>✕</button>

@@ -285,7 +285,10 @@ export default function SupportPanel({ isOpen, onClose, darkMode, unreadMessages
                   return (
                     <div
                       key={n.id}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => markRead(n)}
+                      onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && markRead(n)}
                       style={{
                         display:      'flex',
                         gap:          12,
@@ -337,7 +340,15 @@ export default function SupportPanel({ isOpen, onClose, darkMode, unreadMessages
               {/* View all link */}
               {notifs.length > 0 && (
                 <div
+                  role="button"
+                  tabIndex={0}
                   onClick={() => { navigate('/support/notifications'); onClose(); }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      navigate('/support/notifications');
+                      onClose();
+                    }
+                  }}
                   style={{
                     padding: '11px 16px', textAlign: 'center',
                     fontSize: 12, color: '#4f46e5', fontWeight: 600,
@@ -377,7 +388,10 @@ export default function SupportPanel({ isOpen, onClose, darkMode, unreadMessages
               {QUICK_ACTIONS.map((action, i) => (
                 <div
                   key={i}
+                  role="button"
+                  tabIndex={0}
                   onClick={action.onClick}
+                  onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && action.onClick()}
                   style={{
                     display:       'flex',
                     alignItems:    'center',

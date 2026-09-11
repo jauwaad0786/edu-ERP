@@ -311,7 +311,16 @@ export default function LibraryIssueReturn() {
                         {memberResults.map(m => (
                           <div
                             key={m.id}
+                            role="button"
+                            tabIndex={0}
                             onClick={() => { setSelectedMember(m); setMemberResults([]); }}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                setSelectedMember(m);
+                                setMemberResults([]);
+                              }
+                            }}
                             style={{
                               padding: '10px 14px', cursor: 'pointer', fontSize: '13px',
                               borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}`,
@@ -394,10 +403,20 @@ export default function LibraryIssueReturn() {
                           return (
                             <div
                               key={b.id}
+                              role="button"
+                              tabIndex={0}
                               onClick={() => {
                                 if (!isAvail) { toast.error('This book is currently out of stock'); return; }
                                 setSelectedBook(b);
                                 setBookResults([]);
+                              }}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  if (!isAvail) { toast.error('This book is currently out of stock'); return; }
+                                  setSelectedBook(b);
+                                  setBookResults([]);
+                                }
                               }}
                               style={{
                                 padding: '10px 14px', cursor: isAvail ? 'pointer' : 'not-allowed', fontSize: '13px',
@@ -573,12 +592,16 @@ export default function LibraryIssueReturn() {
              ══════════════════════════════════════════════════════════════════════ */}
           {selectedIssueToReturn && (
             <div
+              role="button"
+              tabIndex={0}
+              aria-label="Close modal"
               style={{
                 position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999,
                 backdropFilter: 'blur(6px)'
               }}
               onClick={e => e.target === e.currentTarget && setSelectedIssueToReturn(null)}
+              onKeyDown={e => e.key === 'Escape' && setSelectedIssueToReturn(null)}
             >
               <div style={{
                 background: darkMode ? '#111827' : '#ffffff', borderRadius: '20px', padding: '28px',

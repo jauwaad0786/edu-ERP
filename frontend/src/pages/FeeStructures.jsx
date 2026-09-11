@@ -463,7 +463,11 @@ export default function FeeStructures() {
 
                   <div style={{ maxHeight: 420, overflowY: 'auto' }}>
                     {adjStudents.map(s => (
-                      <div key={s.id} onClick={() => selectStudent(s)}
+                      <div key={s.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => selectStudent(s)}
+                        onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && selectStudent(s)}
                         style={{
                           padding: '8px 10px', borderRadius: 6, cursor: 'pointer', marginBottom: 4,
                           background: selStudent?.id === s.id ? '#e8f4fd' : 'transparent',
@@ -562,7 +566,14 @@ export default function FeeStructures() {
 
       {/* ══════════════ RATE CARD CREATE/EDIT MODAL ══════════════ */}
       {showModal && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowModal(false)}>
+        <div
+          role="button"
+          tabIndex={0}
+          className="modal-backdrop"
+          onClick={e => e.target === e.currentTarget && setShowModal(false)}
+          onKeyDown={e => e.key === 'Escape' && setShowModal(false)}
+          aria-label="Close fee structure modal"
+        >
           <div className="modal" style={{ maxWidth: 420 }}>
             <div className="modal-header">
               <h3>{editingId ? 'Edit Fee Structure' : 'New Fee Structure'}</h3>
@@ -614,7 +625,14 @@ export default function FeeStructures() {
 
       {/* ══════════════ ADJUSTMENT MODAL (unchanged) ══════════════ */}
       {adjustModal && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setAdjustModal(null)}>
+        <div
+          role="button"
+          tabIndex={0}
+          className="modal-backdrop"
+          onClick={e => e.target === e.currentTarget && setAdjustModal(null)}
+          onKeyDown={e => e.key === 'Escape' && setAdjustModal(null)}
+          aria-label="Close fee adjustment modal"
+        >
           <div className="modal" style={{ maxWidth: 400 }}>
             <div className="modal-header">
               <h3>{adjustModal.type === 'FINE' ? '⚠️ Fine Lagao' : '✅ Fees Maaf Karo'}</h3>

@@ -167,7 +167,18 @@ export default function RouteBuilder() {
             ) : routes.length === 0 ? (
               <div style={{ textAlign: 'center', padding: 20, color: '#94a3b8', fontSize: 13 }}>Koi route nahi hai</div>
             ) : routes.map(r => (
-              <div key={r.id} onClick={() => selectRoute(r)} style={{
+              <div
+                key={r.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => selectRoute(r)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    selectRoute(r);
+                  }
+                }}
+                style={{
                 padding: '10px 12px', borderRadius: 8, marginBottom: 6, cursor: 'pointer',
                 background: selectedRouteId === r.id ? (darkMode ? '#334155' : '#eef2ff') : 'transparent',
                 border: `1px solid ${selectedRouteId === r.id ? '#4f46e5' : 'transparent'}`,

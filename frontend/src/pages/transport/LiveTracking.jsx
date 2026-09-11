@@ -231,7 +231,18 @@ export default function LiveTracking() {
                 const active = t.id === selectedTripId;
                 const lastSeenMin = gps ? Math.round((Date.now() - new Date(gps.recorded_at).getTime()) / 60000) : null;
                 return (
-                  <div key={t.id} onClick={() => focusVehicle(t)} style={{
+                  <div
+                    key={t.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => focusVehicle(t)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        focusVehicle(t);
+                      }
+                    }}
+                    style={{
                     padding: '12px 14px', borderBottom: `1px solid ${border}`, cursor: 'pointer',
                     background: active ? (darkMode ? '#0f172a' : '#eef2ff') : 'transparent',
                   }}>

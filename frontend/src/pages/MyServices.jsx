@@ -100,9 +100,19 @@ export default function MyServices() {
                     }}>
                       {tierFeatures.map(f => (
                         <div key={f.key}
+                          role={!f.is_active ? 'button' : undefined}
+                          tabIndex={!f.is_active ? 0 : undefined}
                           onClick={() => !f.is_active && setUpgradeInfo({
                             tier: f.tier, label: f.tier_label, price: f.tier_price, feature: f.label,
                           })}
+                          onKeyDown={e => {
+                            if (!f.is_active && (e.key === 'Enter' || e.key === ' ')) {
+                              e.preventDefault();
+                              setUpgradeInfo({
+                                tier: f.tier, label: f.tier_label, price: f.tier_price, feature: f.label,
+                              });
+                            }
+                          }}
                           style={{
                             position: 'relative',
                             background: f.is_active ? '#fff' : '#f8fafc',
@@ -154,7 +164,11 @@ export default function MyServices() {
       {/* ── Upgrade prompt modal ── */}
       {upgradeInfo && (
         <div className="modal-backdrop"
-          onClick={e => e.target === e.currentTarget && setUpgradeInfo(null)}>
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={e => e.target === e.currentTarget && setUpgradeInfo(null)}
+          onKeyDown={e => e.key === 'Escape' && setUpgradeInfo(null)}>
           <div className="modal" style={{ maxWidth: 380 }}>
             <div className="modal-header">
               <h3>🔒 Locked Feature</h3>

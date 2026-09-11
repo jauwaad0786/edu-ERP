@@ -483,7 +483,10 @@ export default function NewAdmissionPage() {
                   return (
                     <div
                       key={s.id}
+                      role={isPassed ? "button" : undefined}
+                      tabIndex={isPassed ? 0 : undefined}
                       onClick={() => { if (isPassed) setCurrentStep(s.id); }}
+                      onKeyDown={(e) => { if (isPassed && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setCurrentStep(s.id); } }}
                       style={{
                         flex: 1,
                         minWidth: 120,
@@ -1916,6 +1919,12 @@ export default function NewAdmissionPage() {
                         FEE DETAILS AT ADMISSION
                       </div>
                       <table style={{ width: '100%', fontSize: 10, borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid #cbd5e1', background: '#f8fafc', color: '#475569', fontSize: 9.5 }}>
+                            <th scope="col" style={{ padding: '4px 6px', textAlign: 'left', fontWeight: 700 }}>Fee Component</th>
+                            <th scope="col" style={{ padding: '4px 6px', textAlign: 'right', fontWeight: 700 }}>Amount</th>
+                          </tr>
+                        </thead>
                         <tbody>
                           <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
                             <td style={{ padding: '4px 6px' }}>Admission &amp; Registration Fee</td>

@@ -254,8 +254,15 @@ export default function DelegationPage() {
 
       {/* Create Delegation Modal */}
       {showForm && (
-        <div className="modal-overlay" onClick={() => { setShowForm(false); resetForm(); }}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 450, background: darkMode ? '#141b2d' : undefined }}>
+        <div
+          className="modal-overlay"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={(e) => { if (e.target === e.currentTarget) { setShowForm(false); resetForm(); } }}
+          onKeyDown={(e) => { if (e.key === 'Escape') { setShowForm(false); resetForm(); } }}
+        >
+          <div className="modal" style={{ maxWidth: 450, background: darkMode ? '#141b2d' : undefined }}>
             <div className="modal-header">
               <h3>Delegate Role</h3>
               <button className="btn-close" onClick={() => { setShowForm(false); resetForm(); }}>×</button>

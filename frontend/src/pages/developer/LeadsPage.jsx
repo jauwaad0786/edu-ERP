@@ -96,6 +96,8 @@ export default function LeadsPage() {
                 {leads.map(lead => (
                   <div
                     key={lead.id}
+                    role="button"
+                    tabIndex={0}
                     className="card"
                     style={{
                       padding: '14px 18px',
@@ -103,6 +105,13 @@ export default function LeadsPage() {
                       background: darkMode ? '#141b2d' : undefined,
                     }}
                     onClick={() => { setSelected(lead); setShowModal(true); }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelected(lead);
+                        setShowModal(true);
+                      }
+                    }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', flexWrap: 'wrap', gap: 8 }}>
                       <div>
@@ -147,8 +156,15 @@ export default function LeadsPage() {
       </div>
 
       {showModal && selected && (
-        <div className="modal-backdrop" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520, background: darkMode ? '#141b2d' : undefined }}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowModal(false); }}
+          onKeyDown={(e) => { if (e.key === 'Escape') setShowModal(false); }}
+        >
+          <div className="modal" style={{ maxWidth: 520, background: darkMode ? '#141b2d' : undefined }}>
             <div className="modal-header">
               <h3>{selected.lead_type === 'DEMO' ? 'Demo Request' : 'Contact Message'}</h3>
               <button className="modal-close" onClick={() => setShowModal(false)}>×</button>

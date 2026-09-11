@@ -154,7 +154,7 @@ export default function OneP360BotDrawer({ position = 'right' }) {
       {isOpen && (
         <div style={{
           position: 'fixed',
-          bottom: minimized ? '20px' : '20px',
+          bottom: '20px',
           [position === 'left' ? 'left' : 'right']: '20px',
           width: '390px',
           maxWidth: 'calc(100vw - 40px)',

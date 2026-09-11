@@ -231,7 +231,7 @@ export default function LibraryBooks() {
 
       {/* ── Add/Edit Book Modal ── */}
       {showModal && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowModal(false)}>
+        <div className="modal-backdrop" role="button" tabIndex={0} aria-label="Close modal" onClick={e => e.target === e.currentTarget && setShowModal(false)} onKeyDown={e => e.key === 'Escape' && setShowModal(false)}>
           <div className="modal" style={{ maxWidth: 620 }}>
             <div className="modal-header">
               <h3>{editingId ? 'Edit Book' : 'Add New Book'}</h3>
@@ -278,7 +278,7 @@ export default function LibraryBooks() {
 
       {/* ── Add Copies Modal ── */}
       {addCopiesTarget && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setAddCopiesTarget(null)}>
+        <div className="modal-backdrop" role="button" tabIndex={0} aria-label="Close modal" onClick={e => e.target === e.currentTarget && setAddCopiesTarget(null)} onKeyDown={e => e.key === 'Escape' && setAddCopiesTarget(null)}>
           <div className="modal" style={{ maxWidth: 360 }}>
             <div className="modal-header">
               <h3>Add Copies</h3>

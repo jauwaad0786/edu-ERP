@@ -189,7 +189,7 @@ export default function LibraryMembers() {
 
       {/* ── Enroll Modal ── */}
       {showEnroll && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowEnroll(false)}>
+        <div className="modal-backdrop" role="button" tabIndex={0} aria-label="Close modal" onClick={e => e.target === e.currentTarget && setShowEnroll(false)} onKeyDown={e => e.key === 'Escape' && setShowEnroll(false)}>
           <div className="modal" style={{ maxWidth: 480 }}>
             <div className="modal-header">
               <h3>Enroll Library Member</h3>
@@ -243,7 +243,7 @@ export default function LibraryMembers() {
 
       {/* ── Member History Drawer ── */}
       {detail && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setDetail(null)}>
+        <div className="modal-backdrop" role="button" tabIndex={0} aria-label="Close modal" onClick={e => e.target === e.currentTarget && setDetail(null)} onKeyDown={e => e.key === 'Escape' && setDetail(null)}>
           <div className="modal" style={{ maxWidth: 640 }}>
             <div className="modal-header">
               <h3>{detail.member.name} — History</h3>

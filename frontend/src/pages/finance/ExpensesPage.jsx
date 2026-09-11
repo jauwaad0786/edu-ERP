@@ -339,7 +339,14 @@ export default function ExpensesPage() {
 
       {/* ══ MODAL: ADD / EDIT EXPENSE ══ */}
       {modalOpen && (
-        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setModalOpen(false)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={(e) => e.target === e.currentTarget && setModalOpen(false)}
+          onKeyDown={(e) => e.key === 'Escape' && setModalOpen(false)}
+        >
           <div className="modal" style={{ maxWidth: 600, background: darkMode ? '#1e293b' : '#fff' }}>
             <div className="modal-header">
               <h3 style={{ margin: 0, fontWeight: 800 }}>{editingId ? 'Edit Expense' : 'Record New Expense'}</h3>

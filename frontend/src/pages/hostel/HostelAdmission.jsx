@@ -234,7 +234,10 @@ export default function HostelAdmission() {
                           </div>
                         ) : results.map(s => (
                           <div key={s.student_id}
+                            role="button"
+                            tabIndex={0}
                             onClick={() => setSelectedStudent(s)}
+                            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedStudent(s); } }}
                             style={{
                               padding: '9px 10px', cursor: 'pointer', borderRadius: 6,
                               borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}`,
@@ -363,7 +366,11 @@ export default function HostelAdmission() {
                         border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 10,
                         overflow: 'hidden',
                       }}>
-                        <div onClick={() => setExpandedBuilding(isExpanded ? null : building.id)}
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setExpandedBuilding(isExpanded ? null : building.id)}
+                          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedBuilding(isExpanded ? null : building.id); } }}
                           style={{
                             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                             padding: '10px 14px', cursor: 'pointer',
@@ -422,7 +429,10 @@ export default function HostelAdmission() {
                                         const isSelected = bedId === bed.id;
                                         return (
                                           <div key={bed.id}
+                                            role="button"
+                                            tabIndex={0}
                                             onClick={() => pickBed(building, floor, room, bed)}
+                                            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickBed(building, floor, room, bed); } }}
                                             title={bed.status === 'OCCUPIED' ? bed.student_name : bed.status}
                                             style={{
                                               width: 46, height: 46, borderRadius: 8,

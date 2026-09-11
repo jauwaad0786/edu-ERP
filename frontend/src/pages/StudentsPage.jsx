@@ -495,7 +495,11 @@ useEffect(() => {
       {/* ── Delete Confirmation Modal ── */}
       {deleteTarget && (
         <div className="modal-backdrop"
-          onClick={e => e.target === e.currentTarget && !deleting && setDeleteTarget(null)}>
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={e => e.target === e.currentTarget && !deleting && setDeleteTarget(null)}
+          onKeyDown={e => e.key === 'Escape' && !deleting && setDeleteTarget(null)}>
           <div className="modal" style={{ maxWidth: 400 }}>
             <div className="modal-header">
               <h3>🗑️ Delete Student</h3>

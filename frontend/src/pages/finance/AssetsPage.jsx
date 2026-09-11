@@ -404,7 +404,14 @@ export default function AssetsPage() {
 
       {/* ══ MODAL: REGISTER ASSET ══ */}
       {createModal && (
-        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setCreateModal(false)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={(e) => e.target === e.currentTarget && setCreateModal(false)}
+          onKeyDown={(e) => e.key === 'Escape' && setCreateModal(false)}
+        >
           <div className="modal" style={{ maxWidth: 640, background: darkMode ? '#1e293b' : '#fff' }}>
             <div className="modal-header">
               <h3 style={{ margin: 0, fontWeight: 800 }}>Register New School Asset</h3>
@@ -552,7 +559,14 @@ export default function AssetsPage() {
 
       {/* ══ MODAL: TRANSFER / ASSIGN ASSET ══ */}
       {transferModal && (
-        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setTransferModal(false)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={(e) => e.target === e.currentTarget && setTransferModal(false)}
+          onKeyDown={(e) => e.key === 'Escape' && setTransferModal(false)}
+        >
           <div className="modal" style={{ maxWidth: 500, background: darkMode ? '#1e293b' : '#fff' }}>
             <div className="modal-header">
               <h3 style={{ margin: 0, fontWeight: 800 }}>Transfer Asset: {selectedAsset?.asset_tag}</h3>
@@ -621,7 +635,14 @@ export default function AssetsPage() {
 
       {/* ══ MODAL: LOG MAINTENANCE ══ */}
       {maintModal && (
-        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setMaintModal(false)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={(e) => e.target === e.currentTarget && setMaintModal(false)}
+          onKeyDown={(e) => e.key === 'Escape' && setMaintModal(false)}
+        >
           <div className="modal" style={{ maxWidth: 500, background: darkMode ? '#1e293b' : '#fff' }}>
             <div className="modal-header">
               <h3 style={{ margin: 0, fontWeight: 800 }}>Log Asset Maintenance</h3>
@@ -691,7 +712,14 @@ export default function AssetsPage() {
 
       {/* ══ MODAL: ASSET LIFECYCLE HISTORY ══ */}
       {historyModal && assetDetail && (
-        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setHistoryModal(false)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={(e) => e.target === e.currentTarget && setHistoryModal(false)}
+          onKeyDown={(e) => e.key === 'Escape' && setHistoryModal(false)}
+        >
           <div className="modal" style={{ maxWidth: 650, background: darkMode ? '#1e293b' : '#fff' }}>
             <div className="modal-header">
               <h3 style={{ margin: 0, fontWeight: 800 }}>Lifecycle History: {assetDetail.name} ({assetDetail.asset_tag})</h3>

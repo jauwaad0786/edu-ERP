@@ -469,7 +469,7 @@ export default function Stops() {
       </div>
 
       {showForm && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowForm(false)}>
+        <div className="modal-backdrop" role="button" tabIndex={0} aria-label="Close modal" onClick={e => e.target === e.currentTarget && setShowForm(false)} onKeyDown={e => e.key === 'Escape' && setShowForm(false)}>
           <div className="modal" style={{ maxWidth: 560 }}>
             <div className="modal-header">
               <h3>{editingId ? 'Edit Stop' : 'Add Stop'}</h3>

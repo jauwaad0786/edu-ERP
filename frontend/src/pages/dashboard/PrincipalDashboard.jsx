@@ -124,7 +124,7 @@ export default function PrincipalDashboard() {
   } : (fees || { total_due: 0, total_collected: 0, pending_count: 0 });
 
   const totalFeeCollected = stats?.fee_collected ?? feeTotals.total_collected ?? 0;
-  const totalFeePending = stats?.fee_pending ?? (feeTotals.total_due - feeTotals.total_collected) ?? 0;
+  const totalFeePending = stats?.fee_pending ?? (feeTotals.total_due - feeTotals.total_collected);
   const collectionPct = (totalFeeCollected + totalFeePending) > 0
     ? Math.round((totalFeeCollected / (totalFeeCollected + totalFeePending)) * 100)
     : 0;
@@ -1361,7 +1361,7 @@ export default function PrincipalDashboard() {
                           background: staffOnLeave.length > 0 ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)',
                           color: staffOnLeave.length > 0 ? '#ef4444' : '#10b981',
                         }}>
-                          {staffOnLeave.length} {staffOnLeave.length === 1 ? 'ON LEAVE' : 'ON LEAVE'}
+                          {staffOnLeave.length} ON LEAVE
                         </span>
                       </div>
                       <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
@@ -2031,7 +2031,10 @@ export default function PrincipalDashboard() {
             gap: '16px'
           }}>
             <div
+              role="button"
+              tabIndex={0}
               onClick={() => navigate('/students')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/students'); } }}
               style={{
                 background: darkMode ? '#111827' : '#ffffff',
                 border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
@@ -2049,7 +2052,10 @@ export default function PrincipalDashboard() {
             </div>
 
             <div
+              role="button"
+              tabIndex={0}
               onClick={() => navigate('/fees')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/fees'); } }}
               style={{
                 background: darkMode ? '#111827' : '#ffffff',
                 border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
@@ -2067,7 +2073,10 @@ export default function PrincipalDashboard() {
             </div>
 
             <div
+              role="button"
+              tabIndex={0}
               onClick={() => navigate('/attendance')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/attendance'); } }}
               style={{
                 background: darkMode ? '#111827' : '#ffffff',
                 border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
@@ -2085,7 +2094,10 @@ export default function PrincipalDashboard() {
             </div>
 
             <div
+              role="button"
+              tabIndex={0}
               onClick={() => navigate('/transport/reports')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/transport/reports'); } }}
               style={{
                 background: darkMode ? '#111827' : '#ffffff',
                 border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
@@ -2103,7 +2115,10 @@ export default function PrincipalDashboard() {
             </div>
 
             <div
+              role="button"
+              tabIndex={0}
               onClick={() => navigate('/exams')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/exams'); } }}
               style={{
                 background: darkMode ? '#111827' : '#ffffff',
                 border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,

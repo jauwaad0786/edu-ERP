@@ -181,7 +181,15 @@ export default function StaffAccessPage() {
                   filteredStaff.map(s => (
                     <div
                       key={s.user_id}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => selectStaff(s.user_id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          selectStaff(s.user_id);
+                        }
+                      }}
                       style={{
                         padding: '10px 16px', cursor: 'pointer',
                         background: selectedId === s.user_id ? (darkMode ? 'rgba(79,70,229,0.15)' : '#eef2ff') : 'transparent',

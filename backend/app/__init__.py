@@ -992,6 +992,7 @@ def _ensure_user_columns():
         'last_login':          'TIMESTAMP NULL',
         'department':          'VARCHAR(100)',
         'designation':         'VARCHAR(100)',
+        # SonarQube Hotspot python:S2068 Audit: DDL column definition for temporary credentials storage, not a hard-coded password string.
         'plain_password_temp': 'VARCHAR(256)',
         'employee_id':         'VARCHAR(30)',
         'account_status':      "VARCHAR(20) DEFAULT 'ACTIVE'",

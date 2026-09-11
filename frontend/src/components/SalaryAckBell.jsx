@@ -58,8 +58,14 @@ export default function SalaryAckBell({ darkMode }) {
 
       {open && (
         <>
-          <div onClick={() => setOpen(false)}
-            style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => setOpen(false)}
+            onKeyDown={e => (e.key === 'Escape' || e.key === 'Enter') && setOpen(false)}
+            aria-label="Close salary menu"
+            style={{ position: 'fixed', inset: 0, zIndex: 40 }}
+          />
           <div style={{
             position: 'absolute', top: 42, right: 0, width: 320, zIndex: 41,
             background: darkMode ? '#141b2d' : '#fff',

@@ -342,14 +342,7 @@ def classify_intent(message: str) -> dict:
     ]):
         return _result(Intent.SCHOOL_SUMMARY, {}, 0.9, norm)
 
-    # ── Fallback to GENERAL ──
-    return _result(Intent.GENERAL, {'month': month, 'year': year, 'class': class_filter}, 0.0, norm)
-
-
-
-
-
-    # ── No confident match → fallback to GENERAL (LLM will handle) ──
+    # ── Fallback to GENERAL (LLM will handle) ──
     return _result(Intent.GENERAL, {'month': month, 'year': year, 'class': class_filter}, 0.0, norm)
 
 

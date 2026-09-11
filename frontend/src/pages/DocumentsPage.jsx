@@ -636,7 +636,10 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
                         return (
                           <div
                             key={s.student_id}
+                            role="button"
+                            tabIndex={0}
                             onClick={() => setSelectedStudent(s)}
+                            onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && setSelectedStudent(s)}
                             style={{
                               padding: "10px 12px",
                               borderRadius: 10,
@@ -1756,8 +1759,15 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
           {/* QUICK UPLOAD MODAL                                                  */}
           {/* ═══════════════════════════════════════════════════════════════════ */}
           {uploadModalStudent && (
-            <div style={S.modalOverlay} onClick={() => setUploadModalStudent(null)}>
-              <div style={S.modalContent} onClick={e => e.stopPropagation()}>
+            <div
+              role="button"
+              tabIndex={0}
+              style={S.modalOverlay}
+              onClick={e => { if (e.target === e.currentTarget) setUploadModalStudent(null); }}
+              onKeyDown={e => e.key === 'Escape' && setUploadModalStudent(null)}
+              aria-label="Close upload modal"
+            >
+              <div style={S.modalContent}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
                   <div>
                     <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#0f172a" }}>

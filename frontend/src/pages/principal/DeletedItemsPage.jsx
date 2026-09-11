@@ -159,12 +159,20 @@ export default function DeletedItemsPage() {
           <div className="grid-4 mb-6">
             <div
               className="stat-card"
+              role="button"
+              tabIndex={0}
               style={{
                 cursor: 'pointer',
                 borderColor: activeTab === 'STUDENT' ? 'var(--blue-60)' : 'var(--neutral-2)',
                 background: activeTab === 'STUDENT' ? 'var(--blue-10)' : '#fff',
               }}
               onClick={() => switchTab('STUDENT')}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  switchTab('STUDENT');
+                }
+              }}
             >
               <div className="stat-icon" style={{ background: '#e0f2fe', color: '#0284c7' }}>
                 <i className="ti ti-school"></i>
@@ -176,12 +184,20 @@ export default function DeletedItemsPage() {
 
             <div
               className="stat-card"
+              role="button"
+              tabIndex={0}
               style={{
                 cursor: 'pointer',
                 borderColor: activeTab === 'TEACHER' ? 'var(--blue-60)' : 'var(--neutral-2)',
                 background: activeTab === 'TEACHER' ? 'var(--blue-10)' : '#fff',
               }}
               onClick={() => switchTab('TEACHER')}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  switchTab('TEACHER');
+                }
+              }}
             >
               <div className="stat-icon" style={{ background: '#dcfce7', color: '#16a34a' }}>
                 <i className="ti ti-chalkboard"></i>
@@ -193,12 +209,20 @@ export default function DeletedItemsPage() {
 
             <div
               className="stat-card"
+              role="button"
+              tabIndex={0}
               style={{
                 cursor: 'pointer',
                 borderColor: activeTab === 'STAFF' ? 'var(--blue-60)' : 'var(--neutral-2)',
                 background: activeTab === 'STAFF' ? 'var(--blue-10)' : '#fff',
               }}
               onClick={() => switchTab('STAFF')}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  switchTab('STAFF');
+                }
+              }}
             >
               <div className="stat-icon" style={{ background: '#fef3c7', color: '#d97706' }}>
                 <i className="ti ti-briefcase"></i>
@@ -469,7 +493,14 @@ export default function DeletedItemsPage() {
 
       {/* ── RECOVER CONFIRMATION MODAL ── */}
       {recoverTarget && (
-        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && !actionLoading && setRecoverTarget(null)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={(e) => e.target === e.currentTarget && !actionLoading && setRecoverTarget(null)}
+          onKeyDown={(e) => e.key === 'Escape' && !actionLoading && setRecoverTarget(null)}
+        >
           <div className="modal" style={{ maxWidth: 440 }}>
             <div className="modal-header">
               <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--success)' }}>
@@ -533,7 +564,14 @@ export default function DeletedItemsPage() {
 
       {/* ── FORCE DELETE / PERMANENT DELETE MODAL (Requires typing person's name) ── */}
       {deleteTarget && (
-        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && !actionLoading && setDeleteTarget(null)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={(e) => e.target === e.currentTarget && !actionLoading && setDeleteTarget(null)}
+          onKeyDown={(e) => e.key === 'Escape' && !actionLoading && setDeleteTarget(null)}
+        >
           <div className="modal" style={{ maxWidth: 480 }}>
             <div className="modal-header">
               <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--error)' }}>

@@ -199,11 +199,21 @@ export default function Drivers() {
                         <td style={{ padding: '10px 6px', color: '#64748b' }}>{d.assigned_vehicle_number || '—'}</td>
                         <td style={{ padding: '10px 6px', color: '#64748b' }}>{d.assigned_route_name || '—'}</td>
                         <td style={{ padding: '10px 6px' }}>
-                          <span onClick={() => toggleStatus(d)} style={{
-                            fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, cursor: 'pointer',
-                            background: d.status === 'ACTIVE' ? '#f0fdf4' : '#f1f5f9',
-                            color: d.status === 'ACTIVE' ? '#16a34a' : '#64748b',
-                          }}>{d.status}</span>
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => toggleStatus(d)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                toggleStatus(d);
+                              }
+                            }}
+                            style={{
+                              fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, cursor: 'pointer',
+                              background: d.status === 'ACTIVE' ? '#f0fdf4' : '#f1f5f9',
+                              color: d.status === 'ACTIVE' ? '#16a34a' : '#64748b',
+                            }}>{d.status}</span>
                         </td>
                         <td style={{ padding: '10px 6px' }}>
                           <button onClick={() => openEdit(d)} style={{
@@ -243,7 +253,7 @@ export default function Drivers() {
 
       {/* ── Add/Edit Modal ── */}
       {showForm && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowForm(false)}>
+        <div className="modal-backdrop" role="button" tabIndex={0} aria-label="Close modal" onClick={e => e.target === e.currentTarget && setShowForm(false)} onKeyDown={e => e.key === 'Escape' && setShowForm(false)}>
           <div className="modal" style={{ maxWidth: 560 }}>
             <div className="modal-header">
               <h3>{editingId ? 'Edit Driver' : 'Add Driver'}</h3>

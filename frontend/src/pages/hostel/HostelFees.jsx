@@ -560,7 +560,7 @@ export default function HostelFees() {
 
       {/* ══ Collect Payment Modal ══ */}
       {collectModal && selectedDue && (
-        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setCollectModal(false)}>
+        <div className="modal-backdrop" role="button" tabIndex={0} aria-label="Close modal" onClick={(e) => e.target === e.currentTarget && setCollectModal(false)} onKeyDown={(e) => e.key === 'Escape' && setCollectModal(false)}>
           <div className="modal" style={{ maxWidth: 460, background: darkMode ? '#1e293b' : '#ffffff', color: darkMode ? '#ffffff' : '#0f172a' }}>
             <div className="modal-header" style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>Collect Hostel Fee</h3>
@@ -654,7 +654,7 @@ export default function HostelFees() {
 
       {/* ══ Flexible Billing Generation Modal ══ */}
       {genModal && (
-        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setGenModal(false)}>
+        <div className="modal-backdrop" role="button" tabIndex={0} aria-label="Close modal" onClick={(e) => e.target === e.currentTarget && setGenModal(false)} onKeyDown={(e) => e.key === 'Escape' && setGenModal(false)}>
           <div className="modal" style={{ maxWidth: 460, background: darkMode ? '#1e293b' : '#fff' }}>
             <div className="modal-header">
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: darkMode ? '#f1f5f9' : '#0f172a' }}>

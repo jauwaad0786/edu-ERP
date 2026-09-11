@@ -114,7 +114,14 @@ export default function HRMSDashboard() {
 
           {/* ══ Top KPI Stats Cards ══ */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-            <div className="stat-card" style={cardBg} onClick={() => navigate('/hrms/employees')}>
+            <div
+              role="button"
+              tabIndex={0}
+              className="stat-card"
+              style={cardBg}
+              onClick={() => navigate('/hrms/employees')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/hrms/employees'); } }}
+            >
               <div className="stat-icon" style={{ background: '#3b82f616' }}>
                 <i className="ti ti-users" style={{ color: '#3b82f6', fontSize: '20px' }} />
               </div>
@@ -123,7 +130,14 @@ export default function HRMSDashboard() {
               <div className="stat-sub">{m.teachers_count || 0} Teachers • {m.staff_count || 0} Non-Teaching</div>
             </div>
 
-            <div className="stat-card" style={cardBg} onClick={() => navigate('/staff/attendance')}>
+            <div
+              role="button"
+              tabIndex={0}
+              className="stat-card"
+              style={cardBg}
+              onClick={() => navigate('/staff/attendance')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/staff/attendance'); } }}
+            >
               <div className="stat-icon" style={{ background: '#10b98116' }}>
                 <i className="ti ti-user-check" style={{ color: '#10b981', fontSize: '20px' }} />
               </div>
@@ -132,7 +146,14 @@ export default function HRMSDashboard() {
               <div className="stat-sub">{m.late_today || 0} Late • {m.half_day_today || 0} Half-Day</div>
             </div>
 
-            <div className="stat-card" style={cardBg} onClick={() => navigate('/staff/attendance')}>
+            <div
+              role="button"
+              tabIndex={0}
+              className="stat-card"
+              style={cardBg}
+              onClick={() => navigate('/staff/attendance')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/staff/attendance'); } }}
+            >
               <div className="stat-icon" style={{ background: '#ef444416' }}>
                 <i className="ti ti-user-x" style={{ color: '#ef4444', fontSize: '20px' }} />
               </div>
@@ -141,7 +162,14 @@ export default function HRMSDashboard() {
               <div className="stat-sub">{m.on_leave_today || 0} on Approved Leave</div>
             </div>
 
-            <div className="stat-card" style={cardBg} onClick={() => navigate('/hrms/leaves')}>
+            <div
+              role="button"
+              tabIndex={0}
+              className="stat-card"
+              style={cardBg}
+              onClick={() => navigate('/hrms/leaves')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/hrms/leaves'); } }}
+            >
               <div className="stat-icon" style={{ background: '#f59e0b16' }}>
                 <i className="ti ti-clock" style={{ color: '#f59e0b', fontSize: '20px' }} />
               </div>
@@ -152,7 +180,14 @@ export default function HRMSDashboard() {
               <div className="stat-sub">{m.pending_attendance_approvals || 0} Att. • {m.pending_leave_requests || 0} Leaves</div>
             </div>
 
-            <div className="stat-card" style={cardBg} onClick={() => navigate('/hrms/payroll')}>
+            <div
+              role="button"
+              tabIndex={0}
+              className="stat-card"
+              style={cardBg}
+              onClick={() => navigate('/hrms/payroll')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/hrms/payroll'); } }}
+            >
               <div className="stat-icon" style={{ background: '#8b5cf616' }}>
                 <i className="ti ti-wallet" style={{ color: '#8b5cf6', fontSize: '20px' }} />
               </div>
@@ -248,8 +283,11 @@ export default function HRMSDashboard() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
             
             <div
+              role="button"
+              tabIndex={0}
               style={{ ...cardBg, borderRadius: '14px', border: '1px solid', padding: '20px', cursor: 'pointer', transition: 'all 0.2s' }}
               onClick={() => navigate('/hrms/employees')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/hrms/employees'); } }}
               onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-3px)'}
               onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
             >
@@ -268,8 +306,11 @@ export default function HRMSDashboard() {
             </div>
 
             <div
+              role="button"
+              tabIndex={0}
               style={{ ...cardBg, borderRadius: '14px', border: '1px solid', padding: '20px', cursor: 'pointer', transition: 'all 0.2s' }}
               onClick={() => navigate('/staff/attendance')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/staff/attendance'); } }}
               onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-3px)'}
               onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
             >
@@ -288,8 +329,11 @@ export default function HRMSDashboard() {
             </div>
 
             <div
+              role="button"
+              tabIndex={0}
               style={{ ...cardBg, borderRadius: '14px', border: '1px solid', padding: '20px', cursor: 'pointer', transition: 'all 0.2s' }}
               onClick={() => navigate('/hrms/leaves')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/hrms/leaves'); } }}
               onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-3px)'}
               onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
             >
@@ -308,8 +352,11 @@ export default function HRMSDashboard() {
             </div>
 
             <div
+              role="button"
+              tabIndex={0}
               style={{ ...cardBg, borderRadius: '14px', border: '1px solid', padding: '20px', cursor: 'pointer', transition: 'all 0.2s' }}
               onClick={() => navigate('/hrms/payroll')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/hrms/payroll'); } }}
               onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-3px)'}
               onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
             >

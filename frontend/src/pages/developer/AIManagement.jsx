@@ -277,10 +277,20 @@ export default function AIManagement() {
                     {providers.map(p => (
                       <div
                         key={p.key}
+                        role="button"
+                        tabIndex={0}
                         onClick={() => {
                           const firstModel = p.models[0]?.id || '';
                           setForm(prev => ({ ...prev, provider: p.key, model: firstModel }));
                           setTestResult(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            const firstModel = p.models[0]?.id || '';
+                            setForm(prev => ({ ...prev, provider: p.key, model: firstModel }));
+                            setTestResult(null);
+                          }
                         }}
                         style={{
                           flex: 1, padding: '14px', borderRadius: '12px', cursor: 'pointer',

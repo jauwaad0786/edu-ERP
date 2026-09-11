@@ -92,7 +92,7 @@ export default function NotesPage() {
     classes.forEach(c => {
       if (c.section) set.add(c.section.trim());
     });
-    return Array.from(set).sort();
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [classes]);
 
   // Filtered subject list depending on selected class in filters
@@ -717,8 +717,15 @@ export default function NotesPage() {
 
           {/* ══ UPLOAD STUDY MATERIAL MODAL ══ */}
           {showUploadModal && (
-            <div style={S.modalOverlay} onClick={() => setShowUploadModal(false)}>
-              <div style={S.modalContent} onClick={e => e.stopPropagation()}>
+            <div
+              role="button"
+              tabIndex={0}
+              style={S.modalOverlay}
+              onClick={e => { if (e.target === e.currentTarget) setShowUploadModal(false); }}
+              onKeyDown={e => e.key === 'Escape' && setShowUploadModal(false)}
+              aria-label="Close upload study material modal"
+            >
+              <div style={S.modalContent}>
                 <div style={{
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                   paddingBottom: 12, borderBottom: '1px solid #f1f5f9', marginBottom: 14

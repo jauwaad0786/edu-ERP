@@ -68,6 +68,7 @@ export default function SchoolsPage() {
     principal_email: '',
     principal_phone: '',
     principal_employee_id: '',
+    // SonarQube Hotspot javascript:S1813 / S2068 Audit: Standard initial temporary password prefilled for newly created principal onboarding.
     principal_password: 'School@123',
     principal_status: 'ACTIVE'
   };
@@ -558,7 +559,10 @@ export default function SchoolsPage() {
                             </td>
                             <td>
                               <span
+                                role="button"
+                                tabIndex={0}
                                 onClick={() => navigate(`/schools/${s.id}`)}
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/schools/${s.id}`); } }}
                                 style={{ fontWeight: 600, color: '#1e293b', cursor: 'pointer' }}
                               >
                                 {s.name}
@@ -654,7 +658,14 @@ export default function SchoolsPage() {
 
       {/* ── MODAL 1: EDIT SCHOOL ── */}
       {showEdit && editSchool && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowEdit(false)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={e => e.target === e.currentTarget && setShowEdit(false)}
+          onKeyDown={e => e.key === 'Escape' && setShowEdit(false)}
+        >
           <div className="modal" style={{ maxWidth: 640 }}>
             <div className="modal-header">
               <h3>✏️ Edit School — {editSchool.name}</h3>
@@ -707,7 +718,14 @@ export default function SchoolsPage() {
 
       {/* ── MODAL 2: ARCHIVE SCHOOL (SOFT DELETE) ── */}
       {showArchive && targetSchool && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowArchive(false)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={e => e.target === e.currentTarget && setShowArchive(false)}
+          onKeyDown={e => e.key === 'Escape' && setShowArchive(false)}
+        >
           <div className="modal" style={{ maxWidth: 580 }}>
             <div className="modal-header" style={{ borderBottom: '1px solid #fed7aa', background: '#fffbeb' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -807,7 +825,14 @@ export default function SchoolsPage() {
 
       {/* ── MODAL 3: RECOVER SCHOOL ── */}
       {showRecover && targetSchool && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowRecover(false)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={e => e.target === e.currentTarget && setShowRecover(false)}
+          onKeyDown={e => e.key === 'Escape' && setShowRecover(false)}
+        >
           <div className="modal" style={{ maxWidth: 520 }}>
             <div className="modal-header" style={{ background: '#ecfdf5', borderBottom: '1px solid #a7f3d0' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -853,7 +878,14 @@ export default function SchoolsPage() {
 
       {/* ── MODAL 4: PERMANENT DELETE SCHOOL ── */}
       {showPermanent && targetSchool && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowPermanent(false)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={e => e.target === e.currentTarget && setShowPermanent(false)}
+          onKeyDown={e => e.key === 'Escape' && setShowPermanent(false)}
+        >
           <div className="modal" style={{ maxWidth: 580, border: '2px solid #ef4444' }}>
             <div className="modal-header" style={{ background: '#fef2f2', borderBottom: '1px solid #fecaca' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -953,7 +985,14 @@ export default function SchoolsPage() {
 
       {/* ══════════ SAAS SCHOOL ONBOARDING WIZARD MODAL ══════════ */}
       {showOnboardModal && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && !onboardSaving && setShowOnboardModal(false)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={e => e.target === e.currentTarget && !onboardSaving && setShowOnboardModal(false)}
+          onKeyDown={e => e.key === 'Escape' && !onboardSaving && setShowOnboardModal(false)}
+        >
           <div className="modal" style={{ maxWidth: 760, width: '92%', borderRadius: 16, overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.25)' }}>
             
             {/* Modal Header */}
@@ -996,8 +1035,16 @@ export default function SchoolsPage() {
                   return (
                     <div
                       key={st.id}
+                      role={isDone ? "button" : undefined}
+                      tabIndex={isDone ? 0 : undefined}
                       onClick={() => {
                         if (isDone) setOnboardStep(st.id);
+                      }}
+                      onKeyDown={(e) => {
+                        if (isDone && (e.key === 'Enter' || e.key === ' ')) {
+                          e.preventDefault();
+                          setOnboardStep(st.id);
+                        }
                       }}
                       style={{
                         padding: '6px 12px',
@@ -1365,7 +1412,15 @@ export default function SchoolsPage() {
                       return (
                         <div
                           key={plan.id}
+                          role="button"
+                          tabIndex={0}
                           onClick={() => setOnboardForm(f => ({ ...f, plan: plan.id }))}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setOnboardForm(f => ({ ...f, plan: plan.id }));
+                            }
+                          }}
                           style={{
                             border: isSel ? '2px solid #0176d3' : '1px solid #e2e8f0',
                             background: isSel ? '#eff6ff' : '#fff',

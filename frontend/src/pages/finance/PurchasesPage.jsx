@@ -450,7 +450,14 @@ export default function PurchasesPage() {
 
       {/* ══ MODAL: CREATE PURCHASE ORDER ══ */}
       {createPoModal && (
-        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setCreatePoModal(false)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={(e) => e.target === e.currentTarget && setCreatePoModal(false)}
+          onKeyDown={(e) => e.key === 'Escape' && setCreatePoModal(false)}
+        >
           <div className="modal" style={{ maxWidth: 680, background: darkMode ? '#1e293b' : '#fff' }}>
             <div className="modal-header">
               <h3 style={{ margin: 0, fontWeight: 800 }}>Create New Purchase Order</h3>
@@ -573,7 +580,14 @@ export default function PurchasesPage() {
 
       {/* ══ MODAL: RECEIVE GOODS (GRN) ══ */}
       {grnModal && (
-        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setGrnModal(false)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={(e) => e.target === e.currentTarget && setGrnModal(false)}
+          onKeyDown={(e) => e.key === 'Escape' && setGrnModal(false)}
+        >
           <div className="modal" style={{ maxWidth: 680, background: darkMode ? '#1e293b' : '#fff' }}>
             <div className="modal-header">
               <h3 style={{ margin: 0, fontWeight: 800 }}>Goods Receipt Note (GRN) — {selectedPo?.po_number}</h3>
@@ -678,7 +692,14 @@ export default function PurchasesPage() {
 
       {/* ══ MODAL: PAY VENDOR BILL ══ */}
       {payModal && (
-        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setPayModal(false)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={(e) => e.target === e.currentTarget && setPayModal(false)}
+          onKeyDown={(e) => e.key === 'Escape' && setPayModal(false)}
+        >
           <div className="modal" style={{ maxWidth: 480, background: darkMode ? '#1e293b' : '#fff' }}>
             <div className="modal-header">
               <h3 style={{ margin: 0, fontWeight: 800 }}>Pay Vendor Bill — {selectedBill?.bill_number}</h3>

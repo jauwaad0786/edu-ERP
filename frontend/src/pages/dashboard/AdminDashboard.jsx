@@ -667,7 +667,11 @@ export default function AdminDashboard() {
       {/* ── Add School Modal ── */}
       {showSchoolModal && (
         <div className="modal-backdrop"
-          onClick={e => e.target === e.currentTarget && setShowSchoolModal(false)}>
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={e => e.target === e.currentTarget && setShowSchoolModal(false)}
+          onKeyDown={e => e.key === 'Escape' && setShowSchoolModal(false)}>
           <div className="modal">
             <div className="modal-header">
               <h3>🏫 Add New School</h3>
@@ -721,7 +725,11 @@ export default function AdminDashboard() {
       {/* ── Edit School Modal ── */}
       {showEditModal && editSchool && (
         <div className="modal-backdrop"
-          onClick={e => e.target === e.currentTarget && setShowEditModal(false)}>
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={e => e.target === e.currentTarget && setShowEditModal(false)}
+          onKeyDown={e => e.key === 'Escape' && setShowEditModal(false)}>
           <div className="modal">
             <div className="modal-header">
               <h3>✏️ Edit School — {editSchool.name}</h3>
@@ -767,7 +775,11 @@ export default function AdminDashboard() {
       {/* ── Services / Features Modal ── */}
       {showFeaturesModal && featuresSchool && (
         <div className="modal-backdrop"
-          onClick={e => e.target === e.currentTarget && setShowFeaturesModal(false)}>
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={e => e.target === e.currentTarget && setShowFeaturesModal(false)}
+          onKeyDown={e => e.key === 'Escape' && setShowFeaturesModal(false)}>
           <div className="modal" style={{ maxWidth: 640 }}>
             <div className="modal-header">
               <h3>⚡ Services — {featuresSchool.name}</h3>
@@ -897,7 +909,11 @@ export default function AdminDashboard() {
            "Staff & Principal" tab, not here. ── */}
       {showSchoolHeadModal && (
         <div className="modal-backdrop"
-          onClick={e => e.target === e.currentTarget && setShowSchoolHeadModal(false)}>
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={e => e.target === e.currentTarget && setShowSchoolHeadModal(false)}
+          onKeyDown={e => e.key === 'Escape' && setShowSchoolHeadModal(false)}>
           <div className="modal">
             <div className="modal-header">
               <h3>🏫 Assign School Head</h3>

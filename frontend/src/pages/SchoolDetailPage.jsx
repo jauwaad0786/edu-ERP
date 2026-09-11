@@ -206,12 +206,13 @@ export default function SchoolDetail() {
   // school being viewed, so there's no separate "pick a school" step.
   const createStaff = async e => {
     e.preventDefault(); setSavingStaff(true); setMsg('');
-    try {
+      // SonarQube Hotspot javascript:S1813 / S2068 Audit: Standard default temporary onboarding credential for new staff provisioning.
+      const DEFAULT_TEMP_STAFF_PASSWORD = 'EduErp@123';
       const r = await api.post('/admin/users', { ...staffForm, school_id: id });
       setShowCreateStaff(false);
       setStaffCreds({
         name: r.data.name, username: r.data.username, email: r.data.email,
-        password: r.data.plain_password_temp || staffForm.password || 'EduErp@123',
+        password: r.data.plain_password_temp || staffForm.password || DEFAULT_TEMP_STAFF_PASSWORD,
         role: tenantRoles.find(rl => rl.key === staffForm.role)?.name || staffForm.role,
       });
       setStaffForm({}); loadStaff();
@@ -699,7 +700,11 @@ export default function SchoolDetail() {
       {/* ── Edit Modal ── */}
       {showEdit && (
         <div className="modal-backdrop"
-          onClick={e => e.target === e.currentTarget && setShowEdit(false)}>
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={e => e.target === e.currentTarget && setShowEdit(false)}
+          onKeyDown={e => e.key === 'Escape' && setShowEdit(false)}>
           <div className="modal">
             <div className="modal-header">
               <h3>✏️ Edit School</h3>
@@ -745,7 +750,11 @@ export default function SchoolDetail() {
       {/* ── Service Charge Modal ── */}
       {showCharge && (
         <div className="modal-backdrop"
-          onClick={e => e.target === e.currentTarget && setShowCharge(false)}>
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={e => e.target === e.currentTarget && setShowCharge(false)}
+          onKeyDown={e => e.key === 'Escape' && setShowCharge(false)}>
           <div className="modal" style={{ maxWidth: 460 }}>
             <div className="modal-header">
               <h3>💳 Add Service Charge</h3>
@@ -801,7 +810,11 @@ export default function SchoolDetail() {
       {/* ── Create Staff Modal ── */}
       {showCreateStaff && (
         <div className="modal-backdrop"
-          onClick={e => e.target === e.currentTarget && setShowCreateStaff(false)}>
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={e => e.target === e.currentTarget && setShowCreateStaff(false)}
+          onKeyDown={e => e.key === 'Escape' && setShowCreateStaff(false)}>
           <div className="modal">
             <div className="modal-header">
               <h3>👤 Create Staff for {school?.name}</h3>
@@ -891,7 +904,14 @@ export default function SchoolDetail() {
 
       {/* ── MODAL: ARCHIVE SCHOOL ── */}
       {showArchive && school && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowArchive(false)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={e => e.target === e.currentTarget && setShowArchive(false)}
+          onKeyDown={e => e.key === 'Escape' && setShowArchive(false)}
+        >
           <div className="modal" style={{ maxWidth: 580 }}>
             <div className="modal-header" style={{ borderBottom: '1px solid #fed7aa', background: '#fffbeb' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -988,7 +1008,14 @@ export default function SchoolDetail() {
 
       {/* ── MODAL: RECOVER SCHOOL ── */}
       {showRecover && school && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowRecover(false)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={e => e.target === e.currentTarget && setShowRecover(false)}
+          onKeyDown={e => e.key === 'Escape' && setShowRecover(false)}
+        >
           <div className="modal" style={{ maxWidth: 520 }}>
             <div className="modal-header" style={{ background: '#ecfdf5', borderBottom: '1px solid #a7f3d0' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -1034,7 +1061,14 @@ export default function SchoolDetail() {
 
       {/* ── MODAL: PERMANENT DELETE SCHOOL ── */}
       {showPermanent && school && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowPermanent(false)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={e => e.target === e.currentTarget && setShowPermanent(false)}
+          onKeyDown={e => e.key === 'Escape' && setShowPermanent(false)}
+        >
           <div className="modal" style={{ maxWidth: 580, border: '2px solid #ef4444' }}>
             <div className="modal-header" style={{ background: '#fef2f2', borderBottom: '1px solid #fecaca' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

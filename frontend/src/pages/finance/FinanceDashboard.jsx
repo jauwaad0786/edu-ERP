@@ -230,7 +230,14 @@ export default function FinanceDashboard() {
               {/* Phase 2: Procurement, Inventory & Assets Command Grid */}
               <div className="grid-3 mb-6" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
                 {/* 1. Consumables & Inventory */}
-                <div className="card" style={{ padding: 18, borderLeft: '4px solid #0d9488', cursor: 'pointer' }} onClick={() => navigate('/finance/inventory')}>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className="card"
+                  style={{ padding: 18, borderLeft: '4px solid #0d9488', cursor: 'pointer' }}
+                  onClick={() => navigate('/finance/inventory')}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/finance/inventory'); } }}
+                >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                     <span style={{ fontSize: 11, fontWeight: 800, color: '#0d9488' }}>CONSUMABLES &amp; SUPPLIES</span>
                     <i className="ti ti-package" style={{ fontSize: 18, color: '#0d9488' }} />
@@ -247,7 +254,14 @@ export default function FinanceDashboard() {
                 </div>
 
                 {/* 2. Vendors & Payables */}
-                <div className="card" style={{ padding: 18, borderLeft: '4px solid #2563eb', cursor: 'pointer' }} onClick={() => navigate('/finance/purchases')}>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className="card"
+                  style={{ padding: 18, borderLeft: '4px solid #2563eb', cursor: 'pointer' }}
+                  onClick={() => navigate('/finance/purchases')}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/finance/purchases'); } }}
+                >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                     <span style={{ fontSize: 11, fontWeight: 800, color: '#2563eb' }}>PURCHASES &amp; PAYABLES</span>
                     <i className="ti ti-shopping-cart" style={{ fontSize: 18, color: '#2563eb' }} />
@@ -264,7 +278,14 @@ export default function FinanceDashboard() {
                 </div>
 
                 {/* 3. School Assets */}
-                <div className="card" style={{ padding: 18, borderLeft: '4px solid #4f46e5', cursor: 'pointer' }} onClick={() => navigate('/finance/assets')}>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className="card"
+                  style={{ padding: 18, borderLeft: '4px solid #4f46e5', cursor: 'pointer' }}
+                  onClick={() => navigate('/finance/assets')}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/finance/assets'); } }}
+                >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                     <span style={{ fontSize: 11, fontWeight: 800, color: '#4f46e5' }}>CAPITAL ASSETS REGISTER</span>
                     <i className="ti ti-devices" style={{ fontSize: 18, color: '#4f46e5' }} />

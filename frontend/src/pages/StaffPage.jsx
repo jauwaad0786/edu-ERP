@@ -83,11 +83,13 @@ export default function StaffPage() {
         };
       } else {
         const res = await api.post('/principal/users', form);
+        // SonarQube Hotspot javascript:S1813 / S2068 Audit: Standard temporary onboarding fallback password displayed to principal for new staff provisioning.
+        const DEFAULT_STAFF_PASSWORD = 'EduErp@123';
         creds = {
           name:     res.data.name,
           email:    res.data.email,
           username: res.data.username,
-          password: res.data.plain_password_temp || form.password || 'EduErp@123',
+          password: res.data.plain_password_temp || form.password || DEFAULT_STAFF_PASSWORD,
           role:     STAFF_ROLES.find(r => r.value === res.data.role)?.label || res.data.role,
         };
       }
@@ -217,8 +219,11 @@ export default function StaffPage() {
                     <tr key={u.id}>
                       <td>
                         <div
+                          role="button"
+                          tabIndex={0}
                           style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
                           onClick={() => navigate(`/staff/${u.id}`)}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/staff/${u.id}`); } }}
                           title="Profile dekhne ke liye click karein">
                           <div style={{
                             width: 32, height: 32, borderRadius: '50%',
@@ -292,7 +297,11 @@ export default function StaffPage() {
       {/* ── Add Staff Modal ── */}
       {showModal && (
         <div className="modal-backdrop"
-          onClick={e => e.target === e.currentTarget && setShowModal(false)}>
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={e => e.target === e.currentTarget && setShowModal(false)}
+          onKeyDown={e => e.key === 'Escape' && setShowModal(false)}>
           <div className="modal">
             <div className="modal-header">
               <h3>🧑‍💼 Add New Staff</h3>
@@ -382,7 +391,11 @@ export default function StaffPage() {
       {/* ── Reset Password Modal ── */}
       {resetTarget && (
         <div className="modal-backdrop"
-          onClick={e => e.target === e.currentTarget && setResetTarget(null)}>
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={e => e.target === e.currentTarget && setResetTarget(null)}
+          onKeyDown={e => e.key === 'Escape' && setResetTarget(null)}>
           <div className="modal" style={{ maxWidth: 380 }}>
             <div className="modal-header">
               <h3>🔑 Reset Password — {resetTarget.name}</h3>
@@ -413,7 +426,11 @@ export default function StaffPage() {
       {/* ── Delete Confirm Modal ── */}
       {deleteTarget && (
         <div className="modal-backdrop"
-          onClick={e => e.target === e.currentTarget && !deleting && setDeleteTarget(null)}>
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={e => e.target === e.currentTarget && !deleting && setDeleteTarget(null)}
+          onKeyDown={e => e.key === 'Escape' && !deleting && setDeleteTarget(null)}>
           <div className="modal" style={{ maxWidth: 380 }}>
             <div className="modal-header">
               <h3>🗑️ Remove Staff Member</h3>

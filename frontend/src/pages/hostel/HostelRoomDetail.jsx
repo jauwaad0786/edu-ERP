@@ -125,7 +125,10 @@ export default function HostelRoomDetail() {
                           <td style={{ padding: '10px 6px' }}>
                             {bed.student_name ? (
                               <span
+                                role="button"
+                                tabIndex={0}
                                 onClick={() => navigate(`/students/${bed.student_id}`)}
+                                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/students/${bed.student_id}`); } }}
                                 style={{ color: '#4f46e5', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}
                               >
                                 {bed.student_name}

@@ -231,8 +231,14 @@ export default function Navbar({ title, darkMode, onToggleDark }) {
             />
             {searchOpen && searchQ.trim() && (
               <>
-                <div style={{ position: 'fixed', inset: 0, zIndex: 98 }}
-                  onClick={() => setSearchOpen(false)} />
+                <div
+                  role="button"
+                  tabIndex={0}
+                  style={{ position: 'fixed', inset: 0, zIndex: 98 }}
+                  onClick={() => setSearchOpen(false)}
+                  onKeyDown={e => (e.key === 'Escape' || e.key === 'Enter') && setSearchOpen(false)}
+                  aria-label="Close search results"
+                />
                 <div style={{
                   position: 'absolute', top: 36, left: 0, width: '100%',
                   background: dropBg, borderRadius: 10,
@@ -250,10 +256,19 @@ export default function Navbar({ title, darkMode, onToggleDark }) {
                   ) : (
                     searchResults.map(s => (
                       <div key={s.id}
+                        role="button"
+                        tabIndex={0}
                         onClick={() => {
                           navigate(`/students/${s.id}`);
                           setSearchOpen(false);
                           setSearchQ('');
+                        }}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            navigate(`/students/${s.id}`);
+                            setSearchOpen(false);
+                            setSearchQ('');
+                          }
                         }}
                         style={{
                           display: 'flex', alignItems: 'center', gap: 10,
@@ -360,8 +375,14 @@ export default function Navbar({ title, darkMode, onToggleDark }) {
 
               {showNotif && (
                 <>
-                  <div style={{ position: 'fixed', inset: 0, zIndex: 98 }}
-                    onClick={() => setShowNotif(false)} />
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    style={{ position: 'fixed', inset: 0, zIndex: 98 }}
+                    onClick={() => setShowNotif(false)}
+                    onKeyDown={e => (e.key === 'Escape' || e.key === 'Enter') && setShowNotif(false)}
+                    aria-label="Close notifications"
+                  />
                   <div style={{
                     position: 'absolute', top: 42, right: 0, width: 320,
                     background: dropBg, borderRadius: 12,
@@ -430,7 +451,15 @@ export default function Navbar({ title, darkMode, onToggleDark }) {
                           </div>
                         ))}
                         <div
+                          role="button"
+                          tabIndex={0}
                           onClick={() => { navigate('/dashboard'); setShowNotif(false); }}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              navigate('/dashboard');
+                              setShowNotif(false);
+                            }
+                          }}
                           style={{
                             padding: '10px 16px', textAlign: 'center',
                             fontSize: 12, color: '#4f46e5', fontWeight: 600,
@@ -453,7 +482,11 @@ export default function Navbar({ title, darkMode, onToggleDark }) {
           {/* ── User avatar + dropdown ── */}
           <div style={{ position: 'relative' }}>
             <div
+              role="button"
+              tabIndex={0}
               onClick={() => setMenuOpen(o => !o)}
+              onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && setMenuOpen(o => !o)}
+              aria-label="Toggle user menu"
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '4px 10px 4px 4px', borderRadius: 99,
@@ -486,8 +519,14 @@ export default function Navbar({ title, darkMode, onToggleDark }) {
 
             {menuOpen && (
               <>
-                <div style={{ position: 'fixed', inset: 0, zIndex: 98 }}
-                  onClick={() => setMenuOpen(false)} />
+                <div
+                  role="button"
+                  tabIndex={0}
+                  style={{ position: 'fixed', inset: 0, zIndex: 98 }}
+                  onClick={() => setMenuOpen(false)}
+                  onKeyDown={e => (e.key === 'Escape' || e.key === 'Enter') && setMenuOpen(false)}
+                  aria-label="Close user menu"
+                />
                 <div style={{
                   position: 'absolute', top: 46, right: 0, width: 220,
                   background: dropBg, borderRadius: 12,
@@ -550,11 +589,15 @@ export default function Navbar({ title, darkMode, onToggleDark }) {
       {/* ── Change Password Modal ── */}
       {showReset && (
         <div
+          role="button"
+          tabIndex={0}
           style={{
             position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
             zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}
-          onClick={e => { if (e.target === e.currentTarget) handleResetClose(); }}>
+          onClick={e => { if (e.target === e.currentTarget) handleResetClose(); }}
+          onKeyDown={e => e.key === 'Escape' && handleResetClose()}
+          aria-label="Close modal backdrop">
           <div style={{
             background: darkMode ? '#1e293b' : '#fff',
             border: `1px solid ${dropBorder}`,

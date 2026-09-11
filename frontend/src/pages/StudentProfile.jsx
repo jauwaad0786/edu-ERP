@@ -988,7 +988,14 @@ export default function StudentProfile() {
 
       {/* ── Issue Document Modal (School → Student) ── */}
       {showIssueModal && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && !docSaving && setShowIssueModal(false)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={e => e.target === e.currentTarget && !docSaving && setShowIssueModal(false)}
+          onKeyDown={e => e.key === 'Escape' && !docSaving && setShowIssueModal(false)}
+        >
           <div className="modal" style={{ maxWidth: 420 }}>
             <div className="modal-header">
               <h3>🏫 Issue Document</h3>
@@ -1031,7 +1038,14 @@ export default function StudentProfile() {
 
       {/* ── Upload Student Document Modal ── */}
       {showUploadModal && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && !docSaving && setShowUploadModal(false)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={e => e.target === e.currentTarget && !docSaving && setShowUploadModal(false)}
+          onKeyDown={e => e.key === 'Escape' && !docSaving && setShowUploadModal(false)}
+        >
           <div className="modal" style={{ maxWidth: 420 }}>
             <div className="modal-header">
               <h3>📁 Upload Document</h3>
@@ -1074,7 +1088,14 @@ export default function StudentProfile() {
 
       {/* ── Delete Document Confirmation ── */}
       {deleteDocTarget && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setDeleteDocTarget(null)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={e => e.target === e.currentTarget && setDeleteDocTarget(null)}
+          onKeyDown={e => e.key === 'Escape' && setDeleteDocTarget(null)}
+        >
           <div className="modal" style={{ maxWidth: 380 }}>
             <div className="modal-header">
               <h3>🗑️ Delete Document</h3>
@@ -1099,7 +1120,14 @@ export default function StudentProfile() {
 
       {/* ── Exam Picker Modal (Admit Card / Result Card) ── */}
       {examPickerType && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setExamPickerType(null)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={e => e.target === e.currentTarget && setExamPickerType(null)}
+          onKeyDown={e => e.key === 'Escape' && setExamPickerType(null)}
+        >
           <div className="modal" style={{ maxWidth: 420 }}>
             <div className="modal-header">
               <h3>{examPickerType === 'admit' ? '🎟️ Admit Card Download' : '📊 Result Card Download'}</h3>

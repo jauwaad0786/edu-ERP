@@ -193,6 +193,8 @@ export default function RoleManagement() {
             .map((role, index) => (
               <div
                 key={role.id}
+                role="button"
+                tabIndex={0}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -202,6 +204,12 @@ export default function RoleManagement() {
                   cursor: 'pointer',
                 }}
                 onClick={() => toggleExpand(role.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleExpand(role.id);
+                  }
+                }}
               >
                 <div style={{ 
                   width: 32, 
@@ -272,7 +280,11 @@ export default function RoleManagement() {
       {showModal && (
         <div
           className="modal-overlay"
-          onClick={() => { setShowModal(false); resetForm(); }}
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={(e) => { if (e.target === e.currentTarget) { setShowModal(false); resetForm(); } }}
+          onKeyDown={(e) => { if (e.key === 'Escape') { setShowModal(false); resetForm(); } }}
           style={{
             position: 'fixed', inset: 0, zIndex: 1000,
             background: 'rgba(15,23,42,0.55)',
@@ -282,7 +294,6 @@ export default function RoleManagement() {
         >
           <div
             className="modal"
-            onClick={(e) => e.stopPropagation()}
             style={{
               maxWidth: 500, width: '100%',
               maxHeight: '90vh', overflowY: 'auto',

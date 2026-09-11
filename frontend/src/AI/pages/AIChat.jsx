@@ -262,8 +262,11 @@ export default function AIChat() {
           {conversations.map(conv => (
             <div
               key={conv.id}
+              role="button"
+              tabIndex={0}
               className={`ai-conv-item ${conv.id === convId ? 'active' : ''}`}
               onClick={() => handleLoadConversation(conv.id)}
+              onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && handleLoadConversation(conv.id)}
             >
               <span style={{ fontSize: 14 }}>💬</span>
               <span className="ai-conv-title">{conv.title || 'Conversation'}</span>
@@ -321,7 +324,14 @@ export default function AIChat() {
 
               <div className="ai-suggested-grid">
                 {suggestions.map((s, i) => (
-                  <div key={i} className="ai-suggest-card" onClick={() => handleSend(s.text)}>
+                  <div
+                    key={i}
+                    role="button"
+                    tabIndex={0}
+                    className="ai-suggest-card"
+                    onClick={() => handleSend(s.text)}
+                    onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && handleSend(s.text)}
+                  >
                     <div className="ai-suggest-icon">{s.icon}</div>
                     <div className="ai-suggest-text">{s.text}</div>
                   </div>
@@ -376,9 +386,13 @@ export default function AIChat() {
                 {activeDoc.original_name}
               </span>
               <span
+                role="button"
+                tabIndex={0}
                 className="ai-doc-badge-close"
                 onClick={() => setActiveDocId(null)}
+                onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && setActiveDocId(null)}
                 title="Remove document context"
+                aria-label="Remove document context"
               >✕</span>
             </div>
           )}
@@ -455,8 +469,11 @@ export default function AIChat() {
           {documents.map(doc => (
             <div
               key={doc.id}
+              role="button"
+              tabIndex={0}
               className={`ai-doc-item ${doc.id === activeDocId ? 'active' : ''}`}
               onClick={() => setActiveDocId(doc.id === activeDocId ? null : doc.id)}
+              onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && setActiveDocId(doc.id === activeDocId ? null : doc.id)}
             >
               <span className="ai-doc-icon">{FILE_ICONS[doc.file_type] || '📄'}</span>
               <div style={{ flex: 1, minWidth: 0 }}>

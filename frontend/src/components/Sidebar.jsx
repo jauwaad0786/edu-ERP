@@ -835,7 +835,12 @@ export default function Sidebar({ darkMode }) {
                 return (
                   <div key={item.path}>
                     {hasKids ? (
-                      <div onClick={() => toggleExpand(item.path)} style={{
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => toggleExpand(item.path)}
+                        onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && toggleExpand(item.path)}
+                        style={{
                         display: 'flex', alignItems: 'center', gap: 8,
                         padding: '7px 8px', borderRadius: 7,
                         color:      active ? NAV.textActive : NAV.textBase,

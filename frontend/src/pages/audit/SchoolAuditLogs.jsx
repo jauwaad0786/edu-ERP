@@ -308,8 +308,15 @@ export default function SchoolAuditLogs() {
 
       {/* Purge Modal */}
       {showPurgeModal && (
-        <div className="modal-overlay" onClick={() => setShowPurgeModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400, background: darkMode ? '#141b2d' : undefined }}>
+        <div
+          className="modal-overlay"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowPurgeModal(false); }}
+          onKeyDown={(e) => { if (e.key === 'Escape') setShowPurgeModal(false); }}
+        >
+          <div className="modal" style={{ maxWidth: 400, background: darkMode ? '#141b2d' : undefined }}>
             <div className="modal-header">
               <h3 style={{ color: '#dc2626' }}>⚠️ Purge Old Logs</h3>
               <button className="btn-close" onClick={() => setShowPurgeModal(false)}>×</button>

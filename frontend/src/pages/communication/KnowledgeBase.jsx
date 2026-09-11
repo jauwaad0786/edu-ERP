@@ -33,7 +33,15 @@ function ArticleCard({ article, darkMode, onClick }) {
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       style={{
         background:   cardBg,
         border:       `1px solid ${border}`,
@@ -128,6 +136,9 @@ function ArticleModal({ article, darkMode, onClose }) {
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label="Close modal"
       style={{
         position: 'fixed', inset: 0,
         background: 'rgba(0,0,0,0.55)',
@@ -136,6 +147,7 @@ function ArticleModal({ article, darkMode, onClose }) {
         padding: 20,
       }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      onKeyDown={e => { if (e.key === 'Escape') onClose(); }}
     >
       <div style={{
         background:   bg,
@@ -485,7 +497,16 @@ export default function KnowledgeBase() {
                     {byModule.map(m => (
                       <div
                         key={m.module_name}
+                        role="button"
+                        tabIndex={0}
                         onClick={() => { setModuleFilter(m.module_name); setView('module'); }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setModuleFilter(m.module_name);
+                            setView('module');
+                          }
+                        }}
                         style={{
                           background:   cardBg,
                           border:       `1px solid ${border}`,

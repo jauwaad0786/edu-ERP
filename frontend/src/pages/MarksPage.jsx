@@ -44,7 +44,11 @@ function TopperCard({ icon, title, subtitle, toppers, loading, valueLabel='perce
             No results yet
           </div>
         ) : toppers.map(t => (
-          <div key={t.student_id} onClick={() => onStudentClick(t.student_id)}
+          <div key={t.student_id}
+            role="button"
+            tabIndex={0}
+            onClick={() => onStudentClick(t.student_id)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onStudentClick(t.student_id); } }}
             style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px',
               borderRadius:8, border:'1px solid var(--neutral-2)', cursor:'pointer',
               marginBottom:6, transition:'background 0.15s' }}

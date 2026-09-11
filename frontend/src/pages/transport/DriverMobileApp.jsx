@@ -720,7 +720,15 @@ export default function DriverMobileApp() {
               }}>
                 {/* 1. Onboard / Bus Mein Hain */}
                 <div
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setManifestFilter('ONBOARD')}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setManifestFilter('ONBOARD');
+                    }
+                  }}
                   style={{
                     background: darkMode ? '#064e3b30' : '#ecfdf5',
                     border: `2px solid ${manifestFilter === 'ONBOARD' ? '#10b981' : (darkMode ? '#064e3b60' : '#a7f3d0')}`,
@@ -742,7 +750,15 @@ export default function DriverMobileApp() {
 
                 {/* 2. Dropped Off / Utar Gaye */}
                 <div
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setManifestFilter('DROPPED')}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setManifestFilter('DROPPED');
+                    }
+                  }}
                   style={{
                     background: darkMode ? '#1e3a8a30' : '#eff6ff',
                     border: `2px solid ${manifestFilter === 'DROPPED' ? '#3b82f6' : (darkMode ? '#1e3a8a60' : '#bfdbfe')}`,
@@ -764,7 +780,15 @@ export default function DriverMobileApp() {
 
                 {/* 3. Absent / Nahi Aaye */}
                 <div
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setManifestFilter('ALL')}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setManifestFilter('ALL');
+                    }
+                  }}
                   style={{
                     background: darkMode ? '#7f1d1d30' : '#fef2f2',
                     border: `2px solid ${darkMode ? '#7f1d1d60' : '#fecaca'}`,
@@ -785,7 +809,15 @@ export default function DriverMobileApp() {
 
                 {/* 4. Pending / Baki Hain */}
                 <div
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setManifestFilter('ALL')}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setManifestFilter('ALL');
+                    }
+                  }}
                   style={{
                     background: darkMode ? '#78350f30' : '#fffbeb',
                     border: `2px solid ${darkMode ? '#78350f60' : '#fde68a'}`,

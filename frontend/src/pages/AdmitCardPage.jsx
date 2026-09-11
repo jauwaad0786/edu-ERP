@@ -827,18 +827,23 @@ export default function AdmitCardPage() {
 
           {/* Live Admit Card Preview Modal */}
           {previewStudent && (
-            <div style={{
-              position: 'fixed',
-              inset: 0,
-              background: 'rgba(15, 23, 42, 0.65)',
-              backdropFilter: 'blur(4px)',
-              zIndex: 1200,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 20
-            }}
-            onClick={e => e.target === e.currentTarget && setPreviewStudent(null)}
+            <div
+              role="button"
+              tabIndex={0}
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(15, 23, 42, 0.65)',
+                backdropFilter: 'blur(4px)',
+                zIndex: 1200,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 20
+              }}
+              onClick={e => e.target === e.currentTarget && setPreviewStudent(null)}
+              onKeyDown={e => e.key === 'Escape' && setPreviewStudent(null)}
+              aria-label="Close admit card preview"
             >
               <div style={{
                 background: '#ffffff',

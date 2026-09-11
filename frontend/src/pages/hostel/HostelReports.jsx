@@ -32,7 +32,7 @@ export default function HostelReports() {
             {TABS.map(t => (
               <button key={t.key} onClick={() => setTab(t.key)} style={{
                 padding: '9px 18px', fontSize: 13, fontWeight: 700, borderRadius: 8,
-                border: 'none', cursor: 'pointer',
+                cursor: 'pointer',
                 background: tab === t.key ? '#4f46e5' : (darkMode ? '#1e293b' : '#fff'),
                 color: tab === t.key ? '#fff' : (darkMode ? '#94a3b8' : '#64748b'),
                 border: `1px solid ${tab === t.key ? '#4f46e5' : (darkMode ? '#334155' : '#e2e8f0')}`,

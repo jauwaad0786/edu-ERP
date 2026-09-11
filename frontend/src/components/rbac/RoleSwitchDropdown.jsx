@@ -75,6 +75,8 @@ export default function RoleSwitchDropdown({ darkMode }) {
       {showDropdown && (
         <>
           <div
+            role="button"
+            tabIndex={0}
             style={{
               position: 'fixed',
               top: 0,
@@ -84,6 +86,8 @@ export default function RoleSwitchDropdown({ darkMode }) {
               zIndex: 999,
             }}
             onClick={() => setShowDropdown(false)}
+            onKeyDown={(e) => (e.key === 'Escape' || e.key === 'Enter') && setShowDropdown(false)}
+            aria-label="Close dropdown"
           />
           <div
             style={{
@@ -107,7 +111,6 @@ export default function RoleSwitchDropdown({ darkMode }) {
                 key={role.id}
                 onClick={() => switchRole(role.id)}
                 style={{
-                  display: 'block',
                   width: '100%',
                   padding: '8px 16px',
                   textAlign: 'left',

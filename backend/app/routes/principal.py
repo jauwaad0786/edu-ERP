@@ -5932,9 +5932,6 @@ def my_teaching_assignments():
             })
     return jsonify(result), 200
 
-    db.session.commit()
-    return jsonify(user.to_dict_with_credentials()), 200
-
 
 # ─── Documents (Student KYC + School-Issued + Analytics) ──────────────────────
 

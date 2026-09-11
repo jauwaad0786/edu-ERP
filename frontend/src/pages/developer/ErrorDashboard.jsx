@@ -353,8 +353,15 @@ export default function ErrorDashboard() {
       </div>
 
       {showDetail && selectedError && (
-        <div className="modal-backdrop" onClick={() => setShowDetail(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 600, background: darkMode ? '#141b2d' : undefined }}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowDetail(false); }}
+          onKeyDown={(e) => { if (e.key === 'Escape') setShowDetail(false); }}
+        >
+          <div className="modal" style={{ maxWidth: 600, background: darkMode ? '#141b2d' : undefined }}>
             <div className="modal-header">
               <h3>Error Details</h3>
               <button className="modal-close" onClick={() => setShowDetail(false)}>×</button>

@@ -22,7 +22,15 @@ function StatCard({ label, value, icon, color, sub, darkMode, onClick, active })
   const border = darkMode ? '#1e293b' : '#e2e8f0';
   return (
     <div
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (onClick && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       style={{
         background:   active ? (color + '14') : (darkMode ? '#141b2d' : '#fff'),
         border:       `1px solid ${active ? color : border}`,
@@ -72,7 +80,15 @@ function TicketRow({ ticket, darkMode, onClick }) {
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       style={{
         display:      'flex',
         alignItems:   'center',
@@ -534,7 +550,15 @@ export default function SupportDashboard() {
                     {s.by_product.map((item) => (
                       <div
                         key={item.product_type}
+                        role="button"
+                        tabIndex={0}
                         onClick={() => setProductType(item.product_type)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setProductType(item.product_type);
+                          }
+                        }}
                         style={{
                           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                           padding: '6px 8px', borderRadius: 8, cursor: 'pointer',
@@ -594,7 +618,15 @@ export default function SupportDashboard() {
                     {meetings.map(m => (
                       <div
                         key={m.id}
+                        role="button"
+                        tabIndex={0}
                         onClick={() => navigate('/support/meetings')}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            navigate('/support/meetings');
+                          }
+                        }}
                         style={{
                           padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
                           border: `1px solid ${border}`,

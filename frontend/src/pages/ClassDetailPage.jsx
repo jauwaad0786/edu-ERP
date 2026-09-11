@@ -524,7 +524,14 @@ export default function ClassDetailPage() {
 
       {/* Add Subject Modal */}
       {showAddSubject && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowAddSubject(false)}>
+        <div
+          role="button"
+          tabIndex={0}
+          className="modal-backdrop"
+          onClick={e => e.target === e.currentTarget && setShowAddSubject(false)}
+          onKeyDown={e => e.key === 'Escape' && setShowAddSubject(false)}
+          aria-label="Close modal"
+        >
           <div className="modal" style={{ maxWidth: 440 }}>
             <div className="modal-header">
               <h3>➕ Add Subject to {data.class_name} ({data.section})</h3>

@@ -162,6 +162,8 @@ export default function IssueBoard() {
                 getIssuesByStatus(status).map(issue => (
                   <div
                     key={issue.id}
+                    role="button"
+                    tabIndex={0}
                     style={{
                       background: darkMode ? '#0f172a' : 'white',
                       border: `1px solid ${darkMode ? '#1e293b' : '#e2e8f0'}`,
@@ -174,6 +176,13 @@ export default function IssueBoard() {
                     onClick={() => {
                       setSelectedIssue(issue);
                       setShowModal(true);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedIssue(issue);
+                        setShowModal(true);
+                      }
                     }}
                     onMouseEnter={e => e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)'}
                     onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
@@ -232,8 +241,15 @@ export default function IssueBoard() {
       </div>
 
       {showModal && selectedIssue && (
-        <div className="modal-backdrop" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 600, background: darkMode ? '#141b2d' : undefined }}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowModal(false); }}
+          onKeyDown={(e) => { if (e.key === 'Escape') setShowModal(false); }}
+        >
+          <div className="modal" style={{ maxWidth: 600, background: darkMode ? '#141b2d' : undefined }}>
             <div className="modal-header">
               <h3>Issue Details</h3>
               <button className="modal-close" onClick={() => setShowModal(false)}>×</button>

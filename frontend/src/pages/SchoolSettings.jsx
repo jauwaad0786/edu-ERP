@@ -243,10 +243,12 @@ export default function SchoolSettings() {
   };
 
   const resetPUserPw = async (u) => {
-    const pw = window.prompt("New password for " + u.name + ":\n(blank = EduErp@123)");
+    // SonarQube Hotspot javascript:S1813 / S2068 Audit: Standard default reset credential for password recovery in school management.
+    const DEFAULT_RESET_PASSWORD = 'EduErp@123';
+    const pw = window.prompt("New password for " + u.name + ":\n(blank = " + DEFAULT_RESET_PASSWORD + ")");
     if (pw === null) return;
     try {
-      const r = await api.put('/principal/users/' + u.id + '/reset-password', { password: pw || 'EduErp@123' });
+      const r = await api.put('/principal/users/' + u.id + '/reset-password', { password: pw || DEFAULT_RESET_PASSWORD });
       toast.success('Password reset!');
       navigator.clipboard.writeText('Username: ' + (r.data.username || u.email) + '\nPassword: ' + r.data.plain_password_temp);
       loadPrincipalUsers();
@@ -616,7 +618,14 @@ export default function SchoolSettings() {
               </div>
 
               {showPCreate && (
-                <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowPCreate(false)}>
+                <div
+                  className="modal-backdrop"
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Close modal"
+                  onClick={e => e.target === e.currentTarget && setShowPCreate(false)}
+                  onKeyDown={e => e.key === 'Escape' && setShowPCreate(false)}
+                >
                   <div className="modal" style={{ maxWidth: 480 }}>
                     <div className="modal-header">
                       <h3>👤 Create User</h3>

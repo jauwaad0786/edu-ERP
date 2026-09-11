@@ -256,8 +256,14 @@ function EditStudentModal({ student, onClose, onSaved }) {
   function f(field, val) { setForm(p => ({ ...p, [field]: val })); }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+    <div
+      role="button"
+      tabIndex={0}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      onKeyDown={e => e.key === 'Escape' && onClose()}
+      aria-label="Close edit student modal"
+    >
       <div style={{ background: '#fff', borderRadius: 16, padding: '28px 28px', width: 480, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 24px 64px rgba(0,0,0,0.2)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>✏️ Edit Student</div>
@@ -743,10 +749,18 @@ export default function IDCardPage() {
 
                         return (
                           <tr key={s.id}
+                            role="button"
+                            tabIndex={0}
                             style={{ background: isSelected ? '#eff6ff' : 'transparent', cursor: 'pointer' }}
                             onClick={function() {
                               setSelId(s.id);
                               loadPreview(s.id, isEmployee ? 'employee' : 'student');
+                            }}
+                            onKeyDown={function(e) {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                setSelId(s.id);
+                                loadPreview(s.id, isEmployee ? 'employee' : 'student');
+                              }
                             }}>
                             <td style={{ color: '#94a3b8', fontSize: 12 }}>{i + 1}</td>
                             <td>
@@ -851,8 +865,14 @@ export default function IDCardPage() {
 
       {/* Delete Confirm Modal */}
       {deleteConfirm && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onClick={e => { if (e.target === e.currentTarget) setDeleteConfirm(null); }}>
+        <div
+          role="button"
+          tabIndex={0}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={e => { if (e.target === e.currentTarget) setDeleteConfirm(null); }}
+          onKeyDown={e => e.key === 'Escape' && setDeleteConfirm(null)}
+          aria-label="Close delete confirm modal"
+        >
           <div style={{ background: '#fff', borderRadius: 16, padding: '28px 28px', width: 380, boxShadow: '0 24px 64px rgba(0,0,0,0.2)' }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', marginBottom: 10 }}>🗑 Delete Confirm</div>
             <p style={{ fontSize: 13, color: '#475569', marginBottom: 20 }}>

@@ -127,7 +127,10 @@ export default function HostelRoomMap() {
               <div key={building.id} style={{ ...cardStyle, marginBottom: 14 }}>
                 {/* Building header */}
                 <div
+                  role="button"
+                  tabIndex={0}
                   onClick={() => toggleBuilding(building.id)}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleBuilding(building.id); } }}
                   style={{
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                     cursor: 'pointer', paddingBottom: expandedBuildings[building.id] ? 12 : 0,
@@ -145,7 +148,10 @@ export default function HostelRoomMap() {
                 {expandedBuildings[building.id] && building.floors.map(floor => (
                   <div key={floor.id} style={{ marginTop: 12, marginLeft: 8 }}>
                     <div
+                      role="button"
+                      tabIndex={0}
                       onClick={() => toggleFloor(floor.id)}
+                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleFloor(floor.id); } }}
                       style={{
                         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                         cursor: 'pointer', padding: '6px 10px', borderRadius: 6,
@@ -172,7 +178,10 @@ export default function HostelRoomMap() {
                             background: darkMode ? '#0f172a' : '#fafbfc',
                           }}>
                             <div
+                              role="button"
+                              tabIndex={0}
                               onClick={() => navigate(`/hostel/rooms/${room.id}`)}
+                              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/hostel/rooms/${room.id}`); } }}
                               style={{
                                 fontSize: 12, fontWeight: 700, marginBottom: 8,
                                 color: darkMode ? '#e2e8f0' : '#1e293b',
@@ -191,7 +200,10 @@ export default function HostelRoomMap() {
                                 return (
                                   <div
                                     key={bed.id}
+                                    role="button"
+                                    tabIndex={0}
                                     onClick={() => setSelectedBed({ ...bed, room_number: room.room_number, floor_name: floor.name, building_name: building.name })}
+                                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedBed({ ...bed, room_number: room.room_number, floor_name: floor.name, building_name: building.name }); } }}
                                     title={bed.student_name || bed.status}
                                     style={{
                                       width: 38, height: 38, borderRadius: 8,
@@ -222,7 +234,7 @@ export default function HostelRoomMap() {
 
       {/* Bed detail popup */}
       {selectedBed && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setSelectedBed(null)}>
+        <div className="modal-backdrop" role="button" tabIndex={0} aria-label="Close modal" onClick={e => e.target === e.currentTarget && setSelectedBed(null)} onKeyDown={e => e.key === 'Escape' && setSelectedBed(null)}>
           <div className="modal" style={{ maxWidth: 380 }}>
             <div className="modal-header">
               <h3>Bed {selectedBed.bed_number} — Room {selectedBed.room_number}</h3>

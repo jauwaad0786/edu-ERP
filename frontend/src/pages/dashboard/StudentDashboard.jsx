@@ -1388,12 +1388,16 @@ export default function StudentDashboard() {
           {/* ══ STUDENT OUT-PASS MODAL ══ */}
           {studentPassModal && (
             <div
+              role="button"
+              tabIndex={0}
+              aria-label="Close modal"
               style={{
                 position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999,
                 backdropFilter: 'blur(6px)'
               }}
               onClick={e => e.target === e.currentTarget && setStudentPassModal(false)}
+              onKeyDown={e => e.key === 'Escape' && setStudentPassModal(false)}
             >
               <form
                 onSubmit={async (e) => {
@@ -1501,12 +1505,16 @@ export default function StudentDashboard() {
           {/* ══ STUDENT COMPLAINT MODAL ══ */}
           {studentCompModal && (
             <div
+              role="button"
+              tabIndex={0}
+              aria-label="Close modal"
               style={{
                 position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999,
                 backdropFilter: 'blur(6px)'
               }}
               onClick={e => e.target === e.currentTarget && setStudentCompModal(false)}
+              onKeyDown={e => e.key === 'Escape' && setStudentCompModal(false)}
             >
               <form
                 onSubmit={async (e) => {
@@ -1596,12 +1604,16 @@ export default function StudentDashboard() {
           {/* ══ EXAM MODAL ══ */}
           {examModal && (
             <div
+              role="button"
+              tabIndex={0}
+              aria-label="Close modal"
               style={{
                 position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999,
                 backdropFilter: 'blur(6px)'
               }}
               onClick={e => e.target === e.currentTarget && setExamModal(null)}
+              onKeyDown={e => e.key === 'Escape' && setExamModal(null)}
             >
               <div style={{
                 background: darkMode ? '#111827' : '#ffffff', borderRadius: '20px', padding: '28px',

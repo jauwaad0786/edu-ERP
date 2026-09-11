@@ -363,7 +363,14 @@ export default function InventoryPage() {
 
       {/* ══ MODAL: ADD CONSUMABLE ITEM ══ */}
       {addModal && (
-        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setAddModal(false)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={(e) => e.target === e.currentTarget && setAddModal(false)}
+          onKeyDown={(e) => e.key === 'Escape' && setAddModal(false)}
+        >
           <div className="modal" style={{ maxWidth: 600, background: darkMode ? '#1e293b' : '#fff' }}>
             <div className="modal-header">
               <h3 style={{ margin: 0, fontWeight: 800 }}>Add Consumable Stock Item</h3>
@@ -476,7 +483,14 @@ export default function InventoryPage() {
 
       {/* ══ MODAL: ISSUE INVENTORY ══ */}
       {issueModal && (
-        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setIssueModal(false)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={(e) => e.target === e.currentTarget && setIssueModal(false)}
+          onKeyDown={(e) => e.key === 'Escape' && setIssueModal(false)}
+        >
           <div className="modal" style={{ maxWidth: 480, background: darkMode ? '#1e293b' : '#fff' }}>
             <div className="modal-header">
               <h3 style={{ margin: 0, fontWeight: 800 }}>Issue Stock: {selectedItem?.name}</h3>
@@ -559,7 +573,14 @@ export default function InventoryPage() {
 
       {/* ══ MODAL: ADJUST INVENTORY ══ */}
       {adjustModal && (
-        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setAdjustModal(false)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={(e) => e.target === e.currentTarget && setAdjustModal(false)}
+          onKeyDown={(e) => e.key === 'Escape' && setAdjustModal(false)}
+        >
           <div className="modal" style={{ maxWidth: 460, background: darkMode ? '#1e293b' : '#fff' }}>
             <div className="modal-header">
               <h3 style={{ margin: 0, fontWeight: 800 }}>Adjust Stock: {selectedItem?.name}</h3>
@@ -604,7 +625,14 @@ export default function InventoryPage() {
 
       {/* ══ MODAL: STOCK MOVEMENT TRAIL ══ */}
       {movementModal && (
-        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setMovementModal(false)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={(e) => e.target === e.currentTarget && setMovementModal(false)}
+          onKeyDown={(e) => e.key === 'Escape' && setMovementModal(false)}
+        >
           <div className="modal" style={{ maxWidth: 640, background: darkMode ? '#1e293b' : '#fff' }}>
             <div className="modal-header">
               <h3 style={{ margin: 0, fontWeight: 800 }}>Audit Trail: {selectedItem?.name}</h3>

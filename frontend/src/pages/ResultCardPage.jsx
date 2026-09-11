@@ -829,18 +829,23 @@ export default function ResultCardPage() {
 
           {/* Live Result Card Preview Modal */}
           {previewStudent && (
-            <div style={{
-              position: 'fixed',
-              inset: 0,
-              background: 'rgba(15, 23, 42, 0.65)',
-              backdropFilter: 'blur(4px)',
-              zIndex: 1200,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 20
-            }}
-            onClick={e => e.target === e.currentTarget && setPreviewStudent(null)}
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label="Close preview"
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(15, 23, 42, 0.65)',
+                backdropFilter: 'blur(4px)',
+                zIndex: 1200,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 20
+              }}
+              onClick={e => e.target === e.currentTarget && setPreviewStudent(null)}
+              onKeyDown={e => e.key === 'Escape' && setPreviewStudent(null)}
             >
               <div style={{
                 background: '#ffffff',

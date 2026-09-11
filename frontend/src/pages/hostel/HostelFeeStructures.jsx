@@ -823,7 +823,7 @@ export default function HostelFeeStructures() {
 
       {/* ══ Create / Edit Rate Card Modal ══ */}
       {showModal && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowModal(false)}>
+        <div className="modal-backdrop" role="button" tabIndex={0} aria-label="Close modal" onClick={e => e.target === e.currentTarget && setShowModal(false)} onKeyDown={e => e.key === 'Escape' && setShowModal(false)}>
           <div className="modal" style={{ maxWidth: 540, background: darkMode ? '#1e293b' : '#fff' }}>
             <div className="modal-header">
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
@@ -1089,7 +1089,7 @@ export default function HostelFeeStructures() {
 
       {/* ══ Collect Fee Modal ══ */}
       {collectModal && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setCollectModal(null)}>
+        <div className="modal-backdrop" role="button" tabIndex={0} aria-label="Close modal" onClick={e => e.target === e.currentTarget && setCollectModal(null)} onKeyDown={e => e.key === 'Escape' && setCollectModal(null)}>
           <div className="modal" style={{ maxWidth: 420, background: darkMode ? '#1e293b' : '#fff' }}>
             <div className="modal-header">
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
@@ -1154,7 +1154,7 @@ export default function HostelFeeStructures() {
 
       {/* ══ Raise Fine Modal ══ */}
       {fineModal && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setFineModal(null)}>
+        <div className="modal-backdrop" role="button" tabIndex={0} aria-label="Close modal" onClick={e => e.target === e.currentTarget && setFineModal(null)} onKeyDown={e => e.key === 'Escape' && setFineModal(null)}>
           <div className="modal" style={{ maxWidth: 420, background: darkMode ? '#1e293b' : '#fff' }}>
             <div className="modal-header">
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: darkMode ? '#f1f5f9' : '#0f172a' }}>

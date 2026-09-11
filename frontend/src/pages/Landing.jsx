@@ -515,7 +515,13 @@ export default function Landing() {
 
       {/* Top Navbar */}
       <header className="landing-nav">
-        <div className="brand-logo-wrap" onClick={() => navigate('/')}>
+        <div
+          className="brand-logo-wrap"
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate('/')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/'); } }}
+        >
           <div className="brand-logo-icon">
             <i className="ti ti-layers-linked" />
           </div>

@@ -693,10 +693,17 @@ export default function LibraryReports() {
 
       {/* ══ MANUAL FINE MODAL ══ */}
       {manualModal && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} onClick={e => e.target === e.currentTarget && setManualModal(false)}>
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+          onClick={e => e.target === e.currentTarget && setManualModal(false)}
+          onKeyDown={e => e.key === 'Escape' && setManualModal(false)}
+        >
           <div style={{
             background: darkMode ? '#1e293b' : '#fff', borderRadius: 12, padding: 20, width: 420,
           }}>
@@ -726,8 +733,19 @@ export default function LibraryReports() {
                 {manualMemberResults.length > 0 && (
                   <div style={{ marginTop: 6, maxHeight: 150, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 8 }}>
                     {manualMemberResults.map(m => (
-                      <div key={m.id}
+                      <div
+                        key={m.id}
+                        role="button"
+                        tabIndex={0}
                         onClick={() => { setManualSelectedMember(m); setManualMemberSearch(''); setManualMemberResults([]); }}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setManualSelectedMember(m);
+                            setManualMemberSearch('');
+                            setManualMemberResults([]);
+                          }
+                        }}
                         style={{ padding: '8px 10px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid #f1f5f9' }}>
                         <strong>{m.name}</strong> — {m.card_number}
                       </div>
@@ -767,10 +785,17 @@ export default function LibraryReports() {
 
       {/* ══ REPLACED WITH BOOK MODAL ══ */}
       {replaceModal && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} onClick={e => e.target === e.currentTarget && setReplaceModal(null)}>
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+          onClick={e => e.target === e.currentTarget && setReplaceModal(null)}
+          onKeyDown={e => e.key === 'Escape' && setReplaceModal(null)}
+        >
           <div style={{
             background: darkMode ? '#1e293b' : '#fff', borderRadius: 12, padding: 20, width: 420,
           }}>

@@ -260,7 +260,7 @@ export default function HostelInventory() {
 
       {/* Add Modal */}
       {addModal && (
-        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setAddModal(false)}>
+        <div className="modal-backdrop" role="button" tabIndex={0} aria-label="Close modal" onClick={(e) => e.target === e.currentTarget && setAddModal(false)} onKeyDown={(e) => e.key === 'Escape' && setAddModal(false)}>
           <div className="modal" style={{ maxWidth: 480, background: darkMode ? '#1e293b' : '#ffffff', color: darkMode ? '#ffffff' : '#0f172a' }}>
             <div className="modal-header" style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Add Hostel Asset / Inventory</h3>

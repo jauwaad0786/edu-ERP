@@ -255,6 +255,41 @@ class TestSonarQubeRemediation(unittest.TestCase):
         db_stored = now
         self.assertTrue(db_stored <= utc_now())
 
+    # ──────────────────────────────────────────────────────────────────────────
+    # 6. Marks Grading Float Range & Deterministic Responder Differentiation
+    # ──────────────────────────────────────────────────────────────────────────
+    def test_marks_grade_evaluation(self):
+        """_grade must evaluate correct letter grade across continuous percentage ranges."""
+        from app.routes.marks import _grade
+        self.assertEqual(_grade(95, 100), 'A+')
+        self.assertEqual(_grade(85, 100), 'A')
+        self.assertEqual(_grade(75, 100), 'B+')
+        self.assertEqual(_grade(65, 100), 'B')
+        self.assertEqual(_grade(55, 100), 'C')
+        self.assertEqual(_grade(35, 100), 'D')
+        self.assertEqual(_grade(20, 100), 'F')
+        self.assertEqual(_grade(0, 0), 'F')
+        self.assertEqual(_grade(None, 100), 'F')
+
+    def test_deterministic_responder_hinglish_differentiation(self):
+        """STAFF_SALARY_STATUS must generate differentiated responses for Hinglish vs English."""
+        from app.AI.core.deterministic_responder import format_deterministic_response
+        data = {
+            'staff_salary': {
+                'staff_members': [{
+                    'name': 'Rahul Sharma',
+                    'role': 'Teacher',
+                    'monthly_salary': 35000,
+                    'last_payment_status': 'PAID',
+                    'last_paid_month': 'May 2026'
+                }]
+            }
+        }
+        res_hi = format_deterministic_response('STAFF_SALARY_STATUS', data, user_msg='staff ki tankhwah kitni hai')
+        res_en = format_deterministic_response('STAFF_SALARY_STATUS', data, user_msg='what is staff salary status')
+        self.assertIn('Pichla payment status', res_hi)
+        self.assertIn('Last payment status', res_en)
+
 
 if __name__ == '__main__':
     unittest.main()

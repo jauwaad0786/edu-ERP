@@ -142,13 +142,26 @@ def get_marks_grid():
 
 
 def _grade(marks, max_marks):
-    pct = marks / max_marks * 100 if max_marks else 0
-    if pct >= 90: return 'A+'
-    if pct >= 80: return 'A'
-    if pct >= 70: return 'B+'
-    if pct >= 60: return 'B'
-    if pct >= 50: return 'C'
-    if pct >= 33: return 'D'
+    try:
+        f_max = float(max_marks) if max_marks else 0.0
+        if f_max <= 0.0:
+            return 'F'
+        pct = (float(marks or 0.0) / f_max) * 100.0
+    except (ValueError, TypeError, ZeroDivisionError):
+        return 'F'
+
+    if pct >= 90.0:
+        return 'A+'
+    elif pct >= 80.0:
+        return 'A'
+    elif pct >= 70.0:
+        return 'B+'
+    elif pct >= 60.0:
+        return 'B'
+    elif pct >= 50.0:
+        return 'C'
+    elif pct >= 33.0:
+        return 'D'
     return 'F'
 
 

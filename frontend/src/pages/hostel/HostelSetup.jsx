@@ -267,7 +267,13 @@ export default function HostelSetup() {
             <div key={h.id} style={{ ...cardStyle, marginBottom: 12 }}>
               {/* Hostel row */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div onClick={() => toggleHostel(h.id)} style={{ cursor: 'pointer', flex: 1, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => toggleHostel(h.id)}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleHostel(h.id); } }}
+                  style={{ cursor: 'pointer', flex: 1, display: 'flex', alignItems: 'center', gap: 10 }}
+                >
                   <span style={{ fontSize: 16, color: '#94a3b8' }}>{expandedHostel === h.id ? '▾' : '▸'}</span>
                   <div>
                     <div style={{ fontSize: 15, fontWeight: 700, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
@@ -294,7 +300,13 @@ export default function HostelSetup() {
                   {(buildings[h.id] || []).map(b => (
                     <div key={b.id} style={{ marginBottom: 10 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div onClick={() => toggleBuilding(b.id)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => toggleBuilding(b.id)}
+                          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleBuilding(b.id); } }}
+                          style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+                        >
                           <span style={{ fontSize: 13, color: '#94a3b8' }}>{expandedBuilding === b.id ? '▾' : '▸'}</span>
                           <span style={{ fontSize: 13, fontWeight: 600, color: darkMode ? '#e2e8f0' : '#1e293b' }}>
                             🏢 {b.name} <span style={{ fontSize: 10, fontWeight: 400, color: '#94a3b8' }}>({b.floor_count} floors, {b.occupied_beds}/{b.total_beds} beds)</span>
@@ -314,7 +326,13 @@ export default function HostelSetup() {
                           {(floors[b.id] || []).map(f => (
                             <div key={f.id} style={{ marginBottom: 10 }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div onClick={() => toggleFloor(f.id)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <div
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={() => toggleFloor(f.id)}
+                                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleFloor(f.id); } }}
+                                  style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+                                >
                                   <span style={{ fontSize: 12, color: '#94a3b8' }}>{expandedFloor === f.id ? '▾' : '▸'}</span>
                                   <span style={{ fontSize: 12, fontWeight: 600, color: darkMode ? '#cbd5e1' : '#475569' }}>
                                     📐 {f.name} <span style={{ fontSize: 10, fontWeight: 400, color: '#94a3b8' }}>({f.wing_count} wings, {f.room_count} rooms)</span>
@@ -341,7 +359,14 @@ export default function HostelSetup() {
                                           display: 'flex', alignItems: 'center', gap: 6,
                                         }}>
                                           {w.name} ({w.room_count})
-                                          <span onClick={() => deleteWing(f.id, w.id)} style={{ cursor: 'pointer', color: '#dc2626', fontWeight: 700 }}>✕</span>
+                                          <span
+                                            role="button"
+                                            tabIndex={0}
+                                            aria-label="Delete wing"
+                                            onClick={() => deleteWing(f.id, w.id)}
+                                            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); deleteWing(f.id, w.id); } }}
+                                            style={{ cursor: 'pointer', color: '#dc2626', fontWeight: 700 }}
+                                          >✕</span>
                                         </span>
                                       ))}
                                     </div>
@@ -376,8 +401,21 @@ export default function HostelSetup() {
                                             </div>
                                           </div>
                                           <div style={{ display: 'flex', gap: 8 }}>
-                                            <span onClick={() => setEditRoomModal({ ...r, floorId: f.id })} style={{ cursor: 'pointer', color: '#4f46e5', fontSize: 12 }}>✎</span>
-                                            <span onClick={() => deleteRoom(f.id, r.id)} style={{ cursor: 'pointer', color: '#dc2626', fontSize: 12 }}>✕</span>
+                                            <span
+                                              role="button"
+                                              tabIndex={0}
+                                              aria-label="Edit room"
+                                              onClick={() => setEditRoomModal({ ...r, floorId: f.id })}
+                                              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditRoomModal({ ...r, floorId: f.id }); } }}
+                                              style={{ cursor: 'pointer', color: '#4f46e5', fontSize: 12 }}
+                                            >✎</span>
+                                            <span
+                                              role="button"
+                                              tabIndex={0}
+                                              aria-label="Delete room"
+                                              onClick={() => deleteRoom(f.id, r.id)}
+                                              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); deleteRoom(f.id, r.id); } }}
+                                              style={{ cursor: 'pointer', color: '#dc2626', fontSize: 12 }}>✕</span>
                                           </div>
                                         </div>
                                       </div>
@@ -488,7 +526,7 @@ function Tag({ children }) {
 
 function FormModal({ title, onClose, children }) {
   return (
-    <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="modal-backdrop" role="button" tabIndex={0} aria-label="Close modal" onClick={e => e.target === e.currentTarget && onClose()} onKeyDown={e => e.key === 'Escape' && onClose()}>
       <div className="modal" style={{ maxWidth: 440 }}>
         <div className="modal-header">
           <h3>{title}</h3>

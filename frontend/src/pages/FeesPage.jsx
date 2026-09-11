@@ -699,8 +699,11 @@ export default function FeesPage() {
 
                           <td>
                             <div
+                              role="button"
+                              tabIndex={0}
                               style={{ fontWeight: 600, fontSize: 13, color: '#0176d3', cursor: r.student_id ? 'pointer' : 'default', textDecoration: r.student_id ? 'underline dashed' : 'none' }}
                               onClick={() => r.student_id && navigate(`/students/${r.student_id}`)}
+                              onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && r.student_id && navigate(`/students/${r.student_id}`)}
                               title={r.student_id ? 'Profile dekhne ke liye click karein' : ''}
                             >
                               {r.student_name || '—'}
@@ -949,7 +952,14 @@ export default function FeesPage() {
 
       {/* ══ MULTI-COLLECT (COMBINE/SEPARATE) MODAL ═══════════════════════════ */}
       {multiCollectModal && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setMultiCollectModal(false)}>
+        <div
+          role="button"
+          tabIndex={0}
+          className="modal-backdrop"
+          onClick={e => e.target === e.currentTarget && setMultiCollectModal(false)}
+          onKeyDown={e => e.key === 'Escape' && setMultiCollectModal(false)}
+          aria-label="Close collect modal"
+        >
           <div className="modal" style={{ width: 460 }}>
             <div className="modal-header">
               <h3>💸 {selectedIds.length} Records Collect Karo</h3>
@@ -1023,7 +1033,14 @@ export default function FeesPage() {
 
       {/* ══ GENERATE FEES MODAL ═══════════════════════════════════════════ */}
       {genModal && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setGenModal(false)}>
+        <div
+          role="button"
+          tabIndex={0}
+          className="modal-backdrop"
+          onClick={e => e.target === e.currentTarget && setGenModal(false)}
+          onKeyDown={e => e.key === 'Escape' && setGenModal(false)}
+          aria-label="Close generate fees modal"
+        >
           <div className="modal" style={{ width: 420 }}>
             <div className="modal-header">
               <h3>➕ Generate Fees</h3>
@@ -1084,7 +1101,14 @@ export default function FeesPage() {
 
       {/* ══ BULK CLASS NOTICE MODAL ═══════════════════════════════════════ */}
       {bulkNoticeModal && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setBulkNoticeModal(false)}>
+        <div
+          role="button"
+          tabIndex={0}
+          className="modal-backdrop"
+          onClick={e => e.target === e.currentTarget && setBulkNoticeModal(false)}
+          onKeyDown={e => e.key === 'Escape' && setBulkNoticeModal(false)}
+          aria-label="Close bulk notice modal"
+        >
           <div className="modal" style={{ width: 400 }}>
             <div className="modal-header">
               <h3>📄 Class Notice PDF (Bulk)</h3>
@@ -1116,7 +1140,14 @@ export default function FeesPage() {
 
       {/* ══ DRAFT BATCHES LIST MODAL ══════════════════════════════════════ */}
       {showBatches && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowBatches(false)}>
+        <div
+          role="button"
+          tabIndex={0}
+          className="modal-backdrop"
+          onClick={e => e.target === e.currentTarget && setShowBatches(false)}
+          onKeyDown={e => e.key === 'Escape' && setShowBatches(false)}
+          aria-label="Close fee batches modal"
+        >
           <div className="modal" style={{ width: 520 }}>
             <div className="modal-header">
               <h3>📋 Fee Batch Review</h3>
@@ -1184,7 +1215,14 @@ export default function FeesPage() {
 
       {/* ══ BATCH RECORD REVIEW + PUBLISH MODAL ═══════════════════════════ */}
       {batchRecords && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setBatchRecords(null)}>
+        <div
+          role="button"
+          tabIndex={0}
+          className="modal-backdrop"
+          onClick={e => e.target === e.currentTarget && setBatchRecords(null)}
+          onKeyDown={e => e.key === 'Escape' && setBatchRecords(null)}
+          aria-label="Close batch review modal"
+        >
           <div className="modal" style={{ width: 600, maxHeight: '80vh', overflow: 'auto' }}>
             <div className="modal-header">
               <h3>Review — {batchRecords.batch.fee_type} — {batchRecords.batch.month}</h3>
@@ -1254,7 +1292,14 @@ export default function FeesPage() {
 
       {/* ══ BILLING / FEE INVOICE MODAL (Exact Image 2 Top-Left) ════════════════ */}
       {receiptRec && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setReceiptRec(null)}>
+        <div
+          role="button"
+          tabIndex={0}
+          className="modal-backdrop"
+          onClick={e => e.target === e.currentTarget && setReceiptRec(null)}
+          onKeyDown={e => e.key === 'Escape' && setReceiptRec(null)}
+          aria-label="Close invoice modal"
+        >
           <div className="modal" style={{ width: '100%', maxWidth: 780, maxHeight: '92vh', overflowY: 'auto', background: '#ffffff', borderRadius: 16, padding: 0 }}>
             
             {/* Invoice Modal Header */}
@@ -1462,7 +1507,14 @@ export default function FeesPage() {
 
       {/* ══ MULTI-RECEIPT MODAL (combine/separate collect ka result) ═══════ */}
       {receiptGroup && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setReceiptGroup(null)}>
+        <div
+          role="button"
+          tabIndex={0}
+          className="modal-backdrop"
+          onClick={e => e.target === e.currentTarget && setReceiptGroup(null)}
+          onKeyDown={e => e.key === 'Escape' && setReceiptGroup(null)}
+          aria-label="Close receipts modal"
+        >
           <div className="modal" style={{ width: 460 }}>
             <div className="modal-header">
               <h3>🧾 {receiptGroup.mode === 'SEPARATE' ? 'Multiple Receipts' : 'Receipt'} — {receiptGroup.student_name}</h3>

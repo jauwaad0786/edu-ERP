@@ -297,7 +297,7 @@ export default function HostelOutPass() {
 
       {/* Out-Pass Modal */}
       {createModal && (
-        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setCreateModal(false)}>
+        <div className="modal-backdrop" role="button" tabIndex={0} aria-label="Close modal" onClick={(e) => e.target === e.currentTarget && setCreateModal(false)} onKeyDown={(e) => e.key === 'Escape' && setCreateModal(false)}>
           <div className="modal" style={{ maxWidth: 500, background: darkMode ? '#1e293b' : '#ffffff', color: darkMode ? '#ffffff' : '#0f172a' }}>
             <div className="modal-header" style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Issue / Request Hostel Gate Pass</h3>
@@ -323,10 +323,20 @@ export default function HostelOutPass() {
                       {students.map((st) => (
                         <div
                           key={st.student_id}
+                          role="button"
+                          tabIndex={0}
                           onClick={() => {
                             setSelectedStudent(st);
                             setStudents([]);
                             setStudentSearch(st.student_name);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setSelectedStudent(st);
+                              setStudents([]);
+                              setStudentSearch(st.student_name);
+                            }
                           }}
                           style={{
                             padding: '8px 12px', borderBottom: `1px solid ${darkMode ? '#1e293b' : '#f1f5f9'}`,

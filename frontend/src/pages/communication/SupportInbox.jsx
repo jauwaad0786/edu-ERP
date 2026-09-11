@@ -48,7 +48,15 @@ const CATEGORY_OPTIONS = [
 function StatCard({ label, count, color, icon, darkMode, onClick, active }) {
   return (
     <div
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (onClick && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       style={{
         background:   active
           ? (color + '18')

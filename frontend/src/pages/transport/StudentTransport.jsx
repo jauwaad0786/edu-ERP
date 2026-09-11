@@ -353,7 +353,7 @@ export default function StudentTransport() {
 
       {/* ── Transfer/Assign modal ── */}
       {transferStudent && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setTransferStudent(null)}>
+        <div className="modal-backdrop" role="button" tabIndex={0} aria-label="Close modal" onClick={e => e.target === e.currentTarget && setTransferStudent(null)} onKeyDown={e => e.key === 'Escape' && setTransferStudent(null)}>
           <div className="modal" style={{ maxWidth: 480 }}>
             <div className="modal-header">
               <h3>{transferStudent.has_transport ? 'Transfer' : 'Assign'} — {transferStudent.name}</h3>
@@ -407,7 +407,7 @@ export default function StudentTransport() {
 
       {/* ── History drawer ── */}
       {historyStudent && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setHistoryStudent(null)}>
+        <div className="modal-backdrop" role="button" tabIndex={0} aria-label="Close modal" onClick={e => e.target === e.currentTarget && setHistoryStudent(null)} onKeyDown={e => e.key === 'Escape' && setHistoryStudent(null)}>
           <div className="modal" style={{ maxWidth: 560 }}>
             <div className="modal-header">
               <h3>{historyStudent.name} — Transfer History</h3>

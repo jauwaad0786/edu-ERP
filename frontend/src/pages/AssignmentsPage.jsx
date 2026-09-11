@@ -691,8 +691,15 @@ export default function AssignmentsPage() {
           {/* SUBMISSIONS EVALUATION & GRADEBOOK MODAL                           */}
           {/* ═══════════════════════════════════════════════════════════════════ */}
           {selectedAssignment && (
-            <div style={S.modalOverlay} onClick={() => setSelectedAssignment(null)}>
-              <div style={{ ...S.modalContent, maxWidth: 900 }} onClick={e => e.stopPropagation()}>
+            <div
+              role="button"
+              tabIndex={0}
+              style={S.modalOverlay}
+              onClick={e => { if (e.target === e.currentTarget) setSelectedAssignment(null); }}
+              onKeyDown={e => e.key === 'Escape' && setSelectedAssignment(null)}
+              aria-label="Close assignment evaluation modal"
+            >
+              <div style={{ ...S.modalContent, maxWidth: 900 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, borderBottom: '1px solid #e2e8f0', paddingBottom: 12 }}>
                   <div>
                     <span style={{ background: '#eff6ff', color: '#0b3b7b', fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 4 }}>
@@ -842,8 +849,15 @@ export default function AssignmentsPage() {
           {/* CREATE ASSIGNMENT MODAL                                            */}
           {/* ═══════════════════════════════════════════════════════════════════ */}
           {showCreateModal && (
-            <div style={S.modalOverlay} onClick={() => setShowCreateModal(false)}>
-              <div style={S.modalContent} onClick={e => e.stopPropagation()}>
+            <div
+              role="button"
+              tabIndex={0}
+              style={S.modalOverlay}
+              onClick={e => { if (e.target === e.currentTarget) setShowCreateModal(false); }}
+              onKeyDown={e => e.key === 'Escape' && setShowCreateModal(false)}
+              aria-label="Close create assignment modal"
+            >
+              <div style={S.modalContent}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                   <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#0f172a' }}>
                     📝 Create New Course Assignment

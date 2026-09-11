@@ -167,10 +167,20 @@ export default function ChatWindow() {
                     {searchResults.map(u => (
                       <div
                         key={u.id}
+                        role="button"
+                        tabIndex={0}
                         onClick={() => {
                           openConversation({ user_id: u.id, name: u.name, role: u.role });
                           setSearch('');
                           setSearchResults([]);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            openConversation({ user_id: u.id, name: u.name, role: u.role });
+                            setSearch('');
+                            setSearchResults([]);
+                          }
                         }}
                         style={{
                           padding: '10px 16px', cursor: 'pointer', borderBottom: `1px solid ${border}`,
@@ -204,7 +214,15 @@ export default function ChatWindow() {
                   return (
                     <div
                       key={c.user_id}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => openConversation(c)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          openConversation(c);
+                        }
+                      }}
                       style={{
                         padding: '12px 16px', cursor: 'pointer', borderBottom: `1px solid ${border}`,
                         background: isSelected ? (darkMode ? '#1e293b' : '#eef2ff') : 'transparent',

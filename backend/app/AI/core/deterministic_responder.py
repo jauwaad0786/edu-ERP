@@ -222,7 +222,7 @@ def format_deterministic_response(intent: str, data: dict, user_msg: str) -> str
             st = s.get('last_payment_status', 'PENDING')
             m = s.get('last_paid_month', 'N/A')
             if lang == 'hinglish':
-                lines.append(f"{name} ({role}): Monthly salary {monthly}. Last payment status: {st} (Month: {m}).")
+                lines.append(f"{name} ({role}): Monthly salary {monthly}. Pichla payment status: {st} (Mahina: {m}).")
             else:
                 lines.append(f"{name} ({role}): Monthly salary {monthly}. Last payment status: {st} (Month: {m}).")
         return "\n".join(lines)

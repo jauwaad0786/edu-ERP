@@ -239,7 +239,7 @@ export default function HostelTransfers() {
 
       {/* ── Transfer Modal ── */}
       {transferTarget && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setTransferTarget(null)}>
+        <div className="modal-backdrop" role="button" tabIndex={0} aria-label="Close modal" onClick={e => e.target === e.currentTarget && setTransferTarget(null)} onKeyDown={e => e.key === 'Escape' && setTransferTarget(null)}>
           <div className="modal" style={{ maxWidth: 460 }}>
             <div className="modal-header">
               <h3>Transfer — {transferTarget.student_name}</h3>
@@ -288,14 +288,20 @@ export default function HostelTransfers() {
               <label style={labelStyle}>Bed</label>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
                 {tBeds.map(b => (
-                  <div key={b.id} onClick={() => setTBedId(b.id)} style={{
-                    width: 40, height: 40, borderRadius: 8, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 12, fontWeight: 700,
-                    background: tBedId === b.id ? '#4f46e5' : '#f0fdf4',
-                    color: tBedId === b.id ? '#fff' : '#16a34a',
-                    border: `2px solid ${tBedId === b.id ? '#4f46e5' : '#bbf7d0'}`,
-                  }}>{b.bed_number}</div>
+                  <div
+                    key={b.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setTBedId(b.id)}
+                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setTBedId(b.id); } }}
+                    style={{
+                      width: 40, height: 40, borderRadius: 8, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 12, fontWeight: 700,
+                      background: tBedId === b.id ? '#4f46e5' : '#f0fdf4',
+                      color: tBedId === b.id ? '#fff' : '#16a34a',
+                      border: `2px solid ${tBedId === b.id ? '#4f46e5' : '#bbf7d0'}`,
+                    }}>{b.bed_number}</div>
                 ))}
               </div>
 
@@ -316,7 +322,7 @@ export default function HostelTransfers() {
 
       {/* ── Vacate Modal ── */}
       {vacateTarget && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setVacateTarget(null)}>
+        <div className="modal-backdrop" role="button" tabIndex={0} aria-label="Close modal" onClick={e => e.target === e.currentTarget && setVacateTarget(null)} onKeyDown={e => e.key === 'Escape' && setVacateTarget(null)}>
           <div className="modal" style={{ maxWidth: 400 }}>
             <div className="modal-header">
               <h3>Vacate — {vacateTarget.student_name}</h3>

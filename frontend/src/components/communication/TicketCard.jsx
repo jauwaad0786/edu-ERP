@@ -49,7 +49,10 @@ export default function TicketCard({
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={() => navigate(`/support/tickets/${ticket.id}`)}
+      onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && navigate(`/support/tickets/${ticket.id}`)}
       style={{
         padding: 16,
         borderBottom: `1px solid ${border}`,

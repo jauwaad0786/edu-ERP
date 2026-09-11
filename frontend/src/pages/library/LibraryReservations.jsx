@@ -137,7 +137,19 @@ export default function LibraryReservations() {
                           borderRadius: 8, maxHeight: 200, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
                         }}>
                           {bookResults.map(b => (
-                            <div key={b.id} onClick={() => { setSelectedBook(b); setBookSearch(''); setBookResults([]); }}
+                            <div
+                              key={b.id}
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => { setSelectedBook(b); setBookSearch(''); setBookResults([]); }}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  setSelectedBook(b);
+                                  setBookSearch('');
+                                  setBookResults([]);
+                                }
+                              }}
                               style={{ padding: '8px 10px', cursor: 'pointer', fontSize: 13 }}
                               onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
                               onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
@@ -169,7 +181,19 @@ export default function LibraryReservations() {
                           borderRadius: 8, maxHeight: 200, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
                         }}>
                           {memberResults.map(m => (
-                            <div key={m.id} onClick={() => { setSelectedMember(m); setMemberSearch(''); setMemberResults([]); }}
+                            <div
+                              key={m.id}
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => { setSelectedMember(m); setMemberSearch(''); setMemberResults([]); }}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  setSelectedMember(m);
+                                  setMemberSearch('');
+                                  setMemberResults([]);
+                                }
+                              }}
                               style={{ padding: '8px 10px', cursor: 'pointer', fontSize: 13 }}
                               onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
                               onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>

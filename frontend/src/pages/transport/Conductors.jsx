@@ -165,11 +165,21 @@ export default function Conductors() {
                       <td style={{ padding: '10px 6px', color: '#64748b' }}>{c.experience_years} yrs</td>
                       <td style={{ padding: '10px 6px', color: '#64748b' }}>{c.assigned_vehicle_number || '—'}</td>
                       <td style={{ padding: '10px 6px' }}>
-                        <span onClick={() => toggleStatus(c)} style={{
-                          fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, cursor: 'pointer',
-                          background: c.status === 'ACTIVE' ? '#f0fdf4' : '#f1f5f9',
-                          color: c.status === 'ACTIVE' ? '#16a34a' : '#64748b',
-                        }}>{c.status}</span>
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => toggleStatus(c)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              toggleStatus(c);
+                            }
+                          }}
+                          style={{
+                            fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, cursor: 'pointer',
+                            background: c.status === 'ACTIVE' ? '#f0fdf4' : '#f1f5f9',
+                            color: c.status === 'ACTIVE' ? '#16a34a' : '#64748b',
+                          }}>{c.status}</span>
                       </td>
                       <td style={{ padding: '10px 6px' }}>
                         <button onClick={() => openEdit(c)} style={{
@@ -208,7 +218,7 @@ export default function Conductors() {
 
       {/* ── Add/Edit Modal ── */}
       {showForm && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowForm(false)}>
+        <div className="modal-backdrop" role="button" tabIndex={0} aria-label="Close modal" onClick={e => e.target === e.currentTarget && setShowForm(false)} onKeyDown={e => e.key === 'Escape' && setShowForm(false)}>
           <div className="modal" style={{ maxWidth: 520 }}>
             <div className="modal-header">
               <h3>{editingId ? 'Edit Conductor' : 'Add Conductor'}</h3>

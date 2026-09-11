@@ -222,7 +222,14 @@ export default function VendorsPage() {
 
       {/* ══ MODAL: ADD VENDOR ══ */}
       {modalOpen && (
-        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setModalOpen(false)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={(e) => e.target === e.currentTarget && setModalOpen(false)}
+          onKeyDown={(e) => e.key === 'Escape' && setModalOpen(false)}
+        >
           <div className="modal" style={{ maxWidth: 640, background: darkMode ? '#1e293b' : '#fff' }}>
             <div className="modal-header">
               <h3 style={{ margin: 0, fontWeight: 800 }}>Register New Vendor</h3>
@@ -366,7 +373,14 @@ export default function VendorsPage() {
 
       {/* ══ MODAL: VENDOR LEDGER HISTORY ══ */}
       {historyVendor && (
-        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setHistoryVendor(null)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={(e) => e.target === e.currentTarget && setHistoryVendor(null)}
+          onKeyDown={(e) => e.key === 'Escape' && setHistoryVendor(null)}
+        >
           <div className="modal" style={{ maxWidth: 680, background: darkMode ? '#1e293b' : '#fff' }}>
             <div className="modal-header">
               <h3 style={{ margin: 0, fontWeight: 800 }}>Vendor Ledger: {historyVendor.name} ({historyVendor.vendor_code})</h3>
