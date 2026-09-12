@@ -31,7 +31,13 @@ const ROLE_MENUS = {
             { icon: 'ti-switch-horizontal', label: 'Delegations', path: '/rbac/delegations' },
           ],
         },
-        { icon: 'ti-history', label: 'Audit Logs', path: '/audit/company/logs' },
+        {
+          icon: 'ti-shield-lock', label: 'Audit Logs', path: '/audit/company/logs',
+          children: [
+            { icon: 'ti-layout-dashboard', label: 'Company Audit Logs', path: '/audit/company/logs' },
+            { icon: 'ti-building-community', label: 'School Audit Logs',  path: '/audit/school/logs' },
+          ],
+        },
       ],
     },
     {
@@ -128,12 +134,22 @@ const ROLE_MENUS = {
           children: [
             { icon: 'ti-layout-dashboard', label: 'HRMS Command Center',   path: '/hrms' },
             { icon: 'ti-users',            label: 'Employee Directory',    path: '/hrms/employees' },
-            { icon: 'ti-switch-horizontal', label: 'Delegations',          path: '/delegations' },
             { icon: 'ti-map-pin',          label: 'GPS Attendance',        path: '/staff/attendance' },
             { icon: 'ti-calendar-event',   label: 'Leaves & Official Duty',path: '/hrms/leaves' },
             { icon: 'ti-cash',             label: 'Payroll & Payslips',    path: '/hrms/payroll' },
             { icon: 'ti-chart-bar',        label: 'Attendance Analytics',  path: '/staff/attendance/analytics' },
             { icon: 'ti-settings',         label: 'Attendance Settings',   path: '/staff/attendance/settings' },
+          ],
+        },
+
+        {
+          icon: 'ti-switch-horizontal', label: 'Staff Delegation', path: '/delegations',
+          children: [
+            { icon: 'ti-layout-dashboard', label: 'Delegations Overview', path: '/delegations' },
+            { icon: 'ti-user-plus',        label: 'Assign Substitute',    path: '/delegations?action=new' },
+            { icon: 'ti-user-check',       label: 'Active Delegations',   path: '/delegations?tab=ACTIVE' },
+            { icon: 'ti-calendar-time',    label: 'Scheduled Delegations',path: '/delegations?tab=SCHEDULED' },
+            { icon: 'ti-history',          label: 'Delegation History',   path: '/delegations?tab=EXPIRED' },
           ],
         },
 
@@ -214,6 +230,18 @@ const ROLE_MENUS = {
 
         { icon: 'ti-robot', label: '1P360 BOT', path: '/ai/chat', badge: 'AI' },
 
+        {
+          icon: 'ti-shield-lock', label: 'Audit Logs', path: '/audit/school/logs',
+          children: [
+            { icon: 'ti-layout-dashboard', label: 'Audit Command Center',     path: '/audit/school/logs' },
+            { icon: 'ti-lock',             label: 'Security & Auth Logs',     path: '/audit/school/logs?module=AUTH' },
+            { icon: 'ti-clipboard-check',  label: 'Academic & Attendance',    path: '/audit/school/logs?module=ATTENDANCE' },
+            { icon: 'ti-currency-rupee',   label: 'Financial & Fee Logs',     path: '/audit/school/logs?module=FINANCE' },
+            { icon: 'ti-switch-horizontal',label: '⚡ Proxy & Delegated Logs', path: '/audit/school/logs?is_delegated=true' },
+            { icon: 'ti-archive',          label: 'Retention & Purge Policy', path: '/audit/school/logs?tab=retention' },
+          ],
+        },
+
         // ── Bottom Modules: Deleted Items, ERP Support, Settings ──
         {
           icon: 'ti-trash', label: 'Deleted Items', path: '/principal/deleted-items',
@@ -244,7 +272,6 @@ const ROLE_MENUS = {
             { icon: 'ti-grid',              label: 'Permission Matrix',    path: '/rbac/permissions' },
             { icon: 'ti-switch-horizontal', label: 'Delegations',          path: '/rbac/delegations' },
             { icon: 'ti-user-check',        label: 'Staff Permissions',    path: '/rbac/staff-access' },
-            { icon: 'ti-history',           label: 'Audit Logs',           path: '/audit/school/logs' },
           ],
         },
       ],
@@ -687,9 +714,10 @@ export default function Sidebar({ darkMode }) {
     groups.forEach(g => {
       g.items.forEach(item => {
         if (item.children) {
-          const anyActive = item.children.some(
-            c => location.pathname === c.path || location.pathname.startsWith(c.path + '/')
-          );
+          const anyActive = item.children.some(c => {
+            const cleanC = (c.path || '').split('?')[0];
+            return location.pathname === cleanC || location.pathname.startsWith(cleanC + '/');
+          });
           if (anyActive) next[item.path] = true;
         }
       });
@@ -714,12 +742,32 @@ export default function Sidebar({ darkMode }) {
   }
 
   function isItemActive(item) {
+    const cleanItemPath = item.path ? item.path.split('?')[0] : '';
     if (item.children) {
-      return item.children.some(
-        c => location.pathname === c.path || location.pathname.startsWith(c.path + '/')
-      );
+      return item.children.some(c => {
+        const cleanC = c.path ? c.path.split('?')[0] : '';
+        return location.pathname === cleanC || location.pathname.startsWith(cleanC + '/');
+      });
     }
-    return location.pathname === item.path || location.pathname.startsWith(item.path + '/');
+    return location.pathname === cleanItemPath || location.pathname.startsWith(cleanItemPath + '/');
+  }
+
+  function isChildActive(childPath) {
+    if (!childPath) return false;
+    const [pathOnly, queryOnly] = childPath.split('?');
+    if (location.pathname !== pathOnly) return false;
+
+    if (queryOnly) {
+      const childParams = new URLSearchParams(queryOnly);
+      const curParams = new URLSearchParams(location.search);
+      for (const [k, v] of childParams.entries()) {
+        if (curParams.get(k) !== v) return false;
+      }
+      return true;
+    }
+
+    // Base route with no query params is only active if no query params present in URL
+    return !location.search || location.search === '?' || location.search === '';
   }
 
   const filteredGroups = useMemo(() => {
@@ -895,24 +943,27 @@ export default function Sidebar({ darkMode }) {
                         margin: '0 0 2px 8px', padding: '2px 0',
                         borderLeft: `2px solid ${NAV.border}`, overflow: 'hidden',
                       }}>
-                        {item.children.map(child => (
-                          <NavLink key={child.path} to={child.path}
-                            style={({ isActive }) => ({
-                              display: 'flex', alignItems: 'center', gap: 8,
-                              padding: '6px 10px 6px 12px',
-                              color:      isActive ? NAV.accent   : NAV.textBase,
-                              background: isActive ? NAV.bgActive : 'transparent',
-                              fontWeight: isActive ? 600 : 400, fontSize: 12,
-                              textDecoration: 'none', whiteSpace: 'nowrap',
-                              transition: 'background 0.1s, color 0.1s',
-                            })}
-                            onMouseEnter={e => { e.currentTarget.style.background = NAV.bgHover; e.currentTarget.style.color = '#d8ecff'; }}
-                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                          >
-                            <i className={`ti ${child.icon}`} style={{ fontSize: 13, flexShrink: 0, width: 14, textAlign: 'center', opacity: 0.8 }} aria-hidden="true" />
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{child.label}</span>
-                          </NavLink>
-                        ))}
+                        {item.children.map(child => {
+                          const active = isChildActive(child.path);
+                          return (
+                            <NavLink key={child.path} to={child.path}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: 8,
+                                padding: '6px 10px 6px 12px',
+                                color:      active ? NAV.accent   : NAV.textBase,
+                                background: active ? NAV.bgActive : 'transparent',
+                                fontWeight: active ? 600 : 400, fontSize: 12,
+                                textDecoration: 'none', whiteSpace: 'nowrap',
+                                transition: 'background 0.1s, color 0.1s',
+                              }}
+                              onMouseEnter={e => { if (!active) { e.currentTarget.style.background = NAV.bgHover; e.currentTarget.style.color = '#d8ecff'; } }}
+                              onMouseLeave={e => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = NAV.textBase; } }}
+                            >
+                              <i className={`ti ${child.icon}`} style={{ fontSize: 13, flexShrink: 0, width: 14, textAlign: 'center', opacity: active ? 1 : 0.8 }} aria-hidden="true" />
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{child.label}</span>
+                            </NavLink>
+                          );
+                        })}
                       </div>
                     )}
                   </div>

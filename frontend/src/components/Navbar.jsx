@@ -39,6 +39,9 @@ const BREADCRUMB_MAP = {
   '/rbac/roles':            'Role Management',
   '/rbac/permissions':      'Permission Matrix',
   '/rbac/delegations':      'Delegations',
+  '/delegations':           'Staff Delegation',
+  '/audit/school/logs':     'Audit Logs',
+  '/audit/company/logs':    'Company Audit Logs',
 };
 
 function navIconBtn(bg, border, color) {

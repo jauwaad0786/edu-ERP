@@ -677,17 +677,52 @@ def _ensure_finance_phase2_columns():
 
 
 def _ensure_audit_columns():
-    """Ensure company_activity_logs.actor_user_id is nullable (PostgreSQL compatibility)."""
+    """Ensure audit_logs has all enterprise fields and audit_retention_settings table exists."""
     from sqlalchemy import text, inspect
     try:
         inspector = inspect(db.engine)
-        if 'company_activity_logs' in inspector.get_table_names():
+        table_names = inspector.get_table_names()
+
+        if 'company_activity_logs' in table_names:
             with db.engine.connect() as conn:
                 try:
                     conn.execute(text('ALTER TABLE company_activity_logs ALTER COLUMN actor_user_id DROP NOT NULL;'))
                     conn.commit()
                 except Exception:
                     pass
+
+        if 'audit_logs' in table_names:
+            existing = {c['name'] for c in inspector.get_columns('audit_logs')}
+            to_add = {
+                'entity_type':    'VARCHAR(50)',
+                'entity_id':      'INTEGER',
+                'student_id':     'INTEGER',
+                'teacher_id':     'INTEGER',
+                'class_id':       'INTEGER',
+                'subject_id':     'INTEGER',
+                'delegation_id':  'INTEGER',
+                'is_delegated':   'BOOLEAN DEFAULT FALSE',
+                'changed_fields': 'TEXT',
+                'status':         "VARCHAR(20) DEFAULT 'SUCCESS'",
+                'severity':       "VARCHAR(20) DEFAULT 'INFO'",
+                'user_agent':     'VARCHAR(255)',
+                'deleted_at':     'TIMESTAMP',
+                'deleted_by':     'INTEGER',
+            }
+            with db.engine.connect() as conn:
+                for col, defn in to_add.items():
+                    if col not in existing:
+                        try:
+                            conn.execute(text(f'ALTER TABLE audit_logs ADD COLUMN {col} {defn}'))
+                            conn.commit()
+                            print(f'[OK] Added column audit_logs.{col}')
+                        except Exception as e:
+                            print(f'[WARN] audit_logs.{col}: {e}')
+
+        if 'audit_retention_settings' not in table_names:
+            from app.models.audit import AuditRetentionSetting
+            AuditRetentionSetting.__table__.create(db.engine, checkfirst=True)
+            print('[OK] Created audit_retention_settings table')
     except Exception as e:
         print(f'[WARN] _ensure_audit_columns error: {e}')
 

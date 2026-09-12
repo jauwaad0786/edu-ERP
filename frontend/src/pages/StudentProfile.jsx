@@ -4,6 +4,7 @@ import Sidebar from '../components/Sidebar';
 import Navbar  from '../components/Navbar';
 import api     from '../api/axios';
 import toast   from 'react-hot-toast';
+import EntityAuditTimeline from '../components/audit/EntityAuditTimeline';
 
 const STATUS_COLOR = {
   PRESENT:    { bg: '#dcfce7', color: '#16a34a', label: 'P' },
@@ -798,6 +799,7 @@ export default function StudentProfile() {
     { key: 'marks',       label: '📝 Marks'       },
     { key: 'transport',   label: '🚌 Transport'   },
     { key: 'documents',   label: '🎓 Documents'   },
+    { key: 'audit',       label: '🛡️ Audit Trail' },
   ];
 
   if (loading) return (
@@ -1301,6 +1303,11 @@ export default function StudentProfile() {
           {/* ══ TRANSPORT ══ */}
           {tab === 'transport' && (
             <TransportTab studentId={id} />
+          )}
+
+          {/* ══ AUDIT TRAIL ══ */}
+          {tab === 'audit' && (
+            <EntityAuditTimeline entityType="student" entityId={id} />
           )}
 
         </div>

@@ -82,6 +82,38 @@ def _record_login_attempt(user=None, identifier='', success=False, failure_reaso
         except Exception:
             pass
 
+    # Enterprise Audit Trail integration
+    try:
+        eff_school_id = school_id or (user.school_id if user else None)
+        if eff_school_id and user:
+            from app.services.audit_service import record_audit_event
+            if success:
+                record_audit_event(
+                    school_id=eff_school_id,
+                    actor_user_id=user.id,
+                    action='LOGIN_SUCCESS',
+                    module='auth',
+                    entity_type='User',
+                    entity_id=user.id,
+                    remarks=f"User {user.name or user.username} logged in successfully",
+                    status='SUCCESS',
+                    severity='LOW'
+                )
+            else:
+                record_audit_event(
+                    school_id=eff_school_id,
+                    actor_user_id=user.id,
+                    action='LOGIN_FAILED',
+                    module='auth',
+                    entity_type='User',
+                    entity_id=user.id,
+                    remarks=f"Login failed for identifier '{str(identifier)[:60]}': {failure_reason or 'UNKNOWN'}",
+                    status='FAILURE',
+                    severity='MEDIUM'
+                )
+    except Exception as ex:
+        logger.warning(f"Audit log recording in _record_login_attempt failed: {ex}")
+
 
 def _is_email(identifier):
     """Detect whether identifier is an email address."""
@@ -545,18 +577,19 @@ def change_password():
     db.session.commit()
 
     try:
+        from app.services.audit_service import record_audit_event
         if user.school_id:
-            from app.models.audit import log_school_action
-            log_school_action(
+            record_audit_event(
                 school_id=user.school_id,
-                user=user,
-                module='auth',
-                submodule='profile',
+                actor_user_id=user.id,
                 action='PASSWORD_CHANGE',
+                module='auth',
+                entity_type='User',
+                entity_id=user.id,
                 remarks='User changed own password',
-                request_meta=_extract_client_meta()
+                status='SUCCESS',
+                severity='MEDIUM'
             )
-            db.session.commit()
         else:
             from app.models.audit import log_company_action
             log_company_action(
@@ -943,6 +976,23 @@ def reset_password():
     user.set_password(new_password, store_plain=False)
     db.session.commit()
 
+    if user.school_id:
+        try:
+            from app.services.audit_service import record_audit_event
+            record_audit_event(
+                school_id=user.school_id,
+                actor_user_id=user.id,
+                action='PASSWORD_RESET',
+                module='auth',
+                entity_type='User',
+                entity_id=user.id,
+                remarks='User reset password via OTP',
+                status='SUCCESS',
+                severity='HIGH'
+            )
+        except Exception as ex:
+            logger.warning(f"Audit log failed for reset_password: {ex}")
+
     return jsonify({
         'success': True,
         'message': 'Password has been reset successfully. Please login with your new password.'
@@ -973,6 +1023,23 @@ def set_new_password():
     user.set_password(new_password, store_plain=False)
     db.session.commit()
 
+    if user.school_id:
+        try:
+            from app.services.audit_service import record_audit_event
+            record_audit_event(
+                school_id=user.school_id,
+                actor_user_id=user.id,
+                action='PASSWORD_UPDATE',
+                module='auth',
+                entity_type='User',
+                entity_id=user.id,
+                remarks='User updated password',
+                status='SUCCESS',
+                severity='MEDIUM'
+            )
+        except Exception as ex:
+            logger.warning(f"Audit log failed for set_new_password: {ex}")
+
     return jsonify({
         'success': True,
         'message': 'Password has been updated successfully.'
@@ -986,4 +1053,29 @@ def logout():
     POST /api/v1/auth/logout
     Client clears stored JWTs; server returns confirmation.
     """
+    try:
+        from flask_jwt_extended import decode_token
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer '):
+            token_str = auth_header.split(' ', 1)[1].strip()
+            decoded = decode_token(token_str)
+            sub = decoded.get('sub')
+            if sub:
+                u = User.query.get(int(sub))
+                if u and u.school_id:
+                    from app.services.audit_service import record_audit_event
+                    record_audit_event(
+                        school_id=u.school_id,
+                        actor_user_id=u.id,
+                        action='LOGOUT',
+                        module='auth',
+                        entity_type='User',
+                        entity_id=u.id,
+                        remarks=f"User {u.name or u.username} logged out",
+                        status='SUCCESS',
+                        severity='LOW'
+                    )
+    except Exception as ex:
+        logger.debug(f"Logout audit logging skipped or failed: {ex}")
+
     return jsonify({'success': True, 'message': 'Logged out successfully'}), 200

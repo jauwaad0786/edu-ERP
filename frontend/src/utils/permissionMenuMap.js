@@ -31,7 +31,7 @@ export const PERMISSION_MENU_ITEMS = {
 
   'staff.profile.manage': [
     { group: 'Staff Management', item: { icon: 'ti-briefcase', label: 'Staff List', path: '/staff' } },
-    { group: 'Staff & HRMS', item: { icon: 'ti-switch-horizontal', label: 'Delegations', path: '/delegations' } },
+    { group: 'Staff & HRMS', item: { icon: 'ti-switch-horizontal', label: 'Staff Delegation', path: '/delegations' } },
   ],
 
   'fees.structure.manage':     { group: 'Finance & Fees', item: { icon: 'ti-settings-2',       label: 'Fee Setup & Rates', path: '/finance/setup' } },
@@ -75,7 +75,7 @@ export const PERMISSION_MENU_ITEMS = {
 
   'communication.announcement.post': { group: 'Communication', item: { icon: 'ti-speakerphone', label: 'Announcements', path: '/support/announcements' } },
 
-  'audit.logs.view':           { group: 'Access Control', item: { icon: 'ti-history', label: 'Audit Logs', path: '/audit/school/logs' } },
+  'audit.logs.view':           { group: 'Audit & Compliance', item: { icon: 'ti-shield-lock', label: 'Audit Logs', path: '/audit/school/logs' } },
 
   // ek permission -> kai items (Access Control ka poora RBAC sub-menu)
   'admin.user.manage': [

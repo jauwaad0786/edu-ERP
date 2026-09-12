@@ -862,7 +862,7 @@ export default function App() {
                 unreachable since ProtectedRoute gates by role before the page's
                 own permission check ever runs. */}
             <Route path="/audit/school/logs" element={
-              <ProtectedRoute roles={['SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL']} permissions={ROUTE_PERMISSIONS['/audit/school/logs']}>
+              <ProtectedRoute roles={['SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL', 'DIRECTOR', 'ADMIN']} permissions={ROUTE_PERMISSIONS['/audit/school/logs']}>
                 <SchoolAuditLogs />
               </ProtectedRoute>
             } />

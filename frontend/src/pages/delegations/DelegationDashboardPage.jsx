@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import api from '../../api/axios';
@@ -6,6 +7,7 @@ import toast from 'react-hot-toast';
 import CreateDelegationWizardModal from '../../components/delegations/CreateDelegationWizardModal';
 
 export default function DelegationDashboardPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
   useEffect(() => { localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
 
@@ -23,6 +25,22 @@ export default function DelegationDashboardPage() {
   const [activeTab, setActiveTab] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [wizardOpen, setWizardOpen] = useState(false);
+
+  // Sync activeTab and wizard modal with URL query parameters
+  useEffect(() => {
+    const urlTab = searchParams.get('tab');
+    const urlAction = searchParams.get('action');
+
+    if (urlTab) {
+      setActiveTab(urlTab.toUpperCase());
+    } else {
+      setActiveTab('ALL');
+    }
+
+    if (urlAction === 'new' || urlAction === 'create') {
+      setWizardOpen(true);
+    }
+  }, [searchParams]);
 
   // Revoke modal state
   const [revokeTarget, setRevokeTarget] = useState(null);
@@ -384,7 +402,10 @@ export default function DelegationDashboardPage() {
                 return (
                   <button
                     key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
+                    onClick={() => {
+                      setActiveTab(tab.id);
+                      setSearchParams(tab.id === 'ALL' ? {} : { tab: tab.id });
+                    }}
                     style={{
                       padding: '8px 14px', borderRadius: '10px', fontSize: '13px', fontWeight: 600,
                       cursor: 'pointer', border: 'none', transition: 'all 0.15s',
@@ -667,9 +688,19 @@ export default function DelegationDashboardPage() {
       {/* ══ Create Wizard Modal ══ */}
       <CreateDelegationWizardModal
         isOpen={wizardOpen}
-        onClose={() => setWizardOpen(false)}
+        onClose={() => {
+          setWizardOpen(false);
+          if (searchParams.get('action')) {
+            const currentTab = searchParams.get('tab');
+            setSearchParams(currentTab ? { tab: currentTab } : {});
+          }
+        }}
         onSuccess={() => {
           setWizardOpen(false);
+          if (searchParams.get('action')) {
+            const currentTab = searchParams.get('tab');
+            setSearchParams(currentTab ? { tab: currentTab } : {});
+          }
           fetchDelegations();
         }}
       />

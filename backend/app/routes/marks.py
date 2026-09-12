@@ -318,6 +318,24 @@ def save_marks():
         saved += 1
 
     db.session.commit()
+
+    try:
+        from app.services.audit_service import record_audit_event
+        record_audit_event(
+            school_id=sid,
+            actor_user_id=user.id,
+            action='MARKS_RECORDED',
+            module='marks',
+            entity_type='Marks',
+            class_id=class_id,
+            subject_id=subject_id,
+            remarks=f"Saved marks for {saved} students in {cls.name}-{cls.section}, Subject: {subject.name}, Exam: {exam.exam_name}",
+            status='SUCCESS',
+            severity='LOW'
+        )
+    except Exception as audit_err:
+        print(f"[AUDIT] Marks save logging failed: {audit_err}")
+
     return jsonify({'message': f'Marks saved for {saved} students'}), 200
 
 

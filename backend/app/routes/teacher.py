@@ -56,6 +56,23 @@ def mark_attendance():
         marked_count += 1
 
     db.session.commit()
+
+    try:
+        from app.services.audit_service import record_audit_event
+        record_audit_event(
+            school_id=user.school_id,
+            actor_user_id=user.id,
+            action='ATTENDANCE_MARKED',
+            module='attendance',
+            entity_type='Attendance',
+            class_id=class_id,
+            remarks=f"Teacher marked attendance for {marked_count} students in {cls.name}-{cls.section} on {att_date}",
+            status='SUCCESS',
+            severity='LOW'
+        )
+    except Exception as audit_err:
+        print(f"[AUDIT] Teacher attendance mark logging failed: {audit_err}")
+
     return jsonify({'message': f'Attendance marked for {marked_count} students'}), 200
 
 

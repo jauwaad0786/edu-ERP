@@ -77,8 +77,11 @@ PERMISSION_CATALOG = [
     {'key': 'communication.ticket.manage',     'label': 'Manage Support Tickets',   'module': 'communication'},
 
     # ── Audit ── (moved up, keys were used by decorators but never declared)
-    {'key': 'audit.logs.view',   'label': 'View Audit Logs',      'module': 'audit'},
-    {'key': 'audit.logs.delete', 'label': 'Purge Old Audit Logs', 'module': 'audit'},
+    {'key': 'audit.logs.view',        'label': 'View Audit Logs',               'module': 'audit'},
+    {'key': 'audit.logs.export',      'label': 'Export Audit Logs',             'module': 'audit'},
+    {'key': 'audit.logs.delete',      'label': 'Purge Old Audit Logs',          'module': 'audit'},
+    {'key': 'audit.retention.manage', 'label': 'Manage Audit Retention Policy', 'module': 'audit'},
+    {'key': 'audit.purge',            'label': 'Permanent Audit Purge',         'module': 'audit'},
 
     # ── Admin ── (used by every @permission_required('admin.user.manage')
     # decorator in routes/rbac.py -- Role CRUD, Permission Matrix, Delegations
@@ -184,7 +187,8 @@ DEFAULT_SCHOOL_ROLE_PERMISSIONS = {
 DEFAULT_COMPANY_ROLE_PERMISSIONS = {
     'SUPER_ADMIN': [
         'admin.user.manage', 'admin.school.settings', 'admin.whatsapp.settings',
-        'audit.logs.view', 'audit.logs.delete',
+        'audit.logs.view', 'audit.logs.export', 'audit.logs.delete',
+        'audit.retention.manage', 'audit.purge',
     ],
 }
 

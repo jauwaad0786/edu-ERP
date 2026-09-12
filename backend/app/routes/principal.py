@@ -1065,6 +1065,25 @@ def create_student():
             pass
 
         db.session.commit()
+
+        try:
+            from app.services.audit_service import record_audit_event
+            record_audit_event(
+                school_id=sid,
+                actor_user_id=get_current_user().id if get_current_user() else None,
+                action='STUDENT_ADMITTED',
+                module='admissions',
+                entity_type='Student',
+                entity_id=student.id,
+                student_id=student.id,
+                class_id=student.class_id,
+                remarks=f"Admitted student {student.user.name if student.user else 'Student'} (Adm No: {student.admission_no})",
+                status='SUCCESS',
+                severity='MEDIUM'
+            )
+        except Exception as audit_err:
+            print(f"[AUDIT] Student admit logging failed: {audit_err}")
+
         return jsonify(student.to_dict()), 201
 
     except Exception as e:
@@ -1426,6 +1445,23 @@ def collect_fee():
             traceback.print_exc()
 
         db.session.commit()
+
+        try:
+            from app.services.audit_service import record_audit_event
+            record_audit_event(
+                school_id=_school_id(),
+                actor_user_id=get_current_user().id if get_current_user() else None,
+                action='FEE_COLLECTED',
+                module='finance',
+                entity_type='FeeRecord',
+                entity_id=record.id,
+                student_id=record.student_id,
+                remarks=f"Collected ₹{new_payment:,.2f} ({record.payment_mode}) - Receipt #{record.receipt_no}",
+                status='SUCCESS',
+                severity='LOW'
+            )
+        except Exception as audit_err:
+            print(f"[AUDIT] Fee collect logging failed: {audit_err}")
 
         # Return full record with student info
         d = record.to_dict()
@@ -2569,6 +2605,23 @@ def mark_attendance():
             db.session.add(att)
 
     db.session.commit()
+
+    try:
+        from app.services.audit_service import record_audit_event
+        record_audit_event(
+            school_id=_school_id(),
+            actor_user_id=marker_id,
+            action='ATTENDANCE_MARKED',
+            module='attendance',
+            entity_type='Attendance',
+            class_id=class_id,
+            remarks=f"Marked attendance for {len(records)} students on {att_date}",
+            status='SUCCESS',
+            severity='LOW'
+        )
+    except Exception as audit_err:
+        print(f"[AUDIT] Attendance mark logging failed: {audit_err}")
+
     return jsonify({'message': f'{len(records)} attendance records saved'}), 200
 @principal_bp.route('/teachers/attendance/today', methods=['GET'])
 @role_required('PRINCIPAL', 'TEACHER')
@@ -5152,7 +5205,22 @@ def update_student(student_id):
     if student.school_id != _school_id():
         return jsonify({'error': 'Unauthorized'}), 403
 
-    data = request.get_json()
+    data = request.get_json() or {}
+
+    old_state = {
+        'name': student.user.name if student.user else '',
+        'roll_number': student.roll_number or '',
+        'gender': student.gender or '',
+        'dob': str(student.dob) if student.dob else '',
+        'address': student.address or '',
+        'session': student.session or '',
+        'blood_group': student.blood_group or '',
+        'father_name': student.father_name or '',
+        'mother_name': student.mother_name or '',
+        'parent_name': student.parent_name or '',
+        'parent_phone': student.parent_phone or '',
+        'parent_email': student.parent_email or '',
+    }
 
     # Update user name if provided
     if data.get('name') and student.user:
@@ -5172,6 +5240,42 @@ def update_student(student_id):
             setattr(student, field, val)
 
     db.session.commit()
+
+    new_state = {
+        'name': student.user.name if student.user else '',
+        'roll_number': student.roll_number or '',
+        'gender': student.gender or '',
+        'dob': str(student.dob) if student.dob else '',
+        'address': student.address or '',
+        'session': student.session or '',
+        'blood_group': student.blood_group or '',
+        'father_name': student.father_name or '',
+        'mother_name': student.mother_name or '',
+        'parent_name': student.parent_name or '',
+        'parent_phone': student.parent_phone or '',
+        'parent_email': student.parent_email or '',
+    }
+
+    try:
+        from app.services.audit_service import compute_changed_fields, record_audit_event
+        diff = compute_changed_fields(old_state, new_state)
+        if diff:
+            record_audit_event(
+                school_id=_school_id(),
+                actor_user_id=get_current_user().id if get_current_user() else None,
+                action='STUDENT_UPDATED',
+                module='students',
+                entity_type='Student',
+                entity_id=student.id,
+                student_id=student.id,
+                class_id=student.class_id,
+                changed_fields=diff,
+                remarks=f"Updated student profile fields: {', '.join(diff.keys())}",
+                status='SUCCESS',
+                severity='LOW'
+            )
+    except Exception as audit_err:
+        print(f"[AUDIT] Student update diff logging failed: {audit_err}")
 
     # Return updated preview data
     cls = Class.query.get(student.class_id) if student.class_id else None

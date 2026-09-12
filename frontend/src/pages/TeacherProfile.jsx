@@ -4,6 +4,7 @@ import Sidebar from '../components/Sidebar';
 import Navbar  from '../components/Navbar';
 import api     from '../api/axios';
 import toast   from 'react-hot-toast';
+import EntityAuditTimeline from '../components/audit/EntityAuditTimeline';
 
 export default function TeacherProfile() {
   const { id }      = useParams();
@@ -47,6 +48,7 @@ export default function TeacherProfile() {
     ...(info.salary !== null && info.salary !== undefined
       ? [{ key: 'salary', label: '💰 Salary' }]
       : []),
+    { key: 'audit',       label: '🛡️ Audit Trail' },
   ];
 
   if (loading) return (
@@ -465,6 +467,11 @@ export default function TeacherProfile() {
                 </div>
               </div>
             </div>
+          )}
+
+          {/* ── Audit Trail ── */}
+          {tab === 'audit' && (
+            <EntityAuditTimeline entityType="teacher" entityId={id} />
           )}
 
         </div>
