@@ -4,9 +4,13 @@ import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../context/AuthContext';
+import { resolveTenantPath } from '../../utils/routeBuilder';
 
 export default function HRMSDashboard() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const goTo = (path) => navigate(resolveTenantPath(path, user));
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
   useEffect(() => { localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
 
@@ -80,7 +84,7 @@ export default function HRMSDashboard() {
 
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
               <button
-                onClick={() => navigate('/hrms/employees?action=add')}
+                onClick={() => goTo('/hrms/employees?action=add')}
                 style={{
                   background: '#ffffff', color: '#1e3a8a', border: 'none', padding: '10px 18px',
                   borderRadius: '10px', fontWeight: 700, fontSize: '13px', cursor: 'pointer',
@@ -90,7 +94,7 @@ export default function HRMSDashboard() {
                 <i className="ti ti-user-plus" /> Add Employee
               </button>
               <button
-                onClick={() => navigate('/hrms/payroll')}
+                onClick={() => goTo('/hrms/payroll')}
                 style={{
                   background: 'rgba(255,255,255,0.18)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.3)',
                   padding: '10px 18px', borderRadius: '10px', fontWeight: 600, fontSize: '13px', cursor: 'pointer',
@@ -100,7 +104,7 @@ export default function HRMSDashboard() {
                 <i className="ti ti-cash" /> Run Payroll
               </button>
               <button
-                onClick={() => navigate('/hrms/leaves')}
+                onClick={() => goTo('/hrms/leaves')}
                 style={{
                   background: 'rgba(255,255,255,0.18)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.3)',
                   padding: '10px 18px', borderRadius: '10px', fontWeight: 600, fontSize: '13px', cursor: 'pointer',
@@ -119,8 +123,8 @@ export default function HRMSDashboard() {
               tabIndex={0}
               className="stat-card"
               style={cardBg}
-              onClick={() => navigate('/hrms/employees')}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/hrms/employees'); } }}
+              onClick={() => goTo('/hrms/employees')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goTo('/hrms/employees'); } }}
             >
               <div className="stat-icon" style={{ background: '#3b82f616' }}>
                 <i className="ti ti-users" style={{ color: '#3b82f6', fontSize: '20px' }} />
@@ -135,8 +139,8 @@ export default function HRMSDashboard() {
               tabIndex={0}
               className="stat-card"
               style={cardBg}
-              onClick={() => navigate('/staff/attendance')}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/staff/attendance'); } }}
+              onClick={() => goTo('/staff/attendance')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goTo('/staff/attendance'); } }}
             >
               <div className="stat-icon" style={{ background: '#10b98116' }}>
                 <i className="ti ti-user-check" style={{ color: '#10b981', fontSize: '20px' }} />
@@ -151,8 +155,8 @@ export default function HRMSDashboard() {
               tabIndex={0}
               className="stat-card"
               style={cardBg}
-              onClick={() => navigate('/staff/attendance')}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/staff/attendance'); } }}
+              onClick={() => goTo('/staff/attendance')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goTo('/staff/attendance'); } }}
             >
               <div className="stat-icon" style={{ background: '#ef444416' }}>
                 <i className="ti ti-user-x" style={{ color: '#ef4444', fontSize: '20px' }} />
@@ -167,8 +171,8 @@ export default function HRMSDashboard() {
               tabIndex={0}
               className="stat-card"
               style={cardBg}
-              onClick={() => navigate('/hrms/leaves')}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/hrms/leaves'); } }}
+              onClick={() => goTo('/hrms/leaves')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goTo('/hrms/leaves'); } }}
             >
               <div className="stat-icon" style={{ background: '#f59e0b16' }}>
                 <i className="ti ti-clock" style={{ color: '#f59e0b', fontSize: '20px' }} />
@@ -185,8 +189,8 @@ export default function HRMSDashboard() {
               tabIndex={0}
               className="stat-card"
               style={cardBg}
-              onClick={() => navigate('/hrms/payroll')}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/hrms/payroll'); } }}
+              onClick={() => goTo('/hrms/payroll')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goTo('/hrms/payroll'); } }}
             >
               <div className="stat-icon" style={{ background: '#8b5cf616' }}>
                 <i className="ti ti-wallet" style={{ color: '#8b5cf6', fontSize: '20px' }} />
@@ -210,7 +214,7 @@ export default function HRMSDashboard() {
                   <span style={{ fontSize: '12px', color: '#64748b' }}>Daily attendance rate across teaching and non-teaching teams</span>
                 </div>
                 <button
-                  onClick={() => navigate('/staff/attendance')}
+                  onClick={() => goTo('/staff/attendance')}
                   style={{ background: 'none', border: 'none', color: '#3b82f6', fontWeight: 600, fontSize: '12.5px', cursor: 'pointer' }}
                 >
                   View Live Attendance →
@@ -245,7 +249,7 @@ export default function HRMSDashboard() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                 <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>Department Distribution</h3>
                 <button
-                  onClick={() => navigate('/hrms/employees')}
+                  onClick={() => goTo('/hrms/employees')}
                   style={{ background: 'none', border: 'none', color: '#3b82f6', fontWeight: 600, fontSize: '12.5px', cursor: 'pointer' }}
                 >
                   Directory
@@ -286,8 +290,8 @@ export default function HRMSDashboard() {
               role="button"
               tabIndex={0}
               style={{ ...cardBg, borderRadius: '14px', border: '1px solid', padding: '20px', cursor: 'pointer', transition: 'all 0.2s' }}
-              onClick={() => navigate('/hrms/employees')}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/hrms/employees'); } }}
+              onClick={() => goTo('/hrms/employees')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goTo('/hrms/employees'); } }}
               onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-3px)'}
               onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
             >
@@ -309,8 +313,8 @@ export default function HRMSDashboard() {
               role="button"
               tabIndex={0}
               style={{ ...cardBg, borderRadius: '14px', border: '1px solid', padding: '20px', cursor: 'pointer', transition: 'all 0.2s' }}
-              onClick={() => navigate('/staff/attendance')}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/staff/attendance'); } }}
+              onClick={() => goTo('/staff/attendance')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goTo('/staff/attendance'); } }}
               onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-3px)'}
               onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
             >
@@ -332,8 +336,8 @@ export default function HRMSDashboard() {
               role="button"
               tabIndex={0}
               style={{ ...cardBg, borderRadius: '14px', border: '1px solid', padding: '20px', cursor: 'pointer', transition: 'all 0.2s' }}
-              onClick={() => navigate('/hrms/leaves')}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/hrms/leaves'); } }}
+              onClick={() => goTo('/hrms/leaves')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goTo('/hrms/leaves'); } }}
               onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-3px)'}
               onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
             >
@@ -355,8 +359,8 @@ export default function HRMSDashboard() {
               role="button"
               tabIndex={0}
               style={{ ...cardBg, borderRadius: '14px', border: '1px solid', padding: '20px', cursor: 'pointer', transition: 'all 0.2s' }}
-              onClick={() => navigate('/hrms/payroll')}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/hrms/payroll'); } }}
+              onClick={() => goTo('/hrms/payroll')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goTo('/hrms/payroll'); } }}
               onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-3px)'}
               onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
             >

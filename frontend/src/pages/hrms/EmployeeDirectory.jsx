@@ -4,6 +4,8 @@ import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../context/AuthContext';
+import { resolveTenantPath } from '../../utils/routeBuilder';
 
 const EMPLOYMENT_TYPES = ['PERMANENT', 'CONTRACT', 'TEMPORARY', 'PART_TIME', 'INTERN'];
 const EMPLOYMENT_STATUSES = ['ACTIVE', 'PROBATION', 'NOTICE_PERIOD', 'RESIGNED', 'TERMINATED', 'RETIRED', 'INACTIVE'];
@@ -14,6 +16,7 @@ const STAFF_ROLES = [
 
 export default function EmployeeDirectory() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
   useEffect(() => { localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
@@ -281,7 +284,7 @@ export default function EmployeeDirectory() {
                         <td style={{ padding: '12px 18px', color: '#64748b' }}>{emp.joining_date || '—'}</td>
                         <td style={{ padding: '12px 18px', textAlign: 'right' }}>
                           <button
-                            onClick={() => navigate(`/hrms/employees/${emp.user_id}`)}
+                            onClick={() => navigate(resolveTenantPath(`/hrms/employees/${emp.user_id || emp.id}`, user))}
                             style={{
                               background: '#3b82f616', color: '#3b82f6', border: 'none', padding: '6px 12px',
                               borderRadius: '8px', fontSize: '12px', fontWeight: 700, cursor: 'pointer'

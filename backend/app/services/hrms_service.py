@@ -106,8 +106,8 @@ def create_employee(school_id, data, actor_user=None):
     dept_lower = (data.get('department') or '').strip().lower()
     is_driver_emp = (user_role == UserRole.DRIVER) or ('driver' in desig_lower) or (dept_lower == 'transport' and 'driver' in desig_lower)
 
-    # If driver, default initial password to 12345 as requested
-    plain_password = data.get('password') or ('12345' if is_driver_emp else 'Staff@123')
+    # Default initial password for all newly created staff, teachers, and drivers is 12345
+    plain_password = data.get('password') or '12345'
     user = User(
         school_id=school_id,
         name=data.get('name', '').strip(),

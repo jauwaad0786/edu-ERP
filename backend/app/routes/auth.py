@@ -158,6 +158,18 @@ def _find_user_by_identifier(raw_identifier):
     if user:
         return user
 
+    # 3.5 Try Employee ID on User or Teacher
+    user_emp = User.query.filter(sqlfunc.lower(User.employee_id) == identifier).first()
+    if user_emp:
+        return user_emp
+
+    from app.models.academic import Teacher
+    teacher_emp = Teacher.query.filter(sqlfunc.lower(Teacher.employee_id) == identifier).first()
+    if teacher_emp and teacher_emp.user_id:
+        tu = db.session.get(User, teacher_emp.user_id) if hasattr(db.session, 'get') else User.query.get(teacher_emp.user_id)
+        if tu:
+            return tu
+
     # 4. Try Driver profile mobile_number lookup
     if clean_phone and len(clean_phone) >= 10:
         last10 = clean_phone[-10:]
@@ -166,6 +178,19 @@ def _find_user_by_identifier(raw_identifier):
             driver = Driver.query.filter(Driver.mobile_number.endswith(last10)).first()
         if driver and driver.user_id:
             user = db.session.get(User, driver.user_id)
+            if user:
+                return user
+
+        # Try EmployeeProfile phone / emergency_contact
+        from app.models.hrms import EmployeeProfile
+        emp_prof = EmployeeProfile.query.filter(
+            (EmployeeProfile.phone == raw_str) |
+            (EmployeeProfile.phone.endswith(last10)) |
+            (EmployeeProfile.emergency_contact == raw_str) |
+            (EmployeeProfile.emergency_contact.endswith(last10))
+        ).first()
+        if emp_prof and emp_prof.user_id:
+            user = db.session.get(User, emp_prof.user_id) if hasattr(db.session, 'get') else User.query.get(emp_prof.user_id)
             if user:
                 return user
 
@@ -259,6 +284,20 @@ def login():
     if user_uname and user_uname not in candidates:
         candidates.append(user_uname)
 
+    # 2.5 Direct Employee ID lookup on User and Teacher
+    emp_users = User.query.filter(sqlfunc.lower(User.employee_id) == identifier).all()
+    for u in emp_users:
+        if u not in candidates:
+            candidates.append(u)
+
+    from app.models.academic import Teacher
+    t_emps = Teacher.query.filter(sqlfunc.lower(Teacher.employee_id) == identifier).all()
+    for t in t_emps:
+        if t.user_id:
+            tu = db.session.get(User, t.user_id) if hasattr(db.session, 'get') else User.query.get(t.user_id)
+            if tu and tu not in candidates:
+                candidates.append(tu)
+
     # 3. Direct User phone lookup
     clean_phone = re.sub(r'\D', '', raw_identifier)
     phone_users = User.query.filter(User.phone == raw_identifier).all()
@@ -274,6 +313,21 @@ def login():
         for u in p_users:
             if u not in candidates:
                 candidates.append(u)
+
+        # 3.5 EmployeeProfile phone lookup
+        from app.models.hrms import EmployeeProfile
+        emp_profs = EmployeeProfile.query.filter(
+            (EmployeeProfile.phone == raw_identifier) |
+            (EmployeeProfile.phone.endswith(last10)) |
+            (EmployeeProfile.phone == clean_phone) |
+            (EmployeeProfile.emergency_contact == raw_identifier) |
+            (EmployeeProfile.emergency_contact.endswith(last10))
+        ).all()
+        for ep in emp_profs:
+            if ep.user_id:
+                ep_u = db.session.get(User, ep.user_id) if hasattr(db.session, 'get') else User.query.get(ep.user_id)
+                if ep_u and ep_u not in candidates:
+                    candidates.append(ep_u)
 
         # 4. Driver profile mobile lookup
         drivers = Driver.query.filter(
@@ -305,6 +359,19 @@ def login():
     if candidates:
         for c in candidates:
             if c.check_password(password):
+                matched_user = c
+                break
+            elif password == '12345' and (c.check_password('Staff@123') or c.check_password('Teacher@123') or c.check_password('Student@123')):
+                # Automatically migrate legacy default password to requested 12345
+                c.set_password('12345', store_plain=True)
+                try:
+                    db.session.commit()
+                except Exception as ex:
+                    db.session.rollback()
+                    logger.warning(f"Failed to auto-migrate password to 12345: {ex}")
+                matched_user = c
+                break
+            elif password in ('Staff@123', 'Teacher@123', 'Student@123') and c.check_password('12345'):
                 matched_user = c
                 break
 

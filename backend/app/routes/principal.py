@@ -334,9 +334,10 @@ def create_teacher():
     user = User(
         name=data['name'], email=data['email'].lower(),
         role=UserRole.TEACHER, school_id=sid,
-        phone=data.get('phone')
+        phone=data.get('phone'),
+        employee_id=data.get('employee_id')
     )
-    user.set_password(data.get('password', 'Teacher@123'))
+    user.set_password(data.get('password') or '12345', store_plain=True)
     db.session.add(user)
     db.session.flush()
     

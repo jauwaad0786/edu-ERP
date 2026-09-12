@@ -869,10 +869,17 @@ export default function App() {
             <Route path="/school-profile" element={<LegacyRedirect toService="school-settings" />} />
             <Route path="/support/announcements" element={<LegacyRedirect toService="announcements" />} />
             <Route path="/announcements/create" element={<LegacyRedirect toService="announcements/create" />} />
+            <Route path="/hrms" element={<LegacyRedirect toService="hrms" />} />
+            <Route path="/hrms/employees" element={<LegacyRedirect toService="hrms/employees" />} />
+            <Route path="/hrms/employees/:userId" element={<LegacyRedirect />} />
+            <Route path="/hrms/payroll" element={<LegacyRedirect toService="hrms/payroll" />} />
             <Route path="/hrms/attendance" element={<LegacyRedirect toService="staff/attendance" />} />
             <Route path="/hrms/leaves" element={<LegacyRedirect toService="hrms/leaves" />} />
             <Route path="/staff" element={<LegacyRedirect toService="staff" />} />
             <Route path="/staff/attendance" element={<LegacyRedirect toService="staff/attendance" />} />
+            <Route path="/staff/attendance/analytics" element={<LegacyRedirect toService="staff/attendance/analytics" />} />
+            <Route path="/staff/attendance/settings" element={<LegacyRedirect toService="staff/attendance/settings" />} />
+            <Route path="/staff/attendance/employee/:userId" element={<LegacyRedirect />} />
             <Route path="/transport/reports" element={<LegacyRedirect toService="transport/reports" />} />
 
             {/* ═══════════════════════════════════════════════════════════════

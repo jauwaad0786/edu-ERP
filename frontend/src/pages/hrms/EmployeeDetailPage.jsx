@@ -4,10 +4,13 @@ import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../context/AuthContext';
+import { resolveTenantPath } from '../../utils/routeBuilder';
 
 export default function EmployeeDetailPage() {
   const { userId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
   useEffect(() => { localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
 
@@ -179,7 +182,7 @@ export default function EmployeeDetailPage() {
 
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button
-                  onClick={() => navigate('/hrms/employees')}
+                  onClick={() => navigate(resolveTenantPath('/hrms/employees', user))}
                   style={{ background: 'transparent', border: '1px solid #cbd5e1', padding: '8px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '12.5px', fontWeight: 600 }}
                 >
                   ← Back to Directory
