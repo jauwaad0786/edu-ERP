@@ -1167,27 +1167,43 @@ def create_student():
             # 4. Optional Services (Hostel, Transport, Library)
             transport_fee = float(fee_setup.get('transport_fee', 0.0) or 0.0)
             if transport_fee > 0:
+                trans_name = fee_setup.get('transport_fee_name') or 'Transport Fee'
+                trans_mult = int(fee_setup.get('transport_multiplier') or 1)
                 itemized_charges.append({
                     'fee_head_id': None,
-                    'name': 'Transport Fee',
+                    'name': trans_name,
                     'code': 'TRANSPORT',
                     'category': 'TRANSPORT',
                     'rate': transport_fee,
-                    'multiplier': 1,
-                    'amount': transport_fee,
+                    'multiplier': trans_mult,
+                    'amount': round(transport_fee * trans_mult, 2),
                     'is_optional': True
                 })
 
             hostel_fee = float(fee_setup.get('hostel_fee', 0.0) or 0.0)
+            hostel_deposit = float(fee_setup.get('hostel_deposit', 0.0) or 0.0)
+            hostel_name = fee_setup.get('hostel_fee_name') or 'Hostel Accommodation'
+            hostel_mult = int(fee_setup.get('hostel_multiplier') or 1)
             if hostel_fee > 0:
                 itemized_charges.append({
                     'fee_head_id': None,
-                    'name': 'Hostel Fee',
+                    'name': hostel_name,
                     'code': 'HOSTEL_FEE',
                     'category': 'HOSTEL',
                     'rate': hostel_fee,
+                    'multiplier': hostel_mult,
+                    'amount': round(hostel_fee * hostel_mult, 2),
+                    'is_optional': True
+                })
+            if hostel_deposit > 0:
+                itemized_charges.append({
+                    'fee_head_id': None,
+                    'name': f"{hostel_name} (Security Deposit)",
+                    'code': 'HOSTEL_DEPOSIT',
+                    'category': 'HOSTEL',
+                    'rate': hostel_deposit,
                     'multiplier': 1,
-                    'amount': hostel_fee,
+                    'amount': hostel_deposit,
                     'is_optional': True
                 })
 
@@ -1203,6 +1219,28 @@ def create_student():
                     'amount': library_fee,
                     'is_optional': True
                 })
+
+            # 4.5 Additional Custom Fee Items added by principal
+            additional_items = fee_setup.get('additional_items') or []
+            if isinstance(additional_items, list):
+                for ait in additional_items:
+                    a_amt = float(ait.get('amount') or 0.0)
+                    if a_amt > 0:
+                        a_name = (ait.get('name') or 'Custom Fee').strip()
+                        a_cat = ait.get('category') or 'ACADEMIC'
+                        a_mult = int(ait.get('multiplier') or 1)
+                        itemized_charges.append({
+                            'fee_head_id': ait.get('fee_head_id'),
+                            'name': a_name,
+                            'code': ait.get('code') or 'CUSTOM',
+                            'category': a_cat,
+                            'rate': float(ait.get('rate') or a_amt),
+                            'multiplier': a_mult,
+                            'amount': round(a_amt * a_mult, 2),
+                            'is_optional': False
+                        })
+                        if a_cat in eligible_cats:
+                            eligible_discount_base += round(a_amt * a_mult, 2)
 
             total_gross = sum(ch['amount'] for ch in itemized_charges)
 

@@ -240,6 +240,7 @@ class FeeStructureItemV2(db.Model):
             'fee_head_id':    self.fee_head_id,
             'fee_head_name':  self.fee_head.name if self.fee_head else '',
             'fee_head_code':  self.fee_head.code if self.fee_head else '',
+            'fee_head':       self.fee_head.to_dict() if self.fee_head else None,
             'department':     self.fee_head.department if self.fee_head else 'ACCOUNTS',
             'amount':         self.amount,
         }

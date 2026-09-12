@@ -924,12 +924,15 @@ def get_admission_fee_plan():
         school_id=user.school_id, session=session, is_active=True
     ).order_by(FeePaymentPlan.sort_order.asc(), FeePaymentPlan.months_count.asc()).all()
 
-    # 3. Optional hostel fee structures
+    # 3. Optional hostel fee structures & hostels list
     hostel_plans = []
+    hostels_list = []
     try:
-        from app.models.hostel import HostelFeeStructure
+        from app.models.hostel import HostelFeeStructure, Hostel
         hfs_list = HostelFeeStructure.query.filter_by(school_id=user.school_id, status='ACTIVE').all()
         hostel_plans = [h.to_dict() for h in hfs_list]
+        h_all = Hostel.query.filter_by(school_id=user.school_id, status='ACTIVE').all()
+        hostels_list = [h.to_dict(include_counts=False) for h in h_all]
     except Exception:
         pass
 
@@ -955,6 +958,7 @@ def get_admission_fee_plan():
         'has_published_plan': struct is not None,
         'class_fee_structure': struct.to_dict() if struct else None,
         'payment_plans': [p.to_dict() for p in payment_plans],
+        'hostels': hostels_list,
         'hostel_plans': hostel_plans,
         'transport_plans': transport_plans,
         'transport_routes': transport_routes,

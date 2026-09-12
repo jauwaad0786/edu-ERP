@@ -43,6 +43,10 @@ export default function NewAdmissionPage() {
   const [transportRoutes, setTransportRoutes] = useState([]);
   const [transportStops, setTransportStops] = useState([]);
   const [hostels, setHostels] = useState([]);
+  const [hostelPlans, setHostelPlans] = useState([]);
+  const [customFeeList, setCustomFeeList] = useState([]);
+  const [showAddCustomFee, setShowAddCustomFee] = useState(false);
+  const [newCustomItem, setNewCustomItem] = useState({ name: '', category: 'ACADEMIC', amount: '', is_recurring: false });
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(null); // admitted student data
   const [photoUploading, setPhotoUploading] = useState(false);
@@ -124,6 +128,10 @@ export default function NewAdmissionPage() {
     transport_stop_id: '',
     hostel_required: 'No',
     hostel_id: '',
+    hostel_fee_structure_id: '',
+    hostel_monthly_fee: '',
+    hostel_deposit: '',
+    hostel_room_type: '',
     hostel_remarks: '',
     library_required: 'No',
     library_fee: '',
@@ -185,6 +193,15 @@ export default function NewAdmissionPage() {
         setHostels(arr);
       })
       .catch(() => {});
+
+    // Fetch Hostel Fee Slabs
+    api.get('/hostel/fee-structures')
+      .then(r => {
+        const raw = r.data;
+        const arr = Array.isArray(raw) ? raw : Array.isArray(raw?.data) ? raw.data : [];
+        if (arr.length > 0) setHostelPlans(arr);
+      })
+      .catch(() => {});
   }, []);
 
   // Fetch published fee structure & payment plans whenever Class or Session changes
@@ -197,6 +214,12 @@ export default function NewAdmissionPage() {
       setAdmissionFeeData(data);
       if (data?.transport_routes?.length > 0) {
         setTransportRoutes(data.transport_routes);
+      }
+      if (data?.hostels?.length > 0) {
+        setHostels(data.hostels);
+      }
+      if (data?.hostel_plans?.length > 0) {
+        setHostelPlans(data.hostel_plans);
       }
       if (data?.payment_plans?.length > 0) {
         const def = data.payment_plans.find(p => p.code === 'QUARTERLY') || data.payment_plans[0];
@@ -344,14 +367,27 @@ export default function NewAdmissionPage() {
   const selectedRoute = Array.isArray(transportRoutes) ? transportRoutes.find(r => String(r.id) === String(form.transport_route_id)) : undefined;
   const selectedStop  = Array.isArray(transportStops) ? transportStops.find(s => String(s.id) === String(form.transport_stop_id)) : undefined;
   const selectedHostel = Array.isArray(hostels) ? hostels.find(h => String(h.id) === String(form.hostel_id)) : undefined;
+  const selectedHostelPlan = Array.isArray(hostelPlans) ? hostelPlans.find(p => String(p.id) === String(form.hostel_fee_structure_id)) : undefined;
 
   // Dynamic fee calculation from published structure & payment cadence plan
   const publishedStructure = admissionFeeData?.class_fee_structure || admissionFeeData?.published_structure;
   const paymentPlans = admissionFeeData?.payment_plans || [];
   const monthsCount = selectedPaymentPlan?.months_count || 1;
 
-  const transportCharge = form.transport_required === 'Yes' ? Number(selectedRoute?.fare || selectedStop?.pickup_charge || 0) : 0;
-  const hostelCharge = form.hostel_required === 'Yes' ? Number(selectedHostel?.fee || 0) : 0;
+  const transportMonthlyRate = form.transport_required === 'Yes' ? Number(selectedRoute?.fare || selectedRoute?.fee_amount || selectedStop?.pickup_charge || 0) : 0;
+  const transportRecurringTotal = transportMonthlyRate * monthsCount;
+  const transportCharge = transportMonthlyRate;
+
+  const hostelMonthlyRate = form.hostel_required === 'Yes'
+    ? (selectedHostelPlan ? Number(selectedHostelPlan.total_monthly || selectedHostelPlan.monthly_fee || 0) : Number(form.hostel_monthly_fee || 0))
+    : 0;
+  const hostelDeposit = form.hostel_required === 'Yes'
+    ? (selectedHostelPlan ? Number(selectedHostelPlan.security_deposit || 0) : Number(form.hostel_deposit || 0))
+    : 0;
+  const hostelRecurringTotal = hostelMonthlyRate * monthsCount;
+  const hostelTotalCharge = hostelRecurringTotal + hostelDeposit;
+  const hostelCharge = hostelTotalCharge;
+
   const defaultLibRate = admissionFeeData?.fee_heads?.find(h => h.code === 'LIBRARY' || h.category === 'LIBRARY')?.default_amount || 150;
   const libraryCharge = form.library_required === 'Yes' ? Number(form.library_fee || defaultLibRate || 150) : 0;
 
@@ -369,16 +405,44 @@ export default function NewAdmissionPage() {
   }
 
   const computedItems = (publishedStructure?.items || []).map(it => {
-    const isRec = it.fee_head?.is_recurring ?? (it.fee_head?.default_frequency !== 'ONE_TIME');
-    const mult = isRec ? monthsCount : 1;
+    const headName = it.fee_head?.name || it.fee_head_name || it.name || 'Tuition Fee';
+    const headCode = it.fee_head?.code || it.fee_head_code || '';
+    const headCategory = it.fee_head?.category || it.department || 'ACADEMIC';
+    const isOneTime = it.fee_head?.default_frequency === 'ONE_TIME' ||
+      it.fee_head?.is_recurring === false ||
+      /admission|registration|caution|deposit|security/i.test(headName) ||
+      /admission|registration|caution|deposit|security/i.test(headCode);
+    const mult = isOneTime ? 1 : monthsCount;
     const rate = customFeeAmounts[it.id] !== undefined ? Number(customFeeAmounts[it.id] || 0) : Number(it.amount || 0);
     const lineAmt = rate * mult;
     baseGross += lineAmt;
-    if (eligibleCats.includes(it.fee_head?.category || 'ACADEMIC')) {
+    if (eligibleCats.includes(headCategory)) {
       eligibleBase += lineAmt;
     }
     return {
       ...it,
+      headName,
+      headCategory,
+      isOneTime,
+      rate,
+      mult,
+      lineAmt,
+    };
+  });
+
+  let customItemsGross = 0;
+  const computedCustomItems = customFeeList.map(item => {
+    const isOneTime = !item.is_recurring;
+    const mult = isOneTime ? 1 : monthsCount;
+    const rate = Number(item.amount || 0);
+    const lineAmt = rate * mult;
+    customItemsGross += lineAmt;
+    if (eligibleCats.includes(item.category || 'ACADEMIC')) {
+      eligibleBase += lineAmt;
+    }
+    return {
+      ...item,
+      isOneTime,
       rate,
       mult,
       lineAmt,
@@ -391,7 +455,7 @@ export default function NewAdmissionPage() {
     eligibleBase = legacyAmt;
   }
 
-  const grossTotal = baseGross + transportCharge + hostelCharge + libraryCharge;
+  const grossTotal = baseGross + customItemsGross + transportRecurringTotal + hostelTotalCharge + libraryCharge;
 
   let advanceDiscount = 0;
   if (selectedPaymentPlan && Number(selectedPaymentPlan.discount_value) > 0 && eligibleBase > 0) {
@@ -425,19 +489,31 @@ export default function NewAdmissionPage() {
         payment_plan_id: selectedPaymentPlan?.id || null,
         payment_plan_code: selectedPaymentPlan?.code || null,
         months_count: monthsCount,
-        transport_fee: transportCharge,
-        hostel_fee: hostelCharge,
+        transport_fee: transportMonthlyRate,
+        transport_multiplier: monthsCount,
+        transport_fee_name: `Transport Fee (${selectedRoute?.route_name || 'Assigned Route'})`,
+        hostel_fee: hostelMonthlyRate,
+        hostel_deposit: hostelDeposit,
+        hostel_multiplier: monthsCount,
+        hostel_fee_name: `Hostel Accommodation (${selectedHostel?.name || 'Hostel'}${selectedHostelPlan ? ` - ${selectedHostelPlan.sharing_type} ${selectedHostelPlan.is_ac ? '(AC)' : '(Non-AC)'}` : ''})`,
         library_fee: libraryCharge,
         library_required: form.library_required,
         custom_items: Object.keys(customFeeAmounts).length > 0 ? computedItems.map(it => ({
           fee_head_id: it.fee_head_id,
-          name: it.fee_head?.name || 'Fee Item',
-          code: it.fee_head?.code || 'ACADEMIC',
-          category: it.fee_head?.category || 'ACADEMIC',
+          name: it.headName,
+          code: it.fee_head?.code || it.fee_head_code || 'ACADEMIC',
+          category: it.headCategory,
           rate: it.rate,
           multiplier: it.mult,
           amount: it.lineAmt,
         })) : null,
+        additional_items: computedCustomItems.map(cit => ({
+          name: cit.name,
+          category: cit.category || 'ACADEMIC',
+          rate: cit.rate,
+          multiplier: cit.mult,
+          amount: cit.lineAmt,
+        })),
         manual_waiver: waiverNum,
         waiver_reason: waiverNum > 0 ? (waiverReason || 'Principal Authorized Special Waiver') : '',
         net_payable: netPayable,
@@ -1480,20 +1556,112 @@ export default function NewAdmissionPage() {
                         {form.hostel_required === 'Yes' ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                             <div>
-                              <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
-                                Select Hostel Building / Wing
-                              </label>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                <label style={{ fontSize: 11.5, fontWeight: 600, color: '#475569' }}>
+                                  Select Hostel Building / Wing *
+                                </label>
+                                {hostelMonthlyRate > 0 && (
+                                  <span style={{ fontSize: 11, fontWeight: 700, color: '#059669', background: '#ecfdf5', padding: '1px 8px', borderRadius: 4 }}>
+                                    Fee: ₹{hostelMonthlyRate.toLocaleString('en-IN')}/mo
+                                  </span>
+                                )}
+                              </div>
                               <select
                                 value={form.hostel_id}
-                                onChange={e => set('hostel_id', e.target.value)}
+                                onChange={e => {
+                                  const hId = e.target.value;
+                                  setForm(f => ({
+                                    ...f,
+                                    hostel_id: hId,
+                                    hostel_fee_structure_id: '',
+                                    hostel_monthly_fee: '',
+                                    hostel_deposit: ''
+                                  }));
+                                }}
                                 style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 12.5, background: '#fff' }}
                               >
                                 <option value="">-- Select Hostel --</option>
                                 {Array.isArray(hostels) && hostels.map(h => (
-                                  <option key={h.id} value={h.id}>{h.name} ({h.gender_type || 'Co-Ed'})</option>
+                                  <option key={h.id} value={h.id}>{h.name} ({h.hostel_type || h.gender_type || h.gender || 'Co-Ed'})</option>
                                 ))}
                               </select>
                             </div>
+
+                            {/* Dynamic Room Category / Fee Plan from Hostel Setup */}
+                            {form.hostel_id && (
+                              <div>
+                                <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                                  Select Room Type &amp; Accommodation Fee Plan *
+                                </label>
+                                <select
+                                  value={form.hostel_fee_structure_id}
+                                  onChange={e => {
+                                    const fsId = e.target.value;
+                                    if (fsId === 'CUSTOM') {
+                                      setForm(f => ({ ...f, hostel_fee_structure_id: 'CUSTOM' }));
+                                    } else {
+                                      const plan = hostelPlans.find(p => String(p.id) === String(fsId));
+                                      setForm(f => ({
+                                        ...f,
+                                        hostel_fee_structure_id: fsId,
+                                        hostel_monthly_fee: plan ? (plan.total_monthly || plan.monthly_fee || 0) : '',
+                                        hostel_deposit: plan ? (plan.security_deposit || 0) : '',
+                                        hostel_room_type: plan ? `${plan.sharing_type} ${plan.is_ac ? 'AC' : 'Non-AC'}` : ''
+                                      }));
+                                    }
+                                  }}
+                                  style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 12.5, background: '#fff' }}
+                                >
+                                  <option value="">-- Choose Room Category &amp; Pricing --</option>
+                                  {hostelPlans
+                                    .filter(p => !form.hostel_id || String(p.hostel_id) === String(form.hostel_id) || !p.hostel_id)
+                                    .map(p => (
+                                      <option key={p.id} value={p.id}>
+                                        {p.sharing_type} {p.is_ac ? '(AC)' : '(Non-AC)'} — ₹{(p.total_monthly || p.monthly_fee || 0).toLocaleString('en-IN')}/mo {p.security_deposit ? `(+ ₹${Number(p.security_deposit).toLocaleString('en-IN')} Deposit)` : ''} {p.mess_charges ? '(Mess Incl.)' : ''}
+                                      </option>
+                                    ))}
+                                  <option value="CUSTOM">Custom Room / Direct Rate Entry</option>
+                                </select>
+                              </div>
+                            )}
+
+                            {/* Custom Fee Entry if selected or if no slabs configured */}
+                            {(form.hostel_fee_structure_id === 'CUSTOM' || (form.hostel_id && hostelPlans.filter(p => String(p.hostel_id) === String(form.hostel_id)).length === 0)) && (
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, background: '#fff', padding: 10, borderRadius: 8, border: '1px dashed #cbd5e1' }}>
+                                <div>
+                                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 3 }}>
+                                    Monthly Rent (₹/mo) *
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    placeholder="e.g. 4500"
+                                    value={form.hostel_monthly_fee}
+                                    onChange={e => set('hostel_monthly_fee', e.target.value)}
+                                    style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 12 }}
+                                  />
+                                </div>
+                                <div>
+                                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 3 }}>
+                                    Security Deposit (₹ One-Time)
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    placeholder="e.g. 1000"
+                                    value={form.hostel_deposit}
+                                    onChange={e => set('hostel_deposit', e.target.value)}
+                                    style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 12 }}
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            {hostelMonthlyRate > 0 && (
+                              <div style={{ fontSize: 11.5, color: '#0369a1', background: '#e0f2fe', padding: '9px 12px', borderRadius: 8, lineHeight: 1.4 }}>
+                                ⚡ <strong>Centralized Hostel Sync:</strong> Monthly Accommodation ₹{hostelMonthlyRate.toLocaleString('en-IN')}/mo {hostelDeposit > 0 ? `+ Security Deposit ₹${hostelDeposit.toLocaleString('en-IN')} (One-time)` : ''} Step 7 (Fee Schedule) me auto-add ho gaya hai.
+                              </div>
+                            )}
 
                             <div>
                               <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
@@ -1508,8 +1676,8 @@ export default function NewAdmissionPage() {
                               />
                             </div>
 
-                            <div style={{ fontSize: 11, color: '#0369a1', background: '#e0f2fe', padding: '8px 12px', borderRadius: 6 }}>
-                              ℹ️ Bed allocation can also be finalized by the Hostel Warden via Hostel Management.
+                            <div style={{ fontSize: 11, color: '#64748b', background: '#f1f5f9', padding: '8px 12px', borderRadius: 6 }}>
+                              ℹ️ Room/Bed allocation can also be finalized by the Hostel Warden via Hostel Management.
                             </div>
                           </div>
                         ) : (
@@ -1887,25 +2055,46 @@ export default function NewAdmissionPage() {
                                     Reset Rates
                                   </button>
                                 )}
-                                <button
-                                  type="button"
-                                  onClick={() => setIsCustomizingFees(v => !v)}
-                                  style={{
-                                    background: isCustomizingFees ? '#0B3B7B' : '#fff',
-                                    color: isCustomizingFees ? '#fff' : '#0B3B7B',
-                                    border: '1px solid #0B3B7B',
-                                    borderRadius: 6,
-                                    padding: '3px 8px',
-                                    fontSize: 11,
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: 4
-                                  }}
-                                >
-                                  {isCustomizingFees ? '✓ Done Editing' : '✏️ Edit Rates'}
-                                </button>
+                                <div style={{ display: 'flex', gap: 6 }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowAddCustomFee(s => !s)}
+                                    style={{
+                                      background: '#10b98115',
+                                      color: '#059669',
+                                      border: '1px solid #10b98150',
+                                      padding: '3px 10px',
+                                      borderRadius: 6,
+                                      fontSize: 11.5,
+                                      fontWeight: 700,
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: 4
+                                    }}
+                                  >
+                                    <i className="ti ti-plus" /> Add Fee Item
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setIsCustomizingFees(v => !v)}
+                                    style={{
+                                      background: isCustomizingFees ? '#0B3B7B' : '#fff',
+                                      color: isCustomizingFees ? '#fff' : '#0B3B7B',
+                                      border: '1px solid #0B3B7B',
+                                      borderRadius: 6,
+                                      padding: '3px 8px',
+                                      fontSize: 11,
+                                      fontWeight: 700,
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: 4
+                                    }}
+                                  >
+                                    {isCustomizingFees ? '✓ Done Editing' : '✏️ Edit Rates'}
+                                  </button>
+                                </div>
                               </div>
                             </div>
                             <div style={{ padding: '8px 16px', fontSize: 12 }}>
@@ -1920,13 +2109,87 @@ export default function NewAdmissionPage() {
                                   </tr>
                                 </thead>
                                 <tbody>
+                                  {/* Inline Add Fee Item Form */}
+                                  {showAddCustomFee && (
+                                    <tr style={{ background: '#ecfdf5', borderBottom: '2px solid #a7f3d0' }}>
+                                      <td colSpan={5} style={{ padding: '10px 12px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                          <input
+                                            type="text"
+                                            placeholder="Fee Item Name (e.g. Uniform, Books, Registration, Caution)"
+                                            value={newCustomItem.name}
+                                            onChange={e => setNewCustomItem(prev => ({ ...prev, name: e.target.value }))}
+                                            style={{ flex: 2, minWidth: 200, padding: '5px 8px', borderRadius: 6, border: '1px solid #a7f3d0', fontSize: 12 }}
+                                          />
+                                          <select
+                                            value={newCustomItem.category}
+                                            onChange={e => setNewCustomItem(prev => ({ ...prev, category: e.target.value }))}
+                                            style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid #a7f3d0', fontSize: 12, background: '#fff' }}
+                                          >
+                                            <option value="ACADEMIC">ACADEMIC</option>
+                                            <option value="AUXILIARY">AUXILIARY</option>
+                                            <option value="ONE_TIME">ONE_TIME</option>
+                                            <option value="ACTIVITY">ACTIVITY</option>
+                                          </select>
+                                          <select
+                                            value={newCustomItem.is_recurring ? 'RECURRING' : 'ONE_TIME'}
+                                            onChange={e => setNewCustomItem(prev => ({ ...prev, is_recurring: e.target.value === 'RECURRING' }))}
+                                            style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid #a7f3d0', fontSize: 12, background: '#fff' }}
+                                          >
+                                            <option value="ONE_TIME">One-Time (Fixed)</option>
+                                            <option value="RECURRING">Monthly Recurring</option>
+                                          </select>
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            placeholder="Rate (₹)"
+                                            value={newCustomItem.amount}
+                                            onChange={e => setNewCustomItem(prev => ({ ...prev, amount: e.target.value }))}
+                                            style={{ width: 90, padding: '5px 8px', borderRadius: 6, border: '1px solid #a7f3d0', fontSize: 12 }}
+                                          />
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              if (!newCustomItem.name.trim() || !newCustomItem.amount) {
+                                                toast.error('Item name aur amount enter karein');
+                                                return;
+                                              }
+                                              setCustomFeeList(prev => [...prev, { ...newCustomItem, id: Date.now() }]);
+                                              setNewCustomItem({ name: '', category: 'ACADEMIC', amount: '', is_recurring: false });
+                                              setShowAddCustomFee(false);
+                                              toast.success('Fee item added');
+                                            }}
+                                            style={{ background: '#059669', color: '#fff', border: 'none', padding: '5px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                                          >
+                                            ✓ Add
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setShowAddCustomFee(false)}
+                                            style={{ background: 'transparent', color: '#64748b', border: 'none', padding: '5px 8px', fontSize: 12, cursor: 'pointer' }}
+                                          >
+                                            Cancel
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )}
+
                                   {computedItems.map((it, idx) => (
                                     <tr key={idx} style={{ borderBottom: '1px solid #f8fafc' }}>
                                       <td style={{ padding: '7px 0', fontWeight: 600, color: '#1e293b' }}>
-                                        {it.fee_head?.name || 'Fee Item'}
+                                        {it.headName}
+                                        <span style={{
+                                          fontSize: 9.5, padding: '1px 5px', borderRadius: 4,
+                                          background: it.isOneTime ? '#fef3c7' : '#e0f2fe',
+                                          color: it.isOneTime ? '#92400e' : '#0369a1',
+                                          fontWeight: 700, marginLeft: 6
+                                        }}>
+                                          {it.isOneTime ? 'ONE-TIME' : 'MONTHLY'}
+                                        </span>
                                       </td>
                                       <td style={{ padding: '7px 0', color: '#64748b', fontSize: 11 }}>
-                                        {it.fee_head?.category || 'ACADEMIC'}
+                                        {it.headCategory}
                                       </td>
                                       <td style={{ padding: '7px 0', textAlign: 'center' }}>
                                         {isCustomizingFees ? (
@@ -1955,11 +2218,44 @@ export default function NewAdmissionPage() {
                                           </span>
                                         )}
                                       </td>
-                                      <td style={{ padding: '7px 0', textAlign: 'center', color: '#0284c7', fontWeight: 700 }}>
-                                        × {it.mult}
+                                      <td style={{ padding: '7px 0', textAlign: 'center', color: it.isOneTime ? '#64748b' : '#0284c7', fontWeight: 700 }}>
+                                        × {it.mult} {it.isOneTime ? '(Fixed)' : ''}
                                       </td>
                                       <td style={{ padding: '7px 0', textAlign: 'right', fontWeight: 700, color: '#1e293b' }}>
                                         ₹ {it.lineAmt.toLocaleString('en-IN')}
+                                      </td>
+                                    </tr>
+                                  ))}
+
+                                  {/* Custom Added Fee Items */}
+                                  {computedCustomItems.map(cit => (
+                                    <tr key={cit.id} style={{ borderBottom: '1px solid #ecfdf5', background: '#f0fdf4' }}>
+                                      <td style={{ padding: '7px 0', fontWeight: 600, color: '#065f46', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        <span>✦ {cit.name}</span>
+                                        <span style={{
+                                          fontSize: 9.5, padding: '1px 5px', borderRadius: 4,
+                                          background: cit.isOneTime ? '#fef3c7' : '#e0f2fe',
+                                          color: cit.isOneTime ? '#92400e' : '#0369a1',
+                                          fontWeight: 700
+                                        }}>
+                                          {cit.isOneTime ? 'ONE-TIME' : 'MONTHLY'}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => setCustomFeeList(prev => prev.filter(x => x.id !== cit.id))}
+                                          style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 12, padding: '0 4px' }}
+                                          title="Remove Item"
+                                        >
+                                          ✕
+                                        </button>
+                                      </td>
+                                      <td style={{ padding: '7px 0', color: '#059669', fontSize: 11 }}>{cit.category}</td>
+                                      <td style={{ padding: '7px 0', textAlign: 'center', color: '#065f46' }}>₹ {cit.rate.toLocaleString('en-IN')}</td>
+                                      <td style={{ padding: '7px 0', textAlign: 'center', color: cit.isOneTime ? '#64748b' : '#0284c7', fontWeight: 700 }}>
+                                        × {cit.mult} {cit.isOneTime ? '(Fixed)' : ''}
+                                      </td>
+                                      <td style={{ padding: '7px 0', textAlign: 'right', fontWeight: 700, color: '#065f46' }}>
+                                        ₹ {cit.lineAmt.toLocaleString('en-IN')}
                                       </td>
                                     </tr>
                                   ))}
@@ -1969,29 +2265,47 @@ export default function NewAdmissionPage() {
                                     <tr style={{ borderBottom: '1px solid #f8fafc', background: '#f8fafc' }}>
                                       <td style={{ padding: '7px 0', fontWeight: 600, color: '#0284c7' }}>
                                         🚌 Transport Fee ({selectedRoute?.route_name || 'Assigned Route'})
+                                        <span style={{ fontSize: 9.5, padding: '1px 5px', borderRadius: 4, background: '#e0f2fe', color: '#0369a1', fontWeight: 700, marginLeft: 6 }}>MONTHLY</span>
                                       </td>
                                       <td style={{ padding: '7px 0', color: '#0284c7', fontSize: 11 }}>TRANSPORT</td>
-                                      <td style={{ padding: '7px 0', textAlign: 'center', color: '#64748b' }}>₹ {transportCharge}</td>
-                                      <td style={{ padding: '7px 0', textAlign: 'center', color: '#64748b' }}>× 1</td>
+                                      <td style={{ padding: '7px 0', textAlign: 'center', color: '#64748b' }}>₹ {transportMonthlyRate.toLocaleString('en-IN')}</td>
+                                      <td style={{ padding: '7px 0', textAlign: 'center', color: '#0284c7', fontWeight: 700 }}>× {monthsCount}</td>
                                       <td style={{ padding: '7px 0', textAlign: 'right', fontWeight: 700, color: '#0284c7' }}>
-                                        ₹ {transportCharge.toLocaleString('en-IN')}
+                                        ₹ {transportRecurringTotal.toLocaleString('en-IN')}
                                       </td>
                                     </tr>
                                   )}
 
                                   {/* Hostel Accommodation Addon if opted in */}
                                   {form.hostel_required === 'Yes' && (
-                                    <tr style={{ borderBottom: '1px solid #f8fafc', background: '#f8fafc' }}>
-                                      <td style={{ padding: '7px 0', fontWeight: 600, color: '#0284c7' }}>
-                                        🛏️ Hostel Accommodation ({selectedHostel?.name || 'Hostel'})
-                                      </td>
-                                      <td style={{ padding: '7px 0', color: '#0284c7', fontSize: 11 }}>HOSTEL</td>
-                                      <td style={{ padding: '7px 0', textAlign: 'center', color: '#64748b' }}>₹ {hostelCharge}</td>
-                                      <td style={{ padding: '7px 0', textAlign: 'center', color: '#64748b' }}>× 1</td>
-                                      <td style={{ padding: '7px 0', textAlign: 'right', fontWeight: 700, color: '#0284c7' }}>
-                                        ₹ {hostelCharge.toLocaleString('en-IN')}
-                                      </td>
-                                    </tr>
+                                    <>
+                                      <tr style={{ borderBottom: '1px solid #f8fafc', background: '#f8fafc' }}>
+                                        <td style={{ padding: '7px 0', fontWeight: 600, color: '#0284c7' }}>
+                                          🛏️ Hostel Accommodation ({selectedHostel?.name || 'Hostel'}{selectedHostelPlan ? ` - ${selectedHostelPlan.sharing_type} ${selectedHostelPlan.is_ac ? '(AC)' : '(Non-AC)'}` : ''})
+                                          <span style={{ fontSize: 9.5, padding: '1px 5px', borderRadius: 4, background: '#e0f2fe', color: '#0369a1', fontWeight: 700, marginLeft: 6 }}>MONTHLY</span>
+                                        </td>
+                                        <td style={{ padding: '7px 0', color: '#0284c7', fontSize: 11 }}>HOSTEL</td>
+                                        <td style={{ padding: '7px 0', textAlign: 'center', color: '#64748b' }}>₹ {hostelMonthlyRate.toLocaleString('en-IN')}</td>
+                                        <td style={{ padding: '7px 0', textAlign: 'center', color: '#0284c7', fontWeight: 700 }}>× {monthsCount}</td>
+                                        <td style={{ padding: '7px 0', textAlign: 'right', fontWeight: 700, color: '#0284c7' }}>
+                                          ₹ {hostelRecurringTotal.toLocaleString('en-IN')}
+                                        </td>
+                                      </tr>
+                                      {hostelDeposit > 0 && (
+                                        <tr style={{ borderBottom: '1px solid #f8fafc', background: '#f8fafc' }}>
+                                          <td style={{ padding: '7px 0', fontWeight: 600, color: '#0284c7' }}>
+                                            🛡️ Hostel Security Deposit ({selectedHostel?.name || 'Hostel'})
+                                            <span style={{ fontSize: 9.5, padding: '1px 5px', borderRadius: 4, background: '#fef3c7', color: '#92400e', fontWeight: 700, marginLeft: 6 }}>ONE-TIME</span>
+                                          </td>
+                                          <td style={{ padding: '7px 0', color: '#0284c7', fontSize: 11 }}>HOSTEL</td>
+                                          <td style={{ padding: '7px 0', textAlign: 'center', color: '#64748b' }}>₹ {hostelDeposit.toLocaleString('en-IN')}</td>
+                                          <td style={{ padding: '7px 0', textAlign: 'center', color: '#64748b', fontWeight: 700 }}>× 1 (Fixed)</td>
+                                          <td style={{ padding: '7px 0', textAlign: 'right', fontWeight: 700, color: '#0284c7' }}>
+                                            ₹ {hostelDeposit.toLocaleString('en-IN')}
+                                          </td>
+                                        </tr>
+                                      )}
+                                    </>
                                   )}
 
                                   {/* Library Membership Addon if opted in */}
@@ -2267,7 +2581,7 @@ export default function NewAdmissionPage() {
                           <div>1st School Enrollment: <strong>{form.is_first_school ? 'Yes (1st School)' : 'No (Transfer)'}</strong></div>
                           {!form.is_first_school && <div>Previous School: <strong>{form.previous_school_name || 'Not specified'}</strong></div>}
                           <div>Transport Service: <strong>{form.transport_required === 'Yes' ? (selectedRoute?.route_name || 'Opted In') : 'No'}</strong></div>
-                          <div>Hostel Accommodation: <strong>{form.hostel_required === 'Yes' ? (selectedHostel?.name || 'Opted In') : 'Day Scholar'}</strong></div>
+                          <div>Hostel Accommodation: <strong>{form.hostel_required === 'Yes' ? `${selectedHostel?.name || 'Opted In'}${selectedHostelPlan ? ` (${selectedHostelPlan.sharing_type} ${selectedHostelPlan.is_ac ? 'AC' : 'Non-AC'})` : ''}` : 'Day Scholar'}</strong></div>
                           <div>Fee Cadence: <strong>{selectedPaymentPlan?.name || 'Monthly'} ({monthsCount} Month{monthsCount > 1 ? 's' : ''})</strong></div>
                           {advanceDiscount > 0 && <div style={{ color: '#16a34a' }}>Advance Discount: <strong>- ₹ {advanceDiscount.toLocaleString('en-IN')}</strong></div>}
                           {waiverNum > 0 && <div style={{ color: '#0284c7' }}>Special Waiver: <strong>- ₹ {waiverNum.toLocaleString('en-IN')}</strong> ({waiverReason})</div>}
