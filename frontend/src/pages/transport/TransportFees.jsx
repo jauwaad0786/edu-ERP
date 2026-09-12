@@ -839,12 +839,15 @@ export default function TransportFees() {
                 </div>
               </div>
               <div style={{ marginTop: 12 }}>
-                <label style={{ fontSize: 12, fontWeight: 600 }}>Route (optional — leave blank for all routes)</label>
+                <label style={{ fontSize: 12, fontWeight: 600 }}>Select Route (e.g. Chakhabibullah to Zero Mile)</label>
                 <select className="form-input" value={structForm.route_id}
                   onChange={e => setStructForm(f => ({ ...f, route_id: e.target.value }))}>
-                  <option value="">-- All Routes --</option>
-                  {routes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                  <option value="">-- All Routes (School-Wide Flat Fee) --</option>
+                  {routes.map(r => <option key={r.id} value={r.id}>Route: {r.name}</option>)}
                 </select>
+                <div style={{ fontSize: 11, color: '#64748b', marginTop: 3 }}>
+                  Specific route select karne se New Admission aur Generate Fees me yehi rate auto-apply hoga.
+                </div>
               </div>
               <div style={{ marginTop: 12 }}>
                 <label style={{ fontSize: 12, fontWeight: 600 }}>Academic Year</label>
@@ -860,7 +863,7 @@ export default function TransportFees() {
                   background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 8,
                   padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: savingStruct ? 'not-allowed' : 'pointer',
                   opacity: savingStruct ? 0.7 : 1,
-                }}>{savingStruct ? 'Saving...' : editingStructId ? 'Update' : 'Save'}</button>
+                }}>{savingStruct ? 'Saving...' : editingStructId ? 'Update & Sync' : 'Save & Sync'}</button>
               </div>
             </form>
           </div>
@@ -870,23 +873,40 @@ export default function TransportFees() {
       {/* ── Generate records modal ── */}
       {showGenerate && (
         <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowGenerate(false)}>
-          <div className="modal" style={{ maxWidth: 460 }}>
+          <div className="modal" style={{ maxWidth: 480 }}>
             <div className="modal-header">
               <h3>Generate Fee Records</h3>
               <button className="modal-close" onClick={() => setShowGenerate(false)}>✕</button>
             </div>
             <form onSubmit={handleGenerate} className="modal-body">
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600 }}>Fee Structure *</label>
+                <label style={{ fontSize: 12, fontWeight: 600 }}>Route / Fee Structure *</label>
                 <select className="form-input" value={generateForm.fee_structure_id}
                   onChange={e => setGenerateForm(f => ({ ...f, fee_structure_id: e.target.value }))} required>
-                  <option value="">-- Select --</option>
-                  {structures.map(s => <option key={s.id} value={s.id}>{s.name} (₹{s.amount} / {s.frequency})</option>)}
+                  <option value="">-- Select Route Fee Structure --</option>
+                  {structures.map(s => {
+                    const rText = s.route_name || 'All Routes';
+                    const sCount = s.student_count !== undefined ? ` • ${s.student_count} Enrolled` : '';
+                    return (
+                      <option key={s.id} value={s.id}>
+                        {s.name} — {rText} (₹{s.amount}/{s.frequency}){sCount}
+                      </option>
+                    );
+                  })}
                 </select>
+                {(() => {
+                  const sel = structures.find(s => String(s.id) === String(generateForm.fee_structure_id));
+                  if (!sel) return null;
+                  return (
+                    <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, background: '#f0fdf4', border: '1px solid #bbf7d0', fontSize: 11.5, color: '#166534' }}>
+                      🚌 <strong>Target:</strong> {sel.route_name || 'All Routes'} &bull; <strong>Rate:</strong> ₹{sel.amount}/{sel.frequency} &bull; <strong>Active Students:</strong> {sel.student_count || 0}
+                    </div>
+                  );
+                })()}
               </div>
               <div style={{ marginTop: 12 }}>
                 <label style={{ fontSize: 12, fontWeight: 600 }}>Period Label *</label>
-                <input className="form-input" placeholder="e.g. April 2026" value={generateForm.period_label}
+                <input className="form-input" placeholder="e.g. April 2026 or Q1 2026-27" value={generateForm.period_label}
                   onChange={e => setGenerateForm(f => ({ ...f, period_label: e.target.value }))} required />
               </div>
               <div style={{ marginTop: 12 }}>
@@ -895,8 +915,8 @@ export default function TransportFees() {
                   onChange={e => setGenerateForm(f => ({ ...f, due_date: e.target.value }))} />
               </div>
               <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 10 }}>
-                Ye us route/school ke saare ACTIVE transport students ke liye ek-ek record banayega.
-                Jinke paas already is period ka record hai unhe skip kar dega — dobara chalana safe hai.
+                Ye is route ke sabhi ACTIVE transport students ke liye fees generate karega.
+                Jo already billed hain unhe safe skip kiya jayega.
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
                 <button type="button" onClick={() => setShowGenerate(false)} style={{

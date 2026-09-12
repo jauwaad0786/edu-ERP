@@ -809,10 +809,14 @@ def get_admission_fee_plan():
 
     # 4. Optional transport routes & fee structures
     transport_plans = []
+    transport_routes = []
     try:
         from app.models.transport_student import TransportFeeStructure
+        from app.models.transport import Route
         tfs_list = TransportFeeStructure.query.filter_by(school_id=user.school_id, status='ACTIVE').all()
         transport_plans = [t.to_dict() for t in tfs_list]
+        r_list = Route.query.filter_by(school_id=user.school_id, status='ACTIVE').all()
+        transport_routes = [r.to_dict(include_stops=True, include_counts=False) for r in r_list]
     except Exception:
         pass
 
@@ -827,6 +831,7 @@ def get_admission_fee_plan():
         'payment_plans': [p.to_dict() for p in payment_plans],
         'hostel_plans': hostel_plans,
         'transport_plans': transport_plans,
+        'transport_routes': transport_routes,
         'fee_heads': [h.to_dict() for h in heads],
     }), 200
 

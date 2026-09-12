@@ -71,7 +71,7 @@ export default function StudentTransport() {
   useEffect(() => {
     api.get('/principal/classes').then(r => setClasses(r.data || [])).catch(() => {});
     api.get('/transport/vehicles?per_page=200').then(r => setVehicles(r.data.data || [])).catch(() => {});
-    api.get('/transport/routes?include_stops=false').then(r => setRoutes(r.data.data || [])).catch(() => {});
+    api.get('/transport/routes?include_stops=true').then(r => setRoutes(r.data.data || [])).catch(() => {});
     api.get('/transport/stops').then(r => setStops(r.data.data || [])).catch(() => {});
   }, []);
 
@@ -228,18 +228,36 @@ export default function StudentTransport() {
               background: darkMode ? '#1e3a5f' : '#eef2ff', border: '1px solid #4f46e5',
             }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: '#4f46e5' }}>{selected.size} selected</span>
+              <select value={assignRoute} onChange={e => {
+                const rId = e.target.value;
+                setAssignRoute(rId);
+                const rObj = routes.find(r => String(r.id) === String(rId));
+                if (rObj?.vehicle_id && !assignVehicle) setAssignVehicle(rObj.vehicle_id);
+                setAssignStop('');
+              }} style={inputStyle}>
+                <option value="">Route...</option>
+                {routes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
               <select value={assignVehicle} onChange={e => setAssignVehicle(e.target.value)} style={inputStyle}>
                 <option value="">Vehicle...</option>
                 {vehicles.map(v => <option key={v.id} value={v.id}>{v.vehicle_number}</option>)}
               </select>
-              <select value={assignRoute} onChange={e => setAssignRoute(e.target.value)} style={inputStyle}>
-                <option value="">Route...</option>
-                {routes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-              </select>
-              <select value={assignStop} onChange={e => setAssignStop(e.target.value)} style={inputStyle}>
-                <option value="">Stop...</option>
-                {stops.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
+              {(() => {
+                const rObj = routes.find(r => String(r.id) === String(assignRoute));
+                const optStops = (rObj?.stops && rObj.stops.length > 0)
+                  ? rObj.stops.map(s => ({ id: s.stop_id || s.id, name: s.stop_name || s.name, sequence: s.sequence }))
+                  : stops;
+                return (
+                  <select value={assignStop} onChange={e => setAssignStop(e.target.value)} style={inputStyle}>
+                    <option value="">Stop...</option>
+                    {optStops.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.sequence ? `#${s.sequence} ` : ''}{s.name}
+                      </option>
+                    ))}
+                  </select>
+                );
+              })()}
               <button onClick={handleBulkAssign} disabled={assigning} style={{
                 background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 8,
                 padding: '8px 20px', fontSize: 12, fontWeight: 700, cursor: assigning ? 'not-allowed' : 'pointer',
@@ -361,28 +379,49 @@ export default function StudentTransport() {
             </div>
             <form onSubmit={handleTransferSave} className="modal-body">
               <div>
+                <label style={{ fontSize: 12, fontWeight: 600 }}>Route *</label>
+                <select className="form-input" value={transferForm.route_id}
+                  onChange={e => {
+                    const rId = e.target.value;
+                    const rObj = routes.find(r => String(r.id) === String(rId));
+                    setTransferForm(f => ({
+                      ...f,
+                      route_id: rId,
+                      vehicle_id: rObj?.vehicle_id || f.vehicle_id,
+                      stop_id: '',
+                    }));
+                  }}>
+                  <option value="">-- Select Route --</option>
+                  {routes.map(r => <option key={r.id} value={r.id}>{r.name} {r.fare ? `(₹${r.fare})` : ''}</option>)}
+                </select>
+              </div>
+              <div style={{ marginTop: 12 }}>
                 <label style={{ fontSize: 12, fontWeight: 600 }}>Vehicle</label>
                 <select className="form-input" value={transferForm.vehicle_id}
                   onChange={e => setTransferForm(f => ({ ...f, vehicle_id: e.target.value }))}>
-                  <option value="">-- None --</option>
+                  <option value="">-- Select Vehicle --</option>
                   {vehicles.map(v => <option key={v.id} value={v.id}>{v.vehicle_number}</option>)}
                 </select>
               </div>
               <div style={{ marginTop: 12 }}>
-                <label style={{ fontSize: 12, fontWeight: 600 }}>Route</label>
-                <select className="form-input" value={transferForm.route_id}
-                  onChange={e => setTransferForm(f => ({ ...f, route_id: e.target.value }))}>
-                  <option value="">-- None --</option>
-                  {routes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                </select>
-              </div>
-              <div style={{ marginTop: 12 }}>
-                <label style={{ fontSize: 12, fontWeight: 600 }}>Stop</label>
-                <select className="form-input" value={transferForm.stop_id}
-                  onChange={e => setTransferForm(f => ({ ...f, stop_id: e.target.value }))}>
-                  <option value="">-- None --</option>
-                  {stops.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
+                <label style={{ fontSize: 12, fontWeight: 600 }}>Stop (Filtered by Route)</label>
+                {(() => {
+                  const rObj = routes.find(r => String(r.id) === String(transferForm.route_id));
+                  const optStops = (rObj?.stops && rObj.stops.length > 0)
+                    ? rObj.stops.map(s => ({ id: s.stop_id || s.id, name: s.stop_name || s.name, sequence: s.sequence, eta: s.estimated_time }))
+                    : stops;
+                  return (
+                    <select className="form-input" value={transferForm.stop_id}
+                      onChange={e => setTransferForm(f => ({ ...f, stop_id: e.target.value }))}>
+                      <option value="">-- Select Stop --</option>
+                      {optStops.map(s => (
+                        <option key={s.id} value={s.id}>
+                          {s.sequence ? `#${s.sequence} ` : ''}{s.name}{s.eta ? ` (${s.eta})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  );
+                })()}
               </div>
               <div style={{ marginTop: 12 }}>
                 <label style={{ fontSize: 12, fontWeight: 600 }}>Remarks / Reason</label>

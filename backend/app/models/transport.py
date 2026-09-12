@@ -276,6 +276,28 @@ class Route(db.Model):
             d['stops'] = [s.to_dict() for s in self.stops.order_by(RouteStop.sequence)]
         if include_counts:
             d['students_count'] = self.students_count()
+
+        try:
+            from app.models.transport_student import TransportFeeStructure
+            tfs = TransportFeeStructure.query.filter_by(
+                school_id=self.school_id, route_id=self.id, status='ACTIVE'
+            ).first()
+            if not tfs:
+                tfs = TransportFeeStructure.query.filter_by(
+                    school_id=self.school_id, route_id=None, status='ACTIVE'
+                ).first()
+            d['fee_structure_id'] = tfs.id if tfs else None
+            d['fee_structure_name'] = tfs.name if tfs else ''
+            d['fee_amount'] = float(tfs.amount) if (tfs and tfs.amount) else 0.0
+            d['fare'] = float(tfs.amount) if (tfs and tfs.amount) else 0.0
+            d['fee_frequency'] = tfs.frequency if tfs else 'MONTHLY'
+        except Exception:
+            d['fee_structure_id'] = None
+            d['fee_structure_name'] = ''
+            d['fee_amount'] = 0.0
+            d['fare'] = 0.0
+            d['fee_frequency'] = 'MONTHLY'
+
         return d
 
 

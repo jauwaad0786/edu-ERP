@@ -152,6 +152,15 @@ class TransportFeeStructure(db.Model):
     route = db.relationship('Route', foreign_keys=[route_id])
 
     def to_dict(self):
+        st_count = 0
+        try:
+            q = StudentTransport.query.filter_by(school_id=self.school_id, status='ACTIVE')
+            if self.route_id:
+                q = q.filter_by(route_id=self.route_id)
+            st_count = q.count()
+        except Exception:
+            st_count = 0
+
         return {
             'id':            self.id,
             'name':          self.name,
@@ -161,6 +170,7 @@ class TransportFeeStructure(db.Model):
             'route_name':    self.route.name if self.route else 'All Routes',
             'academic_year': self.academic_year or '',
             'status':        self.status,
+            'student_count': st_count,
             'created_at':    self.created_at.isoformat() if self.created_at else None,
         }
 

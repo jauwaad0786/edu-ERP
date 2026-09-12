@@ -159,8 +159,8 @@ export default function NewAdmissionPage() {
       })
       .catch(() => {});
 
-    // 3. Fetch Transport Routes (optional addon)
-    api.get('/transport/routes')
+    // 3. Fetch Transport Routes (with stops & fares)
+    api.get('/transport/routes?include_stops=true')
       .then(r => {
         const raw = r.data;
         const arr = Array.isArray(raw) ? raw : Array.isArray(raw?.data) ? raw.data : Array.isArray(raw?.routes) ? raw.routes : [];
@@ -195,6 +195,9 @@ export default function NewAdmissionPage() {
       const res = await api.get(`/fees-finance/admission-fee-plan?class_id=${classId}&session=${session || '2026-27'}`);
       const data = res.data;
       setAdmissionFeeData(data);
+      if (data?.transport_routes?.length > 0) {
+        setTransportRoutes(data.transport_routes);
+      }
       if (data?.payment_plans?.length > 0) {
         const def = data.payment_plans.find(p => p.code === 'QUARTERLY') || data.payment_plans[0];
         setSelectedPaymentPlan(def);
@@ -1368,55 +1371,92 @@ export default function NewAdmissionPage() {
                           </h4>
                           <select
                             value={form.transport_required}
-                            onChange={e => set('transport_required', e.target.value)}
+                            onChange={e => {
+                              const val = e.target.value;
+                              set('transport_required', val);
+                              if (val === 'No') {
+                                set('transport_route_id', '');
+                                set('transport_stop_id', '');
+                              }
+                            }}
                             style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 12, fontWeight: 700, background: '#fff' }}
                           >
-                            <option value="No">No Transport</option>
-                            <option value="Yes">Yes, Opt-In</option>
+                            <option value="No">No Transport (Day Scholar)</option>
+                            <option value="Yes">Yes, Opt-In for Bus</option>
                           </select>
                         </div>
 
                         {form.transport_required === 'Yes' ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                             <div>
-                              <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
-                                Select Transport Route
-                              </label>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                <label style={{ fontSize: 11.5, fontWeight: 600, color: '#475569' }}>
+                                  Select Bus Route *
+                                </label>
+                                {selectedRoute && (
+                                  <span style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', background: '#dcfce7', padding: '2px 8px', borderRadius: 6 }}>
+                                    Fee: ₹{selectedRoute.fare || selectedRoute.fee_amount || 0}/mo
+                                  </span>
+                                )}
+                              </div>
                               <select
                                 value={form.transport_route_id}
-                                onChange={e => set('transport_route_id', e.target.value)}
+                                onChange={e => {
+                                  const rId = e.target.value;
+                                  set('transport_route_id', rId);
+                                  set('transport_stop_id', '');
+                                }}
                                 style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 12.5, background: '#fff' }}
                               >
-                                <option value="">-- Select Route --</option>
-                                {Array.isArray(transportRoutes) && transportRoutes.map(r => (
-                                  <option key={r.id} value={r.id}>{r.route_name || r.name || `Route #${r.id}`}</option>
-                                ))}
+                                <option value="">-- Choose Route (e.g. Chakhabibullah to Zero Mile) --</option>
+                                {Array.isArray(transportRoutes) && transportRoutes.map(r => {
+                                  const fare = r.fare || r.fee_amount || 0;
+                                  const fareStr = fare > 0 ? ` (₹${fare}/mo)` : '';
+                                  const vehStr = r.vehicle_number ? ` • Bus: ${r.vehicle_number}` : '';
+                                  return (
+                                    <option key={r.id} value={r.id}>
+                                      {r.route_name || r.name || `Route #${r.id}`}{fareStr}{vehStr}
+                                    </option>
+                                  );
+                                })}
                               </select>
                             </div>
 
-                            <div>
-                              <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
-                                Pickup / Drop Bus Stop
-                              </label>
-                              <select
-                                value={form.transport_stop_id}
-                                onChange={e => set('transport_stop_id', e.target.value)}
-                                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 12.5, background: '#fff' }}
-                              >
-                                <option value="">-- Select Stop --</option>
-                                {Array.isArray(transportStops) && transportStops.map(s => (
-                                  <option key={s.id} value={s.id}>{s.stop_name || s.name || `Stop #${s.id}`}</option>
-                                ))}
-                              </select>
-                            </div>
+                            {form.transport_route_id && (
+                              <div>
+                                <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                                  Pickup / Drop Bus Stop (Optional)
+                                </label>
+                                <select
+                                  value={form.transport_stop_id}
+                                  onChange={e => set('transport_stop_id', e.target.value)}
+                                  style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 12.5, background: '#fff' }}
+                                >
+                                  <option value="">-- Select Stop (or assign later in Transport) --</option>
+                                  {(selectedRoute?.stops && selectedRoute.stops.length > 0 ? selectedRoute.stops : transportStops).map((s, idx) => {
+                                    const sId = s.stop_id || s.id;
+                                    const sName = s.stop_name || s.name || `Stop #${sId}`;
+                                    const eta = s.estimated_time ? ` (${s.estimated_time})` : '';
+                                    return (
+                                      <option key={sId || idx} value={sId}>
+                                        {s.sequence ? `#${s.sequence} ` : ''}{sName}{eta}
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                                <div style={{ fontSize: 11, color: '#64748b', marginTop: 3 }}>
+                                  Stop abhi select karein ya Transport Manager baad me Transport module se set/change karega.
+                                </div>
+                              </div>
+                            )}
 
-                            <div style={{ fontSize: 11, color: '#0369a1', background: '#e0f2fe', padding: '8px 12px', borderRadius: 6 }}>
-                              ℹ️ Automatically links student to GPS live route and transport monthly fee schedule.
+                            <div style={{ fontSize: 11.5, color: '#0369a1', background: '#e0f2fe', padding: '9px 12px', borderRadius: 8, lineHeight: 1.4 }}>
+                              ⚡ <strong>Centralized Sync:</strong> Student automatically Transport roster me enroll hoga, aur ₹{selectedRoute?.fare || selectedRoute?.fee_amount || 0} Step 7 (Fee Schedule) me add ho gaya hai.
                             </div>
                           </div>
                         ) : (
                           <div style={{ textAlign: 'center', padding: '24px 10px', color: '#94a3b8', fontSize: 12 }}>
-                            Student does not require school bus transport (Day Scholar).
+                            Student does not require school bus transport (Day Scholar). No transport charges applied.
                           </div>
                         )}
                       </div>

@@ -978,21 +978,47 @@ def create_student():
             db.session.add(init_enroll)
 
         # Optional Transport Assignment
-        if data.get('transport_route_id') or data.get('transport_stop_id'):
+        transport_opt = data.get('transport_required')
+        route_id_val = data.get('transport_route_id')
+        stop_id_val = data.get('transport_stop_id') or None
+
+        if transport_opt != 'No' and (route_id_val or stop_id_val):
             try:
-                from app.models.transport_student import StudentTransport
+                from app.models.transport_student import StudentTransport, TransportTransferHistory
+                from app.models.transport import Route
+                
+                veh_id = None
+                if route_id_val:
+                    r_obj = Route.query.filter_by(id=route_id_val, school_id=sid).first()
+                    if r_obj:
+                        veh_id = r_obj.vehicle_id
+
                 trans = StudentTransport(
                     school_id=sid,
                     student_id=student.id,
-                    route_id=data.get('transport_route_id'),
-                    stop_id=data.get('transport_stop_id'),
-                    pickup_stop_id=data.get('transport_stop_id'),
-                    drop_stop_id=data.get('transport_stop_id'),
+                    route_id=route_id_val or None,
+                    vehicle_id=veh_id,
+                    stop_id=stop_id_val,
+                    pickup_stop_id=stop_id_val,
+                    drop_stop_id=stop_id_val,
                     academic_year=session_str,
                     status='ACTIVE',
                     created_by=get_current_user().id if get_current_user() else None
                 )
                 db.session.add(trans)
+
+                # Log to Transport Transfer History
+                hist = TransportTransferHistory(
+                    school_id=sid,
+                    student_id=student.id,
+                    transfer_type='ADDED',
+                    to_route_id=route_id_val or None,
+                    to_vehicle_id=veh_id,
+                    to_stop_id=stop_id_val,
+                    remarks='Enrolled via New Admission',
+                    created_by=get_current_user().id if get_current_user() else None
+                )
+                db.session.add(hist)
             except Exception as trans_err:
                 print(f'[WARN] Transport assignment error: {trans_err}')
 
