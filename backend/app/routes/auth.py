@@ -349,6 +349,18 @@ def login():
                 if su and su not in candidates:
                     candidates.append(su)
 
+    # 5.5 Student Registration / Admission Number lookup (case-insensitive)
+    if raw_identifier:
+        students_by_adm = Student.query.filter(
+            (sqlfunc.lower(Student.admission_no) == identifier) |
+            (Student.admission_no == raw_identifier)
+        ).all()
+        for s in students_by_adm:
+            if s.user_id:
+                su = db.session.get(User, s.user_id) if hasattr(db.session, 'get') else User.query.get(s.user_id)
+                if su and su not in candidates:
+                    candidates.append(su)
+
     # Find the candidate matching the password
     matched_user = None
     if candidates:

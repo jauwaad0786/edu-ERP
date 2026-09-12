@@ -94,6 +94,11 @@ export default function NewAdmissionPage() {
   const [birthCertFile, setBirthCertFile] = useState(null);
   const [medicalCertFile, setMedicalCertFile] = useState(null);
 
+  // Admission Modes: 'quick' (⚡ Quick Fast-Track) vs 'full' (📋 8 Steps Comprehensive)
+  const [admissionMode, setAdmissionMode] = useState('quick');
+  const [quickStep, setQuickStep] = useState(1); // 1: Login & Essential Credentials, 2: Fee & Confirmation
+  const [showPassword, setShowPassword] = useState(true);
+
   // Dynamic Fee Plan States (Zero hardcoded numbers)
   const [admissionFeeData, setAdmissionFeeData] = useState(null);
   const [loadingFeePlan, setLoadingFeePlan] = useState(false);
@@ -168,11 +173,32 @@ export default function NewAdmissionPage() {
     payment_plan_id: '',
     payment_mode: 'Cash',
     payment_status: 'PAID',
-    password: 'Student@123',
+    password: '12345',
   });
 
   const [customFeeAmounts, setCustomFeeAmounts] = useState({});
   const [isCustomizingFees, setIsCustomizingFees] = useState(false);
+
+  // Auto-fetch candidate sequential admission number for student login credentials
+  const fetchNextAdmissionNo = useCallback(async (session) => {
+    try {
+      const res = await api.get(`/principal/students/next-admission-no?session=${session || '2026-27'}`);
+      if (res.data?.next_admission_no) {
+        setForm(f => {
+          if (!f.manual_admission_no) {
+            return { ...f, manual_admission_no: res.data.next_admission_no };
+          }
+          return f;
+        });
+      }
+    } catch (err) {
+      console.warn('Could not auto-fetch next admission no:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchNextAdmissionNo(form.session);
+  }, [form.session, fetchNextAdmissionNo]);
 
   useEffect(() => {
     // 1. Fetch Classes
@@ -463,14 +489,16 @@ export default function NewAdmissionPage() {
   const paymentPlans = admissionFeeData?.payment_plans || [];
   const monthsCount = selectedPaymentPlan?.months_count || 1;
 
-  const transportMonthlyRate = form.transport_required === 'Yes' ? Number(selectedRoute?.fare || selectedRoute?.fee_amount || selectedStop?.pickup_charge || 0) : 0;
+  const isQuick = admissionMode === 'quick';
+
+  const transportMonthlyRate = !isQuick && form.transport_required === 'Yes' ? Number(selectedRoute?.fare || selectedRoute?.fee_amount || selectedStop?.pickup_charge || 0) : 0;
   const transportRecurringTotal = transportMonthlyRate * monthsCount;
   const transportCharge = transportMonthlyRate;
 
-  const hostelMonthlyRate = form.hostel_required === 'Yes'
+  const hostelMonthlyRate = !isQuick && form.hostel_required === 'Yes'
     ? (selectedHostelPlan ? Number(selectedHostelPlan.total_monthly || selectedHostelPlan.monthly_fee || 0) : Number(form.hostel_monthly_fee || 0))
     : 0;
-  const hostelDeposit = form.hostel_required === 'Yes'
+  const hostelDeposit = !isQuick && form.hostel_required === 'Yes'
     ? (selectedHostelPlan ? Number(selectedHostelPlan.security_deposit || 0) : Number(form.hostel_deposit || 0))
     : 0;
   const hostelRecurringTotal = hostelMonthlyRate * monthsCount;
@@ -478,7 +506,7 @@ export default function NewAdmissionPage() {
   const hostelCharge = hostelTotalCharge;
 
   const defaultLibRate = admissionFeeData?.fee_heads?.find(h => h.code === 'LIBRARY' || h.category === 'LIBRARY')?.default_amount || 150;
-  const libraryCharge = form.library_required === 'Yes' ? Number(form.library_fee || defaultLibRate || 150) : 0;
+  const libraryCharge = !isQuick && form.library_required === 'Yes' ? Number(form.library_fee || defaultLibRate || 150) : 0;
 
   let baseGross = 0;
   let eligibleBase = 0;
@@ -520,7 +548,7 @@ export default function NewAdmissionPage() {
   });
 
   let customItemsGross = 0;
-  const computedCustomItems = customFeeList.map(item => {
+  const computedCustomItems = isQuick ? [] : customFeeList.map(item => {
     const isOneTime = !item.is_recurring;
     const mult = isOneTime ? 1 : monthsCount;
     const rate = Number(item.amount || 0);
@@ -568,6 +596,27 @@ export default function NewAdmissionPage() {
       toast.error('Please fill in Student Name and select an Admission Class');
       return;
     }
+
+    if (admissionMode === 'quick') {
+      if (!form.manual_admission_no?.trim()) {
+        toast.error('Registration / Admission Number is mandatory for student login');
+        return;
+      }
+      if (!form.father_name?.trim()) {
+        toast.error("Father's Name is mandatory for student login and verification");
+        return;
+      }
+      const cleanP = (form.parent_phone || '').replace(/\D/g, '');
+      if (!cleanP || cleanP.length < 10) {
+        toast.error('A valid 10-digit primary mobile number is mandatory');
+        return;
+      }
+      if (!form.password?.trim()) {
+        toast.error('Student portal password is required (default is 12345)');
+        return;
+      }
+    }
+
     if (saving) return; // Double-click protection
 
     setSaving(true);
@@ -585,16 +634,16 @@ export default function NewAdmissionPage() {
         payment_plan_id: selectedPaymentPlan?.id || null,
         payment_plan_code: selectedPaymentPlan?.code || null,
         months_count: monthsCount,
-        transport_fee: transportMonthlyRate,
-        transport_multiplier: monthsCount,
-        transport_fee_name: `Transport Fee (${selectedRoute?.route_name || 'Assigned Route'})`,
-        hostel_fee: hostelMonthlyRate,
-        hostel_deposit: hostelDeposit,
-        hostel_multiplier: monthsCount,
-        hostel_fee_name: `Hostel Accommodation (${selectedHostel?.name || 'Hostel'}${selectedHostelPlan ? ` - ${selectedHostelPlan.sharing_type} ${selectedHostelPlan.is_ac ? '(AC)' : '(Non-AC)'}` : ''})`,
-        library_fee: libraryCharge,
-        library_required: form.library_required,
-        custom_items: Object.keys(customFeeAmounts).length > 0 ? computedItems.map(it => ({
+        transport_fee: isQuick ? 0 : transportMonthlyRate,
+        transport_multiplier: isQuick ? 0 : monthsCount,
+        transport_fee_name: isQuick ? null : `Transport Fee (${selectedRoute?.route_name || 'Assigned Route'})`,
+        hostel_fee: isQuick ? 0 : hostelMonthlyRate,
+        hostel_deposit: isQuick ? 0 : hostelDeposit,
+        hostel_multiplier: isQuick ? 0 : monthsCount,
+        hostel_fee_name: isQuick ? null : `Hostel Accommodation (${selectedHostel?.name || 'Hostel'})`,
+        library_fee: isQuick ? 0 : libraryCharge,
+        library_required: isQuick ? 'No' : form.library_required,
+        custom_items: (!isQuick && Object.keys(customFeeAmounts).length > 0) ? computedItems.map(it => ({
           fee_head_id: it.fee_head_id,
           name: it.headName,
           code: it.fee_head?.code || it.fee_head_code || 'ACADEMIC',
@@ -603,7 +652,7 @@ export default function NewAdmissionPage() {
           multiplier: it.mult,
           amount: it.lineAmt,
         })) : null,
-        additional_items: computedCustomItems.map(cit => ({
+        additional_items: isQuick ? [] : computedCustomItems.map(cit => ({
           name: cit.name,
           category: cit.category || 'ACADEMIC',
           rate: cit.rate,
@@ -622,9 +671,14 @@ export default function NewAdmissionPage() {
 
       const payload = {
         ...form,
+        transport_required: isQuick ? 'No' : form.transport_required,
+        hostel_required: isQuick ? 'No' : form.hostel_required,
+        library_required: isQuick ? 'No' : form.library_required,
+        password: form.password || '12345',
+        father_name: form.father_name?.trim(),
         parent_phone: cleanPhone,
         email: autoEmail,
-        parent_name: form.father_name || form.guardian_name || form.parent_name || 'Parent / Guardian',
+        parent_name: form.father_name?.trim() || form.guardian_name || form.parent_name || 'Parent / Guardian',
         admission_no: form.manual_admission_no ? form.manual_admission_no.trim() : undefined,
         status: isProvisional ? 'PROVISIONAL' : 'ACTIVE',
         fee_setup,
@@ -728,6 +782,35 @@ export default function NewAdmissionPage() {
     window.print();
   }
 
+  function validateQuickStep1() {
+    if (!form.name?.trim()) {
+      toast.error('Student Full Name is required');
+      return false;
+    }
+    if (!form.manual_admission_no?.trim()) {
+      toast.error('Registration / Admission Number is mandatory for student login');
+      return false;
+    }
+    if (!form.father_name?.trim()) {
+      toast.error("Father's Name is mandatory for student login and verification");
+      return false;
+    }
+    if (!form.class_id) {
+      toast.error('Please select an Admission Class');
+      return false;
+    }
+    const cleanPhone = (form.parent_phone || '').replace(/\D/g, '');
+    if (!cleanPhone || cleanPhone.length < 10) {
+      toast.error('A valid 10-digit primary mobile number is mandatory');
+      return false;
+    }
+    if (!form.password?.trim()) {
+      toast.error('Student portal password is required (default 12345)');
+      return false;
+    }
+    return true;
+  }
+
   return (
     <div className="app-shell">
       <Sidebar />
@@ -776,8 +859,657 @@ export default function NewAdmissionPage() {
             )}
           </div>
 
+          {/* ADMISSION MODE SWITCHER (Segmented Toggle) */}
+          <div style={{
+            display: 'inline-flex',
+            background: '#e2e8f0',
+            borderRadius: 12,
+            padding: 4,
+            marginBottom: 20,
+            boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.08)'
+          }}>
+            <button
+              type="button"
+              onClick={() => setAdmissionMode('quick')}
+              style={{
+                padding: '9px 22px',
+                borderRadius: 9,
+                border: 'none',
+                background: admissionMode === 'quick' ? '#0B3B7B' : 'transparent',
+                color: admissionMode === 'quick' ? '#ffffff' : '#475569',
+                fontWeight: 800,
+                fontSize: 13.5,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                transition: 'all 0.2s',
+                boxShadow: admissionMode === 'quick' ? '0 2px 8px rgba(11,59,123,0.3)' : 'none'
+              }}
+            >
+              <span>⚡</span> Quick Admission (Fast Track)
+            </button>
+            <button
+              type="button"
+              onClick={() => setAdmissionMode('full')}
+              style={{
+                padding: '9px 22px',
+                borderRadius: 9,
+                border: 'none',
+                background: admissionMode === 'full' ? '#0B3B7B' : 'transparent',
+                color: admissionMode === 'full' ? '#ffffff' : '#475569',
+                fontWeight: 800,
+                fontSize: 13.5,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                transition: 'all 0.2s',
+                boxShadow: admissionMode === 'full' ? '0 2px 8px rgba(11,59,123,0.3)' : 'none'
+              }}
+            >
+              <span>📋</span> Full Admission (8 Steps Comprehensive)
+            </button>
+          </div>
+
           {!done ? (
-            <div style={{ background: '#ffffff', borderRadius: 16, border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
+            admissionMode === 'quick' ? (
+              /* ═══════════════════════════════════════════════════════════
+                 ⚡ QUICK ADMISSION WORKFLOW (2 STEPS: LOGIN & PAY/CONFIRM)
+                 ═══════════════════════════════════════════════════════════ */
+              <div style={{ background: '#ffffff', borderRadius: 16, border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
+                
+                {/* QUICK STEPPER PROGRESS BAR */}
+                <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setQuickStep(1)}
+                    style={{
+                      flex: 1,
+                      padding: '14px 16px',
+                      textAlign: 'center',
+                      borderBottom: quickStep === 1 ? '3px solid #0B3B7B' : '3px solid transparent',
+                      background: quickStep === 1 ? '#ffffff' : 'transparent',
+                      cursor: 'pointer',
+                      userSelect: 'none'
+                    }}
+                  >
+                    <div style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 24,
+                      height: 24,
+                      borderRadius: '50%',
+                      background: quickStep === 1 ? '#0B3B7B' : '#16a34a',
+                      color: '#ffffff',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      marginRight: 8
+                    }}>
+                      {quickStep > 1 ? '✓' : '1'}
+                    </div>
+                    <span style={{ fontSize: 13, fontWeight: quickStep === 1 ? 800 : 600, color: quickStep === 1 ? '#0B3B7B' : '#64748b' }}>
+                      Step 1: Essential Student &amp; Login Credentials (Mandatory)
+                    </span>
+                  </div>
+
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      if (validateQuickStep1()) setQuickStep(2);
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '14px 16px',
+                      textAlign: 'center',
+                      borderBottom: quickStep === 2 ? '3px solid #0B3B7B' : '3px solid transparent',
+                      background: quickStep === 2 ? '#ffffff' : 'transparent',
+                      cursor: 'pointer',
+                      userSelect: 'none'
+                    }}
+                  >
+                    <div style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 24,
+                      height: 24,
+                      borderRadius: '50%',
+                      background: quickStep === 2 ? '#0B3B7B' : '#cbd5e1',
+                      color: quickStep === 2 ? '#ffffff' : '#334155',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      marginRight: 8
+                    }}>
+                      2
+                    </div>
+                    <span style={{ fontSize: 13, fontWeight: quickStep === 2 ? 800 : 600, color: quickStep === 2 ? '#0B3B7B' : '#64748b' }}>
+                      Step 2: Fee Payment &amp; Admission Confirmation (Pay vs Skip)
+                    </span>
+                  </div>
+                </div>
+
+                {/* QUICK STEP BODY */}
+                <div style={{ padding: '28px 36px' }}>
+                  {quickStep === 1 ? (
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+                        <div>
+                          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#0B3B7B', display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span>⚡</span> Quick Admission: Mandatory Login &amp; Academic Credentials
+                          </h3>
+                          <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#64748b' }}>
+                            Registration Number, Father's Name, Primary Mobile and Password are required for student portal login. All optional addons (Transport, Hostel, Library) remain zero and unselected.
+                          </p>
+                        </div>
+                        {checkingDuplicates && (
+                          <div style={{ fontSize: 12, color: '#0284c7' }}>🔍 Checking existing student records...</div>
+                        )}
+                      </div>
+
+                      {/* DUPLICATE WARNING */}
+                      {duplicates.length > 0 && (
+                        <div style={{
+                          background: '#fffbeb',
+                          border: '1.5px solid #fcd34d',
+                          borderRadius: 10,
+                          padding: '12px 16px',
+                          marginBottom: 20,
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: 12
+                        }}>
+                          <span style={{ fontSize: 22 }}>⚠️</span>
+                          <div style={{ flex: 1 }}>
+                            <strong style={{ color: '#b45309', fontSize: 13, display: 'block', marginBottom: 2 }}>
+                              Possible Duplicate Student Record Found ({duplicates.length})
+                            </strong>
+                            <p style={{ margin: '0 0 6px', fontSize: 12, color: '#92400e' }}>
+                              A student with similar identity details already exists in this school.
+                            </p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              {duplicates.map(d => (
+                                <div key={d.id} style={{ fontSize: 11.5, background: '#fef3c7', padding: '4px 10px', borderRadius: 6, color: '#78350f' }}>
+                                  • <strong>{d.name}</strong> ({d.admission_no}) | Class: {d.class_name || 'N/A'} | Phone: {d.parent_phone}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* FORM GRID */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '18px 24px' }}>
+                        
+                        {/* Student Name */}
+                        <div>
+                          <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 6 }}>
+                            Student Full Name <span style={{ color: '#ef4444' }}>*</span>
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Aarav Sharma"
+                            value={form.name}
+                            onChange={e => set('name', e.target.value)}
+                            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1.5px solid #cbd5e1', fontSize: 13, outline: 'none' }}
+                          />
+                        </div>
+
+                        {/* Registration / Admission Number */}
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                            <label style={{ fontSize: 12, fontWeight: 700, color: '#0B3B7B' }}>
+                              Registration / Admission No (Login ID) <span style={{ color: '#ef4444' }}>*</span>
+                            </label>
+                            <span style={{ fontSize: 10.5, background: '#dbeafe', color: '#1e40af', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
+                              Mandatory
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <input
+                              type="text"
+                              placeholder="e.g. ADM-2026-0001"
+                              value={form.manual_admission_no}
+                              onChange={e => set('manual_admission_no', e.target.value)}
+                              style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1.5px solid #0B3B7B', fontSize: 13, fontWeight: 700, background: '#f8fafc', outline: 'none' }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => fetchNextAdmissionNo(form.session)}
+                              style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 8, padding: '0 12px', fontSize: 12, fontWeight: 700, color: '#334155', cursor: 'pointer' }}
+                              title="Auto-fetch next candidate sequence"
+                            >
+                              🔄 Auto
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Father's Name */}
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                            <label style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>
+                              Father's Name (Login Verification) <span style={{ color: '#ef4444' }}>*</span>
+                            </label>
+                            <span style={{ fontSize: 10.5, background: '#dbeafe', color: '#1e40af', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
+                              Mandatory
+                            </span>
+                          </div>
+                          <input
+                            type="text"
+                            placeholder="e.g. Rajesh Sharma"
+                            value={form.father_name}
+                            onChange={e => set('father_name', e.target.value)}
+                            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1.5px solid #cbd5e1', fontSize: 13, outline: 'none' }}
+                          />
+                        </div>
+
+                        {/* Admission Class */}
+                        <div>
+                          <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 6 }}>
+                            Admission Class &amp; Section <span style={{ color: '#ef4444' }}>*</span>
+                          </label>
+                          <select
+                            value={form.class_id}
+                            onChange={e => set('class_id', e.target.value)}
+                            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1.5px solid #cbd5e1', fontSize: 13, outline: 'none', background: '#fff', fontWeight: 600 }}
+                          >
+                            <option value="">— Select Class —</option>
+                            {classes.map(c => (
+                              <option key={c.id} value={c.id}>
+                                {c.name} {c.section ? `(Sec ${c.section})` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Primary Mobile */}
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                            <label style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>
+                              Primary Mobile No (10 Digits) <span style={{ color: '#ef4444' }}>*</span>
+                            </label>
+                            <span style={{ fontSize: 10.5, background: '#dbeafe', color: '#1e40af', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
+                              Mandatory / Login
+                            </span>
+                          </div>
+                          <input
+                            type="tel"
+                            maxLength="10"
+                            placeholder="e.g. 9876543210"
+                            value={form.parent_phone}
+                            onChange={e => set('parent_phone', e.target.value.replace(/\D/g, ''))}
+                            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1.5px solid #cbd5e1', fontSize: 13, outline: 'none', fontWeight: 600 }}
+                          />
+                        </div>
+
+                        {/* Student Portal Password */}
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                            <label style={{ fontSize: 12, fontWeight: 700, color: '#0B3B7B' }}>
+                              Portal Password <span style={{ color: '#ef4444' }}>*</span>
+                            </label>
+                            <span style={{ fontSize: 10.5, background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
+                              Default: 12345 (Editable)
+                            </span>
+                          </div>
+                          <div style={{ position: 'relative' }}>
+                            <input
+                              type={showPassword ? 'text' : 'password'}
+                              placeholder="Default 12345"
+                              value={form.password}
+                              onChange={e => set('password', e.target.value)}
+                              style={{ width: '100%', padding: '10px 42px 10px 14px', borderRadius: 8, border: '1.5px solid #0B3B7B', fontSize: 13, fontWeight: 700, background: '#f8fafc', outline: 'none' }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowPassword(p => !p)}
+                              style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#64748b' }}
+                              title={showPassword ? 'Hide password' : 'Show password'}
+                            >
+                              {showPassword ? '👁️' : '🙈'}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Date of Birth */}
+                        <div>
+                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                            Date of Birth
+                          </label>
+                          <input
+                            type="date"
+                            value={form.dob}
+                            onChange={e => set('dob', e.target.value)}
+                            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, outline: 'none' }}
+                          />
+                        </div>
+
+                        {/* Gender */}
+                        <div>
+                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                            Gender
+                          </label>
+                          <select
+                            value={form.gender}
+                            onChange={e => set('gender', e.target.value)}
+                            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, outline: 'none', background: '#fff' }}
+                          >
+                            {GENDERS.map(g => <option key={g} value={g}>{g}</option>)}
+                          </select>
+                        </div>
+
+                      </div>
+
+                      {/* CREDENTIAL LIVE PREVIEW CARD */}
+                      <div style={{
+                        marginTop: 24,
+                        background: '#eff6ff',
+                        border: '1.5px solid #bfdbfe',
+                        borderRadius: 12,
+                        padding: '16px 20px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 8
+                      }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 800, color: '#1e40af', display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span>🔐</span> Generated Student Login Credentials Preview
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginTop: 4 }}>
+                          <div style={{ background: '#fff', padding: '8px 12px', borderRadius: 8, border: '1px solid #dbeafe' }}>
+                            <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Login ID / Admission No:</span>
+                            <div style={{ fontSize: 13, fontWeight: 800, color: '#1e293b' }}>{form.manual_admission_no || 'Auto-generated'}</div>
+                          </div>
+                          <div style={{ background: '#fff', padding: '8px 12px', borderRadius: 8, border: '1px solid #dbeafe' }}>
+                            <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Father's Name:</span>
+                            <div style={{ fontSize: 13, fontWeight: 800, color: '#1e293b' }}>{form.father_name || '—'}</div>
+                          </div>
+                          <div style={{ background: '#fff', padding: '8px 12px', borderRadius: 8, border: '1px solid #dbeafe' }}>
+                            <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Primary Mobile (Alt ID):</span>
+                            <div style={{ fontSize: 13, fontWeight: 800, color: '#1e293b' }}>{form.parent_phone || '—'}</div>
+                          </div>
+                          <div style={{ background: '#fff', padding: '8px 12px', borderRadius: 8, border: '1px solid #dbeafe' }}>
+                            <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Student Portal Password:</span>
+                            <div style={{ fontSize: 13, fontWeight: 800, color: '#0B3B7B', fontFamily: 'monospace' }}>{form.password || '12345'}</div>
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 12, color: '#1d4ed8', marginTop: 4, lineHeight: 1.5 }}>
+                          ℹ️ Student or parent can log in to the portal using either <strong>Admission No ({form.manual_admission_no || 'ADM-...'})</strong> or <strong>Mobile Number ({form.parent_phone || '...'})</strong> with password <strong>{form.password || '12345'}</strong>.
+                        </div>
+                      </div>
+
+                      {/* ZERO ADDONS BADGE */}
+                      <div style={{
+                        marginTop: 14,
+                        background: '#f0fdf4',
+                        border: '1px solid #bbf7d0',
+                        borderRadius: 10,
+                        padding: '10px 16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10
+                      }}>
+                        <span style={{ fontSize: 18 }}>🛡️</span>
+                        <div style={{ fontSize: 12, color: '#166534' }}>
+                          <strong>Zero Auto-Selected Addons:</strong> Transport (₹0), Hostel (₹0) and Library (₹0) are strictly <strong>NOT</strong> selected. Only standard class academic fee is charged.
+                        </div>
+                      </div>
+
+                      {/* QUICK STEP 1 FOOTER NAVIGATION */}
+                      <div style={{
+                        marginTop: 28,
+                        paddingTop: 18,
+                        borderTop: '1px solid #e2e8f0',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: 12
+                      }}>
+                        <button
+                          type="button"
+                          onClick={() => setAdmissionMode('full')}
+                          style={{ background: '#fff', border: '1px solid #cbd5e1', color: '#475569', padding: '10px 18px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                        >
+                          Switch to Full 8-Step Mode
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (validateQuickStep1()) setQuickStep(2);
+                          }}
+                          style={{
+                            background: '#0B3B7B',
+                            color: '#ffffff',
+                            border: 'none',
+                            padding: '11px 26px',
+                            borderRadius: 8,
+                            fontSize: 13.5,
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            boxShadow: '0 4px 12px rgba(11,59,123,0.25)'
+                          }}
+                        >
+                          Continue to Fee &amp; Confirmation (Step 2) ⏭️
+                        </button>
+                      </div>
+
+                    </div>
+                  ) : (
+                    /* QUICK STEP 2: FEE PAYMENT & CONFIRMATION */
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
+                        <div>
+                          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#0B3B7B', display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span>💳</span> Step 2: Fee Payment &amp; Admission Confirmation
+                          </h3>
+                          <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#64748b' }}>
+                            Pay the admission fee now to confirm admission, or skip payment for provisional (temporary) admission.
+                          </p>
+                        </div>
+                        <div style={{ background: '#dcfce7', border: '1px solid #86efac', padding: '8px 18px', borderRadius: 10, textAlign: 'right' }}>
+                          <span style={{ fontSize: 11, color: '#166534', fontWeight: 600 }}>Total Net Admission Fee:</span>
+                          <div style={{ fontSize: 20, fontWeight: 900, color: '#15803d' }}>
+                            ₹ {netPayable.toLocaleString('en-IN')}.00
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* CREDENTIAL RECAP CHIP */}
+                      <div style={{
+                        background: '#f8fafc',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: 10,
+                        padding: '12px 18px',
+                        marginBottom: 20,
+                        display: 'flex',
+                        gap: 16,
+                        flexWrap: 'wrap',
+                        fontSize: 12.5,
+                        color: '#334155'
+                      }}>
+                        <div>👤 <strong>{form.name}</strong></div>
+                        <div>🆔 <strong>{form.manual_admission_no}</strong></div>
+                        <div>👨 <strong>{form.father_name}</strong></div>
+                        <div>🎓 <strong>{selectedClass?.name || 'Class'}</strong></div>
+                        <div>📱 <strong>{form.parent_phone}</strong></div>
+                        <div>🔑 <strong>{form.password}</strong></div>
+                      </div>
+
+                      {/* FEE BREAKDOWN & PAYMENT COLLECTION */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 24, marginBottom: 20 }}>
+                        
+                        {/* Fee Particulars */}
+                        <div style={{ background: '#f8fafc', borderRadius: 12, border: '1px solid #e2e8f0', padding: 20 }}>
+                          <h4 style={{ margin: '0 0 12px', fontSize: 13.5, fontWeight: 800, color: '#0B3B7B' }}>
+                            📋 Academic Fee Breakdown
+                          </h4>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }}>
+                            {computedItems.map((it, idx) => (
+                              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: 6 }}>
+                                <span style={{ color: '#475569' }}>{it.headName}</span>
+                                <span style={{ fontWeight: 700, color: '#1e293b' }}>₹ {it.lineAmt.toLocaleString('en-IN')}</span>
+                              </div>
+                            ))}
+                            {computedItems.length === 0 && (
+                              <div style={{ color: '#64748b', fontStyle: 'italic', fontSize: 12 }}>
+                                {form.admission_fee ? `Admission Fee: ₹ ${Number(form.admission_fee).toLocaleString('en-IN')}` : 'Standard class published academic fee'}
+                              </div>
+                            )}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#16a34a', fontSize: 12, paddingTop: 4 }}>
+                              <span>🛡️ Transport, Hostel &amp; Library Addons:</span>
+                              <span style={{ fontWeight: 700 }}>₹ 0.00 (Unselected)</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid #cbd5e1', paddingTop: 8, marginTop: 4 }}>
+                              <strong style={{ color: '#0B3B7B' }}>Net Payable:</strong>
+                              <strong style={{ color: '#15803d', fontSize: 15 }}>₹ {netPayable.toLocaleString('en-IN')}.00</strong>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Payment Collection Inputs */}
+                        <div style={{ background: '#f8fafc', borderRadius: 12, border: '1px solid #e2e8f0', padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                          <h4 style={{ margin: 0, fontSize: 13.5, fontWeight: 800, color: '#0B3B7B' }}>
+                            💳 Payment Collection (To Confirm Now)
+                          </h4>
+
+                          <div>
+                            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                              Payment Mode
+                            </label>
+                            <select
+                              value={form.payment_mode}
+                              onChange={e => set('payment_mode', e.target.value)}
+                              style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, background: '#fff' }}
+                            >
+                              {PAYMENT_MODES.map(m => <option key={m} value={m}>{m}</option>)}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                              Amount Collected Now (₹)
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              max={netPayable}
+                              value={paymentAmount !== '' ? paymentAmount : netPayable}
+                              onChange={e => setPaymentAmount(e.target.value)}
+                              placeholder={`₹ ${netPayable}`}
+                              style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, fontWeight: 700 }}
+                            />
+                          </div>
+
+                          <div>
+                            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                              Transaction Ref / Cheque No / UPI ID
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="e.g. UPI-928410 / Cash Counter"
+                              value={paymentReference}
+                              onChange={e => setPaymentReference(e.target.value)}
+                              style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13 }}
+                            />
+                          </div>
+                        </div>
+
+                      </div>
+
+                      {/* CONFIRMATION vs SKIP RULE INFO */}
+                      <div style={{
+                        background: '#fffbeb',
+                        border: '1.5px solid #fcd34d',
+                        borderRadius: 12,
+                        padding: '14px 18px',
+                        marginBottom: 24,
+                        display: 'flex',
+                        gap: 12,
+                        alignItems: 'flex-start'
+                      }}>
+                        <span style={{ fontSize: 22 }}>💡</span>
+                        <div style={{ flex: 1, fontSize: 12.5, color: '#92400e', lineHeight: 1.6 }}>
+                          <strong style={{ display: 'block', marginBottom: 2 }}>Admission Confirmation &amp; Skip Rule:</strong>
+                          • <strong>Pay &amp; Confirm Admission:</strong> Confirms admission immediately with <strong>ACTIVE</strong> status and generates an official fee receipt.<br/>
+                          • <strong>Skip Payment (Provisional Admission):</strong> Skips fee collection for now. The student is enrolled as <strong>PROVISIONAL (Temporary)</strong>. It will <u>NOT</u> show as confirmed until the fee is deposited. Once paid later through Fees &amp; Finance, Quick Counter, or Student Profile, status automatically turns to <strong>CONFIRMED (ACTIVE)</strong> in real time.
+                        </div>
+                      </div>
+
+                      {/* QUICK STEP 2 ACTION BUTTONS */}
+                      <div style={{
+                        paddingTop: 18,
+                        borderTop: '1px solid #e2e8f0',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: 12
+                      }}>
+                        <button
+                          type="button"
+                          onClick={() => setQuickStep(1)}
+                          style={{ background: '#fff', border: '1px solid #cbd5e1', color: '#475569', padding: '10px 18px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                        >
+                          ← Back to Credentials (Step 1)
+                        </button>
+
+                        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            onClick={() => submit({ isSkipPayment: true })}
+                            disabled={saving}
+                            style={{
+                              background: saving ? '#cbd5e1' : '#f59e0b',
+                              color: '#ffffff',
+                              border: 'none',
+                              padding: '11px 22px',
+                              borderRadius: 8,
+                              fontSize: 13.5,
+                              fontWeight: 800,
+                              cursor: saving ? 'wait' : 'pointer',
+                              boxShadow: '0 4px 12px rgba(245,158,11,0.25)'
+                            }}
+                          >
+                            {saving ? '⏳ Submitting...' : '⏭️ Skip Payment (Provisional Admission)'}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => submit({ isSkipPayment: false })}
+                            disabled={saving}
+                            style={{
+                              background: saving ? '#94a3b8' : '#16a34a',
+                              color: '#ffffff',
+                              border: 'none',
+                              padding: '11px 26px',
+                              borderRadius: 8,
+                              fontSize: 13.5,
+                              fontWeight: 800,
+                              cursor: saving ? 'wait' : 'pointer',
+                              boxShadow: '0 4px 12px rgba(22,163,74,0.3)'
+                            }}
+                          >
+                            {saving ? '⏳ Submitting...' : `💳 Pay ₹${netPayable.toLocaleString('en-IN')} & Confirm Admission`}
+                          </button>
+                        </div>
+                      </div>
+
+                    </div>
+                  )}
+                </div>
+
+              </div>
+            ) : (
+              /* ═══════════════════════════════════════════════════════════
+                 📋 FULL ADMISSION WORKFLOW (8 STEPS COMPREHENSIVE)
+                 ═══════════════════════════════════════════════════════════ */
+              <div style={{ background: '#ffffff', borderRadius: 16, border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
               
               {/* STEP PROGRESS BAR */}
               <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', background: '#f8fafc', overflowX: 'auto' }}>
@@ -1012,6 +1744,62 @@ export default function NewAdmissionPage() {
                             onChange={e => set('name', e.target.value)}
                             style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, outline: 'none' }}
                           />
+                        </div>
+
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                            <label style={{ fontSize: 12, fontWeight: 600, color: '#0B3B7B' }}>
+                              Registration / Admission No (Login ID)
+                            </label>
+                            <span style={{ fontSize: 10.5, background: '#dbeafe', color: '#1e40af', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
+                              Auto-Candidate
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <input
+                              type="text"
+                              placeholder="e.g. ADM-2026-0001"
+                              value={form.manual_admission_no}
+                              onChange={e => set('manual_admission_no', e.target.value)}
+                              style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, fontWeight: 700, background: '#f8fafc', outline: 'none' }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => fetchNextAdmissionNo(form.session)}
+                              style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 8, padding: '0 10px', fontSize: 12, fontWeight: 700, color: '#334155', cursor: 'pointer' }}
+                              title="Auto-fetch next candidate sequence"
+                            >
+                              🔄
+                            </button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                            <label style={{ fontSize: 12, fontWeight: 600, color: '#0B3B7B' }}>
+                              Student Portal Password
+                            </label>
+                            <span style={{ fontSize: 10.5, background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
+                              Default: 12345
+                            </span>
+                          </div>
+                          <div style={{ position: 'relative' }}>
+                            <input
+                              type={showPassword ? 'text' : 'password'}
+                              placeholder="Default 12345"
+                              value={form.password}
+                              onChange={e => set('password', e.target.value)}
+                              style={{ width: '100%', padding: '10px 40px 10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, fontWeight: 700, background: '#f8fafc', outline: 'none' }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowPassword(p => !p)}
+                              style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#64748b' }}
+                              title={showPassword ? 'Hide password' : 'Show password'}
+                            >
+                              {showPassword ? '👁️' : '🙈'}
+                            </button>
+                          </div>
                         </div>
 
                         <div>
@@ -3008,6 +3796,7 @@ export default function NewAdmissionPage() {
               </div>
 
             </div>
+            )
           ) : (
             /* SUCCESS VIEW & 2-PAGE ADMISSION PREVIEW */
             <div style={{ maxWidth: 900, margin: '0 auto' }}>
@@ -3067,6 +3856,7 @@ export default function NewAdmissionPage() {
                     onClick={() => {
                       setDone(null);
                       setCurrentStep(1);
+                      setQuickStep(1);
                       setPendingPhoto(null);
                       setPhotoPreview(null);
                       setStudentAadharFile(null);
@@ -3080,12 +3870,65 @@ export default function NewAdmissionPage() {
                         father_name: '',
                         aadhar_no: '',
                         manual_admission_no: '',
+                        password: '12345',
+                        transport_required: 'No',
+                        hostel_required: 'No',
+                        library_required: 'No',
                       }));
+                      fetchNextAdmissionNo(form.session);
                     }}
                     style={{ background: '#fff', color: '#475569', border: '1px solid #cbd5e1', padding: '9px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
                   >
                     + Admit Another
                   </button>
+                </div>
+              </div>
+
+              {/* STUDENT LOGIN CREDENTIALS CARD */}
+              <div style={{
+                background: '#ffffff',
+                border: '1.5px solid #0B3B7B',
+                borderRadius: 12,
+                padding: '16px 20px',
+                marginBottom: 20,
+                boxShadow: '0 4px 12px rgba(11,59,123,0.08)'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: '#0B3B7B', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    🔐 Student Portal Login Credentials
+                  </span>
+                  <span style={{
+                    fontSize: 11.5,
+                    background: done.status === 'PROVISIONAL' ? '#fef3c7' : '#dcfce7',
+                    color: done.status === 'PROVISIONAL' ? '#92400e' : '#15803d',
+                    padding: '3px 10px',
+                    borderRadius: 6,
+                    fontWeight: 800,
+                    border: `1px solid ${done.status === 'PROVISIONAL' ? '#fde68a' : '#86efac'}`
+                  }}>
+                    {done.status === 'PROVISIONAL' ? '⏳ Provisional Admission (Fee Pending)' : '✅ Confirmed (ACTIVE)'}
+                  </span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+                  <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                    <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Login ID (Admission No):</span>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: '#0B3B7B' }}>{done.admission_no}</div>
+                  </div>
+                  <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                    <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Father's Name:</span>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: '#1e293b' }}>{done.father_name || form.father_name || '—'}</div>
+                  </div>
+                  <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                    <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Primary Mobile:</span>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: '#1e293b' }}>{done.parent_phone || form.parent_phone || '—'}</div>
+                  </div>
+                  <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                    <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Default Password:</span>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: '#15803d', fontFamily: 'monospace' }}>{form.password || '12345'}</div>
+                  </div>
+                </div>
+                <div style={{ fontSize: 12, color: '#475569', marginTop: 10 }}>
+                  💡 The student or parent can immediately log into the student portal using <strong>{done.admission_no}</strong> or <strong>{done.parent_phone || form.parent_phone}</strong> with password <strong>{form.password || '12345'}</strong>.
                 </div>
               </div>
 

@@ -805,6 +805,21 @@ def check_duplicate_student():
     }), 200
 
 
+@principal_bp.route('/students/next-admission-no', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
+def get_next_admission_no():
+    sid = _school_id()
+    session_str = request.args.get('session', '2026-27')
+    year_prefix = session_str[:4] if session_str else '2026'
+    count_all = Student.query.filter_by(school_id=sid).count()
+    seq = count_all + 1
+    candidate = f"ADM-{year_prefix}-{seq:04d}"
+    while Student.query.filter_by(school_id=sid, admission_no=candidate).first():
+        seq += 1
+        candidate = f"ADM-{year_prefix}-{seq:04d}"
+    return jsonify({'next_admission_no': candidate}), 200
+
+
 @principal_bp.route('/students', methods=['POST'])
 @role_required('PRINCIPAL', 'TEACHER')
 def create_student():
@@ -864,7 +879,7 @@ def create_student():
             role=UserRole.STUDENT,
             school_id=sid
         )
-        user.set_password(data.get('password', 'Student@123'), store_plain=True)
+        user.set_password(data.get('password', '12345'), store_plain=True)
         db.session.add(user)
         db.session.flush()
 
