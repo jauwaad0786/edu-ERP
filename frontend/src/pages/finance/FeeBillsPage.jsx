@@ -599,6 +599,8 @@ export default function FeeBillsPage({ defaultOpenGenerate = false }) {
                 </form>
               </div>
             </div>
+          )}
+
           {/* Itemized Heads Breakdown Modal */}
           {itemModal && selectedBill && (
             <div className="modal-backdrop">
