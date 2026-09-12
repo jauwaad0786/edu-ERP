@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import Sidebar from '../../components/Sidebar';
 import Navbar  from '../../components/Navbar';
 import api from '../../api/axios';
-import { usePermission } from '../../hooks/usePermission';
+import { usePermission, usePermissions } from '../../hooks/usePermission';
 
 function formatTimestamp(isoStr) {
   if (!isoStr) return '—';
@@ -106,7 +106,7 @@ export default function SchoolAuditLogs() {
 
   // Permissions
   const canExport = usePermission('audit.logs.export');
-  const canPurge = usePermission('audit.purge') || usePermission('audit.logs.delete');
+  const canPurge = usePermissions(['audit.purge', 'audit.logs.delete']);
   const canManageRetention = usePermission('audit.retention.manage');
 
   const fetchStats = useCallback(async () => {
