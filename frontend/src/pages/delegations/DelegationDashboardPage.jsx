@@ -209,12 +209,58 @@ export default function DelegationDashboardPage() {
     }
   };
 
+  const tabMeta = useMemo(() => {
+    switch (activeTab) {
+      case 'ACTIVE':
+        return {
+          badge: 'ACTIVE PROXY • LIVE CLASSROOMS',
+          title: 'Active Substitute Delegations',
+          subtitle: 'Currently running temporary teaching grants. Substitute teachers are currently authorized to mark attendance, enter marks, and manage study notes for absent staff.',
+          emptyTitle: 'No Active Delegations',
+          emptyDesc: 'There are currently no active substitute teacher assignments running. Click "Assign Substitute Teacher" to grant temporary coverage.'
+        };
+      case 'SCHEDULED':
+        return {
+          badge: 'UPCOMING DUTIES • ADVANCED PLANNING',
+          title: 'Scheduled Future Delegations',
+          subtitle: 'Upcoming substitute assignments configured in advance for approved staff leaves. Will automatically activate when the validity start date arrives.',
+          emptyTitle: 'No Scheduled Delegations',
+          emptyDesc: 'No upcoming delegations are queued. Plan ahead for teacher leaves and vacations by scheduling a substitute teacher in advance.'
+        };
+      case 'EXPIRING_SOON':
+        return {
+          badge: 'EXPIRING IN UNDER 24 HOURS',
+          title: 'Delegations Expiring Soon',
+          subtitle: 'Temporary teaching delegations concluding within the next 24 hours. Extend validity before expiration if the regular teacher is extending their leave.',
+          emptyTitle: 'No Delegations Expiring Soon',
+          emptyDesc: 'All active delegations have sufficient validity time remaining.'
+        };
+      case 'EXPIRED':
+      case 'REVOKED':
+        return {
+          badge: 'HISTORICAL AUDIT ARCHIVE',
+          title: 'Delegation History & Terminated Grants',
+          subtitle: 'Comprehensive audit log of all concluded, expired, and revoked substitute teaching periods with immutable audit provenance.',
+          emptyTitle: 'No Delegation History Found',
+          emptyDesc: 'No expired or revoked delegations exist in the historical archives yet.'
+        };
+      default:
+        return {
+          badge: 'STAFF & HRMS • ZERO-ROLE-MUTATION',
+          title: 'Substitute Teacher Delegations Command Center',
+          subtitle: 'Assign scoped, time-bound teaching duties (attendance, marks, notes, timetable, fees) to available substitute teachers when staff take leave. Access terminates automatically with full audit attribution.',
+          emptyTitle: 'No Delegations Found',
+          emptyDesc: 'No teacher delegations have been created yet. Click below to assign a substitute.'
+        };
+    }
+  }, [activeTab]);
+
   return (
     <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
       <Sidebar darkMode={darkMode} />
       <div className="main-content">
         <Navbar
-          title="Teacher Delegation & Temporary Access"
+          title={tabMeta.title}
           darkMode={darkMode}
           onToggleDark={() => setDarkMode(d => !d)}
         />
@@ -237,14 +283,14 @@ export default function DelegationDashboardPage() {
                   background: 'rgba(255,255,255,0.18)', borderRadius: '10px',
                   padding: '6px 12px', fontSize: '12px', fontWeight: 700, letterSpacing: '0.05em'
                 }}>
-                  STAFF &amp; HRMS &bull; ZERO-ROLE-MUTATION
+                  {tabMeta.badge}
                 </span>
               </div>
               <h1 style={{ fontSize: '24px', fontWeight: 800, margin: '0 0 6px 0', letterSpacing: '-0.02em' }}>
-                Substitute Teacher Delegations
+                {tabMeta.title}
               </h1>
               <p style={{ margin: 0, fontSize: '14px', opacity: 0.88, maxWidth: '680px', lineHeight: 1.5 }}>
-                Assign scoped, time-bound teaching duties (attendance, marks, notes, timetable, fees) to available substitute teachers when staff take leave. Access terminates automatically with full audit attribution.
+                {tabMeta.subtitle}
               </p>
             </div>
 
@@ -483,14 +529,14 @@ export default function DelegationDashboardPage() {
                   <i className="ti ti-switch-horizontal" />
                 </div>
                 <h3 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 6px 0', color: cardBg.color }}>
-                  No Delegations Found
+                  {searchQuery ? 'No Delegations Found' : tabMeta.emptyTitle}
                 </h3>
-                <p style={{ fontSize: '13px', margin: '0 0 16px 0', maxWidth: '400px', marginInline: 'auto' }}>
-                  {searchQuery || activeTab !== 'ALL'
-                    ? 'No delegation matches your selected filters or search keyword.'
-                    : 'No teacher delegations have been scheduled yet. Click below to assign a substitute.'}
+                <p style={{ fontSize: '13px', margin: '0 0 16px 0', maxWidth: '460px', marginInline: 'auto', lineHeight: 1.5 }}>
+                  {searchQuery
+                    ? `No delegations match your search "${searchQuery}". Try clearing search keywords.`
+                    : tabMeta.emptyDesc}
                 </p>
-                {activeTab === 'ALL' && !searchQuery && (
+                {!searchQuery && (
                   <button
                     onClick={() => setWizardOpen(true)}
                     style={{
@@ -499,7 +545,7 @@ export default function DelegationDashboardPage() {
                       cursor: 'pointer'
                     }}
                   >
-                    + Create First Delegation
+                    + Assign Substitute Teacher
                   </button>
                 )}
               </div>

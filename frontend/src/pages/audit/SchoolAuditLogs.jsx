@@ -1,6 +1,6 @@
 // frontend/src/pages/audit/SchoolAuditLogs.jsx
-import React, { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import Sidebar from '../../components/Sidebar';
 import Navbar  from '../../components/Navbar';
 import api from '../../api/axios';
@@ -49,15 +49,33 @@ function getSeverityBadge(severity) {
 }
 
 function getStatusBadge(status) {
-  if (status === 'FAILURE') {
+  const s = (status || '').toUpperCase();
+  if (s === 'FAILURE' || s === 'FAILED' || s === 'DENIED') {
     return { bg: '#fee2e2', text: '#dc2626', border: '#fca5a5', label: 'FAILED' };
   }
   return { bg: '#dcfce7', text: '#15803d', border: '#86efac', label: 'SUCCESS' };
 }
 
 export default function SchoolAuditLogs() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
   useEffect(() => { localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
+
+  // Determine current specialized view
+  const urlModule = (searchParams.get('module') || '').toUpperCase();
+  const urlDelegated = searchParams.get('is_delegated') === 'true';
+  const urlTab = searchParams.get('tab') || '';
+
+  const currentView = useMemo(() => {
+    if (urlTab === 'retention') return 'RETENTION';
+    if (urlDelegated) return 'DELEGATED';
+    if (urlModule === 'AUTH') return 'SECURITY';
+    if (urlModule === 'ATTENDANCE' || urlModule === 'STUDENT' || urlModule === 'MARKS') return 'ACADEMIC';
+    if (urlModule === 'FINANCE') return 'FINANCE';
+    return 'OVERVIEW';
+  }, [urlTab, urlDelegated, urlModule]);
 
   // Data state
   const [logs, setLogs] = useState([]);
@@ -69,6 +87,10 @@ export default function SchoolAuditLogs() {
     delegated_logs: 0,
     purge_eligible_logs: 0,
     retention_days: 180,
+    auth_events: 0,
+    auth_failed: 0,
+    academic_events: 0,
+    finance_events: 0,
   });
   const [loading, setLoading] = useState(true);
   const [statsLoading, setStatsLoading] = useState(true);
@@ -93,13 +115,14 @@ export default function SchoolAuditLogs() {
   const [selectedLog, setSelectedLog] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
-  // Retention & Purge Modal
-  const [showRetentionModal, setShowRetentionModal] = useState(false);
+  // Retention & Purge state
   const [retentionDaysInput, setRetentionDaysInput] = useState(180);
   const [purgeConfirmationText, setPurgeConfirmationText] = useState('');
   const [purgeReason, setPurgeReason] = useState('');
   const [purging, setPurging] = useState(false);
   const [updatingRetention, setUpdatingRetention] = useState(false);
+  const [purgeHistory, setPurgeHistory] = useState([]);
+  const [loadingPurgeHistory, setLoadingPurgeHistory] = useState(false);
 
   // Export state
   const [exporting, setExporting] = useState(false);
@@ -122,7 +145,25 @@ export default function SchoolAuditLogs() {
     }
   }, []);
 
+  const fetchPurgeHistory = useCallback(async () => {
+    setLoadingPurgeHistory(true);
+    try {
+      const res = await api.get('/audit/school/logs', {
+        params: { action: 'AUDIT_PURGE', per_page: 15 }
+      });
+      setPurgeHistory(res.data.logs || []);
+    } catch (err) {
+      console.error('Failed to load purge history:', err);
+    } finally {
+      setLoadingPurgeHistory(false);
+    }
+  }, []);
+
   const fetchLogs = useCallback(async () => {
+    if (currentView === 'RETENTION') {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const params = {
@@ -130,6 +171,13 @@ export default function SchoolAuditLogs() {
         per_page: perPage,
         ...filters,
       };
+
+      // Enforce current view scope if not explicitly overridden
+      if (currentView === 'SECURITY' && !params.module) params.module = 'AUTH';
+      if (currentView === 'ACADEMIC' && !params.module) params.module = 'ATTENDANCE';
+      if (currentView === 'FINANCE' && !params.module) params.module = 'FINANCE';
+      if (currentView === 'DELEGATED') params.is_delegated = 'true';
+
       Object.keys(params).forEach(key => {
         if (params[key] === '' || params[key] === null || params[key] === undefined) {
           delete params[key];
@@ -144,51 +192,43 @@ export default function SchoolAuditLogs() {
     } finally {
       setLoading(false);
     }
-  }, [page, perPage, filters]);
-
-  const [searchParams, setSearchParams] = useSearchParams();
+  }, [page, perPage, filters, currentView]);
 
   useEffect(() => {
     fetchStats();
   }, [fetchStats]);
 
+  useEffect(() => {
+    if (currentView === 'RETENTION') {
+      fetchPurgeHistory();
+    }
+  }, [currentView, fetchPurgeHistory]);
+
   // Sync with URL query params from sidebar navigation
   useEffect(() => {
-    const urlModule = searchParams.get('module');
-    const urlDelegated = searchParams.get('is_delegated');
-    const urlTab = searchParams.get('tab');
-    const urlSeverity = searchParams.get('severity');
-    const urlStatus = searchParams.get('status');
-
-    if (urlTab === 'retention') {
-      setShowRetentionModal(true);
-    }
+    const mod = searchParams.get('module') || '';
+    const del = searchParams.get('is_delegated') || '';
+    const sev = searchParams.get('severity') || '';
+    const st = searchParams.get('status') || '';
 
     setFilters(prev => {
       let changed = false;
       const next = { ...prev };
 
-      const targetModule = urlModule || '';
-      if (next.module !== targetModule) {
-        next.module = targetModule;
+      if (next.module !== mod) {
+        next.module = mod;
         changed = true;
       }
-
-      const targetDelegated = urlDelegated || '';
-      if (next.is_delegated !== targetDelegated) {
-        next.is_delegated = targetDelegated;
+      if (next.is_delegated !== del) {
+        next.is_delegated = del;
         changed = true;
       }
-
-      const targetSeverity = urlSeverity || '';
-      if (next.severity !== targetSeverity) {
-        next.severity = targetSeverity;
+      if (next.severity !== sev) {
+        next.severity = sev;
         changed = true;
       }
-
-      const targetStatus = urlStatus || '';
-      if (next.status !== targetStatus) {
-        next.status = targetStatus;
+      if (next.status !== st) {
+        next.status = st;
         changed = true;
       }
 
@@ -231,13 +271,19 @@ export default function SchoolAuditLogs() {
   };
 
   const clearFilters = () => {
-    setSearchParams({});
+    const preserved = {};
+    if (currentView === 'SECURITY') preserved.module = 'AUTH';
+    if (currentView === 'ACADEMIC') preserved.module = 'ATTENDANCE';
+    if (currentView === 'FINANCE') preserved.module = 'FINANCE';
+    if (currentView === 'DELEGATED') preserved.is_delegated = 'true';
+
+    setSearchParams(preserved);
     setFilters({
-      module: '',
+      module: preserved.module || '',
       action: '',
       severity: '',
       status: '',
-      is_delegated: '',
+      is_delegated: preserved.is_delegated || '',
       date_preset: '',
       from_date: '',
       to_date: '',
@@ -262,6 +308,11 @@ export default function SchoolAuditLogs() {
     setExporting(true);
     try {
       const params = { ...filters };
+      if (currentView === 'SECURITY' && !params.module) params.module = 'AUTH';
+      if (currentView === 'ACADEMIC' && !params.module) params.module = 'ATTENDANCE';
+      if (currentView === 'FINANCE' && !params.module) params.module = 'FINANCE';
+      if (currentView === 'DELEGATED') params.is_delegated = 'true';
+
       Object.keys(params).forEach(key => {
         if (!params[key]) delete params[key];
       });
@@ -274,7 +325,7 @@ export default function SchoolAuditLogs() {
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `School_Audit_Trail_${new Date().toISOString().split('T')[0]}.csv`);
+      link.setAttribute('download', `School_Audit_${currentView}_${new Date().toISOString().split('T')[0]}.csv`);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -286,11 +337,14 @@ export default function SchoolAuditLogs() {
   };
 
   const handleUpdateRetention = async () => {
+    const days = parseInt(retentionDaysInput, 10);
+    if (isNaN(days) || days < 30) {
+      alert('Retention period must be at least 30 days.');
+      return;
+    }
     setUpdatingRetention(true);
     try {
-      await api.put('/audit/school/retention', {
-        retention_days: parseInt(retentionDaysInput, 10),
-      });
+      await api.put('/audit/school/retention', { retention_days: days });
       alert('Retention policy updated successfully.');
       fetchStats();
     } catch (err) {
@@ -318,11 +372,10 @@ export default function SchoolAuditLogs() {
         confirmation: purgeConfirmationText,
       });
       alert(`Purge completed: ${res.data.deleted_count} logs securely archived/purged.`);
-      setShowRetentionModal(false);
       setPurgeConfirmationText('');
       setPurgeReason('');
       fetchStats();
-      fetchLogs();
+      fetchPurgeHistory();
     } catch (err) {
       alert(err.response?.data?.error || 'Failed to purge audit logs');
     } finally {
@@ -332,25 +385,120 @@ export default function SchoolAuditLogs() {
 
   const totalPages = Math.max(1, Math.ceil(total / perPage));
 
+  // View configuration
+  const viewMeta = useMemo(() => {
+    switch (currentView) {
+      case 'SECURITY':
+        return {
+          title: 'Security & Access Control Audit',
+          icon: 'ti-shield-lock',
+          color: '#2563eb',
+          badge: 'AUTHENTICATION & ACCESS',
+          subtitle: 'Authentication tracking, login verification, failed attempts, password changes, and IP diagnostics',
+          emptyMessage: 'No security or login activity found matching current filters.'
+        };
+      case 'ACADEMIC':
+        return {
+          title: 'Academic & Attendance Audit Trail',
+          icon: 'ti-clipboard-check',
+          color: '#059669',
+          badge: 'STUDENTS & ACADEMICS',
+          subtitle: 'Chronological provenance for attendance marking, student admissions, profile edits, and grades',
+          emptyMessage: 'No academic or attendance events found matching current filters.'
+        };
+      case 'FINANCE':
+        return {
+          title: 'Financial Operations & Fee Ledger Audit',
+          icon: 'ti-currency-rupee',
+          color: '#d97706',
+          badge: 'REVENUE & BILLING',
+          subtitle: 'Immutable transaction audit log for fee collections, receipts, discount waivers, and refunds',
+          emptyMessage: 'No financial transaction events found matching current filters.'
+        };
+      case 'DELEGATED':
+        return {
+          title: 'Substitute Teacher & Proxy Activity Audit',
+          icon: 'ti-switch-horizontal',
+          color: '#7c3aed',
+          badge: 'ZERO-ROLE PROXY LAYER',
+          subtitle: 'Forensic audit log of all operational duties executed by substitute teachers under temporary delegation',
+          emptyMessage: 'No delegated substitute teacher operations recorded yet.'
+        };
+      case 'RETENTION':
+        return {
+          title: 'Data Retention & Compliance Governance',
+          icon: 'ti-archive',
+          color: '#dc2626',
+          badge: 'LEGAL & ARCHIVAL POLICY',
+          subtitle: 'Configure school audit log retention windows, inspect purge eligibility, and execute protected compliance purges',
+          emptyMessage: ''
+        };
+      default:
+        return {
+          title: 'Enterprise Audit Command Center',
+          icon: 'ti-shield-check',
+          color: '#0284c7',
+          badge: 'FULL AUDIT STREAM',
+          subtitle: 'System-wide immutable audit trail and compliance provenance across all school departments',
+          emptyMessage: 'No audit events match your selected filters.'
+        };
+    }
+  }, [currentView]);
+
   return (
     <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
       <Sidebar darkMode={darkMode} />
       <div className="main-content">
-        <Navbar title="Audit Command Center" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
-        <div className="page-body" style={{ maxWidth: 1400, margin: '0 auto', padding: '24px 20px' }}>
+        <Navbar title={viewMeta.title} darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
 
-          {/* Header Title & Actions */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16, marginBottom: 24 }}>
+        {/* ── Page Body (Edge-to-edge layout, no awkward gaps) ── */}
+        <div className="page-body" style={{ padding: '24px 28px', width: '100%', minHeight: 'calc(100vh - 52px)' }}>
+
+          {/* ══ Hero Header Banner ══ */}
+          <div style={{
+            background: darkMode ? '#141b2d' : '#ffffff',
+            border: `1px solid ${darkMode ? '#1e293b' : '#e2e8f0'}`,
+            borderRadius: 14,
+            padding: '22px 26px',
+            marginBottom: 20,
+            boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 16
+          }}>
             <div>
-              <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0, color: darkMode ? '#f8fafc' : '#0f172a' }}>
-                🛡️ Enterprise Audit Command Center
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: 8,
+                  background: `${viewMeta.color}15`,
+                  color: viewMeta.color,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 20
+                }}>
+                  <i className={`ti ${viewMeta.icon}`} />
+                </div>
+                <div>
+                  <span style={{
+                    fontSize: 10, fontWeight: 800, letterSpacing: '0.06em',
+                    padding: '3px 8px', borderRadius: 4,
+                    background: `${viewMeta.color}18`, color: viewMeta.color
+                  }}>
+                    {viewMeta.badge}
+                  </span>
+                </div>
+              </div>
+              <h1 style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 2px', color: darkMode ? '#f8fafc' : '#0f172a' }}>
+                {viewMeta.title}
               </h1>
-              <p style={{ margin: '6px 0 0', fontSize: 13, color: '#64748b' }}>
-                Immutable, real-time chronological compliance logs across all school operations and delegated actions
+              <p style={{ margin: 0, fontSize: 13, color: '#64748b', maxWidth: 750 }}>
+                {viewMeta.subtitle}
               </p>
             </div>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              {canExport && (
+
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              {currentView !== 'RETENTION' && canExport && (
                 <button
                   className="btn btn-neutral btn-sm"
                   onClick={handleExportCSV}
@@ -358,851 +506,405 @@ export default function SchoolAuditLogs() {
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
                 >
                   <i className={`ti ti-download ${exporting ? 'spin' : ''}`} />
-                  {exporting ? 'Exporting CSV...' : 'Export Filtered CSV'}
+                  {exporting ? 'Exporting...' : 'Export Filtered CSV'}
                 </button>
               )}
-              {canPurge && (
+
+              {currentView === 'DELEGATED' && (
                 <button
                   className="btn btn-sm"
-                  onClick={() => setShowRetentionModal(true)}
+                  onClick={() => navigate('/delegations')}
                   style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    background: '#ef4444',
-                    color: '#ffffff',
-                    border: 'none',
-                    borderRadius: 6,
-                    padding: '7px 14px',
-                    fontWeight: 600,
-                    cursor: 'pointer'
+                    background: '#7c3aed', color: '#fff', border: 'none',
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '7px 14px', borderRadius: 6, fontWeight: 600, cursor: 'pointer'
                   }}
                 >
-                  <i className="ti ti-shield-lock" /> Retention & Purge
+                  <i className="ti ti-switch-horizontal" /> View Delegation Settings
+                </button>
+              )}
+
+              {currentView !== 'RETENTION' && canPurge && (
+                <button
+                  className="btn btn-sm"
+                  onClick={() => setSearchParams({ tab: 'retention' })}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    background: darkMode ? '#1e293b' : '#f8fafc',
+                    color: darkMode ? '#cbd5e1' : '#475569',
+                    border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                    borderRadius: 6, padding: '7px 14px', fontWeight: 600, cursor: 'pointer'
+                  }}
+                >
+                  <i className="ti ti-archive" /> Retention &amp; Purge Policy
                 </button>
               )}
             </div>
           </div>
 
-          {/* Metric Cards Grid */}
+          {/* ══ View Specific KPI Metric Cards ══ */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
             gap: 14,
-            marginBottom: 24
+            marginBottom: 20
           }}>
-            {/* Total Logs */}
-            <div style={{
-              background: darkMode ? '#1e293b' : '#ffffff',
-              border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
-              borderRadius: 10,
-              padding: '16px 18px',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#64748b', fontSize: 12, fontWeight: 600 }}>
-                <span>TOTAL EVENTS</span>
-                <i className="ti ti-list-check" style={{ fontSize: 18, color: '#3b82f6' }} />
-              </div>
-              <div style={{ fontSize: 24, fontWeight: 800, marginTop: 8, color: darkMode ? '#f8fafc' : '#0f172a' }}>
-                {statsLoading ? '...' : stats.total_logs?.toLocaleString()}
-              </div>
-              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>All-time recorded</div>
-            </div>
-
-            {/* Today's Logs */}
-            <div style={{
-              background: darkMode ? '#1e293b' : '#ffffff',
-              border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
-              borderRadius: 10,
-              padding: '16px 18px',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#64748b', fontSize: 12, fontWeight: 600 }}>
-                <span>TODAY'S ACTIVITY</span>
-                <i className="ti ti-calendar-event" style={{ fontSize: 18, color: '#10b981' }} />
-              </div>
-              <div style={{ fontSize: 24, fontWeight: 800, marginTop: 8, color: '#10b981' }}>
-                {statsLoading ? '...' : stats.today_logs?.toLocaleString()}
-              </div>
-              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Events since 00:00 UTC</div>
-            </div>
-
-            {/* Critical & High */}
-            <div style={{
-              background: darkMode ? '#1e293b' : '#ffffff',
-              border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
-              borderRadius: 10,
-              padding: '16px 18px',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#64748b', fontSize: 12, fontWeight: 600 }}>
-                <span>HIGH / CRITICAL</span>
-                <i className="ti ti-alert-triangle" style={{ fontSize: 18, color: '#f59e0b' }} />
-              </div>
-              <div style={{ fontSize: 24, fontWeight: 800, marginTop: 8, color: '#f59e0b' }}>
-                {statsLoading ? '...' : stats.critical_logs?.toLocaleString()}
-              </div>
-              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Elevated severity logs</div>
-            </div>
-
-            {/* Failed Operations */}
-            <div style={{
-              background: darkMode ? '#1e293b' : '#ffffff',
-              border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
-              borderRadius: 10,
-              padding: '16px 18px',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#64748b', fontSize: 12, fontWeight: 600 }}>
-                <span>FAILURES</span>
-                <i className="ti ti-circle-x" style={{ fontSize: 18, color: '#ef4444' }} />
-              </div>
-              <div style={{ fontSize: 24, fontWeight: 800, marginTop: 8, color: '#ef4444' }}>
-                {statsLoading ? '...' : stats.failed_logs?.toLocaleString()}
-              </div>
-              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Rejected or failed</div>
-            </div>
-
-            {/* Delegated Proxy Actions */}
-            <div style={{
-              background: darkMode ? '#1e293b' : '#ffffff',
-              border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
-              borderRadius: 10,
-              padding: '16px 18px',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#64748b', fontSize: 12, fontWeight: 600 }}>
-                <span>DELEGATED ACTIONS</span>
-                <i className="ti ti-bolt" style={{ fontSize: 18, color: '#8b5cf6' }} />
-              </div>
-              <div style={{ fontSize: 24, fontWeight: 800, marginTop: 8, color: '#8b5cf6' }}>
-                {statsLoading ? '...' : stats.delegated_logs?.toLocaleString()}
-              </div>
-              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Substitute teacher proxy</div>
-            </div>
-
-            {/* Purge Eligible */}
-            <div style={{
-              background: darkMode ? '#1e293b' : '#ffffff',
-              border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
-              borderRadius: 10,
-              padding: '16px 18px',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#64748b', fontSize: 12, fontWeight: 600 }}>
-                <span>PURGE ELIGIBLE</span>
-                <i className="ti ti-clock-pause" style={{ fontSize: 18, color: '#64748b' }} />
-              </div>
-              <div style={{ fontSize: 24, fontWeight: 800, marginTop: 8, color: darkMode ? '#f8fafc' : '#0f172a' }}>
-                {statsLoading ? '...' : stats.purge_eligible_logs?.toLocaleString()}
-              </div>
-              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Older than {stats.retention_days}d</div>
-            </div>
-          </div>
-
-          {/* Filter Bar */}
-          <div style={{
-            background: darkMode ? '#1e293b' : '#ffffff',
-            border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
-            borderRadius: 10,
-            padding: 16,
-            marginBottom: 20,
-            boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-          }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
-              {/* Search */}
-              <div style={{ flex: '1 1 200px', minWidth: 200, position: 'relative' }}>
-                <i className="ti ti-search" style={{ position: 'absolute', left: 10, top: 10, color: '#94a3b8' }} />
-                <input
-                  type="text"
-                  placeholder="Search remarks, user, action..."
-                  className="form-input"
-                  value={filters.q}
-                  onChange={(e) => handleFilterChange('q', e.target.value)}
-                  style={{ width: '100%', paddingLeft: 32 }}
-                />
-              </div>
-
-              {/* Module Filter */}
-              <select
-                className="form-select"
-                value={filters.module}
-                onChange={(e) => handleFilterChange('module', e.target.value)}
-                style={{ width: 140 }}
-              >
-                <option value="">All Modules</option>
-                <option value="admissions">Admissions</option>
-                <option value="students">Students</option>
-                <option value="attendance">Attendance</option>
-                <option value="marks">Marks</option>
-                <option value="finance">Finance / Fees</option>
-                <option value="auth">Auth / Security</option>
-                <option value="rbac">RBAC / Roles</option>
-                <option value="delegation">Delegation</option>
-                <option value="settings">Settings</option>
-                <option value="academic">Academic</option>
-              </select>
-
-              {/* Severity Filter */}
-              <select
-                className="form-select"
-                value={filters.severity}
-                onChange={(e) => handleFilterChange('severity', e.target.value)}
-                style={{ width: 130 }}
-              >
-                <option value="">All Severities</option>
-                <option value="CRITICAL">Critical</option>
-                <option value="HIGH">High</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="LOW">Low</option>
-                <option value="INFO">Info</option>
-              </select>
-
-              {/* Status Filter */}
-              <select
-                className="form-select"
-                value={filters.status}
-                onChange={(e) => handleFilterChange('status', e.target.value)}
-                style={{ width: 120 }}
-              >
-                <option value="">All Status</option>
-                <option value="SUCCESS">Success</option>
-                <option value="FAILURE">Failure</option>
-              </select>
-
-              {/* Date Presets */}
-              <select
-                className="form-select"
-                value={filters.date_preset}
-                onChange={(e) => handleFilterChange('date_preset', e.target.value)}
-                style={{ width: 130 }}
-              >
-                <option value="">Date Presets</option>
-                <option value="today">Today</option>
-                <option value="7days">Last 7 Days</option>
-                <option value="30days">Last 30 Days</option>
-                <option value="all">All Time</option>
-              </select>
-
-              {/* Custom Date Range */}
-              <input
-                type="date"
-                className="form-input"
-                value={filters.from_date}
-                onChange={(e) => handleFilterChange('from_date', e.target.value)}
-                style={{ width: 140 }}
-                title="From Date"
-              />
-              <input
-                type="date"
-                className="form-input"
-                value={filters.to_date}
-                onChange={(e) => handleFilterChange('to_date', e.target.value)}
-                style={{ width: 140 }}
-                title="To Date"
-              />
-
-              {/* Delegated Only Toggle */}
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: darkMode ? '#cbd5e1' : '#475569', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={filters.is_delegated === 'true'}
-                  onChange={(e) => handleFilterChange('is_delegated', e.target.checked ? 'true' : '')}
-                />
-                ⚡ Delegated Only
-              </label>
-
-              {/* Action Buttons */}
-              <button className="btn btn-neutral btn-sm" onClick={clearFilters} title="Reset filters">
-                <i className="ti ti-filter-off" /> Reset
-              </button>
-            </div>
-          </div>
-
-          {/* Audit Logs Table */}
-          <div style={{
-            background: darkMode ? '#1e293b' : '#ffffff',
-            border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
-            borderRadius: 10,
-            overflow: 'hidden',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-          }}>
-            <div className="table-container">
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 13 }}>
-                <thead>
-                  <tr style={{ background: darkMode ? '#0f172a' : '#f8fafc', borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
-                    <th style={{ padding: '12px 14px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b' }}>TIMESTAMP</th>
-                    <th style={{ padding: '12px 14px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b' }}>ACTOR</th>
-                    <th style={{ padding: '12px 14px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b' }}>MODULE / ACTION</th>
-                    <th style={{ padding: '12px 14px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b' }}>TARGET SCOPE</th>
-                    <th style={{ padding: '12px 14px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b' }}>ACCESS TYPE</th>
-                    <th style={{ padding: '12px 14px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b' }}>STATUS</th>
-                    <th style={{ padding: '12px 14px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', textAlign: 'right' }}>ACTION</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    <tr>
-                      <td colSpan={7} style={{ textAlign: 'center', padding: '50px 20px', color: '#64748b' }}>
-                        <i className="ti ti-loader spin" style={{ fontSize: 24, display: 'block', marginBottom: 8 }} />
-                        Loading secure audit log stream...
-                      </td>
-                    </tr>
-                  ) : logs.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} style={{ textAlign: 'center', padding: '50px 20px', color: '#94a3b8' }}>
-                        <i className="ti ti-file-search" style={{ fontSize: 32, display: 'block', marginBottom: 8 }} />
-                        No audit events match your selected filters.
-                      </td>
-                    </tr>
-                  ) : (
-                    logs.map((log) => {
-                      const sevBadge = getSeverityBadge(log.severity);
-                      const stBadge = getStatusBadge(log.status);
-
-                      return (
-                        <tr
-                          key={log.id}
-                          style={{
-                            borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}`,
-                            transition: 'background 0.15s ease',
-                          }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = darkMode ? '#26334d' : '#f8fafc'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                        >
-                          {/* Timestamp */}
-                          <td style={{ padding: '12px 14px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-                            <div style={{ fontWeight: 600, color: darkMode ? '#f8fafc' : '#1e293b' }}>
-                              {timeAgo(log.created_at)}
-                            </div>
-                            <div style={{ fontSize: 11, color: '#94a3b8' }} title={log.created_at}>
-                              {formatTimestamp(log.created_at)}
-                            </div>
-                          </td>
-
-                          {/* Actor */}
-                          <td style={{ padding: '12px 14px', verticalAlign: 'middle' }}>
-                            <div style={{ fontWeight: 600, color: darkMode ? '#f8fafc' : '#1e293b' }}>
-                              {log.user_name || (log.user_id ? `User #${log.user_id}` : 'System Task')}
-                            </div>
-                            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 3 }}>
-                              {log.role_snapshot && (
-                                <span style={{
-                                  fontSize: 10,
-                                  fontWeight: 600,
-                                  background: darkMode ? '#334155' : '#e2e8f0',
-                                  color: darkMode ? '#cbd5e1' : '#475569',
-                                  padding: '1px 6px',
-                                  borderRadius: 4
-                                }}>
-                                  {log.role_snapshot}
-                                </span>
-                              )}
-                              {log.employee_id && (
-                                <span style={{ fontSize: 10, color: '#94a3b8' }}>
-                                  {log.employee_id}
-                                </span>
-                              )}
-                            </div>
-                          </td>
-
-                          {/* Module / Action */}
-                          <td style={{ padding: '12px 14px', verticalAlign: 'middle' }}>
-                            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                              <span style={{
-                                fontSize: 11,
-                                fontWeight: 700,
-                                padding: '2px 8px',
-                                borderRadius: 6,
-                                background: sevBadge.bg,
-                                color: sevBadge.text,
-                                border: `1px solid ${sevBadge.border}`
-                              }}>
-                                {log.action}
-                              </span>
-                              <span style={{ fontSize: 12, fontWeight: 600, color: darkMode ? '#cbd5e1' : '#475569' }}>
-                                {log.module}
-                              </span>
-                            </div>
-                            {log.remarks && (
-                              <div style={{
-                                fontSize: 11,
-                                color: '#64748b',
-                                marginTop: 4,
-                                maxWidth: 280,
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap'
-                              }} title={log.remarks}>
-                                {log.remarks}
-                              </div>
-                            )}
-                          </td>
-
-                          {/* Target Scope */}
-                          <td style={{ padding: '12px 14px', verticalAlign: 'middle', fontSize: 12 }}>
-                            {log.student_name && (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: darkMode ? '#e2e8f0' : '#334155' }}>
-                                <i className="ti ti-user" style={{ color: '#3b82f6' }} />
-                                <span>{log.student_name}</span>
-                              </div>
-                            )}
-                            {log.teacher_name && (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: darkMode ? '#e2e8f0' : '#334155' }}>
-                                <i className="ti ti-school" style={{ color: '#8b5cf6' }} />
-                                <span>{log.teacher_name}</span>
-                              </div>
-                            )}
-                            {log.class_name && (
-                              <div style={{ fontSize: 11, color: '#64748b' }}>
-                                Class: {log.class_name}
-                              </div>
-                            )}
-                            {log.subject_name && (
-                              <div style={{ fontSize: 11, color: '#64748b' }}>
-                                Subject: {log.subject_name}
-                              </div>
-                            )}
-                            {!log.student_name && !log.teacher_name && !log.class_name && !log.subject_name && (
-                              <span style={{ color: '#94a3b8' }}>
-                                {log.entity_type ? `${log.entity_type} #${log.entity_id || ''}` : '—'}
-                              </span>
-                            )}
-                          </td>
-
-                          {/* Access Type */}
-                          <td style={{ padding: '12px 14px', verticalAlign: 'middle' }}>
-                            {log.is_delegated ? (
-                              <span style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: 4,
-                                fontSize: 11,
-                                fontWeight: 700,
-                                background: '#fef3c7',
-                                color: '#b45309',
-                                border: '1px solid #fcd34d',
-                                padding: '2px 7px',
-                                borderRadius: 6
-                              }} title="Action performed by Substitute Teacher under active delegation">
-                                ⚡ Delegated Proxy
-                              </span>
-                            ) : (
-                              <span style={{
-                                fontSize: 11,
-                                color: '#64748b',
-                                background: darkMode ? '#334155' : '#f1f5f9',
-                                padding: '2px 7px',
-                                borderRadius: 6
-                              }}>
-                                Direct
-                              </span>
-                            )}
-                          </td>
-
-                          {/* Status */}
-                          <td style={{ padding: '12px 14px', verticalAlign: 'middle' }}>
-                            <span style={{
-                              fontSize: 10,
-                              fontWeight: 700,
-                              padding: '2px 8px',
-                              borderRadius: 12,
-                              background: stBadge.bg,
-                              color: stBadge.text,
-                              border: `1px solid ${stBadge.border}`
-                            }}>
-                              {stBadge.label}
-                            </span>
-                          </td>
-
-                          {/* Action */}
-                          <td style={{ padding: '12px 14px', verticalAlign: 'middle', textAlign: 'right' }}>
-                            <button
-                              className="btn btn-neutral btn-sm"
-                              onClick={() => handleViewDetail(log.id)}
-                              style={{ padding: '4px 10px', fontSize: 11, fontWeight: 600 }}
-                            >
-                              <i className="ti ti-eye" /> Details
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination Controls */}
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: '14px 20px',
-              borderTop: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
-              background: darkMode ? '#0f172a' : '#ffffff',
-              fontSize: 12,
-              color: '#64748b',
-              flexWrap: 'wrap',
-              gap: 12
-            }}>
-              <div>
-                Showing <strong>{logs.length}</strong> of <strong>{total.toLocaleString()}</strong> events · Page <strong>{page}</strong> of <strong>{totalPages}</strong>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <select
-                  className="form-select"
-                  value={perPage}
-                  onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1); }}
-                  style={{ width: 90, height: 32, fontSize: 12 }}
-                >
-                  <option value={25}>25 / page</option>
-                  <option value={50}>50 / page</option>
-                  <option value={100}>100 / page</option>
-                </select>
-
-                <button
-                  className="btn btn-neutral btn-sm"
-                  disabled={page <= 1}
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  style={{ height: 32 }}
-                >
-                  Previous
-                </button>
-                <button
-                  className="btn btn-neutral btn-sm"
-                  disabled={page >= totalPages}
-                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                  style={{ height: 32 }}
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Slide-Over Detail Drawer */}
-          {selectedLog && (
-            <div
-              style={{
-                position: 'fixed',
-                top: 0,
-                right: 0,
-                bottom: 0,
-                left: 0,
-                background: 'rgba(0, 0, 0, 0.5)',
-                zIndex: 1000,
-                display: 'flex',
-                justifyContent: 'flex-end',
-                animation: 'fadeIn 0.2s ease-out'
-              }}
-              onClick={() => setSelectedLog(null)}
-            >
-              <div
-                style={{
-                  width: '100%',
-                  maxWidth: 620,
-                  height: '100%',
-                  background: darkMode ? '#1e293b' : '#ffffff',
-                  boxShadow: '-4px 0 25px rgba(0,0,0,0.2)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  overflowY: 'auto',
-                  padding: 24,
-                }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                {/* Drawer Header */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 16, borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{
-                        fontSize: 12,
-                        fontWeight: 800,
-                        padding: '3px 10px',
-                        borderRadius: 6,
-                        ...getSeverityBadge(selectedLog.severity)
-                      }}>
-                        {selectedLog.action}
-                      </span>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: darkMode ? '#cbd5e1' : '#475569' }}>
-                        {selectedLog.module}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
-                      Event ID: #{selectedLog.id} · {formatTimestamp(selectedLog.created_at)}
-                    </div>
+            {currentView === 'SECURITY' && (
+              <>
+                <div style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 10, padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: 12, fontWeight: 700 }}>
+                    <span>TOTAL AUTH EVENTS</span>
+                    <i className="ti ti-lock" style={{ fontSize: 18, color: '#2563eb' }} />
                   </div>
-                  <button
-                    onClick={() => setSelectedLog(null)}
-                    style={{ background: 'none', border: 'none', fontSize: 20, color: '#94a3b8', cursor: 'pointer' }}
-                  >
-                    ✕
-                  </button>
+                  <div style={{ fontSize: 24, fontWeight: 800, marginTop: 8, color: darkMode ? '#f8fafc' : '#0f172a' }}>
+                    {statsLoading ? '...' : (stats.auth_events || stats.total_logs || 0)}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Logins, resets &amp; token checks</div>
                 </div>
 
-                {/* Drawer Body */}
-                <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 18 }}>
-
-                  {/* Remarks Box */}
-                  {selectedLog.remarks && (
-                    <div style={{
-                      padding: 14,
-                      background: darkMode ? '#0f172a' : '#f8fafc',
-                      borderRadius: 8,
-                      border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
-                      fontSize: 13,
-                      color: darkMode ? '#f8fafc' : '#1e293b'
-                    }}>
-                      <strong>Remarks:</strong> {selectedLog.remarks}
-                    </div>
-                  )}
-
-                  {/* Delegation Linkage Card */}
-                  {selectedLog.is_delegated && (
-                    <div style={{
-                      padding: 14,
-                      background: darkMode ? '#3b2f15' : '#fffbeb',
-                      border: '1px solid #fde047',
-                      borderRadius: 8
-                    }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#b45309', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <i className="ti ti-bolt" /> Delegated Proxy Execution
-                      </div>
-                      <div style={{ marginTop: 8, fontSize: 12, color: darkMode ? '#fef08a' : '#854d0e' }}>
-                        <div><strong>Substitute Teacher:</strong> {selectedLog.user_name || `User #${selectedLog.user_id}`}</div>
-                        {selectedLog.delegation_details && (
-                          <>
-                            <div style={{ marginTop: 4 }}><strong>On Behalf Of:</strong> {selectedLog.delegation_details.source_teacher_name}</div>
-                            {selectedLog.delegation_details.reason && (
-                              <div style={{ marginTop: 4 }}><strong>Delegation Reason:</strong> {selectedLog.delegation_details.reason}</div>
-                            )}
-                            <div style={{ marginTop: 4, fontSize: 11, color: '#a16207' }}>
-                              Delegation Reference ID: #{selectedLog.delegation_details.delegation_id}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Target Scope Card */}
-                  <div style={{
-                    padding: 14,
-                    background: darkMode ? '#0f172a' : '#f8fafc',
-                    borderRadius: 8,
-                    border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`
-                  }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 8 }}>TARGET SCOPE</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 12 }}>
-                      <div>
-                        <span style={{ color: '#94a3b8' }}>Student:</span>{' '}
-                        <strong>{selectedLog.student_name || (selectedLog.student_id ? `#${selectedLog.student_id}` : 'None')}</strong>
-                      </div>
-                      <div>
-                        <span style={{ color: '#94a3b8' }}>Teacher:</span>{' '}
-                        <strong>{selectedLog.teacher_name || (selectedLog.teacher_id ? `#${selectedLog.teacher_id}` : 'None')}</strong>
-                      </div>
-                      <div>
-                        <span style={{ color: '#94a3b8' }}>Class:</span>{' '}
-                        <strong>{selectedLog.class_name || (selectedLog.class_id ? `#${selectedLog.class_id}` : 'None')}</strong>
-                      </div>
-                      <div>
-                        <span style={{ color: '#94a3b8' }}>Subject:</span>{' '}
-                        <strong>{selectedLog.subject_name || (selectedLog.subject_id ? `#${selectedLog.subject_id}` : 'None')}</strong>
-                      </div>
-                    </div>
+                <div style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${stats.auth_failed > 0 ? '#fca5a5' : darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 10, padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: 12, fontWeight: 700 }}>
+                    <span>FAILED ATTEMPTS</span>
+                    <i className="ti ti-alert-octagon" style={{ fontSize: 18, color: '#ef4444' }} />
                   </div>
-
-                  {/* Before vs After Diff Section */}
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: darkMode ? '#f8fafc' : '#1e293b', marginBottom: 8 }}>
-                      Visual Field Diffs (Before vs After)
-                    </div>
-
-                    {selectedLog.changed_fields && Object.keys(selectedLog.changed_fields).length > 0 ? (
-                      <div style={{
-                        border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
-                        borderRadius: 8,
-                        overflow: 'hidden'
-                      }}>
-                        <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
-                          <thead>
-                            <tr style={{ background: darkMode ? '#0f172a' : '#f1f5f9', borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
-                              <th style={{ padding: '8px 12px', textAlign: 'left' }}>Field</th>
-                              <th style={{ padding: '8px 12px', textAlign: 'left', color: '#dc2626' }}>Previous (Old)</th>
-                              <th style={{ padding: '8px 12px', textAlign: 'left', color: '#16a34a' }}>Updated (New)</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {Object.entries(selectedLog.changed_fields).map(([field, diff]) => (
-                              <tr key={field} style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}` }}>
-                                <td style={{ padding: '8px 12px', fontWeight: 600, color: darkMode ? '#e2e8f0' : '#334155' }}>
-                                  {field}
-                                </td>
-                                <td style={{ padding: '8px 12px', color: '#dc2626', background: darkMode ? 'rgba(239, 68, 68, 0.08)' : '#fef2f2' }}>
-                                  {diff?.old === null || diff?.old === undefined || diff?.old === '' ? '—' : String(diff.old)}
-                                </td>
-                                <td style={{ padding: '8px 12px', color: '#16a34a', background: darkMode ? 'rgba(34, 197, 94, 0.08)' : '#f0fdf4' }}>
-                                  {diff?.new === null || diff?.new === undefined || diff?.new === '' ? '—' : String(diff.new)}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : selectedLog.old_value || selectedLog.new_value ? (
-                      <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: '1fr 1fr',
-                        gap: 10,
-                        fontSize: 12
-                      }}>
-                        <div style={{ padding: 10, background: darkMode ? '#261b1b' : '#fef2f2', borderRadius: 6, border: '1px solid #fca5a5' }}>
-                          <strong style={{ color: '#dc2626' }}>Previous State:</strong>
-                          <pre style={{ margin: '6px 0 0', fontSize: 11, whiteSpace: 'pre-wrap' }}>
-                            {typeof selectedLog.old_value === 'object' ? JSON.stringify(selectedLog.old_value, null, 2) : String(selectedLog.old_value || 'None')}
-                          </pre>
-                        </div>
-                        <div style={{ padding: 10, background: darkMode ? '#19281f' : '#f0fdf4', borderRadius: 6, border: '1px solid #86efac' }}>
-                          <strong style={{ color: '#16a34a' }}>New State:</strong>
-                          <pre style={{ margin: '6px 0 0', fontSize: 11, whiteSpace: 'pre-wrap' }}>
-                            {typeof selectedLog.new_value === 'object' ? JSON.stringify(selectedLog.new_value, null, 2) : String(selectedLog.new_value || 'None')}
-                          </pre>
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic', padding: '10px 0' }}>
-                        No state modifications recorded for this event.
-                      </div>
-                    )}
+                  <div style={{ fontSize: 24, fontWeight: 800, marginTop: 8, color: stats.auth_failed > 0 ? '#ef4444' : '#10b981' }}>
+                    {statsLoading ? '...' : (stats.auth_failed || stats.failed_logs || 0)}
                   </div>
-
-                  {/* Client Context Box */}
-                  <div style={{
-                    padding: 14,
-                    background: darkMode ? '#0f172a' : '#f8fafc',
-                    borderRadius: 8,
-                    border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`
-                  }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 8 }}>CLIENT CONTEXT & SECURITY</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 12 }}>
-                      <div><span style={{ color: '#94a3b8' }}>IP Address:</span> {selectedLog.ip_address || '—'}</div>
-                      <div><span style={{ color: '#94a3b8' }}>Browser:</span> {selectedLog.browser || '—'}</div>
-                      <div><span style={{ color: '#94a3b8' }}>Operating System:</span> {selectedLog.os || '—'}</div>
-                      <div><span style={{ color: '#94a3b8' }}>Execution Time:</span> {selectedLog.execution_time_ms ? `${selectedLog.execution_time_ms}ms` : '—'}</div>
-                      <div style={{ gridColumn: 'span 2' }}>
-                        <span style={{ color: '#94a3b8' }}>Request ID:</span>{' '}
-                        <code style={{ fontSize: 11, background: darkMode ? '#334155' : '#e2e8f0', padding: '2px 4px', borderRadius: 4 }}>
-                          {selectedLog.request_id || '—'}
-                        </code>
-                      </div>
-                    </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+                    {stats.auth_failed > 0 ? '⚠️ Suspicious authentication attempts' : 'Zero auth failures recorded'}
                   </div>
+                </div>
 
+                <div style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 10, padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: 12, fontWeight: 700 }}>
+                    <span>CRITICAL SECURITY ALERTS</span>
+                    <i className="ti ti-shield-alert" style={{ fontSize: 18, color: '#f59e0b' }} />
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 800, marginTop: 8, color: '#f59e0b' }}>
+                    {statsLoading ? '...' : (stats.critical_logs || 0)}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>High severity access events</div>
+                </div>
+
+                <div style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 10, padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: 12, fontWeight: 700 }}>
+                    <span>CLIENT IP TRACKING</span>
+                    <i className="ti ti-world" style={{ fontSize: 18, color: '#10b981' }} />
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 800, marginTop: 8, color: '#10b981' }}>
+                    100%
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Full IP &amp; User Agent provenance</div>
+                </div>
+              </>
+            )}
+
+            {currentView === 'ACADEMIC' && (
+              <>
+                <div style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 10, padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: 12, fontWeight: 700 }}>
+                    <span>ACADEMIC OPERATIONS</span>
+                    <i className="ti ti-school" style={{ fontSize: 18, color: '#059669' }} />
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 800, marginTop: 8, color: '#059669' }}>
+                    {statsLoading ? '...' : (stats.academic_events || 0)}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Attendance, admissions &amp; marks</div>
+                </div>
+
+                <div style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 10, padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: 12, fontWeight: 700 }}>
+                    <span>TODAY'S OPERATIONS</span>
+                    <i className="ti ti-calendar-check" style={{ fontSize: 18, color: '#0284c7' }} />
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 800, marginTop: 8, color: '#0284c7' }}>
+                    {statsLoading ? '...' : (stats.today_logs || 0)}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Actions recorded since 00:00 UTC</div>
+                </div>
+
+                <div style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 10, padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: 12, fontWeight: 700 }}>
+                    <span>SUBSTITUTE PROXY ACTIONS</span>
+                    <i className="ti ti-bolt" style={{ fontSize: 18, color: '#7c3aed' }} />
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 800, marginTop: 8, color: '#7c3aed' }}>
+                    {statsLoading ? '...' : (stats.delegated_logs || 0)}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Marked by substitute teachers</div>
+                </div>
+
+                <div style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 10, padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: 12, fontWeight: 700 }}>
+                    <span>FIELD DIFF TRACKING</span>
+                    <i className="ti ti-git-compare" style={{ fontSize: 18, color: '#10b981' }} />
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 800, marginTop: 8, color: '#10b981' }}>
+                    Active
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Before / After values preserved</div>
+                </div>
+              </>
+            )}
+
+            {currentView === 'FINANCE' && (
+              <>
+                <div style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 10, padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: 12, fontWeight: 700 }}>
+                    <span>FINANCIAL OPERATIONS</span>
+                    <i className="ti ti-cash" style={{ fontSize: 18, color: '#d97706' }} />
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 800, marginTop: 8, color: '#d97706' }}>
+                    {statsLoading ? '...' : (stats.finance_events || 0)}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Fee collections &amp; vouchers</div>
+                </div>
+
+                <div style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 10, padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: 12, fontWeight: 700 }}>
+                    <span>FAILED PAYMENTS</span>
+                    <i className="ti ti-credit-card-off" style={{ fontSize: 18, color: '#ef4444' }} />
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 800, marginTop: 8, color: stats.failed_logs > 0 ? '#ef4444' : '#10b981' }}>
+                    {statsLoading ? '...' : (stats.failed_logs || 0)}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Rejected transactions</div>
+                </div>
+
+                <div style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 10, padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: 12, fontWeight: 700 }}>
+                    <span>HIGH VALUE ALERTS</span>
+                    <i className="ti ti-alert-triangle" style={{ fontSize: 18, color: '#f59e0b' }} />
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 800, marginTop: 8, color: '#f59e0b' }}>
+                    {statsLoading ? '...' : (stats.critical_logs || 0)}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Audited fee events</div>
+                </div>
+
+                <div style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 10, padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: 12, fontWeight: 700 }}>
+                    <span>IMMUTABLE LEDGER</span>
+                    <i className="ti ti-shield-check" style={{ fontSize: 18, color: '#10b981' }} />
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 800, marginTop: 8, color: '#10b981' }}>
+                    Protected
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Append-only cash tracking</div>
+                </div>
+              </>
+            )}
+
+            {currentView === 'DELEGATED' && (
+              <>
+                <div style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 10, padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: 12, fontWeight: 700 }}>
+                    <span>DELEGATED PROXY ACTIONS</span>
+                    <i className="ti ti-bolt" style={{ fontSize: 18, color: '#7c3aed' }} />
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 800, marginTop: 8, color: '#7c3aed' }}>
+                    {statsLoading ? '...' : (stats.delegated_logs || 0)}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Executed by substitute teachers</div>
+                </div>
+
+                <div style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 10, padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: 12, fontWeight: 700 }}>
+                    <span>SECURITY MODEL</span>
+                    <i className="ti ti-shield-check" style={{ fontSize: 18, color: '#10b981' }} />
+                  </div>
+                  <div style={{ fontSize: 22, fontWeight: 800, marginTop: 8, color: '#10b981' }}>
+                    Zero-Role Mutation
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Permanent role is always TEACHER</div>
+                </div>
+
+                <div style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 10, padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: 12, fontWeight: 700 }}>
+                    <span>DUAL ATTRIBUTION</span>
+                    <i className="ti ti-link" style={{ fontSize: 18, color: '#0284c7' }} />
+                  </div>
+                  <div style={{ fontSize: 22, fontWeight: 800, marginTop: 8, color: '#0284c7' }}>
+                    Active Linkage
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Substitute ↔ Absent Teacher</div>
+                </div>
+
+                <div style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 10, padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: 12, fontWeight: 700 }}>
+                    <span>ACTIVE RETENTION</span>
+                    <i className="ti ti-clock-check" style={{ fontSize: 18, color: '#d97706' }} />
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 800, marginTop: 8, color: '#d97706' }}>
+                    {stats.retention_days || 180}d
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>School compliance window</div>
+                </div>
+              </>
+            )}
+
+            {currentView === 'OVERVIEW' && (
+              <>
+                <div style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 10, padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: 12, fontWeight: 700 }}>
+                    <span>TOTAL EVENTS</span>
+                    <i className="ti ti-list-check" style={{ fontSize: 18, color: '#3b82f6' }} />
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 800, marginTop: 8, color: darkMode ? '#f8fafc' : '#0f172a' }}>
+                    {statsLoading ? '...' : (stats.total_logs || 0)}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>All-time recorded events</div>
+                </div>
+
+                <div style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 10, padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: 12, fontWeight: 700 }}>
+                    <span>TODAY'S ACTIVITY</span>
+                    <i className="ti ti-calendar-event" style={{ fontSize: 18, color: '#10b981' }} />
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 800, marginTop: 8, color: '#10b981' }}>
+                    {statsLoading ? '...' : (stats.today_logs || 0)}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Events since 00:00 UTC</div>
+                </div>
+
+                <div style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 10, padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: 12, fontWeight: 700 }}>
+                    <span>HIGH / CRITICAL</span>
+                    <i className="ti ti-alert-triangle" style={{ fontSize: 18, color: '#f59e0b' }} />
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 800, marginTop: 8, color: '#f59e0b' }}>
+                    {statsLoading ? '...' : (stats.critical_logs || 0)}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Elevated severity logs</div>
+                </div>
+
+                <div style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 10, padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: 12, fontWeight: 700 }}>
+                    <span>FAILURES</span>
+                    <i className="ti ti-circle-x" style={{ fontSize: 18, color: '#ef4444' }} />
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 800, marginTop: 8, color: '#ef4444' }}>
+                    {statsLoading ? '...' : (stats.failed_logs || 0)}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Rejected or failed ops</div>
+                </div>
+
+                <div style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 10, padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: 12, fontWeight: 700 }}>
+                    <span>DELEGATED ACTIONS</span>
+                    <i className="ti ti-bolt" style={{ fontSize: 18, color: '#8b5cf6' }} />
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 800, marginTop: 8, color: '#8b5cf6' }}>
+                    {statsLoading ? '...' : (stats.delegated_logs || 0)}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Substitute teacher proxy</div>
+                </div>
+
+                <div style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 10, padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: 12, fontWeight: 700 }}>
+                    <span>PURGE ELIGIBLE</span>
+                    <i className="ti ti-clock-pause" style={{ fontSize: 18, color: '#64748b' }} />
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 800, marginTop: 8, color: darkMode ? '#f8fafc' : '#0f172a' }}>
+                    {statsLoading ? '...' : (stats.purge_eligible_logs || 0)}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Older than {stats.retention_days}d</div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* ═══════════════════════════════════════════════════════════════
+              VIEW BRANCH: RETENTION & COMPLIANCE CONSOLE (FULL PAGE)
+             ═══════════════════════════════════════════════════════════════ */}
+          {currentView === 'RETENTION' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {/* 3 Status Cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
+                <div style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 12, padding: '18px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>⏳ Current Retention Policy</div>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: '#2563eb', marginTop: 8 }}>
+                    {stats.retention_days || 180} Days
+                  </div>
+                  <p style={{ margin: '6px 0 0', fontSize: 12, color: '#94a3b8' }}>Logs older than this threshold become eligible for compliance purge.</p>
+                </div>
+
+                <div style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 12, padding: '18px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>📦 Purge-Eligible Records</div>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: stats.purge_eligible_logs > 0 ? '#ef4444' : '#10b981', marginTop: 8 }}>
+                    {stats.purge_eligible_logs || 0} Logs
+                  </div>
+                  <p style={{ margin: '6px 0 0', fontSize: 12, color: '#94a3b8' }}>
+                    {stats.purge_eligible_logs > 0 ? 'Eligible for regulatory clean-up' : 'All logs are within the protected retention window'}
+                  </p>
+                </div>
+
+                <div style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 12, padding: '18px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>🛡️ Protected Purge Guard</div>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: '#10b981', marginTop: 8 }}>
+                    ACTIVE
+                  </div>
+                  <p style={{ margin: '6px 0 0', fontSize: 12, color: '#94a3b8' }}>Permanent survival of AUDIT_PURGE_STARTED &amp; COMPLETED records.</p>
                 </div>
               </div>
-            </div>
-          )}
 
-          {/* Retention & Protected Purge Modal */}
-          {showRetentionModal && (
-            <div
-              style={{
-                position: 'fixed',
-                top: 0,
-                right: 0,
-                bottom: 0,
-                left: 0,
-                background: 'rgba(0, 0, 0, 0.6)',
-                zIndex: 1000,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: 16
-              }}
-              onClick={() => setShowRetentionModal(false)}
-            >
-              <div
-                style={{
-                  width: '100%',
-                  maxWidth: 520,
-                  background: darkMode ? '#1e293b' : '#ffffff',
-                  borderRadius: 12,
-                  padding: 24,
-                  boxShadow: '0 20px 25px -5px rgba(0,0,0,0.3)'
-                }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: darkMode ? '#f8fafc' : '#0f172a' }}>
-                    ⚙️ Audit Retention & Compliance Policy
+              {/* 2 Configuration Panels */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: 20 }}>
+                {/* Retention Setting Form */}
+                <div style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 12, padding: 24, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <h3 style={{ fontSize: 16, fontWeight: 800, margin: '0 0 8px', color: darkMode ? '#f8fafc' : '#0f172a' }}>
+                    ⚙️ Configure Retention Period
                   </h3>
-                  <button
-                    onClick={() => setShowRetentionModal(false)}
-                    style={{ background: 'none', border: 'none', fontSize: 20, color: '#94a3b8', cursor: 'pointer' }}
-                  >
-                    ✕
-                  </button>
-                </div>
+                  <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5, margin: '0 0 18px' }}>
+                    Specify the mandatory number of days audit trails must be retained before they are marked eligible for legal deletion. The minimum compliance floor is <strong>30 days</strong>.
+                  </p>
 
-                {/* Retention Setting */}
-                <div style={{ marginBottom: 24, paddingBottom: 20, borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6, color: darkMode ? '#cbd5e1' : '#334155' }}>
-                    Retention Window (Days):
-                  </label>
-                  <div style={{ display: 'flex', gap: 10 }}>
+                  <div style={{ marginBottom: 18 }}>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: darkMode ? '#cbd5e1' : '#475569', marginBottom: 6 }}>
+                      Retention Period (Days) *
+                    </label>
                     <input
                       type="number"
                       min={30}
+                      max={3650}
                       className="form-input"
                       value={retentionDaysInput}
                       onChange={(e) => setRetentionDaysInput(e.target.value)}
-                      style={{ width: 140 }}
+                      disabled={!canManageRetention || updatingRetention}
+                      style={{ width: '100%', maxWidth: 260 }}
                     />
-                    {canManageRetention && (
-                      <button
-                        className="btn btn-neutral btn-sm"
-                        onClick={handleUpdateRetention}
-                        disabled={updatingRetention}
-                      >
-                        {updatingRetention ? 'Updating...' : 'Update Policy'}
-                      </button>
-                    )}
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>
+                      Standard options: 90 days (1 Quarter), 180 days (6 Months), 365 days (1 Year).
+                    </div>
                   </div>
-                  <small style={{ color: '#64748b', display: 'block', marginTop: 4 }}>
-                    Minimum retention window is 30 days. Logs within this period cannot be purged under any circumstance.
-                  </small>
+
+                  {canManageRetention ? (
+                    <button
+                      className="btn btn-primary btn-sm"
+                      onClick={handleUpdateRetention}
+                      disabled={updatingRetention}
+                    >
+                      {updatingRetention ? 'Saving...' : '💾 Save Retention Policy'}
+                    </button>
+                  ) : (
+                    <div style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>
+                      🔒 You need <code>audit.retention.manage</code> permission to update this setting.
+                    </div>
+                  )}
                 </div>
 
-                {/* Protected Purge Section */}
-                <div style={{ background: darkMode ? '#261b1b' : '#fef2f2', border: '1px solid #f87171', borderRadius: 8, padding: 16 }}>
-                  <h4 style={{ margin: '0 0 6px', color: '#b91c1c', fontSize: 14, fontWeight: 700 }}>
-                    ⚠️ Protected Immutable Purge
-                  </h4>
-                  <p style={{ margin: '0 0 12px', fontSize: 12, color: '#991b1b' }}>
-                    Currently, <strong>{stats.purge_eligible_logs?.toLocaleString()}</strong> logs are older than {stats.retention_days} days and eligible for permanent purge.
-                    Purge operations generate indelible audit markers that survive the purge.
+                {/* Protected Compliance Purge */}
+                <div style={{ background: darkMode ? '#1e293b' : '#fff', border: '1px solid #fecaca', borderRadius: 12, padding: 24, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <h3 style={{ fontSize: 16, fontWeight: 800, margin: '0 0 8px', color: '#dc2626' }}>
+                    🚨 Protected Compliance Purge
+                  </h3>
+                  <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5, margin: '0 0 16px' }}>
+                    Permanently purges historical records older than {retentionDaysInput} days ({stats.purge_eligible_logs || 0} records eligible). Pre- and post-purge audit events will be permanently committed to preserve chain of custody.
                   </p>
 
-                  <div style={{ marginBottom: 10 }}>
-                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#991b1b', marginBottom: 4 }}>
-                      1. Mandatory Regulatory Reason:
-                    </label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      placeholder="e.g. Annual data sanitization approved by governing body"
-                      value={purgeReason}
-                      onChange={(e) => setPurgeReason(e.target.value)}
-                      style={{ width: '100%', fontSize: 12 }}
-                    />
-                  </div>
-
                   <div style={{ marginBottom: 14 }}>
-                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#991b1b', marginBottom: 4 }}>
-                      2. Type "CONFIRM PURGE" to unlock:
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#dc2626', marginBottom: 6 }}>
+                      Type "CONFIRM PURGE" to authorize *
                     </label>
                     <input
                       type="text"
@@ -1210,42 +912,867 @@ export default function SchoolAuditLogs() {
                       placeholder="CONFIRM PURGE"
                       value={purgeConfirmationText}
                       onChange={(e) => setPurgeConfirmationText(e.target.value)}
-                      style={{ width: '100%', fontSize: 12 }}
+                      disabled={!canPurge || purging}
+                      style={{ borderColor: '#fca5a5' }}
                     />
                   </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                  <div style={{ marginBottom: 18 }}>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: darkMode ? '#cbd5e1' : '#475569', marginBottom: 6 }}>
+                      Regulatory / Auditor Reason *
+                    </label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="e.g. Annual data minimization cycle as per policy"
+                      value={purgeReason}
+                      onChange={(e) => setPurgeReason(e.target.value)}
+                      disabled={!canPurge || purging}
+                    />
+                  </div>
+
+                  {canPurge ? (
                     <button
-                      className="btn btn-neutral btn-sm"
-                      onClick={() => setShowRetentionModal(false)}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      className="btn btn-sm"
                       onClick={handlePurgeLogs}
                       disabled={purging || purgeConfirmationText !== 'CONFIRM PURGE' || !purgeReason.trim()}
                       style={{
-                        background: purgeConfirmationText === 'CONFIRM PURGE' && purgeReason.trim() ? '#dc2626' : '#94a3b8',
-                        color: '#ffffff',
-                        border: 'none',
-                        borderRadius: 6,
-                        padding: '6px 14px',
-                        fontWeight: 600,
-                        cursor: purgeConfirmationText === 'CONFIRM PURGE' && purgeReason.trim() ? 'pointer' : 'not-allowed'
+                        background: (purgeConfirmationText === 'CONFIRM PURGE' && purgeReason.trim()) ? '#dc2626' : '#94a3b8',
+                        color: '#fff', border: 'none', borderRadius: 6, padding: '8px 18px',
+                        fontSize: 13, fontWeight: 700, cursor: (purgeConfirmationText === 'CONFIRM PURGE' && purgeReason.trim()) ? 'pointer' : 'not-allowed'
                       }}
                     >
-                      {purging ? 'Purging...' : 'Execute Protected Purge'}
+                      {purging ? 'Purging Records...' : '⚠️ Execute Compliance Purge'}
+                    </button>
+                  ) : (
+                    <div style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>
+                      🔒 You need <code>audit.purge</code> permission to execute purges.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Historic Purge Audit Records Table */}
+              <div style={{ background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                <div style={{ padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: darkMode ? '#f8fafc' : '#0f172a' }}>
+                      📜 Permanent Compliance Purge Ledger
+                    </h4>
+                    <p style={{ margin: '2px 0 0', fontSize: 12, color: '#64748b' }}>
+                      Audit markers proving who authorized purges, when they occurred, and exact record counts deleted
+                    </p>
+                  </div>
+                  <button className="btn btn-neutral btn-sm" onClick={fetchPurgeHistory} disabled={loadingPurgeHistory}>
+                    <i className={`ti ti-refresh ${loadingPurgeHistory ? 'spin' : ''}`} /> Refresh
+                  </button>
+                </div>
+
+                <div className="table-container">
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ background: darkMode ? '#0f172a' : '#f8fafc', borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+                        <th style={{ padding: '10px 14px', fontWeight: 700, color: '#64748b' }}>TIMESTAMP</th>
+                        <th style={{ padding: '10px 14px', fontWeight: 700, color: '#64748b' }}>ACTION</th>
+                        <th style={{ padding: '10px 14px', fontWeight: 700, color: '#64748b' }}>EXECUTED BY</th>
+                        <th style={{ padding: '10px 14px', fontWeight: 700, color: '#64748b' }}>REASON GIVEN</th>
+                        <th style={{ padding: '10px 14px', fontWeight: 700, color: '#64748b' }}>CLIENT IP</th>
+                        <th style={{ padding: '10px 14px', fontWeight: 700, color: '#64748b' }}>STATUS</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loadingPurgeHistory ? (
+                        <tr><td colSpan={6} style={{ textAlign: 'center', padding: 30, color: '#94a3b8' }}>Loading purge records...</td></tr>
+                      ) : purgeHistory.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
+                            <i className="ti ti-shield-check" style={{ fontSize: 24, display: 'block', marginBottom: 6, color: '#10b981' }} />
+                            No historical purges executed. The audit log has never been purged.
+                          </td>
+                        </tr>
+                      ) : (
+                        purgeHistory.map(row => (
+                          <tr key={row.id} style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+                            <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>{formatTimestamp(row.created_at)}</td>
+                            <td style={{ padding: '12px 14px' }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: '#fee2e2', color: '#991b1b' }}>
+                                {row.action}
+                              </span>
+                            </td>
+                            <td style={{ padding: '12px 14px' }}><strong>{row.user_name || 'Administrator'}</strong></td>
+                            <td style={{ padding: '12px 14px', color: '#64748b' }}>{row.remarks || '—'}</td>
+                            <td style={{ padding: '12px 14px', fontFamily: 'monospace', fontSize: 12 }}>{row.ip_address || '—'}</td>
+                            <td style={{ padding: '12px 14px' }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: '#dcfce7', color: '#15803d' }}>
+                                COMPLIANT
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* ═══════════════════════════════════════════════════════════════
+                VIEW BRANCH: STANDARD AUDIT STREAM (WITH DOMAIN FILTERS)
+               ═══════════════════════════════════════════════════════════════ */
+            <>
+              {/* Quick Preset Filter Pills for Specialized Context */}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b', alignSelf: 'center', marginRight: 4 }}>
+                  Quick Filter:
+                </span>
+
+                {currentView === 'SECURITY' && (
+                  <>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => handleFilterChange('action', '')}
+                      style={{
+                        background: !filters.action ? '#2563eb' : (darkMode ? '#1e293b' : '#fff'),
+                        color: !filters.action ? '#fff' : (darkMode ? '#cbd5e1' : '#475569'),
+                        border: `1px solid ${!filters.action ? '#2563eb' : darkMode ? '#334155' : '#e2e8f0'}`
+                      }}
+                    >
+                      All Auth Logs
+                    </button>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => handleFilterChange('action', 'LOGIN')}
+                      style={{
+                        background: filters.action === 'LOGIN' ? '#2563eb' : (darkMode ? '#1e293b' : '#fff'),
+                        color: filters.action === 'LOGIN' ? '#fff' : (darkMode ? '#cbd5e1' : '#475569'),
+                        border: `1px solid ${filters.action === 'LOGIN' ? '#2563eb' : darkMode ? '#334155' : '#e2e8f0'}`
+                      }}
+                    >
+                      🔑 Logins Only
+                    </button>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => handleFilterChange('status', 'FAILURE')}
+                      style={{
+                        background: filters.status === 'FAILURE' ? '#dc2626' : (darkMode ? '#1e293b' : '#fff'),
+                        color: filters.status === 'FAILURE' ? '#fff' : (darkMode ? '#cbd5e1' : '#475569'),
+                        border: `1px solid ${filters.status === 'FAILURE' ? '#dc2626' : darkMode ? '#334155' : '#e2e8f0'}`
+                      }}
+                    >
+                      🚨 Failed Attempts Only
+                    </button>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => handleFilterChange('action', 'PASSWORD')}
+                      style={{
+                        background: filters.action === 'PASSWORD' ? '#2563eb' : (darkMode ? '#1e293b' : '#fff'),
+                        color: filters.action === 'PASSWORD' ? '#fff' : (darkMode ? '#cbd5e1' : '#475569'),
+                        border: `1px solid ${filters.action === 'PASSWORD' ? '#2563eb' : darkMode ? '#334155' : '#e2e8f0'}`
+                      }}
+                    >
+                      🔄 Password Changes / Resets
+                    </button>
+                  </>
+                )}
+
+                {currentView === 'ACADEMIC' && (
+                  <>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => handleFilterChange('module', '')}
+                      style={{
+                        background: !filters.module ? '#059669' : (darkMode ? '#1e293b' : '#fff'),
+                        color: !filters.module ? '#fff' : (darkMode ? '#cbd5e1' : '#475569'),
+                        border: `1px solid ${!filters.module ? '#059669' : darkMode ? '#334155' : '#e2e8f0'}`
+                      }}
+                    >
+                      All Academic
+                    </button>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => handleFilterChange('module', 'ATTENDANCE')}
+                      style={{
+                        background: filters.module === 'ATTENDANCE' ? '#059669' : (darkMode ? '#1e293b' : '#fff'),
+                        color: filters.module === 'ATTENDANCE' ? '#fff' : (darkMode ? '#cbd5e1' : '#475569'),
+                        border: `1px solid ${filters.module === 'ATTENDANCE' ? '#059669' : darkMode ? '#334155' : '#e2e8f0'}`
+                      }}
+                    >
+                      📅 Attendance Marking
+                    </button>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => handleFilterChange('module', 'STUDENT')}
+                      style={{
+                        background: filters.module === 'STUDENT' ? '#059669' : (darkMode ? '#1e293b' : '#fff'),
+                        color: filters.module === 'STUDENT' ? '#fff' : (darkMode ? '#cbd5e1' : '#475569'),
+                        border: `1px solid ${filters.module === 'STUDENT' ? '#059669' : darkMode ? '#334155' : '#e2e8f0'}`
+                      }}
+                    >
+                      🎓 Student Admissions &amp; Edits
+                    </button>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => handleFilterChange('module', 'MARKS')}
+                      style={{
+                        background: filters.module === 'MARKS' ? '#059669' : (darkMode ? '#1e293b' : '#fff'),
+                        color: filters.module === 'MARKS' ? '#fff' : (darkMode ? '#cbd5e1' : '#475569'),
+                        border: `1px solid ${filters.module === 'MARKS' ? '#059669' : darkMode ? '#334155' : '#e2e8f0'}`
+                      }}
+                    >
+                      📝 Marks &amp; Exam Records
+                    </button>
+                  </>
+                )}
+
+                {currentView === 'FINANCE' && (
+                  <>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => handleFilterChange('action', '')}
+                      style={{
+                        background: !filters.action ? '#d97706' : (darkMode ? '#1e293b' : '#fff'),
+                        color: !filters.action ? '#fff' : (darkMode ? '#cbd5e1' : '#475569'),
+                        border: `1px solid ${!filters.action ? '#d97706' : darkMode ? '#334155' : '#e2e8f0'}`
+                      }}
+                    >
+                      All Financial
+                    </button>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => handleFilterChange('action', 'COLLECT')}
+                      style={{
+                        background: filters.action === 'COLLECT' ? '#d97706' : (darkMode ? '#1e293b' : '#fff'),
+                        color: filters.action === 'COLLECT' ? '#fff' : (darkMode ? '#cbd5e1' : '#475569'),
+                        border: `1px solid ${filters.action === 'COLLECT' ? '#d97706' : darkMode ? '#334155' : '#e2e8f0'}`
+                      }}
+                    >
+                      💰 Fee Collections
+                    </button>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => handleFilterChange('status', 'FAILURE')}
+                      style={{
+                        background: filters.status === 'FAILURE' ? '#dc2626' : (darkMode ? '#1e293b' : '#fff'),
+                        color: filters.status === 'FAILURE' ? '#fff' : (darkMode ? '#cbd5e1' : '#475569'),
+                        border: `1px solid ${filters.status === 'FAILURE' ? '#dc2626' : darkMode ? '#334155' : '#e2e8f0'}`
+                      }}
+                    >
+                      ❌ Failed / Voided
+                    </button>
+                  </>
+                )}
+
+                {currentView === 'DELEGATED' && (
+                  <>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => handleFilterChange('action', '')}
+                      style={{
+                        background: !filters.action ? '#7c3aed' : (darkMode ? '#1e293b' : '#fff'),
+                        color: !filters.action ? '#fff' : (darkMode ? '#cbd5e1' : '#475569'),
+                        border: `1px solid ${!filters.action ? '#7c3aed' : darkMode ? '#334155' : '#e2e8f0'}`
+                      }}
+                    >
+                      All Delegated Proxy Logs
+                    </button>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => handleFilterChange('action', 'ATTENDANCE')}
+                      style={{
+                        background: filters.action === 'ATTENDANCE' ? '#7c3aed' : (darkMode ? '#1e293b' : '#fff'),
+                        color: filters.action === 'ATTENDANCE' ? '#fff' : (darkMode ? '#cbd5e1' : '#475569'),
+                        border: `1px solid ${filters.action === 'ATTENDANCE' ? '#7c3aed' : darkMode ? '#334155' : '#e2e8f0'}`
+                      }}
+                    >
+                      📋 Delegated Attendance
+                    </button>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => handleFilterChange('action', 'MARKS')}
+                      style={{
+                        background: filters.action === 'MARKS' ? '#7c3aed' : (darkMode ? '#1e293b' : '#fff'),
+                        color: filters.action === 'MARKS' ? '#fff' : (darkMode ? '#cbd5e1' : '#475569'),
+                        border: `1px solid ${filters.action === 'MARKS' ? '#7c3aed' : darkMode ? '#334155' : '#e2e8f0'}`
+                      }}
+                    >
+                      📝 Delegated Marks
+                    </button>
+                  </>
+                )}
+
+                {currentView === 'OVERVIEW' && (
+                  <>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => handleFilterChange('date_preset', 'today')}
+                      style={{
+                        background: filters.date_preset === 'today' ? '#0284c7' : (darkMode ? '#1e293b' : '#fff'),
+                        color: filters.date_preset === 'today' ? '#fff' : (darkMode ? '#cbd5e1' : '#475569'),
+                        border: `1px solid ${filters.date_preset === 'today' ? '#0284c7' : darkMode ? '#334155' : '#e2e8f0'}`
+                      }}
+                    >
+                      📅 Today's Logs
+                    </button>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => handleFilterChange('severity', 'CRITICAL')}
+                      style={{
+                        background: filters.severity === 'CRITICAL' ? '#dc2626' : (darkMode ? '#1e293b' : '#fff'),
+                        color: filters.severity === 'CRITICAL' ? '#fff' : (darkMode ? '#cbd5e1' : '#475569'),
+                        border: `1px solid ${filters.severity === 'CRITICAL' ? '#dc2626' : darkMode ? '#334155' : '#e2e8f0'}`
+                      }}
+                    >
+                      ⚠️ Critical Severity Only
+                    </button>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => handleFilterChange('is_delegated', 'true')}
+                      style={{
+                        background: filters.is_delegated === 'true' ? '#7c3aed' : (darkMode ? '#1e293b' : '#fff'),
+                        color: filters.is_delegated === 'true' ? '#fff' : (darkMode ? '#cbd5e1' : '#475569'),
+                        border: `1px solid ${filters.is_delegated === 'true' ? '#7c3aed' : darkMode ? '#334155' : '#e2e8f0'}`
+                      }}
+                    >
+                      ⚡ Delegated Proxy Only
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {/* Filter Toolbar */}
+              <div style={{
+                background: darkMode ? '#1e293b' : '#ffffff',
+                border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                borderRadius: 10,
+                padding: 16,
+                marginBottom: 20,
+                boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+              }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+                  {/* Search */}
+                  <div style={{ flex: '1 1 200px', minWidth: 200, position: 'relative' }}>
+                    <i className="ti ti-search" style={{ position: 'absolute', left: 10, top: 10, color: '#94a3b8' }} />
+                    <input
+                      type="text"
+                      placeholder="Search actor, remarks, action..."
+                      className="form-input"
+                      value={filters.q}
+                      onChange={(e) => handleFilterChange('q', e.target.value)}
+                      style={{ width: '100%', paddingLeft: 32 }}
+                    />
+                  </div>
+
+                  {/* Module Filter (Dropdown options match uppercase keys in DB) */}
+                  {currentView === 'OVERVIEW' && (
+                    <select
+                      className="form-select"
+                      value={filters.module}
+                      onChange={(e) => handleFilterChange('module', e.target.value)}
+                      style={{ width: 150 }}
+                    >
+                      <option value="">All Modules</option>
+                      <option value="AUTH">Auth &amp; Security</option>
+                      <option value="ATTENDANCE">Attendance</option>
+                      <option value="STUDENT">Student Mgmt</option>
+                      <option value="MARKS">Marks &amp; Exams</option>
+                      <option value="FINANCE">Finance &amp; Fees</option>
+                      <option value="RBAC">RBAC &amp; Roles</option>
+                      <option value="DELEGATION">Delegations</option>
+                      <option value="SETTINGS">Settings</option>
+                    </select>
+                  )}
+
+                  {/* Severity Filter */}
+                  <select
+                    className="form-select"
+                    value={filters.severity}
+                    onChange={(e) => handleFilterChange('severity', e.target.value)}
+                    style={{ width: 130 }}
+                  >
+                    <option value="">All Severities</option>
+                    <option value="CRITICAL">Critical</option>
+                    <option value="HIGH">High</option>
+                    <option value="MEDIUM">Medium</option>
+                    <option value="LOW">Low</option>
+                    <option value="INFO">Info</option>
+                  </select>
+
+                  {/* Status Filter */}
+                  <select
+                    className="form-select"
+                    value={filters.status}
+                    onChange={(e) => handleFilterChange('status', e.target.value)}
+                    style={{ width: 120 }}
+                  >
+                    <option value="">All Status</option>
+                    <option value="SUCCESS">Success</option>
+                    <option value="FAILURE">Failure</option>
+                  </select>
+
+                  {/* Date Presets */}
+                  <select
+                    className="form-select"
+                    value={filters.date_preset}
+                    onChange={(e) => handleFilterChange('date_preset', e.target.value)}
+                    style={{ width: 130 }}
+                  >
+                    <option value="">Date Presets</option>
+                    <option value="today">Today</option>
+                    <option value="7days">Last 7 Days</option>
+                    <option value="30days">Last 30 Days</option>
+                    <option value="all">All Time</option>
+                  </select>
+
+                  {/* Custom Date Range */}
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={filters.from_date}
+                    onChange={(e) => handleFilterChange('from_date', e.target.value)}
+                    style={{ width: 135 }}
+                    title="From Date"
+                  />
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={filters.to_date}
+                    onChange={(e) => handleFilterChange('to_date', e.target.value)}
+                    style={{ width: 135 }}
+                    title="To Date"
+                  />
+
+                  {/* Delegated Only Toggle (if in OVERVIEW) */}
+                  {currentView === 'OVERVIEW' && (
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: darkMode ? '#cbd5e1' : '#475569', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={filters.is_delegated === 'true'}
+                        onChange={(e) => handleFilterChange('is_delegated', e.target.checked ? 'true' : '')}
+                      />
+                      ⚡ Proxy Only
+                    </label>
+                  )}
+
+                  {/* Reset Filters */}
+                  <button className="btn btn-neutral btn-sm" onClick={clearFilters} title="Reset filters">
+                    <i className="ti ti-filter-off" /> Reset
+                  </button>
+                </div>
+              </div>
+
+              {/* Audit Logs Table */}
+              <div style={{
+                background: darkMode ? '#1e293b' : '#ffffff',
+                border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                borderRadius: 10,
+                overflow: 'hidden',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+              }}>
+                <div className="table-container">
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ background: darkMode ? '#0f172a' : '#f8fafc', borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+                        <th style={{ padding: '12px 14px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b' }}>TIMESTAMP</th>
+                        <th style={{ padding: '12px 14px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b' }}>ACTOR</th>
+                        <th style={{ padding: '12px 14px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b' }}>MODULE / ACTION</th>
+                        <th style={{ padding: '12px 14px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b' }}>TARGET SCOPE</th>
+                        <th style={{ padding: '12px 14px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b' }}>ACCESS TYPE</th>
+                        <th style={{ padding: '12px 14px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b' }}>STATUS</th>
+                        <th style={{ padding: '12px 14px', fontWeight: 700, color: darkMode ? '#94a3b8' : '#64748b', textAlign: 'right' }}>ACTION</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loading ? (
+                        <tr>
+                          <td colSpan={7} style={{ textAlign: 'center', padding: '50px 20px', color: '#64748b' }}>
+                            <i className="ti ti-loader spin" style={{ fontSize: 24, display: 'block', marginBottom: 8 }} />
+                            Loading {viewMeta.title.toLowerCase()} stream...
+                          </td>
+                        </tr>
+                      ) : logs.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} style={{ textAlign: 'center', padding: '60px 20px' }}>
+                            <i className={`ti ${viewMeta.icon}`} style={{ fontSize: 36, color: '#94a3b8', display: 'block', marginBottom: 10 }} />
+                            <div style={{ fontSize: 15, fontWeight: 700, color: darkMode ? '#f8fafc' : '#0f172a' }}>
+                              {viewMeta.emptyMessage}
+                            </div>
+                            <p style={{ margin: '4px 0 16px', fontSize: 13, color: '#64748b' }}>
+                              Try selecting a broader date preset or clearing active search keywords.
+                            </p>
+                            <button className="btn btn-neutral btn-sm" onClick={clearFilters}>
+                              Clear Active Filters
+                            </button>
+                          </td>
+                        </tr>
+                      ) : (
+                        logs.map(log => {
+                          const statusBadge = getStatusBadge(log.status);
+                          const sevBadge = getSeverityBadge(log.severity);
+                          const isDelegated = log.is_delegated;
+
+                          return (
+                            <tr
+                              key={log.id}
+                              style={{
+                                borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                                transition: 'background 0.1s ease',
+                                background: isDelegated ? (darkMode ? 'rgba(124, 58, 237, 0.04)' : '#faf5ff') : 'transparent'
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#1e293b' : '#f8fafc'}
+                              onMouseLeave={(e) => e.currentTarget.style.background = isDelegated ? (darkMode ? 'rgba(124, 58, 237, 0.04)' : '#faf5ff') : 'transparent'}
+                            >
+                              {/* Timestamp */}
+                              <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
+                                <div style={{ fontWeight: 700, color: darkMode ? '#f8fafc' : '#0f172a' }}>
+                                  {timeAgo(log.created_at)}
+                                </div>
+                                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                                  {formatTimestamp(log.created_at)}
+                                </div>
+                              </td>
+
+                              {/* Actor */}
+                              <td style={{ padding: '12px 14px' }}>
+                                <div style={{ fontWeight: 600, color: darkMode ? '#f8fafc' : '#0f172a' }}>
+                                  {log.user_name || 'System / Anonymous'}
+                                </div>
+                                <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 3 }}>
+                                  <span style={{
+                                    fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 4,
+                                    background: darkMode ? '#334155' : '#e2e8f0',
+                                    color: darkMode ? '#cbd5e1' : '#475569'
+                                  }}>
+                                    {log.role_snapshot || 'USER'}
+                                  </span>
+                                  {log.employee_id && (
+                                    <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                                      EMP: {log.employee_id}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+
+                              {/* Module & Action */}
+                              <td style={{ padding: '12px 14px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <span style={{
+                                    fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
+                                    background: darkMode ? '#0f172a' : '#f1f5f9',
+                                    color: darkMode ? '#94a3b8' : '#475569',
+                                    border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`
+                                  }}>
+                                    {log.action}
+                                  </span>
+                                  <span style={{ fontSize: 12, fontWeight: 600, color: darkMode ? '#cbd5e1' : '#475569' }}>
+                                    {log.module}
+                                  </span>
+                                </div>
+                                {log.remarks && (
+                                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={log.remarks}>
+                                    {log.remarks}
+                                  </div>
+                                )}
+                              </td>
+
+                              {/* Target Scope */}
+                              <td style={{ padding: '12px 14px' }}>
+                                {log.student_name ? (
+                                  <div>
+                                    <span style={{ fontWeight: 600, color: '#2563eb' }}>{log.student_name}</span>
+                                    {log.class_name && (
+                                      <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 4 }}>
+                                        ({log.class_name})
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : log.class_name ? (
+                                  <div>
+                                    <span style={{ fontWeight: 600, color: '#0f172a' }}>Class {log.class_name}</span>
+                                    {log.subject_name && (
+                                      <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 4 }}>
+                                        &bull; {log.subject_name}
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : log.entity_type ? (
+                                  <div style={{ fontSize: 12, color: '#64748b' }}>
+                                    {log.entity_type} {log.entity_id ? `#${log.entity_id}` : ''}
+                                  </div>
+                                ) : (
+                                  <span style={{ color: '#94a3b8', fontSize: 12 }}>—</span>
+                                )}
+                              </td>
+
+                              {/* Access Type (Normal vs Proxy) */}
+                              <td style={{ padding: '12px 14px' }}>
+                                {isDelegated ? (
+                                  <span style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                                    fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20,
+                                    background: '#f3e8ff', color: '#7e22ce', border: '1px solid #d8b4fe'
+                                  }}>
+                                    ⚡ Substitute Proxy
+                                  </span>
+                                ) : (
+                                  <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 500 }}>
+                                    Direct
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* Status & Severity */}
+                              <td style={{ padding: '12px 14px' }}>
+                                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                  <span style={{
+                                    fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
+                                    background: statusBadge.bg, color: statusBadge.text, border: `1px solid ${statusBadge.border}`
+                                  }}>
+                                    {statusBadge.label}
+                                  </span>
+                                  {log.severity && log.severity !== 'INFO' && (
+                                    <span style={{
+                                      fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 4,
+                                      background: sevBadge.bg, color: sevBadge.text
+                                    }}>
+                                      {log.severity}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+
+                              {/* Actions */}
+                              <td style={{ padding: '12px 14px', textAlign: 'right' }}>
+                                <button
+                                  className="btn btn-neutral btn-sm"
+                                  onClick={() => handleViewDetail(log.id)}
+                                  style={{ padding: '4px 10px', fontSize: 12 }}
+                                >
+                                  <i className="ti ti-eye" /> Details
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Pagination Footer */}
+                <div style={{
+                  padding: '12px 18px',
+                  borderTop: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10,
+                  background: darkMode ? '#141b2d' : '#f8fafc'
+                }}>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>
+                    Showing {logs.length} of {total} events &bull; Page {page} of {totalPages}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <select
+                      className="form-select"
+                      value={perPage}
+                      onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1); }}
+                      style={{ height: 30, fontSize: 12, padding: '0 8px' }}
+                    >
+                      <option value={10}>10 / page</option>
+                      <option value={25}>25 / page</option>
+                      <option value={50}>50 / page</option>
+                      <option value={100}>100 / page</option>
+                    </select>
+
+                    <button
+                      className="btn btn-neutral btn-sm"
+                      disabled={page <= 1}
+                      onClick={() => setPage(p => Math.max(1, p - 1))}
+                    >
+                      Previous
+                    </button>
+                    <button
+                      className="btn btn-neutral btn-sm"
+                      disabled={page >= totalPages}
+                      onClick={() => setPage(p => p + 1)}
+                    >
+                      Next
                     </button>
                   </div>
                 </div>
-
               </div>
-            </div>
+            </>
           )}
 
         </div>
       </div>
+
+      {/* ═════════════════════════════════════════════════════════════════
+          SLIDE-OVER DRAWER FOR COMPLETE AUDIT DETAIL & BEFORE/AFTER DIFFS
+         ═════════════════════════════════════════════════════════════════ */}
+      {selectedLog && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(3px)',
+          display: 'flex', justifyContent: 'flex-end', animation: 'fadeIn 0.15s ease'
+        }}>
+          <div style={{
+            background: darkMode ? '#0f172a' : '#ffffff',
+            width: '100%', maxWidth: 580,
+            height: '100%',
+            overflowY: 'auto',
+            padding: '24px 28px',
+            boxShadow: '-4px 0 24px rgba(0,0,0,0.2)',
+            display: 'flex', flexDirection: 'column'
+          }}>
+            {/* Drawer Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 16, borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+              <div>
+                <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: '#64748b' }}>
+                  Log Record #{selectedLog.id}
+                </span>
+                <h3 style={{ margin: '2px 0 0', fontSize: 18, fontWeight: 800, color: darkMode ? '#f8fafc' : '#0f172a' }}>
+                  {selectedLog.action} &bull; {selectedLog.module}
+                </h3>
+              </div>
+              <button
+                onClick={() => setSelectedLog(null)}
+                style={{ background: 'none', border: 'none', fontSize: 22, color: '#94a3b8', cursor: 'pointer' }}
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Drawer Body */}
+            <div style={{ flex: 1, padding: '20px 0', display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {/* Substitute Proxy Notice if Delegated */}
+              {selectedLog.is_delegated && (
+                <div style={{
+                  background: '#faf5ff', border: '1px solid #d8b4fe', borderRadius: 8,
+                  padding: '12px 16px', color: '#6b21a8', fontSize: 12
+                }}>
+                  <div style={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                    ⚡ Delegated Proxy Operation
+                  </div>
+                  <div style={{ marginTop: 4 }}>
+                    This action was executed by <strong>{selectedLog.user_name}</strong> acting under an authorized substitute teacher delegation.
+                  </div>
+                  {selectedLog.delegation_details?.source_teacher && (
+                    <div style={{ marginTop: 4, fontSize: 11, color: '#7e22ce' }}>
+                      On behalf of absent regular teacher: <strong>{selectedLog.delegation_details.source_teacher.name}</strong>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Actor & Execution Metadata */}
+              <div style={{ background: darkMode ? '#1e293b' : '#f8fafc', borderRadius: 8, padding: 16, border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 10 }}>
+                  Actor &amp; Client Diagnostics
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 12 }}>
+                  <div>
+                    <span style={{ color: '#64748b' }}>User Name:</span>
+                    <div style={{ fontWeight: 700, marginTop: 2 }}>{selectedLog.user_name || 'System / Anonymous'}</div>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748b' }}>Role Snapshot:</span>
+                    <div style={{ fontWeight: 700, marginTop: 2 }}>{selectedLog.role_snapshot || '—'}</div>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748b' }}>Client IP:</span>
+                    <div style={{ fontWeight: 600, fontFamily: 'monospace', marginTop: 2 }}>{selectedLog.ip_address || '—'}</div>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748b' }}>Timestamp (UTC):</span>
+                    <div style={{ fontWeight: 600, marginTop: 2 }}>{formatTimestamp(selectedLog.created_at)}</div>
+                  </div>
+                </div>
+                {selectedLog.user_agent && (
+                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, fontSize: 11, color: '#64748b' }}>
+                    <span style={{ fontWeight: 600 }}>Browser / Device:</span> {selectedLog.user_agent}
+                  </div>
+                )}
+              </div>
+
+              {/* Target Entity Scope */}
+              <div style={{ background: darkMode ? '#1e293b' : '#f8fafc', borderRadius: 8, padding: 16, border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 10 }}>
+                  Target Record Scope
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 12 }}>
+                  <div>
+                    <span style={{ color: '#64748b' }}>Entity Type:</span>
+                    <div style={{ fontWeight: 600, marginTop: 2 }}>{selectedLog.entity_type || '—'}</div>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748b' }}>Entity ID:</span>
+                    <div style={{ fontWeight: 600, marginTop: 2 }}>{selectedLog.entity_id || '—'}</div>
+                  </div>
+                  {selectedLog.student_name && (
+                    <div>
+                      <span style={{ color: '#64748b' }}>Student Name:</span>
+                      <div style={{ fontWeight: 700, color: '#2563eb', marginTop: 2 }}>{selectedLog.student_name}</div>
+                    </div>
+                  )}
+                  {selectedLog.class_name && (
+                    <div>
+                      <span style={{ color: '#64748b' }}>Class / Section:</span>
+                      <div style={{ fontWeight: 600, marginTop: 2 }}>{selectedLog.class_name}</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Before & After State Changes Table */}
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 8 }}>
+                  Diff Analysis &bull; Modified Fields
+                </div>
+                {selectedLog.changed_fields && Object.keys(selectedLog.changed_fields).length > 0 ? (
+                  <div style={{ border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 8, overflow: 'hidden' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                      <thead>
+                        <tr style={{ background: darkMode ? '#1e293b' : '#f1f5f9', borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+                          <th style={{ padding: '8px 12px', fontWeight: 700, color: '#64748b', width: '30%' }}>FIELD</th>
+                          <th style={{ padding: '8px 12px', fontWeight: 700, color: '#dc2626', width: '35%' }}>PREVIOUS VALUE</th>
+                          <th style={{ padding: '8px 12px', fontWeight: 700, color: '#16a34a', width: '35%' }}>NEW VALUE</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(selectedLog.changed_fields).map(([fieldName, diff]) => {
+                          const oldVal = diff && typeof diff === 'object' && 'old' in diff ? String(diff.old ?? 'null') : '—';
+                          const newVal = diff && typeof diff === 'object' && 'new' in diff ? String(diff.new ?? 'null') : String(diff ?? '');
+
+                          return (
+                            <tr key={fieldName} style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}` }}>
+                              <td style={{ padding: '8px 12px', fontWeight: 600 }}>{fieldName}</td>
+                              <td style={{ padding: '8px 12px', color: '#dc2626', background: darkMode ? 'rgba(239, 68, 68, 0.05)' : '#fef2f2', wordBreak: 'break-word' }}>
+                                {oldVal}
+                              </td>
+                              <td style={{ padding: '8px 12px', color: '#16a34a', background: darkMode ? 'rgba(22, 163, 74, 0.05)' : '#f0fdf4', wordBreak: 'break-word' }}>
+                                {newVal}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div style={{ padding: '16px', background: darkMode ? '#1e293b' : '#f8fafc', borderRadius: 8, fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>
+                    No field-level diff recorded for this event (snapshot or action marker).
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Drawer Footer */}
+            <div style={{ paddingTop: 16, borderTop: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, display: 'flex', justifyContent: 'flex-end' }}>
+              <button className="btn btn-neutral btn-sm" onClick={() => setSelectedLog(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

@@ -243,6 +243,22 @@ def get_school_audit_stats():
         AuditLog.school_id == actor.school_id, AuditLog.created_at < cutoff
     ).count()
 
+    auth_events = AuditLog.query.filter(
+        AuditLog.school_id == actor.school_id, AuditLog.module == 'AUTH'
+    ).count()
+    auth_failed = AuditLog.query.filter(
+        AuditLog.school_id == actor.school_id, AuditLog.module == 'AUTH',
+        AuditLog.status.in_(['FAILED', 'FAILURE', 'DENIED'])
+    ).count()
+    academic_events = AuditLog.query.filter(
+        AuditLog.school_id == actor.school_id,
+        AuditLog.module.in_(['ATTENDANCE', 'STUDENT', 'MARKS', 'ACADEMICS', 'EXAM'])
+    ).count()
+    finance_events = AuditLog.query.filter(
+        AuditLog.school_id == actor.school_id,
+        AuditLog.module.in_(['FINANCE', 'FEES', 'EXPENSES', 'PAYROLL'])
+    ).count()
+
     return jsonify({
         'total_events': total_events,
         'today_events': today_events,
@@ -251,6 +267,10 @@ def get_school_audit_stats():
         'delegated_events': delegated_events,
         'retention_days': ret_days,
         'purge_eligible': purge_eligible,
+        'auth_events': auth_events,
+        'auth_failed': auth_failed,
+        'academic_events': academic_events,
+        'finance_events': finance_events,
         # Aliases for UI & API consistency
         'total_logs': total_events,
         'today_logs': today_events,
