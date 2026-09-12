@@ -77,13 +77,8 @@ export const PERMISSION_MENU_ITEMS = {
 
   'audit.logs.view':           { group: 'Audit & Compliance', item: { icon: 'ti-shield-lock', label: 'Audit Logs', path: '/audit/school/logs' } },
 
-  // ek permission -> kai items (Access Control ka poora RBAC sub-menu)
-  'admin.user.manage': [
-    { group: 'Access Control', item: { icon: 'ti-users',             label: 'Roles & Hierarchy', path: '/rbac/roles' } },
-    { group: 'Access Control', item: { icon: 'ti-grid',              label: 'Permission Matrix',  path: '/rbac/permissions' } },
-    { group: 'Access Control', item: { icon: 'ti-switch-horizontal', label: 'Delegations',        path: '/rbac/delegations' } },
-    { group: 'Access Control', item: { icon: 'ti-user-check',        label: 'Staff Permissions',  path: '/rbac/staff-access' } },
-  ],
+  // Access Control / User Management permission maps directly to Staff Delegation
+  'admin.user.manage': { group: 'Staff Delegation', item: { icon: 'ti-switch-horizontal', label: 'Staff Delegation', path: '/delegations' } },
   'admin.school.settings':   { group: 'Settings', item: { icon: 'ti-settings',       label: 'School Settings',      path: '/school-settings' } },
   'admin.whatsapp.settings': { group: 'Settings', item: { icon: 'ti-brand-whatsapp', label: 'WhatsApp Integration', path: '/settings/whatsapp' } },
 

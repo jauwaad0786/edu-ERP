@@ -266,13 +266,9 @@ const ROLE_MENUS = {
         {
           icon: 'ti-settings', label: 'Settings', path: '/school-settings',
           children: [
-            { icon: 'ti-bolt',              label: 'My Plan & Services',   path: '/my-services' },
             { icon: 'ti-settings',          label: 'School Settings',      path: '/school-settings' },
             { icon: 'ti-brand-whatsapp',    label: 'WhatsApp Integration', path: '/settings/whatsapp' },
-            { icon: 'ti-users',             label: 'Roles & Hierarchy',    path: '/rbac/roles' },
-            { icon: 'ti-grid',              label: 'Permission Matrix',    path: '/rbac/permissions' },
-            { icon: 'ti-switch-horizontal', label: 'Delegations',          path: '/rbac/delegations' },
-            { icon: 'ti-user-check',        label: 'Staff Permissions',    path: '/rbac/staff-access' },
+            { icon: 'ti-bolt',              label: 'My Plan & Services',   path: '/my-services' },
           ],
         },
       ],

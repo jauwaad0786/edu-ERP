@@ -98,6 +98,7 @@ export function normalizeServiceAlias(rawService) {
   if (s === 'hrms/attendance') return 'staff/attendance';
   if (s === 'audit/school/logs') return 'audit-logs';
   if (s === 'principal/deleted-items') return 'deleted-items';
+  if (s === 'rbac/delegations' || s === 'rbac/staff-access') return 'delegations';
   if (s === 'settings/whatsapp') return 'settings/whatsapp';
   if (s === 'my-hr') return 'my-hr';
   if (s === 'my-services') return 'my-services';

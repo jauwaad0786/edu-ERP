@@ -854,8 +854,8 @@ export default function App() {
             <Route path="/help-center" element={<LegacyRedirect toService="help-center" />} />
             <Route path="/rbac/roles" element={<LegacyRedirect toService="rbac/roles" />} />
             <Route path="/rbac/permissions" element={<LegacyRedirect toService="rbac/permissions" />} />
-            <Route path="/rbac/delegations" element={<LegacyRedirect toService="rbac/delegations" />} />
-            <Route path="/rbac/staff-access" element={<LegacyRedirect toService="rbac/staff-access" />} />
+            <Route path="/rbac/delegations" element={<LegacyRedirect toService="delegations" />} />
+            <Route path="/rbac/staff-access" element={<LegacyRedirect toService="delegations" />} />
             <Route path="/audit/school/logs" element={<LegacyRedirect toService="audit-logs" />} />
             <Route path="/ai/chat" element={<LegacyRedirect toService="ai/chat" />} />
             <Route path="/principal/deleted-items" element={<LegacyRedirect toService="deleted-items" />} />
