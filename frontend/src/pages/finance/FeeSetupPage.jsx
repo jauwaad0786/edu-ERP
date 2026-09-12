@@ -526,12 +526,12 @@ export default function FeeSetupPage() {
   };
 
   return (
-    <div className="app-container">
+    <div className="app-shell">
       <Sidebar />
       <div className="main-content">
-        <Navbar />
+        <Navbar title="Academic Fee Setup & Admission Mapping" />
 
-        <div className="content-area" style={{ padding: 24, maxWidth: 1400, margin: '0 auto' }}>
+        <div className="page-body">
 
           {/* Page Header */}
           <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
@@ -687,15 +687,15 @@ export default function FeeSetupPage() {
           )}
 
           {/* TAB NAVIGATION */}
-          <div className="card mb-6" style={{ borderRadius: 12, overflow: 'hidden' }}>
-            <div className="card-header" style={{ padding: '8px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div className="card mb-6" style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+            <div className="card-header" style={{ padding: '12px 18px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                 {[
                   { id: 'structures', label: 'Class Fee Plans & Matrix', icon: 'ti-layers-intersect', count: structures.length },
                   { id: 'plans', label: 'Payment Plans & Cadence', icon: 'ti-calendar-time', count: paymentPlans.length },
                   { id: 'heads', label: 'Service Fee Heads', icon: 'ti-tag', count: heads.length },
                   { id: 'concessions', label: 'Scholarships & Waivers', icon: 'ti-percentage', count: concessions.length },
-                  { id: 'services', label: 'Optional Services Setup', icon: 'ti-bus', count: 3 },
+                  { id: 'services', label: 'Optional Services (Transport & Hostel)', icon: 'ti-bus', count: (readiness?.transport_structures?.length || 0) + (readiness?.hostel_structures?.length || 0) },
                 ].map((tab) => {
                   const active = activeTab === tab.id;
                   return (
@@ -703,9 +703,15 @@ export default function FeeSetupPage() {
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id)}
                       className={`btn ${active ? 'btn-primary' : 'btn-neutral'} btn-sm`}
-                      style={{ borderRadius: 20, fontWeight: active ? 700 : 500 }}
+                      style={{
+                        borderRadius: 8,
+                        fontWeight: active ? 700 : 600,
+                        padding: '7px 14px',
+                        fontSize: '0.85rem',
+                        boxShadow: active ? '0 2px 6px rgba(37,99,235,0.25)' : 'none',
+                      }}
                     >
-                      <i className={`ti ${tab.icon}`} style={{ marginRight: 4 }} />
+                      <i className={`ti ${tab.icon}`} style={{ marginRight: 6 }} />
                       {tab.label} {tab.count !== undefined ? `(${tab.count})` : ''}
                     </button>
                   );
