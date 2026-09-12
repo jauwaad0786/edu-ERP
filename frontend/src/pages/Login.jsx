@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { buildTenantRoute, getCanonicalRoleSlug, getCanonicalSchoolSlug } from '../utils/routeBuilder';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -28,8 +29,26 @@ export default function Login() {
     setError('');
 
     try {
-      await login(cleanId, password);
-      navigate('/dashboard');
+      const loggedUser = await login(cleanId, password);
+
+      const urlParams = new URLSearchParams(window.location.search);
+      const returnUrl = urlParams.get('returnUrl');
+      if (returnUrl) {
+        navigate(decodeURIComponent(returnUrl));
+        return;
+      }
+
+      const isCompanyActor = loggedUser && loggedUser.school_id == null;
+      const isSuperAdmin = loggedUser?.role === 'SUPER_ADMIN' || loggedUser?.active_role?.key === 'SUPER_ADMIN' || !!loggedUser?.is_super;
+
+      if (isCompanyActor && isSuperAdmin) {
+        navigate('/admin/dashboard');
+        return;
+      }
+
+      const schoolSlug = getCanonicalSchoolSlug(loggedUser);
+      const roleSlug = getCanonicalRoleSlug(loggedUser);
+      navigate(buildTenantRoute({ schoolSlug, role: roleSlug, service: 'dashboard' }));
     } catch (err) {
       setError(
         err.response?.data?.error ||
@@ -684,20 +703,20 @@ export default function Login() {
               <i className="ti ti-layers-linked" />
             </div>
             <div className="brand-title-text">
-              OnePlatform<span>360</span>
+              1P<span>360</span>
             </div>
           </div>
 
           <a href="/" className="change-module-link" onClick={(e) => { e.preventDefault(); navigate('/'); }}>
             <i className="ti ti-arrow-left" />
-            Change Suite
+            Home
           </a>
         </div>
 
         {/* Main Center Content */}
         <div className="sidebar-center">
-          <h1 className="sidebar-suite-title">EduERP Portal</h1>
-          <div className="sidebar-suite-subtitle">School &amp; Academic Management Suite</div>
+          <h1 className="sidebar-suite-title">1P360 Cloud ERP</h1>
+          <div className="sidebar-suite-subtitle">Enterprise School &amp; College Management Suite</div>
 
           {/* School Classroom & Students Visual Card */}
           <div className="school-visual-card">

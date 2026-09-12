@@ -3,6 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { resolveMenuRole } from '../utils/roleEquivalence';
 import { PERMISSION_MENU_ITEMS } from '../utils/permissionMenuMap';
+import { resolveTenantPath } from '../utils/routeBuilder';
 
 const ROLE_MENUS = {
   SUPER_ADMIN: [
@@ -715,7 +716,8 @@ export default function Sidebar({ darkMode }) {
       g.items.forEach(item => {
         if (item.children) {
           const anyActive = item.children.some(c => {
-            const cleanC = (c.path || '').split('?')[0];
+            const targetC = resolveTenantPath(c.path, user);
+            const cleanC = (targetC || '').split('?')[0];
             return location.pathname === cleanC || location.pathname.startsWith(cleanC + '/');
           });
           if (anyActive) next[item.path] = true;
@@ -729,7 +731,7 @@ export default function Sidebar({ darkMode }) {
       } catch {}
       return updated;
     });
-  }, [location.pathname, groups]);
+  }, [location.pathname, groups, user]);
 
   function toggleExpand(path) {
     setExpanded(prev => {
@@ -742,10 +744,12 @@ export default function Sidebar({ darkMode }) {
   }
 
   function isItemActive(item) {
-    const cleanItemPath = item.path ? item.path.split('?')[0] : '';
+    const targetPath = resolveTenantPath(item.path, user);
+    const cleanItemPath = targetPath ? targetPath.split('?')[0] : '';
     if (item.children) {
       return item.children.some(c => {
-        const cleanC = c.path ? c.path.split('?')[0] : '';
+        const targetC = resolveTenantPath(c.path, user);
+        const cleanC = targetC ? targetC.split('?')[0] : '';
         return location.pathname === cleanC || location.pathname.startsWith(cleanC + '/');
       });
     }
@@ -754,7 +758,8 @@ export default function Sidebar({ darkMode }) {
 
   function isChildActive(childPath) {
     if (!childPath) return false;
-    const [pathOnly, queryOnly] = childPath.split('?');
+    const targetPath = resolveTenantPath(childPath, user);
+    const [pathOnly, queryOnly] = targetPath.split('?');
     if (location.pathname !== pathOnly) return false;
 
     if (queryOnly) {
@@ -828,9 +833,9 @@ export default function Sidebar({ darkMode }) {
               {[schoolCode, schoolCity].filter(Boolean).join(' | ') || (isCompanyActor && user?.active_role?.name) || ROLE_LABELS[user?.role] || ''}
             </div>
             <div style={{
-              color: NAV.accent, fontSize: 9, fontWeight: 600,
-              letterSpacing: '0.06em', textTransform: 'uppercase', marginTop: 2, opacity: 0.8,
-            }}>POWERED BY EDUERP</div>
+              color: NAV.accent, fontSize: 9, fontWeight: 700,
+              letterSpacing: '0.08em', textTransform: 'uppercase', marginTop: 2, opacity: 0.9,
+            }}>POWERED BY 1P360</div>
           </div>
         </div>
 
@@ -865,8 +870,8 @@ export default function Sidebar({ darkMode }) {
           `}</style>
 
           {filteredGroups.length === 0 && (
-            <div style={{ padding: '24px 8px', textAlign: 'center', fontSize: 12, color: NAV.textMuted }}>
-              Koi module nahi mila
+            <div style={{ padding: '24px 12px', textAlign: 'center', color: NAV.textMuted, fontSize: 12 }}>
+              No matching modules
             </div>
           )}
 
@@ -884,6 +889,7 @@ export default function Sidebar({ darkMode }) {
                 const active  = isItemActive(item);
                 const hasKids = !!(item.children && item.children.length);
                 const isOpen  = expanded[item.path];
+                const resolvedItemPath = resolveTenantPath(item.path, user);
                 return (
                   <div key={item.path}>
                     {hasKids ? (
@@ -911,14 +917,14 @@ export default function Sidebar({ darkMode }) {
                           style={{ fontSize: 12, color: NAV.groupLabel, flexShrink: 0 }} aria-hidden="true" />
                       </div>
                     ) : (
-                      <NavLink to={item.path}
+                      <NavLink to={resolvedItemPath}
                         style={({ isActive }) => ({
                           display: 'flex', alignItems: 'center', gap: 8,
                           padding: '7px 8px', borderRadius: 7,
-                          color:      isActive ? NAV.textActive : NAV.textBase,
-                          background: isActive ? NAV.bgActive   : 'transparent',
-                          borderLeft: isActive ? `3px solid ${NAV.accentBar}` : '3px solid transparent',
-                          fontWeight: isActive ? 600 : 400, fontSize: 13, marginBottom: 1,
+                          color:      (active || isActive) ? NAV.textActive : NAV.textBase,
+                          background: (active || isActive) ? NAV.bgActive   : 'transparent',
+                          borderLeft: (active || isActive) ? `3px solid ${NAV.accentBar}` : '3px solid transparent',
+                          fontWeight: (active || isActive) ? 600 : 400, fontSize: 13, marginBottom: 1,
                           textDecoration: 'none', whiteSpace: 'nowrap',
                           transition: 'background 0.12s, color 0.12s',
                         })}
@@ -945,8 +951,9 @@ export default function Sidebar({ darkMode }) {
                       }}>
                         {item.children.map(child => {
                           const active = isChildActive(child.path);
+                          const resolvedChildPath = resolveTenantPath(child.path, user);
                           return (
-                            <NavLink key={child.path} to={child.path}
+                            <NavLink key={child.path} to={resolvedChildPath}
                               style={{
                                 display: 'flex', alignItems: 'center', gap: 8,
                                 padding: '6px 10px 6px 12px',

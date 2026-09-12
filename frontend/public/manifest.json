@@ -1,7 +1,7 @@
 {
-  "short_name": "OP360",
-  "name": "EduERP — Powered by OnePlatform360",
-  "description": "AI Powered School ERP by OnePlatform360 — One Platform. Infinite Possibilities.",
+  "short_name": "1P360",
+  "name": "1P360 — Enterprise School & College ERP",
+  "description": "1P360 Cloud ERP — Multi-Tenant School & College Management Platform",
   "start_url": "/?source=pwa",
   "id": "/?source=pwa",
   "scope": "/",

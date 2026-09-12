@@ -5,6 +5,9 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider }          from './context/AuthContext';
 import { NotificationProvider }  from './context/NotificationContext';
 import ProtectedRoute            from './components/ProtectedRoute';
+import TenantProtectedRoute      from './components/TenantProtectedRoute';
+import LegacyRedirect            from './components/LegacyRedirect';
+import { NotFoundPage, AccessDeniedPage } from './pages/ErrorPages';
 import { ROUTE_PERMISSIONS }     from './utils/permissionMenuMap';
 import DocumentsPage             from './pages/DocumentsPage';
 import SchoolSettings            from './pages/SchoolSettings';
@@ -24,7 +27,6 @@ import StudentImportPage  from './pages/students/StudentImportPage';
 import TeachersPage     from './pages/TeachersPage';
 import ClassesPage      from './pages/ClassesPage';
 import FeesPage         from './pages/FeesPage';
-import FeeStructures    from './pages/FeeStructures';
 import ExamsPage        from './pages/ExamsPage';
 import SchoolsPage      from './pages/SchoolsPage';
 import SchoolDetailPage from './pages/SchoolDetailPage';
@@ -55,7 +57,6 @@ import PurchasesPage    from './pages/finance/PurchasesPage';
 import AssetsPage       from './pages/finance/AssetsPage';
 import DeletedItemsPage from './pages/principal/DeletedItemsPage';
 
-import PayrollPage       from './pages/PayrollPage';
 import WhatsAppSettings  from './pages/settings/WhatsAppSettings';
 
 // ── Library Management ────────────────────────────────────────────────────
@@ -140,6 +141,7 @@ import ErrorDashboard   from './pages/developer/ErrorDashboard';
 import IssueBoard       from './pages/developer/IssueBoard';
 import SystemHealthDashboard from './pages/developer/SystemHealthDashboard';
 import LeadsPage        from './pages/developer/LeadsPage';
+
 // ── RBAC Pages ──────────────────────────────────────────────────────────────
 import RoleManagement     from './pages/rbac/RoleManagement';
 import PermissionMatrix   from './pages/rbac/PermissionMatrix';
@@ -162,734 +164,701 @@ export default function App() {
         <Router>
           <Routes>
 
-            {/* ── Public ── */}
+            {/* ═══════════════════════════════════════════════════════════════
+                PUBLIC ROUTES
+               ═══════════════════════════════════════════════════════════════ */}
             <Route path="/"      element={<Landing />} />
             <Route path="/login" element={<Login />} />
 
-            {/* ── Dashboard (role-based router) ── */}
-            <Route path="/dashboard" element={
-              <ProtectedRoute>
-                <DashboardRouter />
-              </ProtectedRoute>
-            } />
+            {/* ═══════════════════════════════════════════════════════════════
+                PLATFORM / SUPER ADMIN (Company Accounts)
+               ═══════════════════════════════════════════════════════════════ */}
+            <Route path="/admin/dashboard" element={<ProtectedRoute roles={['SUPER_ADMIN']}><DashboardRouter /></ProtectedRoute>} />
+            <Route path="/admin/schools" element={<ProtectedRoute roles={['SUPER_ADMIN']}><SchoolsPage /></ProtectedRoute>} />
+            <Route path="/admin/schools/:id" element={<ProtectedRoute roles={['SUPER_ADMIN']}><SchoolDetailPage /></ProtectedRoute>} />
+            <Route path="/admin/users" element={<ProtectedRoute roles={['SUPER_ADMIN']}><UsersPage /></ProtectedRoute>} />
+            <Route path="/developer/support" element={<ProtectedRoute roles={['SUPER_ADMIN']}><SupportDashboard /></ProtectedRoute>} />
+            <Route path="/developer/errors" element={<ProtectedRoute roles={['SUPER_ADMIN']}><ErrorDashboard /></ProtectedRoute>} />
+            <Route path="/developer/issues" element={<ProtectedRoute roles={['SUPER_ADMIN']}><IssueBoard /></ProtectedRoute>} />
+            <Route path="/developer/system-health" element={<ProtectedRoute roles={['SUPER_ADMIN']}><SystemHealthDashboard /></ProtectedRoute>} />
+            <Route path="/developer/leads" element={<ProtectedRoute roles={['SUPER_ADMIN']}><LeadsPage /></ProtectedRoute>} />
+            <Route path="/developer/ai" element={<ProtectedRoute roles={['SUPER_ADMIN']}><AIManagement /></ProtectedRoute>} />
+            <Route path="/audit/company/logs" element={<ProtectedRoute roles={['SUPER_ADMIN']}><CompanyAuditLogs /></ProtectedRoute>} />
 
-            {/* ── Principal / Teacher / Admin ── */}
-            <Route path="/students" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']} permissions={ROUTE_PERMISSIONS['/students']}>
-                <StudentsPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/students/bulk-edit" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']} permissions={ROUTE_PERMISSIONS['/students/bulk-edit']}>
-                <BulkEditPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/students/section-shuffle" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/students/section-shuffle']}>
-                <SectionShufflePage />
-              </ProtectedRoute>
-            } />
-            <Route path="/students/promotion" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/students/promotion']}>
-                <PromotionPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/students/annual-register" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/students/annual-register']}>
-                <AnnualRegisterPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/students/import" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/students/import']}>
-                <StudentImportPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/students/:id" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']} permissions={ROUTE_PERMISSIONS['/students']}>
-                <StudentProfile />
-              </ProtectedRoute>
-            } />
-            <Route path="/teachers" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']}>
-                <TeachersPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/classes" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']}>
-                <ClassesPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/classes/:id" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']}>
-                <ClassDetailPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/teachers/:id" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']}>
-                <TeacherProfile />
-              </ProtectedRoute>
-            } />
-            <Route path="/staff" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/staff']}>
-                <StaffPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/staff/:id" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/staff']}>
-                <StaffProfile />
-              </ProtectedRoute>
-            } />
-            <Route path="/principal/deleted-items" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'DIRECTOR', 'VICE_PRINCIPAL']}>
-                <DeletedItemsPage />
-              </ProtectedRoute>
-            } />
-            {/* ── Unified Finance & Fee Management Suite ── */}
-            <Route path="/finance" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
-                <FinanceDashboard />
-              </ProtectedRoute>
-            } />
-            <Route path="/finance/dashboard" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
-                <FinanceDashboard />
-              </ProtectedRoute>
-            } />
-            <Route path="/finance/bills" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
-                <FeeBillsPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/finance/payments/collect" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
-                <CollectPaymentPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/finance/receipts" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
-                <ReceiptsPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/finance/students/:studentId/ledger" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL', 'TEACHER', 'PARENT', 'STUDENT']}>
-                <StudentFinancialLedgerPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/finance/setup" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR']}>
-                <FeeSetupPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/finance/outstanding" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
-                <OutstandingPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/finance/reports" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
-                <FinanceReportsPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/finance/payment-logs" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL', 'HOSTEL', 'LIBRARIAN']}>
-                <PaymentLogsPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/fees" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'ACCOUNTANT']}>
-                <FeeBillsPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/fees/structures" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT']}>
-                <FeeSetupPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/finance/expenses" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'ACCOUNTANT']} permissions={ROUTE_PERMISSIONS['/finance/expenses']}>
-                <ExpensesPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/finance/inventory" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'ACCOUNTANT']} permissions={ROUTE_PERMISSIONS['/finance/inventory']}>
-                <InventoryPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/finance/payroll" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL', 'HR']}>
-                <FinancePayrollPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/finance/vendors" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'ACCOUNTANT']}>
-                <VendorsPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/finance/purchases" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT']}>
-                <PurchasesPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/finance/assets" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'ACCOUNTANT']}>
-                <AssetsPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/admission" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/admission']}>
-                <NewAdmissionPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/attendance" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']}>
-                <AttendancePage />
-              </ProtectedRoute>
-            } />
-            <Route path="/marks" element={
-              <ProtectedRoute roles={['TEACHER', 'PRINCIPAL']} permissions={ROUTE_PERMISSIONS['/marks']}>
-                <MarksPage />
-              </ProtectedRoute>
-            } />
-            {/* NEW — Result Management System (Draft → Submit → Review → Approve → Publish) */}
-            <Route path="/mark-entry" element={
-              <ProtectedRoute roles={['TEACHER', 'PRINCIPAL']} permissions={ROUTE_PERMISSIONS['/mark-entry']}>
-                <ResultManagement />
-              </ProtectedRoute>
-            } />
-            <Route path="/result-management" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/result-management']}>
-                <ResultManagement />
-              </ProtectedRoute>
-            } />
-            <Route path="/holidays" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']}>
-                <HolidaysPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/notes" element={
-              <ProtectedRoute roles={['TEACHER', 'PRINCIPAL', 'STUDENT', 'PARENT', 'SUPER_ADMIN', 'ADMIN']}>
-                <NotesPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/assignments" element={
-              <ProtectedRoute roles={['TEACHER', 'PRINCIPAL', 'STUDENT', 'PARENT', 'SUPER_ADMIN', 'ADMIN']}>
-                <AssignmentsPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/internal-marks" element={
-              <ProtectedRoute roles={['TEACHER', 'PRINCIPAL', 'STUDENT', 'PARENT', 'SUPER_ADMIN', 'ADMIN']}>
-                <InternalMarksPage />
-              </ProtectedRoute>
-            } />
-
-            <Route path="/documents" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'STUDENT', 'PARENT']} permissions={ROUTE_PERMISSIONS['/documents']}>
-                <DocumentsPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/issue-documents" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']}>
-                <DocumentsPage initialTab="issue_workspace" />
-              </ProtectedRoute>
-            } />
-            <Route path="/students/transfer-cert" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']}>
-                <DocumentsPage initialTab="issue_workspace" initialDocType="TRANSFER_CERTIFICATE" />
-              </ProtectedRoute>
-            } />
-
-            <Route path="/exams" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/exams']}>
-                <ExamsPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/admit-card" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR']} permissions={ROUTE_PERMISSIONS['/admit-card']}>
-                <AdmitCardPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/admit-cards" element={<Navigate to="/admit-card" replace />} />
-            <Route path="/result-card" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR']} permissions={ROUTE_PERMISSIONS['/result-card']}>
-                <ResultCardPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/result-cards" element={<Navigate to="/result-card" replace />} />
-            <Route path="/results" element={<Navigate to="/result-card" replace />} />
-            <Route path="/timetable" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'TEACHER', 'STUDENT', 'PARENT']}>
-                <TimetablePage />
-              </ProtectedRoute>
-            } />
-            <Route path="/id-cards/:type" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']}>
-                <IDCardPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/id-cards" element={<Navigate to="/id-cards/students" replace />} />
-            <Route path="/school-settings" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/school-settings']}>
-                <SchoolSettings />
-              </ProtectedRoute>
-            } />
-            <Route path="/settings/whatsapp" element={
-              <ProtectedRoute roles={['PRINCIPAL']} permissions={ROUTE_PERMISSIONS['/settings/whatsapp']}>
-                <WhatsAppSettings />
-              </ProtectedRoute>
-            } />
-            <Route path="/my-services" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'TEACHER']}>
-                <MyServices />
-              </ProtectedRoute>
-            } />
-            <Route path="/subjects" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'TEACHER']}>
-                <SubjectsPage />
-              </ProtectedRoute>
-            } />
-
-            {/* ── Library Management ── */}
-            <Route path="/library" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN']}>
-                <LibraryDashboard />
-              </ProtectedRoute>
-            } />
-            <Route path="/library/books" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN', 'TEACHER', 'STUDENT']}>
-                <LibraryBooks />
-              </ProtectedRoute>
-            } />
-            <Route path="/library/issue-return" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN']}>
-                <LibraryIssueReturn />
-              </ProtectedRoute>
-            } />
-            <Route path="/library/reservations" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN', 'STUDENT']}>
-                <LibraryReservations />
-              </ProtectedRoute>
-            } />
-            <Route path="/library/members" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN']}>
-                <LibraryMembers />
-              </ProtectedRoute>
-            } />
-            <Route path="/library/fines" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN', 'DIRECTOR', 'VICE_PRINCIPAL']}>
-                <LibraryFines />
-              </ProtectedRoute>
-            } />
-            <Route path="/library/reports" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN']}>
-                <LibraryReports />
-              </ProtectedRoute>
-            } />
-            <Route path="/library/attendance" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN', 'DIRECTOR', 'VICE_PRINCIPAL', 'TEACHER']}>
-                <LibraryAttendance />
-              </ProtectedRoute>
-            } />
-            {/* ── Staff Attendance Management ── */}
-            <Route path="/staff/attendance" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HR', 'DIRECTOR', 'VICE_PRINCIPAL']}>
-                <StaffAttendanceDashboard />
-              </ProtectedRoute>
-            } />
-            <Route path="/staff/attendance/settings" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'DIRECTOR']}>
-                <AttendanceSettings />
-              </ProtectedRoute>
-            } />
-            <Route path="/staff/attendance/analytics" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HR', 'DIRECTOR', 'VICE_PRINCIPAL']}>
-                <AttendanceAnalytics />
-              </ProtectedRoute>
-            } />
-            <Route path="/staff/attendance/employee/:userId" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HR', 'DIRECTOR', 'VICE_PRINCIPAL']}>
-                <EmployeeProfile />
-              </ProtectedRoute>
-            } />
-
-            {/* ── HRMS & Employee Management Suite ── */}
-            <Route path="/hrms" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HR', 'DIRECTOR', 'VICE_PRINCIPAL']}>
-                <HRMSDashboard />
-              </ProtectedRoute>
-            } />
-            <Route path="/hrms/employees" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HR', 'DIRECTOR', 'VICE_PRINCIPAL', 'ACCOUNTANT']}>
-                <EmployeeDirectory />
-              </ProtectedRoute>
-            } />
-            <Route path="/hrms/employees/:userId" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HR', 'DIRECTOR', 'VICE_PRINCIPAL', 'ACCOUNTANT']}>
-                <EmployeeDetailPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/hrms/leaves" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HR', 'DIRECTOR', 'VICE_PRINCIPAL']}>
-                <LeaveManagementPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/hrms/payroll" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HR', 'DIRECTOR', 'VICE_PRINCIPAL', 'ACCOUNTANT']}>
-                <PayrollManagerPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/my-hr" element={
-              <ProtectedRoute roles={['TEACHER', 'ACCOUNTANT', 'LIBRARIAN', 'RECEPTIONIST', 'HOSTEL', 'TRANSPORT', 'HR', 'VICE_PRINCIPAL', 'ACADEMIC_COORDINATOR', 'EXAM_CONTROLLER', 'DRIVER', 'PRINCIPAL']}>
-                <StaffSelfService />
-              </ProtectedRoute>
-            } />
-            <Route path="/delegations" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ADMIN', 'DIRECTOR', 'VICE_PRINCIPAL']}>
-                <DelegationDashboardPage />
-              </ProtectedRoute>
-            } />
-
-            {/* ── Hostel Management ── */}
-            <Route path="/hostel" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
-                <HostelDashboard />
-              </ProtectedRoute>
-            } />
-            <Route path="/hostel/setup" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
-                <HostelSetup />
-              </ProtectedRoute>
-            } />
-            <Route path="/hostel/room-map" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
-                <HostelRoomMap />
-              </ProtectedRoute>
-            } />
-            <Route path="/hostel/admission" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
-                <HostelAdmission />
-              </ProtectedRoute>
-            } />
-            <Route path="/hostel/rooms/:roomId" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
-                <HostelRoomDetail />
-              </ProtectedRoute>
-            } />
-            <Route path="/hostel/transfers" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
-                <HostelTransfers />
-              </ProtectedRoute>
-            } />
-            <Route path="/hostel/fee-structures" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
-                <HostelFeeStructures />
-              </ProtectedRoute>
-            } />
-            <Route path="/hostel/fees" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL', 'ACCOUNTANT']}>
-                <HostelFees />
-              </ProtectedRoute>
-            } />
-            <Route path="/hostel/fines" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL', 'ACCOUNTANT']}>
-                <HostelFines />
-              </ProtectedRoute>
-            } />
-            <Route path="/hostel/attendance" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
-                <HostelAttendance />
-              </ProtectedRoute>
-            } />
-            <Route path="/hostel/out-pass" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
-                <HostelOutPass />
-              </ProtectedRoute>
-            } />
-            <Route path="/hostel/complaints" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
-                <HostelComplaints />
-              </ProtectedRoute>
-            } />
-            <Route path="/hostel/visitors" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
-                <HostelVisitors />
-              </ProtectedRoute>
-            } />
-            <Route path="/hostel/inventory" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
-                <HostelInventory />
-              </ProtectedRoute>
-            } />
-            <Route path="/hostel/reports" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
-                <HostelReports />
-              </ProtectedRoute>
-            } />
-
-            {/* ── Transport Management ── */}
-            <Route path="/transport" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
-                <TransportDashboard />
-              </ProtectedRoute>
-            } />
-            <Route path="/transport/vehicles" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
-                <TransportVehicles />
-              </ProtectedRoute>
-            } />
-            <Route path="/transport/drivers" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
-                <TransportDrivers />
-              </ProtectedRoute>
-            } />
-            <Route path="/transport/conductors" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
-                <TransportConductors />
-              </ProtectedRoute>
-            } />
-            <Route path="/transport/routes" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
-                <TransportRouteBuilder />
-              </ProtectedRoute>
-            } />
-            <Route path="/transport/stops" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
-                <TransportStops />
-              </ProtectedRoute>
-            } />
-            <Route path="/transport/students" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
-                <StudentTransport />
-              </ProtectedRoute>
-            } />
-            <Route path="/transport/live" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
-                <LiveTracking />
-              </ProtectedRoute>
-            } />
-            <Route path="/transport/fees" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
-                <TransportFees />
-              </ProtectedRoute>
-            } />
-            <Route path="/transport/maintenance" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
-                <VehicleMaintenance />
-              </ProtectedRoute>
-            } />
-            <Route path="/transport/reports" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
-                <TransportReports />
-              </ProtectedRoute>
-            } />
-            <Route path="/transport/travel-history" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT', 'STAFF', 'TEACHER']}>
-                <StudentTravelHistory />
-              </ProtectedRoute>
-            } />
-            <Route path="/transport/student-travel-history" element={
-              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT', 'STAFF', 'TEACHER']}>
-                <StudentTravelHistory />
-              </ProtectedRoute>
-            } />
-            <Route path="/transport/parent" element={
-              <ProtectedRoute roles={['PARENT', 'STUDENT', 'PRINCIPAL']}>
-                <ParentTransportView />
-              </ProtectedRoute>
-            } />
-            <Route path="/driver/app" element={
-              <ProtectedRoute roles={['DRIVER']}>
-                <DriverMobileApp />
-              </ProtectedRoute>
-            } />
+            {/* ═══════════════════════════════════════════════════════════════
+                CANONICAL MULTI-TENANT ROUTES: /:schoolSlug/:role/:service
+               ═══════════════════════════════════════════════════════════════ */}
             
-            <Route path="/support/tickets" element={
-              <ProtectedRoute>
-                <SupportInbox />
-              </ProtectedRoute>
-            } />
-            <Route path="/support/tickets/new" element={
-              <ProtectedRoute>
-                <NewTicket />
-              </ProtectedRoute>
-            } />
-            <Route path="/support/tickets/:id" element={
-              <ProtectedRoute>
-                <TicketDetail />
-              </ProtectedRoute>
-            } />
-            <Route path="/support/meetings" element={
-              <ProtectedRoute>
-                <MeetingRequest />
-              </ProtectedRoute>
-            } />
-            <Route path="/support/meetings/new" element={
-              <ProtectedRoute>
-                <MeetingRequest />
-              </ProtectedRoute>
-            } />
-            <Route path="/support/announcements" element={
-              <ProtectedRoute permissions={ROUTE_PERMISSIONS['/support/announcements']}>
-                <Announcements />
-              </ProtectedRoute>
-            } />
-            <Route path="/support/announcements/create" element={
-              <ProtectedRoute permissions={ROUTE_PERMISSIONS['/support/announcements']}>
-                <Announcements initialShowForm={true} />
-              </ProtectedRoute>
-            } />
-            <Route path="/announcements" element={
-              <ProtectedRoute permissions={ROUTE_PERMISSIONS['/support/announcements']}>
-                <Announcements />
-              </ProtectedRoute>
-            } />
-            <Route path="/announcements/create" element={
-              <ProtectedRoute permissions={ROUTE_PERMISSIONS['/support/announcements']}>
-                <Announcements initialShowForm={true} />
-              </ProtectedRoute>
-            } />
-            <Route path="/principal/announcements" element={
-              <ProtectedRoute permissions={ROUTE_PERMISSIONS['/support/announcements']}>
-                <Announcements />
-              </ProtectedRoute>
-            } />
-            <Route path="/principal/announcements/create" element={
-              <ProtectedRoute permissions={ROUTE_PERMISSIONS['/support/announcements']}>
-                <Announcements initialShowForm={true} />
-              </ProtectedRoute>
-            } />
-            <Route path="/support" element={<Navigate to="/support/tickets" replace />} />
-            <Route path="/messages" element={
-              <ProtectedRoute>
-                <ChatWindow />
-              </ProtectedRoute>
-            } />
-            <Route path="/support/chat" element={
-              <ProtectedRoute>
-                <ChatWindow />
-              </ProtectedRoute>
-            } />
-            <Route path="/help-center" element={
-              <ProtectedRoute>
-                <KnowledgeBase />
-              </ProtectedRoute>
-            } />
-            <Route path="/support/help" element={
-              <ProtectedRoute>
-                <KnowledgeBase />
-              </ProtectedRoute>
-            } />
-            <Route path="/support/kb" element={
-              <ProtectedRoute>
-                <KnowledgeBase />
-              </ProtectedRoute>
+            {/* Dashboard */}
+            <Route path="/:schoolSlug/:role/dashboard" element={
+              <TenantProtectedRoute>
+                <DashboardRouter />
+              </TenantProtectedRoute>
             } />
 
-            {/* ── Super Admin only ── */}
-            <Route path="/schools" element={
-              <ProtectedRoute roles={['SUPER_ADMIN']}>
-                <SchoolsPage />
-              </ProtectedRoute>
+            {/* Students Lifecycle */}
+            <Route path="/:schoolSlug/:role/students" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']} permissions={ROUTE_PERMISSIONS['/students']}>
+                <StudentsPage />
+              </TenantProtectedRoute>
             } />
-            <Route path="/schools/:id" element={
-              <ProtectedRoute roles={['SUPER_ADMIN']}>
-                <SchoolDetailPage />
-              </ProtectedRoute>
+            <Route path="/:schoolSlug/:role/students/bulk-edit" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']} permissions={ROUTE_PERMISSIONS['/students/bulk-edit']}>
+                <BulkEditPage />
+              </TenantProtectedRoute>
             } />
-            <Route path="/users" element={
-              <ProtectedRoute roles={['SUPER_ADMIN']}>
-                <UsersPage />
-              </ProtectedRoute>
+            <Route path="/:schoolSlug/:role/students/section-shuffle" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/students/section-shuffle']}>
+                <SectionShufflePage />
+              </TenantProtectedRoute>
             } />
-            <Route path="/developer/support" element={
-              <ProtectedRoute roles={['SUPER_ADMIN']}>
-                <SupportDashboard />
-              </ProtectedRoute>
+            <Route path="/:schoolSlug/:role/students/promotion" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/students/promotion']}>
+                <PromotionPage />
+              </TenantProtectedRoute>
             } />
-            {/* ErrorDashboard/IssueBoard/SystemHealthDashboard were built but
-                never routed anywhere -- not reachable even by typing the URL.
-                They read darkMode as a prop (unlike SupportDashboard, which
-                keeps its own local state), so it's passed here from the same
-                'ederp_theme' key every other page reads, to match the
-                site-wide dark/light toggle instead of always rendering light. */}
-            <Route path="/developer/errors" element={
-              <ProtectedRoute roles={['SUPER_ADMIN']}>
-                <ErrorDashboard />
-              </ProtectedRoute>
+            <Route path="/:schoolSlug/:role/students/annual-register" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/students/annual-register']}>
+                <AnnualRegisterPage />
+              </TenantProtectedRoute>
             } />
-            <Route path="/developer/issues" element={
-              <ProtectedRoute roles={['SUPER_ADMIN']}>
-                <IssueBoard />
-              </ProtectedRoute>
+            <Route path="/:schoolSlug/:role/students/import" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/students/import']}>
+                <StudentImportPage />
+              </TenantProtectedRoute>
             } />
-            <Route path="/developer/system-health" element={
-              <ProtectedRoute roles={['SUPER_ADMIN']}>
-                <SystemHealthDashboard />
-              </ProtectedRoute>
+            <Route path="/:schoolSlug/:role/students/:id" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']} permissions={ROUTE_PERMISSIONS['/students']}>
+                <StudentProfile />
+              </TenantProtectedRoute>
             } />
-            <Route path="/developer/leads" element={
-              <ProtectedRoute roles={['SUPER_ADMIN']}>
-                <LeadsPage />
-              </ProtectedRoute>
+            <Route path="/:schoolSlug/:role/admission" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/admission']}>
+                <NewAdmissionPage />
+              </TenantProtectedRoute>
             } />
 
-            {/* ── RBAC (Role-Based Access Control) ── */}
-            <Route path="/rbac/roles" element={
-              <ProtectedRoute roles={['SUPER_ADMIN', 'PRINCIPAL']} permissions={ROUTE_PERMISSIONS['/rbac/roles']}>
+            {/* Teachers & Classes */}
+            <Route path="/:schoolSlug/:role/teachers" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']}>
+                <TeachersPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/teachers/:id" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']}>
+                <TeacherProfile />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/classes" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']}>
+                <ClassesPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/classes/:id" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']}>
+                <ClassDetailPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/subjects" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'TEACHER', 'SUPER_ADMIN']}>
+                <SubjectsPage />
+              </TenantProtectedRoute>
+            } />
+
+            {/* Staff & HRMS */}
+            <Route path="/:schoolSlug/:role/staff" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/staff']}>
+                <StaffPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/staff/:id" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/staff']}>
+                <StaffProfile />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/staff/attendance" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HR', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <StaffAttendanceDashboard />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/staff/attendance/settings" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'DIRECTOR']}>
+                <AttendanceSettings />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/staff/attendance/analytics" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HR', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <AttendanceAnalytics />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/staff/attendance/employee/:userId" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HR', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <EmployeeProfile />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/hrms" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HR', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <HRMSDashboard />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/hrms/employees" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HR', 'DIRECTOR', 'VICE_PRINCIPAL', 'ACCOUNTANT']}>
+                <EmployeeDirectory />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/hrms/employees/:userId" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HR', 'DIRECTOR', 'VICE_PRINCIPAL', 'ACCOUNTANT']}>
+                <EmployeeDetailPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/hrms/leaves" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HR', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <LeaveManagementPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/hrms/payroll" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HR', 'DIRECTOR', 'VICE_PRINCIPAL', 'ACCOUNTANT']}>
+                <PayrollManagerPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/my-hr" element={
+              <TenantProtectedRoute roles={['TEACHER', 'ACCOUNTANT', 'LIBRARIAN', 'RECEPTIONIST', 'HOSTEL', 'TRANSPORT', 'HR', 'VICE_PRINCIPAL', 'ACADEMIC_COORDINATOR', 'EXAM_CONTROLLER', 'DRIVER', 'PRINCIPAL']}>
+                <StaffSelfService />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/delegations" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ADMIN', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <DelegationDashboardPage />
+              </TenantProtectedRoute>
+            } />
+
+            {/* Attendance & Academics */}
+            <Route path="/:schoolSlug/:role/attendance" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'STUDENT', 'PARENT']}>
+                <AttendancePage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/marks" element={
+              <TenantProtectedRoute roles={['TEACHER', 'PRINCIPAL', 'STUDENT', 'PARENT']} permissions={ROUTE_PERMISSIONS['/marks']}>
+                <MarksPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/mark-entry" element={
+              <TenantProtectedRoute roles={['TEACHER', 'PRINCIPAL']} permissions={ROUTE_PERMISSIONS['/mark-entry']}>
+                <ResultManagement />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/result-management" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/result-management']}>
+                <ResultManagement />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/holidays" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'STUDENT', 'PARENT']}>
+                <HolidaysPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/notes" element={
+              <TenantProtectedRoute roles={['TEACHER', 'PRINCIPAL', 'STUDENT', 'PARENT', 'SUPER_ADMIN', 'ADMIN']}>
+                <NotesPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/assignments" element={
+              <TenantProtectedRoute roles={['TEACHER', 'PRINCIPAL', 'STUDENT', 'PARENT', 'SUPER_ADMIN', 'ADMIN']}>
+                <AssignmentsPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/internal-marks" element={
+              <TenantProtectedRoute roles={['TEACHER', 'PRINCIPAL', 'STUDENT', 'PARENT', 'SUPER_ADMIN', 'ADMIN']}>
+                <InternalMarksPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/timetable" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'TEACHER', 'STUDENT', 'PARENT']}>
+                <TimetablePage />
+              </TenantProtectedRoute>
+            } />
+
+            {/* Exams & Results */}
+            <Route path="/:schoolSlug/:role/exams" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/exams']}>
+                <ExamsPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/admit-card" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR']} permissions={ROUTE_PERMISSIONS['/admit-card']}>
+                <AdmitCardPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/result-card" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR']} permissions={ROUTE_PERMISSIONS['/result-card']}>
+                <ResultCardPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/id-cards/:type" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']}>
+                <IDCardPage />
+              </TenantProtectedRoute>
+            } />
+
+            {/* Finance & Fees */}
+            <Route path="/:schoolSlug/:role/finance" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <FinanceDashboard />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/finance/dashboard" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <FinanceDashboard />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/finance/bills" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <FeeBillsPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/finance/payments/collect" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <CollectPaymentPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/finance/receipts" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <ReceiptsPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/finance/students/:studentId/ledger" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL', 'TEACHER', 'PARENT', 'STUDENT']}>
+                <StudentFinancialLedgerPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/finance/setup" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR']}>
+                <FeeSetupPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/finance/outstanding" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <OutstandingPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/finance/reports" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <FinanceReportsPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/finance/payment-logs" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL', 'HOSTEL', 'LIBRARIAN']}>
+                <PaymentLogsPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/fees" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'ACCOUNTANT']}>
+                <FeeBillsPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/fees/structures" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT']}>
+                <FeeSetupPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/finance/expenses" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'ACCOUNTANT']} permissions={ROUTE_PERMISSIONS['/finance/expenses']}>
+                <ExpensesPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/finance/inventory" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'ACCOUNTANT']} permissions={ROUTE_PERMISSIONS['/finance/inventory']}>
+                <InventoryPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/finance/payroll" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL', 'HR']}>
+                <FinancePayrollPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/finance/vendors" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'ACCOUNTANT']}>
+                <VendorsPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/finance/purchases" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT']}>
+                <PurchasesPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/finance/assets" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'ACCOUNTANT']}>
+                <AssetsPage />
+              </TenantProtectedRoute>
+            } />
+
+            {/* Documents */}
+            <Route path="/:schoolSlug/:role/documents" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'STUDENT', 'PARENT']} permissions={ROUTE_PERMISSIONS['/documents']}>
+                <DocumentsPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/issue-documents" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']}>
+                <DocumentsPage initialTab="issue_workspace" />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/students/transfer-cert" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']}>
+                <DocumentsPage initialTab="issue_workspace" initialDocType="TRANSFER_CERTIFICATE" />
+              </TenantProtectedRoute>
+            } />
+
+            {/* Library */}
+            <Route path="/:schoolSlug/:role/library" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN']}>
+                <LibraryDashboard />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/library/books" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN', 'TEACHER', 'STUDENT']}>
+                <LibraryBooks />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/library/issue-return" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN']}>
+                <LibraryIssueReturn />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/library/reservations" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN', 'STUDENT']}>
+                <LibraryReservations />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/library/members" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN']}>
+                <LibraryMembers />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/library/fines" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <LibraryFines />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/library/reports" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN']}>
+                <LibraryReports />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/library/attendance" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN', 'DIRECTOR', 'VICE_PRINCIPAL', 'TEACHER']}>
+                <LibraryAttendance />
+              </TenantProtectedRoute>
+            } />
+
+            {/* Hostel */}
+            <Route path="/:schoolSlug/:role/hostel" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
+                <HostelDashboard />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/hostel/setup" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
+                <HostelSetup />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/hostel/room-map" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
+                <HostelRoomMap />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/hostel/admission" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
+                <HostelAdmission />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/hostel/rooms/:roomId" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
+                <HostelRoomDetail />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/hostel/transfers" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
+                <HostelTransfers />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/hostel/fee-structures" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
+                <HostelFeeStructures />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/hostel/fees" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL', 'ACCOUNTANT']}>
+                <HostelFees />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/hostel/fines" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL', 'ACCOUNTANT']}>
+                <HostelFines />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/hostel/attendance" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
+                <HostelAttendance />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/hostel/out-pass" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
+                <HostelOutPass />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/hostel/complaints" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
+                <HostelComplaints />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/hostel/visitors" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
+                <HostelVisitors />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/hostel/inventory" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
+                <HostelInventory />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/hostel/reports" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'HOSTEL']}>
+                <HostelReports />
+              </TenantProtectedRoute>
+            } />
+
+            {/* Transport */}
+            <Route path="/:schoolSlug/:role/transport" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
+                <TransportDashboard />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/transport/vehicles" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
+                <TransportVehicles />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/transport/drivers" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
+                <TransportDrivers />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/transport/conductors" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
+                <TransportConductors />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/transport/routes" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
+                <TransportRouteBuilder />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/transport/stops" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
+                <TransportStops />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/transport/students" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
+                <StudentTransport />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/transport/live" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
+                <LiveTracking />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/transport/fees" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
+                <TransportFees />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/transport/maintenance" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
+                <VehicleMaintenance />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/transport/reports" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT']}>
+                <TransportReports />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/transport/travel-history" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TRANSPORT', 'STAFF', 'TEACHER']}>
+                <StudentTravelHistory />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/transport/parent" element={
+              <TenantProtectedRoute roles={['PARENT', 'STUDENT', 'PRINCIPAL']}>
+                <ParentTransportView />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/driver/app" element={
+              <TenantProtectedRoute roles={['DRIVER']}>
+                <DriverMobileApp />
+              </TenantProtectedRoute>
+            } />
+
+            {/* Support & Communication */}
+            <Route path="/:schoolSlug/:role/support/tickets" element={<TenantProtectedRoute><SupportInbox /></TenantProtectedRoute>} />
+            <Route path="/:schoolSlug/:role/support/tickets/new" element={<TenantProtectedRoute><NewTicket /></TenantProtectedRoute>} />
+            <Route path="/:schoolSlug/:role/support/tickets/:id" element={<TenantProtectedRoute><TicketDetail /></TenantProtectedRoute>} />
+            <Route path="/:schoolSlug/:role/support/meetings" element={<TenantProtectedRoute><MeetingRequest /></TenantProtectedRoute>} />
+            <Route path="/:schoolSlug/:role/support/meetings/new" element={<TenantProtectedRoute><MeetingRequest /></TenantProtectedRoute>} />
+            <Route path="/:schoolSlug/:role/announcements" element={<TenantProtectedRoute permissions={ROUTE_PERMISSIONS['/support/announcements']}><Announcements /></TenantProtectedRoute>} />
+            <Route path="/:schoolSlug/:role/announcements/create" element={<TenantProtectedRoute permissions={ROUTE_PERMISSIONS['/support/announcements']}><Announcements initialShowForm={true} /></TenantProtectedRoute>} />
+            <Route path="/:schoolSlug/:role/messages" element={<TenantProtectedRoute><ChatWindow /></TenantProtectedRoute>} />
+            <Route path="/:schoolSlug/:role/help-center" element={<TenantProtectedRoute><KnowledgeBase /></TenantProtectedRoute>} />
+
+            {/* School Settings & WhatsApp */}
+            <Route path="/:schoolSlug/:role/school-settings" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/school-settings']}>
+                <SchoolSettings />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/settings/whatsapp" element={
+              <TenantProtectedRoute roles={['PRINCIPAL']} permissions={ROUTE_PERMISSIONS['/settings/whatsapp']}>
+                <WhatsAppSettings />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/settings" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/school-settings']}>
+                <SchoolSettings />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/my-services" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'TEACHER']}>
+                <MyServices />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/deleted-items" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <DeletedItemsPage />
+              </TenantProtectedRoute>
+            } />
+
+            {/* RBAC */}
+            <Route path="/:schoolSlug/:role/rbac/roles" element={
+              <TenantProtectedRoute roles={['SUPER_ADMIN', 'PRINCIPAL']} permissions={ROUTE_PERMISSIONS['/rbac/roles']}>
                 <RoleManagement />
-              </ProtectedRoute>
+              </TenantProtectedRoute>
             } />
-            <Route path="/rbac/permissions" element={
-              <ProtectedRoute roles={['SUPER_ADMIN', 'PRINCIPAL']} permissions={ROUTE_PERMISSIONS['/rbac/permissions']}>
+            <Route path="/:schoolSlug/:role/rbac/permissions" element={
+              <TenantProtectedRoute roles={['SUPER_ADMIN', 'PRINCIPAL']} permissions={ROUTE_PERMISSIONS['/rbac/permissions']}>
                 <PermissionMatrix />
-              </ProtectedRoute>
+              </TenantProtectedRoute>
             } />
-            <Route path="/rbac/delegations" element={
-              <ProtectedRoute roles={['SUPER_ADMIN', 'PRINCIPAL']} permissions={ROUTE_PERMISSIONS['/rbac/delegations']}>
+            <Route path="/:schoolSlug/:role/rbac/delegations" element={
+              <TenantProtectedRoute roles={['SUPER_ADMIN', 'PRINCIPAL']} permissions={ROUTE_PERMISSIONS['/rbac/delegations']}>
                 <DelegationPage />
-              </ProtectedRoute>
+              </TenantProtectedRoute>
             } />
-            <Route path="/rbac/staff-access" element={
-               <ProtectedRoute roles={['PRINCIPAL']} permissions={ROUTE_PERMISSIONS['/rbac/staff-access']}>
-                 <StaffAccessPage />
-               </ProtectedRoute>
-           } />
+            <Route path="/:schoolSlug/:role/rbac/staff-access" element={
+              <TenantProtectedRoute roles={['PRINCIPAL']} permissions={ROUTE_PERMISSIONS['/rbac/staff-access']}>
+                <StaffAccessPage />
+              </TenantProtectedRoute>
+            } />
 
-            {/* ── Audit Logs ── */}
-            {/* VICE_PRINCIPAL included here on purpose: it's the one role that
-                permission_catalog.py's DEFAULT_SCHOOL_ROLE_PERMISSIONS actually
-                grants 'audit.logs.view' to by default (see permission_catalog.py
-                fix) -- without it in this roles list, that grant would be
-                unreachable since ProtectedRoute gates by role before the page's
-                own permission check ever runs. */}
-            <Route path="/audit/school/logs" element={
-              <ProtectedRoute roles={['SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL', 'DIRECTOR', 'ADMIN']} permissions={ROUTE_PERMISSIONS['/audit/school/logs']}>
+            {/* Audit Logs */}
+            <Route path="/:schoolSlug/:role/audit-logs" element={
+              <TenantProtectedRoute roles={['SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL', 'DIRECTOR', 'ADMIN']} permissions={ROUTE_PERMISSIONS['/audit/school/logs']}>
                 <SchoolAuditLogs />
-              </ProtectedRoute>
+              </TenantProtectedRoute>
             } />
-            <Route path="/audit/company/logs" element={
-              <ProtectedRoute roles={['SUPER_ADMIN']}>
-                <CompanyAuditLogs />
-              </ProtectedRoute>
+            <Route path="/:schoolSlug/:role/audit/school/logs" element={
+              <TenantProtectedRoute roles={['SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL', 'DIRECTOR', 'ADMIN']} permissions={ROUTE_PERMISSIONS['/audit/school/logs']}>
+                <SchoolAuditLogs />
+              </TenantProtectedRoute>
             } />
 
-            {/* ── 1P360 BOT — AI Chat (Super Admin, Principal, Teacher, Staff) ── */}
-            <Route path="/ai/chat" element={
-              <ProtectedRoute roles={['SUPER_ADMIN', 'ADMIN', 'DEVELOPER', 'PRINCIPAL', 'VICE_PRINCIPAL', 'TEACHER',
-                                      'ACCOUNTANT', 'LIBRARIAN', 'HOSTEL', 'TRANSPORT']}>
+            {/* 1P360 BOT — AI Chat */}
+            <Route path="/:schoolSlug/:role/ai/chat" element={
+              <TenantProtectedRoute roles={['SUPER_ADMIN', 'ADMIN', 'DEVELOPER', 'PRINCIPAL', 'VICE_PRINCIPAL', 'TEACHER', 'ACCOUNTANT', 'LIBRARIAN', 'HOSTEL', 'TRANSPORT']}>
                 <AIChat />
-              </ProtectedRoute>
+              </TenantProtectedRoute>
             } />
 
+            {/* ═══════════════════════════════════════════════════════════════
+                BACKWARD-COMPATIBILITY: LEGACY UNPREFIXED REDIRECTS
+               ═══════════════════════════════════════════════════════════════ */}
+            <Route path="/dashboard" element={<LegacyRedirect toService="dashboard" />} />
+            <Route path="/students" element={<LegacyRedirect toService="students" />} />
+            <Route path="/students/bulk-edit" element={<LegacyRedirect toService="students/bulk-edit" />} />
+            <Route path="/students/section-shuffle" element={<LegacyRedirect toService="students/section-shuffle" />} />
+            <Route path="/students/promotion" element={<LegacyRedirect toService="students/promotion" />} />
+            <Route path="/students/annual-register" element={<LegacyRedirect toService="students/annual-register" />} />
+            <Route path="/students/import" element={<LegacyRedirect toService="students/import" />} />
+            <Route path="/teachers" element={<LegacyRedirect toService="teachers" />} />
+            <Route path="/classes" element={<LegacyRedirect toService="classes" />} />
+            <Route path="/subjects" element={<LegacyRedirect toService="subjects" />} />
+            <Route path="/admission" element={<LegacyRedirect toService="admission" />} />
+            <Route path="/attendance" element={<LegacyRedirect toService="attendance" />} />
+            <Route path="/marks" element={<LegacyRedirect toService="marks" />} />
+            <Route path="/mark-entry" element={<LegacyRedirect toService="mark-entry" />} />
+            <Route path="/result-management" element={<LegacyRedirect toService="result-management" />} />
+            <Route path="/exams" element={<LegacyRedirect toService="exams" />} />
+            <Route path="/fees" element={<LegacyRedirect toService="fees" />} />
+            <Route path="/fees/structures" element={<LegacyRedirect toService="fees/structures" />} />
+            <Route path="/finance" element={<LegacyRedirect toService="finance/dashboard" />} />
+            <Route path="/finance/dashboard" element={<LegacyRedirect toService="finance/dashboard" />} />
+            <Route path="/finance/bills" element={<LegacyRedirect toService="finance/bills" />} />
+            <Route path="/finance/payments/collect" element={<LegacyRedirect toService="finance/payments/collect" />} />
+            <Route path="/finance/receipts" element={<LegacyRedirect toService="finance/receipts" />} />
+            <Route path="/finance/setup" element={<LegacyRedirect toService="finance/setup" />} />
+            <Route path="/finance/outstanding" element={<LegacyRedirect toService="finance/outstanding" />} />
+            <Route path="/finance/reports" element={<LegacyRedirect toService="finance/reports" />} />
+            <Route path="/finance/payment-logs" element={<LegacyRedirect toService="finance/payment-logs" />} />
+            <Route path="/finance/expenses" element={<LegacyRedirect toService="finance/expenses" />} />
+            <Route path="/finance/inventory" element={<LegacyRedirect toService="finance/inventory" />} />
+            <Route path="/finance/payroll" element={<LegacyRedirect toService="finance/payroll" />} />
+            <Route path="/finance/vendors" element={<LegacyRedirect toService="finance/vendors" />} />
+            <Route path="/finance/purchases" element={<LegacyRedirect toService="finance/purchases" />} />
+            <Route path="/finance/assets" element={<LegacyRedirect toService="finance/assets" />} />
+            <Route path="/documents" element={<LegacyRedirect toService="documents" />} />
+            <Route path="/issue-documents" element={<LegacyRedirect toService="issue-documents" />} />
+            <Route path="/notes" element={<LegacyRedirect toService="notes" />} />
+            <Route path="/assignments" element={<LegacyRedirect toService="assignments" />} />
+            <Route path="/internal-marks" element={<LegacyRedirect toService="internal-marks" />} />
+            <Route path="/holidays" element={<LegacyRedirect toService="holidays" />} />
+            <Route path="/timetable" element={<LegacyRedirect toService="timetable" />} />
+            <Route path="/admit-card" element={<LegacyRedirect toService="admit-card" />} />
+            <Route path="/admit-cards" element={<LegacyRedirect toService="admit-card" />} />
+            <Route path="/result-card" element={<LegacyRedirect toService="result-card" />} />
+            <Route path="/result-cards" element={<LegacyRedirect toService="result-card" />} />
+            <Route path="/results" element={<LegacyRedirect toService="result-card" />} />
+            <Route path="/id-cards" element={<LegacyRedirect toService="id-cards/students" />} />
+            <Route path="/id-cards/:type" element={<LegacyRedirect toService="id-cards/students" />} />
+            <Route path="/school-settings" element={<LegacyRedirect toService="school-settings" />} />
+            <Route path="/settings/whatsapp" element={<LegacyRedirect toService="settings/whatsapp" />} />
+            <Route path="/settings" element={<LegacyRedirect toService="school-settings" />} />
+            <Route path="/my-services" element={<LegacyRedirect toService="my-services" />} />
+            <Route path="/my-hr" element={<LegacyRedirect toService="my-hr" />} />
+            <Route path="/delegations" element={<LegacyRedirect toService="delegations" />} />
+            <Route path="/library" element={<LegacyRedirect toService="library" />} />
+            <Route path="/hostel" element={<LegacyRedirect toService="hostel" />} />
+            <Route path="/transport" element={<LegacyRedirect toService="transport" />} />
+            <Route path="/announcements" element={<LegacyRedirect toService="announcements" />} />
+            <Route path="/messages" element={<LegacyRedirect toService="messages" />} />
+            <Route path="/support/tickets" element={<LegacyRedirect toService="support/tickets" />} />
+            <Route path="/support/tickets/new" element={<LegacyRedirect toService="support/tickets/new" />} />
+            <Route path="/support/meetings" element={<LegacyRedirect toService="support/meetings" />} />
+            <Route path="/help-center" element={<LegacyRedirect toService="help-center" />} />
+            <Route path="/rbac/roles" element={<LegacyRedirect toService="rbac/roles" />} />
+            <Route path="/rbac/permissions" element={<LegacyRedirect toService="rbac/permissions" />} />
+            <Route path="/rbac/delegations" element={<LegacyRedirect toService="rbac/delegations" />} />
+            <Route path="/rbac/staff-access" element={<LegacyRedirect toService="rbac/staff-access" />} />
+            <Route path="/audit/school/logs" element={<LegacyRedirect toService="audit-logs" />} />
+            <Route path="/ai/chat" element={<LegacyRedirect toService="ai/chat" />} />
+            <Route path="/principal/deleted-items" element={<LegacyRedirect toService="deleted-items" />} />
 
-            {/* ── Super Admin: AI Management ── */}
-            <Route path="/developer/ai" element={
-              <ProtectedRoute roles={['SUPER_ADMIN']}>
-                <AIManagement />
-              </ProtectedRoute>
-            } />
-
-            {/* ── Catch-all ── */}
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            {/* ═══════════════════════════════════════════════════════════════
+                ERROR & CATCH-ALL
+               ═══════════════════════════════════════════════════════════════ */}
+            <Route path="/403" element={<AccessDeniedPage />} />
+            <Route path="/404" element={<NotFoundPage />} />
+            <Route path="*" element={<LegacyRedirect />} />
 
           </Routes>
         </Router>

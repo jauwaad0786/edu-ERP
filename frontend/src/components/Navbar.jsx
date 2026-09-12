@@ -4,7 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import NotificationBell from '../components/communication/NotificationBell';
 import SalaryAckBell from '../components/SalaryAckBell';
-import RoleSwitchDropdown from '../components/rbac/RoleSwitchDropdown';  // ✅ ADD THIS IMPORT
+import RoleSwitchDropdown from '../components/rbac/RoleSwitchDropdown';
+import { ROLE_DISPLAY_NAMES, getCanonicalRoleSlug, resolveTenantPath } from '../utils/routeBuilder';
 
 const BREADCRUMB_MAP = {
   '/dashboard':             'Dashboard',
@@ -103,7 +104,9 @@ export default function Navbar({ title, darkMode, onToggleDark }) {
   // ── Fullscreen state ──────────────────────────────────────────────────────
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  const pageLabel = title || BREADCRUMB_MAP[location.pathname] || 'EduERP';
+  const serviceSuffix = '/' + location.pathname.split('/').slice(3).join('/');
+  const baseServiceSuffix = '/' + (location.pathname.split('/')[3] || '');
+  const pageLabel = title || BREADCRUMB_MAP[location.pathname] || BREADCRUMB_MAP[serviceSuffix] || BREADCRUMB_MAP[baseServiceSuffix] || 'Overview';
 
   // Fetch pending attendance requests (PRINCIPAL only)
   useEffect(() => {
@@ -200,17 +203,30 @@ export default function Navbar({ title, darkMode, onToggleDark }) {
 
         {/* ── Left: Back + Breadcrumb ── */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {location.pathname !== '/dashboard' && (
-            <button onClick={() => navigate(-1)} title="Go back"
-              style={navIconBtn(surfaceBg, border, textSub)}
-              {...iconHover}>
-              <i className="ti ti-arrow-left" style={{ fontSize: 15 }} aria-hidden="true" />
-            </button>
-          )}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 12, color: textMuted }}>EduERP</span>
-            <i className="ti ti-chevron-right" style={{ fontSize: 11, color: textMuted }} aria-hidden="true" />
-            <span style={{ fontSize: 13, fontWeight: 600, color: textPrimary }}>{pageLabel}</span>
+          <button onClick={() => navigate(-1)} title="Go back"
+            style={navIconBtn(surfaceBg, border, textSub)}
+            {...iconHover}>
+            <i className="ti ti-arrow-left" style={{ fontSize: 15 }} aria-hidden="true" />
+          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, fontWeight: 800, color: '#2563eb', letterSpacing: '0.04em' }}>1P360</span>
+            {user?.school_name && (
+              <>
+                <i className="ti ti-chevron-right" style={{ fontSize: 10, color: textMuted }} aria-hidden="true" />
+                <span style={{ fontSize: 12, color: textSub, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {user.school_name}
+                </span>
+              </>
+            )}
+            <i className="ti ti-chevron-right" style={{ fontSize: 10, color: textMuted }} aria-hidden="true" />
+            <span style={{
+              fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
+              background: darkMode ? '#1e293b' : '#f1f5f9', color: textSub
+            }}>
+              {ROLE_DISPLAY_NAMES[getCanonicalRoleSlug(user)] || user?.role}
+            </span>
+            <i className="ti ti-chevron-right" style={{ fontSize: 10, color: textMuted }} aria-hidden="true" />
+            <span style={{ fontSize: 13, fontWeight: 700, color: textPrimary }}>{pageLabel}</span>
           </div>
         </div>
 
@@ -262,13 +278,13 @@ export default function Navbar({ title, darkMode, onToggleDark }) {
                         role="button"
                         tabIndex={0}
                         onClick={() => {
-                          navigate(`/students/${s.id}`);
+                          navigate(resolveTenantPath(`/students/${s.id}`, user));
                           setSearchOpen(false);
                           setSearchQ('');
                         }}
                         onKeyDown={e => {
                           if (e.key === 'Enter' || e.key === ' ') {
-                            navigate(`/students/${s.id}`);
+                            navigate(resolveTenantPath(`/students/${s.id}`, user));
                             setSearchOpen(false);
                             setSearchQ('');
                           }
