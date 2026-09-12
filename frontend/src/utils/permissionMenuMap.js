@@ -15,12 +15,24 @@
 // <ProtectedRoute roles={['PRINCIPAL','SUPER_ADMIN']}> only knew about
 // hardcoded roles, never about permissions).
 export const PERMISSION_MENU_ITEMS = {
-  'students.admission.manage': { group: 'Academics', item: { icon: 'ti-user-plus',    label: 'Admissions', path: '/admission' } },
+  'students.admission.manage': [
+    { group: 'Academics', item: { icon: 'ti-user-plus',    label: 'Admissions',            path: '/admission' } },
+    { group: 'Academics', item: { icon: 'ti-user-check',   label: 'Annual Re-Registration', path: '/students/annual-register' } },
+    { group: 'Academics', item: { icon: 'ti-file-import',  label: 'Bulk Import CSV',       path: '/students/import' } },
+  ],
   'students.profile.view':     { group: 'Academics', item: { icon: 'ti-address-book', label: 'Students',   path: '/students' } },
-  'students.profile.edit':     { group: 'Academics', item: { icon: 'ti-address-book', label: 'Students',   path: '/students' } },
+  'students.profile.edit': [
+    { group: 'Academics', item: { icon: 'ti-address-book',   label: 'Students',              path: '/students' } },
+    { group: 'Academics', item: { icon: 'ti-edit',           label: 'Students Bulk Edit',    path: '/students/bulk-edit' } },
+    { group: 'Academics', item: { icon: 'ti-arrows-shuffle', label: 'Section Shuffle',       path: '/students/section-shuffle' } },
+    { group: 'Academics', item: { icon: 'ti-rocket',         label: 'Promote & Rollover',    path: '/students/promotion' } },
+  ],
   'students.delete':           { group: 'Academics', item: { icon: 'ti-address-book', label: 'Students',   path: '/students' } },
 
-  'staff.profile.manage':      { group: 'Staff Management', item: { icon: 'ti-briefcase', label: 'Staff List', path: '/staff' } },
+  'staff.profile.manage': [
+    { group: 'Staff Management', item: { icon: 'ti-briefcase', label: 'Staff List', path: '/staff' } },
+    { group: 'Staff & HRMS', item: { icon: 'ti-switch-horizontal', label: 'Delegations', path: '/delegations' } },
+  ],
 
   'fees.structure.manage':     { group: 'Finance & Fees', item: { icon: 'ti-settings-2',       label: 'Fee Setup & Rates', path: '/finance/setup' } },
   'fees.collect': [

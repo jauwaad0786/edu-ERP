@@ -187,6 +187,8 @@ def create_app(config_name='default'):
     app.register_blueprint(student_bp,      url_prefix='/api/student')
     from app.routes.academic_resources import academic_resources_bp
     app.register_blueprint(academic_resources_bp)
+    from app.routes.delegations import delegations_bp
+    app.register_blueprint(delegations_bp, url_prefix='/api')
 
     # ── 1P360 BOT — AI Blueprint ─────────────────────────────────────────────
     try:
@@ -203,11 +205,13 @@ def create_app(config_name='default'):
             from app.models import finance as finance_models  # noqa: F401
             from app.models import otp as otp_models  # noqa: F401
             from app.models import device as device_models  # noqa: F401
+            from app.models import delegation as delegation_models  # noqa: F401
             _ensure_school_columns()
             _ensure_user_columns()
             _ensure_teacher_columns()
             _ensure_student_columns()
             _ensure_enrollment_table()
+            _ensure_teacher_delegation_tables()
             _ensure_communication_columns()
             _ensure_academic_resource_columns()
             _ensure_fee_record_columns()
@@ -291,6 +295,8 @@ def create_app(config_name='default'):
                     with app.app_context():
                         try:
                             auto_expire_delegations()
+                            from app.services.teacher_delegation_service import auto_expire_teacher_delegations
+                            auto_expire_teacher_delegations()
                         except Exception as ex:
                             app.logger.error(f'Delegation expiry job error: {ex}')
 
@@ -1199,6 +1205,25 @@ def _ensure_enrollment_table():
                 conn.commit()
     except Exception as e:
         print(f'[WARN] _ensure_enrollment_table: {e}')
+
+
+def _ensure_teacher_delegation_tables():
+    """
+    Ensure teacher_delegations, scopes, and permissions tables exist in the database.
+    """
+    from sqlalchemy import inspect
+    try:
+        inspector = inspect(db.engine)
+        table_names = inspector.get_table_names()
+        if 'teacher_delegations' not in table_names:
+            from app.models.delegation import TeacherDelegation, TeacherDelegationScope, TeacherDelegationPermission
+            TeacherDelegation.__table__.create(db.engine, checkfirst=True)
+            TeacherDelegationScope.__table__.create(db.engine, checkfirst=True)
+            TeacherDelegationPermission.__table__.create(db.engine, checkfirst=True)
+            print('[OK] Created teacher_delegations tables')
+    except Exception as e:
+        print(f'[WARN] _ensure_teacher_delegation_tables: {e}')
+
 
 
 # ── Seed super admin ──────────────────────────────────────────────────────────

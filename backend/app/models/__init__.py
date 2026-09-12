@@ -18,6 +18,7 @@ from app.models.staff_attendance import (
 from app.models.deleted_item import DeletedItem, DeletedItemType, DeletedItemStatus
 from app.models.otp import OTPVerification, OTPPurpose
 from app.models.device import UserDevice
+from app.models.delegation import TeacherDelegation, TeacherDelegationScope, TeacherDelegationPermission
 
 __all__ = [
     'User', 'UserRole', 'School', 'Product',
@@ -30,5 +31,6 @@ __all__ = [
     'StaffAttendanceAuditLog', 'StaffMonthlyAttendanceSummary',
     'DeletedItem', 'DeletedItemType', 'DeletedItemStatus',
     'OTPVerification', 'OTPPurpose', 'UserDevice',
+    'TeacherDelegation', 'TeacherDelegationScope', 'TeacherDelegationPermission',
 ]
 

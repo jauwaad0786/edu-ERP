@@ -16,6 +16,11 @@ import Landing          from './pages/Landing';
 import Login            from './pages/Login';
 import DashboardRouter  from './pages/DashboardRouter';
 import StudentsPage     from './pages/StudentsPage';
+import SectionShufflePage from './pages/students/SectionShufflePage';
+import BulkEditPage       from './pages/students/BulkEditPage';
+import PromotionPage      from './pages/students/PromotionPage';
+import AnnualRegisterPage from './pages/students/AnnualRegisterPage';
+import StudentImportPage  from './pages/students/StudentImportPage';
 import TeachersPage     from './pages/TeachersPage';
 import ClassesPage      from './pages/ClassesPage';
 import FeesPage         from './pages/FeesPage';
@@ -108,6 +113,7 @@ import EmployeeDetailPage   from './pages/hrms/EmployeeDetailPage';
 import LeaveManagementPage  from './pages/hrms/LeaveManagementPage';
 import PayrollManagerPage   from './pages/hrms/PayrollManagerPage';
 import StaffSelfService     from './pages/hrms/StaffSelfService';
+import DelegationDashboardPage from './pages/delegations/DelegationDashboardPage';
 
 // ── Unified Finance & Fee Management Suite ─────────────────────────────────────
 import FinanceDashboard          from './pages/finance/FinanceDashboard';
@@ -171,6 +177,31 @@ export default function App() {
             <Route path="/students" element={
               <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']} permissions={ROUTE_PERMISSIONS['/students']}>
                 <StudentsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/students/bulk-edit" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER']} permissions={ROUTE_PERMISSIONS['/students/bulk-edit']}>
+                <BulkEditPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/students/section-shuffle" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/students/section-shuffle']}>
+                <SectionShufflePage />
+              </ProtectedRoute>
+            } />
+            <Route path="/students/promotion" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/students/promotion']}>
+                <PromotionPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/students/annual-register" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/students/annual-register']}>
+                <AnnualRegisterPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/students/import" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/students/import']}>
+                <StudentImportPage />
               </ProtectedRoute>
             } />
             <Route path="/students/:id" element={
@@ -509,6 +540,11 @@ export default function App() {
             <Route path="/my-hr" element={
               <ProtectedRoute roles={['TEACHER', 'ACCOUNTANT', 'LIBRARIAN', 'RECEPTIONIST', 'HOSTEL', 'TRANSPORT', 'HR', 'VICE_PRINCIPAL', 'ACADEMIC_COORDINATOR', 'EXAM_CONTROLLER', 'DRIVER', 'PRINCIPAL']}>
                 <StaffSelfService />
+              </ProtectedRoute>
+            } />
+            <Route path="/delegations" element={
+              <ProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ADMIN', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <DelegationDashboardPage />
               </ProtectedRoute>
             } />
 

@@ -274,6 +274,21 @@ def _teacher_subject_ids(user, exam_id=None, class_id=None):
         q_del = q_del.filter_by(class_id=class_id)
     delegated = {d.subject_id for d in q_del.all()}
 
+    # 3. TeacherDelegation active scopes (general temporary access)
+    try:
+        from app.services.teacher_delegation_service import get_active_teacher_delegations_for_user
+        td_active = get_active_teacher_delegations_for_user(user, permission_code='MARKS_ENTER', class_id=class_id)
+        td_active += get_active_teacher_delegations_for_user(user, permission_code='MARKS_EDIT', class_id=class_id)
+        for td in td_active:
+            for sc in (td.scopes or []):
+                if sc.subject_id:
+                    delegated.add(sc.subject_id)
+                elif sc.class_id:
+                    for s_obj in Subject.query.filter_by(class_id=sc.class_id).all():
+                        delegated.add(s_obj.id)
+    except Exception:
+        pass
+
     return assigned | delegated
 
 

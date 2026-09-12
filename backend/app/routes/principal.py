@@ -5975,15 +5975,81 @@ def my_teaching_assignments():
         return jsonify([]), 200
     subjects = Subject.query.filter_by(teacher_id=teacher.id).all()
     result = []
+    seen = set()
     for s in subjects:
         cls = Class.query.get(s.class_id)
         if cls:
+            key = (cls.id, s.id)
+            seen.add(key)
             result.append({
-                'class_id':    cls.id,
-                'class_name':  f"{cls.name} {cls.section}",
-                'subject_id':  s.id,
+                'class_id':     cls.id,
+                'class_name':   f"{cls.name} {cls.section}",
+                'subject_id':   s.id,
                 'subject_name': s.name,
+                'is_delegated': False,
             })
+
+    # Add active temporary delegations
+    from app.services.teacher_delegation_service import get_active_teacher_delegations_for_user
+    active_dels = get_active_teacher_delegations_for_user(user)
+    for d in active_dels:
+        perms = [p.permission_code for p in (d.permissions or [])]
+        s_name = d.source_teacher.user.name if (d.source_teacher and d.source_teacher.user) else 'Colleague'
+        for sc in (d.scopes or []):
+            cls = sc.class_ref or Class.query.get(sc.class_id)
+            if not cls:
+                continue
+            if sc.subject_id:
+                subj = sc.subject_ref or Subject.query.get(sc.subject_id)
+                key = (cls.id, sc.subject_id)
+                if key not in seen:
+                    seen.add(key)
+                    result.append({
+                        'class_id':            cls.id,
+                        'class_name':          f"{cls.name} {cls.section}",
+                        'subject_id':          sc.subject_id,
+                        'subject_name':        subj.name if subj else 'Delegated Subject',
+                        'is_delegated':        True,
+                        'delegation_id':       d.id,
+                        'source_teacher_name': s_name,
+                        'permissions':         perms,
+                        'expires_at':          d.expires_at.isoformat(),
+                    })
+            else:
+                # All subjects in class or general class delegation
+                c_subjs = Subject.query.filter_by(class_id=cls.id).all()
+                if c_subjs:
+                    for cs in c_subjs:
+                        key = (cls.id, cs.id)
+                        if key not in seen:
+                            seen.add(key)
+                            result.append({
+                                'class_id':            cls.id,
+                                'class_name':          f"{cls.name} {cls.section}",
+                                'subject_id':          cs.id,
+                                'subject_name':        cs.name,
+                                'is_delegated':        True,
+                                'delegation_id':       d.id,
+                                'source_teacher_name': s_name,
+                                'permissions':         perms,
+                                'expires_at':          d.expires_at.isoformat(),
+                            })
+                else:
+                    key = (cls.id, None)
+                    if key not in seen:
+                        seen.add(key)
+                        result.append({
+                            'class_id':            cls.id,
+                            'class_name':          f"{cls.name} {cls.section}",
+                            'subject_id':          None,
+                            'subject_name':        'Class Operations',
+                            'is_delegated':        True,
+                            'delegation_id':       d.id,
+                            'source_teacher_name': s_name,
+                            'permissions':         perms,
+                            'expires_at':          d.expires_at.isoformat(),
+                        })
+
     return jsonify(result), 200
 
 

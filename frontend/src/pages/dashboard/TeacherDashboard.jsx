@@ -34,6 +34,7 @@ export default function TeacherDashboard() {
 
   const today = new Date().toISOString().split('T')[0];
   const [assignments, setAssignments] = useState([]); // [{class_id, class_name, subject_id, subject_name}]
+  const [activeDelegations, setActiveDelegations] = useState([]);
 
   useEffect(() => {
     localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light');
@@ -49,11 +50,23 @@ export default function TeacherDashboard() {
         data.forEach(a => {
           if (!seen[a.class_id]) {
             seen[a.class_id] = true;
-            uniqClasses.push({ id: a.class_id, name: a.class_name, section: '' });
+            uniqClasses.push({
+              id: a.class_id,
+              name: a.class_name,
+              section: a.section || '',
+              is_delegated: Boolean(a.is_delegated),
+              delegated_from: a.delegated_from_teacher_name
+            });
           }
         });
         setClasses(uniqClasses);
         if (uniqClasses.length) setSelectedClass(String(uniqClasses[0].id));
+      })
+      .catch(() => {});
+
+    api.get('/teacher/delegations/active')
+      .then(r => {
+        setActiveDelegations(r.data?.active_delegations || []);
       })
       .catch(() => {});
 
@@ -406,6 +419,96 @@ export default function TeacherDashboard() {
             </div>
           </div>
 
+          {/* ══ TEMPORARY DELEGATION ALERT BANNER (If Substitute Duties Active) ══ */}
+          {activeDelegations.length > 0 && (
+            <div style={{
+              background: darkMode
+                ? 'linear-gradient(135deg, rgba(30, 58, 138, 0.35) 0%, rgba(15, 23, 42, 0.8) 100%)'
+                : 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+              border: `2px solid ${darkMode ? '#3b82f6' : '#93c5fd'}`,
+              borderRadius: '20px', padding: '20px 24px', marginBottom: '22px',
+              boxShadow: '0 4px 20px rgba(59, 130, 246, 0.15)',
+              position: 'relative', overflow: 'hidden'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+                  <div style={{
+                    width: '44px', height: '44px', borderRadius: '12px',
+                    background: '#2563eb', color: '#ffffff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '22px', flexShrink: 0, boxShadow: '0 4px 10px rgba(37, 99, 235, 0.35)'
+                  }}>
+                    <i className="ti ti-switch-horizontal" />
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                      <span style={{
+                        background: '#2563eb', color: '#ffffff',
+                        fontSize: '11px', fontWeight: 800, padding: '2px 8px', borderRadius: '6px',
+                        letterSpacing: '0.04em', textTransform: 'uppercase'
+                      }}>
+                        ⚡ Temporary Access Active
+                      </span>
+                      <span style={{
+                        fontSize: '12px', fontWeight: 700,
+                        color: darkMode ? '#93c5fd' : '#1d4ed8'
+                      }}>
+                        Substitute Teacher Duties Assigned by Principal
+                      </span>
+                    </div>
+                    <p style={{ margin: '0 0 10px 0', fontSize: '13.5px', color: darkMode ? '#e2e8f0' : '#1e293b', lineHeight: 1.5 }}>
+                      You have temporary operational access for classes of absent teacher(s). All attendance and marks entered are strictly attributed under your name. Your regular teacher role remains unchanged.
+                    </p>
+
+                    {/* Delegation cards list */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {activeDelegations.map(del => (
+                        <div
+                          key={del.id}
+                          style={{
+                            background: darkMode ? 'rgba(15, 23, 42, 0.6)' : '#ffffff',
+                            border: `1px solid ${darkMode ? 'rgba(255,255,255,0.1)' : '#cbd5e1'}`,
+                            borderRadius: '12px', padding: '12px 16px',
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px'
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontSize: '13px', fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                              Covering for: <span style={{ color: '#2563eb' }}>{del.source_teacher?.name}</span> ({del.reason})
+                            </div>
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '6px' }}>
+                              {(del.scopes || []).map((sc, i) => (
+                                <span
+                                  key={i}
+                                  style={{
+                                    fontSize: '11.5px', fontWeight: 700, padding: '3px 8px', borderRadius: '6px',
+                                    background: darkMode ? 'rgba(59, 130, 246, 0.2)' : '#e0e7ff',
+                                    color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)'
+                                  }}
+                                >
+                                  📚 {sc.class_name} {sc.section || ''} ({sc.subject_name || 'All Subjects'})
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '11px', color: darkMode ? '#94a3b8' : '#64748b' }}>
+                              Temporary window expires:
+                            </div>
+                            <div style={{ fontSize: '12.5px', fontWeight: 800, color: '#f59e0b' }}>
+                              🕒 {new Date(del.expires_at).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* ══ 2. BENTO STAT CARDS ══ */}
           <div style={{
             display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
@@ -557,7 +660,7 @@ export default function TeacherDashboard() {
             >
               {classes.map(c => (
                 <option key={c.id} value={String(c.id)}>
-                  {c.name} {c.section}
+                  {c.name} {c.section} {c.is_delegated ? `⚡ [Temporary: covering for ${c.delegated_from || 'absent teacher'}]` : ''}
                 </option>
               ))}
             </select>

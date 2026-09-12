@@ -262,43 +262,19 @@ export default function StudentsPage() {
             </div>
 
             {/* Action Buttons Toolbar */}
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <button
                 type="button"
                 className="btn btn-primary"
-                onClick={() => { setForm({}); setShowModal(true); }}
-                style={{ background: '#0176d3', borderColor: '#0176d3' }}
+                onClick={() => navigate('/admission')}
+                style={{ background: '#0176d3', borderColor: '#0176d3', fontWeight: 700 }}
               >
                 + New Admission
               </button>
               <button
                 type="button"
                 className="btn btn-neutral"
-                onClick={() => setShowAnnualRegModal(true)}
-                style={{ background: '#f0fdf4', color: '#166534', borderColor: '#bbf7d0', fontWeight: 700 }}
-              >
-                🎓 Annual Re-Registration
-              </button>
-              <button
-                type="button"
-                className="btn btn-neutral"
-                onClick={() => setShowPromoteModal(true)}
-                style={{ background: '#f5f3ff', color: '#6d28d9', borderColor: '#ddd6fe', fontWeight: 700 }}
-              >
-                🚀 Promote / Rollover
-              </button>
-              <button
-                type="button"
-                className="btn btn-neutral"
-                onClick={() => setShowShuffleModal(true)}
-                style={{ background: '#fffbeb', color: '#b45309', borderColor: '#fde68a', fontWeight: 700 }}
-              >
-                🔀 Section Shuffle
-              </button>
-              <button
-                type="button"
-                className="btn btn-neutral"
-                onClick={() => setShowImportModal(true)}
+                onClick={() => navigate('/students/import')}
               >
                 📥 Import CSV
               </button>
@@ -361,7 +337,7 @@ export default function StudentsPage() {
                 <button
                   type="button"
                   className="btn btn-primary btn-sm"
-                  onClick={() => setShowBulkEditModal(true)}
+                  onClick={() => navigate('/students/bulk-edit', { state: { selectedIds: Array.from(selectedIds) } })}
                   style={{ background: '#0284c7', borderColor: '#0284c7' }}
                 >
                   ✏️ Bulk Edit Selection

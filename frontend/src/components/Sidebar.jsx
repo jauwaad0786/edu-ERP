@@ -71,10 +71,13 @@ const ROLE_MENUS = {
         {
           icon: 'ti-address-book', label: 'Student Management', path: '/students',
           children: [
-            { icon: 'ti-user-plus',      label: 'Admissions',            path: '/admission' },
-            { icon: 'ti-address-book',   label: 'Students',              path: '/students' },
+            { icon: 'ti-address-book',   label: 'Students Directory',    path: '/students' },
+            { icon: 'ti-user-plus',      label: 'New Admission',         path: '/admission' },
             { icon: 'ti-edit',           label: 'Students Bulk Edit',    path: '/students/bulk-edit' },
             { icon: 'ti-arrows-shuffle', label: 'Section Shuffle',       path: '/students/section-shuffle' },
+            { icon: 'ti-rocket',         label: 'Promote & Rollover',    path: '/students/promotion' },
+            { icon: 'ti-user-check',     label: 'Annual Re-Registration',path: '/students/annual-register' },
+            { icon: 'ti-file-import',    label: 'Bulk Import CSV',       path: '/students/import' },
             { icon: 'ti-id-badge',       label: 'ID Cards',              path: '/id-cards' },
             { icon: 'ti-certificate',    label: 'Transfer Certificates', path: '/students/transfer-cert' },
           ],
@@ -125,6 +128,7 @@ const ROLE_MENUS = {
           children: [
             { icon: 'ti-layout-dashboard', label: 'HRMS Command Center',   path: '/hrms' },
             { icon: 'ti-users',            label: 'Employee Directory',    path: '/hrms/employees' },
+            { icon: 'ti-switch-horizontal', label: 'Delegations',          path: '/delegations' },
             { icon: 'ti-map-pin',          label: 'GPS Attendance',        path: '/staff/attendance' },
             { icon: 'ti-calendar-event',   label: 'Leaves & Official Duty',path: '/hrms/leaves' },
             { icon: 'ti-cash',             label: 'Payroll & Payslips',    path: '/hrms/payroll' },
