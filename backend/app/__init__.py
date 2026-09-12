@@ -1371,6 +1371,8 @@ def _ensure_fee_plan_columns():
                 'publish_status': "VARCHAR(20) DEFAULT 'PUBLISHED'",
                 'version':        'INTEGER DEFAULT 1',
                 'copied_from_id': 'INTEGER',
+                'is_archived':    'BOOLEAN DEFAULT FALSE',
+                'status':         "VARCHAR(20) DEFAULT 'ACTIVE'",
             }
             with db.engine.connect() as conn:
                 for col, defn in to_add.items():
@@ -1381,6 +1383,29 @@ def _ensure_fee_plan_columns():
                             print(f'[OK] Added column fee_structures_v2.{col}')
                         except Exception as ex:
                             print(f'[WARN] Failed to add fee_structures_v2.{col}: {ex}')
+
+        if 'fee_payment_plans' in table_names:
+            existing_fpp = {c['name'] for c in inspector.get_columns('fee_payment_plans')}
+            fpp_cols = {
+                'code':                "VARCHAR(50) DEFAULT 'MONTHLY'",
+                'months_count':        'INTEGER DEFAULT 1',
+                'discount_type':       "VARCHAR(20) DEFAULT 'PERCENTAGE'",
+                'discount_value':      'FLOAT DEFAULT 0.0',
+                'eligible_categories': "TEXT DEFAULT '[\"ACADEMIC\"]'",
+                'description':         'VARCHAR(255)',
+                'is_active':           'BOOLEAN DEFAULT TRUE',
+                'sort_order':          'INTEGER DEFAULT 0',
+                'session':             "VARCHAR(20) DEFAULT '2026-27'",
+            }
+            with db.engine.connect() as conn:
+                for col, defn in fpp_cols.items():
+                    if col not in existing_fpp:
+                        try:
+                            conn.execute(text(f'ALTER TABLE fee_payment_plans ADD COLUMN {col} {defn}'))
+                            conn.commit()
+                            print(f'[OK] Added column fee_payment_plans.{col}')
+                        except Exception as ex:
+                            print(f'[WARN] Failed to add fee_payment_plans.{col}: {ex}')
 
         if 'fee_records' in table_names:
             existing_fr = {c['name'] for c in inspector.get_columns('fee_records')}

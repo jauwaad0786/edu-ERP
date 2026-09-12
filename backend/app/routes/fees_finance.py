@@ -178,18 +178,22 @@ def get_fee_structures():
     session = request.args.get('session', '2026-27')
     class_id = request.args.get('class_id', None)
 
-    q = FeeStructureV2.query.filter_by(school_id=user.school_id, session=session, is_active=True)
-    if class_id:
-        q = q.filter(db.or_(FeeStructureV2.class_id == class_id, FeeStructureV2.class_id.is_(None)))
+    try:
+        q = FeeStructureV2.query.filter_by(school_id=user.school_id, session=session, is_active=True)
+        if class_id:
+            q = q.filter(db.or_(FeeStructureV2.class_id == class_id, FeeStructureV2.class_id.is_(None)))
 
-    structures = q.order_by(FeeStructureV2.class_id.asc()).all()
-    results = []
-    for s in structures:
-        try:
-            results.append(s.to_dict())
-        except Exception:
-            pass
-    return jsonify(results), 200
+        structures = q.order_by(FeeStructureV2.class_id.asc()).all()
+        results = []
+        for s in structures:
+            try:
+                results.append(s.to_dict())
+            except Exception as item_err:
+                print(f"[WARN] Error serializing fee structure {s.id}: {item_err}")
+        return jsonify(results), 200
+    except Exception as ex:
+        print(f"[ERROR] get_fee_structures failed: {ex}")
+        return jsonify([]), 200
 
 
 @fees_finance_bp.route('/structures', methods=['POST'])
@@ -361,66 +365,87 @@ def get_fee_setup_readiness():
         return jsonify({'error': 'Unauthorized'}), 401
 
     session = request.args.get('session', '2026-27')
-    classes = Class.query.filter_by(school_id=user.school_id).order_by(Class.name.asc(), Class.section.asc()).all()
-
-    # Get published fee structures for this session
-    published_structs = FeeStructureV2.query.filter(
-        FeeStructureV2.school_id == user.school_id,
-        FeeStructureV2.session == session,
-        FeeStructureV2.is_active == True,
-        FeeStructureV2.is_archived == False,
-        FeeStructureV2.publish_status == 'PUBLISHED'
-    ).all()
-
-    school_wide = next((s for s in published_structs if s.class_id is None), None)
-    class_map = {s.class_id: s for s in published_structs if s.class_id is not None}
-
-    classes_with_plan = []
-    classes_missing_plan = []
-
-    for c in classes:
-        c_dict = {'id': c.id, 'name': c.name, 'section': c.section or '', 'display_name': f"{c.name} {c.section or ''}".strip()}
-        st = class_map.get(c.id) or school_wide
-        if st:
-            c_dict['structure_id'] = st.id
-            c_dict['structure_name'] = st.name
-            c_dict['total_amount'] = st.total_amount()
-            c_dict['frequency'] = st.frequency
-            classes_with_plan.append(c_dict)
-        else:
-            classes_missing_plan.append(c_dict)
-
-    # Seed payment plans if none
-    _seed_default_payment_plans(user.school_id, session)
-
-    payment_plans = FeePaymentPlan.query.filter_by(
-        school_id=user.school_id, session=session, is_active=True
-    ).all()
-
     try:
-        from app.models.hostel import HostelFeeStructure
-        hostel_count = HostelFeeStructure.query.filter_by(school_id=user.school_id, status='ACTIVE').count()
-    except Exception:
-        hostel_count = 0
+        classes = Class.query.filter_by(school_id=user.school_id).order_by(Class.name.asc(), Class.section.asc()).all()
 
-    try:
-        from app.models.transport_student import TransportFeeStructure
-        transport_count = TransportFeeStructure.query.filter_by(school_id=user.school_id, status='ACTIVE').count()
-    except Exception:
-        transport_count = 0
+        # Get published fee structures for this session
+        published_structs = FeeStructureV2.query.filter(
+            FeeStructureV2.school_id == user.school_id,
+            FeeStructureV2.session == session,
+            FeeStructureV2.is_active == True,
+            FeeStructureV2.is_archived == False,
+            FeeStructureV2.publish_status == 'PUBLISHED'
+        ).all()
 
-    return jsonify({
-        'session': session,
-        'total_classes': len(classes),
-        'published_classes_count': len(classes_with_plan),
-        'missing_classes_count': len(classes_missing_plan),
-        'classes_with_plan': classes_with_plan,
-        'classes_missing_plan': classes_missing_plan,
-        'is_ready_for_admissions': (len(classes) == 0 or len(classes_missing_plan) == 0) and len(published_structs) > 0,
-        'payment_plans_count': len(payment_plans),
-        'hostel_fee_count': hostel_count,
-        'transport_fee_count': transport_count,
-    }), 200
+        school_wide = next((s for s in published_structs if s.class_id is None), None)
+        class_map = {s.class_id: s for s in published_structs if s.class_id is not None}
+
+        classes_with_plan = []
+        classes_missing_plan = []
+
+        for c in classes:
+            c_dict = {'id': c.id, 'name': c.name, 'section': c.section or '', 'display_name': f"{c.name} {c.section or ''}".strip()}
+            st = class_map.get(c.id) or school_wide
+            if st:
+                c_dict['structure_id'] = st.id
+                c_dict['structure_name'] = st.name
+                c_dict['total_amount'] = st.total_amount()
+                c_dict['frequency'] = st.frequency
+                classes_with_plan.append(c_dict)
+            else:
+                classes_missing_plan.append(c_dict)
+
+        # Seed payment plans if none
+        try:
+            _seed_default_payment_plans(user.school_id, session)
+        except Exception as seed_err:
+            print(f"[WARN] Error seeding payment plans: {seed_err}")
+
+        try:
+            payment_plans = FeePaymentPlan.query.filter_by(
+                school_id=user.school_id, session=session, is_active=True
+            ).all()
+        except Exception:
+            payment_plans = []
+
+        try:
+            from app.models.hostel import HostelFeeStructure
+            hostel_count = HostelFeeStructure.query.filter_by(school_id=user.school_id, status='ACTIVE').count()
+        except Exception:
+            hostel_count = 0
+
+        try:
+            from app.models.transport_student import TransportFeeStructure
+            transport_count = TransportFeeStructure.query.filter_by(school_id=user.school_id, status='ACTIVE').count()
+        except Exception:
+            transport_count = 0
+
+        return jsonify({
+            'session': session,
+            'total_classes': len(classes),
+            'published_classes_count': len(classes_with_plan),
+            'missing_classes_count': len(classes_missing_plan),
+            'classes_with_plan': classes_with_plan,
+            'classes_missing_plan': classes_missing_plan,
+            'is_ready_for_admissions': (len(classes) == 0 or len(classes_missing_plan) == 0) and len(published_structs) > 0,
+            'payment_plans_count': len(payment_plans),
+            'hostel_fee_count': hostel_count,
+            'transport_fee_count': transport_count,
+        }), 200
+    except Exception as ex:
+        print(f"[ERROR] get_fee_setup_readiness failed: {ex}")
+        return jsonify({
+            'session': session,
+            'total_classes': 0,
+            'published_classes_count': 0,
+            'missing_classes_count': 0,
+            'classes_with_plan': [],
+            'classes_missing_plan': [],
+            'is_ready_for_admissions': False,
+            'payment_plans_count': 0,
+            'hostel_fee_count': 0,
+            'transport_fee_count': 0,
+        }), 200
 
 
 @fees_finance_bp.route('/structures/<int:struct_id>/publish', methods=['PATCH'])
