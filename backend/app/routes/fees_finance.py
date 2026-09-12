@@ -408,17 +408,28 @@ def get_fee_setup_readiness():
         except Exception:
             payment_plans = []
 
-        try:
-            from app.models.hostel import HostelFeeStructure
-            hostel_count = HostelFeeStructure.query.filter_by(school_id=user.school_id, status='ACTIVE').count()
-        except Exception:
-            hostel_count = 0
-
+        # Transport structures & routes
         try:
             from app.models.transport_student import TransportFeeStructure
-            transport_count = TransportFeeStructure.query.filter_by(school_id=user.school_id, status='ACTIVE').count()
+            from app.models.transport import Route
+            tfs_list = TransportFeeStructure.query.filter_by(school_id=user.school_id, status='ACTIVE').all()
+            transport_structures = [t.to_dict() for t in tfs_list]
+            routes_list = Route.query.filter_by(school_id=user.school_id, status='ACTIVE').all()
+            transport_routes = [r.to_dict(include_stops=True, include_counts=True) for r in routes_list]
         except Exception:
-            transport_count = 0
+            transport_structures = []
+            transport_routes = []
+
+        # Hostel structures & hostels
+        try:
+            from app.models.hostel import HostelFeeStructure, Hostel
+            hfs_list = HostelFeeStructure.query.filter_by(school_id=user.school_id, status='ACTIVE').all()
+            hostel_structures = [h.to_dict() for h in hfs_list]
+            hostel_list = Hostel.query.filter_by(school_id=user.school_id, status='ACTIVE').all()
+            hostels = [h.to_dict(include_counts=True) for h in hostel_list]
+        except Exception:
+            hostel_structures = []
+            hostels = []
 
         return jsonify({
             'session': session,
@@ -429,9 +440,124 @@ def get_fee_setup_readiness():
             'classes_missing_plan': classes_missing_plan,
             'is_ready_for_admissions': (len(classes) == 0 or len(classes_missing_plan) == 0) and len(published_structs) > 0,
             'payment_plans_count': len(payment_plans),
-            'hostel_fee_count': hostel_count,
-            'transport_fee_count': transport_count,
+            'hostel_fee_count': len(hostel_structures),
+            'transport_fee_count': len(transport_structures),
+            'transport_structures': transport_structures,
+            'transport_routes': transport_routes,
+            'hostel_structures': hostel_structures,
+            'hostels': hostels,
         }), 200
+    except Exception as ex:
+        print(f"[ERROR] get_fee_setup_readiness failed: {ex}")
+        return jsonify({
+            'session': session,
+            'total_classes': 0,
+            'published_classes_count': 0,
+            'missing_classes_count': 0,
+            'classes_with_plan': [],
+            'classes_missing_plan': [],
+            'is_ready_for_admissions': False,
+            'payment_plans_count': 0,
+            'hostel_fee_count': 0,
+            'transport_fee_count': 0,
+            'transport_structures': [],
+            'transport_routes': [],
+            'hostel_structures': [],
+            'hostels': [],
+        }), 200
+
+
+@fees_finance_bp.route('/optional-services/transport-fee', methods=['POST'])
+@jwt_required()
+def create_optional_transport_fee():
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+    data = request.get_json() or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Fee slab name is required'}), 400
+    try:
+        from app.models.transport_student import TransportFeeStructure
+        row = TransportFeeStructure(
+            school_id=user.school_id,
+            name=name,
+            frequency=data.get('frequency', 'MONTHLY'),
+            amount=float(data.get('amount', 0)),
+            route_id=int(data.get('route_id')) if data.get('route_id') else None,
+            academic_year=data.get('academic_year', ''),
+            created_by=user.id
+        )
+        db.session.add(row)
+        db.session.commit()
+        return jsonify({'message': 'Transport fee slab created and synchronized', 'data': row.to_dict()}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+
+
+@fees_finance_bp.route('/optional-services/transport-fee/<int:id>', methods=['DELETE'])
+@jwt_required()
+def delete_optional_transport_fee(id):
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+    try:
+        from app.models.transport_student import TransportFeeStructure
+        row = TransportFeeStructure.query.filter_by(id=id, school_id=user.school_id).first_or_404()
+        row.status = 'INACTIVE'
+        db.session.commit()
+        return jsonify({'message': 'Transport fee slab removed'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+
+
+@fees_finance_bp.route('/optional-services/hostel-fee', methods=['POST'])
+@jwt_required()
+def create_optional_hostel_fee():
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+    data = request.get_json() or {}
+    hostel_id = data.get('hostel_id')
+    if not hostel_id:
+        return jsonify({'error': 'Hostel selection is required'}), 400
+    try:
+        from app.models.hostel import HostelFeeStructure
+        row = HostelFeeStructure(
+            school_id=user.school_id,
+            hostel_id=int(hostel_id),
+            sharing_type=data.get('sharing_type', 'DOUBLE'),
+            is_ac=bool(data.get('is_ac', False)),
+            monthly_fee=float(data.get('monthly_fee', 0)),
+            mess_charges=float(data.get('mess_charges', 0)),
+            electricity_charges=float(data.get('electricity_charges', 0)),
+            created_by=user.id
+        )
+        db.session.add(row)
+        db.session.commit()
+        return jsonify({'message': 'Hostel fee slab created and synchronized', 'data': row.to_dict()}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+
+
+@fees_finance_bp.route('/optional-services/hostel-fee/<int:id>', methods=['DELETE'])
+@jwt_required()
+def delete_optional_hostel_fee(id):
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+    try:
+        from app.models.hostel import HostelFeeStructure
+        row = HostelFeeStructure.query.filter_by(id=id, school_id=user.school_id).first_or_404()
+        row.status = 'INACTIVE'
+        db.session.commit()
+        return jsonify({'message': 'Hostel fee slab removed'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
     except Exception as ex:
         print(f"[ERROR] get_fee_setup_readiness failed: {ex}")
         return jsonify({
@@ -1008,21 +1134,35 @@ def list_bills():
     if not user or not user.school_id:
         return jsonify({'error': 'Unauthorized'}), 401
 
-    month   = request.args.get('month')
-    class_id= request.args.get('class_id')
-    status  = request.args.get('status')
-    search  = (request.args.get('search') or '').strip()
-    session = request.args.get('session', '2026-27')
+    month      = request.args.get('month')
+    class_id   = request.args.get('class_id')
+    status     = request.args.get('status')
+    search     = (request.args.get('search') or '').strip()
+    session    = request.args.get('session')
+    department = request.args.get('department')
 
     from sqlalchemy.orm import joinedload
     q = FeeBill.query.options(
         joinedload(FeeBill.student).joinedload(Student.user),
         joinedload(FeeBill.student).joinedload(Student.class_ref),
         joinedload(FeeBill.items)
-    ).filter_by(school_id=user.school_id, session=session).filter(FeeBill.status != BillStatus.CANCELLED.value)
+    ).filter_by(school_id=user.school_id).filter(FeeBill.status != BillStatus.CANCELLED.value)
+
+    if session:
+        q = q.filter(db.or_(FeeBill.session == session, FeeBill.session.is_(None), FeeBill.session == ''))
+
+    if department:
+        from app.models.fee_finance import FeeBillItem
+        q = q.join(FeeBill.items).filter(FeeBillItem.department == department.upper())
 
     if month:
-        q = q.filter_by(bill_month=month)
+        import calendar
+        try:
+            yr, mo = map(int, month.split('-'))
+            m_label = f"{calendar.month_name[mo]} {yr}"
+            q = q.filter(db.or_(FeeBill.bill_month == month, FeeBill.bill_month == m_label, FeeBill.bill_period_label.ilike(f"%{m_label}%")))
+        except Exception:
+            q = q.filter(FeeBill.bill_month == month)
     if status:
         q = q.filter_by(status=status)
 

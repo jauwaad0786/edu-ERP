@@ -19,7 +19,12 @@ export default function FeeBillsPage({ defaultOpenGenerate = false }) {
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
   const [selectedMonth, setSelectedMonth] = useState('');
+  const [selectedDepartment, setSelectedDepartment] = useState('');
   const [search, setSearch] = useState('');
+
+  // Itemized breakdown modal
+  const [itemModal, setItemModal] = useState(false);
+  const [selectedBill, setSelectedBill] = useState(null);
 
   // Generate Bills Modal
   const isGenerateTrigger = defaultOpenGenerate || location.pathname.includes('generate-fees') || location.search.includes('action=generate');
@@ -52,6 +57,7 @@ export default function FeeBillsPage({ defaultOpenGenerate = false }) {
       if (selectedClass) params.append('class_id', selectedClass);
       if (selectedStatus) params.append('status', selectedStatus);
       if (selectedMonth) params.append('month', selectedMonth);
+      if (selectedDepartment) params.append('department', selectedDepartment);
 
       const res = await api.get(`/fees-finance/bills?${params.toString()}`);
       setBills(res.data || []);
@@ -68,7 +74,7 @@ export default function FeeBillsPage({ defaultOpenGenerate = false }) {
 
   useEffect(() => {
     fetchBills();
-  }, [selectedClass, selectedStatus, selectedMonth]);
+  }, [selectedClass, selectedStatus, selectedMonth, selectedDepartment]);
 
   const handleGenerateBills = async (e) => {
     e.preventDefault();
@@ -112,12 +118,19 @@ export default function FeeBillsPage({ defaultOpenGenerate = false }) {
   };
 
   const filteredBills = bills.filter((b) => {
+    if (selectedDepartment) {
+      const hasDept = (b.items || []).some(
+        (it) => (it.department || '').toUpperCase() === selectedDepartment.toUpperCase()
+      );
+      if (!hasDept) return false;
+    }
     if (!search) return true;
     const s = search.toLowerCase();
     return (
       b.student_name?.toLowerCase().includes(s) ||
       b.admission_no?.toLowerCase().includes(s) ||
-      b.bill_no?.toLowerCase().includes(s)
+      b.bill_no?.toLowerCase().includes(s) ||
+      (b.items || []).some((it) => (it.fee_head_name || '').toLowerCase().includes(s))
     );
   });
 
@@ -188,6 +201,45 @@ export default function FeeBillsPage({ defaultOpenGenerate = false }) {
             </div>
           </div>
 
+          {/* Quick Metrics Bar with Department Reconciliation */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 16 }}>
+            <div className="card" style={{ padding: 14, background: '#f8fafc' }}>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Total Demands Billed</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: '#0B3B7B', marginTop: 4 }}>
+                {fmt(bills.reduce((acc, b) => acc + (b.total_payable || 0), 0))}
+              </div>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{bills.length} active demand notices</div>
+            </div>
+
+            <div className="card" style={{ padding: 14, background: '#f0fdf4' }}>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: '#166534', textTransform: 'uppercase' }}>Collected Payments</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: '#15803d', marginTop: 4 }}>
+                {fmt(bills.reduce((acc, b) => acc + (b.amount_paid || 0), 0))}
+              </div>
+              <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>Synchronized across counters</div>
+            </div>
+
+            <div className="card" style={{ padding: 14, background: '#fffbeb' }}>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: '#92400e', textTransform: 'uppercase' }}>Outstanding Balance</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: '#d97706', marginTop: 4 }}>
+                {fmt(bills.reduce((acc, b) => acc + (b.balance_due || 0), 0))}
+              </div>
+              <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>Due across all departments</div>
+            </div>
+
+            <div className="card" style={{ padding: 14, background: '#eff6ff' }}>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: '#1e40af', textTransform: 'uppercase' }}>Service Reconciliation</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6, fontSize: 11 }}>
+                <span className="badge badge-warning" style={{ fontWeight: 700, background: '#fef3c7', color: '#b45309' }}>
+                  🚌 Transport: {fmt(bills.reduce((acc, b) => acc + (b.items || []).filter(i => (i.department || '').toUpperCase() === 'TRANSPORT').reduce((s, it) => s + (it.net_amount || 0), 0), 0))}
+                </span>
+                <span className="badge badge-purple" style={{ fontWeight: 700, background: '#f3e8ff', color: '#7e22ce' }}>
+                  🏢 Hostel: {fmt(bills.reduce((acc, b) => acc + (b.items || []).filter(i => (i.department || '').toUpperCase() === 'HOSTEL').reduce((s, it) => s + (it.net_amount || 0), 0), 0))}
+                </span>
+              </div>
+            </div>
+          </div>
+
           {/* Filter Bar */}
           <div className="card mb-6" style={{ padding: 14 }}>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -196,13 +248,26 @@ export default function FeeBillsPage({ defaultOpenGenerate = false }) {
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search student by name, admission no, or bill no..."
+                  placeholder="Search student, admission no, bill no, or fee head..."
                   className="form-input"
                   style={{ width: '100%', height: 36 }}
                 />
               </div>
 
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <select
+                  value={selectedDepartment}
+                  onChange={(e) => setSelectedDepartment(e.target.value)}
+                  className="form-select"
+                  style={{ height: 36, width: 170, fontWeight: 600 }}
+                >
+                  <option value="">All Services (Unified)</option>
+                  <option value="ACCOUNTS">🏫 Academic / Tuition</option>
+                  <option value="TRANSPORT">🚌 School Bus Transport</option>
+                  <option value="HOSTEL">🏢 Boarding &amp; Hostel</option>
+                  <option value="LIBRARY">📚 Library &amp; Caution</option>
+                </select>
+
                 <select
                   value={selectedMonth}
                   onChange={(e) => setSelectedMonth(e.target.value)}
@@ -290,8 +355,9 @@ export default function FeeBillsPage({ defaultOpenGenerate = false }) {
                   <thead>
                     <tr>
                       <th>Bill No</th>
-                      <th>Student & Class</th>
+                      <th>Student &amp; Class</th>
                       <th>Period</th>
+                      <th>Included Services</th>
                       <th style={{ textAlign: 'right' }}>Total Payable</th>
                       <th style={{ textAlign: 'right' }}>Paid</th>
                       <th style={{ textAlign: 'right' }}>Balance Due</th>
@@ -301,53 +367,81 @@ export default function FeeBillsPage({ defaultOpenGenerate = false }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredBills.map((b) => (
-                      <tr key={b.id}>
-                        <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--blue-60)' }}>
-                          {b.bill_no}
-                        </td>
-                        <td>
-                          <div style={{ fontWeight: 700, color: 'var(--neutral-9)' }}>{b.student_name}</div>
-                          <div className="text-xs text-muted">
-                            {b.admission_no} • {b.class_name}
-                          </div>
-                        </td>
-                        <td style={{ fontWeight: 600 }}>{b.bill_period_label}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(b.total_payable)}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 600, color: '#2e844a' }}>{fmt(b.amount_paid)}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 800, color: b.balance_due > 0 ? '#dd7a01' : '#2e844a' }}>
-                          {fmt(b.balance_due)}
-                        </td>
-                        <td style={{ fontWeight: 500 }}>{b.due_date}</td>
-                        <td>{getStatusBadge(b.status)}</td>
-                        <td style={{ textAlign: 'center' }}>
-                          <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
-                            <button
-                              onClick={() => downloadBillPDF(b.id, b.bill_no)}
-                              className="btn btn-neutral btn-sm"
-                              title="Download Demand Slip PDF"
-                            >
-                              <i className="ti ti-download"></i> PDF
-                            </button>
-                            <button
-                              onClick={() => navigate(`/finance/students/${b.student_id}/ledger`)}
-                              className="btn btn-neutral btn-sm"
-                              title="View Student Ledger"
-                            >
-                              <i className="ti ti-file-text"></i> Ledger
-                            </button>
-                            {b.balance_due > 0 && (
+                    {filteredBills.map((b) => {
+                      const items = b.items || [];
+                      const hasAccounts = items.some(it => (it.department || '').toUpperCase() === 'ACCOUNTS');
+                      const hasTransport = items.some(it => (it.department || '').toUpperCase() === 'TRANSPORT');
+                      const hasHostel = items.some(it => (it.department || '').toUpperCase() === 'HOSTEL');
+                      const hasLibrary = items.some(it => (it.department || '').toUpperCase() === 'LIBRARY');
+
+                      return (
+                        <tr key={b.id}>
+                          <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--blue-60)' }}>
+                            {b.bill_no}
+                          </td>
+                          <td>
+                            <div style={{ fontWeight: 700, color: 'var(--neutral-9)' }}>{b.student_name}</div>
+                            <div className="text-xs text-muted">
+                              {b.admission_no} • {b.class_name}
+                            </div>
+                          </td>
+                          <td style={{ fontWeight: 600 }}>{b.bill_period_label}</td>
+                          <td>
+                            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                              {hasAccounts && <span className="badge badge-info" style={{ fontSize: 10 }}>🏫 Academic</span>}
+                              {hasTransport && <span className="badge badge-warning" style={{ fontSize: 10, background: '#fef3c7', color: '#b45309' }}>🚌 Transport</span>}
+                              {hasHostel && <span className="badge badge-purple" style={{ fontSize: 10, background: '#f3e8ff', color: '#7e22ce' }}>🏢 Hostel</span>}
+                              {hasLibrary && <span className="badge badge-neutral" style={{ fontSize: 10 }}>📚 Library</span>}
+                              {!hasAccounts && !hasTransport && !hasHostel && !hasLibrary && (
+                                <span className="badge badge-neutral" style={{ fontSize: 10 }}>Standard Fee</span>
+                              )}
                               <button
-                                onClick={() => navigate(`/finance/payments/collect?student_id=${b.student_id}&bill_id=${b.id}`)}
-                                className="btn btn-primary btn-sm"
+                                type="button"
+                                onClick={() => { setSelectedBill(b); setItemModal(true); }}
+                                className="btn btn-neutral btn-sm"
+                                style={{ padding: '1px 6px', fontSize: 10, fontWeight: 700, marginLeft: 2 }}
+                                title="View itemized breakdown"
                               >
-                                Pay
+                                {items.length || 1} Heads 🔍
                               </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                            </div>
+                          </td>
+                          <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(b.total_payable)}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 600, color: '#2e844a' }}>{fmt(b.amount_paid)}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 800, color: b.balance_due > 0 ? '#dd7a01' : '#2e844a' }}>
+                            {fmt(b.balance_due)}
+                          </td>
+                          <td style={{ fontWeight: 500 }}>{b.due_date}</td>
+                          <td>{getStatusBadge(b.status)}</td>
+                          <td style={{ textAlign: 'center' }}>
+                            <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+                              <button
+                                onClick={() => downloadBillPDF(b.id, b.bill_no)}
+                                className="btn btn-neutral btn-sm"
+                                title="Download Demand Slip PDF"
+                              >
+                                <i className="ti ti-download"></i> PDF
+                              </button>
+                              <button
+                                onClick={() => navigate(`/finance/students/${b.student_id}/ledger`)}
+                                className="btn btn-neutral btn-sm"
+                                title="View Student Ledger"
+                              >
+                                <i className="ti ti-file-text"></i> Ledger
+                              </button>
+                              {b.balance_due > 0 && (
+                                <button
+                                  onClick={() => navigate(`/finance/payments/collect?student_id=${b.student_id}&bill_id=${b.id}`)}
+                                  className="btn btn-primary btn-sm"
+                                >
+                                  Pay
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -503,6 +597,137 @@ export default function FeeBillsPage({ defaultOpenGenerate = false }) {
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          {/* Itemized Heads Breakdown Modal */}
+          {itemModal && selectedBill && (
+            <div className="modal-backdrop">
+              <div className="modal" style={{ maxWidth: 680 }}>
+                <div className="modal-header">
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span className="badge badge-info" style={{ fontFamily: 'monospace', fontWeight: 700 }}>
+                        {selectedBill.bill_no}
+                      </span>
+                      <h3 style={{ fontSize: '1.125rem', fontWeight: 800, margin: 0, color: '#0B3B7B' }}>
+                        Itemized Service Breakdown
+                      </h3>
+                    </div>
+                    <div className="text-xs text-muted" style={{ marginTop: 2 }}>
+                      {selectedBill.student_name} ({selectedBill.admission_no}) • {selectedBill.class_name} • {selectedBill.bill_period_label}
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => { setItemModal(false); setSelectedBill(null); }} className="modal-close">✕</button>
+                </div>
+
+                <div className="modal-body" style={{ padding: 20 }}>
+                  {/* Financial Summary Strip */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, background: '#f8fafc', padding: 12, borderRadius: 8, border: '1px solid #e2e8f0', marginBottom: 16 }}>
+                    <div>
+                      <div style={{ fontSize: 11, color: '#64748b' }}>Total Billed</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: '#0B3B7B' }}>{fmt(selectedBill.total_payable)}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, color: '#64748b' }}>Paid</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: '#16a34a' }}>{fmt(selectedBill.amount_paid)}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, color: '#64748b' }}>Balance Due</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: selectedBill.balance_due > 0 ? '#d97706' : '#16a34a' }}>{fmt(selectedBill.balance_due)}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, color: '#64748b' }}>Status</div>
+                      <div style={{ marginTop: 2 }}>{getStatusBadge(selectedBill.status)}</div>
+                    </div>
+                  </div>
+
+                  {/* Line Items Table */}
+                  <div className="table-container" style={{ border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
+                    <table className="table" style={{ margin: 0 }}>
+                      <thead>
+                        <tr style={{ background: '#f1f5f9' }}>
+                          <th>Fee Head / Service</th>
+                          <th>Department</th>
+                          <th style={{ textAlign: 'right' }}>Amount</th>
+                          <th style={{ textAlign: 'right' }}>Discount</th>
+                          <th style={{ textAlign: 'right' }}>Net Due</th>
+                          <th style={{ textAlign: 'right' }}>Paid</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(selectedBill.items || []).length === 0 ? (
+                          <tr>
+                            <td colSpan="6" style={{ textAlign: 'center', color: '#64748b', padding: 16 }}>
+                              No itemized lines recorded for this demand notice.
+                            </td>
+                          </tr>
+                        ) : (
+                          selectedBill.items.map((it, idx) => (
+                            <tr key={it.id || idx}>
+                              <td>
+                                <div style={{ fontWeight: 700, color: '#1e293b' }}>
+                                  {it.fee_head_name || it.coverage_label || 'Tuition / Base Fee'}
+                                </div>
+                                {it.coverage_label && (
+                                  <div style={{ fontSize: 11, color: '#64748b' }}>{it.coverage_label}</div>
+                                )}
+                              </td>
+                              <td>
+                                {it.department === 'TRANSPORT' ? (
+                                  <span className="badge badge-warning" style={{ fontSize: 10, background: '#fef3c7', color: '#b45309', fontWeight: 700 }}>
+                                    🚌 Transport
+                                  </span>
+                                ) : it.department === 'HOSTEL' ? (
+                                  <span className="badge badge-purple" style={{ fontSize: 10, background: '#f3e8ff', color: '#7e22ce', fontWeight: 700 }}>
+                                    🏢 Hostel
+                                  </span>
+                                ) : it.department === 'LIBRARY' ? (
+                                  <span className="badge badge-neutral" style={{ fontSize: 10, fontWeight: 700 }}>
+                                    📚 Library
+                                  </span>
+                                ) : (
+                                  <span className="badge badge-info" style={{ fontSize: 10, fontWeight: 700 }}>
+                                    🏫 Academic
+                                  </span>
+                                )}
+                              </td>
+                              <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(it.original_amount)}</td>
+                              <td style={{ textAlign: 'right', color: '#16a34a' }}>{it.discount_amount > 0 ? `-${fmt(it.discount_amount)}` : '—'}</td>
+                              <td style={{ textAlign: 'right', fontWeight: 800, color: '#0B3B7B' }}>{fmt(it.net_amount)}</td>
+                              <td style={{ textAlign: 'right', fontWeight: 600, color: '#16a34a' }}>{fmt(it.paid_amount || 0)}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', padding: 16 }}>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => downloadBillPDF(selectedBill.id, selectedBill.bill_no)}
+                      className="btn btn-neutral btn-sm"
+                    >
+                      <i className="ti ti-download" /> Download PDF
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/finance/students/${selectedBill.student_id}/ledger`)}
+                      className="btn btn-neutral btn-sm"
+                    >
+                      <i className="ti ti-file-text" /> 360° Ledger
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setItemModal(false); setSelectedBill(null); }}
+                    className="btn btn-primary btn-sm"
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
             </div>
           )}

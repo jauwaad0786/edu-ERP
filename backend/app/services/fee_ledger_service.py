@@ -422,11 +422,28 @@ def get_student_applicable_charges(student_id, session='2026-27', bill_month=Non
             if trans_head:
                 ca = custom_assignments.get(trans_head.id)
                 if not (ca and ca.is_exempt):
-                    trans_amt = 1200.0
-                    if st_trans.stop and hasattr(st_trans.stop, 'monthly_fee') and st_trans.stop.monthly_fee:
+                    from app.models.transport_student import TransportFeeStructure
+                    fs = None
+                    if st_trans.route_id:
+                        fs = TransportFeeStructure.query.filter_by(
+                            school_id=student.school_id, route_id=st_trans.route_id, status='ACTIVE'
+                        ).first()
+                    if not fs:
+                        fs = TransportFeeStructure.query.filter_by(
+                            school_id=student.school_id, route_id=None, status='ACTIVE'
+                        ).first()
+
+                    if fs and fs.amount:
+                        trans_amt = float(fs.amount)
+                    elif st_trans.route and hasattr(st_trans.route, 'fare') and st_trans.route.fare:
+                        trans_amt = float(st_trans.route.fare)
+                    elif st_trans.stop and hasattr(st_trans.stop, 'monthly_fee') and st_trans.stop.monthly_fee:
                         trans_amt = float(st_trans.stop.monthly_fee)
                     elif st_trans.pickup_stop and hasattr(st_trans.pickup_stop, 'monthly_fee') and st_trans.pickup_stop.monthly_fee:
                         trans_amt = float(st_trans.pickup_stop.monthly_fee)
+                    else:
+                        trans_amt = 1200.0
+
                     if ca and ca.custom_amount is not None:
                         trans_amt = ca.custom_amount
 
@@ -593,7 +610,32 @@ def register_or_sync_service_charge(
         db.session.add(fh)
         db.session.flush()
 
-    b_month = billing_period or date.today().strftime('%Y-%m')
+    # Normalize billing_period to canonical YYYY-MM format
+    b_month = date.today().strftime('%Y-%m')
+    m_label = coverage_label or description
+    if billing_period:
+        bp = str(billing_period).strip()
+        if len(bp) == 7 and bp[4] == '-':
+            b_month = bp
+            try:
+                yr, mo = map(int, bp.split('-'))
+                m_label = f"{calendar.month_name[mo]} {yr}"
+            except Exception:
+                pass
+        else:
+            parsed = False
+            for fmt_str in ('%B %Y', '%b %Y', '%Y-%m', '%m-%Y', '%B, %Y', '%B-%Y'):
+                try:
+                    dt = datetime.strptime(bp, fmt_str)
+                    b_month = dt.strftime('%Y-%m')
+                    m_label = dt.strftime('%B %Y')
+                    parsed = True
+                    break
+                except Exception:
+                    continue
+            if not parsed:
+                b_month = bp
+
     d_date = due_date or date.today()
 
     # Find or create active monthly bill
@@ -604,11 +646,6 @@ def register_or_sync_service_charge(
     if not bill:
         rcpt_count = FeeBill.query.filter_by(school_id=school_id).count() + 1
         bill_no = f"BILL-{date.today().year}-{rcpt_count:06d}"
-        try:
-            yr, mo = map(int, b_month.split('-'))
-            m_label = f"{calendar.month_name[mo]} {yr}"
-        except Exception:
-            m_label = f"Billing Period {b_month}"
 
         bill = FeeBill(
             bill_no=bill_no,

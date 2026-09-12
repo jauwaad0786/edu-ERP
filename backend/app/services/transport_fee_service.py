@@ -133,6 +133,8 @@ def generate_transport_fee_record(assignment, created_by_id=None, month=None, fe
             source_type='CHARGE',
             source_ref_id=assignment.id,
             description=remarks,
+            session=assignment.academic_year or '2026-27',
+            due_date=calc_due_date,
             billing_period=month_str,
             actor_user_id=created_by_id
         )

@@ -74,6 +74,29 @@ export default function FeeSetupPage() {
   });
   const [savingConc, setSavingConc] = useState(false);
 
+  // Optional Services Subtabs & Modals
+  const [optSubTab, setOptSubTab] = useState('transport'); // 'transport' | 'hostel' | 'library'
+  const [transModal, setTransModal] = useState(false);
+  const [transForm, setTransForm] = useState({
+    name: '',
+    route_id: '',
+    amount: '',
+    frequency: 'MONTHLY',
+    academic_year: '2026-27'
+  });
+  const [savingTrans, setSavingTrans] = useState(false);
+
+  const [hostelModal, setHostelModal] = useState(false);
+  const [hostelForm, setHostelForm] = useState({
+    hostel_id: '',
+    sharing_type: 'DOUBLE',
+    is_ac: false,
+    monthly_fee: '',
+    mess_charges: '',
+    electricity_charges: ''
+  });
+  const [savingHostel, setSavingHostel] = useState(false);
+
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
@@ -423,6 +446,82 @@ export default function FeeSetupPage() {
       fetchData();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to delete concession');
+    }
+  };
+
+  // ─── Optional Services Handlers ──────────────────────────────────────────
+  const handleCreateTransportSlab = async (e) => {
+    e.preventDefault();
+    if (!transForm.name || !transForm.amount) {
+      toast.error('Please enter a slab name and fee amount');
+      return;
+    }
+    try {
+      setSavingTrans(true);
+      await api.post('/fees-finance/optional-services/transport-fee', {
+        name: transForm.name,
+        route_id: transForm.route_id ? parseInt(transForm.route_id) : null,
+        amount: parseFloat(transForm.amount),
+        frequency: transForm.frequency,
+        academic_year: transForm.academic_year || selectedSession,
+      });
+      toast.success('Transport fee slab created & synchronized');
+      setTransModal(false);
+      setTransForm({ name: '', route_id: '', amount: '', frequency: 'MONTHLY', academic_year: selectedSession });
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to create transport fee slab');
+    } finally {
+      setSavingTrans(false);
+    }
+  };
+
+  const handleDeleteTransportSlab = async (id, name) => {
+    if (!window.confirm(`Are you sure you want to remove transport fee slab "${name}"?`)) return;
+    try {
+      await api.delete(`/fees-finance/optional-services/transport-fee/${id}`);
+      toast.success('Transport fee slab removed');
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to remove transport fee slab');
+    }
+  };
+
+  const handleCreateHostelSlab = async (e) => {
+    e.preventDefault();
+    if (!hostelForm.hostel_id || !hostelForm.monthly_fee) {
+      toast.error('Please select a hostel and enter monthly fee');
+      return;
+    }
+    try {
+      setSavingHostel(true);
+      await api.post('/fees-finance/optional-services/hostel-fee', {
+        hostel_id: parseInt(hostelForm.hostel_id),
+        sharing_type: hostelForm.sharing_type,
+        is_ac: Boolean(hostelForm.is_ac),
+        monthly_fee: parseFloat(hostelForm.monthly_fee || 0),
+        mess_charges: parseFloat(hostelForm.mess_charges || 0),
+        electricity_charges: parseFloat(hostelForm.electricity_charges || 0),
+      });
+      toast.success('Hostel fee slab created & synchronized');
+      setHostelModal(false);
+      setHostelForm({ hostel_id: '', sharing_type: 'DOUBLE', is_ac: false, monthly_fee: '', mess_charges: '', electricity_charges: '' });
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to create hostel fee slab');
+    } finally {
+      setSavingHostel(false);
+    }
+  };
+
+  const handleDeleteHostelSlab = async (id) => {
+    if (!window.confirm('Are you sure you want to remove this hostel fee slab?')) return;
+    try {
+      await api.delete(`/fees-finance/optional-services/hostel-fee/${id}`);
+      toast.success('Hostel fee slab removed');
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to remove hostel fee slab');
     }
   };
 
@@ -935,107 +1034,504 @@ export default function FeeSetupPage() {
               </div>
             )}
 
-            {/* ─── TAB 5: OPTIONAL SERVICES STATUS & QUICK REDIRECTS ────────── */}
-            {activeTab === 'services' && (
-              <div className="card-body" style={{ padding: 24 }}>
-                <div style={{ marginBottom: 20 }}>
-                  <h4 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 800, color: '#0B3B7B' }}>
-                    Optional Student Services &amp; Auxiliary Charges
-                  </h4>
-                  <p style={{ margin: 0, fontSize: 12.5, color: '#64748b' }}>
-                    Ensure service rate cards (Transport routes, Hostel room boarding, and Library fines) are configured prior to admitting students.
-                  </p>
+            {/* ─── TAB 5: CENTRALIZED OPTIONAL SERVICES & AUXILIARY SLABS ──────── */}
+            {activeTab === 'services' && (() => {
+              const transportStructures = readiness?.transport_structures || [];
+              const transportRoutes = readiness?.transport_routes || [];
+              const hostelStructures = readiness?.hostel_structures || [];
+              const hostelsList = readiness?.hostels || [];
+
+              const configuredRouteIds = new Set(transportStructures.filter(s => s.route_id).map(s => s.route_id));
+              const hasUniversalTransport = transportStructures.some(s => !s.route_id);
+              const pendingRoutes = transportRoutes.filter(r => !configuredRouteIds.has(r.id) && !hasUniversalTransport);
+
+              const configuredHostelIds = new Set(hostelStructures.map(s => s.hostel_id));
+              const pendingHostels = hostelsList.filter(h => !configuredHostelIds.has(h.id));
+
+              return (
+                <div className="card-body" style={{ padding: 24 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
+                    <div>
+                      <h4 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 800, color: '#0B3B7B' }}>
+                        Centralized Optional Services &amp; Auxiliary Charges
+                      </h4>
+                      <p style={{ margin: 0, fontSize: 13, color: '#64748b' }}>
+                        Manage transport route fares, hostel boarding slabs, and auxiliary heads synchronized across central Finance and respective operational modules.
+                      </p>
+                    </div>
+
+                    {/* Subtabs Selector */}
+                    <div style={{ display: 'flex', gap: 6, background: '#f1f5f9', padding: 4, borderRadius: 8 }}>
+                      <button
+                        type="button"
+                        onClick={() => setOptSubTab('transport')}
+                        className="btn btn-sm"
+                        style={{
+                          background: optSubTab === 'transport' ? '#fff' : 'transparent',
+                          color: optSubTab === 'transport' ? '#0284c7' : '#64748b',
+                          fontWeight: 700,
+                          boxShadow: optSubTab === 'transport' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                          border: 'none',
+                        }}
+                      >
+                        🚌 School Bus Transport ({transportStructures.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setOptSubTab('hostel')}
+                        className="btn btn-sm"
+                        style={{
+                          background: optSubTab === 'hostel' ? '#fff' : 'transparent',
+                          color: optSubTab === 'hostel' ? '#d97706' : '#64748b',
+                          fontWeight: 700,
+                          boxShadow: optSubTab === 'hostel' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                          border: 'none',
+                        }}
+                      >
+                        🏢 Boarding &amp; Hostel ({hostelStructures.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setOptSubTab('library')}
+                        className="btn btn-sm"
+                        style={{
+                          background: optSubTab === 'library' ? '#fff' : 'transparent',
+                          color: optSubTab === 'library' ? '#7c3aed' : '#64748b',
+                          fontWeight: 700,
+                          boxShadow: optSubTab === 'library' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                          border: 'none',
+                        }}
+                      >
+                        📚 Library &amp; Caution Money
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* ─── SUBTAB 1: TRANSPORT ROUTE FARES & SLABS ─────────────── */}
+                  {optSubTab === 'transport' && (
+                    <div>
+                      {/* Transport KPI Stats Bar */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 20 }}>
+                        <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, padding: 14 }}>
+                          <div style={{ fontSize: 11.5, fontWeight: 700, color: '#0369a1', textTransform: 'uppercase' }}>Configured Bus Slabs</div>
+                          <div style={{ fontSize: 22, fontWeight: 800, color: '#0284c7', marginTop: 4 }}>{transportStructures.length}</div>
+                          <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>Synchronized with Transport Module</div>
+                        </div>
+                        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 14 }}>
+                          <div style={{ fontSize: 11.5, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Active Bus Routes</div>
+                          <div style={{ fontSize: 22, fontWeight: 800, color: '#1e293b', marginTop: 4 }}>{transportRoutes.length}</div>
+                          <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>Configured in Transport Master</div>
+                        </div>
+                        <div style={{ background: pendingRoutes.length > 0 ? '#fffbeb' : '#f0fdf4', border: `1px solid ${pendingRoutes.length > 0 ? '#fde68a' : '#bbf7d0'}`, borderRadius: 10, padding: 14 }}>
+                          <div style={{ fontSize: 11.5, fontWeight: 700, color: pendingRoutes.length > 0 ? '#b45309' : '#15803d', textTransform: 'uppercase' }}>Setup Status</div>
+                          <div style={{ fontSize: 14, fontWeight: 800, color: pendingRoutes.length > 0 ? '#d97706' : '#16a34a', marginTop: 8 }}>
+                            {pendingRoutes.length > 0 ? `⚠️ ${pendingRoutes.length} Routes Pending Setup` : '✓ All Routes Configured'}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                            {pendingRoutes.length > 0 ? 'Students on unconfigured routes lack billing slabs' : 'Ready for admissions & bus billing'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Pending Routes Alert */}
+                      {pendingRoutes.length > 0 && (
+                        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: 16, marginBottom: 20 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#b45309', fontWeight: 800, fontSize: 14, marginBottom: 8 }}>
+                            <i className="ti ti-alert-triangle" />
+                            Pending Route Fee Slabs ({pendingRoutes.length} routes without specific fee structure)
+                          </div>
+                          <p style={{ margin: '0 0 12px', fontSize: 12.5, color: '#78350f' }}>
+                            Students admitted to these bus routes cannot be automatically billed unless a route slab or universal slab is created:
+                          </p>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                            {pendingRoutes.map(r => (
+                              <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid #fcd34d', padding: '6px 12px', borderRadius: 6, fontSize: 12 }}>
+                                <span style={{ fontWeight: 700, color: '#1e293b' }}>{r.name}</span>
+                                {r.route_code && <span className="badge badge-neutral" style={{ fontSize: 10 }}>{r.route_code}</span>}
+                                {r.fare > 0 && <span style={{ color: '#16a34a', fontWeight: 600 }}>Default: ₹{r.fare}</span>}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setTransForm({
+                                      name: `${r.name} Bus Fee`,
+                                      route_id: String(r.id),
+                                      amount: r.fare ? String(r.fare) : '',
+                                      frequency: 'MONTHLY',
+                                      academic_year: selectedSession,
+                                    });
+                                    setTransModal(true);
+                                  }}
+                                  className="btn btn-primary btn-sm"
+                                  style={{ padding: '2px 8px', fontSize: 11, fontWeight: 700 }}
+                                >
+                                  + Set Route Fee
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Header Actions */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                        <h5 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#0B3B7B' }}>
+                          Configured Transport Rate Slabs ({transportStructures.length})
+                        </h5>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTransForm({
+                                name: '',
+                                route_id: '',
+                                amount: '',
+                                frequency: 'MONTHLY',
+                                academic_year: selectedSession,
+                              });
+                              setTransModal(true);
+                            }}
+                            className="btn btn-primary btn-sm"
+                            style={{ fontWeight: 700 }}
+                          >
+                            + Add Transport Fee Slab
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => navigate('/transport/fees')}
+                            className="btn btn-outline btn-sm"
+                            style={{ fontWeight: 600 }}
+                          >
+                            Transport Module ↗
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Transport Slabs Table */}
+                      {transportStructures.length === 0 ? (
+                        <div className="empty-state" style={{ padding: '36px 16px', background: '#f8fafc', borderRadius: 10, border: '1px dashed #cbd5e1' }}>
+                          <span style={{ fontSize: 32 }}>🚌</span>
+                          <h5 style={{ margin: '10px 0 4px', fontWeight: 700, color: '#1e293b' }}>No Transport Fee Slabs Configured</h5>
+                          <p style={{ margin: 0, fontSize: 12.5, color: '#64748b' }}>
+                            Click "+ Add Transport Fee Slab" to configure route fares for admissions and automated billing.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="table-container" style={{ border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
+                          <table className="table" style={{ margin: 0 }}>
+                            <thead>
+                              <tr style={{ background: '#f8fafc' }}>
+                                <th>Slab Name</th>
+                                <th>Assigned Route</th>
+                                <th>Billing Cadence</th>
+                                <th style={{ textAlign: 'right' }}>Fee Amount</th>
+                                <th style={{ textAlign: 'center' }}>Active Bus Users</th>
+                                <th>Sync Status</th>
+                                <th style={{ textAlign: 'center' }}>Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {transportStructures.map((s) => (
+                                <tr key={s.id}>
+                                  <td>
+                                    <div style={{ fontWeight: 700, color: '#0B3B7B' }}>{s.name}</div>
+                                    <div style={{ fontSize: 11, color: '#64748b' }}>Year: {s.academic_year || selectedSession}</div>
+                                  </td>
+                                  <td>
+                                    {s.route_id ? (
+                                      <span className="badge badge-info" style={{ fontWeight: 600 }}>
+                                        🚌 {s.route_name || `Route #${s.route_id}`}
+                                      </span>
+                                    ) : (
+                                      <span className="badge badge-neutral" style={{ fontWeight: 600 }}>
+                                        🌐 All Routes / Universal
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td>
+                                    <span style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>
+                                      {s.frequency || 'MONTHLY'}
+                                    </span>
+                                  </td>
+                                  <td style={{ textAlign: 'right', fontWeight: 800, color: '#0284c7', fontSize: 14 }}>
+                                    {fmt(s.amount)}
+                                  </td>
+                                  <td style={{ textAlign: 'center' }}>
+                                    <span className="badge badge-neutral" style={{ fontWeight: 700 }}>
+                                      {s.student_count || 0} students
+                                    </span>
+                                  </td>
+                                  <td>
+                                    <span className="badge badge-success" style={{ fontSize: 10, fontWeight: 700 }}>
+                                      ✓ Synced (Finance &amp; Transport)
+                                    </span>
+                                  </td>
+                                  <td style={{ textAlign: 'center' }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteTransportSlab(s.id, s.name)}
+                                      className="btn btn-neutral btn-sm"
+                                      style={{ color: '#ef4444', padding: '3px 8px' }}
+                                      title="Remove Slab"
+                                    >
+                                      <i className="ti ti-trash" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ─── SUBTAB 2: HOSTEL & BOARDING SLABS ───────────────────── */}
+                  {optSubTab === 'hostel' && (
+                    <div>
+                      {/* Hostel KPI Stats Bar */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 20 }}>
+                        <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 10, padding: 14 }}>
+                          <div style={{ fontSize: 11.5, fontWeight: 700, color: '#92400e', textTransform: 'uppercase' }}>Room Fee Slabs</div>
+                          <div style={{ fontSize: 22, fontWeight: 800, color: '#b45309', marginTop: 4 }}>{hostelStructures.length}</div>
+                          <div style={{ fontSize: 11, color: '#78350f', marginTop: 2 }}>Boarding &amp; Mess Slabs</div>
+                        </div>
+                        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 14 }}>
+                          <div style={{ fontSize: 11.5, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Hostel Buildings</div>
+                          <div style={{ fontSize: 22, fontWeight: 800, color: '#1e293b', marginTop: 4 }}>{hostelsList.length}</div>
+                          <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>Configured in Hostel Master</div>
+                        </div>
+                        <div style={{ background: pendingHostels.length > 0 ? '#fffbeb' : '#f0fdf4', border: `1px solid ${pendingHostels.length > 0 ? '#fde68a' : '#bbf7d0'}`, borderRadius: 10, padding: 14 }}>
+                          <div style={{ fontSize: 11.5, fontWeight: 700, color: pendingHostels.length > 0 ? '#b45309' : '#15803d', textTransform: 'uppercase' }}>Hostel Readiness</div>
+                          <div style={{ fontSize: 14, fontWeight: 800, color: pendingHostels.length > 0 ? '#d97706' : '#16a34a', marginTop: 8 }}>
+                            {pendingHostels.length > 0 ? `⚠️ ${pendingHostels.length} Hostels Pending Setup` : '✓ All Hostels Configured'}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                            {pendingHostels.length > 0 ? 'Room rate cards needed for resident billing' : 'Ready for hostel allocations'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Pending Hostels Alert */}
+                      {pendingHostels.length > 0 && (
+                        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: 16, marginBottom: 20 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#b45309', fontWeight: 800, fontSize: 14, marginBottom: 8 }}>
+                            <i className="ti ti-alert-triangle" />
+                            Pending Hostel Pricing Slabs ({pendingHostels.length} Hostels without fee slabs)
+                          </div>
+                          <p style={{ margin: '0 0 12px', fontSize: 12.5, color: '#78350f' }}>
+                            Students allocated to these hostels will have zero fee generated unless boarding slabs are configured:
+                          </p>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                            {pendingHostels.map(h => (
+                              <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid #fcd34d', padding: '6px 12px', borderRadius: 6, fontSize: 12 }}>
+                                <span style={{ fontWeight: 700, color: '#1e293b' }}>{h.name}</span>
+                                <span className="badge badge-neutral" style={{ fontSize: 10 }}>{h.hostel_type || 'Hostel'}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setHostelForm({
+                                      hostel_id: String(h.id),
+                                      sharing_type: 'DOUBLE',
+                                      is_ac: false,
+                                      monthly_fee: '',
+                                      mess_charges: '',
+                                      electricity_charges: '',
+                                    });
+                                    setHostelModal(true);
+                                  }}
+                                  className="btn btn-primary btn-sm"
+                                  style={{ padding: '2px 8px', fontSize: 11, fontWeight: 700 }}
+                                >
+                                  + Set Hostel Fee
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Header Actions */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                        <h5 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#0B3B7B' }}>
+                          Configured Boarding &amp; Room Slabs ({hostelStructures.length})
+                        </h5>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setHostelForm({
+                                hostel_id: hostelsList[0]?.id ? String(hostelsList[0].id) : '',
+                                sharing_type: 'DOUBLE',
+                                is_ac: false,
+                                monthly_fee: '',
+                                mess_charges: '',
+                                electricity_charges: '',
+                              });
+                              setHostelModal(true);
+                            }}
+                            className="btn btn-primary btn-sm"
+                            style={{ fontWeight: 700 }}
+                          >
+                            + Add Hostel Room Slab
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => navigate('/hostel')}
+                            className="btn btn-outline btn-sm"
+                            style={{ fontWeight: 600 }}
+                          >
+                            Hostel Module ↗
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Hostel Slabs Table */}
+                      {hostelStructures.length === 0 ? (
+                        <div className="empty-state" style={{ padding: '36px 16px', background: '#f8fafc', borderRadius: 10, border: '1px dashed #cbd5e1' }}>
+                          <span style={{ fontSize: 32 }}>🏢</span>
+                          <h5 style={{ margin: '10px 0 4px', fontWeight: 700, color: '#1e293b' }}>No Hostel Fee Slabs Configured</h5>
+                          <p style={{ margin: 0, fontSize: 12.5, color: '#64748b' }}>
+                            Click "+ Add Hostel Room Slab" to configure boarding and mess charges.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="table-container" style={{ border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
+                          <table className="table" style={{ margin: 0 }}>
+                            <thead>
+                              <tr style={{ background: '#f8fafc' }}>
+                                <th>Hostel &amp; Wing</th>
+                                <th>Sharing Type</th>
+                                <th>Climate Type</th>
+                                <th style={{ textAlign: 'right' }}>Boarding Fee</th>
+                                <th style={{ textAlign: 'right' }}>Mess Charges</th>
+                                <th style={{ textAlign: 'right' }}>Total Monthly</th>
+                                <th>Sync Status</th>
+                                <th style={{ textAlign: 'center' }}>Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {hostelStructures.map((s) => (
+                                <tr key={s.id}>
+                                  <td>
+                                    <div style={{ fontWeight: 700, color: '#0B3B7B' }}>{s.hostel_name || `Hostel #${s.hostel_id}`}</div>
+                                    <div style={{ fontSize: 11, color: '#64748b' }}>{s.building_name || 'All Buildings'} • {s.floor_name || 'All Floors'}</div>
+                                  </td>
+                                  <td>
+                                    <span className="badge badge-neutral" style={{ fontWeight: 600 }}>
+                                      {s.sharing_type}
+                                    </span>
+                                  </td>
+                                  <td>
+                                    {s.is_ac ? (
+                                      <span className="badge badge-info" style={{ fontWeight: 700 }}>❄️ AC</span>
+                                    ) : (
+                                      <span className="badge badge-neutral">Non-AC</span>
+                                    )}
+                                  </td>
+                                  <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                                    {fmt(s.monthly_fee)}
+                                  </td>
+                                  <td style={{ textAlign: 'right', fontWeight: 600, color: '#d97706' }}>
+                                    {fmt(s.mess_charges)}
+                                  </td>
+                                  <td style={{ textAlign: 'right', fontWeight: 800, color: '#0f172a', fontSize: 14 }}>
+                                    {fmt(s.total_monthly || (Number(s.monthly_fee || 0) + Number(s.mess_charges || 0)))}
+                                  </td>
+                                  <td>
+                                    <span className="badge badge-success" style={{ fontSize: 10, fontWeight: 700 }}>
+                                      ✓ Synced (Finance &amp; Hostel)
+                                    </span>
+                                  </td>
+                                  <td style={{ textAlign: 'center' }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteHostelSlab(s.id)}
+                                      className="btn btn-neutral btn-sm"
+                                      style={{ color: '#ef4444', padding: '3px 8px' }}
+                                      title="Remove Slab"
+                                    >
+                                      <i className="ti ti-trash" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ─── SUBTAB 3: LIBRARY & AUXILIARY CAUTION MONEY ─────────── */}
+                  {optSubTab === 'library' && (
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                        <div>
+                          <h5 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#0B3B7B' }}>
+                            Library &amp; Auxiliary Caution Heads in Fee Master
+                          </h5>
+                          <p style={{ margin: 0, fontSize: 12, color: '#64748b' }}>
+                            Charges such as Library Deposit, Reading Pass, Caution Money, and Activity Fees itemized in student invoices.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingHead(null);
+                            setHeadForm({
+                              code: 'CAUTION_MONEY',
+                              name: 'Library & Security Caution Money',
+                              category: 'LIBRARY',
+                              department: 'LIBRARY',
+                              income_account: 'Caution Money Deposit',
+                              is_recurring: false,
+                              default_frequency: 'ONE_TIME',
+                              is_refundable: true,
+                              description: 'Refundable security deposit collected during admission',
+                            });
+                            setHeadModal(true);
+                          }}
+                          className="btn btn-primary btn-sm"
+                          style={{ fontWeight: 700 }}
+                        >
+                          + Add Auxiliary Fee Head
+                        </button>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14 }}>
+                        {heads.filter(h => h.category === 'LIBRARY' || h.department === 'LIBRARY' || h.code === 'CAUTION_MONEY' || h.code === 'LIB_FINE').length === 0 ? (
+                          <div style={{ background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: 10, padding: 20, textAlign: 'center', gridColumn: '1 / -1' }}>
+                            <span style={{ fontSize: 28 }}>📚</span>
+                            <h5 style={{ margin: '8px 0 4px', fontWeight: 700, color: '#1e293b' }}>Default Library Heads Active</h5>
+                            <p style={{ margin: 0, fontSize: 12.5, color: '#64748b' }}>
+                              Standard Library Fee and Fine heads are active in the system fee registry.
+                            </p>
+                          </div>
+                        ) : (
+                          heads.filter(h => h.category === 'LIBRARY' || h.department === 'LIBRARY' || h.code === 'CAUTION_MONEY' || h.code === 'LIB_FINE').map(h => (
+                            <div key={h.id} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 14 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                                <div>
+                                  <div style={{ fontWeight: 700, color: '#0B3B7B', fontSize: 13.5 }}>{h.name}</div>
+                                  <span className="badge badge-info" style={{ fontSize: 10 }}>{h.code}</span>
+                                </div>
+                                <span className={`badge badge-${h.is_refundable ? 'warning' : 'neutral'}`} style={{ fontSize: 10 }}>
+                                  {h.is_refundable ? 'Refundable' : 'Non-Refundable'}
+                                </span>
+                              </div>
+                              <div style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>
+                                Frequency: <strong>{h.default_frequency}</strong> • Account: <strong>{h.income_account}</strong>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                 </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 20 }}>
-
-                  {/* Transport Card */}
-                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: 20 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                      <div style={{ width: 44, height: 44, borderRadius: 10, background: '#e0f2fe', color: '#0369a1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>
-                        🚌
-                      </div>
-                      <div>
-                        <h5 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#0B3B7B' }}>School Bus Transport</h5>
-                        <div style={{ fontSize: 12, color: '#64748b' }}>Route-wise slabs &amp; pickup/drop bus stops</div>
-                      </div>
-                    </div>
-                    <p style={{ fontSize: 12.5, color: '#475569', lineHeight: 1.5, marginBottom: 16 }}>
-                      Students opting for school bus transport during admission will automatically be billed their stop-specific fare and linked to daily GPS route tracking.
-                    </p>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span className="badge badge-info" style={{ fontSize: 11 }}>
-                        {readiness?.transport_fee_count || 0} Rate Slabs Configured
-                      </span>
-                      <button
-                        onClick={() => navigate('/transport/fees')}
-                        className="btn btn-neutral btn-sm"
-                        style={{ fontWeight: 700 }}
-                      >
-                        Configure Transport &rarr;
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Hostel Card */}
-                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: 20 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                      <div style={{ width: 44, height: 44, borderRadius: 10, background: '#fef3c7', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>
-                        🏢
-                      </div>
-                      <div>
-                        <h5 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#0B3B7B' }}>Boarding &amp; Hostel Facility</h5>
-                        <div style={{ fontSize: 12, color: '#64748b' }}>Room types, mess fees &amp; bed allocations</div>
-                      </div>
-                    </div>
-                    <p style={{ fontSize: 12.5, color: '#475569', lineHeight: 1.5, marginBottom: 16 }}>
-                      Hostel boarders are registered with their room type charges and mess charges added to their initial admission demand notice.
-                    </p>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span className="badge badge-warning" style={{ fontSize: 11 }}>
-                        {readiness?.hostel_fee_count || 0} Room Fee Slabs
-                      </span>
-                      <button
-                        onClick={() => navigate('/hostel')}
-                        className="btn btn-neutral btn-sm"
-                        style={{ fontWeight: 700 }}
-                      >
-                        Configure Hostel &rarr;
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Library Card */}
-                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: 20 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                      <div style={{ width: 44, height: 44, borderRadius: 10, background: '#f3e8ff', color: '#7e22ce', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>
-                        📚
-                      </div>
-                      <div>
-                        <h5 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#0B3B7B' }}>Library Deposit &amp; Membership</h5>
-                        <div style={{ fontSize: 12, color: '#64748b' }}>Security deposit &amp; reading room pass</div>
-                      </div>
-                    </div>
-                    <p style={{ fontSize: 12.5, color: '#475569', lineHeight: 1.5, marginBottom: 16 }}>
-                      Refundable caution money or book borrowing deposits can be itemized as a one-time admission fee head in the class rate card.
-                    </p>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span className="badge badge-neutral" style={{ fontSize: 11 }}>
-                        Active in Fee Heads Master
-                      </span>
-                      <button
-                        onClick={() => navigate('/library/settings')}
-                        className="btn btn-neutral btn-sm"
-                        style={{ fontWeight: 700 }}
-                      >
-                        Library Settings &rarr;
-                      </button>
-                    </div>
-                  </div>
-
-                </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
 
           {/* ─── MODAL: CLONE STRUCTURE TO CLASSES ──────────────────────────── */}
@@ -1778,6 +2274,241 @@ export default function FeeSetupPage() {
                     </button>
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* ─── MODAL: CREATE TRANSPORT FEE SLAB ──────────────────────────── */}
+          {transModal && (
+            <div className="modal-backdrop">
+              <div className="modal" style={{ maxWidth: 520 }}>
+                <div className="modal-header">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 22 }}>🚌</span>
+                    <h3 style={{ fontSize: '1.125rem', fontWeight: 800, margin: 0, color: '#0B3B7B' }}>
+                      Add Transport Route Fee Slab
+                    </h3>
+                  </div>
+                  <button type="button" onClick={() => setTransModal(false)} className="modal-close">✕</button>
+                </div>
+                <form onSubmit={handleCreateTransportSlab}>
+                  <div className="modal-body" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: 700 }}>Fee Slab Name *</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Route 1 Regular Bus Pass or Chakhabibullah Monthly Fare"
+                        value={transForm.name}
+                        onChange={(e) => setTransForm({ ...transForm, name: e.target.value })}
+                        required
+                        className="form-input"
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: 700 }}>Applicable Transport Route</label>
+                      <select
+                        value={transForm.route_id}
+                        onChange={(e) => {
+                          const rid = e.target.value;
+                          const selRoute = (readiness?.transport_routes || []).find(r => String(r.id) === rid);
+                          setTransForm({
+                            ...transForm,
+                            route_id: rid,
+                            amount: (!transForm.amount && selRoute?.fare) ? String(selRoute.fare) : transForm.amount,
+                            name: (!transForm.name && selRoute?.name) ? `${selRoute.name} Bus Fee` : transForm.name,
+                          });
+                        }}
+                        className="form-select"
+                      >
+                        <option value="">🌐 All Routes / Universal Default Slabs</option>
+                        {(readiness?.transport_routes || []).map((r) => (
+                          <option key={r.id} value={r.id}>
+                            🚌 {r.name} {r.route_code ? `(${r.route_code})` : ''} {r.fare ? `— ₹${r.fare}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="text-xs text-muted" style={{ marginTop: 4, display: 'block' }}>
+                        If a specific route is selected, this fare will automatically apply to students assigned to this route.
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                      <div className="form-group">
+                        <label className="form-label" style={{ fontWeight: 700 }}>Fee Amount (₹) *</label>
+                        <input
+                          type="number"
+                          placeholder="e.g. 1200"
+                          value={transForm.amount}
+                          onChange={(e) => setTransForm({ ...transForm, amount: e.target.value })}
+                          required
+                          min="0"
+                          step="1"
+                          className="form-input"
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label className="form-label" style={{ fontWeight: 700 }}>Cadence / Frequency</label>
+                        <select
+                          value={transForm.frequency}
+                          onChange={(e) => setTransForm({ ...transForm, frequency: e.target.value })}
+                          className="form-select"
+                        >
+                          <option value="MONTHLY">Monthly</option>
+                          <option value="QUARTERLY">Quarterly</option>
+                          <option value="HALF_YEARLY">Half Yearly</option>
+                          <option value="YEARLY">Yearly</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: 700 }}>Academic Session</label>
+                      <input
+                        type="text"
+                        value={transForm.academic_year}
+                        onChange={(e) => setTransForm({ ...transForm, academic_year: e.target.value })}
+                        className="form-input"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: 16 }}>
+                    <button type="button" onClick={() => setTransModal(false)} className="btn btn-neutral">
+                      Cancel
+                    </button>
+                    <button type="submit" disabled={savingTrans} className="btn btn-primary" style={{ fontWeight: 700 }}>
+                      {savingTrans ? 'Saving...' : 'Create & Sync Fee Slab'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* ─── MODAL: CREATE HOSTEL FEE SLAB ────────────────────────────── */}
+          {hostelModal && (
+            <div className="modal-backdrop">
+              <div className="modal" style={{ maxWidth: 520 }}>
+                <div className="modal-header">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 22 }}>🏢</span>
+                    <h3 style={{ fontSize: '1.125rem', fontWeight: 800, margin: 0, color: '#0B3B7B' }}>
+                      Add Boarding &amp; Hostel Room Slab
+                    </h3>
+                  </div>
+                  <button type="button" onClick={() => setHostelModal(false)} className="modal-close">✕</button>
+                </div>
+                <form onSubmit={handleCreateHostelSlab}>
+                  <div className="modal-body" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: 700 }}>Select Hostel *</label>
+                      <select
+                        value={hostelForm.hostel_id}
+                        onChange={(e) => setHostelForm({ ...hostelForm, hostel_id: e.target.value })}
+                        required
+                        className="form-select"
+                      >
+                        <option value="">-- Choose Hostel Facility --</option>
+                        {(readiness?.hostels || []).map((h) => (
+                          <option key={h.id} value={h.id}>
+                            🏢 {h.name} {h.hostel_type ? `(${h.hostel_type})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                      <div className="form-group">
+                        <label className="form-label" style={{ fontWeight: 700 }}>Room Sharing Type</label>
+                        <select
+                          value={hostelForm.sharing_type}
+                          onChange={(e) => setHostelForm({ ...hostelForm, sharing_type: e.target.value })}
+                          className="form-select"
+                        >
+                          <option value="SINGLE">Single Occupancy</option>
+                          <option value="DOUBLE">Double Sharing</option>
+                          <option value="TRIPLE">Triple Sharing</option>
+                          <option value="FOUR_SHARING">4 Sharing</option>
+                          <option value="SIX_SHARING">6 Sharing</option>
+                        </select>
+                      </div>
+
+                      <div className="form-group">
+                        <label className="form-label" style={{ fontWeight: 700 }}>Air Conditioning</label>
+                        <select
+                          value={hostelForm.is_ac ? 'true' : 'false'}
+                          onChange={(e) => setHostelForm({ ...hostelForm, is_ac: e.target.value === 'true' })}
+                          className="form-select"
+                        >
+                          <option value="false">Non-AC Room</option>
+                          <option value="true">❄️ AC Room</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                      <div className="form-group">
+                        <label className="form-label" style={{ fontWeight: 700 }}>Monthly Boarding Fee (₹) *</label>
+                        <input
+                          type="number"
+                          placeholder="e.g. 5000"
+                          value={hostelForm.monthly_fee}
+                          onChange={(e) => setHostelForm({ ...hostelForm, monthly_fee: e.target.value })}
+                          required
+                          min="0"
+                          step="1"
+                          className="form-input"
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label className="form-label" style={{ fontWeight: 700 }}>Monthly Mess Fee (₹)</label>
+                        <input
+                          type="number"
+                          placeholder="e.g. 2500"
+                          value={hostelForm.mess_charges}
+                          onChange={(e) => setHostelForm({ ...hostelForm, mess_charges: e.target.value })}
+                          min="0"
+                          step="1"
+                          className="form-input"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label" style={{ fontWeight: 700 }}>Electricity &amp; Maintenance (₹)</label>
+                      <input
+                        type="number"
+                        placeholder="e.g. 500"
+                        value={hostelForm.electricity_charges}
+                        onChange={(e) => setHostelForm({ ...hostelForm, electricity_charges: e.target.value })}
+                        min="0"
+                        step="1"
+                        className="form-input"
+                      />
+                    </div>
+
+                    <div style={{ background: '#f8fafc', padding: 12, borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: '#0B3B7B' }}>
+                        <span>Total Monthly Billed to Student:</span>
+                        <span>
+                          ₹{Number(hostelForm.monthly_fee || 0) + Number(hostelForm.mess_charges || 0) + Number(hostelForm.electricity_charges || 0)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: 16 }}>
+                    <button type="button" onClick={() => setHostelModal(false)} className="btn btn-neutral">
+                      Cancel
+                    </button>
+                    <button type="submit" disabled={savingHostel} className="btn btn-primary" style={{ fontWeight: 700 }}>
+                      {savingHostel ? 'Saving...' : 'Create & Sync Hostel Slab'}
+                    </button>
+                  </div>
+                </form>
               </div>
             </div>
           )}
