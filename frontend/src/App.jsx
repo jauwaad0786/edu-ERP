@@ -239,6 +239,11 @@ export default function App() {
                 <NewAdmissionPage />
               </TenantProtectedRoute>
             } />
+            <Route path="/:schoolSlug/:role/admissions/new" element={<LegacyRedirect toService="admission" />} />
+            <Route path="/:schoolSlug/:role/admissions" element={<LegacyRedirect toService="admission" />} />
+            <Route path="/:schoolSlug/:role/school-profile" element={<LegacyRedirect toService="school-settings" />} />
+            <Route path="/:schoolSlug/:role/support/announcements" element={<LegacyRedirect toService="announcements" />} />
+            <Route path="/:schoolSlug/:role/hrms/attendance" element={<LegacyRedirect toService="staff/attendance" />} />
 
             {/* Teachers & Classes */}
             <Route path="/:schoolSlug/:role/teachers" element={
@@ -854,6 +859,16 @@ export default function App() {
             <Route path="/audit/school/logs" element={<LegacyRedirect toService="audit-logs" />} />
             <Route path="/ai/chat" element={<LegacyRedirect toService="ai/chat" />} />
             <Route path="/principal/deleted-items" element={<LegacyRedirect toService="deleted-items" />} />
+            <Route path="/admissions" element={<LegacyRedirect toService="admission" />} />
+            <Route path="/admissions/new" element={<LegacyRedirect toService="admission" />} />
+            <Route path="/school-profile" element={<LegacyRedirect toService="school-settings" />} />
+            <Route path="/support/announcements" element={<LegacyRedirect toService="announcements" />} />
+            <Route path="/announcements/create" element={<LegacyRedirect toService="announcements/create" />} />
+            <Route path="/hrms/attendance" element={<LegacyRedirect toService="staff/attendance" />} />
+            <Route path="/hrms/leaves" element={<LegacyRedirect toService="hrms/leaves" />} />
+            <Route path="/staff" element={<LegacyRedirect toService="staff" />} />
+            <Route path="/staff/attendance" element={<LegacyRedirect toService="staff/attendance" />} />
+            <Route path="/transport/reports" element={<LegacyRedirect toService="transport/reports" />} />
 
             {/* ═══════════════════════════════════════════════════════════════
                 ERROR & CATCH-ALL

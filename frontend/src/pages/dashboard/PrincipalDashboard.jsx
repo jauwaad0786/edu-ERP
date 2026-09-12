@@ -5,6 +5,7 @@ import Navbar  from '../../components/Navbar';
 import api     from '../../api/axios';
 import toast   from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
+import { resolveTenantPath } from '../../utils/routeBuilder';
 import {
   BarChart, Bar, AreaChart, Area, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
@@ -15,6 +16,10 @@ export default function PrincipalDashboard() {
 
   const navigate = useNavigate();
   const { user } = useAuth();
+
+  const goTo = (rawPath) => {
+    navigate(resolveTenantPath(rawPath, user));
+  };
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
   useEffect(() => { localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
 
@@ -339,7 +344,7 @@ export default function PrincipalDashboard() {
               {/* Action Buttons */}
               <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
                 <button
-                  onClick={() => navigate('/students')}
+                  onClick={() => { const el = document.getElementById('quick-actions-bar'); if (el) el.scrollIntoView({ behavior: 'smooth' }); else goTo('/students'); }}
                   style={{
                     background: '#ffffff', color: '#014486', border: 'none',
                     borderRadius: '12px', padding: '11px 20px', fontSize: '13.5px',
@@ -352,7 +357,7 @@ export default function PrincipalDashboard() {
                   <i className="ti ti-bolt" style={{ color: '#0284c7' }} /> Quick Actions
                 </button>
                 <button
-                  onClick={() => navigate('/school-profile')}
+                  onClick={() => goTo('/school-settings')}
                   style={{
                     background: 'rgba(255,255,255,0.16)',
                     color: '#ffffff',
@@ -398,7 +403,7 @@ export default function PrincipalDashboard() {
                   <i className="ti ti-download" /> Export
                 </button>
                 <button
-                  onClick={() => navigate('/admissions/new')}
+                  onClick={() => goTo('/admission')}
                   style={{
                     padding: '9px 18px', borderRadius: '10px',
                     background: '#ffffff', color: '#014486', border: 'none',
@@ -616,7 +621,7 @@ export default function PrincipalDashboard() {
                   ₹{Number(feesSummary?.today_breakdown?.total || feesSummary?.today_collection || 0).toLocaleString('en-IN')}
                 </span>
                 <button
-                  onClick={() => navigate('/finance/payments/collect')}
+                  onClick={() => goTo('/finance/payments/collect')}
                   className="btn btn-sm btn-primary"
                   style={{ borderRadius: '8px', padding: '6px 14px', fontSize: '12px', fontWeight: 700 }}
                 >
@@ -878,12 +883,12 @@ export default function PrincipalDashboard() {
           </div>
 
           {/* ══ 4. QUICK ACTION LAUNCHPAD BAR ══ */}
-          <div style={{
+          <div id="quick-actions-bar" style={{
             display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
             gap: '12px', marginBottom: '24px'
           }}>
             <button
-              onClick={() => navigate('/attendance')}
+              onClick={() => goTo('/attendance')}
               style={{
                 background: darkMode ? '#1e293b' : '#eff6ff',
                 color: '#2563eb', border: `1px solid ${darkMode ? '#334155' : '#bfdbfe'}`,
@@ -895,7 +900,7 @@ export default function PrincipalDashboard() {
             </button>
 
             <button
-              onClick={() => navigate('/fees')}
+              onClick={() => goTo('/fees')}
               style={{
                 background: darkMode ? '#1e293b' : '#f0fdf4',
                 color: '#16a34a', border: `1px solid ${darkMode ? '#334155' : '#bbf7d0'}`,
@@ -907,7 +912,7 @@ export default function PrincipalDashboard() {
             </button>
 
             <button
-              onClick={() => navigate('/exams')}
+              onClick={() => goTo('/exams')}
               style={{
                 background: darkMode ? '#1e293b' : '#fdf4ff',
                 color: '#9333ea', border: `1px solid ${darkMode ? '#334155' : '#f5d0fe'}`,
@@ -919,7 +924,7 @@ export default function PrincipalDashboard() {
             </button>
 
             <button
-              onClick={() => navigate('/admissions/new')}
+              onClick={() => goTo('/admission')}
               style={{
                 background: darkMode ? '#1e293b' : '#fff1f2',
                 color: '#e11d48', border: `1px solid ${darkMode ? '#334155' : '#fecdd3'}`,
@@ -931,7 +936,7 @@ export default function PrincipalDashboard() {
             </button>
 
             <button
-              onClick={() => navigate('/staff')}
+              onClick={() => goTo('/staff')}
               style={{
                 background: darkMode ? '#1e293b' : '#fffbeb',
                 color: '#d97706', border: `1px solid ${darkMode ? '#334155' : '#fde68a'}`,
@@ -943,7 +948,7 @@ export default function PrincipalDashboard() {
             </button>
 
             <button
-              onClick={() => navigate('/notes')}
+              onClick={() => goTo('/notes')}
               style={{
                 background: darkMode ? '#1e293b' : '#ecfeff',
                 color: '#0891b2', border: `1px solid ${darkMode ? '#334155' : '#a5f3fc'}`,
@@ -1116,7 +1121,7 @@ export default function PrincipalDashboard() {
                           {pct}% Attendance
                         </span>
                         <button
-                          onClick={() => navigate('/attendance')}
+                          onClick={() => goTo('/attendance')}
                           style={{
                             background: 'none', border: 'none', color: '#2563eb', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer'
                           }}
@@ -1166,7 +1171,7 @@ export default function PrincipalDashboard() {
                     <option>June 2026</option>
                   </select>
                   <button
-                    onClick={() => navigate('/finance/expenses')}
+                    onClick={() => goTo('/finance/expenses')}
                     style={{
                       padding: '6px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 700,
                       background: darkMode ? '#1e293b' : '#f1f5f9',
@@ -1371,7 +1376,7 @@ export default function PrincipalDashboard() {
                   </div>
 
                   <button
-                    onClick={() => navigate('/hrms/leaves')}
+                    onClick={() => goTo('/hrms/leaves')}
                     style={{
                       background: 'none', border: 'none', color: '#2563eb', fontSize: '12.5px', fontWeight: 700, cursor: 'pointer',
                       display: 'flex', alignItems: 'center', gap: '4px'
@@ -1470,7 +1475,7 @@ export default function PrincipalDashboard() {
                   Total on Leave: <strong style={{ color: staffOnLeave.length > 0 ? '#ef4444' : '#10b981' }}>{staffOnLeave.length}</strong>
                 </div>
                 <button
-                  onClick={() => navigate('/hrms/attendance')}
+                  onClick={() => goTo('/staff/attendance')}
                   style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer' }}
                 >
                   View Staff Attendance →
@@ -1517,7 +1522,7 @@ export default function PrincipalDashboard() {
                   </div>
 
                   <button
-                    onClick={() => navigate('/teachers')}
+                    onClick={() => goTo('/teachers')}
                     style={{
                       background: 'none', border: 'none', color: '#2563eb', fontSize: '12.5px', fontWeight: 700, cursor: 'pointer',
                       display: 'flex', alignItems: 'center', gap: '4px'
@@ -1670,7 +1675,7 @@ export default function PrincipalDashboard() {
                   🎂 {birthdays.length} Birthday{birthdays.length === 1 ? '' : 's'} · 🌟 {anniversaries.length} Work Anniversar{anniversaries.length === 1 ? 'y' : 'ies'}
                 </div>
                 <button
-                  onClick={() => navigate('/support/announcements')}
+                  onClick={() => goTo('/announcements')}
                   style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '11.5px', fontWeight: 700, cursor: 'pointer' }}
                 >
                   Post Campus Announcement →
@@ -1697,7 +1702,7 @@ export default function PrincipalDashboard() {
                   <h4 style={{ margin: 0, fontSize: '14.5px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <i className="ti ti-receipt" style={{ color: '#2563eb' }} /> Recent Fee Collection
                   </h4>
-                  <button onClick={() => navigate('/fees')} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+                  <button onClick={() => goTo('/fees')} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
                     View All
                   </button>
                 </div>
@@ -1755,7 +1760,7 @@ export default function PrincipalDashboard() {
                   <h4 style={{ margin: 0, fontSize: '14.5px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <i className="ti ti-calendar-event" style={{ color: '#2563eb' }} /> Upcoming Events
                   </h4>
-                  <button onClick={() => navigate('/holidays')} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+                  <button onClick={() => goTo('/holidays')} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
                     View Calendar
                   </button>
                 </div>
@@ -1799,7 +1804,7 @@ export default function PrincipalDashboard() {
               </div>
 
               <div style={{ textAlign: 'center', marginTop: '16px' }}>
-                <button onClick={() => navigate('/holidays')} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12.5px', fontWeight: 700, cursor: 'pointer' }}>
+                <button onClick={() => goTo('/holidays')} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12.5px', fontWeight: 700, cursor: 'pointer' }}>
                   View All Events →
                 </button>
               </div>
@@ -1818,7 +1823,7 @@ export default function PrincipalDashboard() {
                   <h4 style={{ margin: 0, fontSize: '14.5px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <i className="ti ti-speakerphone" style={{ color: '#2563eb' }} /> Latest Announcements
                   </h4>
-                  <button onClick={() => navigate('/support/announcements')} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+                  <button onClick={() => goTo('/announcements')} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
                     View All
                   </button>
                 </div>
@@ -1856,7 +1861,7 @@ export default function PrincipalDashboard() {
 
               <div style={{ textAlign: 'center', marginTop: '16px' }}>
                 <button
-                  onClick={() => navigate('/announcements/create')}
+                  onClick={() => goTo('/announcements/create')}
                   style={{
                     background: 'none', border: 'none', color: '#2563eb',
                     fontSize: '12.5px', fontWeight: 700, cursor: 'pointer'
@@ -1904,7 +1909,7 @@ export default function PrincipalDashboard() {
               </div>
 
               <button
-                onClick={() => navigate('/hrms/leaves')}
+                onClick={() => goTo('/hrms/leaves')}
                 style={{
                   padding: '7px 14px', borderRadius: '8px', fontSize: '12.5px', fontWeight: 700,
                   background: darkMode ? '#1e293b' : '#f1f5f9',
@@ -2033,8 +2038,8 @@ export default function PrincipalDashboard() {
             <div
               role="button"
               tabIndex={0}
-              onClick={() => navigate('/students')}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/students'); } }}
+              onClick={() => { const el = document.getElementById('quick-actions-bar'); if (el) el.scrollIntoView({ behavior: 'smooth' }); else goTo('/students'); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goTo('/students'); } }}
               style={{
                 background: darkMode ? '#111827' : '#ffffff',
                 border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
@@ -2054,8 +2059,8 @@ export default function PrincipalDashboard() {
             <div
               role="button"
               tabIndex={0}
-              onClick={() => navigate('/fees')}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/fees'); } }}
+              onClick={() => goTo('/fees')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goTo('/fees'); } }}
               style={{
                 background: darkMode ? '#111827' : '#ffffff',
                 border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
@@ -2075,8 +2080,8 @@ export default function PrincipalDashboard() {
             <div
               role="button"
               tabIndex={0}
-              onClick={() => navigate('/attendance')}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/attendance'); } }}
+              onClick={() => goTo('/attendance')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goTo('/attendance'); } }}
               style={{
                 background: darkMode ? '#111827' : '#ffffff',
                 border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
@@ -2096,8 +2101,8 @@ export default function PrincipalDashboard() {
             <div
               role="button"
               tabIndex={0}
-              onClick={() => navigate('/transport/reports')}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/transport/reports'); } }}
+              onClick={() => goTo('/transport/reports')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goTo('/transport/reports'); } }}
               style={{
                 background: darkMode ? '#111827' : '#ffffff',
                 border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
@@ -2117,8 +2122,8 @@ export default function PrincipalDashboard() {
             <div
               role="button"
               tabIndex={0}
-              onClick={() => navigate('/exams')}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/exams'); } }}
+              onClick={() => goTo('/exams')}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goTo('/exams'); } }}
               style={{
                 background: darkMode ? '#111827' : '#ffffff',
                 border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,

@@ -85,6 +85,26 @@ export function buildTenantRoute({ schoolSlug, role, service = '', id = null, se
 }
 
 /**
+ * Normalizes legacy or non-canonical service aliases to canonical paths.
+ */
+export function normalizeServiceAlias(rawService) {
+  let s = rawService || '';
+  if (s.startsWith('/')) s = s.slice(1);
+  if (s.endsWith('/')) s = s.slice(0, -1);
+  
+  if (s === 'admissions/new' || s === 'admissions') return 'admission';
+  if (s === 'school-profile') return 'school-settings';
+  if (s === 'support/announcements') return 'announcements';
+  if (s === 'hrms/attendance') return 'staff/attendance';
+  if (s === 'audit/school/logs') return 'audit-logs';
+  if (s === 'principal/deleted-items') return 'deleted-items';
+  if (s === 'settings/whatsapp') return 'settings/whatsapp';
+  if (s === 'my-hr') return 'my-hr';
+  if (s === 'my-services') return 'my-services';
+  return s;
+}
+
+/**
  * Translates a legacy un-prefixed route into a canonical tenant route based on user context.
  * Example: resolveTenantPath('/fees', user) => '/sch001/principal/fees'
  */
@@ -122,7 +142,7 @@ export function resolveTenantPath(rawPath, user) {
     while (parts.length >= 4 && parts[0].toLowerCase() === parts[2].toLowerCase() && parts[1].toLowerCase() === parts[3].toLowerCase()) {
       parts.splice(0, 2);
     }
-    const cleanService = parts.slice(2).join('/');
+    const cleanService = normalizeServiceAlias(parts.slice(2).join('/'));
     return buildTenantRoute({
       schoolSlug,
       role: roleSlug,
@@ -132,14 +152,7 @@ export function resolveTenantPath(rawPath, user) {
   }
 
   // Canonical service normalization mapping
-  let service = parts.join('/');
-
-  // Specific alias mappings
-  if (service === 'audit/school/logs') service = 'audit-logs';
-  if (service === 'principal/deleted-items') service = 'deleted-items';
-  if (service === 'settings/whatsapp') service = 'settings/whatsapp';
-  if (service === 'my-hr') service = 'my-hr';
-  if (service === 'my-services') service = 'my-services';
+  const service = normalizeServiceAlias(parts.join('/'));
 
   return buildTenantRoute({
     schoolSlug,

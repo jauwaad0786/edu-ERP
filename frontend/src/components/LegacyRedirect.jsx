@@ -1,7 +1,7 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { buildTenantRoute, getCanonicalRoleSlug, getCanonicalSchoolSlug, ROLE_SLUG_MAP } from '../utils/routeBuilder';
+import { buildTenantRoute, getCanonicalRoleSlug, getCanonicalSchoolSlug, normalizeServiceAlias, ROLE_SLUG_MAP } from '../utils/routeBuilder';
 import { NotFoundPage } from '../pages/ErrorPages';
 
 /**
@@ -87,8 +87,7 @@ export default function LegacyRedirect({ toService = '' }) {
   }
 
   // Alias mappings
-  if (targetService === 'audit/school/logs') targetService = 'audit-logs';
-  if (targetService === 'principal/deleted-items') targetService = 'deleted-items';
+  targetService = normalizeServiceAlias(targetService);
 
   const destination = buildTenantRoute({
     schoolSlug,
