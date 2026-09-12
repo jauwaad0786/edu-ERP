@@ -1,17 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Navbar  from '../components/Navbar';
 import api     from '../api/axios';
 import toast   from 'react-hot-toast';
+import { useAuth } from '../context/AuthContext';
+import { resolveTenantPath } from '../utils/routeBuilder';
 
 const GENDERS = ['Male', 'Female', 'Other'];
-const SESSIONS = ['2024-25', '2025-26', '2026-27'];
+const SESSIONS = ['2026-27', '2025-26', '2027-28'];
 const CATEGORIES = ['General', 'OBC', 'SC', 'ST', 'EWS'];
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
 const RELIGIONS = ['Hinduism', 'Islam', 'Christianity', 'Sikhism', 'Buddhism', 'Jainism', 'Other'];
 const PAYMENT_MODES = ['Cash', 'Cheque', 'UPI / Online', 'Net Banking', 'Demand Draft'];
 const PAYMENT_STATUSES = ['PAID', 'PARTIAL', 'DUE'];
+const WAIVER_REASONS = [
+  'Merit / High Academic Performance',
+  'Sibling / Multi-Child Concession',
+  'Staff Child Concession',
+  'Economically Weaker Section (EWS)',
+  'Sports / Co-curricular Excellence',
+  'Principal Special Relief',
+  'Other'
+];
 
 const STEPS = [
   { id: 1, label: 'Student Details' },
@@ -26,6 +37,7 @@ const STEPS = [
 
 export default function NewAdmissionPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [classes, setClasses] = useState([]);
   const [transportRoutes, setTransportRoutes] = useState([]);
@@ -49,6 +61,15 @@ export default function NewAdmissionPage() {
   const [tcFile, setTcFile] = useState(null);
   const [birthCertFile, setBirthCertFile] = useState(null);
   const [medicalCertFile, setMedicalCertFile] = useState(null);
+
+  // Dynamic Fee Plan States (Zero hardcoded numbers)
+  const [admissionFeeData, setAdmissionFeeData] = useState(null);
+  const [loadingFeePlan, setLoadingFeePlan] = useState(false);
+  const [selectedPaymentPlan, setSelectedPaymentPlan] = useState(null);
+  const [manualWaiver, setManualWaiver] = useState(0);
+  const [waiverReason, setWaiverReason] = useState('Merit / High Academic Performance');
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentReference, setPaymentReference] = useState('');
 
   const [form, setForm] = useState({
     // Step 1: Student Details
@@ -94,7 +115,7 @@ export default function NewAdmissionPage() {
     class_id: '',
     roll_number: '',
     manual_admission_no: '',
-    session: '2025-26',
+    session: '2026-27',
     admission_date: new Date().toISOString().split('T')[0],
 
     // Step 5: Services (Transport & Hostel)
@@ -106,16 +127,7 @@ export default function NewAdmissionPage() {
     hostel_remarks: '',
 
     // Step 7: Fee particulars
-    admission_fee: 5000,
-    caution_money: 3000,
-    tuition_fee: 12000,
-    development_fee: 2000,
-    activity_fee: 1000,
-    registration_fee: 1000,
-    smart_class_fee: 1500,
-    library_fee: 800,
-    examination_fee: 1200,
-    other_fee: 500,
+    payment_plan_id: '',
     payment_mode: 'Cash',
     payment_status: 'PAID',
     password: 'Student@123',
@@ -169,6 +181,32 @@ export default function NewAdmissionPage() {
       })
       .catch(() => {});
   }, []);
+
+  // Fetch published fee structure & payment plans whenever Class or Session changes
+  const fetchAdmissionFeePlan = useCallback(async (classId, session) => {
+    if (!classId) return;
+    try {
+      setLoadingFeePlan(true);
+      const res = await api.get(`/fees-finance/admission-fee-plan?class_id=${classId}&session=${session || '2026-27'}`);
+      const data = res.data;
+      setAdmissionFeeData(data);
+      if (data?.payment_plans?.length > 0) {
+        const def = data.payment_plans.find(p => p.code === 'QUARTERLY') || data.payment_plans[0];
+        setSelectedPaymentPlan(def);
+        setForm(f => ({ ...f, payment_plan_id: def.id }));
+      }
+    } catch (err) {
+      console.warn('Failed to fetch admission fee plan:', err);
+    } finally {
+      setLoadingFeePlan(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (form.class_id) {
+      fetchAdmissionFeePlan(form.class_id, form.session);
+    }
+  }, [form.class_id, form.session, fetchAdmissionFeePlan]);
 
   // Real-time duplicate check debounced effect
   useEffect(() => {
@@ -294,6 +332,69 @@ export default function NewAdmissionPage() {
     setCurrentStep(s => Math.max(s - 1, 1));
   }
 
+  const selectedClass = Array.isArray(classes) ? classes.find(c => String(c.id) === String(form.class_id)) : undefined;
+  const selectedRoute = Array.isArray(transportRoutes) ? transportRoutes.find(r => String(r.id) === String(form.transport_route_id)) : undefined;
+  const selectedStop  = Array.isArray(transportStops) ? transportStops.find(s => String(s.id) === String(form.transport_stop_id)) : undefined;
+  const selectedHostel = Array.isArray(hostels) ? hostels.find(h => String(h.id) === String(form.hostel_id)) : undefined;
+
+  // Dynamic fee calculation from published structure & payment cadence plan
+  const publishedStructure = admissionFeeData?.published_structure;
+  const paymentPlans = admissionFeeData?.payment_plans || [];
+  const monthsCount = selectedPaymentPlan?.months_count || 1;
+
+  const transportCharge = form.transport_required === 'Yes' ? Number(selectedRoute?.fare || selectedStop?.pickup_charge || 0) : 0;
+  const hostelCharge = form.hostel_required === 'Yes' ? Number(selectedHostel?.fee || 0) : 0;
+
+  let baseGross = 0;
+  let eligibleBase = 0;
+  let eligibleCats = ['ACADEMIC'];
+  try {
+    if (selectedPaymentPlan?.eligible_categories) {
+      eligibleCats = typeof selectedPaymentPlan.eligible_categories === 'string'
+        ? JSON.parse(selectedPaymentPlan.eligible_categories)
+        : selectedPaymentPlan.eligible_categories;
+    }
+  } catch {
+    eligibleCats = ['ACADEMIC'];
+  }
+
+  const computedItems = (publishedStructure?.items || []).map(it => {
+    const isRec = it.fee_head?.is_recurring ?? (it.fee_head?.default_frequency !== 'ONE_TIME');
+    const mult = isRec ? monthsCount : 1;
+    const lineAmt = Number(it.amount || 0) * mult;
+    baseGross += lineAmt;
+    if (eligibleCats.includes(it.fee_head?.category || 'ACADEMIC')) {
+      eligibleBase += lineAmt;
+    }
+    return {
+      ...it,
+      mult,
+      lineAmt,
+    };
+  });
+
+  if (!publishedStructure && form.admission_fee) {
+    const legacyAmt = Number(form.admission_fee || 0);
+    baseGross = legacyAmt;
+    eligibleBase = legacyAmt;
+  }
+
+  const grossTotal = baseGross + transportCharge + hostelCharge;
+
+  let advanceDiscount = 0;
+  if (selectedPaymentPlan && Number(selectedPaymentPlan.discount_value) > 0 && eligibleBase > 0) {
+    if (selectedPaymentPlan.discount_type === 'PERCENTAGE') {
+      advanceDiscount = Math.round((eligibleBase * Number(selectedPaymentPlan.discount_value)) / 100);
+    } else {
+      advanceDiscount = Math.min(eligibleBase, Number(selectedPaymentPlan.discount_value));
+    }
+  }
+
+  const waiverNum = Math.max(0, parseFloat(manualWaiver) || 0);
+  const totalDeductions = advanceDiscount + waiverNum;
+  const netPayable = Math.max(0, grossTotal - totalDeductions);
+  const totalFee = netPayable;
+
   async function submit(e) {
     if (e) e.preventDefault();
     if (!form.name || !form.parent_phone || !form.class_id) {
@@ -307,11 +408,28 @@ export default function NewAdmissionPage() {
       const firstName = (form.name || 'student').trim().split(/\s+/)[0].toLowerCase().replace(/[^a-z0-9]/g, '');
       const autoEmail = form.parent_email || `${firstName || 'student'}@${schoolSlug}.com`;
 
+      const fee_setup = {
+        fee_structure_id: publishedStructure?.id || null,
+        payment_plan_id: selectedPaymentPlan?.id || null,
+        payment_plan_code: selectedPaymentPlan?.code || null,
+        months_count: monthsCount,
+        transport_fee: transportCharge,
+        hostel_fee: hostelCharge,
+        manual_waiver: waiverNum,
+        waiver_reason: waiverNum > 0 ? (waiverReason || 'Principal Authorized Special Waiver') : '',
+        net_payable: netPayable,
+        initial_payment_amount: form.payment_status === 'PAID' ? netPayable : (form.payment_status === 'DUE' ? 0 : (parseFloat(paymentAmount) || 0)),
+        payment_mode: form.payment_mode || 'Cash',
+        payment_status: form.payment_status || 'PAID',
+        payment_reference: paymentReference || '',
+      };
+
       const payload = {
         ...form,
         email: autoEmail,
         parent_name: form.father_name || form.guardian_name || form.parent_name,
         admission_no: form.manual_admission_no ? form.manual_admission_no.trim() : undefined,
+        fee_setup,
       };
 
       const res = await api.post('/principal/students', payload);
@@ -407,22 +525,6 @@ export default function NewAdmissionPage() {
   function handlePrintDirect() {
     window.print();
   }
-
-  const selectedClass = Array.isArray(classes) ? classes.find(c => String(c.id) === String(form.class_id)) : undefined;
-  const selectedRoute = Array.isArray(transportRoutes) ? transportRoutes.find(r => String(r.id) === String(form.transport_route_id)) : undefined;
-  const selectedStop  = Array.isArray(transportStops) ? transportStops.find(s => String(s.id) === String(form.transport_stop_id)) : undefined;
-  const selectedHostel = Array.isArray(hostels) ? hostels.find(h => String(h.id) === String(form.hostel_id)) : undefined;
-
-  const totalFee = Number(form.admission_fee || 0) +
-    Number(form.caution_money || 0) +
-    Number(form.tuition_fee || 0) +
-    Number(form.development_fee || 0) +
-    Number(form.activity_fee || 0) +
-    Number(form.registration_fee || 0) +
-    Number(form.smart_class_fee || 0) +
-    Number(form.library_fee || 0) +
-    Number(form.examination_fee || 0) +
-    Number(form.other_fee || 0);
 
   return (
     <div className="app-shell">
@@ -1452,98 +1554,449 @@ export default function NewAdmissionPage() {
                 {/* STEP 7: Fee & Charges */}
                 {currentStep === 7 && (
                   <div>
-                    <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 800, color: '#0B3B7B' }}>
-                      Step 7: Admission Fee Setup &amp; Payment Ledger
-                    </h3>
-                    <p style={{ margin: '0 0 20px', fontSize: 12.5, color: '#64748b' }}>
-                      Particulars are automatically recorded in the school fee ledger upon admission confirmation.
-                    </p>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 24 }}>
-                      
-                      {/* Left: Fee Particulars */}
-                      <div style={{ background: '#f8fafc', padding: 22, borderRadius: 12, border: '1px solid #e2e8f0' }}>
-                        <h4 style={{ margin: '0 0 16px', fontSize: 14, color: '#0B3B7B' }}>Fee Head Breakdown (₹)</h4>
-                        
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 18px', fontSize: 12.5 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ color: '#475569' }}>Admission Fee:</span>
-                            <input type="number" value={form.admission_fee} onChange={e => set('admission_fee', e.target.value)} style={{ width: 90, padding: '5px 8px', borderRadius: 6, border: '1px solid #cbd5e1', textAlign: 'right', fontWeight: 600 }} />
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ color: '#475569' }}>Registration Fee:</span>
-                            <input type="number" value={form.registration_fee} onChange={e => set('registration_fee', e.target.value)} style={{ width: 90, padding: '5px 8px', borderRadius: 6, border: '1px solid #cbd5e1', textAlign: 'right', fontWeight: 600 }} />
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ color: '#475569' }}>Tuition Fee (Q1):</span>
-                            <input type="number" value={form.tuition_fee} onChange={e => set('tuition_fee', e.target.value)} style={{ width: 90, padding: '5px 8px', borderRadius: 6, border: '1px solid #cbd5e1', textAlign: 'right', fontWeight: 600 }} />
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ color: '#475569' }}>Development Fee:</span>
-                            <input type="number" value={form.development_fee} onChange={e => set('development_fee', e.target.value)} style={{ width: 90, padding: '5px 8px', borderRadius: 6, border: '1px solid #cbd5e1', textAlign: 'right', fontWeight: 600 }} />
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ color: '#475569' }}>Activity Fee:</span>
-                            <input type="number" value={form.activity_fee} onChange={e => set('activity_fee', e.target.value)} style={{ width: 90, padding: '5px 8px', borderRadius: 6, border: '1px solid #cbd5e1', textAlign: 'right', fontWeight: 600 }} />
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ color: '#475569' }}>Smart Class Fee:</span>
-                            <input type="number" value={form.smart_class_fee} onChange={e => set('smart_class_fee', e.target.value)} style={{ width: 90, padding: '5px 8px', borderRadius: 6, border: '1px solid #cbd5e1', textAlign: 'right', fontWeight: 600 }} />
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ color: '#475569' }}>Caution Deposit:</span>
-                            <input type="number" value={form.caution_money} onChange={e => set('caution_money', e.target.value)} style={{ width: 90, padding: '5px 8px', borderRadius: 6, border: '1px solid #cbd5e1', textAlign: 'right', fontWeight: 600 }} />
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ color: '#475569' }}>Exam &amp; Library:</span>
-                            <input type="number" value={form.examination_fee} onChange={e => set('examination_fee', e.target.value)} style={{ width: 90, padding: '5px 8px', borderRadius: 6, border: '1px solid #cbd5e1', textAlign: 'right', fontWeight: 600 }} />
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16, paddingTop: 14, borderTop: '2px solid #cbd5e1', fontSize: 15, fontWeight: 800, color: '#0B3B7B' }}>
-                          <span>Total Admission Demand:</span>
-                          <span style={{ color: '#15803d' }}>₹ {totalFee.toLocaleString('en-IN')}.00</span>
-                        </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+                      <div>
+                        <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 800, color: '#0B3B7B' }}>
+                          Step 7: Admission Fee Setup &amp; Payment Ledger
+                        </h3>
+                        <p style={{ margin: 0, fontSize: 12.5, color: '#64748b' }}>
+                          Auto-configured from the published academic fee structure for <strong>{selectedClass?.name || 'Class'}</strong> (Session {form.session}).
+                        </p>
                       </div>
-
-                      {/* Right: Payment Setup */}
-                      <div style={{ background: '#f8fafc', padding: 22, borderRadius: 12, border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: 16 }}>
-                        <h4 style={{ margin: 0, fontSize: 14, color: '#0B3B7B' }}>💳 Payment Details</h4>
-
-                        <div>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-                            Payment Mode
-                          </label>
-                          <select
-                            value={form.payment_mode}
-                            onChange={e => set('payment_mode', e.target.value)}
-                            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, background: '#fff' }}
-                          >
-                            {PAYMENT_MODES.map(m => <option key={m} value={m}>{m}</option>)}
-                          </select>
-                        </div>
-
-                        <div>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-                            Initial Payment Status
-                          </label>
-                          <select
-                            value={form.payment_status}
-                            onChange={e => set('payment_status', e.target.value)}
-                            style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, background: '#fff', fontWeight: 700 }}
-                          >
-                            <option value="PAID">PAID (Full Payment Received)</option>
-                            <option value="PARTIAL">PARTIAL (Partially Paid)</option>
-                            <option value="DUE">DUE / PENDING (Pay Later)</option>
-                          </select>
-                        </div>
-
-                        <div style={{ background: '#e0f2fe', padding: 12, borderRadius: 8, border: '1px solid #bae6fd', fontSize: 11.5, color: '#0369a1' }}>
-                          <strong>Ledger Synchronization:</strong> An official student ledger entry and printable fee receipt will be created simultaneously with the student profile.
-                        </div>
-                      </div>
-
+                      <span style={{
+                        background: '#eff6ff',
+                        color: '#0284c7',
+                        border: '1px solid #bfdbfe',
+                        padding: '4px 12px',
+                        borderRadius: 20,
+                        fontSize: 12,
+                        fontWeight: 700
+                      }}>
+                        📅 Session: {form.session}
+                      </span>
                     </div>
+
+                    {loadingFeePlan ? (
+                      <div style={{ padding: 40, textAlign: 'center', background: '#f8fafc', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                        <div style={{ fontSize: 28, marginBottom: 12 }}>🔄</div>
+                        <div style={{ fontWeight: 700, color: '#1e293b', fontSize: 14 }}>Fetching Published Rate Card &amp; Payment Cadences...</div>
+                        <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>Loading fee heads mapped for {selectedClass?.name || 'Selected Class'}</div>
+                      </div>
+                    ) : !publishedStructure ? (
+                      /* WARNING & ACTIONABLE REDIRECT IF NO PUBLISHED PLAN */
+                      <div style={{
+                        background: '#fffbeb',
+                        border: '1.5px solid #fde68a',
+                        borderRadius: 12,
+                        padding: '24px 28px',
+                        boxShadow: '0 2px 8px rgba(245,158,11,0.08)'
+                      }}>
+                        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                          <span style={{ fontSize: 36, lineHeight: 1 }}>⚠️</span>
+                          <div style={{ flex: 1 }}>
+                            <h4 style={{ margin: '0 0 6px', fontSize: 15, fontWeight: 800, color: '#92400e' }}>
+                              No Published Fee Plan Found for {selectedClass?.name || 'Selected Class'} in Session {form.session}
+                            </h4>
+                            <p style={{ margin: '0 0 14px', fontSize: 13, color: '#b45309', lineHeight: 1.5 }}>
+                              Before admitting students, a fee rate card should be published for this class so that fee schedules, accounting ledgers, and receipt numbers are generated accurately and transparently.
+                            </p>
+                            <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                              <button
+                                type="button"
+                                onClick={() => navigate(resolveTenantPath(`/finance/setup?class_id=${form.class_id}&session=${form.session}`, user))}
+                                style={{
+                                  background: '#0B3B7B',
+                                  color: '#fff',
+                                  border: 'none',
+                                  padding: '10px 18px',
+                                  borderRadius: 8,
+                                  fontSize: 13,
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 8,
+                                  boxShadow: '0 2px 6px rgba(11,59,123,0.25)'
+                                }}
+                              >
+                                ⚙️ Configure &amp; Publish Fee Plan for {selectedClass?.name || 'Class'} →
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => fetchAdmissionFeePlan(form.class_id, form.session)}
+                                style={{
+                                  background: '#fff',
+                                  color: '#475569',
+                                  border: '1px solid #cbd5e1',
+                                  padding: '10px 16px',
+                                  borderRadius: 8,
+                                  fontSize: 13,
+                                  fontWeight: 600,
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                🔄 Check Again
+                              </button>
+                            </div>
+
+                            {/* Emergency Fallback */}
+                            <div style={{ marginTop: 22, paddingTop: 16, borderTop: '1px dashed #fcd34d' }}>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: '#92400e', marginBottom: 8 }}>
+                                🚨 Emergency Admission Fee (Legacy Override):
+                              </div>
+                              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                                <span style={{ fontSize: 12.5, color: '#78350f' }}>Initial Charge (₹):</span>
+                                <input
+                                  type="number"
+                                  placeholder="0.00"
+                                  value={form.admission_fee || ''}
+                                  onChange={e => set('admission_fee', e.target.value)}
+                                  style={{ width: 140, padding: '6px 10px', borderRadius: 6, border: '1px solid #cbd5e1', textAlign: 'right', fontWeight: 700 }}
+                                />
+                                <span style={{ fontSize: 11.5, color: '#94a3b8' }}>*Will record as legacy admission charge</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      /* PUBLISHED FEE PLAN CONFIGURATION */
+                      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 24 }}>
+                        
+                        {/* Left: Dynamic Breakdown & Payment Cadence */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                          
+                          {/* Active Rate Card Header */}
+                          <div style={{
+                            background: '#f0fdf4',
+                            border: '1px solid #86efac',
+                            borderRadius: 10,
+                            padding: '12px 18px',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                          }}>
+                            <div>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: '#166534', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                                Active Rate Card
+                              </div>
+                              <div style={{ fontSize: 14, fontWeight: 800, color: '#15803d' }}>
+                                {publishedStructure.name} <span style={{ fontSize: 11.5, color: '#166534', fontWeight: 600 }}>v{publishedStructure.version || 1}</span>
+                              </div>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                              <span style={{ background: '#16a34a', color: '#fff', fontSize: 11, fontWeight: 800, padding: '3px 8px', borderRadius: 4 }}>
+                                ✓ PUBLISHED
+                              </span>
+                              <div style={{ fontSize: 12, color: '#166534', marginTop: 3, fontWeight: 600 }}>
+                                ₹ {Number(publishedStructure.total_amount || 0).toLocaleString('en-IN')}/mo base
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Payment Cadence Selector */}
+                          <div style={{ background: '#f8fafc', padding: 16, borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                              <label style={{ fontSize: 12.5, fontWeight: 700, color: '#0B3B7B' }}>
+                                📅 Payment Cadence &amp; Duration:
+                              </label>
+                              {selectedPaymentPlan && Number(selectedPaymentPlan.discount_value) > 0 && (
+                                <span style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 12 }}>
+                                  🎁 {selectedPaymentPlan.discount_type === 'PERCENTAGE' ? `${selectedPaymentPlan.discount_value}% Discount` : `₹${selectedPaymentPlan.discount_value} Discount`} on Academic Heads
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(paymentPlans.length || 1, 4)}, 1fr)`, gap: 8 }}>
+                              {paymentPlans.map(plan => {
+                                const isSelected = selectedPaymentPlan?.id === plan.id;
+                                return (
+                                  <button
+                                    key={plan.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedPaymentPlan(plan);
+                                      set('payment_plan_id', plan.id);
+                                    }}
+                                    style={{
+                                      padding: '10px 8px',
+                                      borderRadius: 8,
+                                      border: isSelected ? '2px solid #0B3B7B' : '1px solid #cbd5e1',
+                                      background: isSelected ? '#eff6ff' : '#fff',
+                                      color: isSelected ? '#0B3B7B' : '#334155',
+                                      fontWeight: isSelected ? 800 : 600,
+                                      fontSize: 12,
+                                      cursor: 'pointer',
+                                      textAlign: 'center',
+                                      transition: 'all 0.15s ease'
+                                    }}
+                                  >
+                                    <div>{plan.name}</div>
+                                    <div style={{ fontSize: 10.5, color: isSelected ? '#0284c7' : '#64748b', marginTop: 2 }}>
+                                      {plan.months_count} Month{plan.months_count > 1 ? 's' : ''}
+                                    </div>
+                                    {Number(plan.discount_value) > 0 && (
+                                      <div style={{ fontSize: 10, color: '#16a34a', fontWeight: 700, marginTop: 4 }}>
+                                        {plan.discount_type === 'PERCENTAGE' ? `${plan.discount_value}% Off` : `₹${plan.discount_value} Off`}
+                                      </div>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Itemized Fee Breakdown Table */}
+                          <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+                            <div style={{ padding: '10px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: 12.5, fontWeight: 700, color: '#1e293b' }}>Itemized Particulars ({monthsCount} Month{monthsCount > 1 ? 's' : ''})</span>
+                              <span style={{ fontSize: 11.5, color: '#64748b' }}>Frequency Multipliers Applied</span>
+                            </div>
+                            <div style={{ padding: '8px 16px', fontSize: 12 }}>
+                              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <thead>
+                                  <tr style={{ color: '#64748b', fontSize: 11, borderBottom: '1px solid #f1f5f9', textAlign: 'left' }}>
+                                    <th style={{ padding: '6px 0' }}>Fee Head</th>
+                                    <th style={{ padding: '6px 0' }}>Category</th>
+                                    <th style={{ padding: '6px 0', textAlign: 'center' }}>Rate</th>
+                                    <th style={{ padding: '6px 0', textAlign: 'center' }}>Mult</th>
+                                    <th style={{ padding: '6px 0', textAlign: 'right' }}>Amount (₹)</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {computedItems.map((it, idx) => (
+                                    <tr key={idx} style={{ borderBottom: '1px solid #f8fafc' }}>
+                                      <td style={{ padding: '7px 0', fontWeight: 600, color: '#1e293b' }}>
+                                        {it.fee_head?.name || 'Fee Item'}
+                                      </td>
+                                      <td style={{ padding: '7px 0', color: '#64748b', fontSize: 11 }}>
+                                        {it.fee_head?.category || 'ACADEMIC'}
+                                      </td>
+                                      <td style={{ padding: '7px 0', textAlign: 'center', color: '#64748b' }}>
+                                        ₹ {Number(it.amount || 0).toLocaleString('en-IN')}
+                                      </td>
+                                      <td style={{ padding: '7px 0', textAlign: 'center', color: '#0284c7', fontWeight: 700 }}>
+                                        × {it.mult}
+                                      </td>
+                                      <td style={{ padding: '7px 0', textAlign: 'right', fontWeight: 700, color: '#1e293b' }}>
+                                        ₹ {it.lineAmt.toLocaleString('en-IN')}
+                                      </td>
+                                    </tr>
+                                  ))}
+
+                                  {/* Transport Service Addon if opted in */}
+                                  {form.transport_required === 'Yes' && (
+                                    <tr style={{ borderBottom: '1px solid #f8fafc', background: '#f8fafc' }}>
+                                      <td style={{ padding: '7px 0', fontWeight: 600, color: '#0284c7' }}>
+                                        🚌 Transport Fee ({selectedRoute?.route_name || 'Assigned Route'})
+                                      </td>
+                                      <td style={{ padding: '7px 0', color: '#0284c7', fontSize: 11 }}>TRANSPORT</td>
+                                      <td style={{ padding: '7px 0', textAlign: 'center', color: '#64748b' }}>₹ {transportCharge}</td>
+                                      <td style={{ padding: '7px 0', textAlign: 'center', color: '#64748b' }}>× 1</td>
+                                      <td style={{ padding: '7px 0', textAlign: 'right', fontWeight: 700, color: '#0284c7' }}>
+                                        ₹ {transportCharge.toLocaleString('en-IN')}
+                                      </td>
+                                    </tr>
+                                  )}
+
+                                  {/* Hostel Accommodation Addon if opted in */}
+                                  {form.hostel_required === 'Yes' && (
+                                    <tr style={{ borderBottom: '1px solid #f8fafc', background: '#f8fafc' }}>
+                                      <td style={{ padding: '7px 0', fontWeight: 600, color: '#0284c7' }}>
+                                        🛏️ Hostel Accommodation ({selectedHostel?.name || 'Hostel'})
+                                      </td>
+                                      <td style={{ padding: '7px 0', color: '#0284c7', fontSize: 11 }}>HOSTEL</td>
+                                      <td style={{ padding: '7px 0', textAlign: 'center', color: '#64748b' }}>₹ {hostelCharge}</td>
+                                      <td style={{ padding: '7px 0', textAlign: 'center', color: '#64748b' }}>× 1</td>
+                                      <td style={{ padding: '7px 0', textAlign: 'right', fontWeight: 700, color: '#0284c7' }}>
+                                        ₹ {hostelCharge.toLocaleString('en-IN')}
+                                      </td>
+                                    </tr>
+                                  )}
+
+                                  {/* Gross Total Subtotal */}
+                                  <tr style={{ borderTop: '2px solid #cbd5e1' }}>
+                                    <td colSpan={4} style={{ padding: '10px 0', fontWeight: 700, color: '#475569' }}>
+                                      Gross Admission Demand:
+                                    </td>
+                                    <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: 800, color: '#1e293b', fontSize: 13 }}>
+                                      ₹ {grossTotal.toLocaleString('en-IN')}.00
+                                    </td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+
+                          {/* Concession / Discounts / Special Waiver */}
+                          <div style={{ background: '#f8fafc', padding: 16, borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                            <div style={{ fontSize: 12.5, fontWeight: 700, color: '#0B3B7B', marginBottom: 10 }}>
+                              🏷️ Discounts &amp; Authorized Concession / Waiver
+                            </div>
+
+                            {advanceDiscount > 0 && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, padding: '8px 12px', background: '#dcfce7', borderRadius: 6, border: '1px solid #86efac' }}>
+                                <span style={{ fontSize: 12, color: '#166534', fontWeight: 600 }}>
+                                  🎁 {selectedPaymentPlan?.name} Advance Discount:
+                                </span>
+                                <span style={{ fontSize: 13, fontWeight: 800, color: '#15803d' }}>
+                                  - ₹ {advanceDiscount.toLocaleString('en-IN')}.00
+                                </span>
+                              </div>
+                            )}
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: 12, alignItems: 'center' }}>
+                              <div>
+                                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>
+                                  Special Waiver (₹)
+                                </label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max={grossTotal}
+                                  value={manualWaiver}
+                                  onChange={e => setManualWaiver(Math.max(0, parseFloat(e.target.value) || 0))}
+                                  style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 13, fontWeight: 700, textAlign: 'right' }}
+                                />
+                              </div>
+                              <div>
+                                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>
+                                  Authorization / Waiver Reason {waiverNum > 0 && <span style={{ color: '#ef4444' }}>*</span>}
+                                </label>
+                                <select
+                                  value={waiverReason}
+                                  onChange={e => setWaiverReason(e.target.value)}
+                                  disabled={waiverNum <= 0}
+                                  style={{
+                                    width: '100%',
+                                    padding: '7px 10px',
+                                    borderRadius: 6,
+                                    border: '1px solid #cbd5e1',
+                                    fontSize: 12.5,
+                                    background: waiverNum <= 0 ? '#f1f5f9' : '#fff'
+                                  }}
+                                >
+                                  {WAIVER_REASONS.map(r => (
+                                    <option key={r} value={r}>{r}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Net Payable Highlights Card */}
+                          <div style={{
+                            background: 'linear-gradient(135deg, #0B3B7B 0%, #1e40af 100%)',
+                            color: '#fff',
+                            padding: '16px 20px',
+                            borderRadius: 10,
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            boxShadow: '0 4px 12px rgba(11,59,123,0.2)'
+                          }}>
+                            <div>
+                              <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 600 }}>Total Net Admission Payable</div>
+                              <div style={{ fontSize: 11, opacity: 0.75, marginTop: 2 }}>
+                                Gross ₹ {grossTotal.toLocaleString('en-IN')} {totalDeductions > 0 ? `— Deductions ₹ ${totalDeductions.toLocaleString('en-IN')}` : ''}
+                              </div>
+                            </div>
+                            <div style={{ fontSize: 24, fontWeight: 900, letterSpacing: -0.5, color: '#4ade80' }}>
+                              ₹ {netPayable.toLocaleString('en-IN')}.00
+                            </div>
+                          </div>
+
+                        </div>
+
+                        {/* Right: Payment Setup & Official Ledger Synchronisation */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                          <div style={{ background: '#f8fafc', padding: 20, borderRadius: 12, border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                            <h4 style={{ margin: 0, fontSize: 14, color: '#0B3B7B', fontWeight: 800 }}>
+                              💳 Admission Payment Collection
+                            </h4>
+
+                            <div>
+                              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                                Initial Payment Status
+                              </label>
+                              <select
+                                value={form.payment_status}
+                                onChange={e => {
+                                  const st = e.target.value;
+                                  set('payment_status', st);
+                                  if (st === 'PAID') {
+                                    setPaymentAmount(netPayable);
+                                  } else if (st === 'DUE') {
+                                    setPaymentAmount(0);
+                                  }
+                                }}
+                                style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, background: '#fff', fontWeight: 700 }}
+                              >
+                                <option value="PAID">PAID (Full Payment Received: ₹ {netPayable.toLocaleString('en-IN')})</option>
+                                <option value="PARTIAL">PARTIAL (Partially Paid Now)</option>
+                                <option value="DUE">DUE / PENDING (Pay Later / No Payment Now)</option>
+                              </select>
+                            </div>
+
+                            {form.payment_status !== 'DUE' && (
+                              <>
+                                <div>
+                                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                                    Payment Mode
+                                  </label>
+                                  <select
+                                    value={form.payment_mode}
+                                    onChange={e => set('payment_mode', e.target.value)}
+                                    style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, background: '#fff' }}
+                                  >
+                                    {PAYMENT_MODES.map(m => <option key={m} value={m}>{m}</option>)}
+                                  </select>
+                                </div>
+
+                                {form.payment_status === 'PARTIAL' && (
+                                  <div>
+                                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                                      Amount Collected Now (₹)
+                                    </label>
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      max={netPayable}
+                                      value={paymentAmount}
+                                      placeholder={`Max ₹ ${netPayable}`}
+                                      onChange={e => setPaymentAmount(e.target.value)}
+                                      style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, fontWeight: 700 }}
+                                    />
+                                  </div>
+                                )}
+
+                                <div>
+                                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                                    Transaction Ref / Cheque No / UPI ID
+                                  </label>
+                                  <input
+                                    type="text"
+                                    placeholder="e.g. UPI-984214 / CHQ-10492"
+                                    value={paymentReference}
+                                    onChange={e => setPaymentReference(e.target.value)}
+                                    style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13 }}
+                                  />
+                                </div>
+                              </>
+                            )}
+
+                            <div style={{ background: '#e0f2fe', padding: 12, borderRadius: 8, border: '1px solid #bae6fd', fontSize: 11.5, color: '#0369a1', lineHeight: 1.5 }}>
+                              <strong>Accounting &amp; Ledger Synchronization:</strong>
+                              <ul style={{ margin: '4px 0 0', paddingLeft: 16 }}>
+                                <li>Official student ledger credit entry automatically generated.</li>
+                                <li>Sequential receipt (<code>REC-{new Date().getFullYear()}-XXXXXX</code>) issued instantly.</li>
+                                <li>Fee demands categorized by fee head in school accounting.</li>
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1619,7 +2072,10 @@ export default function NewAdmissionPage() {
                           {!form.is_first_school && <div>Previous School: <strong>{form.previous_school_name || 'Not specified'}</strong></div>}
                           <div>Transport Service: <strong>{form.transport_required === 'Yes' ? (selectedRoute?.route_name || 'Opted In') : 'No'}</strong></div>
                           <div>Hostel Accommodation: <strong>{form.hostel_required === 'Yes' ? (selectedHostel?.name || 'Opted In') : 'Day Scholar'}</strong></div>
-                          <div>Total Admission Fee: <strong style={{ color: '#16a34a' }}>₹ {totalFee.toLocaleString('en-IN')}</strong> ({form.payment_status})</div>
+                          <div>Fee Cadence: <strong>{selectedPaymentPlan?.name || 'Monthly'} ({monthsCount} Month{monthsCount > 1 ? 's' : ''})</strong></div>
+                          {advanceDiscount > 0 && <div style={{ color: '#16a34a' }}>Advance Discount: <strong>- ₹ {advanceDiscount.toLocaleString('en-IN')}</strong></div>}
+                          {waiverNum > 0 && <div style={{ color: '#0284c7' }}>Special Waiver: <strong>- ₹ {waiverNum.toLocaleString('en-IN')}</strong> ({waiverReason})</div>}
+                          <div>Total Net Fee: <strong style={{ color: '#16a34a', fontSize: 13.5 }}>₹ {totalFee.toLocaleString('en-IN')}</strong> ({form.payment_status})</div>
                         </div>
                       </div>
 
@@ -1741,6 +2197,52 @@ export default function NewAdmissionPage() {
                   </button>
                 </div>
               </div>
+
+              {/* Fee Receipt Card */}
+              {done.fee_summary && (
+                <div style={{
+                  background: '#f8fafc',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: 12,
+                  padding: '16px 20px',
+                  marginBottom: 20,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.04)'
+                }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: '#0B3B7B' }}>🧾 Admission Fee Receipt:</span>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 800, color: '#15803d', background: '#dcfce7', border: '1px solid #86efac', padding: '2px 8px', borderRadius: 4 }}>
+                        {done.fee_summary.receipt_no || 'REC-GENERATED'}
+                      </span>
+                      <span style={{ fontSize: 11.5, color: '#475569', fontWeight: 600 }}>
+                        (Status: {done.fee_summary.payment_status || 'PAID'})
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>
+                      Net Demand: <strong>₹ {Number(done.fee_summary.net_payable || 0).toLocaleString('en-IN')}</strong> | 
+                      Amount Collected: <strong>₹ {Number(done.fee_summary.initial_payment_amount || 0).toLocaleString('en-IN')}</strong> via {done.fee_summary.payment_mode || 'Cash'}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => navigate(resolveTenantPath('/finance/payment-logs', user))}
+                    style={{
+                      background: '#fff',
+                      border: '1px solid #0B3B7B',
+                      color: '#0B3B7B',
+                      padding: '8px 14px',
+                      borderRadius: 6,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    View in Accounting Ledger →
+                  </button>
+                </div>
+              )}
 
               {/* Printable 2-Page Admission Form Preview Container */}
               <div id="printable-admission-form" style={{ background: '#ffffff', border: '2px solid #0B3B7B', borderRadius: 12, padding: 24, boxShadow: '0 10px 30px rgba(0,0,0,0.06)' }}>

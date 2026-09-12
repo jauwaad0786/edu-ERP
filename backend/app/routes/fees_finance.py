@@ -28,7 +28,7 @@ from app.models.fee_finance import (
     FeeHead, FeeStructureV2, FeeStructureItemV2, StudentFeeAssignment,
     StudentConcession, FeeBill, FeeBillItem, StudentLedger, FeePayment,
     FeePaymentAllocation, FeeRefund, FinancialAuditLog,
-    BillStatus, PaymentStatus
+    BillStatus, PaymentStatus, FeePaymentPlan
 )
 from app.services.fee_ledger_service import (
     get_student_ledger, get_student_applicable_charges,
@@ -207,6 +207,10 @@ def create_fee_structure():
     class_id = data.get('class_id')
     session = data.get('session', '2026-27')
 
+    publish_status = data.get('publish_status', 'PUBLISHED')
+    if publish_status not in ('PUBLISHED', 'DRAFT'):
+        publish_status = 'PUBLISHED'
+
     struct = FeeStructureV2(
         school_id=user.school_id,
         class_id=class_id if class_id else None,
@@ -215,6 +219,8 @@ def create_fee_structure():
         frequency=data.get('frequency', 'MONTHLY'),
         due_date_day=int(data.get('due_date_day', 10)),
         is_active=True,
+        publish_status=publish_status,
+        version=int(data.get('version', 1)),
         created_by=user.id,
     )
     db.session.add(struct)
@@ -272,6 +278,14 @@ def update_fee_structure(struct_id):
         struct.class_id = data['class_id']
     if 'frequency' in data:
         struct.frequency = data['frequency']
+    if 'due_date_day' in data:
+        try:
+            struct.due_date_day = int(data['due_date_day'])
+        except (ValueError, TypeError):
+            pass
+    if 'publish_status' in data:
+        if data['publish_status'] in ('PUBLISHED', 'DRAFT'):
+            struct.publish_status = data['publish_status']
 
     if 'items' in data:
         # If structure is already in use by active bills, prevent modifying base amounts
@@ -332,6 +346,464 @@ def delete_fee_structure(struct_id):
     db.session.delete(struct)
     db.session.commit()
     return jsonify({'message': 'Rate card deleted successfully.'}), 200
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  3.1 FEE READINESS, CLONING & PAYMENT PLANS LIFECYCLE
+# ═══════════════════════════════════════════════════════════════════════
+
+@fees_finance_bp.route('/readiness', methods=['GET'])
+@jwt_required()
+def get_fee_setup_readiness():
+    """Returns academic session fee readiness scorecard for admission planning."""
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    session = request.args.get('session', '2026-27')
+    classes = Class.query.filter_by(school_id=user.school_id).order_by(Class.name.asc(), Class.section.asc()).all()
+
+    # Get published fee structures for this session
+    published_structs = FeeStructureV2.query.filter(
+        FeeStructureV2.school_id == user.school_id,
+        FeeStructureV2.session == session,
+        FeeStructureV2.is_active == True,
+        FeeStructureV2.is_archived == False,
+        FeeStructureV2.publish_status == 'PUBLISHED'
+    ).all()
+
+    school_wide = next((s for s in published_structs if s.class_id is None), None)
+    class_map = {s.class_id: s for s in published_structs if s.class_id is not None}
+
+    classes_with_plan = []
+    classes_missing_plan = []
+
+    for c in classes:
+        c_dict = {'id': c.id, 'name': c.name, 'section': c.section or '', 'display_name': f"{c.name} {c.section or ''}".strip()}
+        st = class_map.get(c.id) or school_wide
+        if st:
+            c_dict['structure_id'] = st.id
+            c_dict['structure_name'] = st.name
+            c_dict['total_amount'] = st.total_amount()
+            c_dict['frequency'] = st.frequency
+            classes_with_plan.append(c_dict)
+        else:
+            classes_missing_plan.append(c_dict)
+
+    # Seed payment plans if none
+    _seed_default_payment_plans(user.school_id, session)
+
+    payment_plans = FeePaymentPlan.query.filter_by(
+        school_id=user.school_id, session=session, is_active=True
+    ).all()
+
+    try:
+        from app.models.hostel import HostelFeeStructure
+        hostel_count = HostelFeeStructure.query.filter_by(school_id=user.school_id, status='ACTIVE').count()
+    except Exception:
+        hostel_count = 0
+
+    try:
+        from app.models.transport_student import TransportFeeStructure
+        transport_count = TransportFeeStructure.query.filter_by(school_id=user.school_id, status='ACTIVE').count()
+    except Exception:
+        transport_count = 0
+
+    return jsonify({
+        'session': session,
+        'total_classes': len(classes),
+        'published_classes_count': len(classes_with_plan),
+        'missing_classes_count': len(classes_missing_plan),
+        'classes_with_plan': classes_with_plan,
+        'classes_missing_plan': classes_missing_plan,
+        'is_ready_for_admissions': (len(classes) == 0 or len(classes_missing_plan) == 0) and len(published_structs) > 0,
+        'payment_plans_count': len(payment_plans),
+        'hostel_fee_count': hostel_count,
+        'transport_fee_count': transport_count,
+    }), 200
+
+
+@fees_finance_bp.route('/structures/<int:struct_id>/publish', methods=['PATCH'])
+@jwt_required()
+def toggle_publish_fee_structure(struct_id):
+    """Toggle FeeStructureV2 between PUBLISHED and DRAFT."""
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    struct = FeeStructureV2.query.filter_by(id=struct_id, school_id=user.school_id).first_or_404()
+    data = request.get_json(silent=True) or {}
+
+    target = data.get('publish_status')
+    if target in ('PUBLISHED', 'DRAFT'):
+        struct.publish_status = target
+    else:
+        struct.publish_status = 'DRAFT' if struct.publish_status == 'PUBLISHED' else 'PUBLISHED'
+
+    db.session.commit()
+    return jsonify({
+        'message': f'Structure "{struct.name}" is now {struct.publish_status}.',
+        'structure': struct.to_dict()
+    }), 200
+
+
+@fees_finance_bp.route('/structures/<int:struct_id>/clone-to-classes', methods=['POST'])
+@jwt_required()
+def clone_structure_to_classes(struct_id):
+    """Bulk copy a fee structure rate card to one or more other classes."""
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    source_struct = FeeStructureV2.query.filter_by(id=struct_id, school_id=user.school_id).first_or_404()
+    data = request.get_json() or {}
+    target_class_ids = data.get('target_class_ids', [])
+    target_session = data.get('session', source_struct.session)
+    publish_now = data.get('publish_now', True)
+
+    if not target_class_ids or not isinstance(target_class_ids, list):
+        return jsonify({'error': 'target_class_ids array is required.'}), 400
+
+    created_structures = []
+    for cid in target_class_ids:
+        c_obj = Class.query.filter_by(id=cid, school_id=user.school_id).first()
+        c_name = f"{c_obj.name} {c_obj.section or ''}".strip() if c_obj else f"Class {cid}"
+        new_name = f"{c_name} Fee Plan {target_session}"
+
+        new_struct = FeeStructureV2(
+            school_id=user.school_id,
+            class_id=cid,
+            session=target_session,
+            name=new_name,
+            frequency=source_struct.frequency,
+            due_date_day=source_struct.due_date_day,
+            is_active=True,
+            publish_status='PUBLISHED' if publish_now else 'DRAFT',
+            version=1,
+            copied_from_id=source_struct.id,
+            created_by=user.id,
+        )
+        db.session.add(new_struct)
+        db.session.flush()
+
+        for item in source_struct.items:
+            db.session.add(FeeStructureItemV2(
+                structure_id=new_struct.id,
+                fee_head_id=item.fee_head_id,
+                amount=item.amount,
+            ))
+
+        created_structures.append(new_struct)
+
+    db.session.commit()
+    return jsonify({
+        'message': f'Successfully created {len(created_structures)} fee structures from "{source_struct.name}".',
+        'structures': [s.to_dict() for s in created_structures]
+    }), 201
+
+
+@fees_finance_bp.route('/structures/copy-session', methods=['POST'])
+@jwt_required()
+def copy_structures_from_session():
+    """Copy all fee structures from an earlier session to a new session in DRAFT or PUBLISHED status."""
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    data = request.get_json() or {}
+    from_session = data.get('from_session')
+    to_session = data.get('to_session')
+    as_draft = data.get('as_draft', True)
+
+    if not from_session or not to_session:
+        return jsonify({'error': 'Both from_session and to_session are required.'}), 400
+
+    if from_session == to_session:
+        return jsonify({'error': 'Target session must be different from source session.'}), 400
+
+    sources = FeeStructureV2.query.filter_by(
+        school_id=user.school_id, session=from_session, is_active=True, is_archived=False
+    ).all()
+
+    if not sources:
+        return jsonify({'error': f'No active fee structures found for session {from_session}.'}), 404
+
+    copied = []
+    for src in sources:
+        new_name = src.name.replace(from_session, to_session) if from_session in src.name else f"{src.name} ({to_session})"
+        new_struct = FeeStructureV2(
+            school_id=user.school_id,
+            class_id=src.class_id,
+            session=to_session,
+            name=new_name,
+            frequency=src.frequency,
+            due_date_day=src.due_date_day,
+            is_active=True,
+            publish_status='DRAFT' if as_draft else 'PUBLISHED',
+            version=1,
+            copied_from_id=src.id,
+            created_by=user.id,
+        )
+        db.session.add(new_struct)
+        db.session.flush()
+
+        for it in src.items:
+            db.session.add(FeeStructureItemV2(
+                structure_id=new_struct.id,
+                fee_head_id=it.fee_head_id,
+                amount=it.amount,
+            ))
+        copied.append(new_struct)
+
+    db.session.commit()
+    return jsonify({
+        'message': f'Successfully copied {len(copied)} fee structures from {from_session} to {to_session}.',
+        'structures': [s.to_dict() for s in copied]
+    }), 201
+
+
+def _seed_default_payment_plans(school_id, session):
+    """Seed initial configurable payment cadence plans for a session if none exist."""
+    existing = FeePaymentPlan.query.filter_by(school_id=school_id, session=session).first()
+    if existing:
+        return
+
+    defaults = [
+        {
+            'name': 'Monthly Standard',
+            'code': 'MONTHLY',
+            'months_count': 1,
+            'discount_type': 'PERCENTAGE',
+            'discount_value': 0.0,
+            'eligible_categories': '["ACADEMIC"]',
+            'description': 'Standard 1-month payment with no advance concession.',
+            'sort_order': 1,
+        },
+        {
+            'name': 'Quarterly Advance (3 Months)',
+            'code': 'QUARTERLY',
+            'months_count': 3,
+            'discount_type': 'PERCENTAGE',
+            'discount_value': 5.0,
+            'eligible_categories': '["ACADEMIC"]',
+            'description': 'Pay 3 months in advance to receive 5% advance concession on tuition.',
+            'sort_order': 2,
+        },
+        {
+            'name': 'Half-Yearly Advance (6 Months)',
+            'code': 'HALF_YEARLY',
+            'months_count': 6,
+            'discount_type': 'PERCENTAGE',
+            'discount_value': 10.0,
+            'eligible_categories': '["ACADEMIC"]',
+            'description': 'Pay 6 months in advance to receive 10% advance concession on tuition.',
+            'sort_order': 3,
+        },
+        {
+            'name': 'Full Annual Advance (12 Months)',
+            'code': 'ANNUAL',
+            'months_count': 12,
+            'discount_type': 'PERCENTAGE',
+            'discount_value': 15.0,
+            'eligible_categories': '["ACADEMIC"]',
+            'description': 'Pay full academic session in advance to receive 15% advance concession on tuition.',
+            'sort_order': 4,
+        },
+    ]
+
+    for d in defaults:
+        plan = FeePaymentPlan(
+            school_id=school_id,
+            session=session,
+            name=d['name'],
+            code=d['code'],
+            months_count=d['months_count'],
+            discount_type=d['discount_type'],
+            discount_value=d['discount_value'],
+            eligible_categories=d['eligible_categories'],
+            description=d['description'],
+            sort_order=d['sort_order'],
+            is_active=True,
+        )
+        db.session.add(plan)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+@fees_finance_bp.route('/payment-plans', methods=['GET'])
+@jwt_required()
+def get_payment_plans():
+    """Get all payment plans for a given academic session."""
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    session = request.args.get('session', '2026-27')
+    _seed_default_payment_plans(user.school_id, session)
+
+    plans = FeePaymentPlan.query.filter_by(
+        school_id=user.school_id, session=session
+    ).order_by(FeePaymentPlan.sort_order.asc(), FeePaymentPlan.months_count.asc()).all()
+
+    return jsonify([p.to_dict() for p in plans]), 200
+
+
+@fees_finance_bp.route('/payment-plans', methods=['POST'])
+@jwt_required()
+def create_payment_plan():
+    """Create a new configurable payment plan."""
+    import json
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    data = request.get_json() or {}
+    name = (data.get('name') or '').strip()
+    code = (data.get('code') or '').strip().upper()
+    if not name or not code:
+        return jsonify({'error': 'Name and unique code are required.'}), 400
+
+    session = data.get('session', '2026-27')
+    cats = data.get('eligible_categories', ['ACADEMIC'])
+    if not isinstance(cats, list):
+        cats = ['ACADEMIC']
+
+    plan = FeePaymentPlan(
+        school_id=user.school_id,
+        session=session,
+        name=name,
+        code=code,
+        months_count=int(data.get('months_count', 1)),
+        discount_type=data.get('discount_type', 'PERCENTAGE'),
+        discount_value=float(data.get('discount_value', 0.0)),
+        eligible_categories=json.dumps(cats),
+        description=data.get('description', ''),
+        sort_order=int(data.get('sort_order', 0)),
+        is_active=bool(data.get('is_active', True)),
+    )
+    db.session.add(plan)
+    db.session.commit()
+    return jsonify(plan.to_dict()), 201
+
+
+@fees_finance_bp.route('/payment-plans/<int:plan_id>', methods=['PATCH', 'PUT'])
+@jwt_required()
+def update_payment_plan(plan_id):
+    """Update payment plan details (cadence, discount, eligible categories)."""
+    import json
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    plan = FeePaymentPlan.query.filter_by(id=plan_id, school_id=user.school_id).first_or_404()
+    data = request.get_json() or {}
+
+    if 'name' in data:
+        plan.name = data['name'].strip()
+    if 'months_count' in data:
+        plan.months_count = int(data['months_count'])
+    if 'discount_type' in data:
+        plan.discount_type = data['discount_type']
+    if 'discount_value' in data:
+        plan.discount_value = float(data['discount_value'])
+    if 'eligible_categories' in data:
+        cats = data['eligible_categories'] if isinstance(data['eligible_categories'], list) else ['ACADEMIC']
+        plan.eligible_categories = json.dumps(cats)
+    if 'description' in data:
+        plan.description = data['description']
+    if 'is_active' in data:
+        plan.is_active = bool(data['is_active'])
+    if 'sort_order' in data:
+        plan.sort_order = int(data['sort_order'])
+
+    db.session.commit()
+    return jsonify(plan.to_dict()), 200
+
+
+@fees_finance_bp.route('/payment-plans/<int:plan_id>', methods=['DELETE'])
+@jwt_required()
+def delete_payment_plan(plan_id):
+    """Deactivate or delete payment plan."""
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    plan = FeePaymentPlan.query.filter_by(id=plan_id, school_id=user.school_id).first_or_404()
+    # Soft delete / deactivate
+    plan.is_active = False
+    db.session.commit()
+    return jsonify({'message': f'Payment plan "{plan.name}" deactivated.'}), 200
+
+
+@fees_finance_bp.route('/admission-fee-plan', methods=['GET'])
+@jwt_required()
+def get_admission_fee_plan():
+    """
+    Fetch comprehensive class-wise published fee plan, payment options,
+    and optional service rates for the New Admission form.
+    """
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    class_id = request.args.get('class_id', type=int)
+    session = request.args.get('session', '2026-27')
+
+    _seed_default_payment_plans(user.school_id, session)
+
+    # 1. Find class-specific published fee structure
+    struct = None
+    if class_id:
+        struct = FeeStructureV2.query.filter_by(
+            school_id=user.school_id, class_id=class_id, session=session,
+            is_active=True, is_archived=False, publish_status='PUBLISHED'
+        ).first()
+
+    # If no class-specific, check school-wide published
+    if not struct:
+        struct = FeeStructureV2.query.filter_by(
+            school_id=user.school_id, class_id=None, session=session,
+            is_active=True, is_archived=False, publish_status='PUBLISHED'
+        ).first()
+
+    # 2. Get active payment plans
+    payment_plans = FeePaymentPlan.query.filter_by(
+        school_id=user.school_id, session=session, is_active=True
+    ).order_by(FeePaymentPlan.sort_order.asc(), FeePaymentPlan.months_count.asc()).all()
+
+    # 3. Optional hostel fee structures
+    hostel_plans = []
+    try:
+        from app.models.hostel import HostelFeeStructure
+        hfs_list = HostelFeeStructure.query.filter_by(school_id=user.school_id, status='ACTIVE').all()
+        hostel_plans = [h.to_dict() for h in hfs_list]
+    except Exception:
+        pass
+
+    # 4. Optional transport routes & fee structures
+    transport_plans = []
+    try:
+        from app.models.transport_student import TransportFeeStructure
+        tfs_list = TransportFeeStructure.query.filter_by(school_id=user.school_id, status='ACTIVE').all()
+        transport_plans = [t.to_dict() for t in tfs_list]
+    except Exception:
+        pass
+
+    # 5. Active Fee Heads
+    heads = FeeHead.query.filter_by(school_id=user.school_id, is_active=True).all()
+
+    return jsonify({
+        'session': session,
+        'class_id': class_id,
+        'has_published_plan': struct is not None,
+        'class_fee_structure': struct.to_dict() if struct else None,
+        'payment_plans': [p.to_dict() for p in payment_plans],
+        'hostel_plans': hostel_plans,
+        'transport_plans': transport_plans,
+        'fee_heads': [h.to_dict() for h in heads],
+    }), 200
 
 
 @fees_finance_bp.route('/concessions/<int:conc_id>', methods=['DELETE'])

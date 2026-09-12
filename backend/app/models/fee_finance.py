@@ -147,10 +147,13 @@ class FeeStructureV2(db.Model):
     frequency    = db.Column(db.String(30), default=FeeFrequency.MONTHLY.value)
     due_date_day = db.Column(db.Integer, default=10)           # 10th of every month
     is_active    = db.Column(db.Boolean, default=True)
-    status       = db.Column(db.String(20), default='ACTIVE')  # ACTIVE / INACTIVE / ARCHIVED
-    is_archived  = db.Column(db.Boolean, default=False)
-    created_by   = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
-    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
+    status         = db.Column(db.String(20), default='ACTIVE')  # ACTIVE / INACTIVE / ARCHIVED
+    publish_status = db.Column(db.String(20), default='PUBLISHED') # PUBLISHED / DRAFT
+    version        = db.Column(db.Integer, default=1)
+    copied_from_id = db.Column(db.Integer, nullable=True)
+    is_archived    = db.Column(db.Boolean, default=False)
+    created_by     = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    created_at     = db.Column(db.DateTime, default=datetime.utcnow)
 
     class_ref    = db.relationship('Class', foreign_keys=[class_id])
     items        = db.relationship('FeeStructureItemV2', backref='structure_v2', cascade='all, delete-orphan')
@@ -193,23 +196,29 @@ class FeeStructureV2(db.Model):
         except Exception:
             items_data = []
 
+        pub_status = self.publish_status or 'PUBLISHED'
+
         return {
-            'id':           self.id,
-            'school_id':    self.school_id,
-            'class_id':     self.class_id,
-            'class_name':   c_name,
-            'session':      self.session,
-            'name':         self.name,
-            'frequency':    self.frequency,
-            'due_date_day': self.due_date_day,
-            'total_amount': self.total_amount(),
-            'is_active':    bool(self.is_active and not self.is_archived and self.status == 'ACTIVE'),
-            'status':       'ARCHIVED' if self.is_archived else (self.status or 'ACTIVE'),
-            'is_archived':  bool(self.is_archived or self.status == 'ARCHIVED'),
-            'is_used':      used,
-            'can_delete':   not used,
-            'items':        items_data,
-            'created_at':   self.created_at.isoformat() if self.created_at else None,
+            'id':             self.id,
+            'school_id':      self.school_id,
+            'class_id':       self.class_id,
+            'class_name':     c_name,
+            'session':        self.session,
+            'name':           self.name,
+            'frequency':      self.frequency,
+            'due_date_day':   self.due_date_day,
+            'total_amount':   self.total_amount(),
+            'is_active':      bool(self.is_active and not self.is_archived and self.status == 'ACTIVE'),
+            'status':         'ARCHIVED' if self.is_archived else (self.status or 'ACTIVE'),
+            'publish_status': pub_status,
+            'is_published':   pub_status == 'PUBLISHED',
+            'version':        self.version or 1,
+            'copied_from_id': self.copied_from_id,
+            'is_archived':    bool(self.is_archived or self.status == 'ARCHIVED'),
+            'is_used':        used,
+            'can_delete':     not used,
+            'items':          items_data,
+            'created_at':     self.created_at.isoformat() if self.created_at else None,
         }
 
 
@@ -233,6 +242,56 @@ class FeeStructureItemV2(db.Model):
             'fee_head_code':  self.fee_head.code if self.fee_head else '',
             'department':     self.fee_head.department if self.fee_head else 'ACCOUNTS',
             'amount':         self.amount,
+        }
+
+
+class FeePaymentPlan(db.Model):
+    """
+    Configurable payment cadence & advance discount plans per session.
+    e.g. Monthly (0%), Quarterly (3M, 5%), Half-Yearly (6M, 10%), Annual (12M, 15%).
+    Principal can configure discount percentage or fixed amount, and choose which
+    categories (e.g. ACADEMIC, TUITION) are eligible for advance discount.
+    """
+    __tablename__ = 'fee_payment_plans'
+
+    id                  = db.Column(db.Integer, primary_key=True)
+    school_id           = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    session             = db.Column(db.String(20), default='2026-27', index=True)
+    name                = db.Column(db.String(100), nullable=False)
+    code                = db.Column(db.String(50), nullable=False) # MONTHLY, QUARTERLY, HALF_YEARLY, ANNUAL, CUSTOM
+    months_count        = db.Column(db.Integer, default=1)
+    discount_type       = db.Column(db.String(20), default='PERCENTAGE') # PERCENTAGE / FIXED
+    discount_value      = db.Column(db.Float, default=0.0)
+    eligible_categories = db.Column(db.Text, default='["ACADEMIC"]') # JSON array of category codes
+    description         = db.Column(db.String(255), nullable=True)
+    is_active           = db.Column(db.Boolean, default=True)
+    sort_order          = db.Column(db.Integer, default=0)
+    created_at          = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('school_id', 'session', 'code', name='uq_payment_plan_school_session_code'),
+    )
+
+    def to_dict(self):
+        import json
+        try:
+            cats = json.loads(self.eligible_categories) if self.eligible_categories else ['ACADEMIC']
+        except Exception:
+            cats = ['ACADEMIC']
+        return {
+            'id':                  self.id,
+            'school_id':           self.school_id,
+            'session':             self.session,
+            'name':                self.name,
+            'code':                self.code,
+            'months_count':        self.months_count or 1,
+            'discount_type':       self.discount_type or 'PERCENTAGE',
+            'discount_value':      float(self.discount_value or 0.0),
+            'eligible_categories': cats,
+            'description':         self.description or '',
+            'is_active':           bool(self.is_active),
+            'sort_order':          self.sort_order or 0,
+            'created_at':          self.created_at.isoformat() if self.created_at else None,
         }
 
 

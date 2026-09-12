@@ -223,6 +223,7 @@ def create_app(config_name='default'):
             _ensure_hostel_columns()
             _ensure_transport_columns()
             _ensure_finance_phase2_columns()
+            _ensure_fee_plan_columns()
             _ensure_audit_columns()
             # ── Import AI models so db.create_all() creates their tables ──
             try:
@@ -1346,5 +1347,60 @@ def _ensure_deleted_items_schema():
                             print(f'[WARN] Failed to add deleted_items.{col}: {ex}')
     except Exception as e:
         print(f'[WARN] _ensure_deleted_items_schema: {e}')
+
+
+def _ensure_fee_plan_columns():
+    """
+    Ensure fee_payment_plans table exists and fee_structures_v2 has
+    publish_status, version, and copied_from_id columns across SQLite and PostgreSQL.
+    """
+    from sqlalchemy import text, inspect
+    try:
+        from app.models.fee_finance import FeePaymentPlan
+        FeePaymentPlan.__table__.create(db.engine, checkfirst=True)
+    except Exception as e:
+        print(f'[WARN] FeePaymentPlan table create note: {e}')
+
+    try:
+        inspector = inspect(db.engine)
+        table_names = inspector.get_table_names()
+
+        if 'fee_structures_v2' in table_names:
+            existing = {c['name'] for c in inspector.get_columns('fee_structures_v2')}
+            to_add = {
+                'publish_status': "VARCHAR(20) DEFAULT 'PUBLISHED'",
+                'version':        'INTEGER DEFAULT 1',
+                'copied_from_id': 'INTEGER',
+            }
+            with db.engine.connect() as conn:
+                for col, defn in to_add.items():
+                    if col not in existing:
+                        try:
+                            conn.execute(text(f'ALTER TABLE fee_structures_v2 ADD COLUMN {col} {defn}'))
+                            conn.commit()
+                            print(f'[OK] Added column fee_structures_v2.{col}')
+                        except Exception as ex:
+                            print(f'[WARN] Failed to add fee_structures_v2.{col}: {ex}')
+
+        if 'fee_records' in table_names:
+            existing_fr = {c['name'] for c in inspector.get_columns('fee_records')}
+            fr_cols = {
+                'billing_frequency': "VARCHAR(20) DEFAULT 'MONTHLY'",
+                'period_start':      'DATE',
+                'period_end':        'DATE',
+                'coverage_label':    'VARCHAR(100)',
+            }
+            with db.engine.connect() as conn:
+                for col, defn in fr_cols.items():
+                    if col not in existing_fr:
+                        try:
+                            conn.execute(text(f'ALTER TABLE fee_records ADD COLUMN {col} {defn}'))
+                            conn.commit()
+                            print(f'[OK] Added column fee_records.{col}')
+                        except Exception as ex:
+                            print(f'[WARN] Failed to add fee_records.{col}: {ex}')
+    except Exception as e:
+        print(f'[WARN] _ensure_fee_plan_columns: {e}')
+
 
 
