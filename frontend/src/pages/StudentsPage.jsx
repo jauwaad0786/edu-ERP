@@ -40,6 +40,7 @@ export default function StudentsPage() {
   const [showBulkEditModal, setShowBulkEditModal] = useState(false);
   const [showAnnualRegModal, setShowAnnualRegModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [provisionalTarget, setProvisionalTarget] = useState(null);
 
   const [createdCreds, setCreatedCreds] = useState(null);
   const [copied, setCopied] = useState(false);
@@ -235,8 +236,8 @@ export default function StudentsPage() {
   });
 
   const STATUS_BADGES = {
-    ACTIVE:      { bg: '#dcfce7', text: '#15803d', label: 'Active' },
-    PROVISIONAL: { bg: '#fef3c7', text: '#b45309', label: 'Provisional (Fee Due)' },
+    ACTIVE:      { bg: '#dcfce7', text: '#15803d', label: 'Confirmed (Active)' },
+    PROVISIONAL: { bg: '#fef3c7', text: '#b45309', label: 'Unconfirmed (Fee Due)' },
     PROMOTED:    { bg: '#e0e7ff', text: '#3730a3', label: 'Promoted' },
     RETAINED:    { bg: '#fef3c7', text: '#92400e', label: 'Retained' },
     GRADUATED:   { bg: '#f3e8ff', text: '#6b21a8', label: 'Graduated' },
@@ -408,8 +409,8 @@ export default function StudentsPage() {
                 onChange={e => setStatusFilter(e.target.value)}
               >
                 <option value="">All Statuses</option>
-                <option value="ACTIVE">Active</option>
-                <option value="PROVISIONAL">Provisional (Fee Due)</option>
+                <option value="ACTIVE">Confirmed (Active)</option>
+                <option value="PROVISIONAL">Unconfirmed (Fee Due)</option>
                 <option value="PROMOTED">Promoted</option>
                 <option value="RETAINED">Retained</option>
                 <option value="GRADUATED">Graduated</option>
@@ -539,15 +540,47 @@ export default function StudentsPage() {
                           </div>
                         </td>
                         <td>
-                          <span style={{
-                            padding: '3px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700,
-                            background: st.bg, color: st.text
-                          }}>
-                            {st.label}
-                          </span>
+                          {s.status === 'PROVISIONAL' ? (
+                            <button
+                              type="button"
+                              onClick={() => setProvisionalTarget(s)}
+                              style={{
+                                padding: '3px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700,
+                                background: st.bg, color: st.text, border: '1px solid #fcd34d',
+                                cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4
+                              }}
+                              title="Click to view incomplete admission options"
+                            >
+                              ⚠️ {st.label} ↗
+                            </button>
+                          ) : (
+                            <span style={{
+                              padding: '3px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700,
+                              background: st.bg, color: st.text
+                            }}>
+                              {st.label}
+                            </span>
+                          )}
                         </td>
                         <td>
                           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            {/* Complete Admission button for Unconfirmed Students */}
+                            {s.status === 'PROVISIONAL' && (
+                              <button
+                                type="button"
+                                onClick={() => setProvisionalTarget(s)}
+                                style={{
+                                  background: '#fffbeb', color: '#b45309',
+                                  border: '1px solid #fcd34d', borderRadius: 4,
+                                  padding: '4px 8px', fontSize: 11,
+                                  fontWeight: 800, cursor: 'pointer',
+                                  display: 'inline-flex', alignItems: 'center', gap: 4
+                                }}
+                                title="Complete Admission: Pay Fee or Complete Profile"
+                              >
+                                ⚡ Complete Admission
+                              </button>
+                            )}
                             {/* Academic History Button */}
                             <button
                               type="button"
@@ -898,6 +931,127 @@ export default function StudentsPage() {
                   opacity: deleting ? 0.7 : 1,
                 }}>
                 {deleting ? 'Deleting...' : '🗑️ Yes, Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Incomplete / Provisional Student Modal ── */}
+      {provisionalTarget && (
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setProvisionalTarget(null)}>
+          <div className="modal" style={{ maxWidth: 540, borderRadius: 14, overflow: 'hidden' }}>
+            <div className="modal-header" style={{ background: '#fffbeb', borderBottom: '1px solid #fcd34d', padding: '16px 20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 24 }}>⚡</span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#92400e' }}>
+                    Unconfirmed Student Admission
+                  </h3>
+                  <p style={{ margin: 0, fontSize: 12, color: '#b45309' }}>
+                    Quick registration complete, pending fee payment &amp; profile finalization
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setProvisionalTarget(null)}
+                style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#78350f' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="modal-body" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Student Details Card */}
+              <div style={{ background: '#f8fafc', padding: '12px 16px', borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 12.5, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>👤 <strong>Name:</strong> {provisionalTarget.name}</div>
+                <div>🆔 <strong>Admission No:</strong> {provisionalTarget.admission_no || '—'}</div>
+                <div>🎓 <strong>Class:</strong> {classes.find(c => String(c.id) === String(provisionalTarget.class_id))?.name || provisionalTarget.class_name || '—'}</div>
+                <div>📱 <strong>Mobile:</strong> {provisionalTarget.parent_phone || '—'}</div>
+                <div style={{ gridColumn: '1 / -1', color: '#b45309', background: '#fef3c7', padding: '8px 12px', borderRadius: 6, fontWeight: 600, fontSize: 12 }}>
+                  ⚠️ <strong>Current Status: Unconfirmed (Fee Due).</strong> Student portal credentials (Admission No &amp; Father&apos;s Name) are active, but admission will be officially confirmed only once fees are deposited.
+                </div>
+              </div>
+
+              {/* Next Steps Choices */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {/* Option 1: Collect Fees */}
+                <div
+                  onClick={() => {
+                    const t = provisionalTarget;
+                    setProvisionalTarget(null);
+                    navigate(`/finance/payments/collect?student_id=${t.id}`);
+                  }}
+                  style={{
+                    background: '#f0fdf4',
+                    border: '1.5px solid #86efac',
+                    borderRadius: 10,
+                    padding: '14px 16px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ fontSize: 26 }}>💳</span>
+                    <div>
+                      <div style={{ fontSize: 13.5, fontWeight: 800, color: '#15803d' }}>
+                        Collect Admission Fee &amp; Auto-Confirm
+                      </div>
+                      <div style={{ fontSize: 11.5, color: '#166534', marginTop: 2 }}>
+                        Fee collect hote hi status automatically <strong>CONFIRMED (ACTIVE)</strong> ho jayega aur receipt issue hogi.
+                      </div>
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 18, color: '#15803d', fontWeight: 800 }}>→</span>
+                </div>
+
+                {/* Option 2: Complete Profile */}
+                <div
+                  onClick={() => {
+                    const t = provisionalTarget;
+                    setProvisionalTarget(null);
+                    navigate(`/students/${t.id}`);
+                  }}
+                  style={{
+                    background: '#eff6ff',
+                    border: '1.5px solid #93c5fd',
+                    borderRadius: 10,
+                    padding: '14px 16px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ fontSize: 26 }}>👤</span>
+                    <div>
+                      <div style={{ fontSize: 13.5, fontWeight: 800, color: '#1e40af' }}>
+                        Complete Full Profile &amp; KYC Documents
+                      </div>
+                      <div style={{ fontSize: 11.5, color: '#1d4ed8', marginTop: 2 }}>
+                        Student photo, Aadhar documents, address, aur academic history fill / update karein.
+                      </div>
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 18, color: '#1e40af', fontWeight: 800 }}>→</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-footer" style={{ padding: '12px 20px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="btn btn-neutral"
+                onClick={() => setProvisionalTarget(null)}
+              >
+                Close
               </button>
             </div>
           </div>

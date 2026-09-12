@@ -276,7 +276,7 @@ export default function NewAdmissionPage() {
         setHostelPlans(data.hostel_plans);
       }
       if (data?.payment_plans?.length > 0) {
-        const def = data.payment_plans.find(p => p.code === 'QUARTERLY') || data.payment_plans[0];
+        const def = data.payment_plans.find(p => p.code === 'MONTHLY' || p.months_count === 1) || data.payment_plans[0];
         setSelectedPaymentPlan(def);
         setForm(f => ({ ...f, payment_plan_id: def.id }));
       }
@@ -491,14 +491,14 @@ export default function NewAdmissionPage() {
 
   const isQuick = admissionMode === 'quick';
 
-  const transportMonthlyRate = !isQuick && form.transport_required === 'Yes' ? Number(selectedRoute?.fare || selectedRoute?.fee_amount || selectedStop?.pickup_charge || 0) : 0;
+  const transportMonthlyRate = form.transport_required === 'Yes' ? Number(selectedRoute?.fare || selectedRoute?.fee_amount || selectedStop?.pickup_charge || 0) : 0;
   const transportRecurringTotal = transportMonthlyRate * monthsCount;
   const transportCharge = transportMonthlyRate;
 
-  const hostelMonthlyRate = !isQuick && form.hostel_required === 'Yes'
+  const hostelMonthlyRate = form.hostel_required === 'Yes'
     ? (selectedHostelPlan ? Number(selectedHostelPlan.total_monthly || selectedHostelPlan.monthly_fee || 0) : Number(form.hostel_monthly_fee || 0))
     : 0;
-  const hostelDeposit = !isQuick && form.hostel_required === 'Yes'
+  const hostelDeposit = form.hostel_required === 'Yes'
     ? (selectedHostelPlan ? Number(selectedHostelPlan.security_deposit || 0) : Number(form.hostel_deposit || 0))
     : 0;
   const hostelRecurringTotal = hostelMonthlyRate * monthsCount;
@@ -506,7 +506,7 @@ export default function NewAdmissionPage() {
   const hostelCharge = hostelTotalCharge;
 
   const defaultLibRate = admissionFeeData?.fee_heads?.find(h => h.code === 'LIBRARY' || h.category === 'LIBRARY')?.default_amount || 150;
-  const libraryCharge = !isQuick && form.library_required === 'Yes' ? Number(form.library_fee || defaultLibRate || 150) : 0;
+  const libraryCharge = form.library_required === 'Yes' ? Number(form.library_fee || defaultLibRate || 150) : 0;
 
   let baseGross = 0;
   let eligibleBase = 0;
@@ -548,7 +548,7 @@ export default function NewAdmissionPage() {
   });
 
   let customItemsGross = 0;
-  const computedCustomItems = isQuick ? [] : customFeeList.map(item => {
+  const computedCustomItems = customFeeList.map(item => {
     const isOneTime = !item.is_recurring;
     const mult = isOneTime ? 1 : monthsCount;
     const rate = Number(item.amount || 0);
@@ -634,16 +634,16 @@ export default function NewAdmissionPage() {
         payment_plan_id: selectedPaymentPlan?.id || null,
         payment_plan_code: selectedPaymentPlan?.code || null,
         months_count: monthsCount,
-        transport_fee: isQuick ? 0 : transportMonthlyRate,
-        transport_multiplier: isQuick ? 0 : monthsCount,
-        transport_fee_name: isQuick ? null : `Transport Fee (${selectedRoute?.route_name || 'Assigned Route'})`,
-        hostel_fee: isQuick ? 0 : hostelMonthlyRate,
-        hostel_deposit: isQuick ? 0 : hostelDeposit,
-        hostel_multiplier: isQuick ? 0 : monthsCount,
-        hostel_fee_name: isQuick ? null : `Hostel Accommodation (${selectedHostel?.name || 'Hostel'})`,
-        library_fee: isQuick ? 0 : libraryCharge,
-        library_required: isQuick ? 'No' : form.library_required,
-        custom_items: (!isQuick && Object.keys(customFeeAmounts).length > 0) ? computedItems.map(it => ({
+        transport_fee: form.transport_required === 'Yes' ? transportMonthlyRate : 0,
+        transport_multiplier: form.transport_required === 'Yes' ? monthsCount : 0,
+        transport_fee_name: form.transport_required === 'Yes' ? `Transport Fee (${selectedRoute?.route_name || 'Assigned Route'})` : null,
+        hostel_fee: form.hostel_required === 'Yes' ? hostelMonthlyRate : 0,
+        hostel_deposit: form.hostel_required === 'Yes' ? hostelDeposit : 0,
+        hostel_multiplier: form.hostel_required === 'Yes' ? monthsCount : 0,
+        hostel_fee_name: form.hostel_required === 'Yes' ? `Hostel Accommodation (${selectedHostel?.name || 'Hostel'})` : null,
+        library_fee: form.library_required === 'Yes' ? libraryCharge : 0,
+        library_required: form.library_required || 'No',
+        custom_items: (Object.keys(customFeeAmounts).length > 0) ? computedItems.map(it => ({
           fee_head_id: it.fee_head_id,
           name: it.headName,
           code: it.fee_head?.code || it.fee_head_code || 'ACADEMIC',
@@ -652,7 +652,7 @@ export default function NewAdmissionPage() {
           multiplier: it.mult,
           amount: it.lineAmt,
         })) : null,
-        additional_items: isQuick ? [] : computedCustomItems.map(cit => ({
+        additional_items: computedCustomItems.map(cit => ({
           name: cit.name,
           category: cit.category || 'ACADEMIC',
           rate: cit.rate,
@@ -671,9 +671,9 @@ export default function NewAdmissionPage() {
 
       const payload = {
         ...form,
-        transport_required: isQuick ? 'No' : form.transport_required,
-        hostel_required: isQuick ? 'No' : form.hostel_required,
-        library_required: isQuick ? 'No' : form.library_required,
+        transport_required: form.transport_required || 'No',
+        hostel_required: form.hostel_required || 'No',
+        library_required: form.library_required || 'No',
         password: form.password || '12345',
         father_name: form.father_name?.trim(),
         parent_phone: cleanPhone,
@@ -1341,83 +1341,733 @@ export default function NewAdmissionPage() {
                         <div>🔑 <strong>{form.password}</strong></div>
                       </div>
 
-                      {/* FEE BREAKDOWN & PAYMENT COLLECTION */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 24, marginBottom: 20 }}>
-                        
-                        {/* Fee Particulars */}
-                        <div style={{ background: '#f8fafc', borderRadius: 12, border: '1px solid #e2e8f0', padding: 20 }}>
-                          <h4 style={{ margin: '0 0 12px', fontSize: 13.5, fontWeight: 800, color: '#0B3B7B' }}>
-                            📋 Academic Fee Breakdown
-                          </h4>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }}>
-                            {computedItems.map((it, idx) => (
-                              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: 6 }}>
-                                <span style={{ color: '#475569' }}>{it.headName}</span>
-                                <span style={{ fontWeight: 700, color: '#1e293b' }}>₹ {it.lineAmt.toLocaleString('en-IN')}</span>
-                              </div>
-                            ))}
-                            {computedItems.length === 0 && (
-                              <div style={{ color: '#64748b', fontStyle: 'italic', fontSize: 12 }}>
-                                {form.admission_fee ? `Admission Fee: ₹ ${Number(form.admission_fee).toLocaleString('en-IN')}` : 'Standard class published academic fee'}
-                              </div>
+                      {/* PAYMENT CADENCE & DURATION SELECTOR */}
+                      {paymentPlans.length > 0 && (
+                        <div style={{ background: '#f8fafc', padding: 16, borderRadius: 10, border: '1px solid #e2e8f0', marginBottom: 20 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 6 }}>
+                            <label style={{ fontSize: 12.5, fontWeight: 700, color: '#0B3B7B' }}>
+                              📅 Payment Cadence &amp; Duration (Default: 1 Month):
+                            </label>
+                            {selectedPaymentPlan && Number(selectedPaymentPlan.discount_value) > 0 && (
+                              <span style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 12 }}>
+                                🎁 {selectedPaymentPlan.discount_type === 'PERCENTAGE' ? `${selectedPaymentPlan.discount_value}% Discount` : `₹${selectedPaymentPlan.discount_value} Discount`} on Academic Heads
+                              </span>
                             )}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#16a34a', fontSize: 12, paddingTop: 4 }}>
-                              <span>🛡️ Transport, Hostel &amp; Library Addons:</span>
-                              <span style={{ fontWeight: 700 }}>₹ 0.00 (Unselected)</span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid #cbd5e1', paddingTop: 8, marginTop: 4 }}>
-                              <strong style={{ color: '#0B3B7B' }}>Net Payable:</strong>
-                              <strong style={{ color: '#15803d', fontSize: 15 }}>₹ {netPayable.toLocaleString('en-IN')}.00</strong>
-                            </div>
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(paymentPlans.length || 1, 4)}, 1fr)`, gap: 8 }}>
+                            {paymentPlans.map(plan => {
+                              const isSelected = selectedPaymentPlan?.id === plan.id;
+                              return (
+                                <button
+                                  key={plan.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedPaymentPlan(plan);
+                                    set('payment_plan_id', plan.id);
+                                  }}
+                                  style={{
+                                    padding: '9px 8px',
+                                    borderRadius: 8,
+                                    border: isSelected ? '2px solid #0B3B7B' : '1px solid #cbd5e1',
+                                    background: isSelected ? '#eff6ff' : '#fff',
+                                    color: isSelected ? '#0B3B7B' : '#334155',
+                                    fontWeight: isSelected ? 800 : 600,
+                                    fontSize: 12,
+                                    cursor: 'pointer',
+                                    textAlign: 'center',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                >
+                                  <div>{plan.name}</div>
+                                  <div style={{ fontSize: 10.5, color: isSelected ? '#0284c7' : '#64748b', marginTop: 2 }}>
+                                    {plan.months_count} Month{plan.months_count > 1 ? 's' : ''}
+                                  </div>
+                                  {Number(plan.discount_value) > 0 && (
+                                    <div style={{ fontSize: 10, color: '#16a34a', fontWeight: 700, marginTop: 3 }}>
+                                      {plan.discount_type === 'PERCENTAGE' ? `${plan.discount_value}% Off` : `₹${plan.discount_value} Off`}
+                                    </div>
+                                  )}
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
+                      )}
 
-                        {/* Payment Collection Inputs */}
-                        <div style={{ background: '#f8fafc', borderRadius: 12, border: '1px solid #e2e8f0', padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
-                          <h4 style={{ margin: 0, fontSize: 13.5, fontWeight: 800, color: '#0B3B7B' }}>
-                            💳 Payment Collection (To Confirm Now)
-                          </h4>
+                      {/* MAIN FEE & OPTIONAL SERVICES LAYOUT */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1.35fr 1fr', gap: 20, marginBottom: 20 }}>
+                        
+                        {/* LEFT COLUMN: Itemized Breakdown Table & Concessions */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                          
+                          {/* Itemized Fee Breakdown Table with Edit & Add Item */}
+                          <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+                            <div style={{ padding: '10px 14px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                              <div>
+                                <span style={{ fontSize: 12.5, fontWeight: 700, color: '#1e293b' }}>
+                                  Itemized Particulars ({monthsCount} Month{monthsCount > 1 ? 's' : ''})
+                                </span>
+                              </div>
+                              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                {Object.keys(customFeeAmounts).length > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setCustomFeeAmounts({})}
+                                    style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: 11, cursor: 'pointer', textDecoration: 'underline' }}
+                                  >
+                                    Reset Rates
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => setShowAddCustomFee(s => !s)}
+                                  style={{
+                                    background: '#10b98115',
+                                    color: '#059669',
+                                    border: '1px solid #10b98150',
+                                    padding: '3px 9px',
+                                    borderRadius: 6,
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 4
+                                  }}
+                                >
+                                  + Add Fee Item
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setIsCustomizingFees(v => !v)}
+                                  style={{
+                                    background: isCustomizingFees ? '#0B3B7B' : '#fff',
+                                    color: isCustomizingFees ? '#fff' : '#0B3B7B',
+                                    border: '1px solid #0B3B7B',
+                                    borderRadius: 6,
+                                    padding: '3px 8px',
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 4
+                                  }}
+                                >
+                                  {isCustomizingFees ? '✓ Done' : '✏️ Edit Rates'}
+                                </button>
+                              </div>
+                            </div>
 
-                          <div>
-                            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
-                              Payment Mode
-                            </label>
-                            <select
-                              value={form.payment_mode}
-                              onChange={e => set('payment_mode', e.target.value)}
-                              style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, background: '#fff' }}
-                            >
-                              {PAYMENT_MODES.map(m => <option key={m} value={m}>{m}</option>)}
-                            </select>
+                            <div style={{ padding: '8px 14px', fontSize: 12 }}>
+                              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <thead>
+                                  <tr style={{ color: '#64748b', fontSize: 11, borderBottom: '1px solid #f1f5f9', textAlign: 'left' }}>
+                                    <th style={{ padding: '6px 0' }}>Fee Head</th>
+                                    <th style={{ padding: '6px 0' }}>Category</th>
+                                    <th style={{ padding: '6px 0', textAlign: 'center' }}>Rate (₹)</th>
+                                    <th style={{ padding: '6px 0', textAlign: 'center' }}>Mult</th>
+                                    <th style={{ padding: '6px 0', textAlign: 'right' }}>Amount (₹)</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {/* Inline Add Fee Item Form */}
+                                  {showAddCustomFee && (
+                                    <tr style={{ background: '#ecfdf5', borderBottom: '2px solid #a7f3d0' }}>
+                                      <td colSpan={5} style={{ padding: '10px 8px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                          <input
+                                            type="text"
+                                            placeholder="Fee Item Name (e.g. Uniform, Books, Caution)"
+                                            value={newCustomItem.name}
+                                            onChange={e => setNewCustomItem(prev => ({ ...prev, name: e.target.value }))}
+                                            style={{ flex: 2, minWidth: 160, padding: '5px 8px', borderRadius: 6, border: '1px solid #a7f3d0', fontSize: 11.5 }}
+                                          />
+                                          <select
+                                            value={newCustomItem.category}
+                                            onChange={e => setNewCustomItem(prev => ({ ...prev, category: e.target.value }))}
+                                            style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid #a7f3d0', fontSize: 11.5, background: '#fff' }}
+                                          >
+                                            <option value="ACADEMIC">ACADEMIC</option>
+                                            <option value="AUXILIARY">AUXILIARY</option>
+                                            <option value="ONE_TIME">ONE_TIME</option>
+                                            <option value="ACTIVITY">ACTIVITY</option>
+                                          </select>
+                                          <select
+                                            value={newCustomItem.is_recurring ? 'RECURRING' : 'ONE_TIME'}
+                                            onChange={e => setNewCustomItem(prev => ({ ...prev, is_recurring: e.target.value === 'RECURRING' }))}
+                                            style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid #a7f3d0', fontSize: 11.5, background: '#fff' }}
+                                          >
+                                            <option value="ONE_TIME">One-Time</option>
+                                            <option value="RECURRING">Monthly</option>
+                                          </select>
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            placeholder="Rate (₹)"
+                                            value={newCustomItem.amount}
+                                            onChange={e => setNewCustomItem(prev => ({ ...prev, amount: e.target.value }))}
+                                            style={{ width: 75, padding: '5px 8px', borderRadius: 6, border: '1px solid #a7f3d0', fontSize: 11.5 }}
+                                          />
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              if (!newCustomItem.name.trim() || !newCustomItem.amount) {
+                                                toast.error('Item name aur amount enter karein');
+                                                return;
+                                              }
+                                              setCustomFeeList(prev => [...prev, { ...newCustomItem, id: Date.now() }]);
+                                              setNewCustomItem({ name: '', category: 'ACADEMIC', amount: '', is_recurring: false });
+                                              setShowAddCustomFee(false);
+                                              toast.success('Fee item added');
+                                            }}
+                                            style={{ background: '#059669', color: '#fff', border: 'none', padding: '5px 10px', borderRadius: 6, fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}
+                                          >
+                                            ✓ Add
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setShowAddCustomFee(false)}
+                                            style={{ background: 'transparent', color: '#64748b', border: 'none', padding: '5px 6px', fontSize: 11.5, cursor: 'pointer' }}
+                                          >
+                                            Cancel
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )}
+
+                                  {computedItems.map((it, idx) => (
+                                    <tr key={idx} style={{ borderBottom: '1px solid #f8fafc' }}>
+                                      <td style={{ padding: '7px 0', fontWeight: 600, color: '#1e293b' }}>
+                                        {it.headName}
+                                        <span style={{
+                                          fontSize: 9.5, padding: '1px 5px', borderRadius: 4,
+                                          background: it.isOneTime ? '#fef3c7' : '#e0f2fe',
+                                          color: it.isOneTime ? '#92400e' : '#0369a1',
+                                          fontWeight: 700, marginLeft: 6
+                                        }}>
+                                          {it.isOneTime ? 'ONE-TIME' : 'MONTHLY'}
+                                        </span>
+                                      </td>
+                                      <td style={{ padding: '7px 0', color: '#64748b', fontSize: 11 }}>
+                                        {it.headCategory}
+                                      </td>
+                                      <td style={{ padding: '7px 0', textAlign: 'center' }}>
+                                        {isCustomizingFees ? (
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            value={customFeeAmounts[it.id] !== undefined ? customFeeAmounts[it.id] : (it.amount || 0)}
+                                            onChange={e => {
+                                              const v = e.target.value === '' ? '' : parseFloat(e.target.value);
+                                              setCustomFeeAmounts(prev => ({ ...prev, [it.id]: v }));
+                                            }}
+                                            style={{
+                                              width: 75,
+                                              padding: '3px 6px',
+                                              borderRadius: 4,
+                                              border: '1.5px solid #0284c7',
+                                              fontSize: 11.5,
+                                              fontWeight: 700,
+                                              textAlign: 'center',
+                                              background: '#f0f9ff'
+                                            }}
+                                          />
+                                        ) : (
+                                          <span style={{ color: customFeeAmounts[it.id] !== undefined ? '#0284c7' : '#64748b', fontWeight: customFeeAmounts[it.id] !== undefined ? 700 : 500 }}>
+                                            ₹ {it.rate.toLocaleString('en-IN')}
+                                          </span>
+                                        )}
+                                      </td>
+                                      <td style={{ padding: '7px 0', textAlign: 'center', color: it.isOneTime ? '#64748b' : '#0284c7', fontWeight: 700 }}>
+                                        × {it.mult} {it.isOneTime ? '(Fixed)' : ''}
+                                      </td>
+                                      <td style={{ padding: '7px 0', textAlign: 'right', fontWeight: 700, color: '#1e293b' }}>
+                                        ₹ {it.lineAmt.toLocaleString('en-IN')}
+                                      </td>
+                                    </tr>
+                                  ))}
+
+                                  {/* Custom Added Fee Items */}
+                                  {computedCustomItems.map(cit => (
+                                    <tr key={cit.id} style={{ borderBottom: '1px solid #ecfdf5', background: '#f0fdf4' }}>
+                                      <td style={{ padding: '7px 0', fontWeight: 600, color: '#065f46', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        <span>✦ {cit.name}</span>
+                                        <span style={{
+                                          fontSize: 9.5, padding: '1px 5px', borderRadius: 4,
+                                          background: cit.isOneTime ? '#fef3c7' : '#e0f2fe',
+                                          color: cit.isOneTime ? '#92400e' : '#0369a1',
+                                          fontWeight: 700
+                                        }}>
+                                          {cit.isOneTime ? 'ONE-TIME' : 'MONTHLY'}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => setCustomFeeList(prev => prev.filter(x => x.id !== cit.id))}
+                                          style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 12, padding: '0 4px' }}
+                                          title="Remove Item"
+                                        >
+                                          ✕
+                                        </button>
+                                      </td>
+                                      <td style={{ padding: '7px 0', color: '#059669', fontSize: 11 }}>{cit.category}</td>
+                                      <td style={{ padding: '7px 0', textAlign: 'center', color: '#065f46' }}>₹ {cit.rate.toLocaleString('en-IN')}</td>
+                                      <td style={{ padding: '7px 0', textAlign: 'center', color: cit.isOneTime ? '#64748b' : '#0284c7', fontWeight: 700 }}>
+                                        × {cit.mult} {cit.isOneTime ? '(Fixed)' : ''}
+                                      </td>
+                                      <td style={{ padding: '7px 0', textAlign: 'right', fontWeight: 700, color: '#065f46' }}>
+                                        ₹ {cit.lineAmt.toLocaleString('en-IN')}
+                                      </td>
+                                    </tr>
+                                  ))}
+
+                                  {/* Transport Service Addon if opted in */}
+                                  {form.transport_required === 'Yes' && (
+                                    <tr style={{ borderBottom: '1px solid #f8fafc', background: '#f0f9ff' }}>
+                                      <td style={{ padding: '7px 0', fontWeight: 600, color: '#0284c7' }}>
+                                        🚌 Transport Fee ({selectedRoute?.route_name || 'Assigned Route'})
+                                        <span style={{ fontSize: 9.5, padding: '1px 5px', borderRadius: 4, background: '#e0f2fe', color: '#0369a1', fontWeight: 700, marginLeft: 6 }}>MONTHLY</span>
+                                      </td>
+                                      <td style={{ padding: '7px 0', color: '#0284c7', fontSize: 11 }}>TRANSPORT</td>
+                                      <td style={{ padding: '7px 0', textAlign: 'center', color: '#64748b' }}>₹ {transportMonthlyRate.toLocaleString('en-IN')}</td>
+                                      <td style={{ padding: '7px 0', textAlign: 'center', color: '#0284c7', fontWeight: 700 }}>× {monthsCount}</td>
+                                      <td style={{ padding: '7px 0', textAlign: 'right', fontWeight: 700, color: '#0284c7' }}>
+                                        ₹ {transportRecurringTotal.toLocaleString('en-IN')}
+                                      </td>
+                                    </tr>
+                                  )}
+
+                                  {/* Hostel Accommodation Addon if opted in */}
+                                  {form.hostel_required === 'Yes' && (
+                                    <>
+                                      <tr style={{ borderBottom: '1px solid #f8fafc', background: '#f0f9ff' }}>
+                                        <td style={{ padding: '7px 0', fontWeight: 600, color: '#0284c7' }}>
+                                          🛏️ Hostel Accommodation ({selectedHostel?.name || 'Hostel'})
+                                          <span style={{ fontSize: 9.5, padding: '1px 5px', borderRadius: 4, background: '#e0f2fe', color: '#0369a1', fontWeight: 700, marginLeft: 6 }}>MONTHLY</span>
+                                        </td>
+                                        <td style={{ padding: '7px 0', color: '#0284c7', fontSize: 11 }}>HOSTEL</td>
+                                        <td style={{ padding: '7px 0', textAlign: 'center', color: '#64748b' }}>₹ {hostelMonthlyRate.toLocaleString('en-IN')}</td>
+                                        <td style={{ padding: '7px 0', textAlign: 'center', color: '#0284c7', fontWeight: 700 }}>× {monthsCount}</td>
+                                        <td style={{ padding: '7px 0', textAlign: 'right', fontWeight: 700, color: '#0284c7' }}>
+                                          ₹ {hostelRecurringTotal.toLocaleString('en-IN')}
+                                        </td>
+                                      </tr>
+                                      {hostelDeposit > 0 && (
+                                        <tr style={{ borderBottom: '1px solid #f8fafc', background: '#f0f9ff' }}>
+                                          <td style={{ padding: '7px 0', fontWeight: 600, color: '#0284c7' }}>
+                                            🛡️ Hostel Security Deposit ({selectedHostel?.name || 'Hostel'})
+                                            <span style={{ fontSize: 9.5, padding: '1px 5px', borderRadius: 4, background: '#fef3c7', color: '#92400e', fontWeight: 700, marginLeft: 6 }}>ONE-TIME</span>
+                                          </td>
+                                          <td style={{ padding: '7px 0', color: '#0284c7', fontSize: 11 }}>HOSTEL</td>
+                                          <td style={{ padding: '7px 0', textAlign: 'center', color: '#64748b' }}>₹ {hostelDeposit.toLocaleString('en-IN')}</td>
+                                          <td style={{ padding: '7px 0', textAlign: 'center', color: '#64748b', fontWeight: 700 }}>× 1 (Fixed)</td>
+                                          <td style={{ padding: '7px 0', textAlign: 'right', fontWeight: 700, color: '#0284c7' }}>
+                                            ₹ {hostelDeposit.toLocaleString('en-IN')}
+                                          </td>
+                                        </tr>
+                                      )}
+                                    </>
+                                  )}
+
+                                  {/* Library Membership Addon if opted in */}
+                                  {form.library_required === 'Yes' && (
+                                    <tr style={{ borderBottom: '1px solid #f8fafc', background: '#f0f9ff' }}>
+                                      <td style={{ padding: '7px 0', fontWeight: 600, color: '#0284c7' }}>
+                                        📚 Library Membership Fee
+                                      </td>
+                                      <td style={{ padding: '7px 0', color: '#0284c7', fontSize: 11 }}>LIBRARY</td>
+                                      <td style={{ padding: '7px 0', textAlign: 'center', color: '#64748b' }}>₹ {libraryCharge}</td>
+                                      <td style={{ padding: '7px 0', textAlign: 'center', color: '#64748b' }}>× 1</td>
+                                      <td style={{ padding: '7px 0', textAlign: 'right', fontWeight: 700, color: '#0284c7' }}>
+                                        ₹ {libraryCharge.toLocaleString('en-IN')}
+                                      </td>
+                                    </tr>
+                                  )}
+
+                                  {/* Gross Total Subtotal */}
+                                  <tr style={{ borderTop: '2px solid #cbd5e1' }}>
+                                    <td colSpan={4} style={{ padding: '8px 0', fontWeight: 700, color: '#475569' }}>
+                                      Gross Admission Demand:
+                                    </td>
+                                    <td style={{ padding: '8px 0', textAlign: 'right', fontWeight: 800, color: '#1e293b', fontSize: 13 }}>
+                                      ₹ {grossTotal.toLocaleString('en-IN')}.00
+                                    </td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </div>
                           </div>
 
-                          <div>
-                            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
-                              Amount Collected Now (₹)
-                            </label>
-                            <input
-                              type="number"
-                              min="0"
-                              max={netPayable}
-                              value={paymentAmount !== '' ? paymentAmount : netPayable}
-                              onChange={e => setPaymentAmount(e.target.value)}
-                              placeholder={`₹ ${netPayable}`}
-                              style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, fontWeight: 700 }}
-                            />
+                          {/* Concession / Discounts / Special Waiver */}
+                          <div style={{ background: '#f8fafc', padding: 14, borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: '#0B3B7B', marginBottom: 8 }}>
+                              🏷️ Concession / Special Waiver
+                            </div>
+
+                            {advanceDiscount > 0 && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, padding: '6px 10px', background: '#dcfce7', borderRadius: 6, border: '1px solid #86efac' }}>
+                                <span style={{ fontSize: 11.5, color: '#166534', fontWeight: 600 }}>
+                                  🎁 {selectedPaymentPlan?.name} Advance Discount:
+                                </span>
+                                <span style={{ fontSize: 12, fontWeight: 800, color: '#15803d' }}>
+                                  - ₹ {advanceDiscount.toLocaleString('en-IN')}.00
+                                </span>
+                              </div>
+                            )}
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: 10, alignItems: 'center' }}>
+                              <div>
+                                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 3 }}>
+                                  Waiver (₹)
+                                </label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max={grossTotal}
+                                  value={manualWaiver}
+                                  onChange={e => setManualWaiver(Math.max(0, parseFloat(e.target.value) || 0))}
+                                  style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 12, fontWeight: 700, textAlign: 'right' }}
+                                />
+                              </div>
+                              <div>
+                                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 3 }}>
+                                  Waiver Reason {waiverNum > 0 && <span style={{ color: '#ef4444' }}>*</span>}
+                                </label>
+                                <select
+                                  value={waiverReason}
+                                  onChange={e => setWaiverReason(e.target.value)}
+                                  disabled={waiverNum <= 0}
+                                  style={{
+                                    width: '100%',
+                                    padding: '6px 8px',
+                                    borderRadius: 6,
+                                    border: '1px solid #cbd5e1',
+                                    fontSize: 11.5,
+                                    background: waiverNum <= 0 ? '#f1f5f9' : '#fff'
+                                  }}
+                                >
+                                  {WAIVER_REASONS.map(r => (
+                                    <option key={r} value={r}>{r}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
                           </div>
 
-                          <div>
-                            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
-                              Transaction Ref / Cheque No / UPI ID
-                            </label>
-                            <input
-                              type="text"
-                              placeholder="e.g. UPI-928410 / Cash Counter"
-                              value={paymentReference}
-                              onChange={e => setPaymentReference(e.target.value)}
-                              style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13 }}
-                            />
+                        </div>
+
+                        {/* RIGHT COLUMN: Optional Services + Payment Collection */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                          
+                          {/* OPTIONAL SERVICES SECTION (Transport, Hostel, Library) */}
+                          <div style={{ background: '#f8fafc', borderRadius: 12, border: '1px solid #e2e8f0', padding: 16 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                              <h4 style={{ margin: 0, fontSize: 13, fontWeight: 800, color: '#0B3B7B', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span>🛡️</span> Optional Services (Transport / Hostel / Library)
+                              </h4>
+                              <span style={{ fontSize: 10.5, color: '#16a34a', fontWeight: 700, background: '#dcfce7', padding: '1px 6px', borderRadius: 4 }}>
+                                Defaults: No Charges
+                              </span>
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                              
+                              {/* Transport Box */}
+                              <div style={{ background: '#fff', padding: 10, borderRadius: 8, border: form.transport_required === 'Yes' ? '1.5px solid #0284c7' : '1px solid #cbd5e1' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: form.transport_required === 'Yes' ? 8 : 0 }}>
+                                  <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    <span>🚌</span> School Bus Transport
+                                  </div>
+                                  <select
+                                    value={form.transport_required}
+                                    onChange={e => {
+                                      const val = e.target.value;
+                                      set('transport_required', val);
+                                      if (val === 'No') {
+                                        set('transport_route_id', '');
+                                        set('transport_stop_id', '');
+                                      }
+                                    }}
+                                    style={{ padding: '3px 8px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 11.5, fontWeight: 700, background: '#fff' }}
+                                  >
+                                    <option value="No">No (Day Scholar)</option>
+                                    <option value="Yes">Yes, Opt-In for Bus</option>
+                                  </select>
+                                </div>
+
+                                {form.transport_required === 'Yes' && (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4 }}>
+                                    <div>
+                                      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 2 }}>
+                                        Select Bus Route *
+                                      </label>
+                                      <select
+                                        value={form.transport_route_id}
+                                        onChange={e => {
+                                          set('transport_route_id', e.target.value);
+                                          set('transport_stop_id', '');
+                                        }}
+                                        style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 11.5, background: '#fff' }}
+                                      >
+                                        <option value="">-- Choose Bus Route --</option>
+                                        {Array.isArray(transportRoutes) && transportRoutes.map(r => {
+                                          const fare = r.fare || r.fee_amount || 0;
+                                          return (
+                                            <option key={r.id} value={r.id}>
+                                              {r.route_name || r.name || `Route #${r.id}`}{fare > 0 ? ` (₹${fare}/mo)` : ''}
+                                            </option>
+                                          );
+                                        })}
+                                      </select>
+                                    </div>
+
+                                    {form.transport_route_id && (
+                                      <div>
+                                        <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 2 }}>
+                                          Pickup / Drop Bus Stop (Optional)
+                                        </label>
+                                        <select
+                                          value={form.transport_stop_id}
+                                          onChange={e => set('transport_stop_id', e.target.value)}
+                                          style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 11.5, background: '#fff' }}
+                                        >
+                                          <option value="">-- Select Stop (or assign later) --</option>
+                                          {(selectedRoute?.stops && selectedRoute.stops.length > 0 ? selectedRoute.stops : transportStops).map((s, idx) => {
+                                            const sId = s.stop_id || s.id;
+                                            const sName = s.stop_name || s.name || `Stop #${sId}`;
+                                            return <option key={sId || idx} value={sId}>{sName}</option>;
+                                          })}
+                                        </select>
+                                      </div>
+                                    )}
+
+                                    {transportMonthlyRate > 0 && (
+                                      <div style={{ fontSize: 11, color: '#0284c7', fontWeight: 600 }}>
+                                        ✓ Added: ₹{transportMonthlyRate}/mo (₹{transportRecurringTotal} for {monthsCount} mo)
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Hostel Box */}
+                              <div style={{ background: '#fff', padding: 10, borderRadius: 8, border: form.hostel_required === 'Yes' ? '1.5px solid #0284c7' : '1px solid #cbd5e1' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: form.hostel_required === 'Yes' ? 8 : 0 }}>
+                                  <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    <span>🏢</span> Hostel Facility
+                                  </div>
+                                  <select
+                                    value={form.hostel_required}
+                                    onChange={e => {
+                                      const val = e.target.value;
+                                      set('hostel_required', val);
+                                      if (val === 'No') {
+                                        setForm(f => ({ ...f, hostel_required: 'No', hostel_id: '', hostel_fee_structure_id: '', hostel_monthly_fee: '', hostel_deposit: '' }));
+                                      }
+                                    }}
+                                    style={{ padding: '3px 8px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 11.5, fontWeight: 700, background: '#fff' }}
+                                  >
+                                    <option value="No">No (Day Scholar)</option>
+                                    <option value="Yes">Yes, Hostel Boarder</option>
+                                  </select>
+                                </div>
+
+                                {form.hostel_required === 'Yes' && (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4 }}>
+                                    <div>
+                                      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 2 }}>
+                                        Hostel Building / Wing *
+                                      </label>
+                                      <select
+                                        value={form.hostel_id}
+                                        onChange={e => {
+                                          const hId = e.target.value;
+                                          setForm(f => ({
+                                            ...f,
+                                            hostel_id: hId,
+                                            hostel_fee_structure_id: '',
+                                            hostel_monthly_fee: '',
+                                            hostel_deposit: ''
+                                          }));
+                                        }}
+                                        style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 11.5, background: '#fff' }}
+                                      >
+                                        <option value="">-- Select Hostel --</option>
+                                        {Array.isArray(hostels) && hostels.map(h => (
+                                          <option key={h.id} value={h.id}>{h.name} ({h.hostel_type || h.gender_type || 'Co-Ed'})</option>
+                                        ))}
+                                      </select>
+                                    </div>
+
+                                    {form.hostel_id && (
+                                      <div>
+                                        <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 2 }}>
+                                          Room Type &amp; Pricing Plan *
+                                        </label>
+                                        <select
+                                          value={form.hostel_fee_structure_id}
+                                          onChange={e => {
+                                            const fsId = e.target.value;
+                                            if (fsId === 'CUSTOM') {
+                                              setForm(f => ({ ...f, hostel_fee_structure_id: 'CUSTOM' }));
+                                            } else {
+                                              const plan = hostelPlans.find(p => String(p.id) === String(fsId));
+                                              setForm(f => ({
+                                                ...f,
+                                                hostel_fee_structure_id: fsId,
+                                                hostel_monthly_fee: plan ? (plan.total_monthly || plan.monthly_fee || 0) : '',
+                                                hostel_deposit: plan ? (plan.security_deposit || 0) : '',
+                                                hostel_room_type: plan ? `${plan.sharing_type} ${plan.is_ac ? 'AC' : 'Non-AC'}` : ''
+                                              }));
+                                            }
+                                          }}
+                                          style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 11.5, background: '#fff' }}
+                                        >
+                                          <option value="">-- Choose Room Type --</option>
+                                          {hostelPlans
+                                            .filter(p => !form.hostel_id || String(p.hostel_id) === String(form.hostel_id) || !p.hostel_id)
+                                            .map(p => (
+                                              <option key={p.id} value={p.id}>
+                                                {p.sharing_type} {p.is_ac ? '(AC)' : '(Non-AC)'} — ₹{(p.total_monthly || p.monthly_fee || 0).toLocaleString('en-IN')}/mo
+                                              </option>
+                                            ))}
+                                          <option value="CUSTOM">Custom Room / Rate Entry</option>
+                                        </select>
+                                      </div>
+                                    )}
+
+                                    {form.hostel_fee_structure_id === 'CUSTOM' && (
+                                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          placeholder="Rent (₹/mo)"
+                                          value={form.hostel_monthly_fee}
+                                          onChange={e => set('hostel_monthly_fee', e.target.value)}
+                                          style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 11 }}
+                                        />
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          placeholder="Deposit (₹)"
+                                          value={form.hostel_deposit}
+                                          onChange={e => set('hostel_deposit', e.target.value)}
+                                          style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 11 }}
+                                        />
+                                      </div>
+                                    )}
+
+                                    {hostelMonthlyRate > 0 && (
+                                      <div style={{ fontSize: 11, color: '#0284c7', fontWeight: 600 }}>
+                                        ✓ Added: ₹{hostelMonthlyRate}/mo {hostelDeposit > 0 ? `+ ₹${hostelDeposit} deposit` : ''}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Library Box */}
+                              <div style={{ background: '#fff', padding: 10, borderRadius: 8, border: form.library_required === 'Yes' ? '1.5px solid #0284c7' : '1px solid #cbd5e1' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    <span>📚</span> Library Card
+                                  </div>
+                                  <select
+                                    value={form.library_required}
+                                    onChange={e => set('library_required', e.target.value)}
+                                    style={{ padding: '3px 8px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 11.5, fontWeight: 700, background: '#fff' }}
+                                  >
+                                    <option value="No">No Library Card</option>
+                                    <option value="Yes">Yes, Issue Card</option>
+                                  </select>
+                                </div>
+                                {form.library_required === 'Yes' && (
+                                  <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <label style={{ fontSize: 11, color: '#475569' }}>Card Fee (₹):</label>
+                                    <input
+                                      type="number"
+                                      value={form.library_fee || defaultLibRate}
+                                      onChange={e => set('library_fee', e.target.value)}
+                                      style={{ width: 80, padding: '4px 6px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 11.5 }}
+                                    />
+                                  </div>
+                                )}
+                              </div>
+
+                            </div>
                           </div>
+
+                          {/* NET PAYABLE BANNER */}
+                          <div style={{
+                            background: 'linear-gradient(135deg, #0B3B7B 0%, #1e40af 100%)',
+                            color: '#fff',
+                            padding: '14px 18px',
+                            borderRadius: 10,
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            boxShadow: '0 4px 12px rgba(11,59,123,0.2)'
+                          }}>
+                            <div>
+                              <div style={{ fontSize: 11.5, opacity: 0.85, fontWeight: 600 }}>Total Net Admission Payable</div>
+                              <div style={{ fontSize: 10.5, opacity: 0.75, marginTop: 2 }}>
+                                Gross ₹ {grossTotal.toLocaleString('en-IN')} {totalDeductions > 0 ? `— Deductions ₹ ${totalDeductions.toLocaleString('en-IN')}` : ''}
+                              </div>
+                            </div>
+                            <div style={{ fontSize: 22, fontWeight: 900, color: '#4ade80' }}>
+                              ₹ {netPayable.toLocaleString('en-IN')}.00
+                            </div>
+                          </div>
+
+                          {/* Payment Collection Inputs */}
+                          <div style={{ background: '#f8fafc', borderRadius: 12, border: '1px solid #e2e8f0', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                            <h4 style={{ margin: 0, fontSize: 13, fontWeight: 800, color: '#0B3B7B' }}>
+                              💳 Payment Collection (To Confirm Now)
+                            </h4>
+
+                            <div>
+                              <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 3 }}>
+                                Payment Mode
+                              </label>
+                              <select
+                                value={form.payment_mode}
+                                onChange={e => set('payment_mode', e.target.value)}
+                                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 12.5, background: '#fff' }}
+                              >
+                                {PAYMENT_MODES.map(m => <option key={m} value={m}>{m}</option>)}
+                              </select>
+                            </div>
+
+                            <div>
+                              <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 3 }}>
+                                Amount Collected Now (₹)
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                max={netPayable}
+                                value={paymentAmount !== '' ? paymentAmount : netPayable}
+                                onChange={e => setPaymentAmount(e.target.value)}
+                                placeholder={`₹ ${netPayable}`}
+                                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 12.5, fontWeight: 700 }}
+                              />
+                            </div>
+
+                            <div>
+                              <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 3 }}>
+                                Transaction Ref / Cheque No / UPI ID
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="e.g. UPI-928410 / Cash Counter"
+                                value={paymentReference}
+                                onChange={e => setPaymentReference(e.target.value)}
+                                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 12 }}
+                              />
+                            </div>
+                          </div>
+
                         </div>
 
                       </div>
