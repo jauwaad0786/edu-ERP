@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../context/AuthContext';
+import { resolveTenantPath } from '../../utils/routeBuilder';
 
-export default function FeeBillsPage() {
+export default function FeeBillsPage({ defaultOpenGenerate = false }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuth();
   const [bills, setBills] = useState([]);
   const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -18,12 +22,21 @@ export default function FeeBillsPage() {
   const [search, setSearch] = useState('');
 
   // Generate Bills Modal
-  const [genModal, setGenModal] = useState(false);
+  const isGenerateTrigger = defaultOpenGenerate || location.pathname.includes('generate-fees') || location.search.includes('action=generate');
+  const [genModal, setGenModal] = useState(isGenerateTrigger);
+  const [genSession, setGenSession] = useState('2026-27');
+  const [genCadence, setGenCadence] = useState('MONTHLY');
   const [genMonth, setGenMonth] = useState('2026-09');
-  const [genDueDate, setGenDueDate] = useState('2026-09-05');
+  const [genDueDate, setGenDueDate] = useState('2026-09-10');
   const [genClassId, setGenClassId] = useState('');
   const [forceRegenerate, setForceRegenerate] = useState(false);
   const [generating, setGenerating] = useState(false);
+
+  useEffect(() => {
+    if (isGenerateTrigger) {
+      setGenModal(true);
+    }
+  }, [location.pathname, location.search, isGenerateTrigger]);
 
   const fetchClasses = async () => {
     try {
@@ -62,6 +75,8 @@ export default function FeeBillsPage() {
     try {
       setGenerating(true);
       const payload = {
+        session: genSession,
+        billing_frequency: genCadence,
         bill_month: genMonth,
         due_date: genDueDate,
         class_id: genClassId ? parseInt(genClassId) : null,
@@ -72,7 +87,7 @@ export default function FeeBillsPage() {
       setGenModal(false);
       fetchBills();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to generate demand bills');
+      toast.error(err.response?.data?.error || 'Failed to generate fee bills');
     } finally {
       setGenerating(false);
     }
@@ -143,13 +158,32 @@ export default function FeeBillsPage() {
               </p>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <button
+                id="btn-fees-generate"
                 onClick={() => setGenModal(true)}
                 className="btn btn-primary"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '9px 18px',
+                  fontWeight: 700,
+                  fontSize: '0.92rem',
+                  background: '#2563eb',
+                  boxShadow: '0 4px 12px rgba(37,99,235,0.22)',
+                }}
               >
-                <i className="ti ti-plus"></i>
-                Generate Demand Bills
+                <i className="ti ti-calculator" style={{ fontSize: '1.2rem' }}></i>
+                Fees Generate
+              </button>
+              <button
+                onClick={() => navigate(resolveTenantPath('/finance/setup', user))}
+                className="btn btn-outline"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', fontWeight: 600 }}
+              >
+                <i className="ti ti-settings"></i>
+                Fee Setup & Rates
               </button>
             </div>
           </div>
@@ -323,20 +357,55 @@ export default function FeeBillsPage() {
           {/* Generate Demand Bills Modal */}
           {genModal && (
             <div className="modal-backdrop">
-              <div className="modal">
+              <div className="modal" style={{ maxWidth: 540 }}>
                 <div className="modal-header">
-                  <h3 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0 }}>Generate Demand Fee Bills</h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 34, height: 34, borderRadius: 8, background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <i className="ti ti-calculator" style={{ fontSize: '1.25rem' }}></i>
+                    </div>
+                    <div>
+                      <h3 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0 }}>Fees Generate Engine</h3>
+                      <div className="text-xs text-muted">Generate centralized multi-department fee bills & demand slips</div>
+                    </div>
+                  </div>
                   <button onClick={() => setGenModal(false)} className="modal-close">✕</button>
                 </div>
 
                 <form onSubmit={handleGenerateBills}>
                   <div className="modal-body">
-                    <p className="text-xs text-muted mb-4">
-                      Create advance fee bills for students based on their class rate card, transport, hostel, and active concessions.
-                    </p>
+                    {/* Session & Cadence Row */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label className="form-label" style={{ fontWeight: 600 }}>Academic Session</label>
+                        <select
+                          value={genSession}
+                          onChange={(e) => setGenSession(e.target.value)}
+                          className="form-select"
+                          required
+                        >
+                          <option value="2026-27">2026-27 (Upcoming)</option>
+                          <option value="2025-26">2025-26 (Current)</option>
+                          <option value="2024-25">2024-25 (Historical)</option>
+                        </select>
+                      </div>
+
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label className="form-label" style={{ fontWeight: 600 }}>Billing Cadence</label>
+                        <select
+                          value={genCadence}
+                          onChange={(e) => setGenCadence(e.target.value)}
+                          className="form-select"
+                        >
+                          <option value="MONTHLY">Monthly (1 Month)</option>
+                          <option value="QUARTERLY">Quarterly (3 Months)</option>
+                          <option value="HALF_YEARLY">Half-Yearly (6 Months)</option>
+                          <option value="ANNUAL">Annual (Full Session)</option>
+                        </select>
+                      </div>
+                    </div>
 
                     <div className="form-group">
-                      <label className="form-label">Billing Month (Period)</label>
+                      <label className="form-label" style={{ fontWeight: 600 }}>Billing Period (Starting Month)</label>
                       <input
                         type="month"
                         value={genMonth}
@@ -347,7 +416,7 @@ export default function FeeBillsPage() {
                     </div>
 
                     <div className="form-group">
-                      <label className="form-label">Due Date (Payment Deadline)</label>
+                      <label className="form-label" style={{ fontWeight: 600 }}>Due Date (Payment Deadline)</label>
                       <input
                         type="date"
                         value={genDueDate}
@@ -358,13 +427,13 @@ export default function FeeBillsPage() {
                     </div>
 
                     <div className="form-group">
-                      <label className="form-label">Target Class</label>
+                      <label className="form-label" style={{ fontWeight: 600 }}>Target Class / Scope</label>
                       <select
                         value={genClassId}
                         onChange={(e) => setGenClassId(e.target.value)}
                         className="form-select"
                       >
-                        <option value="">All Classes (School-wide)</option>
+                        <option value="">All Classes (School-wide Bulk Generation)</option>
                         {classes.map((c) => (
                           <option key={c.id} value={c.id}>
                             {c.name} {c.section || ''}
@@ -373,40 +442,64 @@ export default function FeeBillsPage() {
                       </select>
                     </div>
 
-                    <div style={{ marginTop: 12, padding: '10px 12px', background: '#fafaf9', border: '1px solid var(--neutral-2)', borderRadius: 8 }}>
-                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
+                    <div style={{ marginTop: 14, padding: '12px 14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', userSelect: 'none' }}>
                         <input
                           type="checkbox"
                           checked={forceRegenerate}
                           onChange={(e) => setForceRegenerate(e.target.checked)}
-                          style={{ width: 16, height: 16, marginTop: 2 }}
+                          style={{ width: 17, height: 17, marginTop: 2 }}
                         />
                         <div>
-                          <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--neutral-9)' }}>
-                            Sync & Recalculate with Active Services / New Rates
+                          <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>
+                            Sync & Recalculate with Active Services (Force Refresh)
                           </div>
-                          <div className="text-xs text-muted">
-                            Recalculates bills for students whose services changed (e.g. newly joined Transport, allocated Hostel, or assigned Library card).
+                          <div className="text-xs text-muted" style={{ marginTop: 2 }}>
+                            Re-evaluates active services for students who joined Transport, occupied a Hostel bed, or activated Library card after previous generation.
                           </div>
                         </div>
                       </label>
                     </div>
+
+                    <div style={{ marginTop: 12, padding: '10px 12px', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 8, fontSize: '0.8rem', color: '#065f46' }}>
+                      <i className="ti ti-shield-check" style={{ marginRight: 6 }}></i>
+                      <strong>Duplicate Protection:</strong> Students with existing bills for this period are safely skipped unless Force Refresh is enabled.
+                    </div>
                   </div>
 
-                  <div className="modal-footer">
+                  <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
                     <button
                       type="button"
                       onClick={() => setGenModal(false)}
                       className="btn btn-neutral"
+                      disabled={generating}
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
-                      disabled={generating}
                       className="btn btn-primary"
+                      disabled={generating}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        background: '#2563eb',
+                        fontWeight: 700,
+                        padding: '8px 20px',
+                      }}
                     >
-                      {generating ? 'Generating...' : 'Generate Demand Bills'}
+                      {generating ? (
+                        <>
+                          <span className="spinner-border spinner-border-sm" role="status"></span>
+                          Generating Bills...
+                        </>
+                      ) : (
+                        <>
+                          <i className="ti ti-calculator"></i>
+                          Generate Fees Now
+                        </>
+                      )}
                     </button>
                   </div>
                 </form>

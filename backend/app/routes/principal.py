@@ -1015,6 +1015,24 @@ def create_student():
             except Exception as hostel_err:
                 print(f'[WARN] Hostel allocation error: {hostel_err}')
 
+        # Optional Library Membership Registration
+        if data.get('library_required') == 'Yes' or (data.get('fee_setup') or {}).get('library_required') == 'Yes':
+            try:
+                from app.models.library import LibraryMember
+                existing_lib = LibraryMember.query.filter_by(school_id=sid, user_id=user.id).first()
+                if not existing_lib:
+                    lib_mem = LibraryMember(
+                        school_id=sid,
+                        user_id=user.id,
+                        card_number=f"LIB-{student.admission_no or student.id}",
+                        member_type='STUDENT',
+                        status='ACTIVE',
+                        joined_at=utc_now()
+                    )
+                    db.session.add(lib_mem)
+            except Exception as lib_err:
+                print(f'[WARN] Library enrollment error: {lib_err}')
+
         # ── DYNAMIC FEE SETUP & ADMISSION CHARGES ─────────────────────────
         admission_fee_summary = None
         try:
@@ -1065,7 +1083,26 @@ def create_student():
                 except Exception:
                     eligible_cats = ['ACADEMIC']
 
-            if struct and struct.items:
+            # Check if custom adjusted line items were provided by principal
+            custom_items_payload = fee_setup.get('custom_items')
+            if custom_items_payload and isinstance(custom_items_payload, list) and len(custom_items_payload) > 0:
+                for cit in custom_items_payload:
+                    c_amt = float(cit.get('amount') or 0.0)
+                    if c_amt > 0:
+                        c_cat = cit.get('category') or 'ACADEMIC'
+                        itemized_charges.append({
+                            'fee_head_id': cit.get('fee_head_id'),
+                            'name': cit.get('name') or 'Fee Item',
+                            'code': cit.get('code') or 'ACADEMIC',
+                            'category': c_cat,
+                            'rate': float(cit.get('rate') or c_amt),
+                            'multiplier': cit.get('multiplier', 1),
+                            'amount': c_amt,
+                            'is_optional': False
+                        })
+                        if c_cat in eligible_cats:
+                            eligible_discount_base += c_amt
+            elif struct and struct.items:
                 for it in struct.items:
                     head = it.fee_head
                     cat = head.category if head else 'ACADEMIC'

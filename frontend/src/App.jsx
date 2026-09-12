@@ -424,6 +424,11 @@ export default function App() {
                 <FeeBillsPage />
               </TenantProtectedRoute>
             } />
+            <Route path="/:schoolSlug/:role/finance/generate-fees" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <FeeBillsPage defaultOpenGenerate={true} />
+              </TenantProtectedRoute>
+            } />
             <Route path="/:schoolSlug/:role/finance/payments/collect" element={
               <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
                 <CollectPaymentPage />

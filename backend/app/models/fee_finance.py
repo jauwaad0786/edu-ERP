@@ -623,7 +623,7 @@ class FeePayment(db.Model):
             'payment_mode':     self.payment_mode,
             'transaction_ref':  self.transaction_ref or '',
             'collected_by_name':self.collector.name if self.collector else 'Counter Staff',
-            'collector_role':   self.collector.role if self.collector else 'STAFF',
+            'collector_role':   getattr(self.collector.role, 'value', str(self.collector.role)) if self.collector and self.collector.role else 'STAFF',
             'department':       self.department,
             'remarks':          self.remarks or '',
             'status':           self.status,

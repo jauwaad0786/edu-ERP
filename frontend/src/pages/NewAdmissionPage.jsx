@@ -118,13 +118,15 @@ export default function NewAdmissionPage() {
     session: '2026-27',
     admission_date: new Date().toISOString().split('T')[0],
 
-    // Step 5: Services (Transport & Hostel)
+    // Step 5: Services (Transport, Hostel & Library)
     transport_required: 'No',
     transport_route_id: '',
     transport_stop_id: '',
     hostel_required: 'No',
     hostel_id: '',
     hostel_remarks: '',
+    library_required: 'No',
+    library_fee: '',
 
     // Step 7: Fee particulars
     payment_plan_id: '',
@@ -132,6 +134,9 @@ export default function NewAdmissionPage() {
     payment_status: 'PAID',
     password: 'Student@123',
   });
+
+  const [customFeeAmounts, setCustomFeeAmounts] = useState({});
+  const [isCustomizingFees, setIsCustomizingFees] = useState(false);
 
   useEffect(() => {
     // 1. Fetch Classes
@@ -338,12 +343,14 @@ export default function NewAdmissionPage() {
   const selectedHostel = Array.isArray(hostels) ? hostels.find(h => String(h.id) === String(form.hostel_id)) : undefined;
 
   // Dynamic fee calculation from published structure & payment cadence plan
-  const publishedStructure = admissionFeeData?.published_structure;
+  const publishedStructure = admissionFeeData?.class_fee_structure || admissionFeeData?.published_structure;
   const paymentPlans = admissionFeeData?.payment_plans || [];
   const monthsCount = selectedPaymentPlan?.months_count || 1;
 
   const transportCharge = form.transport_required === 'Yes' ? Number(selectedRoute?.fare || selectedStop?.pickup_charge || 0) : 0;
   const hostelCharge = form.hostel_required === 'Yes' ? Number(selectedHostel?.fee || 0) : 0;
+  const defaultLibRate = admissionFeeData?.fee_heads?.find(h => h.code === 'LIBRARY' || h.category === 'LIBRARY')?.default_amount || 150;
+  const libraryCharge = form.library_required === 'Yes' ? Number(form.library_fee || defaultLibRate || 150) : 0;
 
   let baseGross = 0;
   let eligibleBase = 0;
@@ -361,13 +368,15 @@ export default function NewAdmissionPage() {
   const computedItems = (publishedStructure?.items || []).map(it => {
     const isRec = it.fee_head?.is_recurring ?? (it.fee_head?.default_frequency !== 'ONE_TIME');
     const mult = isRec ? monthsCount : 1;
-    const lineAmt = Number(it.amount || 0) * mult;
+    const rate = customFeeAmounts[it.id] !== undefined ? Number(customFeeAmounts[it.id] || 0) : Number(it.amount || 0);
+    const lineAmt = rate * mult;
     baseGross += lineAmt;
     if (eligibleCats.includes(it.fee_head?.category || 'ACADEMIC')) {
       eligibleBase += lineAmt;
     }
     return {
       ...it,
+      rate,
       mult,
       lineAmt,
     };
@@ -379,7 +388,7 @@ export default function NewAdmissionPage() {
     eligibleBase = legacyAmt;
   }
 
-  const grossTotal = baseGross + transportCharge + hostelCharge;
+  const grossTotal = baseGross + transportCharge + hostelCharge + libraryCharge;
 
   let advanceDiscount = 0;
   if (selectedPaymentPlan && Number(selectedPaymentPlan.discount_value) > 0 && eligibleBase > 0) {
@@ -415,6 +424,17 @@ export default function NewAdmissionPage() {
         months_count: monthsCount,
         transport_fee: transportCharge,
         hostel_fee: hostelCharge,
+        library_fee: libraryCharge,
+        library_required: form.library_required,
+        custom_items: Object.keys(customFeeAmounts).length > 0 ? computedItems.map(it => ({
+          fee_head_id: it.fee_head_id,
+          name: it.fee_head?.name || 'Fee Item',
+          code: it.fee_head?.code || 'ACADEMIC',
+          category: it.fee_head?.category || 'ACADEMIC',
+          rate: it.rate,
+          multiplier: it.mult,
+          amount: it.lineAmt,
+        })) : null,
         manual_waiver: waiverNum,
         waiver_reason: waiverNum > 0 ? (waiverReason || 'Principal Authorized Special Waiver') : '',
         net_payable: netPayable,
@@ -1308,23 +1328,43 @@ export default function NewAdmissionPage() {
                   </div>
                 )}
 
-                {/* STEP 5: Services (Transport & Hostel) */}
+                {/* STEP 5: Services (Transport, Hostel & Library) */}
                 {currentStep === 5 && (
                   <div>
-                    <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 800, color: '#0B3B7B' }}>
-                      Step 5: Optional School Services
-                    </h3>
-                    <p style={{ margin: '0 0 20px', fontSize: 12.5, color: '#64748b' }}>
-                      Opt-in to daily school bus transport routes or boarding hostel accommodations.
-                    </p>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
+                      <div>
+                        <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 800, color: '#0B3B7B' }}>
+                          Step 5: Optional School &amp; Campus Services
+                        </h3>
+                        <p style={{ margin: 0, fontSize: 12.5, color: '#64748b' }}>
+                          Opt-in to daily bus transport routes, boarding hostel accommodations, or library membership.
+                        </p>
+                      </div>
+                    </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+                    <div style={{
+                      background: '#f0fdf4',
+                      border: '1px solid #86efac',
+                      borderRadius: 10,
+                      padding: '12px 16px',
+                      marginBottom: 20,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                    }}>
+                      <span style={{ fontSize: 22 }}>💡</span>
+                      <div style={{ fontSize: 12.5, color: '#166534', lineHeight: 1.45 }}>
+                        <strong>Centralized Architecture:</strong> Services can be selected now OR enrolled at any time later from their respective module windows (Transport, Hostel, or Library). All charges automatically synchronize directly into the student's central financial ledger.
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
                       
                       {/* Transport Box */}
-                      <div style={{ background: '#f8fafc', padding: 22, borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                      <div style={{ background: '#f8fafc', padding: 20, borderRadius: 12, border: '1px solid #e2e8f0' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                           <h4 style={{ margin: 0, fontSize: 14, color: '#0B3B7B', display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span>🚌</span> School Transport Service
+                            <span>🚌</span> Transport Service
                           </h4>
                           <select
                             value={form.transport_required}
@@ -1371,21 +1411,21 @@ export default function NewAdmissionPage() {
                             </div>
 
                             <div style={{ fontSize: 11, color: '#0369a1', background: '#e0f2fe', padding: '8px 12px', borderRadius: 6 }}>
-                              ℹ️ Transport assignment will automatically link the student to daily GPS route tracking and transport fee ledger.
+                              ℹ️ Automatically links student to GPS live route and transport monthly fee schedule.
                             </div>
                           </div>
                         ) : (
                           <div style={{ textAlign: 'center', padding: '24px 10px', color: '#94a3b8', fontSize: 12 }}>
-                            Student does not require school bus transport.
+                            Student does not require school bus transport (Day Scholar).
                           </div>
                         )}
                       </div>
 
                       {/* Hostel Box */}
-                      <div style={{ background: '#f8fafc', padding: 22, borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                      <div style={{ background: '#f8fafc', padding: 20, borderRadius: 12, border: '1px solid #e2e8f0' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                           <h4 style={{ margin: 0, fontSize: 14, color: '#0B3B7B', display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span>🏢</span> Boarding &amp; Hostel Facility
+                            <span>🏢</span> Hostel Facility
                           </h4>
                           <select
                             value={form.hostel_required}
@@ -1417,7 +1457,7 @@ export default function NewAdmissionPage() {
 
                             <div>
                               <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
-                                Special Room Requests / Dietary Remarks
+                                Special Requests / Remarks
                               </label>
                               <input
                                 type="text"
@@ -1429,12 +1469,57 @@ export default function NewAdmissionPage() {
                             </div>
 
                             <div style={{ fontSize: 11, color: '#0369a1', background: '#e0f2fe', padding: '8px 12px', borderRadius: 6 }}>
-                              ℹ️ Room/bed allocation can be finalized by the Hostel Warden via the Hostel Management section.
+                              ℹ️ Bed allocation can also be finalized by the Hostel Warden via Hostel Management.
                             </div>
                           </div>
                         ) : (
                           <div style={{ textAlign: 'center', padding: '24px 10px', color: '#94a3b8', fontSize: 12 }}>
                             Student is registered as a Day Scholar (no hostel boarding).
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Library Box */}
+                      <div style={{ background: '#f8fafc', padding: 20, borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                          <h4 style={{ margin: 0, fontSize: 14, color: '#0B3B7B', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span>📚</span> Library Membership
+                          </h4>
+                          <select
+                            value={form.library_required}
+                            onChange={e => set('library_required', e.target.value)}
+                            style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 12, fontWeight: 700, background: '#fff' }}
+                          >
+                            <option value="No">No Library Card</option>
+                            <option value="Yes">Yes, Issue Card</option>
+                          </select>
+                        </div>
+
+                        {form.library_required === 'Yes' ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                            <div>
+                              <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                                Library Admission / Membership Fee (₹)
+                              </label>
+                              <input
+                                type="number"
+                                placeholder={String(defaultLibRate)}
+                                value={form.library_fee || ''}
+                                onChange={e => set('library_fee', e.target.value)}
+                                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 12.5, outline: 'none', background: '#fff' }}
+                              />
+                              <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                                Default Rate: ₹{defaultLibRate} (configurable in Fee Setup)
+                              </div>
+                            </div>
+
+                            <div style={{ fontSize: 11, color: '#0369a1', background: '#e0f2fe', padding: '8px 12px', borderRadius: 6 }}>
+                              ℹ️ Automatically creates a Library Member profile and activates book borrowing privileges.
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ textAlign: 'center', padding: '24px 10px', color: '#94a3b8', fontSize: 12 }}>
+                            Student does not require library membership card initially. Can be registered later in Library section.
                           </div>
                         )}
                       </div>
@@ -1748,8 +1833,40 @@ export default function NewAdmissionPage() {
                           {/* Itemized Fee Breakdown Table */}
                           <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
                             <div style={{ padding: '10px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <span style={{ fontSize: 12.5, fontWeight: 700, color: '#1e293b' }}>Itemized Particulars ({monthsCount} Month{monthsCount > 1 ? 's' : ''})</span>
-                              <span style={{ fontSize: 11.5, color: '#64748b' }}>Frequency Multipliers Applied</span>
+                              <div>
+                                <span style={{ fontSize: 12.5, fontWeight: 700, color: '#1e293b' }}>Itemized Particulars ({monthsCount} Month{monthsCount > 1 ? 's' : ''})</span>
+                                <span style={{ fontSize: 11, color: '#64748b', marginLeft: 8 }}>Frequency Multipliers Applied</span>
+                              </div>
+                              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                {Object.keys(customFeeAmounts).length > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setCustomFeeAmounts({})}
+                                    style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: 11, cursor: 'pointer', textDecoration: 'underline' }}
+                                  >
+                                    Reset Rates
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => setIsCustomizingFees(v => !v)}
+                                  style={{
+                                    background: isCustomizingFees ? '#0B3B7B' : '#fff',
+                                    color: isCustomizingFees ? '#fff' : '#0B3B7B',
+                                    border: '1px solid #0B3B7B',
+                                    borderRadius: 6,
+                                    padding: '3px 8px',
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 4
+                                  }}
+                                >
+                                  {isCustomizingFees ? '✓ Done Editing' : '✏️ Edit Rates'}
+                                </button>
+                              </div>
                             </div>
                             <div style={{ padding: '8px 16px', fontSize: 12 }}>
                               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -1757,7 +1874,7 @@ export default function NewAdmissionPage() {
                                   <tr style={{ color: '#64748b', fontSize: 11, borderBottom: '1px solid #f1f5f9', textAlign: 'left' }}>
                                     <th style={{ padding: '6px 0' }}>Fee Head</th>
                                     <th style={{ padding: '6px 0' }}>Category</th>
-                                    <th style={{ padding: '6px 0', textAlign: 'center' }}>Rate</th>
+                                    <th style={{ padding: '6px 0', textAlign: 'center' }}>Rate (₹)</th>
                                     <th style={{ padding: '6px 0', textAlign: 'center' }}>Mult</th>
                                     <th style={{ padding: '6px 0', textAlign: 'right' }}>Amount (₹)</th>
                                   </tr>
@@ -1771,8 +1888,32 @@ export default function NewAdmissionPage() {
                                       <td style={{ padding: '7px 0', color: '#64748b', fontSize: 11 }}>
                                         {it.fee_head?.category || 'ACADEMIC'}
                                       </td>
-                                      <td style={{ padding: '7px 0', textAlign: 'center', color: '#64748b' }}>
-                                        ₹ {Number(it.amount || 0).toLocaleString('en-IN')}
+                                      <td style={{ padding: '7px 0', textAlign: 'center' }}>
+                                        {isCustomizingFees ? (
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            value={customFeeAmounts[it.id] !== undefined ? customFeeAmounts[it.id] : (it.amount || 0)}
+                                            onChange={e => {
+                                              const v = e.target.value === '' ? '' : parseFloat(e.target.value);
+                                              setCustomFeeAmounts(prev => ({ ...prev, [it.id]: v }));
+                                            }}
+                                            style={{
+                                              width: 75,
+                                              padding: '3px 6px',
+                                              borderRadius: 4,
+                                              border: '1.5px solid #0284c7',
+                                              fontSize: 11.5,
+                                              fontWeight: 700,
+                                              textAlign: 'center',
+                                              background: '#f0f9ff'
+                                            }}
+                                          />
+                                        ) : (
+                                          <span style={{ color: customFeeAmounts[it.id] !== undefined ? '#0284c7' : '#64748b', fontWeight: customFeeAmounts[it.id] !== undefined ? 700 : 500 }}>
+                                            ₹ {it.rate.toLocaleString('en-IN')}
+                                          </span>
+                                        )}
                                       </td>
                                       <td style={{ padding: '7px 0', textAlign: 'center', color: '#0284c7', fontWeight: 700 }}>
                                         × {it.mult}
@@ -1809,6 +1950,21 @@ export default function NewAdmissionPage() {
                                       <td style={{ padding: '7px 0', textAlign: 'center', color: '#64748b' }}>× 1</td>
                                       <td style={{ padding: '7px 0', textAlign: 'right', fontWeight: 700, color: '#0284c7' }}>
                                         ₹ {hostelCharge.toLocaleString('en-IN')}
+                                      </td>
+                                    </tr>
+                                  )}
+
+                                  {/* Library Membership Addon if opted in */}
+                                  {form.library_required === 'Yes' && (
+                                    <tr style={{ borderBottom: '1px solid #f8fafc', background: '#f8fafc' }}>
+                                      <td style={{ padding: '7px 0', fontWeight: 600, color: '#0284c7' }}>
+                                        📚 Library Membership Fee
+                                      </td>
+                                      <td style={{ padding: '7px 0', color: '#0284c7', fontSize: 11 }}>LIBRARY</td>
+                                      <td style={{ padding: '7px 0', textAlign: 'center', color: '#64748b' }}>₹ {libraryCharge}</td>
+                                      <td style={{ padding: '7px 0', textAlign: 'center', color: '#64748b' }}>× 1</td>
+                                      <td style={{ padding: '7px 0', textAlign: 'right', fontWeight: 700, color: '#0284c7' }}>
+                                        ₹ {libraryCharge.toLocaleString('en-IN')}
                                       </td>
                                     </tr>
                                   )}

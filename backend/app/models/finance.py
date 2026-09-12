@@ -174,6 +174,9 @@ class Expense(db.Model):
     created_by       = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at       = db.Column(db.DateTime, default=datetime.utcnow)
 
+    creator          = db.relationship('User', foreign_keys=[created_by], lazy='select')
+    approver         = db.relationship('User', foreign_keys=[approved_by], lazy='select')
+
     def to_dict(self):
         return {
             'id':               self.id,
