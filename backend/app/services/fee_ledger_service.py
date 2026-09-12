@@ -1075,6 +1075,18 @@ def collect_fee_payment(
             lr.receipt_no = payment.receipt_no
             lr.payment_mode = payment_mode
             lr.collected_by = collected_by.id if collected_by else None
+
+        # 4. Auto-Confirm Student Admission if currently PROVISIONAL
+        if student.status == 'PROVISIONAL':
+            student.status = 'ACTIVE'
+            try:
+                from app.models.academic import StudentEnrollment
+                enrollments = StudentEnrollment.query.filter_by(student_id=student.id, school_id=student.school_id).all()
+                for enr in enrollments:
+                    if enr.enrollment_status == 'PROVISIONAL':
+                        enr.enrollment_status = 'ACTIVE'
+            except Exception as enr_err:
+                print(f"[WARN] Error updating enrollment status: {enr_err}")
     except Exception as e:
         import traceback
         traceback.print_exc()

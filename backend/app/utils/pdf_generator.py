@@ -12,6 +12,7 @@ import io
 import urllib.request, tempfile
 import qrcode
 from datetime import datetime, date
+from app.utils.timezone_util import ist_today, ist_now
 from app.models.academic import Class
 from app.models.documents import StudentDocument
 from app.models.financial import FeeRecord
@@ -218,7 +219,7 @@ def _build_admission_confirmation_elements(student, school):
 
     std_name = student.user.name if student.user else (getattr(student, 'name', '') or '—')
     adm_no = _esc(student.admission_no or f"ADM-{session_str}-001")
-    adm_date_str = student.admission_date.strftime('%d-%m-%Y') if hasattr(student, 'admission_date') and student.admission_date else date.today().strftime('%d-%m-%Y')
+    adm_date_str = student.admission_date.strftime('%d-%m-%Y') if hasattr(student, 'admission_date') and student.admission_date else ist_today().strftime('%d-%m-%Y')
     roll_no = _esc(student.roll_number or '—')
     dob_str = student.dob.strftime('%d-%m-%Y') if hasattr(student, 'dob') and student.dob else '—'
     gender_str = _esc(student.gender or '—')
@@ -603,7 +604,8 @@ def _build_admission_confirmation_elements(student, school):
             f_amt = float(fr.amount_due or fr.amount_paid or 0)
             total_fee_amt += f_amt
             f_name = fr.fee_type.replace('_', ' ').title() if fr.fee_type else 'Fee'
-            fee_rows.append([str(idx), f_name, f"₹ {f_amt:,.2f}"])
+            f_name_disp = f_name[:35] + '...' if len(f_name) > 38 else f_name
+            fee_rows.append([str(idx), f_name_disp, f"₹ {f_amt:,.2f}"])
         # Fill remaining up to 10 rows
         for idx in range(len(fee_records) + 1, 11):
             fee_rows.append([str(idx), '—', '—'])
@@ -1740,7 +1742,7 @@ def generate_fee_collection_report_pdf(school, summary, transactions_or_records,
             ],
             [
                 Paragraph(f"<b><font size='11' color='{NAVY_HEADER.hexval()}'>FINANCIAL REPORT</font></b>", ParagraphStyle('rh', alignment=TA_RIGHT, leading=13)),
-                Paragraph(f"<font size='8' color='#475569'><b>Generated:</b> {datetime.now().strftime('%d %b %Y, %I:%M %p')}</font>", ParagraphStyle('rg', alignment=TA_RIGHT, leading=10)),
+                Paragraph(f"<font size='8' color='#475569'><b>Generated:</b> {ist_now().strftime('%d %b %Y, %I:%M %p')}</font>", ParagraphStyle('rg', alignment=TA_RIGHT, leading=10)),
                 Paragraph(f"<font size='8' color='#16A34A'><b>Status:</b> Verified Ledger</font>", ParagraphStyle('rv', alignment=TA_RIGHT, leading=10)),
             ]
         ]

@@ -13,14 +13,14 @@ class FeeStructure(db.Model):
     school_id    = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
     class_id     = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=True)
     session      = db.Column(db.String(20), default='2024-25')
-    fee_type     = db.Column(db.String(50))
+    fee_type     = db.Column(db.String(255))
     amount       = db.Column(db.Float, nullable=False)
-    frequency    = db.Column(db.String(20), default='MONTHLY')   # MONTHLY / QUARTERLY / YEARLY / ONE_TIME  ← NEW usage
+    frequency    = db.Column(db.String(50), default='MONTHLY')   # MONTHLY / QUARTERLY / YEARLY / ONE_TIME  ← NEW usage
     due_date_day = db.Column(db.Integer, default=10)
 
     # NEW — source tag, taaki Fee Structures page pe Hostel/Library
     # bhi list mein dikh sake bina duplicate create kiye
-    source       = db.Column(db.String(20), default='ACADEMIC', index=True)  # ACADEMIC/HOSTEL/LIBRARY/TRANSPORT
+    source       = db.Column(db.String(100), default='ACADEMIC', index=True)  # ACADEMIC/HOSTEL/LIBRARY/TRANSPORT
 
     status       = db.Column(db.String(20), default='ACTIVE')
     created_by   = db.Column(db.Integer, db.ForeignKey('users.id'))
@@ -43,14 +43,14 @@ class FeeRecord(db.Model):
     id           = db.Column(db.Integer, primary_key=True)
     student_id   = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     school_id    = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False)
-    fee_type     = db.Column(db.String(50))
+    fee_type     = db.Column(db.String(255))
     amount_due   = db.Column(db.Float, nullable=False)
     amount_paid  = db.Column(db.Float, default=0.0)
 
     # ── Source tracking — same pattern as Expense.source/source_ref_id ──
     # 'ACADEMIC' (default, existing behaviour untouched) / 'HOSTEL' / 'TRANSPORT' / 'LIBRARY'
     # NEW
-    source        = db.Column(db.String(20), default='ACADEMIC', index=True)
+    source        = db.Column(db.String(100), default='ACADEMIC', index=True)
     source_ref_id = db.Column(db.Integer)   # e.g. HostelBedAllocation.id, FineTransaction.id
 
     # NEW — links a record to the batch that generated it (null for hostel/library/manual records)
@@ -59,23 +59,23 @@ class FeeRecord(db.Model):
     # NEW
     discount        = db.Column(db.Float, default=0.0)
     fine            = db.Column(db.Float, default=0.0)
-    discount_reason = db.Column(db.String(200))
-    fine_reason     = db.Column(db.String(200))
+    discount_reason = db.Column(db.String(300))
+    fine_reason     = db.Column(db.String(300))
     adjusted_by     = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     adjusted_at     = db.Column(db.DateTime, nullable=True)
     status            = db.Column(db.String(20), default='PENDING')
     month             = db.Column(db.String(20))
-    billing_frequency = db.Column(db.String(20), default='MONTHLY', index=True)
+    billing_frequency = db.Column(db.String(50), default='MONTHLY', index=True)
     period_start      = db.Column(db.Date, nullable=True, index=True)
     period_end        = db.Column(db.Date, nullable=True, index=True)
-    coverage_label    = db.Column(db.String(100), nullable=True)
+    coverage_label    = db.Column(db.String(255), nullable=True)
     due_date          = db.Column(db.Date)
     paid_date         = db.Column(db.Date)
-    receipt_no        = db.Column(db.String(50), index=True)
+    receipt_no        = db.Column(db.String(100), index=True)
     payment_mode      = db.Column(db.String(30))
     collected_by      = db.Column(db.Integer, db.ForeignKey('users.id'))
     session           = db.Column(db.String(20), default='2024-25')
-    remarks           = db.Column(db.String(300))
+    remarks           = db.Column(db.String(500))
     created_at        = db.Column(db.DateTime, default=datetime.utcnow)
     student           = db.relationship('Student', foreign_keys=[student_id], backref='fee_records_rel', overlaps="fee_records_rel,student_ref,fees")
 
@@ -625,7 +625,7 @@ class FeeGenerationBatch(db.Model):
     id              = db.Column(db.Integer, primary_key=True)
     school_id       = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
     class_id        = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=True)  # null = multi-class (hostel jaisa)
-    fee_type        = db.Column(db.String(50), nullable=False)
+    fee_type        = db.Column(db.String(255), nullable=False)
     month           = db.Column(db.String(20), nullable=False)   # "2026-07"
     session         = db.Column(db.String(20), default='2024-25')
 

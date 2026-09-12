@@ -35,6 +35,34 @@ const STEPS = [
   { id: 8, label: 'Review & Submit' },
 ];
 
+export const getIndianDateISO = () => {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(new Date());
+  } catch {
+    return new Date().toISOString().split('T')[0];
+  }
+};
+
+export const formatIndianDate = (d) => {
+  if (!d) return '—';
+  try {
+    const s = String(d).split('T')[0];
+    const parts = s.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    }
+    const dt = new Date(d);
+    return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-');
+  } catch {
+    return d;
+  }
+};
+
 export default function NewAdmissionPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -120,7 +148,7 @@ export default function NewAdmissionPage() {
     roll_number: '',
     manual_admission_no: '',
     session: '2026-27',
-    admission_date: new Date().toISOString().split('T')[0],
+    admission_date: getIndianDateISO(),
 
     // Step 5: Services (Transport, Hostel & Library)
     transport_required: 'No',
@@ -359,6 +387,67 @@ export default function NewAdmissionPage() {
     }
   }
 
+  function skipStep() {
+    if (currentStep === 1) {
+      if (!form.name.trim()) {
+        toast.error('Please enter at least Student Name before skipping');
+        return;
+      }
+      toast.info('Student personal details skipped — can be updated later');
+      setCurrentStep(2);
+      return;
+    }
+    if (currentStep === 2) {
+      toast.info('Parent & Address details skipped — can be updated later');
+      setCurrentStep(3);
+      return;
+    }
+    if (currentStep === 3) {
+      toast.info('Previous school details skipped');
+      setCurrentStep(4);
+      return;
+    }
+    if (currentStep === 4) {
+      if (!form.class_id) {
+        toast.error('Please select an admission class before skipping');
+        return;
+      }
+      toast.info('Academic details saved — moving to next step');
+      setCurrentStep(5);
+      return;
+    }
+    if (currentStep === 5) {
+      toast.info('Optional services skipped');
+      setCurrentStep(6);
+      return;
+    }
+    if (currentStep === 6) {
+      toast.info('KYC documents skipped — can be uploaded later from student profile');
+      setCurrentStep(7);
+      return;
+    }
+    if (currentStep === 7) {
+      toast.info('Fee setup skipped — standard plan applied');
+      setCurrentStep(8);
+      return;
+    }
+  }
+
+  function quickSkipToReview() {
+    if (!form.name.trim()) {
+      toast.error('Please enter Student Name in Step 1 first');
+      setCurrentStep(1);
+      return;
+    }
+    if (!form.class_id) {
+      toast.error('Please select an Admission Class in Step 4 first');
+      setCurrentStep(4);
+      return;
+    }
+    toast.success('⚡ Quick Admission: Proceeding directly to Review & Payment!');
+    setCurrentStep(8);
+  }
+
   function prevStep() {
     setCurrentStep(s => Math.max(s - 1, 1));
   }
@@ -471,10 +560,12 @@ export default function NewAdmissionPage() {
   const netPayable = Math.max(0, grossTotal - totalDeductions);
   const totalFee = netPayable;
 
-  async function submit(e) {
-    if (e) e.preventDefault();
-    if (!form.name || !form.parent_phone || !form.class_id) {
-      toast.error('Please fill in Student Name, Mobile Number and Class');
+  async function submit(opts = {}) {
+    if (opts && opts.preventDefault) opts.preventDefault();
+    const isSkipPayment = Boolean(opts?.isSkipPayment);
+
+    if (!form.name || !form.class_id) {
+      toast.error('Please fill in Student Name and select an Admission Class');
       return;
     }
     if (saving) return; // Double-click protection
@@ -483,6 +574,11 @@ export default function NewAdmissionPage() {
     try {
       const firstName = (form.name || 'student').trim().split(/\s+/)[0].toLowerCase().replace(/[^a-z0-9]/g, '');
       const autoEmail = form.parent_email || `${firstName || 'student'}@${schoolSlug}.com`;
+      const cleanPhone = (form.parent_phone || '').trim();
+
+      const payAmount = isSkipPayment ? 0 : (paymentAmount !== '' ? (parseFloat(paymentAmount) || 0) : netPayable);
+      const payStatus = isSkipPayment ? 'DUE' : (payAmount >= netPayable && netPayable > 0 ? 'PAID' : (payAmount > 0 ? 'PARTIAL' : 'DUE'));
+      const isProvisional = isSkipPayment || payAmount <= 0;
 
       const fee_setup = {
         fee_structure_id: publishedStructure?.id || null,
@@ -517,17 +613,20 @@ export default function NewAdmissionPage() {
         manual_waiver: waiverNum,
         waiver_reason: waiverNum > 0 ? (waiverReason || 'Principal Authorized Special Waiver') : '',
         net_payable: netPayable,
-        initial_payment_amount: form.payment_status === 'PAID' ? netPayable : (form.payment_status === 'DUE' ? 0 : (parseFloat(paymentAmount) || 0)),
+        initial_payment_amount: payAmount,
         payment_mode: form.payment_mode || 'Cash',
-        payment_status: form.payment_status || 'PAID',
+        payment_status: payStatus,
         payment_reference: paymentReference || '',
+        is_provisional: isProvisional,
       };
 
       const payload = {
         ...form,
+        parent_phone: cleanPhone,
         email: autoEmail,
-        parent_name: form.father_name || form.guardian_name || form.parent_name,
+        parent_name: form.father_name || form.guardian_name || form.parent_name || 'Parent / Guardian',
         admission_no: form.manual_admission_no ? form.manual_admission_no.trim() : undefined,
+        status: isProvisional ? 'PROVISIONAL' : 'ACTIVE',
         fee_setup,
       };
 
@@ -576,7 +675,11 @@ export default function NewAdmissionPage() {
       }
 
       setDone(res.data);
-      toast.success('🎉 Student admitted successfully! Admission No: ' + (res.data.admission_no || 'Generated'));
+      if (isProvisional || res.data.status === 'PROVISIONAL') {
+        toast.success(`⏳ Provisional admission recorded! Admission No: ${res.data.admission_no || 'Generated'}`);
+      } else {
+        toast.success(`🎉 Student admitted & confirmed! Admission No: ${res.data.admission_no || 'Generated'}`);
+      }
     } catch (err) {
       const errMsg = err.response?.data?.error || err.response?.data?.message || 'Error occurred while admitting student';
       toast.error(errMsg);
@@ -684,10 +787,39 @@ export default function NewAdmissionPage() {
                   return (
                     <div
                       key={s.id}
-                      role={isPassed ? "button" : undefined}
-                      tabIndex={isPassed ? 0 : undefined}
-                      onClick={() => { if (isPassed) setCurrentStep(s.id); }}
-                      onKeyDown={(e) => { if (isPassed && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setCurrentStep(s.id); } }}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
+                        if (s.id === currentStep) return;
+                        if (s.id > 1 && !form.name.trim()) {
+                          toast.error('Please enter Student Name in Step 1 first');
+                          setCurrentStep(1);
+                          return;
+                        }
+                        if (s.id > 4 && !form.class_id) {
+                          toast.error('Please select an admission class in Step 4 first');
+                          setCurrentStep(4);
+                          return;
+                        }
+                        setCurrentStep(s.id);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          if (s.id === currentStep) return;
+                          if (s.id > 1 && !form.name.trim()) {
+                            toast.error('Please enter Student Name in Step 1 first');
+                            setCurrentStep(1);
+                            return;
+                          }
+                          if (s.id > 4 && !form.class_id) {
+                            toast.error('Please select an admission class in Step 4 first');
+                            setCurrentStep(4);
+                            return;
+                          }
+                          setCurrentStep(s.id);
+                        }
+                      }}
                       style={{
                         flex: 1,
                         minWidth: 120,
@@ -695,10 +827,11 @@ export default function NewAdmissionPage() {
                         textAlign: 'center',
                         borderBottom: isActive ? '3px solid #0B3B7B' : '3px solid transparent',
                         background: isActive ? '#ffffff' : 'transparent',
-                        cursor: isPassed ? 'pointer' : 'default',
+                        cursor: 'pointer',
                         transition: 'all 0.2s',
                         userSelect: 'none',
                       }}
+                      title={`Go directly to Step ${s.id}: ${s.label}`}
                     >
                       <div style={{
                         display: 'inline-flex',
@@ -707,8 +840,8 @@ export default function NewAdmissionPage() {
                         width: 24,
                         height: 24,
                         borderRadius: '50%',
-                        background: isActive ? '#0B3B7B' : isPassed ? '#16A34A' : '#e2e8f0',
-                        color: isActive || isPassed ? '#ffffff' : '#64748b',
+                        background: isActive ? '#0B3B7B' : isPassed ? '#16A34A' : '#cbd5e1',
+                        color: isActive || isPassed ? '#ffffff' : '#334155',
                         fontSize: 11,
                         fontWeight: 700,
                         marginRight: 6
@@ -726,6 +859,90 @@ export default function NewAdmissionPage() {
                     </div>
                   );
                 })}
+              </div>
+
+              {/* TOP ACTION & QUICK SKIP BAR (Always visible at top of card) */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '12px 28px',
+                background: '#f8fafc',
+                borderBottom: '1px solid #e2e8f0',
+                flexWrap: 'wrap',
+                gap: 10
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{
+                    background: '#0B3B7B',
+                    color: '#fff',
+                    borderRadius: 6,
+                    padding: '3px 10px',
+                    fontSize: 12,
+                    fontWeight: 800
+                  }}>
+                    Step {currentStep} of {STEPS.length}
+                  </span>
+                  <span style={{ fontSize: 13.5, fontWeight: 800, color: '#1e293b' }}>
+                    {STEPS[currentStep - 1]?.label}
+                  </span>
+                  <span style={{ fontSize: 12, color: '#64748b' }}>
+                    (Quick Admission: Only Name &amp; Class required)
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  {form.name && form.class_id && currentStep > 1 && currentStep < 8 && (
+                    <button
+                      type="button"
+                      onClick={quickSkipToReview}
+                      style={{
+                        background: '#e0f2fe',
+                        color: '#0284c7',
+                        border: '1px solid #bae6fd',
+                        padding: '7px 15px',
+                        borderRadius: 8,
+                        fontSize: 12.5,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6
+                      }}
+                      title="Jump directly to final review & admission"
+                    >
+                      ⚡ Quick Admission (Review)
+                    </button>
+                  )}
+
+                  {currentStep < STEPS.length ? (
+                    <button
+                      type="button"
+                      onClick={skipStep}
+                      style={{
+                        background: '#ffffff',
+                        color: '#0B3B7B',
+                        border: '1.5px solid #0B3B7B',
+                        padding: '7px 18px',
+                        borderRadius: 8,
+                        fontSize: 13,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        boxShadow: '0 2px 6px rgba(11,59,123,0.12)'
+                      }}
+                      title="Skip this step and proceed to next step"
+                    >
+                      Skip Step ⏭️
+                    </button>
+                  ) : (
+                    <span style={{ fontSize: 12, color: '#16a34a', fontWeight: 700 }}>
+                      Final Confirmation &amp; Payment
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* STEP CONTENT BODY */}
@@ -2590,54 +2807,203 @@ export default function NewAdmissionPage() {
                       </div>
 
                     </div>
+
+                    {/* Step 8: Fee Payment Collection & Confirmation Panel */}
+                    <div style={{
+                      marginTop: 20,
+                      background: '#f8fafc',
+                      border: '1.5px solid #cbd5e1',
+                      borderRadius: 12,
+                      padding: 20,
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+                        <div>
+                          <h4 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: '#0B3B7B', display: 'flex', alignItems: 'center', gap: 8 }}>
+                            💳 Admission Fee Payment &amp; Confirmation
+                          </h4>
+                          <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b' }}>
+                            You can pay fees immediately to confirm admission, or skip payment for temporary (provisional) admission.
+                          </p>
+                        </div>
+                        <div style={{ background: '#dcfce7', border: '1px solid #86efac', padding: '6px 14px', borderRadius: 8, textAlign: 'right' }}>
+                          <span style={{ fontSize: 11, color: '#166534', fontWeight: 600 }}>Total Net Admission Fee:</span>
+                          <div style={{ fontSize: 18, fontWeight: 900, color: '#15803d' }}>
+                            ₹ {totalFee.toLocaleString('en-IN')}.00
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, alignItems: 'center' }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                            Payment Mode
+                          </label>
+                          <select
+                            value={form.payment_mode}
+                            onChange={e => set('payment_mode', e.target.value)}
+                            style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, background: '#fff' }}
+                          >
+                            {PAYMENT_MODES.map(m => <option key={m} value={m}>{m}</option>)}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                            Amount to Collect (₹)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max={totalFee}
+                            value={paymentAmount !== '' ? paymentAmount : totalFee}
+                            onChange={e => setPaymentAmount(e.target.value)}
+                            placeholder={`₹ ${totalFee}`}
+                            style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, fontWeight: 700 }}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                            Transaction Ref / Cheque No / UPI ID
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. UPI-728192 / Cash Counter"
+                            value={paymentReference}
+                            onChange={e => setPaymentReference(e.target.value)}
+                            style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13 }}
+                          />
+                        </div>
+                      </div>
+
+                      <div style={{ marginTop: 14, display: 'flex', gap: 10, alignItems: 'center', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px' }}>
+                        <span style={{ fontSize: 18 }}>💡</span>
+                        <div style={{ fontSize: 12, color: '#92400e', lineHeight: 1.5 }}>
+                          <strong>Skip vs Direct Payment Rule:</strong> If you choose <em>"Skip Payment (Provisional Admission)"</em>, the student is admitted immediately with <strong>PROVISIONAL (Temporary)</strong> status. As soon as fees are deposited through Fees &amp; Finance, Quick Counter, or Student Profile, status automatically turns to <strong>CONFIRMED (ACTIVE)</strong> everywhere in real time.
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
 
               </div>
 
-              {/* FOOTER NAVIGATION */}
+              {/* FOOTER NAVIGATION (Sticky to bottom so always visible) */}
               <div style={{
                 padding: '16px 36px',
-                borderTop: '1px solid #f1f5f9',
-                background: '#fafafa',
+                borderTop: '1.5px solid #cbd5e1',
+                background: '#ffffff',
                 display: 'flex',
                 justifyContent: 'space-between',
-                alignItems: 'center'
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 12,
+                position: 'sticky',
+                bottom: 0,
+                zIndex: 30,
+                boxShadow: '0 -4px 16px rgba(0,0,0,0.08)'
               }}>
                 {currentStep > 1 ? (
                   <button
                     onClick={prevStep}
-                    style={{ background: '#ffffff', border: '1px solid #cbd5e1', color: '#475569', padding: '9px 18px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                    style={{ background: '#ffffff', border: '1.5px solid #cbd5e1', color: '#475569', padding: '10px 20px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
                   >
                     ← Previous
                   </button>
                 ) : <div />}
 
                 {currentStep < STEPS.length ? (
-                  <button
-                    onClick={nextStep}
-                    style={{ background: '#0B3B7B', color: '#ffffff', border: 'none', padding: '10px 22px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
-                  >
-                    Save &amp; Next →
-                  </button>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                    {form.name && form.class_id && currentStep > 1 && currentStep < 7 && (
+                      <button
+                        type="button"
+                        onClick={quickSkipToReview}
+                        style={{
+                          background: '#e0f2fe',
+                          color: '#0284c7',
+                          border: '1px solid #bae6fd',
+                          padding: '10px 18px',
+                          borderRadius: 8,
+                          fontSize: 13,
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                        title="Fast track: jump directly to final review & admission"
+                      >
+                        ⚡ Quick Admission (Review)
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={skipStep}
+                      style={{
+                        background: '#f8fafc',
+                        color: '#0B3B7B',
+                        border: '1.5px solid #0B3B7B',
+                        padding: '10px 22px',
+                        borderRadius: 8,
+                        fontSize: 13.5,
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        boxShadow: '0 2px 6px rgba(11,59,123,0.1)'
+                      }}
+                      title="Skip this step and fill details later"
+                    >
+                      Skip Step ⏭️
+                    </button>
+
+                    <button
+                      onClick={nextStep}
+                      style={{ background: '#0B3B7B', color: '#ffffff', border: 'none', padding: '10px 22px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Save &amp; Next →
+                    </button>
+                  </div>
                 ) : (
-                  <button
-                    onClick={submit}
-                    disabled={saving}
-                    style={{
-                      background: saving ? '#94a3b8' : '#16a34a',
-                      color: '#ffffff',
-                      border: 'none',
-                      padding: '11px 26px',
-                      borderRadius: 8,
-                      fontSize: 13.5,
-                      fontWeight: 800,
-                      cursor: saving ? 'wait' : 'pointer',
-                      boxShadow: '0 4px 12px rgba(22,163,74,0.3)'
-                    }}
-                  >
-                    {saving ? '⏳ Submitting Admission...' : '🎓 Confirm Admission & Generate Form'}
-                  </button>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => submit({ isSkipPayment: true })}
+                      disabled={saving}
+                      style={{
+                        background: saving ? '#cbd5e1' : '#f59e0b',
+                        color: '#ffffff',
+                        border: 'none',
+                        padding: '11px 22px',
+                        borderRadius: 8,
+                        fontSize: 13.5,
+                        fontWeight: 800,
+                        cursor: saving ? 'wait' : 'pointer',
+                        boxShadow: '0 4px 12px rgba(245,158,11,0.25)'
+                      }}
+                    >
+                      {saving ? '⏳ Submitting...' : '⏭️ Skip Payment (Provisional Admission)'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => submit({ isSkipPayment: false })}
+                      disabled={saving}
+                      style={{
+                        background: saving ? '#94a3b8' : '#16a34a',
+                        color: '#ffffff',
+                        border: 'none',
+                        padding: '11px 26px',
+                        borderRadius: 8,
+                        fontSize: 13.5,
+                        fontWeight: 800,
+                        cursor: saving ? 'wait' : 'pointer',
+                        boxShadow: '0 4px 12px rgba(22,163,74,0.3)'
+                      }}
+                    >
+                      {saving ? '⏳ Submitting...' : `💳 Pay ₹${totalFee.toLocaleString('en-IN')} & Confirm Admission`}
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -2648,28 +3014,43 @@ export default function NewAdmissionPage() {
               
               {/* Success Banner */}
               <div style={{
-                background: '#dcfce7',
-                border: '1px solid #86efac',
+                background: done.status === 'PROVISIONAL' ? '#fffbeb' : '#dcfce7',
+                border: `1px solid ${done.status === 'PROVISIONAL' ? '#fcd34d' : '#86efac'}`,
                 borderRadius: 12,
                 padding: '18px 24px',
                 marginBottom: 20,
                 display: 'flex',
                 justifyContent: 'space-between',
-                alignItems: 'center'
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 14
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                  <span style={{ fontSize: 32 }}>🎉</span>
+                  <span style={{ fontSize: 32 }}>{done.status === 'PROVISIONAL' ? '⏳' : '🎉'}</span>
                   <div>
-                    <h3 style={{ margin: '0 0 2px', fontSize: 16, fontWeight: 800, color: '#15803d' }}>
-                      Admission Confirmed Successfully!
+                    <h3 style={{ margin: '0 0 2px', fontSize: 16, fontWeight: 800, color: done.status === 'PROVISIONAL' ? '#b45309' : '#15803d' }}>
+                      {done.status === 'PROVISIONAL' ? 'Provisional Admission Generated (Fee Pending)' : 'Admission Confirmed Successfully!'}
                     </h3>
-                    <p style={{ margin: 0, fontSize: 13, color: '#166534' }}>
+                    <p style={{ margin: 0, fontSize: 13, color: done.status === 'PROVISIONAL' ? '#92400e' : '#166534' }}>
                       {done.name} has been enrolled in {selectedClass?.name || 'Class'}. Admission No: <strong>{done.admission_no}</strong>
+                      {done.status === 'PROVISIONAL' && (
+                        <span style={{ display: 'block', marginTop: 4, fontWeight: 600, color: '#b45309' }}>
+                          ℹ️ Temporary Admission: Fee payment is currently pending. Status will automatically update to CONFIRMED (ACTIVE) once fees are deposited.
+                        </span>
+                      )}
                     </p>
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: 10 }}>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                  {done.status === 'PROVISIONAL' && (
+                    <button
+                      onClick={() => navigate(resolveTenantPath(user, '/fees-finance/fee-collection'))}
+                      style={{ background: '#f59e0b', color: '#fff', border: 'none', padding: '9px 16px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+                    >
+                      💳 Pay Admission Fee Now
+                    </button>
+                  )}
                   <button
                     onClick={handlePrintDirect}
                     style={{ background: '#0B3B7B', color: '#fff', border: 'none', padding: '9px 16px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
@@ -2802,11 +3183,11 @@ export default function NewAdmissionPage() {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 100px', padding: 8, gap: 8, fontSize: 11 }}>
                       <div>
                         <div><span style={{ color: '#64748b' }}>Admission No.:</span> <strong>{done.admission_no || form.manual_admission_no || 'ADM-AUTO'}</strong></div>
-                        <div><span style={{ color: '#64748b' }}>Admission Date:</span> <strong>{form.admission_date}</strong></div>
+                        <div><span style={{ color: '#64748b' }}>Admission Date:</span> <strong>{formatIndianDate(form.admission_date)}</strong></div>
                         <div><span style={{ color: '#64748b' }}>Class Applying For:</span> <strong>{selectedClass?.name || '—'}</strong></div>
                       </div>
                       <div>
-                        <div><span style={{ color: '#64748b' }}>Date of Birth:</span> <strong>{form.dob}</strong></div>
+                        <div><span style={{ color: '#64748b' }}>Date of Birth:</span> <strong>{formatIndianDate(form.dob)}</strong></div>
                         <div><span style={{ color: '#64748b' }}>Gender:</span> <strong>{form.gender}</strong></div>
                         <div><span style={{ color: '#64748b' }}>Blood Group:</span> <strong>{form.blood_group}</strong></div>
                       </div>
@@ -2871,7 +3252,7 @@ export default function NewAdmissionPage() {
                             <div><span style={{ color: '#64748b' }}>School Name:</span> <strong>{form.previous_school_name || '—'}</strong></div>
                             <div><span style={{ color: '#64748b' }}>Last Class:</span> <strong>{form.previous_class || '—'}</strong></div>
                             <div><span style={{ color: '#64748b' }}>TC No.:</span> <strong>{form.previous_tc_no || '—'}</strong></div>
-                            <div><span style={{ color: '#64748b' }}>TC Date:</span> <strong>{form.previous_tc_date || '—'}</strong></div>
+                            <div><span style={{ color: '#64748b' }}>TC Date:</span> <strong>{formatIndianDate(form.previous_tc_date)}</strong></div>
                           </>
                         )}
                       </div>
@@ -2991,7 +3372,7 @@ export default function NewAdmissionPage() {
                       <strong style={{ color: '#0B3B7B' }}>FOR SCHOOL OFFICE USE:</strong><br />
                       Verified By: ____________________<br />
                       Approved By: ____________________<br />
-                      Admission Date: {form.admission_date}
+                      Admission Date: {formatIndianDate(form.admission_date)}
                     </div>
                   </div>
 

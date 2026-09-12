@@ -235,12 +235,13 @@ export default function StudentsPage() {
   });
 
   const STATUS_BADGES = {
-    ACTIVE:    { bg: '#dcfce7', text: '#15803d', label: 'Active' },
-    PROMOTED:  { bg: '#e0e7ff', text: '#3730a3', label: 'Promoted' },
-    RETAINED:  { bg: '#fef3c7', text: '#92400e', label: 'Retained' },
-    GRADUATED: { bg: '#f3e8ff', text: '#6b21a8', label: 'Graduated' },
-    WITHDRAWN: { bg: '#fee2e2', text: '#991b1b', label: 'Withdrawn' },
-    LEFT:      { bg: '#f1f5f9', text: '#475569', label: 'Left' },
+    ACTIVE:      { bg: '#dcfce7', text: '#15803d', label: 'Active' },
+    PROVISIONAL: { bg: '#fef3c7', text: '#b45309', label: 'Provisional (Fee Due)' },
+    PROMOTED:    { bg: '#e0e7ff', text: '#3730a3', label: 'Promoted' },
+    RETAINED:    { bg: '#fef3c7', text: '#92400e', label: 'Retained' },
+    GRADUATED:   { bg: '#f3e8ff', text: '#6b21a8', label: 'Graduated' },
+    WITHDRAWN:   { bg: '#fee2e2', text: '#991b1b', label: 'Withdrawn' },
+    LEFT:        { bg: '#f1f5f9', text: '#475569', label: 'Left' },
   };
 
   return (
@@ -408,6 +409,7 @@ export default function StudentsPage() {
               >
                 <option value="">All Statuses</option>
                 <option value="ACTIVE">Active</option>
+                <option value="PROVISIONAL">Provisional (Fee Due)</option>
                 <option value="PROMOTED">Promoted</option>
                 <option value="RETAINED">Retained</option>
                 <option value="GRADUATED">Graduated</option>

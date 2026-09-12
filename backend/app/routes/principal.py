@@ -36,7 +36,7 @@ from app.routes.admin import FEATURE_CATALOG, PLAN_PRESETS, PLAN_PRICING
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload, selectinload
 from datetime import date, datetime, timedelta
-from app.utils.timezone_util import utc_now
+from app.utils.timezone_util import utc_now, ist_now, ist_naive_now, ist_today, format_ist_date, format_ist_datetime
 import secrets, string, re
 import cloudinary.uploader
 import os
@@ -882,9 +882,9 @@ def create_student():
                 raw_adm = data.get('admission_date') or data.get('date_of_joining')
                 adm_date_val = date.fromisoformat(str(raw_adm)[:10])
             except Exception:
-                adm_date_val = date.today()
+                adm_date_val = ist_today()
         else:
-            adm_date_val = date.today()
+            adm_date_val = ist_today()
 
         tc_date_val = None
         if data.get('previous_tc_date'):
@@ -916,6 +916,14 @@ def create_student():
 
         is_first = bool(data.get('is_first_school'))
 
+        fee_setup_in = data.get('fee_setup') or {}
+        req_status = (data.get('status') or '').strip().upper()
+        pay_st = (fee_setup_in.get('payment_status') or '').strip().upper()
+        init_pay_val = float(fee_setup_in.get('initial_payment_amount', 0.0) or 0.0)
+        is_prov = bool(fee_setup_in.get('is_provisional')) or req_status == 'PROVISIONAL' or (pay_st == 'DUE' and init_pay_val <= 0 and req_status != 'ACTIVE')
+
+        initial_status = 'PROVISIONAL' if is_prov else (req_status or 'ACTIVE')
+
         student = Student(
             user_id=user.id,
             school_id=sid,
@@ -942,7 +950,7 @@ def create_student():
             session=session_str,
             admission_date=adm_date_val,
             original_admission_year=str(adm_date_val.year) if adm_date_val else session_str[:4],
-            status=data.get('status', 'ACTIVE') or 'ACTIVE',
+            status=initial_status,
             house=data.get('house'),
             stream=data.get('stream'),
             aadhar_no=data.get('aadhar_no'),
@@ -970,7 +978,7 @@ def create_student():
                 roll_number=roll_no,
                 stream=data.get('stream'),
                 house=data.get('house'),
-                enrollment_status='ACTIVE',
+                enrollment_status=initial_status,
                 enrollment_type='NEW_ADMISSION',
                 enrolled_date=adm_date_val,
                 remarks='Initial school admission',
@@ -1154,7 +1162,7 @@ def create_student():
                 if amt > 0:
                     itemized_charges.append({
                         'fee_head_id': None,
-                        'name': 'Admission Fee',
+                        'name': 'ADMISSION',
                         'code': 'ADMISSION',
                         'category': 'ACADEMIC',
                         'rate': amt,
@@ -1167,7 +1175,7 @@ def create_student():
             # 4. Optional Services (Hostel, Transport, Library)
             transport_fee = float(fee_setup.get('transport_fee', 0.0) or 0.0)
             if transport_fee > 0:
-                trans_name = fee_setup.get('transport_fee_name') or 'Transport Fee'
+                trans_name = (fee_setup.get('transport_fee_name') or 'Transport Fee')[:250]
                 trans_mult = int(fee_setup.get('transport_multiplier') or 1)
                 itemized_charges.append({
                     'fee_head_id': None,
@@ -1182,7 +1190,7 @@ def create_student():
 
             hostel_fee = float(fee_setup.get('hostel_fee', 0.0) or 0.0)
             hostel_deposit = float(fee_setup.get('hostel_deposit', 0.0) or 0.0)
-            hostel_name = fee_setup.get('hostel_fee_name') or 'Hostel Accommodation'
+            hostel_name = (fee_setup.get('hostel_fee_name') or 'Hostel Accommodation')[:200]
             hostel_mult = int(fee_setup.get('hostel_multiplier') or 1)
             if hostel_fee > 0:
                 itemized_charges.append({
@@ -1198,7 +1206,7 @@ def create_student():
             if hostel_deposit > 0:
                 itemized_charges.append({
                     'fee_head_id': None,
-                    'name': f"{hostel_name} (Security Deposit)",
+                    'name': f"{hostel_name} (Security Deposit)"[:250],
                     'code': 'HOSTEL_DEPOSIT',
                     'category': 'HOSTEL',
                     'rate': hostel_deposit,
@@ -1226,8 +1234,8 @@ def create_student():
                 for ait in additional_items:
                     a_amt = float(ait.get('amount') or 0.0)
                     if a_amt > 0:
-                        a_name = (ait.get('name') or 'Custom Fee').strip()
-                        a_cat = ait.get('category') or 'ACADEMIC'
+                        a_name = (ait.get('name') or 'Custom Fee').strip()[:250]
+                        a_cat = (ait.get('category') or 'ACADEMIC')[:95]
                         a_mult = int(ait.get('multiplier') or 1)
                         itemized_charges.append({
                             'fee_head_id': ait.get('fee_head_id'),
@@ -1265,129 +1273,140 @@ def create_student():
 
             net_payable = round(max(0.0, total_gross - total_deductions), 2)
 
-            # 7. Record Fee Records & Concessions
-            if total_gross > 0:
-                due_dt = date.today() + timedelta(days=15)
-                for ch in itemized_charges:
-                    ch_amt = ch['amount']
-                    ch_disc = 0.0
-                    if eligible_discount_base > 0 and ch['category'] in eligible_cats and advance_discount > 0:
-                        ch_disc = round((ch_amt / eligible_discount_base) * advance_discount, 2)
+            # 7. Record Fee Records & Concessions within nested transaction savepoint
+            with db.session.begin_nested():
+                if total_gross > 0:
+                    due_dt = ist_today() + timedelta(days=15)
+                    for ch in itemized_charges:
+                        ch_amt = ch['amount']
+                        ch_disc = 0.0
+                        if eligible_discount_base > 0 and ch['category'] in eligible_cats and advance_discount > 0:
+                            ch_disc = round((ch_amt / eligible_discount_base) * advance_discount, 2)
 
-                    fr = FeeRecord(
-                        school_id=sid,
-                        student_id=student.id,
-                        fee_type=ch['name'],
-                        amount_due=ch_amt,
-                        amount_paid=0.0,
-                        discount=ch_disc,
-                        discount_reason='Advance Payment Plan Discount' if ch_disc > 0 else None,
-                        status='PENDING',
-                        due_date=due_dt,
-                        billing_frequency=payment_plan.code if payment_plan else 'MONTHLY',
-                        coverage_label=f"Admission Cadence ({months_count}M)" if months_count > 1 else 'Admission 1st Month',
-                        session=session_val,
-                        remarks=f"Admission Fee Item: {ch['name']}",
-                        source=ch['category'],
-                        source_ref_id=student.id,
-                    )
-                    db.session.add(fr)
+                        fr_name = str(ch.get('name') or 'Fee')[:250]
+                        fr_cat = str(ch.get('category') or 'ACADEMIC')[:95]
+                        fr = FeeRecord(
+                            school_id=sid,
+                            student_id=student.id,
+                            fee_type=fr_name,
+                            amount_due=ch_amt,
+                            amount_paid=0.0,
+                            discount=ch_disc,
+                            discount_reason='Advance Payment Plan Discount' if ch_disc > 0 else None,
+                            status='PENDING',
+                            due_date=due_dt,
+                            billing_frequency=(payment_plan.code if payment_plan else 'MONTHLY')[:45],
+                            coverage_label=(f"Admission Cadence ({months_count}M)" if months_count > 1 else 'Admission 1st Month')[:250],
+                            session=session_val,
+                            remarks=f"Admission Fee Item: {fr_name}"[:450],
+                            source=fr_cat,
+                            source_ref_id=student.id,
+                            created_at=ist_naive_now(),
+                        )
+                        db.session.add(fr)
 
-                if manual_waiver > 0:
-                    conc = StudentConcession(
-                        school_id=sid,
-                        student_id=student.id,
-                        concession_type='PRINCIPAL_SPECIAL',
-                        session=session_val,
-                        discount_type='FIXED',
-                        discount_value=manual_waiver,
-                        reason=waiver_reason,
-                        approved_by=actor_id,
-                        is_active=True,
-                    )
-                    db.session.add(conc)
+                    if manual_waiver > 0:
+                        conc = StudentConcession(
+                            school_id=sid,
+                            student_id=student.id,
+                            concession_type='PRINCIPAL_SPECIAL',
+                            session=session_val,
+                            discount_type='FIXED',
+                            discount_value=manual_waiver,
+                            reason=waiver_reason[:200],
+                            approved_by=actor_id,
+                            is_active=True,
+                        )
+                        db.session.add(conc)
 
-                # 8. Initial Payment Collection & Receipt
-                pay_status = fee_setup.get('payment_status', data.get('payment_status', 'DUE'))
-                initial_pay_amt = float(fee_setup.get('initial_payment_amount', 0.0) or 0.0)
-                if pay_status == 'PAID' and initial_pay_amt <= 0:
-                    initial_pay_amt = net_payable
+                    # 8. Initial Payment Collection & Receipt
+                    pay_status = fee_setup.get('payment_status', data.get('payment_status', 'DUE'))
+                    initial_pay_amt = float(fee_setup.get('initial_payment_amount', 0.0) or 0.0)
+                    if pay_status == 'PAID' and initial_pay_amt <= 0:
+                        initial_pay_amt = net_payable
 
-                payment_receipt_no = None
-                payment_id = None
-                if initial_pay_amt > 0:
-                    pay_mode = fee_setup.get('payment_mode', data.get('payment_mode', 'CASH'))
-                    txn_ref = fee_setup.get('payment_reference', '')
+                    payment_receipt_no = None
+                    payment_id = None
+                    if initial_pay_amt > 0:
+                        pay_mode = fee_setup.get('payment_mode', data.get('payment_mode', 'CASH'))
+                        txn_ref = fee_setup.get('payment_reference', '')
 
-                    seq = FeePayment.query.filter_by(school_id=sid).count() + 1
-                    while True:
-                        cand = f"REC-{date.today().year}-{seq:06d}"
-                        if not FeePayment.query.filter_by(receipt_no=cand).first():
-                            payment_receipt_no = cand
-                            break
-                        seq += 1
+                        seq = FeePayment.query.filter_by(school_id=sid).count() + 1
+                        while True:
+                            cand = f"REC-{ist_today().year}-{seq:06d}"
+                            if not FeePayment.query.filter_by(receipt_no=cand).first():
+                                payment_receipt_no = cand
+                                break
+                            seq += 1
 
-                    pmt = FeePayment(
-                        receipt_no=payment_receipt_no,
-                        school_id=sid,
-                        student_id=student.id,
-                        session=session_val,
-                        payment_date=date.today(),
-                        total_paid=initial_pay_amt,
-                        payment_mode=pay_mode,
-                        transaction_ref=txn_ref,
-                        collected_by=actor_id,
-                        remarks=f"Admission Fee Collection ({payment_plan.name if payment_plan else 'Standard'})",
-                        department='ACCOUNTS',
-                        status='VALID',
-                    )
-                    db.session.add(pmt)
-                    db.session.flush()
-                    payment_id = pmt.id
+                        pmt = FeePayment(
+                            receipt_no=payment_receipt_no,
+                            school_id=sid,
+                            student_id=student.id,
+                            session=session_val,
+                            payment_date=ist_today(),
+                            total_paid=initial_pay_amt,
+                            payment_mode=pay_mode,
+                            transaction_ref=txn_ref,
+                            collected_by=actor_id,
+                            remarks=f"Admission Fee Collection ({payment_plan.name if payment_plan else 'Standard'})"[:280],
+                            department='ACCOUNTS',
+                            status='VALID',
+                            created_at=ist_naive_now(),
+                        )
+                        db.session.add(pmt)
+                        db.session.flush()
+                        payment_id = pmt.id
 
-                    ledger_entry = StudentLedger(
-                        school_id=sid,
-                        student_id=student.id,
-                        entry_type='CREDIT',
-                        amount=initial_pay_amt,
-                        payment_id=payment_id,
-                        reference_no=payment_receipt_no,
-                        description=f"Admission fee paid via {pay_mode}",
-                        entry_date=date.today(),
-                        period_label='Admission',
-                        session=session_val,
-                        created_by=actor_id,
-                    )
-                    db.session.add(ledger_entry)
+                        ledger_entry = StudentLedger(
+                            school_id=sid,
+                            student_id=student.id,
+                            entry_type='CREDIT',
+                            amount=initial_pay_amt,
+                            payment_id=payment_id,
+                            reference_no=payment_receipt_no,
+                            description=f"Admission fee paid via {pay_mode}"[:280],
+                            entry_date=ist_today(),
+                            period_label='Admission',
+                            session=session_val,
+                            created_by=actor_id,
+                            created_at=ist_naive_now(),
+                        )
+                        db.session.add(ledger_entry)
 
-                    rem_pay = initial_pay_amt
-                    all_frs = FeeRecord.query.filter_by(school_id=sid, student_id=student.id, status='PENDING').all()
-                    for fr_item in all_frs:
-                        if rem_pay <= 0:
-                            break
-                        eff_due = max(0.0, (fr_item.amount_due or 0.0) - (fr_item.discount or 0.0))
-                        pay_alloc = min(rem_pay, eff_due)
-                        fr_item.amount_paid = pay_alloc
-                        fr_item.paid_date = date.today()
-                        fr_item.payment_mode = pay_mode
-                        fr_item.receipt_no = payment_receipt_no
-                        fr_item.status = 'PAID' if pay_alloc >= eff_due else 'PARTIAL'
-                        rem_pay -= pay_alloc
+                        rem_pay = initial_pay_amt
+                        all_frs = FeeRecord.query.filter_by(school_id=sid, student_id=student.id, status='PENDING').all()
+                        for fr_item in all_frs:
+                            if rem_pay <= 0:
+                                break
+                            eff_due = max(0.0, (fr_item.amount_due or 0.0) - (fr_item.discount or 0.0))
+                            pay_alloc = min(rem_pay, eff_due)
+                            fr_item.amount_paid = pay_alloc
+                            fr_item.paid_date = ist_today()
+                            fr_item.payment_mode = pay_mode
+                            fr_item.receipt_no = payment_receipt_no
+                            fr_item.status = 'PAID' if pay_alloc >= eff_due else 'PARTIAL'
+                            rem_pay -= pay_alloc
 
-                admission_fee_summary = {
-                    'gross_total': total_gross,
-                    'eligible_base': eligible_discount_base,
-                    'payment_plan': payment_plan.to_dict() if payment_plan else None,
-                    'months_count': months_count,
-                    'advance_discount': advance_discount,
-                    'manual_waiver': manual_waiver,
-                    'waiver_reason': waiver_reason,
-                    'net_payable': net_payable,
-                    'amount_paid': initial_pay_amt,
-                    'receipt_no': payment_receipt_no,
-                    'payment_id': payment_id,
-                    'payment_status': 'PAID' if initial_pay_amt >= net_payable and net_payable > 0 else ('PARTIAL' if initial_pay_amt > 0 else 'DUE'),
-                }
+                        if student.status == 'PROVISIONAL':
+                            student.status = 'ACTIVE'
+                            if 'init_enroll' in locals() and init_enroll:
+                                init_enroll.enrollment_status = 'ACTIVE'
+
+                    admission_fee_summary = {
+                        'gross_total': total_gross,
+                        'eligible_base': eligible_discount_base,
+                        'payment_plan': payment_plan.to_dict() if payment_plan else None,
+                        'months_count': months_count,
+                        'advance_discount': advance_discount,
+                        'manual_waiver': manual_waiver,
+                        'waiver_reason': waiver_reason,
+                        'net_payable': net_payable,
+                        'amount_paid': initial_pay_amt,
+                        'receipt_no': payment_receipt_no,
+                        'payment_id': payment_id,
+                        'payment_status': 'PAID' if initial_pay_amt >= net_payable and net_payable > 0 else ('PARTIAL' if initial_pay_amt > 0 else 'DUE'),
+                    }
         except Exception as fee_err:
             print(f'[WARN] Admission fee processing note: {fee_err}')
 
@@ -1722,6 +1741,18 @@ def collect_fee():
         elif record.amount_paid > 0:
             record.status = 'PARTIAL'
 
+        # Auto-Confirm Student Admission if currently PROVISIONAL
+        if record.student_ref and record.student_ref.status == 'PROVISIONAL':
+            record.student_ref.status = 'ACTIVE'
+            try:
+                from app.models.academic import StudentEnrollment
+                enrollments = StudentEnrollment.query.filter_by(student_id=record.student_id, school_id=_school_id()).all()
+                for enr in enrollments:
+                    if enr.enrollment_status == 'PROVISIONAL':
+                        enr.enrollment_status = 'ACTIVE'
+            except Exception as enr_err:
+                print(f"[WARN] Error updating enrollment status in collect_fee: {enr_err}")
+
         # Auto receipt number if not already set
         if not record.receipt_no:
             while True:
@@ -1880,6 +1911,19 @@ def collect_fee_multiple():
             record.collected_by = get_current_user().id
             record.remarks      = remarks
             record.status       = 'PAID' if record.amount_paid >= record.effective_due() else 'PARTIAL'
+
+            # Auto-Confirm Student Admission if currently PROVISIONAL
+            if record.student_ref and record.student_ref.status == 'PROVISIONAL':
+                record.student_ref.status = 'ACTIVE'
+                try:
+                    from app.models.academic import StudentEnrollment
+                    enrollments = StudentEnrollment.query.filter_by(student_id=record.student_id, school_id=sid).all()
+                    for enr in enrollments:
+                        if enr.enrollment_status == 'PROVISIONAL':
+                            enr.enrollment_status = 'ACTIVE'
+                except Exception as enr_err:
+                    print(f"[WARN] Error updating enrollment status in collect_fee_multiple: {enr_err}")
+
             txn = FeeTransaction(
                 fee_record_id=record.id, student_id=record.student_id, school_id=sid,
                 amount=amount, payment_mode=payment_mode, transaction_date=today,

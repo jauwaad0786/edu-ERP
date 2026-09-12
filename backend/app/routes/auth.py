@@ -181,11 +181,9 @@ def _find_user_by_identifier(raw_identifier):
             if user:
                 return user
 
-        # Try EmployeeProfile phone / emergency_contact
+        # Try EmployeeProfile emergency_contact
         from app.models.hrms import EmployeeProfile
         emp_prof = EmployeeProfile.query.filter(
-            (EmployeeProfile.phone == raw_str) |
-            (EmployeeProfile.phone.endswith(last10)) |
             (EmployeeProfile.emergency_contact == raw_str) |
             (EmployeeProfile.emergency_contact.endswith(last10))
         ).first()
@@ -314,12 +312,9 @@ def login():
             if u not in candidates:
                 candidates.append(u)
 
-        # 3.5 EmployeeProfile phone lookup
+        # 3.5 EmployeeProfile emergency contact lookup
         from app.models.hrms import EmployeeProfile
         emp_profs = EmployeeProfile.query.filter(
-            (EmployeeProfile.phone == raw_identifier) |
-            (EmployeeProfile.phone.endswith(last10)) |
-            (EmployeeProfile.phone == clean_phone) |
             (EmployeeProfile.emergency_contact == raw_identifier) |
             (EmployeeProfile.emergency_contact.endswith(last10))
         ).all()

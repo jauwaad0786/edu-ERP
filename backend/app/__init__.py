@@ -798,12 +798,12 @@ def _ensure_fee_record_columns():
 
     existing = {c['name'] for c in inspector.get_columns('fee_records')}
     to_add = {
-        'source':            "VARCHAR(20) DEFAULT 'ACADEMIC'",
+        'source':            "VARCHAR(100) DEFAULT 'ACADEMIC'",
         'source_ref_id':     'INTEGER',
-        'billing_frequency': "VARCHAR(20) DEFAULT 'MONTHLY'",
+        'billing_frequency': "VARCHAR(50) DEFAULT 'MONTHLY'",
         'period_start':      'DATE',
         'period_end':        'DATE',
-        'coverage_label':    'VARCHAR(100)',
+        'coverage_label':    'VARCHAR(255)',
     }
     with db.engine.connect() as conn:
         # Drop PostgreSQL unique constraint on receipt_no if present
@@ -812,6 +812,29 @@ def _ensure_fee_record_columns():
             conn.commit()
         except Exception:
             pass
+
+        # PostgreSQL: Ensure columns are widened to accommodate descriptive fee items & long hostel room names
+        if db.engine.dialect.name == 'postgresql':
+            alter_sqls = [
+                'ALTER TABLE fee_records ALTER COLUMN fee_type TYPE VARCHAR(255)',
+                'ALTER TABLE fee_records ALTER COLUMN source TYPE VARCHAR(100)',
+                'ALTER TABLE fee_records ALTER COLUMN billing_frequency TYPE VARCHAR(50)',
+                'ALTER TABLE fee_records ALTER COLUMN coverage_label TYPE VARCHAR(255)',
+                'ALTER TABLE fee_records ALTER COLUMN remarks TYPE VARCHAR(500)',
+                'ALTER TABLE fee_records ALTER COLUMN receipt_no TYPE VARCHAR(100)',
+                'ALTER TABLE fee_records ALTER COLUMN discount_reason TYPE VARCHAR(300)',
+                'ALTER TABLE fee_records ALTER COLUMN fine_reason TYPE VARCHAR(300)',
+                'ALTER TABLE fee_structures ALTER COLUMN fee_type TYPE VARCHAR(255)',
+                'ALTER TABLE fee_structures ALTER COLUMN source TYPE VARCHAR(100)',
+                'ALTER TABLE fee_structures ALTER COLUMN frequency TYPE VARCHAR(50)',
+                'ALTER TABLE fee_generation_batches ALTER COLUMN fee_type TYPE VARCHAR(255)',
+            ]
+            for asql in alter_sqls:
+                try:
+                    conn.execute(text(asql))
+                    conn.commit()
+                except Exception:
+                    pass
 
         for col, defn in to_add.items():
             if col not in existing:
