@@ -301,6 +301,46 @@ def delete_vehicle(vehicle_id):
 @jwt_required()
 def list_drivers():
     school_id = get_current_school_id()
+
+    # ── Auto-sync any employees created as Driver in HRMS who don't have a Driver record yet ──
+    try:
+        driver_users = User.query.filter(
+            User.school_id == school_id,
+            User.is_active == True,
+            db.or_(
+                User.role == UserRole.DRIVER,
+                User.designation.ilike('%driver%'),
+                db.and_(User.department.ilike('%transport%'), User.designation.ilike('%driver%'))
+            )
+        ).all()
+        synced_any = False
+        for du in driver_users:
+            d_exists = Driver.query.filter(
+                Driver.school_id == school_id,
+                db.or_(
+                    Driver.user_id == du.id,
+                    db.and_(Driver.mobile_number == du.phone, du.phone != None, du.phone != '')
+                )
+            ).first()
+            if not d_exists:
+                new_d = Driver(
+                    school_id=school_id,
+                    user_id=du.id,
+                    name=du.name,
+                    mobile_number=du.phone or '',
+                    status='ACTIVE',
+                    created_by=du.id,
+                )
+                db.session.add(new_d)
+                synced_any = True
+            elif not d_exists.user_id:
+                d_exists.user_id = du.id
+                synced_any = True
+        if synced_any:
+            db.session.commit()
+    except Exception as sync_err:
+        print(f"[WARN] Driver auto-sync error: {sync_err}")
+
     q = Driver.query.filter_by(school_id=school_id)
 
     search = request.args.get('search', '').strip()
@@ -341,52 +381,145 @@ def create_driver():
     name = (data.get('name') or '').strip()
     mobile = (data.get('mobile_number') or '').strip()
     if not name or not mobile:
-        return bad_request('name and mobile_number are required')
+        return bad_request('Name and Mobile Number are required')
 
     has_license = bool(data.get('has_license', False))
 
-    # ── Driver Mobile App login account ─────────────────────────────────
-    # Driver form email nahi collect karta, isliye synthetic-but-unique
-    # email banate hain (username khud unique-checked hai, so ye bhi
-    # unique rahega). Principal/Transport head ko ye credentials response
-    # mein wapas milte hain (ek hi baar, jaise staff creation mein hota hai).
-    username = (data.get('username') or '').strip().lower() or _gen_driver_username(name)
-    email = (data.get('email') or '').strip().lower() or f'{username}@driver.eduerp.local'
-    plain_pw = (data.get('password') or '').strip() or 'Driver@123'
+    # ── Driver Mobile App login account ──
+    # User requested: ask for email & mobile, and default password 12345
+    raw_username = (data.get('username') or '').strip().lower()
+    username = raw_username or _gen_driver_username(name)
+    raw_email = (data.get('email') or '').strip().lower()
+    email = raw_email or f"{username}@driver.eduerp.local"
+    plain_pw = (data.get('password') or '').strip() or '12345'
 
-    if User.query.filter(db.func.lower(User.email) == email).first():
-        return bad_request('Email already exists')
-    if User.query.filter_by(username=username).first():
-        return bad_request('Username already taken')
+    # Check if a user with this phone or email already exists in this school
+    existing_user = User.query.filter(
+        User.school_id == school_id,
+        db.or_(
+            db.func.lower(User.email) == email,
+            User.phone == mobile
+        )
+    ).first()
 
-    user = User(
-        name=name, email=email, username=username,
-        role=UserRole.DRIVER, school_id=school_id,
-        phone=mobile, is_active=True,
-    )
-    user.set_password(plain_pw, store_plain=True)
-    db.session.add(user)
-    db.session.flush()   # user.id chahiye Driver row link karne ke liye
+    if existing_user:
+        user = existing_user
+        if not user.role or user.role in (UserRole.RECEPTIONIST, UserRole.TRANSPORT):
+            user.role = UserRole.DRIVER
+        user.phone = mobile
+        user.department = 'Transport'
+        user.designation = 'Driver'
+        if plain_pw:
+            user.set_password(plain_pw, store_plain=True)
+    else:
+        if User.query.filter(db.func.lower(User.email) == email).first():
+            if raw_email:
+                return bad_request('An account with this email already exists.')
+            email = f"{username}.{school_id}@driver.eduerp.local"
+
+        if User.query.filter_by(username=username).first():
+            username = f"{username}.{school_id}"
+
+        from app.services.hrms_service import generate_employee_id
+        emp_id = generate_employee_id(school_id)
+
+        user = User(
+            name=name,
+            email=email,
+            username=username,
+            employee_id=emp_id,
+            role=UserRole.DRIVER,
+            school_id=school_id,
+            phone=mobile,
+            department='Transport',
+            designation='Driver',
+            is_active=True,
+        )
+        user.set_password(plain_pw, store_plain=True)
+        db.session.add(user)
+        db.session.flush()
 
     ensure_role_assignment_for_user(user)
 
-    d = Driver(
-        school_id=school_id,
-        user_id=user.id,
-        name=name,
-        mobile_number=mobile,
-        address=data.get('address', ''),
-        photo_url=data.get('photo_url', ''),
-        experience_years=data.get('experience_years', 0),
-        has_license=has_license,
-        license_number=data.get('license_number', '') if has_license else '',
-        license_expiry=parse_date(data.get('license_expiry')) if has_license else None,
-        license_photo_url=data.get('license_photo_url', '') if has_license else '',
-        emergency_contact=data.get('emergency_contact', ''),
-        remarks=data.get('remarks', ''),
-        created_by=get_jwt_identity(),
-    )
-    db.session.add(d)
+    # ── HRMS EmployeeProfile sync so driver also appears in HRMS Staff list ──
+    try:
+        from app.models.hrms import EmployeeProfile, EmployeeDepartment, EmployeeDesignation
+        emp_prof = EmployeeProfile.query.filter_by(user_id=user.id).first()
+        if not emp_prof:
+            dept = EmployeeDepartment.query.filter(
+                EmployeeDepartment.school_id == school_id,
+                EmployeeDepartment.name.ilike('Transport')
+            ).first()
+            if not dept:
+                dept = EmployeeDepartment(school_id=school_id, name='Transport', code='TRN')
+                db.session.add(dept)
+                db.session.flush()
+
+            desig = EmployeeDesignation.query.filter(
+                EmployeeDesignation.school_id == school_id,
+                EmployeeDesignation.name.ilike('Driver')
+            ).first()
+            if not desig:
+                desig = EmployeeDesignation(school_id=school_id, name='Driver', department_id=dept.id)
+                db.session.add(desig)
+                db.session.flush()
+
+            emp_prof = EmployeeProfile(
+                user_id=user.id,
+                school_id=school_id,
+                department_id=dept.id,
+                designation_id=desig.id,
+                current_address=data.get('address', ''),
+                emergency_contact=data.get('emergency_contact', ''),
+                experience_years=float(data.get('experience_years') or 0.0),
+                employment_status='ACTIVE',
+                employment_type='PERMANENT',
+                joining_date=date.today(),
+            )
+            db.session.add(emp_prof)
+    except Exception as hrms_err:
+        print(f"[WARN] HRMS sync in create_driver note: {hrms_err}")
+
+    # Check if Driver record exists for this user/mobile
+    d = Driver.query.filter(
+        Driver.school_id == school_id,
+        db.or_(
+            Driver.user_id == user.id,
+            Driver.mobile_number == mobile
+        )
+    ).first()
+
+    if d:
+        d.name = name
+        d.mobile_number = mobile
+        d.user_id = user.id
+        d.address = data.get('address', d.address or '')
+        d.experience_years = data.get('experience_years', d.experience_years or 0)
+        d.has_license = has_license
+        if has_license:
+            d.license_number = data.get('license_number', d.license_number or '')
+            d.license_expiry = parse_date(data.get('license_expiry'))
+            d.license_photo_url = data.get('license_photo_url', d.license_photo_url or '')
+        d.status = 'ACTIVE'
+    else:
+        d = Driver(
+            school_id=school_id,
+            user_id=user.id,
+            name=name,
+            mobile_number=mobile,
+            address=data.get('address', ''),
+            photo_url=data.get('photo_url', ''),
+            experience_years=data.get('experience_years', 0),
+            has_license=has_license,
+            license_number=data.get('license_number', '') if has_license else '',
+            license_expiry=parse_date(data.get('license_expiry')) if has_license else None,
+            license_photo_url=data.get('license_photo_url', '') if has_license else '',
+            emergency_contact=data.get('emergency_contact', ''),
+            remarks=data.get('remarks', ''),
+            created_by=get_jwt_identity(),
+        )
+        db.session.add(d)
+
     db.session.commit()
 
     # optional: assign to vehicle at creation time
@@ -400,7 +533,12 @@ def create_driver():
     return jsonify({
         'success': True,
         'data': d.to_dict(),
-        'login': {'username': username, 'email': email, 'password': plain_pw},
+        'login': {
+            'username': user.username,
+            'email': user.email,
+            'mobile': user.phone or mobile,
+            'password': plain_pw
+        },
     }), 201
 
 
@@ -440,6 +578,31 @@ def update_driver(driver_id):
             v = Vehicle.query.filter_by(id=new_vid, school_id=school_id).first()
             if v:
                 v.driver_id = d.id
+
+    # Also update linked User & EmployeeProfile in HRMS
+    if d.user_id:
+        try:
+            u = User.query.get(d.user_id)
+            if u:
+                if 'name' in data:
+                    u.name = d.name
+                if 'mobile_number' in data:
+                    u.phone = d.mobile_number
+                if 'email' in data and data['email']:
+                    u.email = data['email'].strip().lower()
+                if 'status' in data:
+                    u.is_active = (d.status == 'ACTIVE')
+                if 'password' in data and data['password']:
+                    u.set_password(data['password'].strip(), store_plain=True)
+            from app.models.hrms import EmployeeProfile
+            ep = EmployeeProfile.query.filter_by(user_id=d.user_id).first()
+            if ep:
+                if 'address' in data:
+                    ep.current_address = d.address
+                if 'status' in data:
+                    ep.employment_status = 'ACTIVE' if d.status == 'ACTIVE' else 'RESIGNED'
+        except Exception as upd_err:
+            print(f"[WARN] Error updating linked driver user in HRMS: {upd_err}")
 
     d.updated_at = utc_now()
     db.session.commit()

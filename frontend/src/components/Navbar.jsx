@@ -150,8 +150,8 @@ export default function Navbar({ title, darkMode, onToggleDark }) {
     if (!passwords.current || !passwords.newP || !passwords.confirm) {
       setResetError('Please fill all fields.'); return;
     }
-    if (passwords.newP.length < 8) {
-      setResetError('New password must be at least 8 characters.'); return;
+    if (passwords.newP.length < 6) {
+      setResetError('New password must be at least 6 characters.'); return;
     }
     if (passwords.newP !== passwords.confirm) {
       setResetError('New passwords do not match.'); return;
@@ -647,7 +647,7 @@ export default function Navbar({ title, darkMode, onToggleDark }) {
 
             {[
               { key: 'current', placeholder: 'Current password' },
-              { key: 'newP',    placeholder: 'New password (min. 8 characters)' },
+              { key: 'newP',    placeholder: 'New password (min. 6 characters)' },
               { key: 'confirm', placeholder: 'Confirm new password' },
             ].map(f => (
               <div key={f.key} style={{ position: 'relative', marginBottom: 10 }}>

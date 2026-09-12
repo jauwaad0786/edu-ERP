@@ -121,11 +121,16 @@ class Driver(db.Model):
 
     def to_dict(self):
         vehicle = Vehicle.query.filter_by(driver_id=self.id).first()
+        from app.models.user import User
+        u = User.query.get(self.user_id) if self.user_id else None
         return {
             'id':                self.id,
             'user_id':           self.user_id,
             'name':              self.name,
             'mobile_number':     self.mobile_number,
+            'email':             u.email if u else '',
+            'username':          u.username if u else '',
+            'employee_id':       getattr(u, 'employee_id', '') or '',
             'address':           self.address or '',
             'photo_url':         self.photo_url or '',
             'experience_years':  self.experience_years or 0,

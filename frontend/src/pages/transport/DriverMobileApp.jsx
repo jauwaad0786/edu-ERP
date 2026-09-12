@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import transportApi from '../../api/transportApi';
+import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
@@ -19,6 +20,12 @@ export default function DriverMobileApp() {
   const [busy, setBusy] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [breakdownRemarks, setBreakdownRemarks] = useState('');
+
+  // Password reset state for Driver Cockpit
+  const [showChangePwModal, setShowChangePwModal] = useState(false);
+  const [pwForm, setPwForm] = useState({ old_password: '', new_password: '', confirm_password: '' });
+  const [pwSaving, setPwSaving] = useState(false);
+  const [pwShowText, setPwShowText] = useState(false);
 
   // Route Stops and Student Attendance
   const [stops, setStops] = useState([]);
@@ -418,9 +425,22 @@ export default function DriverMobileApp() {
               <h2 style={{ fontSize: '24px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', margin: '0 0 8px' }}>
                 Koi Vehicle Assign Nahi Hai
               </h2>
-              <p style={{ fontSize: '15px', color: darkMode ? '#94a3b8' : '#64748b', margin: 0 }}>
+              <p style={{ fontSize: '15px', color: darkMode ? '#94a3b8' : '#64748b', margin: '0 0 20px' }}>
                 No vehicle assigned to your profile. Please contact School Transport Manager or Admin.
               </p>
+              <button
+                onClick={() => setShowChangePwModal(true)}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '8px',
+                  background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                  color: '#ffffff', border: 'none', borderRadius: '12px',
+                  padding: '12px 22px', fontSize: '14px', fontWeight: 800, cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(99, 102, 241, 0.35)'
+                }}
+              >
+                <span>🔑</span>
+                <span>Change Password (पासवर्ड बदलें)</span>
+              </button>
             </div>
           ) : (
             <>
@@ -469,7 +489,21 @@ export default function DriverMobileApp() {
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => setShowChangePwModal(true)}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '6px',
+                      background: 'rgba(255,255,255,0.22)', border: '1px solid rgba(255,255,255,0.3)',
+                      color: '#ffffff', padding: '9px 14px', borderRadius: '12px',
+                      fontWeight: 800, fontSize: '12px', cursor: 'pointer',
+                      backdropFilter: 'blur(8px)', transition: 'all 0.2s', letterSpacing: '0.02em'
+                    }}
+                    title="Change your login password"
+                  >
+                    <span>🔑</span>
+                    <span>CHANGE PASSWORD</span>
+                  </button>
                   <div style={{
                     display: 'flex', gap: '12px',
                     background: 'rgba(255,255,255,0.15)', padding: '10px 16px', borderRadius: '14px',
@@ -1187,6 +1221,188 @@ export default function DriverMobileApp() {
                 </div>
               )}
             </>
+          )}
+
+          {/* ══ Driver Password Change Modal ══ */}
+          {showChangePwModal && (
+            <div style={{
+              position: 'fixed', inset: 0, zIndex: 9999,
+              background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
+            }}>
+              <div style={{
+                background: darkMode ? '#1e293b' : '#ffffff',
+                border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                borderRadius: '24px', padding: '28px', width: '100%', maxWidth: '440px',
+                boxShadow: '0 25px 60px rgba(0,0,0,0.3)',
+                boxSizing: 'border-box'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{
+                      width: '40px', height: '40px', borderRadius: '12px',
+                      background: 'rgba(99, 102, 241, 0.15)', color: '#6366f1',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px'
+                    }}>
+                      🔑
+                    </div>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
+                        Change Password
+                      </h3>
+                      <p style={{ margin: '2px 0 0', fontSize: '12px', color: darkMode ? '#94a3b8' : '#64748b' }}>
+                        Apna naya password set karein (Default: 12345)
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowChangePwModal(false);
+                      setPwForm({ old_password: '', new_password: '', confirm_password: '' });
+                    }}
+                    style={{ background: 'transparent', border: 'none', color: darkMode ? '#94a3b8' : '#64748b', fontSize: '22px', cursor: 'pointer', lineHeight: 1 }}
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!pwForm.old_password || !pwForm.new_password) {
+                    toast.error('Purana aur naya password dono bharein');
+                    return;
+                  }
+                  if (pwForm.new_password.length < 6) {
+                    toast.error('Naya password kam se kam 6 characters ka hona chahiye');
+                    return;
+                  }
+                  if (pwForm.new_password !== pwForm.confirm_password) {
+                    toast.error('Dono naye password match nahi kar rahe');
+                    return;
+                  }
+                  setPwSaving(true);
+                  try {
+                    await api.put('/auth/change-password', {
+                      old_password: pwForm.old_password,
+                      new_password: pwForm.new_password,
+                    });
+                    toast.success('🎉 Password safaltapoorvak badal gaya!');
+                    setShowChangePwModal(false);
+                    setPwForm({ old_password: '', new_password: '', confirm_password: '' });
+                  } catch (err) {
+                    toast.error(err.response?.data?.error || err.response?.data?.message || 'Password update nahi ho saka');
+                  } finally {
+                    setPwSaving(false);
+                  }
+                }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: darkMode ? '#cbd5e1' : '#475569', marginBottom: '6px' }}>
+                        Current Password (Purana Password) *
+                      </label>
+                      <input
+                        type={pwShowText ? 'text' : 'password'}
+                        value={pwForm.old_password}
+                        onChange={e => setPwForm(p => ({ ...p, old_password: e.target.value }))}
+                        placeholder="Starting default: 12345"
+                        required
+                        style={{
+                          width: '100%', padding: '11px 14px', fontSize: '14px', borderRadius: '12px',
+                          border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`,
+                          background: darkMode ? '#0f172a' : '#f8fafc',
+                          color: darkMode ? '#ffffff' : '#0f172a',
+                          boxSizing: 'border-box', outline: 'none'
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: darkMode ? '#cbd5e1' : '#475569', marginBottom: '6px' }}>
+                        New Password (Naya Password) *
+                      </label>
+                      <input
+                        type={pwShowText ? 'text' : 'password'}
+                        value={pwForm.new_password}
+                        onChange={e => setPwForm(p => ({ ...p, new_password: e.target.value }))}
+                        placeholder="Min 6 characters"
+                        required
+                        style={{
+                          width: '100%', padding: '11px 14px', fontSize: '14px', borderRadius: '12px',
+                          border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`,
+                          background: darkMode ? '#0f172a' : '#f8fafc',
+                          color: darkMode ? '#ffffff' : '#0f172a',
+                          boxSizing: 'border-box', outline: 'none'
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: darkMode ? '#cbd5e1' : '#475569', marginBottom: '6px' }}>
+                        Confirm New Password (Naya Password Dobara Dalein) *
+                      </label>
+                      <input
+                        type={pwShowText ? 'text' : 'password'}
+                        value={pwForm.confirm_password}
+                        onChange={e => setPwForm(p => ({ ...p, confirm_password: e.target.value }))}
+                        placeholder="Repeat new password"
+                        required
+                        style={{
+                          width: '100%', padding: '11px 14px', fontSize: '14px', borderRadius: '12px',
+                          border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`,
+                          background: darkMode ? '#0f172a' : '#f8fafc',
+                          color: darkMode ? '#ffffff' : '#0f172a',
+                          boxSizing: 'border-box', outline: 'none'
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }} onClick={() => setPwShowText(!pwShowText)}>
+                      <input
+                        type="checkbox"
+                        checked={pwShowText}
+                        onChange={() => {}}
+                        style={{ cursor: 'pointer' }}
+                      />
+                      <span style={{ fontSize: '12.5px', color: darkMode ? '#94a3b8' : '#64748b' }}>
+                        Show passwords
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '10px' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowChangePwModal(false);
+                          setPwForm({ old_password: '', new_password: '', confirm_password: '' });
+                        }}
+                        style={{
+                          background: darkMode ? '#1e293b' : '#f1f5f9',
+                          color: darkMode ? '#e2e8f0' : '#475569',
+                          border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`,
+                          borderRadius: '12px', padding: '12px',
+                          fontSize: '14px', fontWeight: 700, cursor: 'pointer'
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={pwSaving}
+                        style={{
+                          background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                          color: '#ffffff', border: 'none', borderRadius: '12px', padding: '12px',
+                          fontSize: '14px', fontWeight: 800, cursor: pwSaving ? 'wait' : 'pointer',
+                          opacity: pwSaving ? 0.7 : 1,
+                          boxShadow: '0 4px 14px rgba(99, 102, 241, 0.4)'
+                        }}
+                      >
+                        {pwSaving ? 'Updating...' : 'Update Password'}
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              </div>
+            </div>
           )}
 
         </div>

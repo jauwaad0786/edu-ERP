@@ -5,7 +5,7 @@ import api     from '../../api/axios';
 import toast   from 'react-hot-toast';
 
 const EMPTY_FORM = {
-  name: '', mobile_number: '', address: '', photo_url: '', experience_years: '',
+  name: '', mobile_number: '', email: '', password: '12345', address: '', photo_url: '', experience_years: '',
   has_license: false, license_number: '', license_expiry: '', license_photo_url: '',
   emergency_contact: '', remarks: '', assign_vehicle_id: '',
 };
@@ -25,6 +25,7 @@ export default function Drivers() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [createdCredentials, setCreatedCredentials] = useState(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -45,14 +46,14 @@ export default function Drivers() {
 
   function openAdd() {
     setEditingId(null);
-    setForm(EMPTY_FORM);
+    setForm({ ...EMPTY_FORM, password: '12345' });
     setShowForm(true);
   }
 
   function openEdit(d) {
     setEditingId(d.id);
     setForm({
-      name: d.name || '', mobile_number: d.mobile_number || '', address: d.address || '',
+      name: d.name || '', mobile_number: d.mobile_number || '', email: d.email || '', password: '', address: d.address || '',
       photo_url: d.photo_url || '', experience_years: d.experience_years || '',
       has_license: !!d.has_license, license_number: d.license_number || '',
       license_expiry: d.license_expiry || '', license_photo_url: d.license_photo_url || '',
@@ -71,22 +72,31 @@ export default function Drivers() {
 
     setSaving(true);
     const payload = {
-      name: form.name, mobile_number: form.mobile_number, address: form.address,
-      photo_url: form.photo_url, experience_years: form.experience_years ? Number(form.experience_years) : 0,
+      name: form.name.trim(),
+      mobile_number: form.mobile_number.trim(),
+      email: form.email ? form.email.trim() : undefined,
+      password: form.password ? form.password.trim() : (editingId ? undefined : '12345'),
+      address: form.address,
+      photo_url: form.photo_url,
+      experience_years: form.experience_years ? Number(form.experience_years) : 0,
       has_license: form.has_license,
       license_number: form.has_license ? form.license_number : '',
       license_expiry: form.has_license ? (form.license_expiry || null) : null,
       license_photo_url: form.has_license ? form.license_photo_url : '',
-      emergency_contact: form.emergency_contact, remarks: form.remarks,
+      emergency_contact: form.emergency_contact,
+      remarks: form.remarks,
       assign_vehicle_id: form.assign_vehicle_id ? Number(form.assign_vehicle_id) : null,
     };
     try {
       if (editingId) {
         await api.put(`/transport/drivers/${editingId}`, payload);
-        toast.success('Driver updated');
+        toast.success('Driver updated & synchronized with HRMS');
       } else {
-        await api.post('/transport/drivers', payload);
-        toast.success('Driver added');
+        const res = await api.post('/transport/drivers', payload);
+        toast.success('Driver created & synchronized with HRMS!');
+        if (res.data?.login) {
+          setCreatedCredentials(res.data.login);
+        }
       }
       setShowForm(false);
       load();
@@ -165,8 +175,9 @@ export default function Drivers() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, textAlign: 'left' }}>
-                    <th style={{ padding: '8px 6px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>NAME</th>
-                    <th style={{ padding: '8px 6px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>MOBILE</th>
+                    <th style={{ padding: '8px 6px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>NAME &amp; HRMS</th>
+                    <th style={{ padding: '8px 6px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>MOBILE / LOGIN</th>
+                    <th style={{ padding: '8px 6px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>EMAIL</th>
                     <th style={{ padding: '8px 6px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>EXPERIENCE</th>
                     <th style={{ padding: '8px 6px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>LICENSE</th>
                     <th style={{ padding: '8px 6px', color: '#94a3b8', fontWeight: 600, fontSize: 11 }}>VEHICLE</th>
@@ -180,8 +191,25 @@ export default function Drivers() {
                     const licenseExpired = d.license_expiry && new Date(d.license_expiry) < new Date();
                     return (
                       <tr key={d.id} style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}` }}>
-                        <td style={{ padding: '10px 6px', color: darkMode ? '#f1f5f9' : '#0f172a', fontWeight: 600 }}>{d.name}</td>
-                        <td style={{ padding: '10px 6px', color: '#64748b' }}>{d.mobile_number}</td>
+                        <td style={{ padding: '10px 6px' }}>
+                          <div style={{ fontWeight: 600, color: darkMode ? '#f1f5f9' : '#0f172a' }}>{d.name}</div>
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 2 }}>
+                            {d.user_id ? (
+                              <span style={{ fontSize: 10, background: '#dcfce7', color: '#166534', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
+                                ⚡ HRMS Synced
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: 10, background: '#f1f5f9', color: '#64748b', padding: '1px 6px', borderRadius: 4 }}>
+                                Transport Only
+                              </span>
+                            )}
+                            {d.employee_id && (
+                              <span style={{ fontSize: 10, color: '#64748b' }}>#{d.employee_id}</span>
+                            )}
+                          </div>
+                        </td>
+                        <td style={{ padding: '10px 6px', color: '#64748b', fontWeight: 600 }}>{d.mobile_number}</td>
+                        <td style={{ padding: '10px 6px', color: '#64748b', fontSize: 12 }}>{d.email || d.username || '—'}</td>
                         <td style={{ padding: '10px 6px', color: '#64748b' }}>{d.experience_years} yrs</td>
                         <td style={{ padding: '10px 6px' }}>
                           {!d.has_license ? (
@@ -254,7 +282,7 @@ export default function Drivers() {
       {/* ── Add/Edit Modal ── */}
       {showForm && (
         <div className="modal-backdrop" role="button" tabIndex={0} aria-label="Close modal" onClick={e => e.target === e.currentTarget && setShowForm(false)} onKeyDown={e => e.key === 'Escape' && setShowForm(false)}>
-          <div className="modal" style={{ maxWidth: 560 }}>
+          <div className="modal" style={{ maxWidth: 580 }}>
             <div className="modal-header">
               <h3>{editingId ? 'Edit Driver' : 'Add Driver'}</h3>
               <button className="modal-close" onClick={() => setShowForm(false)}>✕</button>
@@ -262,15 +290,65 @@ export default function Drivers() {
             <form onSubmit={handleSave} className="modal-body">
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600 }}>Name *</label>
+                  <label style={{ fontSize: 12, fontWeight: 600 }}>Full Name *</label>
                   <input className="form-input" value={form.name}
-                    onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required />
+                    onChange={e => {
+                      const val = e.target.value;
+                      setForm(f => ({ ...f, name: val }));
+                    }} required />
                 </div>
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600 }}>Mobile Number *</label>
+                  <label style={{ fontSize: 12, fontWeight: 600 }}>Mobile Number (Login Phone) *</label>
                   <input className="form-input" value={form.mobile_number}
                     onChange={e => setForm(f => ({ ...f, mobile_number: e.target.value }))} required />
                 </div>
+              </div>
+
+              {/* Driver App Login Credentials & HRMS Sync */}
+              <div style={{
+                background: darkMode ? '#0f172a' : '#f0fdf4',
+                border: `1px solid ${darkMode ? '#1e293b' : '#bbf7d0'}`,
+                borderRadius: 10, padding: 12, marginTop: 12, marginBottom: 12
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                  <span style={{ fontSize: 15 }}>🔑</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: darkMode ? '#86efac' : '#166534' }}>
+                    Login Credentials &amp; HRMS Sync (Default Password: 12345)
+                  </span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 10 }}>
+                  <div>
+                    <label style={{ fontSize: 11.5, fontWeight: 600 }}>Login Email</label>
+                    <input
+                      type="email"
+                      className="form-input"
+                      placeholder="driver@school.com"
+                      value={form.email || ''}
+                      onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                    />
+                    <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>
+                      Auto-generated if empty
+                    </div>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11.5, fontWeight: 600 }}>
+                      Password {editingId && <span style={{ fontWeight: 400, color: '#94a3b8' }}>(blank to keep)</span>}
+                    </label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="12345"
+                      value={form.password !== undefined ? form.password : '12345'}
+                      onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                    />
+                    <div style={{ fontSize: 10, color: '#16a34a', fontWeight: 600, marginTop: 2 }}>
+                      Default: 12345
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 600 }}>Experience (years)</label>
                   <input type="number" min="0" className="form-input" value={form.experience_years}
@@ -290,7 +368,7 @@ export default function Drivers() {
               </div>
 
               {/* Driving License toggle */}
-              <div style={{ marginTop: 16, padding: 12, borderRadius: 8, background: darkMode ? '#0f172a' : '#f8fafc' }}>
+              <div style={{ marginTop: 14, padding: 12, borderRadius: 8, background: darkMode ? '#0f172a' : '#f8fafc' }}>
                 <label style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, display: 'block' }}>
                   Driving License Available?
                 </label>
@@ -361,9 +439,56 @@ export default function Drivers() {
                   background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 8,
                   padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer',
                   opacity: saving ? 0.7 : 1,
-                }}>{saving ? 'Saving...' : editingId ? 'Update' : 'Save'}</button>
+                }}>{saving ? 'Saving...' : editingId ? 'Update & Sync' : 'Save & Sync'}</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Credentials Created Success Modal ── */}
+      {createdCredentials && (
+        <div className="modal-backdrop" role="button" tabIndex={0} onClick={() => setCreatedCredentials(null)}>
+          <div className="modal" style={{ maxWidth: 440, textAlign: 'center', padding: 24 }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 40, marginBottom: 8 }}>🎉</div>
+            <h3 style={{ margin: '0 0 6px', color: '#16a34a' }}>Driver Profile &amp; App Login Created!</h3>
+            <p style={{ margin: '0 0 16px', fontSize: 12.5, color: '#64748b' }}>
+              Credentials have been provisioned and synchronized with the HRMS Employee directory.
+            </p>
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 14, textAlign: 'left', marginBottom: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 12 }}>
+                <span style={{ color: '#64748b' }}>Login Phone / User:</span>
+                <strong>{createdCredentials.mobile || createdCredentials.username}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 12 }}>
+                <span style={{ color: '#64748b' }}>Email:</span>
+                <strong>{createdCredentials.email}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                <span style={{ color: '#64748b' }}>Default Password:</span>
+                <strong style={{ color: '#2563eb' }}>{createdCredentials.password || '12345'}</strong>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const text = `Driver App Login:\nPhone/Username: ${createdCredentials.mobile || createdCredentials.username}\nEmail: ${createdCredentials.email}\nPassword: ${createdCredentials.password || '12345'}`;
+                  navigator.clipboard.writeText(text);
+                  toast.success('Credentials copied to clipboard!');
+                }}
+                style={{ flex: 1, padding: '9px 0', background: '#0284c7', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, cursor: 'pointer' }}
+              >
+                📋 Copy Credentials
+              </button>
+              <button
+                type="button"
+                onClick={() => setCreatedCredentials(null)}
+                style={{ flex: 1, padding: '9px 0', background: '#e2e8f0', color: '#334155', border: 'none', borderRadius: 8, fontWeight: 700, cursor: 'pointer' }}
+              >
+                Done
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -102,7 +102,12 @@ def create_employee(school_id, data, actor_user=None):
         emp_id = generate_employee_id(school_id)
 
     # Create User
-    plain_password = data.get('password') or 'Staff@123'
+    desig_lower = (data.get('designation') or '').strip().lower()
+    dept_lower = (data.get('department') or '').strip().lower()
+    is_driver_emp = (user_role == UserRole.DRIVER) or ('driver' in desig_lower) or (dept_lower == 'transport' and 'driver' in desig_lower)
+
+    # If driver, default initial password to 12345 as requested
+    plain_password = data.get('password') or ('12345' if is_driver_emp else 'Staff@123')
     user = User(
         school_id=school_id,
         name=data.get('name', '').strip(),
@@ -110,9 +115,9 @@ def create_employee(school_id, data, actor_user=None):
         employee_id=emp_id,
         email=email,
         phone=data.get('phone'),
-        role=user_role,
-        department=data.get('department'),
-        designation=data.get('designation'),
+        role=UserRole.DRIVER if is_driver_emp else user_role,
+        department=data.get('department') or ('Transport' if is_driver_emp else None),
+        designation=data.get('designation') or ('Driver' if is_driver_emp else None),
         salary=float(data.get('salary', 0.0)) if data.get('salary') else 0.0,
         is_active=True,
     )
@@ -182,6 +187,38 @@ def create_employee(school_id, data, actor_user=None):
             photo_url=data.get('avatar_url'),
         )
         db.session.add(teacher)
+
+    # If DRIVER role or designation, also create/sync Driver record in transport_drivers
+    if is_driver_emp:
+        try:
+            from app.models.transport import Driver
+            existing_drv = Driver.query.filter(
+                Driver.school_id == school_id,
+                db.or_(
+                    Driver.user_id == user.id,
+                    db.and_(Driver.mobile_number == user.phone, user.phone != None, user.phone != '')
+                )
+            ).first()
+            if not existing_drv:
+                driver_rec = Driver(
+                    school_id=school_id,
+                    user_id=user.id,
+                    name=user.name,
+                    mobile_number=user.phone or '',
+                    address=data.get('current_address') or data.get('permanent_address') or '',
+                    photo_url=data.get('avatar_url') or '',
+                    experience_years=int(float(data.get('experience_years') or 0)),
+                    has_license=bool(data.get('license_number') or data.get('has_license')),
+                    license_number=data.get('license_number') or '',
+                    emergency_contact=data.get('emergency_contact') or '',
+                    status='ACTIVE',
+                    created_by=actor_user.id if actor_user else user.id,
+                )
+                db.session.add(driver_rec)
+            elif not existing_drv.user_id:
+                existing_drv.user_id = user.id
+        except Exception as drv_err:
+            print(f"[WARN] Failed to auto-sync driver in HRMS create_employee: {drv_err}")
 
     # Initialize standard Leave Balances for the current session
     session_year = str(date.today().year)
@@ -288,6 +325,45 @@ def update_employee(user_id, school_id, data, actor_user=None):
         if profile.qualification:teacher.qualification = profile.qualification
         if user.salary:          teacher.salary = user.salary
         if user.avatar_url:      teacher.photo_url = user.avatar_url
+
+    # Sync to Driver profile if driver
+    desig_lower = (user.designation or '').strip().lower()
+    dept_lower = (user.department or '').strip().lower()
+    if user.role == UserRole.DRIVER or 'driver' in desig_lower or (dept_lower == 'transport' and 'driver' in desig_lower):
+        try:
+            from app.models.transport import Driver
+            drv = Driver.query.filter(
+                Driver.school_id == school_id,
+                db.or_(
+                    Driver.user_id == user.id,
+                    db.and_(Driver.mobile_number == user.phone, user.phone != None, user.phone != '')
+                )
+            ).first()
+            if drv:
+                drv.name = user.name
+                if user.phone:
+                    drv.mobile_number = user.phone
+                if profile.current_address:
+                    drv.address = profile.current_address
+                if user.avatar_url:
+                    drv.photo_url = user.avatar_url
+                drv.user_id = user.id
+                drv.status = 'ACTIVE' if user.is_active else 'INACTIVE'
+            else:
+                new_drv = Driver(
+                    school_id=school_id,
+                    user_id=user.id,
+                    name=user.name,
+                    mobile_number=user.phone or '',
+                    address=profile.current_address or '',
+                    photo_url=user.avatar_url or '',
+                    experience_years=int(float(profile.experience_years or 0)),
+                    status='ACTIVE' if user.is_active else 'INACTIVE',
+                    created_by=actor_user.id if actor_user else user.id,
+                )
+                db.session.add(new_drv)
+        except Exception as drv_upd_err:
+            print(f"[WARN] Driver sync on update_employee error: {drv_upd_err}")
 
     log_hrms_audit(
         school_id=school_id,

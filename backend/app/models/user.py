@@ -41,6 +41,7 @@ PRINCIPAL_ALLOWED_ROLES = {
     UserRole.HR,
     UserRole.ACADEMIC_COORDINATOR,
     UserRole.EXAM_CONTROLLER,
+    UserRole.DRIVER,
     UserRole.STUDENT,
     UserRole.PARENT,
 }
