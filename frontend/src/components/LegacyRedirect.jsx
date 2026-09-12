@@ -1,13 +1,17 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { buildTenantRoute, getCanonicalRoleSlug, getCanonicalSchoolSlug } from '../utils/routeBuilder';
+import { buildTenantRoute, getCanonicalRoleSlug, getCanonicalSchoolSlug, ROLE_SLUG_MAP } from '../utils/routeBuilder';
+import { NotFoundPage } from '../pages/ErrorPages';
 
 /**
  * LegacyRedirect
  * Seamless backward-compatibility handler for un-prefixed routes.
- * Takes any legacy route (e.g. /fees, /students, /settings/whatsapp, /dashboard)
- * and resolves it to the logged-in user's canonical tenant URL with query parameters preserved.
+ * Takes legacy routes (e.g. /fees, /students, /settings/whatsapp, /dashboard)
+ * and resolves them to the logged-in user's canonical tenant URL with query parameters preserved.
+ * 
+ * STRICT LOOP PROTECTION:
+ * Never appends tenant prefixes if the path is already inside tenant space.
  */
 export default function LegacyRedirect({ toService = '' }) {
   const { user, loading } = useAuth();
@@ -32,6 +36,10 @@ export default function LegacyRedirect({ toService = '' }) {
   }
 
   if (!user) {
+    // If requesting root or index.html, just go to /login
+    if (location.pathname === '/' || location.pathname === '/index.html') {
+      return <Navigate to="/login" replace />;
+    }
     const returnUrl = encodeURIComponent(location.pathname + location.search);
     return <Navigate to={`/login?returnUrl=${returnUrl}`} replace />;
   }
@@ -41,7 +49,7 @@ export default function LegacyRedirect({ toService = '' }) {
 
   // Platform admin redirect
   if (isCompanyActor && isSuperAdmin) {
-    if (!toService || toService === 'dashboard') {
+    if (!toService || toService === 'dashboard' || toService === 'index.html') {
       return <Navigate to={`/admin/dashboard${location.search}`} replace />;
     }
     return <Navigate to={`/admin/${toService}${location.search}`} replace />;
@@ -51,10 +59,36 @@ export default function LegacyRedirect({ toService = '' }) {
   const roleSlug = getCanonicalRoleSlug(user);
 
   let targetService = toService;
+  const q = new URLSearchParams(location.search);
+  const isAuditQuery = q.has('module') || q.has('is_delegated') || q.get('tab') === 'retention';
+
+  // If no explicit target service, derive cleanly without loops
   if (!targetService) {
-    const cleanPath = location.pathname.startsWith('/') ? location.pathname.slice(1) : location.pathname;
-    targetService = cleanPath || 'dashboard';
+    let cleanPath = location.pathname.startsWith('/') ? location.pathname.slice(1) : location.pathname;
+
+    // Handle index.html or empty path
+    if (cleanPath === '' || cleanPath === 'index.html' || cleanPath.endsWith('/index.html')) {
+      targetService = isAuditQuery ? 'audit-logs' : 'dashboard';
+    } else {
+      // Split parts and clean out any existing schoolSlug or roleSlug
+      const parts = cleanPath.split('/').filter(p => p && p !== 'index.html');
+      
+      // If it already has multiple schoolSlug / role repeats, clean them all out
+      while (parts.length > 0 && (parts[0].toLowerCase() === schoolSlug.toLowerCase() || Object.values(ROLE_SLUG_MAP).includes(parts[0].toLowerCase()))) {
+        parts.shift();
+      }
+
+      targetService = parts.join('/') || 'dashboard';
+    }
   }
+
+  if (isAuditQuery && targetService === 'dashboard') {
+    targetService = 'audit-logs';
+  }
+
+  // Alias mappings
+  if (targetService === 'audit/school/logs') targetService = 'audit-logs';
+  if (targetService === 'principal/deleted-items') targetService = 'deleted-items';
 
   const destination = buildTenantRoute({
     schoolSlug,
@@ -62,6 +96,11 @@ export default function LegacyRedirect({ toService = '' }) {
     service: targetService,
     search: location.search
   });
+
+  // Strict anti-loop guard: if destination is identical to current path, do NOT redirect!
+  if (destination === location.pathname + location.search || destination === location.pathname) {
+    return <NotFoundPage />;
+  }
 
   return <Navigate to={destination} replace />;
 }

@@ -114,14 +114,25 @@ export function resolveTenantPath(rawPath, user) {
   const [pathname, query] = rawPath.split('?');
   const searchStr = query ? `?${query}` : '';
 
-  // Already prefixed with /:schoolSlug/:role
-  const parts = pathname.split('/').filter(Boolean);
-  if (parts.length >= 2 && parts[0].toLowerCase() === schoolSlug && Object.values(ROLE_SLUG_MAP).includes(parts[1].toLowerCase())) {
-    return rawPath; // Already canonical
+  const parts = pathname.split('/').filter(p => p && p !== 'index.html');
+
+  // If already prefixed with any school slug and role slug, normalize cleanly without duplicating
+  if (parts.length >= 2 && Object.values(ROLE_SLUG_MAP).includes(parts[1].toLowerCase())) {
+    // Strip any repetitive loops if present
+    while (parts.length >= 4 && parts[0].toLowerCase() === parts[2].toLowerCase() && parts[1].toLowerCase() === parts[3].toLowerCase()) {
+      parts.splice(0, 2);
+    }
+    const cleanService = parts.slice(2).join('/');
+    return buildTenantRoute({
+      schoolSlug,
+      role: roleSlug,
+      service: cleanService,
+      search: searchStr
+    });
   }
 
   // Canonical service normalization mapping
-  let service = pathname.startsWith('/') ? pathname.slice(1) : pathname;
+  let service = parts.join('/');
 
   // Specific alias mappings
   if (service === 'audit/school/logs') service = 'audit-logs';

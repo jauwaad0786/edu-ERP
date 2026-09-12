@@ -189,7 +189,9 @@ export default function App() {
                 CANONICAL MULTI-TENANT ROUTES: /:schoolSlug/:role/:service
                ═══════════════════════════════════════════════════════════════ */}
             
-            {/* Dashboard */}
+            {/* Dashboard & Base Tenant Route */}
+            <Route path="/:schoolSlug/:role" element={<LegacyRedirect toService="dashboard" />} />
+            <Route path="/:schoolSlug/:role/index.html" element={<LegacyRedirect />} />
             <Route path="/:schoolSlug/:role/dashboard" element={
               <TenantProtectedRoute>
                 <DashboardRouter />
@@ -856,9 +858,10 @@ export default function App() {
             {/* ═══════════════════════════════════════════════════════════════
                 ERROR & CATCH-ALL
                ═══════════════════════════════════════════════════════════════ */}
+            <Route path="/index.html" element={<LegacyRedirect />} />
             <Route path="/403" element={<AccessDeniedPage />} />
             <Route path="/404" element={<NotFoundPage />} />
-            <Route path="*" element={<LegacyRedirect />} />
+            <Route path="*" element={<NotFoundPage />} />
 
           </Routes>
         </Router>
