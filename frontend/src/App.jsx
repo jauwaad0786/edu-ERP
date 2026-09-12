@@ -804,6 +804,7 @@ export default function App() {
                ═══════════════════════════════════════════════════════════════ */}
             <Route path="/dashboard" element={<LegacyRedirect toService="dashboard" />} />
             <Route path="/students" element={<LegacyRedirect toService="students" />} />
+            <Route path="/students/:id" element={<LegacyRedirect />} />
             <Route path="/students/bulk-edit" element={<LegacyRedirect toService="students/bulk-edit" />} />
             <Route path="/students/section-shuffle" element={<LegacyRedirect toService="students/section-shuffle" />} />
             <Route path="/students/promotion" element={<LegacyRedirect toService="students/promotion" />} />

@@ -286,8 +286,10 @@ def create_app(config_name='default'):
         global _scheduler_instance
         is_scheduler_disabled = os.environ.get('DISABLE_SCHEDULER', '').lower() in ('true', '1', 'yes')
         is_testing = app.config.get('TESTING', False)
+        # Prevent secondary reloader processes from duplicating the scheduler
+        is_reloader_parent = os.environ.get('WERKZEUG_RUN_MAIN') == 'false'
 
-        if not is_scheduler_disabled and not is_testing and _scheduler_instance is None:
+        if not is_scheduler_disabled and not is_testing and not is_reloader_parent and _scheduler_instance is None:
             try:
                 from apscheduler.schedulers.background import BackgroundScheduler
                 from app.services.delegation_service import auto_expire_delegations

@@ -275,3 +275,87 @@ def test_monthly_fee_generation_skips_unconfirmed_provisional_students(app, clie
         except ValueError as err:
             assert "UNCONFIRMED" in str(err) or "PROVISIONAL" in str(err)
 
+
+def test_cors_security_validation():
+    from app.utils.security_headers import is_cors_origin_allowed
+
+    # Allowed legitimate origins
+    assert is_cors_origin_allowed("http://localhost:3000") is True
+    assert is_cors_origin_allowed("https://edu-erp.vercel.app") is True
+    assert is_cors_origin_allowed("https://1p360.onrender.com") is True
+    assert is_cors_origin_allowed("https://edu-erp-prod.vercel.app") is True
+
+    # Malicious / spoofed origins that must be BLOCKED
+    assert is_cors_origin_allowed("https://attacker-edu-erp.vercel.app") is False
+    assert is_cors_origin_allowed("https://edu-erp.malicious.com") is False
+    assert is_cors_origin_allowed("https://1p360.attacker.com") is False
+    assert is_cors_origin_allowed("https://random-tenant.vercel.app") is False
+    assert is_cors_origin_allowed("") is False
+
+
+def test_fine_isolation_during_tuition_payment(client, app):
+    headers, class_id = setup_school_and_principal(client)
+
+    # 1. Admit student via normal flow
+    payload = {
+        'name': 'Rahul Sharma',
+        'class_id': class_id,
+        'session': '2026-27',
+        'admission_fee': 3000,
+        'fee_setup': {
+            'is_provisional': False,
+            'payment_status': 'PAID',
+            'initial_payment_amount': 3000,
+            'payment_mode': 'CASH',
+        },
+        'status': 'ACTIVE'
+    }
+
+    res = client.post('/api/principal/students', json=payload, headers=headers)
+    assert res.status_code in [200, 201]
+    student_id = res.get_json()['id']
+
+    with app.app_context():
+        from app.models.hostel import Hostel, HostelFineRecord
+        from app.models.academic import Student
+        from app.services.fee_ledger_service import collect_fee_payment
+
+        student = Student.query.get(student_id)
+
+        hostel = Hostel(
+            school_id=student.school_id,
+            name='Tagore Hostel',
+            code='TH-01'
+        )
+        db.session.add(hostel)
+        db.session.flush()
+
+        # Create a pending hostel fine of 500
+        fine = HostelFineRecord(
+            school_id=student.school_id,
+            student_id=student.id,
+            hostel_id=hostel.id,
+            amount=500.0,
+            amount_paid=0.0,
+            status='PENDING',
+            reason='Damage to furniture'
+        )
+        db.session.add(fine)
+        db.session.commit()
+
+        # Student pays ₹2000 for ACCOUNTS (Tuition/School Fees)
+        pmt = collect_fee_payment(
+            student_id=student.id,
+            amount_paid=2000.0,
+            department='ACCOUNTS',
+            remarks='Tuition fee payment'
+        )
+
+        # Re-fetch hostel fine: MUST REMAIN PENDING and NOT erased to PAID
+        refetched_fine = HostelFineRecord.query.get(fine.id)
+        assert refetched_fine.status == 'PENDING', "Hostel fine must NOT be marked PAID by tuition fee payment!"
+        assert (refetched_fine.amount_paid or 0.0) == 0.0, "Hostel fine amount_paid must not be modified!"
+
+
+
+

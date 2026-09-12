@@ -645,7 +645,12 @@ def register_or_sync_service_charge(
 
     if not bill:
         rcpt_count = FeeBill.query.filter_by(school_id=school_id).count() + 1
-        bill_no = f"BILL-{date.today().year}-{rcpt_count:06d}"
+        while True:
+            candidate_bill_no = f"BILL-{date.today().year}-{rcpt_count:06d}"
+            if not FeeBill.query.filter_by(bill_no=candidate_bill_no).first():
+                bill_no = candidate_bill_no
+                break
+            rcpt_count += 1
 
         bill = FeeBill(
             bill_no=bill_no,
@@ -786,7 +791,12 @@ def generate_fee_bill(student_id, bill_month, due_date, actor_user, session='202
     else:
         # Create new bill with unique sequential bill number
         count = FeeBill.query.filter_by(school_id=student.school_id).count() + 1
-        bill_no = f"BILL-{date.today().year}-{count:06d}"
+        while True:
+            candidate_bill_no = f"BILL-{date.today().year}-{count:06d}"
+            if not FeeBill.query.filter_by(bill_no=candidate_bill_no).first():
+                bill_no = candidate_bill_no
+                break
+            count += 1
 
         bill = FeeBill(
             bill_no=bill_no,
@@ -1037,29 +1047,66 @@ def collect_fee_payment(
 
     # ── Bi-Directional Cross-Department Sync ──────────────────────────────
     try:
-        # 1. Sync Hostel Fines
-        from app.models.hostel import HostelFineRecord
-        h_fines = HostelFineRecord.query.filter(
-            HostelFineRecord.student_id == student_id,
-            HostelFineRecord.status.in_(['PENDING', 'PARTIAL', 'PARTIALLY_PAID'])
-        ).all()
-        for hf in h_fines:
-            hf.status = 'PAID'
-            hf.amount_paid = hf.amount
-            hf.paid_at = datetime.utcnow()
-            hf.receipt_no = payment.receipt_no
+        # Determine allocated amount towards Hostel and Library from this payment
+        hostel_allocated = sum(
+            a.allocated_amount for a in payment.allocations if (a.department == 'HOSTEL' or (a.fee_head and a.fee_head.code == 'HOSTEL_FINE'))
+        ) if payment.allocations else (amount_paid if department == 'HOSTEL' else 0.0)
 
-        # 2. Sync Library Fines
-        from app.models.library import LibraryMember, FineTransaction
-        lib_mem = LibraryMember.query.filter_by(user_id=student.user_id, school_id=student.school_id).first()
-        if lib_mem:
-            lib_fines = lib_mem.fines.filter(FineTransaction.status.in_(['OUTSTANDING', 'PENDING', 'PARTIAL', 'PARTIALLY_PAID'])).all()
-            for lf in lib_fines:
-                lf.status = 'PAID'
-                lf.amount_paid = lf.amount
-                lf.paid_at = datetime.utcnow()
-                lf.receipt_no = payment.receipt_no
-                lf.collected_by = collected_by.id if (collected_by and hasattr(collected_by, 'id')) else None
+        library_allocated = sum(
+            a.allocated_amount for a in payment.allocations if (a.department == 'LIBRARY' or (a.fee_head and a.fee_head.code == 'LIBRARY_FINE'))
+        ) if payment.allocations else (amount_paid if department == 'LIBRARY' else 0.0)
+
+        # 1. Sync Hostel Fines only if payment was allocated to Hostel
+        if hostel_allocated > 0:
+            from app.models.hostel import HostelFineRecord
+            h_fines = HostelFineRecord.query.filter(
+                HostelFineRecord.student_id == student_id,
+                HostelFineRecord.status.in_(['PENDING', 'PARTIAL', 'PARTIALLY_PAID'])
+            ).order_by(HostelFineRecord.id.asc()).all()
+
+            h_rem = hostel_allocated
+            for hf in h_fines:
+                if h_rem <= 0:
+                    break
+                due = round(hf.amount - (hf.amount_paid or 0.0), 2)
+                if due <= 0:
+                    continue
+                settle_amt = min(h_rem, due)
+                hf.amount_paid = round((hf.amount_paid or 0.0) + settle_amt, 2)
+                hf.paid_at = datetime.utcnow()
+                hf.receipt_no = payment.receipt_no
+                if hf.amount_paid >= hf.amount:
+                    hf.status = 'PAID'
+                else:
+                    hf.status = 'PARTIALLY_PAID'
+                h_rem = round(h_rem - settle_amt, 2)
+
+        # 2. Sync Library Fines only if payment was allocated to Library
+        if library_allocated > 0:
+            from app.models.library import LibraryMember, FineTransaction
+            lib_mem = LibraryMember.query.filter_by(user_id=student.user_id, school_id=student.school_id).first()
+            if lib_mem:
+                lib_fines = lib_mem.fines.filter(
+                    FineTransaction.status.in_(['OUTSTANDING', 'PENDING', 'PARTIAL', 'PARTIALLY_PAID'])
+                ).order_by(FineTransaction.id.asc()).all()
+
+                l_rem = library_allocated
+                for lf in lib_fines:
+                    if l_rem <= 0:
+                        break
+                    due = round(lf.amount - (lf.amount_paid or 0.0), 2)
+                    if due <= 0:
+                        continue
+                    settle_amt = min(l_rem, due)
+                    lf.amount_paid = round((lf.amount_paid or 0.0) + settle_amt, 2)
+                    lf.paid_at = datetime.utcnow()
+                    lf.receipt_no = payment.receipt_no
+                    lf.collected_by = collected_by.id if (collected_by and hasattr(collected_by, 'id')) else None
+                    if lf.amount_paid >= lf.amount:
+                        lf.status = 'PAID'
+                    else:
+                        lf.status = 'PARTIALLY_PAID'
+                    l_rem = round(l_rem - settle_amt, 2)
 
         # 3. Sync Legacy FeeRecord if present
         from app.models.financial import FeeRecord

@@ -1669,6 +1669,7 @@ def recent_fee_collections():
         return jsonify([]), 200
 
 
+@principal_bp.route('/fees', methods=['GET'])
 @principal_bp.route('/fees/records', methods=['GET'])
 @permission_required('fees.receipt.view')
 def fee_records():
@@ -1729,6 +1730,7 @@ def fee_records():
 
     return jsonify({
         'data':     result,
+        'records':  result,
         'total':    paginated.total,
         'page':     paginated.page,
         'pages':    paginated.pages,
@@ -1869,7 +1871,194 @@ def collect_fee():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
-# NEW — paste right after existing collect_fee() function
+
+@principal_bp.route('/students/<int:student_id>/confirm-admission', methods=['POST'])
+@principal_bp.route('/admissions/confirm-provisional', methods=['POST'])
+@permission_required('fees.collect')
+def confirm_provisional_admission(student_id=None):
+    """
+    Confirms an unconfirmed (PROVISIONAL) student admission:
+    1. Updates optional services: Transport, Hostel, Library.
+    2. Promotes student status from PROVISIONAL to ACTIVE with official ADM-XXXX number.
+    3. Settles or creates the FeeRecord and logs payment transaction.
+    """
+    try:
+        sid = _school_id()
+        data = request.get_json() or {}
+        st_id = student_id or data.get('student_id')
+        if not st_id:
+            return jsonify({'error': 'student_id is required'}), 400
+
+        student = Student.query.get_or_404(st_id)
+        if student.school_id != sid:
+            return jsonify({'error': 'Unauthorized'}), 403
+
+        # 1. Update optional services (Transport)
+        transport_opt = data.get('transport_required')
+        route_id_val = data.get('transport_route_id')
+        stop_id_val = data.get('transport_stop_id') or None
+
+        if transport_opt == 'Yes' and (route_id_val or stop_id_val):
+            try:
+                from app.models.transport_student import StudentTransport
+                from app.models.transport import Route
+
+                veh_id = None
+                if route_id_val:
+                    r_obj = Route.query.filter_by(id=route_id_val, school_id=sid).first()
+                    if r_obj:
+                        veh_id = r_obj.vehicle_id
+
+                existing_st = StudentTransport.query.filter_by(student_id=student.id, school_id=sid).first()
+                if existing_st:
+                    existing_st.route_id = route_id_val or None
+                    existing_st.stop_id = stop_id_val
+                    existing_st.pickup_stop_id = stop_id_val
+                    existing_st.drop_stop_id = stop_id_val
+                    existing_st.vehicle_id = veh_id
+                    existing_st.status = 'ACTIVE'
+                else:
+                    trans = StudentTransport(
+                        school_id=sid,
+                        student_id=student.id,
+                        route_id=route_id_val or None,
+                        vehicle_id=veh_id,
+                        stop_id=stop_id_val,
+                        pickup_stop_id=stop_id_val,
+                        drop_stop_id=stop_id_val,
+                        academic_year=student.session or '2026-27',
+                        status='ACTIVE',
+                        created_by=get_current_user().id if get_current_user() else None
+                    )
+                    db.session.add(trans)
+            except Exception as trans_err:
+                print(f"[WARN] Transport assignment error in confirm_provisional_admission: {trans_err}")
+
+        # 2. Promote student if currently PROVISIONAL
+        if student.status == 'PROVISIONAL':
+            from app.services.admission_service import promote_provisional_student
+            promote_provisional_student(student)
+
+        # 3. Process payment collection
+        amount_paid = float(data.get('amount_paid') or data.get('pay_amount') or 0.0)
+        pay_mode = data.get('payment_mode', 'CASH')
+        remarks = data.get('remarks', 'Admission fee clearance & confirmation')
+        ref = data.get('reference', '')
+
+        # Look for existing pending admission fee record
+        existing_rec = FeeRecord.query.filter_by(
+            school_id=sid,
+            student_id=student.id
+        ).filter(FeeRecord.status != 'PAID').first()
+
+        receipt_no = None
+        if existing_rec:
+            existing_rec.amount_paid = (existing_rec.amount_paid or 0) + amount_paid
+            existing_rec.payment_mode = pay_mode
+            existing_rec.paid_date = date.today()
+            existing_rec.collected_by = get_current_user().id if get_current_user() else None
+            existing_rec.remarks = remarks
+            if existing_rec.amount_paid >= existing_rec.effective_due():
+                existing_rec.status = 'PAID'
+            elif existing_rec.amount_paid > 0:
+                existing_rec.status = 'PARTIAL'
+
+            if not existing_rec.receipt_no:
+                while True:
+                    rno = _gen_receipt()
+                    if not FeeRecord.query.filter_by(receipt_no=rno).first():
+                        existing_rec.receipt_no = rno
+                        break
+            receipt_no = existing_rec.receipt_no
+
+            today = date.today()
+            txn = FeeTransaction(
+                fee_record_id=existing_rec.id,
+                student_id=student.id,
+                school_id=sid,
+                amount=amount_paid,
+                payment_mode=pay_mode,
+                transaction_date=today,
+                txn_month=today.strftime('%B %Y'),
+                receipt_no=receipt_no,
+                remarks=remarks,
+                collected_by=get_current_user().id if get_current_user() else None,
+            )
+            db.session.add(txn)
+        else:
+            # Create a fee record and settle it
+            rno = _gen_receipt()
+            rec = FeeRecord(
+                school_id=sid,
+                student_id=student.id,
+                fee_type='ADMISSION',
+                amount_due=amount_paid if amount_paid > 0 else 5000.0,
+                amount_paid=amount_paid,
+                discount=0.0,
+                status='PAID' if amount_paid > 0 else 'PENDING',
+                due_date=date.today(),
+                paid_date=date.today() if amount_paid > 0 else None,
+                payment_mode=pay_mode,
+                receipt_no=rno,
+                collected_by=get_current_user().id if get_current_user() else None,
+                remarks=remarks,
+                source='ACADEMIC',
+                created_at=ist_naive_now()
+            )
+            db.session.add(rec)
+            receipt_no = rno
+
+            if amount_paid > 0:
+                db.session.flush()
+                today = date.today()
+                txn = FeeTransaction(
+                    fee_record_id=rec.id,
+                    student_id=student.id,
+                    school_id=sid,
+                    amount=amount_paid,
+                    payment_mode=pay_mode,
+                    transaction_date=today,
+                    txn_month=today.strftime('%B %Y'),
+                    receipt_no=receipt_no,
+                    remarks=remarks,
+                    collected_by=get_current_user().id if get_current_user() else None,
+                )
+                db.session.add(txn)
+
+        # 4. Canonical finance ledger sync
+        if amount_paid > 0:
+            try:
+                from app.services.fee_ledger_service import collect_fee_payment
+                central_pmt = collect_fee_payment(
+                    student_id=student.id,
+                    amount_paid=amount_paid,
+                    payment_mode=pay_mode,
+                    collected_by=get_current_user(),
+                    department='ACCOUNTS',
+                    remarks=remarks,
+                    session=student.session or '2026-27'
+                )
+                if central_pmt and central_pmt.receipt_no:
+                    receipt_no = central_pmt.receipt_no
+            except Exception as e:
+                print(f"[WARN] Error in central finance sync during confirm_provisional_admission: {e}")
+
+        db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'message': f'Admission confirmed! Official admission number: {student.admission_no}',
+            'student_id': student.id,
+            'admission_no': student.admission_no,
+            'provisional_no': student.provisional_no,
+            'status': student.status,
+            'receipt_no': receipt_no
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 
 

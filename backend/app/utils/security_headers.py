@@ -29,6 +29,17 @@ def get_allowed_origins():
     return origins
 
 
+import re
+
+# Strict regex matching authorized deployment prefixes on vercel.app and onrender.com
+# Example: https://edu-erp.vercel.app, https://edu-erp-prod.vercel.app, https://1p360-app.onrender.com
+# Rejecting arbitrary attacker domains like attacker-edu-erp.com or random words
+STRICT_HOSTING_PATTERN = re.compile(
+    r'^https://(edu-erp|1p360)(-[a-zA-Z0-9]+)?\.(vercel\.app|onrender\.com)$',
+    re.IGNORECASE
+)
+
+
 def is_cors_origin_allowed(origin):
     """Validate if the Origin header is an explicitly trusted domain."""
     if not origin:
@@ -37,10 +48,9 @@ def is_cors_origin_allowed(origin):
     allowed = get_allowed_origins()
     if clean_origin in allowed:
         return True
-    # Allow official verified Render and Vercel school ERP deployments
-    if clean_origin.endswith('.vercel.app') or clean_origin.endswith('.onrender.com'):
-        if 'edu-erp' in clean_origin or '1p360' in clean_origin:
-            return True
+    # Allow official verified Render and Vercel school ERP deployments strictly matching approved pattern
+    if STRICT_HOSTING_PATTERN.match(clean_origin):
+        return True
     return False
 
 

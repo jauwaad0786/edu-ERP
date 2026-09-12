@@ -33,14 +33,23 @@ class Config:
     MSG91_EMAIL_FROM_EMAIL = os.environ.get('MSG91_EMAIL_FROM_EMAIL')
     MSG91_EMAIL_FROM_NAME = os.environ.get('MSG91_EMAIL_FROM_NAME', 'Edu ERP')
     MSG91_EMAIL_TEMPLATE_ID = os.environ.get('MSG91_EMAIL_TEMPLATE_ID')
-    MSG91_WIDGET_ID = os.environ.get('MSG91_WIDGET_ID', '366966687177323837373439')
-    MSG91_TOKEN_AUTH = os.environ.get('MSG91_TOKEN_AUTH', '567274TWJ7EfhCn6a9d222aP1')
+    MSG91_WIDGET_ID = os.environ.get('MSG91_WIDGET_ID', '')
+    MSG91_TOKEN_AUTH = os.environ.get('MSG91_TOKEN_AUTH', '')
 
 class DevelopmentConfig(Config):
     DEBUG = True
 
 class ProductionConfig(Config):
     DEBUG = False
+
+    @classmethod
+    def init_app(cls, app):
+        super().init_app(app) if hasattr(super(), 'init_app') else None
+        if not os.environ.get('SECRET_KEY') or not os.environ.get('JWT_SECRET_KEY'):
+            app.logger.warning(
+                "CRITICAL SECURITY WARNING: SECRET_KEY and/or JWT_SECRET_KEY are not explicitly set in environment variables! "
+                "In multi-worker environments, this causes authentication failures and session invalidation across workers."
+            )
 
 class TestingConfig(Config):
     TESTING = True
