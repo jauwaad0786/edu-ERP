@@ -1210,6 +1210,8 @@ def _ensure_student_columns():
         'previous_reason':         'VARCHAR(250)',
         'original_admission_year': 'VARCHAR(20)',
         'status':                  "VARCHAR(30) DEFAULT 'ACTIVE'",
+        'provisional_no':          'VARCHAR(50)',
+        'pending_admission_no':    'VARCHAR(50)',
         'house':                   'VARCHAR(50)',
         'stream':                  'VARCHAR(50)',
     }

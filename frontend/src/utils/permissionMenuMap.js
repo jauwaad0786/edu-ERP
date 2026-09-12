@@ -17,6 +17,7 @@
 export const PERMISSION_MENU_ITEMS = {
   'students.admission.manage': [
     { group: 'Academics', item: { icon: 'ti-user-plus',    label: 'Admissions',            path: '/admission' } },
+    { group: 'Academics', item: { icon: 'ti-clock-pause',  label: 'Provisional Admissions', path: '/admissions/provisional' } },
     { group: 'Academics', item: { icon: 'ti-user-check',   label: 'Annual Re-Registration', path: '/students/annual-register' } },
     { group: 'Academics', item: { icon: 'ti-file-import',  label: 'Bulk Import CSV',       path: '/students/import' } },
   ],

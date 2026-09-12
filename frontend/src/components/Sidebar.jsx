@@ -80,6 +80,7 @@ const ROLE_MENUS = {
           children: [
             { icon: 'ti-address-book',   label: 'Students Directory',    path: '/students' },
             { icon: 'ti-user-plus',      label: 'New Admission',         path: '/admission' },
+            { icon: 'ti-clock-pause',    label: 'Provisional Admissions', path: '/admissions/provisional' },
             { icon: 'ti-edit',           label: 'Students Bulk Edit',    path: '/students/bulk-edit' },
             { icon: 'ti-arrows-shuffle', label: 'Section Shuffle',       path: '/students/section-shuffle' },
             { icon: 'ti-rocket',         label: 'Promote & Rollover',    path: '/students/promotion' },

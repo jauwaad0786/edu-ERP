@@ -174,7 +174,9 @@ class Student(db.Model):
 
     # Student Lifecycle & Classification fields
     original_admission_year = db.Column(db.String(20))
-    status                  = db.Column(db.String(30), default='ACTIVE', index=True)  # ACTIVE / PROMOTED / RETAINED / GRADUATED / WITHDRAWN / LEFT
+    status                  = db.Column(db.String(30), default='ACTIVE', index=True)  # ACTIVE / PROMOTED / RETAINED / GRADUATED / WITHDRAWN / LEFT / PROVISIONAL
+    provisional_no          = db.Column(db.String(50), nullable=True)
+    pending_admission_no    = db.Column(db.String(50), nullable=True)
     house                   = db.Column(db.String(50))
     stream                  = db.Column(db.String(50))
 
@@ -243,6 +245,9 @@ class Student(db.Model):
             'previous_reason':         self.previous_reason or '',
             'photo_url':               self.photo_url,
             'status':                  getattr(self, 'status', 'ACTIVE') or 'ACTIVE',
+            'provisional_no':          getattr(self, 'provisional_no', '') or '',
+            'pending_admission_no':    getattr(self, 'pending_admission_no', '') or '',
+            'is_provisional':          (getattr(self, 'status', 'ACTIVE') == 'PROVISIONAL'),
             'house':                   getattr(self, 'house', '') or '',
             'stream':                  getattr(self, 'stream', '') or '',
             'is_deleted':              getattr(self, 'is_deleted', False),

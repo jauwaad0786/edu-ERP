@@ -32,6 +32,7 @@ import SchoolsPage      from './pages/SchoolsPage';
 import SchoolDetailPage from './pages/SchoolDetailPage';
 import AttendancePage   from './pages/AttendancePage';
 import NewAdmissionPage from './pages/NewAdmissionPage';
+import ProvisionalAdmissionsPage from './pages/ProvisionalAdmissionsPage';
 import StudentProfile   from './pages/StudentProfile';
 import ClassDetailPage  from './pages/ClassDetailPage';
 import TeacherProfile   from './pages/TeacherProfile';
@@ -239,6 +240,12 @@ export default function App() {
                 <NewAdmissionPage />
               </TenantProtectedRoute>
             } />
+            <Route path="/:schoolSlug/:role/admissions/provisional" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']} permissions={ROUTE_PERMISSIONS['/admissions/provisional']}>
+                <ProvisionalAdmissionsPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/students/provisional" element={<LegacyRedirect toService="admissions/provisional" />} />
             <Route path="/:schoolSlug/:role/admissions/new" element={<LegacyRedirect toService="admission" />} />
             <Route path="/:schoolSlug/:role/admissions" element={<LegacyRedirect toService="admission" />} />
             <Route path="/:schoolSlug/:role/school-profile" element={<LegacyRedirect toService="school-settings" />} />

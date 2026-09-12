@@ -740,6 +740,13 @@ def generate_fee_bill(student_id, bill_month, due_date, actor_user, session='202
     if not student:
         raise ValueError(f"Student with ID {student_id} not found.")
 
+    st_display_name = student.user.name if (getattr(student, 'user', None) and student.user) else (student.admission_no or f"ID #{student.id}")
+    if student.status == 'PROVISIONAL':
+        raise ValueError(f"Student '{st_display_name}' admission is UNCONFIRMED (PROVISIONAL - Fee Due). Monthly fee bills cannot be generated until admission fee is paid and admission is confirmed.")
+
+    if student.status in ['WITHDRAWN', 'LEFT', 'GRADUATED']:
+        raise ValueError(f"Cannot generate fee bill for inactive student '{st_display_name}' with status '{student.status}'.")
+
     # Check for existing bill for this month
     existing_bill = FeeBill.query.filter_by(
         school_id=student.school_id, student_id=student_id, bill_month=bill_month
@@ -850,8 +857,8 @@ def generate_fee_bill(student_id, bill_month, due_date, actor_user, session='202
 
 
 def bulk_generate_fee_bills(school_id, bill_month, due_date, class_id=None, section=None, student_ids=None, actor_user=None, session='2026-27', force_regenerate=False):
-    """Bulk generates fee demand bills for selected or all students in a class/school."""
-    query = Student.query.filter_by(school_id=school_id)
+    """Bulk generates fee demand bills for selected or all confirmed ACTIVE students in a class/school."""
+    query = Student.query.filter_by(school_id=school_id, status='ACTIVE')
 
     if student_ids:
         query = query.filter(Student.id.in_(student_ids))
@@ -1078,15 +1085,11 @@ def collect_fee_payment(
 
         # 4. Auto-Confirm Student Admission if currently PROVISIONAL
         if student.status == 'PROVISIONAL':
-            student.status = 'ACTIVE'
             try:
-                from app.models.academic import StudentEnrollment
-                enrollments = StudentEnrollment.query.filter_by(student_id=student.id, school_id=student.school_id).all()
-                for enr in enrollments:
-                    if enr.enrollment_status == 'PROVISIONAL':
-                        enr.enrollment_status = 'ACTIVE'
-            except Exception as enr_err:
-                print(f"[WARN] Error updating enrollment status: {enr_err}")
+                from app.services.admission_service import promote_provisional_student
+                promote_provisional_student(student)
+            except Exception as prom_err:
+                print(f"[WARN] Error promoting provisional student: {prom_err}")
     except Exception as e:
         import traceback
         traceback.print_exc()

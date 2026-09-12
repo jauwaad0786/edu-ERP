@@ -64,10 +64,10 @@ def list_classes():
     if not classes:
         return jsonify([]), 200
 
-    # Batch 1: Student counts per class in 1 query
+    # Batch 1: Student counts per class in 1 query (exclude provisional unconfirmed admissions)
     stu_counts = dict(
         db.session.query(Student.class_id, func.count(Student.id))
-        .filter(Student.school_id == sid, Student.is_deleted == False)
+        .filter(Student.school_id == sid, Student.is_deleted == False, Student.status != 'PROVISIONAL')
         .group_by(Student.class_id)
         .all()
     )
@@ -730,6 +730,17 @@ def list_students():
         joinedload(Student.user),
         joinedload(Student.class_ref)
     ).filter_by(school_id=_school_id()).filter(Student.is_deleted == False)
+    status_param = (request.args.get('status') or '').strip().upper()
+    if status_param == 'PROVISIONAL':
+        q = q.filter(Student.status == 'PROVISIONAL')
+    elif status_param == 'ALL':
+        pass
+    elif status_param:
+        q = q.filter(Student.status == status_param)
+    else:
+        # Strictly exclude unconfirmed provisional admissions from regular directory
+        q = q.filter(Student.status != 'PROVISIONAL')
+
     if class_id:
         q = q.filter_by(class_id=class_id)
     if search:
@@ -908,29 +919,6 @@ def create_student():
             except Exception:
                 tc_date_val = None
 
-        # Safe monotonic admission_no
-        session_str = data.get('session', '2024-25')
-        year_prefix = session_str[:4] if session_str else '2024'
-        adm_no = (data.get('admission_no') or '').strip()
-        if not adm_no:
-            count_all = Student.query.filter_by(school_id=sid).count()
-            seq = count_all + 1
-            candidate = f"ADM-{year_prefix}-{seq:04d}"
-            while Student.query.filter_by(school_id=sid, admission_no=candidate).first():
-                seq += 1
-                candidate = f"ADM-{year_prefix}-{seq:04d}"
-            adm_no = candidate
-        else:
-            if Student.query.filter_by(school_id=sid, admission_no=adm_no).first():
-                adm_no = f"{adm_no}-{secrets.randbelow(90) + 10}"
-
-        roll_no = (data.get('roll_number') or '').strip()
-        if not roll_no and data.get('class_id'):
-            count_in_cls = Student.query.filter_by(school_id=sid, class_id=data.get('class_id')).count()
-            roll_no = str(count_in_cls + 1)
-
-        is_first = bool(data.get('is_first_school'))
-
         fee_setup_in = data.get('fee_setup') or {}
         req_status = (data.get('status') or '').strip().upper()
         pay_st = (fee_setup_in.get('payment_status') or '').strip().upper()
@@ -939,12 +927,41 @@ def create_student():
 
         initial_status = 'PROVISIONAL' if is_prov else (req_status or 'ACTIVE')
 
+        # Safe monotonic admission_no
+        session_str = data.get('session', '2026-27')
+        manual_adm = (data.get('admission_no') or data.get('manual_admission_no') or '').strip()
+
+        from app.services.admission_service import generate_provisional_admission_no, generate_official_admission_no
+        prov_no = None
+        pending_adm = None
+
+        if is_prov:
+            adm_no = generate_provisional_admission_no(sid, session_str)
+            prov_no = adm_no
+            pending_adm = manual_adm if manual_adm else None
+        else:
+            if not manual_adm:
+                adm_no = generate_official_admission_no(sid, session_str)
+            else:
+                adm_no = manual_adm
+                if Student.query.filter_by(school_id=sid, admission_no=adm_no).first():
+                    adm_no = f"{adm_no}-{secrets.randbelow(90) + 10}"
+
+        roll_no = (data.get('roll_number') or '').strip()
+        if not roll_no and data.get('class_id'):
+            count_in_cls = Student.query.filter_by(school_id=sid, class_id=data.get('class_id')).count()
+            roll_no = str(count_in_cls + 1)
+
+        is_first = bool(data.get('is_first_school'))
+
         student = Student(
             user_id=user.id,
             school_id=sid,
             class_id=data.get('class_id'),
             roll_number=roll_no,
             admission_no=adm_no,
+            provisional_no=prov_no,
+            pending_admission_no=pending_adm,
             parent_name=data.get('parent_name') or data.get('father_name'),
             parent_phone=phone_clean,
             parent_email=data.get('parent_email'),
@@ -1758,15 +1775,11 @@ def collect_fee():
 
         # Auto-Confirm Student Admission if currently PROVISIONAL
         if record.student_ref and record.student_ref.status == 'PROVISIONAL':
-            record.student_ref.status = 'ACTIVE'
             try:
-                from app.models.academic import StudentEnrollment
-                enrollments = StudentEnrollment.query.filter_by(student_id=record.student_id, school_id=_school_id()).all()
-                for enr in enrollments:
-                    if enr.enrollment_status == 'PROVISIONAL':
-                        enr.enrollment_status = 'ACTIVE'
-            except Exception as enr_err:
-                print(f"[WARN] Error updating enrollment status in collect_fee: {enr_err}")
+                from app.services.admission_service import promote_provisional_student
+                promote_provisional_student(record.student_ref)
+            except Exception as prom_err:
+                print(f"[WARN] Error promoting provisional student in collect_fee: {prom_err}")
 
         # Auto receipt number if not already set
         if not record.receipt_no:
@@ -1929,15 +1942,11 @@ def collect_fee_multiple():
 
             # Auto-Confirm Student Admission if currently PROVISIONAL
             if record.student_ref and record.student_ref.status == 'PROVISIONAL':
-                record.student_ref.status = 'ACTIVE'
                 try:
-                    from app.models.academic import StudentEnrollment
-                    enrollments = StudentEnrollment.query.filter_by(student_id=record.student_id, school_id=sid).all()
-                    for enr in enrollments:
-                        if enr.enrollment_status == 'PROVISIONAL':
-                            enr.enrollment_status = 'ACTIVE'
-                except Exception as enr_err:
-                    print(f"[WARN] Error updating enrollment status in collect_fee_multiple: {enr_err}")
+                    from app.services.admission_service import promote_provisional_student
+                    promote_provisional_student(record.student_ref)
+                except Exception as prom_err:
+                    print(f"[WARN] Error promoting provisional student in collect_fee_multiple: {prom_err}")
 
             txn = FeeTransaction(
                 fee_record_id=record.id, student_id=record.student_id, school_id=sid,
@@ -4456,12 +4465,15 @@ def dashboard():
     sid    = _school_id()
     today  = date.today()
 
-    # Today's student attendance
-    total_students = Student.query.filter_by(school_id=sid).count()
+    # Today's student attendance (strictly excluding unconfirmed provisional students)
+    total_students = Student.query.filter_by(school_id=sid, is_deleted=False).filter(Student.status != 'PROVISIONAL').count()
+    unconfirmed_admissions_count = Student.query.filter_by(school_id=sid, is_deleted=False, status='PROVISIONAL').count()
     att_today      = Attendance.query.join(
                          Student, Attendance.student_id == Student.id
                      ).filter(
                          Student.school_id == sid,
+                         Student.is_deleted == False,
+                         Student.status != 'PROVISIONAL',
                          Attendance.date == today
                      ).all()
     s_present = sum(1 for a in att_today if a.status == 'PRESENT')
@@ -4479,10 +4491,10 @@ def dashboard():
     # ── Class-wise student attendance breakdown today (Optimized into 2 queries) ──
     classes = Class.query.filter_by(school_id=sid).order_by(Class.name, Class.section).all()
 
-    # Pre-fetch student counts per class
+    # Pre-fetch student counts per class (excluding provisional admissions)
     cls_student_counts = dict(
         db.session.query(Student.class_id, func.count(Student.id))
-        .filter(Student.school_id == sid, Student.is_deleted == False)
+        .filter(Student.school_id == sid, Student.is_deleted == False, Student.status != 'PROVISIONAL')
         .group_by(Student.class_id)
         .all()
     )
@@ -4491,7 +4503,7 @@ def dashboard():
     cls_att_rows = (
         db.session.query(Student.class_id, Attendance.status, func.count(Attendance.id))
         .join(Student, Attendance.student_id == Student.id)
-        .filter(Student.school_id == sid, Attendance.date == today)
+        .filter(Student.school_id == sid, Student.is_deleted == False, Student.status != 'PROVISIONAL', Attendance.date == today)
         .group_by(Student.class_id, Attendance.status)
         .all()
     )
@@ -4582,7 +4594,7 @@ def dashboard():
     class_rows = db.session.query(
                      Class.name, Class.section, func.count(Student.id)
                  ).outerjoin(
-                     Student, (Student.class_id == Class.id) & (Student.is_deleted == False)
+                     Student, (Student.class_id == Class.id) & (Student.is_deleted == False) & (Student.status != 'PROVISIONAL')
                  ).filter(Class.school_id == sid).group_by(Class.id, Class.name, Class.section).all()
     class_distribution = [
         {
@@ -4824,9 +4836,10 @@ def dashboard():
     teachers_pct = round((t_present / total_teachers * 100), 1) if total_teachers > 0 else 0
 
     return jsonify({
-        'total_students':          total_students,
-        'total_teachers':          total_teachers,
-        'total_classes':           len(classes),
+        'total_students':               total_students,
+        'unconfirmed_admissions_count': unconfirmed_admissions_count,
+        'total_teachers':               total_teachers,
+        'total_classes':                len(classes),
 
         # Comprehensive Fee Intelligence Breakdown
         'fee_intelligence': {

@@ -41,6 +41,7 @@ export default function StudentsPage() {
   const [showAnnualRegModal, setShowAnnualRegModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [provisionalTarget, setProvisionalTarget] = useState(null);
+  const [provisionalCount, setProvisionalCount] = useState(0);
 
   const [createdCreds, setCreatedCreds] = useState(null);
   const [copied, setCopied] = useState(false);
@@ -80,6 +81,13 @@ export default function StudentsPage() {
           // Default to first session
           setSessionFilter(sess[0]);
         }
+      })
+      .catch(() => {});
+
+    api.get('/principal/students?status=PROVISIONAL')
+      .then(r => {
+        const list = Array.isArray(r.data) ? r.data : (r.data.data || []);
+        setProvisionalCount(list.length);
       })
       .catch(() => {});
   }, []);
@@ -290,6 +298,54 @@ export default function StudentsPage() {
               </button>
             </div>
           </div>
+
+          {/* ── Provisional Admissions Alert Banner ── */}
+          {provisionalCount > 0 && (
+            <div style={{
+              background: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)',
+              border: '1px solid #fde68a',
+              borderRadius: 10,
+              padding: '12px 18px',
+              marginBottom: 16,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 12,
+              boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 22 }}>⏳</span>
+                <div>
+                  <div style={{ fontWeight: 700, color: '#92400e', fontSize: 14 }}>
+                    {provisionalCount} Unconfirmed {provisionalCount === 1 ? 'Admission' : 'Admissions'} Pending Fee Clearance
+                  </div>
+                  <div style={{ fontSize: 12, color: '#b45309' }}>
+                    These applicants are isolated in the Provisional Admissions queue with temporary PROV- IDs and excluded from official student rosters.
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate('/admissions/provisional')}
+                style={{
+                  background: '#b45309',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: 6,
+                  padding: '7px 14px',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6
+                }}
+              >
+                Go to Provisional Admissions <i className="ti ti-arrow-right" />
+              </button>
+            </div>
+          )}
 
           {/* ── Rollback Notification Banner ── */}
           {lastRollbackToken && (

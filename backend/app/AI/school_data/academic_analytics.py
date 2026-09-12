@@ -197,13 +197,13 @@ def get_school_student_count(school_id: int) -> dict:
     """Total and class-wise student counts."""
     from app.models.academic import Student, Class
 
-    total = Student.query.filter_by(school_id=school_id).count()
+    total = Student.query.filter_by(school_id=school_id, is_deleted=False).filter(Student.status != 'PROVISIONAL').count()
     classes = db.session.query(
         Class.name,
         Class.section,
         func.count(Student.id).label('count'),
     ).join(Student, Student.class_id == Class.id)\
-     .filter(Student.school_id == school_id)\
+     .filter(Student.school_id == school_id, Student.is_deleted == False, Student.status != 'PROVISIONAL')\
      .group_by(Class.id, Class.name, Class.section)\
      .order_by(Class.name)\
      .all()

@@ -149,10 +149,12 @@ def test_paying_fee_auto_confirms_provisional_student(client, app):
     assert res.status_code in [200, 201]
     student_id = res.get_json()['id']
 
-    # 2. Verify initial status is PROVISIONAL
+    # 2. Verify initial status is PROVISIONAL and has PROV- number
     with app.app_context():
         student = Student.query.get(student_id)
         assert student.status == 'PROVISIONAL'
+        assert student.admission_no.startswith('PROV-')
+        assert student.provisional_no.startswith('PROV-')
         fr = FeeRecord.query.filter_by(student_id=student_id).first()
         assert fr is not None
         rec_id = fr.id
@@ -166,10 +168,110 @@ def test_paying_fee_auto_confirms_provisional_student(client, app):
     }, headers=headers)
     assert pay_res.status_code == 200
 
-    # 4. Verify student status transitioned automatically to ACTIVE!
+    # 4. Verify student status transitioned automatically to ACTIVE and received official ADM- number!
     with app.app_context():
         student = Student.query.get(student_id)
         assert student.status == 'ACTIVE', f"Expected student status to be ACTIVE, got {student.status}"
+        assert student.admission_no.startswith('ADM-'), f"Expected official ADM- number, got {student.admission_no}"
+        assert student.provisional_no.startswith('PROV-')
         enr = StudentEnrollment.query.filter_by(student_id=student_id).first()
         if enr:
             assert enr.enrollment_status == 'ACTIVE'
+
+
+def test_student_list_and_dashboard_exclude_provisional_students(client, app):
+    headers, class_id = setup_school_and_principal(client)
+
+    # 1. Admit 1 active student
+    client.post('/api/principal/students', json={
+        'name': 'Active Student One',
+        'class_id': class_id,
+        'parent_phone': '9991112221',
+        'status': 'ACTIVE',
+        'fee_setup': {'is_provisional': False, 'payment_status': 'PAID', 'initial_payment_amount': 5000}
+    }, headers=headers)
+
+    # 2. Admit 1 provisional student
+    client.post('/api/principal/students', json={
+        'name': 'Provisional Student Pending',
+        'class_id': class_id,
+        'parent_phone': '9991112222',
+        'status': 'PROVISIONAL',
+        'fee_setup': {'is_provisional': True, 'payment_status': 'DUE', 'initial_payment_amount': 0}
+    }, headers=headers)
+
+    # 3. Regular student directory should only return 1 active student
+    res_list = client.get('/api/principal/students', headers=headers)
+    assert res_list.status_code == 200
+    items = res_list.get_json()['data']
+    assert len(items) == 1
+    assert items[0]['name'] == 'Active Student One'
+
+    # 4. ?status=PROVISIONAL should return only the provisional student
+    res_prov = client.get('/api/principal/students?status=PROVISIONAL', headers=headers)
+    assert res_prov.status_code == 200
+    items_prov = res_prov.get_json()['data']
+    assert len(items_prov) == 1
+    assert items_prov[0]['name'] == 'Provisional Student Pending'
+    assert items_prov[0]['admission_no'].startswith('PROV-')
+
+    # 5. Dashboard should count only 1 total student, and 1 unconfirmed admission
+    res_dash = client.get('/api/principal/dashboard', headers=headers)
+    assert res_dash.status_code == 200
+    dash_data = res_dash.get_json()
+    assert dash_data['total_students'] == 1
+    assert dash_data.get('unconfirmed_admissions_count') == 1
+
+
+def test_monthly_fee_generation_skips_unconfirmed_provisional_students(app, client):
+    """Verifies that bulk fee generation skips PROVISIONAL students and generate_fee_bill refuses to bill them."""
+    headers, class_id = setup_school_and_principal(client)
+
+    # 1. Admit a provisional student (skip fee payment)
+    payload = {
+        'name': 'Provisional Bill Skip Student',
+        'class_id': class_id,
+        'father_name': 'Father Skip',
+        'parent_phone': '9876543219',
+        'manual_admission_no': 'SKIP-BILL-001',
+        'fee_setup': {
+            'is_provisional': True,
+            'payment_status': 'DUE',
+            'initial_payment_amount': 0,
+        },
+        'status': 'PROVISIONAL'
+    }
+
+    res = client.post('/api/principal/students', json=payload, headers=headers)
+    assert res.status_code in [200, 201]
+    student_id = res.get_json()['id']
+
+    with app.app_context():
+        from app.services.fee_ledger_service import bulk_generate_fee_bills, generate_fee_bill
+        from app.models.fee_finance import FeeBill
+        from app.models.academic import Student
+        from datetime import date
+
+        student = Student.query.get(student_id)
+        school_id = student.school_id
+
+        # Verify bulk generation does NOT include this provisional student
+        res_bulk = bulk_generate_fee_bills(
+            school_id=school_id,
+            bill_month='2026-10',
+            due_date=date(2026, 10, 10),
+            class_id=class_id,
+        )
+
+        # Ensure no FeeBill was generated for the provisional student
+        bill = FeeBill.query.filter_by(student_id=student_id, bill_month='2026-10').first()
+        assert bill is None, "Monthly FeeBill should NEVER be generated for unconfirmed provisional student"
+
+        # Also verify generate_fee_bill explicitly raises ValueError
+        actor_user = User.query.filter_by(school_id=school_id).first()
+        try:
+            generate_fee_bill(student_id=student_id, bill_month='2026-10', due_date=date(2026, 10, 10), actor_user=actor_user)
+            assert False, "Should have raised ValueError when attempting to generate fee for PROVISIONAL student"
+        except ValueError as err:
+            assert "UNCONFIRMED" in str(err) or "PROVISIONAL" in str(err)
+
