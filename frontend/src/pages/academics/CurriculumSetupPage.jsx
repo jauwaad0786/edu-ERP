@@ -1,7 +1,15 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import Sidebar from '../../components/Sidebar';
+import Navbar from '../../components/Navbar';
 import api from '../../api/axios';
+import toast from 'react-hot-toast';
+import { useAuth } from '../../context/AuthContext';
 
 export default function CurriculumSetupPage() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+
   const [session, setSession] = useState('2026-27');
   const [classes, setClasses] = useState([]);
   const [selectedClassId, setSelectedClassId] = useState('');
@@ -44,998 +52,1026 @@ export default function CurriculumSetupPage() {
     id: null,
     topic_no: 1,
     title: '',
-    description: '',
-    sub_topics: '',
-    estimated_periods: 2,
-    learning_objectives: '',
+    estimated_periods: 1.0,
+    planned_date: '',
   });
 
-  const [copyTargetSession, setCopyTargetSession] = useState('2027-28');
+  const [copySessionTarget, setCopySessionTarget] = useState('2027-28');
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState(null);
-  const [successMsg, setSuccessMsg] = useState('');
 
-  // ── 1. Initial Load ──────────────────────────────────────────────────────────
+  // Fetch initial classes and subjects
   useEffect(() => {
-    fetchInitialData();
+    const fetchMetadata = async () => {
+      try {
+        const [cRes, sRes] = await Promise.all([
+          api.get('/curriculum/classes'),
+          api.get('/curriculum/subjects')
+        ]);
+        setClasses(cRes.data.classes || []);
+        setSubjects(sRes.data.subjects || []);
+      } catch (err) {
+        console.error('Error fetching metadata:', err);
+      }
+    };
+    fetchMetadata();
   }, []);
+
+  // Fetch Curriculums
+  const fetchCurriculums = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ session });
+      if (selectedClassId) params.append('class_id', selectedClassId);
+      if (selectedSubjectId) params.append('subject_id', selectedSubjectId);
+
+      const res = await api.get(`/curriculum?${params.toString()}`);
+      const list = res.data.curriculums || [];
+      setCurriculums(list);
+
+      if (list.length > 0) {
+        if (!activeCurriculum || !list.some(c => c.id === activeCurriculum.id)) {
+          setActiveCurriculum(list[0]);
+        } else {
+          const updated = list.find(c => c.id === activeCurriculum.id);
+          setActiveCurriculum(updated || list[0]);
+        }
+      } else {
+        setActiveCurriculum(null);
+      }
+    } catch (err) {
+      console.error('Error fetching curriculums:', err);
+      toast.error('Failed to load curriculum list');
+    } finally {
+      setLoading(false);
+    }
+  }, [session, selectedClassId, selectedSubjectId, activeCurriculum]);
 
   useEffect(() => {
     fetchCurriculums();
   }, [session, selectedClassId, selectedSubjectId]);
 
-  const fetchInitialData = async () => {
-    try {
-      const clsRes = await api.get('/classes');
-      setClasses(clsRes.data || []);
-      const subRes = await api.get('/subjects');
-      setSubjects(subRes.data || []);
-    } catch (err) {
-      console.error('Failed to load classes/subjects:', err);
-    }
-  };
+  // Aggregate Stats
+  const stats = useMemo(() => {
+    let totalChapters = 0;
+    let totalTopics = 0;
+    let totalPeriods = 0;
 
-  const fetchCurriculums = async () => {
-    setLoading(true);
-    try {
-      let url = `/curriculum?session=${session}`;
-      if (selectedClassId) url += `&class_id=${selectedClassId}`;
-      if (selectedSubjectId) url += `&subject_id=${selectedSubjectId}`;
-      const res = await api.get(url);
-      setCurriculums(res.data || []);
-    } catch (err) {
-      console.error('Failed to load curriculums:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    curriculums.forEach(c => {
+      totalPeriods += (c.estimated_periods || 0);
+      const chs = c.chapters || [];
+      totalChapters += chs.length;
+      chs.forEach(ch => {
+        totalTopics += (ch.topics || []).length;
+      });
+    });
 
-  const openCurriculumDetails = async (cId) => {
-    try {
-      const res = await api.get(`/curriculum/${cId}`);
-      setActiveCurriculum(res.data);
-    } catch (err) {
-      console.error('Failed to load curriculum details:', err);
-    }
-  };
+    return {
+      totalCurriculums: curriculums.length,
+      totalChapters,
+      totalTopics,
+      totalPeriods,
+    };
+  }, [curriculums]);
 
-  // ── 2. Create Curriculum with Skeleton Chapters ─────────────────────────────
-  const handleCreateCurriculum = async (e) => {
+  // Handle Save Curriculum
+  const handleSaveCurriculum = async (e) => {
     e.preventDefault();
+    if (!formData.class_id || !formData.subject_id) {
+      toast.error('Please select both Class and Subject');
+      return;
+    }
     setSubmitting(true);
-    setError(null);
-
     try {
-      // Generate skeleton chapters if requested
-      const skeletonChapters = [];
-      const numChapters = parseInt(formData.num_skeleton_chapters, 10) || 0;
-      const periodsPerCh = Math.max(1, Math.round((parseInt(formData.estimated_periods, 10) || 100) / (numChapters || 1)));
-
-      for (let i = 1; i <= numChapters; i++) {
-        skeletonChapters.push({
-          chapter_no: i,
-          title: `Chapter ${i}`,
-          estimated_periods: periodsPerCh,
-          description: '',
-          learning_outcomes: '',
-        });
-      }
-
-      const payload = {
+      const res = await api.post('/curriculum', {
+        ...formData,
         session,
-        class_id: parseInt(selectedClassId, 10),
-        subject_id: parseInt(selectedSubjectId, 10),
-        book_name: formData.book_name,
-        publisher: formData.publisher,
-        book_code: formData.book_code,
-        estimated_periods: parseInt(formData.estimated_periods, 10),
-        description: formData.description,
-        chapters: skeletonChapters,
-      };
+        class_id: parseInt(formData.class_id),
+        subject_id: parseInt(formData.subject_id),
+        estimated_periods: parseInt(formData.estimated_periods) || 100,
+        num_skeleton_chapters: parseInt(formData.num_skeleton_chapters) || 0,
+      });
 
-      const res = await api.post('/curriculum', payload);
-      setSuccessMsg(`Curriculum "${res.data.book_name}" created with ${res.data.chapters?.length || 0} chapters!`);
+      toast.success(res.data.message || 'Curriculum created successfully!');
       setShowAddModal(false);
+      setFormData({
+        book_name: '',
+        publisher: '',
+        book_code: '',
+        estimated_periods: 120,
+        description: '',
+        num_skeleton_chapters: 10,
+      });
       fetchCurriculums();
-      setActiveCurriculum(res.data);
-      setTimeout(() => setSuccessMsg(''), 4000);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to create curriculum');
+      console.error('Save curriculum error:', err);
+      toast.error(err.response?.data?.message || 'Failed to save curriculum');
     } finally {
       setSubmitting(false);
     }
   };
 
-  // ── 3. Save Chapter ─────────────────────────────────────────────────────────
+  // Handle Save Chapter
   const handleSaveChapter = async (e) => {
     e.preventDefault();
+    if (!activeCurriculum) return;
     setSubmitting(true);
     try {
-      if (chapterForm.id) {
-        await api.put(`/curriculum/chapters/${chapterForm.id}`, chapterForm);
-      } else {
-        await api.post(`/curriculum/${activeCurriculum.id}/chapters`, chapterForm);
-      }
+      const res = await api.post('/curriculum/chapter', {
+        ...chapterForm,
+        curriculum_id: activeCurriculum.id,
+        chapter_no: parseInt(chapterForm.chapter_no),
+        estimated_periods: parseFloat(chapterForm.estimated_periods) || 0,
+        weightage: parseFloat(chapterForm.weightage) || 0,
+      });
+
+      toast.success(res.data.message || 'Chapter saved successfully!');
       setShowChapterModal(false);
-      openCurriculumDetails(activeCurriculum.id);
+      setChapterForm({
+        id: null,
+        chapter_no: (activeCurriculum.chapters?.length || 0) + 1,
+        title: '',
+        description: '',
+        estimated_periods: 8,
+        weightage: 0,
+        planned_start_date: '',
+        planned_completion_date: '',
+        learning_outcomes: '',
+      });
       fetchCurriculums();
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to save chapter');
+      toast.error(err.response?.data?.message || 'Failed to save chapter');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleDeleteChapter = async (chId) => {
-    if (!window.confirm('Are you sure you want to delete this chapter and all its topics?')) return;
-    try {
-      await api.delete(`/curriculum/chapters/${chId}`);
-      openCurriculumDetails(activeCurriculum.id);
-      fetchCurriculums();
-    } catch (err) {
-      alert(err.response?.data?.error || 'Failed to delete chapter');
-    }
-  };
-
-  // ── 4. Save Topic ───────────────────────────────────────────────────────────
+  // Handle Save Topic
   const handleSaveTopic = async (e) => {
     e.preventDefault();
+    if (!selectedChapterForTopic) return;
     setSubmitting(true);
     try {
-      if (topicForm.id) {
-        await api.put(`/curriculum/topics/${topicForm.id}`, topicForm);
-      } else {
-        await api.post(`/curriculum/chapters/${selectedChapterForTopic.id}/topics`, topicForm);
-      }
-      setShowTopicModal(false);
-      openCurriculumDetails(activeCurriculum.id);
-    } catch (err) {
-      alert(err.response?.data?.error || 'Failed to save topic');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleDeleteTopic = async (tpId) => {
-    if (!window.confirm('Are you sure you want to delete this topic?')) return;
-    try {
-      await api.delete(`/curriculum/topics/${tpId}`);
-      openCurriculumDetails(activeCurriculum.id);
-    } catch (err) {
-      alert(err.response?.data?.error || 'Failed to delete topic');
-    }
-  };
-
-  // ── 5. Copy Curriculum ──────────────────────────────────────────────────────
-  const handleCopyCurriculum = async () => {
-    if (!copyTargetSession) return;
-    setSubmitting(true);
-    try {
-      const res = await api.post(`/curriculum/${activeCurriculum.id}/copy-session`, {
-        target_session: copyTargetSession,
+      const res = await api.post('/curriculum/topic', {
+        ...topicForm,
+        chapter_id: selectedChapterForTopic.id,
+        topic_no: parseInt(topicForm.topic_no),
+        estimated_periods: parseFloat(topicForm.estimated_periods) || 1.0,
       });
-      setSuccessMsg(res.data.message || 'Curriculum copied successfully!');
-      setShowCopyModal(false);
-      setTimeout(() => setSuccessMsg(''), 4000);
+
+      toast.success(res.data.message || 'Topic saved successfully!');
+      setShowTopicModal(false);
+      setTopicForm({
+        id: null,
+        topic_no: (selectedChapterForTopic.topics?.length || 0) + 1,
+        title: '',
+        estimated_periods: 1.0,
+        planned_date: '',
+      });
+      fetchCurriculums();
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to copy curriculum');
+      toast.error(err.response?.data?.message || 'Failed to save topic');
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Filtered subjects based on selected class
-  const classSubjects = useMemo(() => {
-    if (!selectedClassId) return subjects;
-    return subjects.filter((s) => s.class_id === parseInt(selectedClassId, 10));
-  }, [selectedClassId, subjects]);
+  // Handle Copy Session
+  const handleCopySession = async (e) => {
+    e.preventDefault();
+    if (!activeCurriculum) return;
+    setSubmitting(true);
+    try {
+      const res = await api.post('/curriculum/copy-session', {
+        source_curriculum_id: activeCurriculum.id,
+        target_session: copySessionTarget,
+      });
+
+      toast.success(res.data.message || `Curriculum cloned to Session ${copySessionTarget}`);
+      setShowCopyModal(false);
+      setSession(copySessionTarget);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to copy curriculum');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 sm:p-6 lg:p-8 font-sans text-slate-900 dark:text-slate-100">
-      {/* ── Page Header ──────────────────────────────────────────────────────── */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="p-2 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl">
-              <i className="ti ti-books text-2xl" />
-            </span>
+    <div className="app-shell">
+      <Sidebar />
+      <div className="main-content">
+        <Navbar title="Curriculum & Syllabus Setup" />
+
+        <div className="page-body" style={{ maxWidth: '1440px', margin: '0 auto', padding: '24px 28px' }}>
+          {/* ══ HEADER & ACTIONS ══ */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '22px' }}>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">Curriculum & Syllabus Management</h1>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                Setup books, chapters, topics, and planned periods for session-wise syllabus tracking.
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                <button
+                  onClick={() => navigate(-1)}
+                  style={{
+                    background: '#f1f5f9', border: 'none', borderRadius: '8px',
+                    padding: '6px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                    fontSize: '13px', fontWeight: 700, color: '#475569'
+                  }}
+                >
+                  <i className="ti ti-arrow-left" /> Back
+                </button>
+                <span style={{
+                  background: '#ecfdf5', color: '#059669', fontSize: '12px',
+                  fontWeight: 800, padding: '4px 10px', borderRadius: '100px'
+                }}>
+                  ● 1P360 Academic Engine
+                </span>
+                <span style={{ fontSize: '13px', color: '#64748b' }}>
+                  Session <strong>{session}</strong>
+                </span>
+              </div>
+              <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 900, color: '#0f172a' }}>
+                Curriculum &amp; Syllabus Management
+              </h1>
+              <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>
+                Setup prescribed books, syllabus chapters, topic-wise period budgets, and clone curriculum to upcoming sessions.
               </p>
             </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <select
+                value={session}
+                onChange={(e) => setSession(e.target.value)}
+                className="form-select"
+                style={{ width: '160px', fontWeight: 700, borderRadius: '10px' }}
+              >
+                <option value="2026-27">Session 2026-27</option>
+                <option value="2025-26">Session 2025-26</option>
+                <option value="2027-28">Session 2027-28</option>
+              </select>
+
+              <button
+                onClick={() => {
+                  setFormData({
+                    class_id: classes[0]?.id || '',
+                    subject_id: subjects[0]?.id || '',
+                    book_name: '',
+                    publisher: '',
+                    book_code: '',
+                    estimated_periods: 120,
+                    description: '',
+                    num_skeleton_chapters: 10,
+                  });
+                  setShowAddModal(true);
+                }}
+                className="btn btn-primary"
+                style={{
+                  borderRadius: '10px', padding: '10px 18px', fontWeight: 800,
+                  display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(1,118,211,0.25)'
+                }}
+              >
+                <i className="ti ti-plus" style={{ fontSize: '16px' }} />
+                Setup New Curriculum
+              </button>
+
+              {activeCurriculum && (
+                <button
+                  onClick={() => setShowCopyModal(true)}
+                  className="btn btn-neutral"
+                  style={{ borderRadius: '10px', padding: '10px 16px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <i className="ti ti-copy" />
+                  Copy to Next Session
+                </button>
+              )}
+            </div>
           </div>
-        </div>
 
-        <div className="flex items-center gap-3">
-          <select
-            value={session}
-            onChange={(e) => setSession(e.target.value)}
-            className="px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl text-sm font-semibold shadow-sm focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="2026-27">Academic Session 2026-27</option>
-            <option value="2025-26">Academic Session 2025-26</option>
-            <option value="2027-28">Academic Session 2027-28</option>
-          </select>
+          {/* ══ METRICS STRIP ══ */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '22px' }}>
+            <div style={{ background: '#fff', borderRadius: '16px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>CURRICULUMS CONFIGURED</span>
+                <span style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#e0f2fe', color: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <i className="ti ti-books" style={{ fontSize: '18px' }} />
+                </span>
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: '#0f172a' }}>{stats.totalCurriculums}</div>
+              <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>For academic session {session}</p>
+            </div>
 
-          <button
-            onClick={() => {
-              setFormData({
-                book_name: '',
-                publisher: '',
-                book_code: '',
-                estimated_periods: 120,
-                description: '',
-                num_skeleton_chapters: 12,
-              });
-              setShowAddModal(true);
-            }}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-md transition-all active:scale-95"
-          >
-            <i className="ti ti-plus" />
-            <span>Setup New Curriculum</span>
-          </button>
-        </div>
-      </div>
+            <div style={{ background: '#fff', borderRadius: '16px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>TOTAL CHAPTERS</span>
+                <span style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <i className="ti ti-bookmarks" style={{ fontSize: '18px' }} />
+                </span>
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: '#059669' }}>{stats.totalChapters}</div>
+              <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>Across all subjects</p>
+            </div>
 
-      {successMsg && (
-        <div className="mb-6 p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 rounded-2xl flex items-center gap-3">
-          <i className="ti ti-circle-check text-xl flex-shrink-0" />
-          <span className="text-sm font-medium">{successMsg}</span>
-        </div>
-      )}
+            <div style={{ background: '#fff', borderRadius: '16px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>TOPICS CATALOGED</span>
+                <span style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#fef3c7', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <i className="ti ti-list-check" style={{ fontSize: '18px' }} />
+                </span>
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: '#d97706' }}>{stats.totalTopics}</div>
+              <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>Individual learning items</p>
+            </div>
 
-      {/* ── Filter Bar ───────────────────────────────────────────────────────── */}
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm mb-6 flex flex-wrap items-center gap-4">
-        <div className="w-full sm:w-64">
-          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Filter Class</label>
-          <select
-            value={selectedClassId}
-            onChange={(e) => {
-              setSelectedClassId(e.target.value);
-              setSelectedSubjectId('');
-            }}
-            className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-300 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="">All Classes</option>
-            {classes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name} {c.section ? `- ${c.section}` : ''}
-              </option>
-            ))}
-          </select>
-        </div>
+            <div style={{ background: '#fff', borderRadius: '16px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>TOTAL PLANNED PERIODS</span>
+                <span style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#ede9fe', color: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <i className="ti ti-clock" style={{ fontSize: '18px' }} />
+                </span>
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: '#7c3aed' }}>{stats.totalPeriods} <span style={{ fontSize: '14px', fontWeight: 600, color: '#94a3b8' }}>pds</span></div>
+              <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>Cumulative teaching budget</p>
+            </div>
+          </div>
 
-        <div className="w-full sm:w-64">
-          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Filter Subject</label>
-          <select
-            value={selectedSubjectId}
-            onChange={(e) => setSelectedSubjectId(e.target.value)}
-            className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-300 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="">All Subjects</option>
-            {classSubjects.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name} ({s.code || 'No Code'})
-              </option>
-            ))}
-          </select>
-        </div>
+          {/* ══ FILTERS STRIP ══ */}
+          <div style={{
+            background: '#ffffff', borderRadius: '16px', padding: '16px 20px',
+            border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+            display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', marginBottom: '22px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#475569', fontSize: '13px', fontWeight: 700 }}>
+              <i className="ti ti-filter" style={{ color: '#0176d3' }} /> Filter:
+            </div>
 
-        <div className="ml-auto text-xs text-slate-400 font-medium">
-          Found <span className="font-bold text-indigo-600 dark:text-indigo-400">{curriculums.length}</span> Curriculums Configured
-        </div>
-      </div>
+            <div style={{ minWidth: '180px' }}>
+              <select
+                value={selectedClassId}
+                onChange={(e) => setSelectedClassId(e.target.value)}
+                className="form-select"
+                style={{ width: '100%', borderRadius: '8px', fontSize: '13px' }}
+              >
+                <option value="">All Classes</option>
+                {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
 
-      {/* ── Main Layout: Curriculums List & Chapter Details Split ────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Curriculums Grid */}
-        <div className={activeCurriculum ? 'lg:col-span-5 space-y-4' : 'lg:col-span-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'}>
+            <div style={{ minWidth: '180px' }}>
+              <select
+                value={selectedSubjectId}
+                onChange={(e) => setSelectedSubjectId(e.target.value)}
+                className="form-select"
+                style={{ width: '100%', borderRadius: '8px', fontSize: '13px' }}
+              >
+                <option value="">All Subjects</option>
+                {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+
+            {(selectedClassId || selectedSubjectId) && (
+              <button
+                onClick={() => { setSelectedClassId(''); setSelectedSubjectId(''); }}
+                style={{
+                  background: '#f1f5f9', border: 'none', borderRadius: '8px',
+                  padding: '6px 12px', cursor: 'pointer', fontSize: '12px', fontWeight: 700, color: '#64748b'
+                }}
+              >
+                Reset Filters
+              </button>
+            )}
+
+            <div style={{ marginLeft: 'auto', fontSize: '13px', color: '#64748b' }}>
+              Found <strong>{curriculums.length}</strong> Curriculums Configured
+            </div>
+          </div>
+
+          {/* ══ MAIN BODY ══ */}
           {loading ? (
-            <div className="col-span-full text-center py-12 text-slate-400">
-              <i className="ti ti-loader animate-spin text-3xl mb-2" />
-              <p>Loading Curriculums...</p>
+            <div style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '60px', textAlign: 'center' }}>
+              <i className="ti ti-loader animate-spin" style={{ fontSize: '32px', color: '#0176d3' }} />
+              <p style={{ marginTop: '12px', fontSize: '14px', fontWeight: 600, color: '#64748b' }}>Loading curriculum database...</p>
             </div>
           ) : curriculums.length === 0 ? (
-            <div className="col-span-full text-center py-16 bg-white dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-800 rounded-3xl p-8">
-              <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <i className="ti ti-book-off text-3xl" />
+            <div style={{
+              background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0',
+              padding: '64px 20px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+            }}>
+              <div style={{
+                width: '64px', height: '64px', borderRadius: '16px', background: '#f1f5f9',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px', color: '#94a3b8'
+              }}>
+                <i className="ti ti-book-off" style={{ fontSize: '32px' }} />
               </div>
-              <h3 className="text-lg font-bold">No Curriculum Configured Yet</h3>
-              <p className="text-sm text-slate-500 max-w-md mx-auto mt-1 mb-6">
+              <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#1e293b', margin: '0 0 6px' }}>
+                No Curriculum Configured Yet
+              </h3>
+              <p style={{ fontSize: '13px', color: '#64748b', maxWidth: '440px', margin: '0 auto 20px' }}>
                 Get started by setting up the syllabus and textbook chapters for this academic session.
               </p>
               <button
-                onClick={() => setShowAddModal(true)}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold shadow hover:bg-indigo-700"
+                onClick={() => {
+                  setFormData({
+                    class_id: classes[0]?.id || '',
+                    subject_id: subjects[0]?.id || '',
+                    book_name: '',
+                    publisher: '',
+                    book_code: '',
+                    estimated_periods: 120,
+                    description: '',
+                    num_skeleton_chapters: 10,
+                  });
+                  setShowAddModal(true);
+                }}
+                className="btn btn-primary"
+                style={{ borderRadius: '10px', padding: '10px 20px', fontWeight: 800 }}
               >
-                + Setup First Curriculum
+                <i className="ti ti-plus" /> Setup First Curriculum
               </button>
             </div>
           ) : (
-            curriculums.map((c) => {
-              const isActive = activeCurriculum?.id === c.id;
-              const prog = c.progress || {};
-              return (
-                <div
-                  key={c.id}
-                  onClick={() => openCurriculumDetails(c.id)}
-                  className={`cursor-pointer rounded-2xl border transition-all p-5 shadow-sm relative overflow-hidden ${
-                    isActive
-                      ? 'bg-indigo-50/70 dark:bg-indigo-950/40 border-indigo-500 ring-2 ring-indigo-500/20 shadow-md'
-                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3 mb-2">
-                    <div>
-                      <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                        {c.class_name || 'Class'}
-                      </span>
-                      <h3 className="text-base font-bold mt-1.5 line-clamp-1">{c.subject_name}</h3>
-                      <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                        <i className="ti ti-book text-indigo-500" />
-                        <span className="font-medium text-slate-700 dark:text-slate-300">{c.book_name}</span>
-                        {c.publisher && ` • ${c.publisher}`}
-                      </p>
-                    </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '20px', alignItems: 'start' }}>
+              {/* Left Sidebar: Curriculums List */}
+              <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+                <h4 style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: 800, color: '#0f172a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Subjects</span>
+                  <span style={{ fontSize: '11px', background: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: '100px' }}>
+                    {curriculums.length}
+                  </span>
+                </h4>
 
-                    <span
-                      className={`text-xs px-2.5 py-1 rounded-full font-bold ${
-                        prog.status === 'ON_TRACK'
-                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
-                          : prog.status === 'AHEAD'
-                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400'
-                          : prog.status === 'CRITICAL'
-                          ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400'
-                          : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400'
-                      }`}
-                    >
-                      {prog.status?.replace('_', ' ') || 'ON TRACK'}
-                    </span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {curriculums.map((curr) => {
+                    const isSelected = activeCurriculum?.id === curr.id;
+                    const chCount = curr.chapters?.length || 0;
+
+                    return (
+                      <div
+                        key={curr.id}
+                        onClick={() => setActiveCurriculum(curr)}
+                        style={{
+                          padding: '12px 14px', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.15s ease',
+                          border: isSelected ? '1px solid #0176d3' : '1px solid #f1f5f9',
+                          background: isSelected ? '#f0f7ff' : '#ffffff',
+                          boxShadow: isSelected ? '0 2px 8px rgba(1,118,211,0.1)' : 'none'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 800, color: isSelected ? '#0176d3' : '#64748b', textTransform: 'uppercase' }}>
+                            {curr.class_name}
+                          </span>
+                          <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b' }}>
+                            {curr.estimated_periods || 0} pds
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '14px', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
+                          {curr.subject_name}
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {curr.book_name ? `Book: ${curr.book_name}` : 'No book assigned'}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <i className="ti ti-bookmarks" /> {chCount} Chapters defined
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Right Panel: Active Curriculum Details, Chapters & Topics */}
+              {activeCurriculum && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  {/* Banner Card */}
+                  <div style={{
+                    background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0',
+                    padding: '20px 24px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                          <span style={{ background: '#0176d3', color: '#fff', fontSize: '11px', fontWeight: 800, padding: '2px 8px', borderRadius: '6px' }}>
+                            {activeCurriculum.class_name}
+                          </span>
+                          <span style={{ fontSize: '13px', fontWeight: 700, color: '#64748b' }}>
+                            Session {activeCurriculum.session}
+                          </span>
+                        </div>
+                        <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 900, color: '#0f172a' }}>
+                          {activeCurriculum.subject_name} Syllabus Master
+                        </h2>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '8px', fontSize: '13px', color: '#475569', flexWrap: 'wrap' }}>
+                          {activeCurriculum.book_name && (
+                            <span><i className="ti ti-book" style={{ color: '#0176d3' }} /> Book: <strong>{activeCurriculum.book_name}</strong></span>
+                          )}
+                          {activeCurriculum.publisher && (
+                            <span><i className="ti ti-building" style={{ color: '#64748b' }} /> Publisher: <strong>{activeCurriculum.publisher}</strong></span>
+                          )}
+                          {activeCurriculum.book_code && (
+                            <span><i className="ti ti-barcode" style={{ color: '#64748b' }} /> Code: <strong>{activeCurriculum.book_code}</strong></span>
+                          )}
+                          <span><i className="ti ti-clock" style={{ color: '#059669' }} /> Planned: <strong>{activeCurriculum.estimated_periods || 0} Periods</strong></span>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          onClick={() => {
+                            setChapterForm({
+                              id: null,
+                              chapter_no: (activeCurriculum.chapters?.length || 0) + 1,
+                              title: '',
+                              description: '',
+                              estimated_periods: 8,
+                              weightage: 0,
+                              planned_start_date: '',
+                              planned_completion_date: '',
+                              learning_outcomes: '',
+                            });
+                            setShowChapterModal(true);
+                          }}
+                          className="btn btn-primary btn-sm"
+                          style={{ borderRadius: '8px', fontWeight: 700 }}
+                        >
+                          <i className="ti ti-plus" /> Add Chapter
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Coverage Progress Bar */}
-                  <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
-                    <div className="flex justify-between items-center text-xs mb-1.5">
-                      <span className="font-semibold text-slate-600 dark:text-slate-400">Syllabus Coverage</span>
-                      <span className="font-bold text-slate-800 dark:text-slate-200">{prog.coverage_pct || 0}%</span>
+                  {/* Chapters List */}
+                  <div style={{
+                    background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0',
+                    padding: '20px 24px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+                  }}>
+                    <h3 style={{ margin: '0 0 16px', fontSize: '16px', fontWeight: 800, color: '#0f172a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>Chapters &amp; Syllabus Outline</span>
+                      <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>
+                        {activeCurriculum.chapters?.length || 0} Chapters
+                      </span>
+                    </h3>
+
+                    {(!activeCurriculum.chapters || activeCurriculum.chapters.length === 0) ? (
+                      <div style={{ padding: '32px 16px', textAlign: 'center', background: '#f8fafc', borderRadius: '12px' }}>
+                        <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>No chapters defined yet for this curriculum.</p>
+                        <button
+                          onClick={() => {
+                            setChapterForm({
+                              id: null,
+                              chapter_no: 1,
+                              title: '',
+                              description: '',
+                              estimated_periods: 8,
+                              weightage: 0,
+                              planned_start_date: '',
+                              planned_completion_date: '',
+                              learning_outcomes: '',
+                            });
+                            setShowChapterModal(true);
+                          }}
+                          className="btn btn-primary btn-sm"
+                          style={{ marginTop: '10px' }}
+                        >
+                          + Add First Chapter
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                        {activeCurriculum.chapters.map((ch) => {
+                          const topics = ch.topics || [];
+                          const completedTopics = topics.filter(t => t.status === 'COMPLETED').length;
+
+                          return (
+                            <div
+                              key={ch.id}
+                              style={{
+                                border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden',
+                                background: '#ffffff', transition: 'border-color 0.15s ease'
+                              }}
+                            >
+                              {/* Chapter Header */}
+                              <div style={{
+                                padding: '14px 18px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0',
+                                display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px'
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                  <span style={{
+                                    width: '30px', height: '30px', borderRadius: '8px', background: '#0176d3', color: '#fff',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 800
+                                  }}>
+                                    {ch.chapter_no}
+                                  </span>
+                                  <div>
+                                    <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 800, color: '#0f172a' }}>
+                                      {ch.title}
+                                    </h4>
+                                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                                      {ch.estimated_periods || 0} Planned Periods • {topics.length} Topics ({completedTopics} Completed)
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <button
+                                    onClick={() => {
+                                      setSelectedChapterForTopic(ch);
+                                      setTopicForm({
+                                        id: null,
+                                        topic_no: (topics.length || 0) + 1,
+                                        title: '',
+                                        estimated_periods: 1.0,
+                                        planned_date: '',
+                                      });
+                                      setShowTopicModal(true);
+                                    }}
+                                    className="btn btn-neutral btn-sm"
+                                    style={{ borderRadius: '6px', fontSize: '11px', padding: '4px 8px' }}
+                                  >
+                                    <i className="ti ti-plus" /> Add Topic
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setChapterForm({
+                                        id: ch.id,
+                                        chapter_no: ch.chapter_no,
+                                        title: ch.title,
+                                        description: ch.description || '',
+                                        estimated_periods: ch.estimated_periods || 8,
+                                        weightage: ch.weightage || 0,
+                                        planned_start_date: ch.planned_start_date || '',
+                                        planned_completion_date: ch.planned_completion_date || '',
+                                        learning_outcomes: ch.learning_outcomes || '',
+                                      });
+                                      setShowChapterModal(true);
+                                    }}
+                                    className="btn btn-neutral btn-sm"
+                                    style={{ borderRadius: '6px', fontSize: '11px', padding: '4px 8px' }}
+                                  >
+                                    <i className="ti ti-edit" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Topics List */}
+                              <div style={{ padding: '12px 18px' }}>
+                                {topics.length === 0 ? (
+                                  <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>
+                                    No subtopics cataloged under this chapter. Click "+ Add Topic" above.
+                                  </p>
+                                ) : (
+                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '8px' }}>
+                                    {topics.map(t => {
+                                      const isDone = t.status === 'COMPLETED';
+
+                                      return (
+                                        <div
+                                          key={t.id}
+                                          style={{
+                                            padding: '8px 12px', borderRadius: '8px', background: isDone ? '#f0fdf4' : '#ffffff',
+                                            border: isDone ? '1px solid #bbf7d0' : '1px solid #e2e8f0',
+                                            display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                                          }}
+                                        >
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                                            <i
+                                              className={isDone ? 'ti ti-circle-check-filled' : 'ti ti-circle'}
+                                              style={{ color: isDone ? '#16a34a' : '#cbd5e1', fontSize: '16px', flexShrink: 0 }}
+                                            />
+                                            <span style={{ fontSize: '12px', fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                              {t.topic_no}. {t.title}
+                                            </span>
+                                          </div>
+                                          <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', flexShrink: 0, marginLeft: '6px' }}>
+                                            {t.estimated_periods || 1} pd
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ══ MODAL 1: ADD/EDIT CURRICULUM ══ */}
+          {showAddModal && (
+            <div style={{
+              position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(3px)',
+              zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
+            }}>
+              <div style={{
+                background: '#ffffff', borderRadius: '16px', width: '100%', maxWidth: '580px',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.2)', border: '1px solid #e2e8f0', overflow: 'hidden'
+              }}>
+                <div style={{ padding: '16px 20px', background: '#0176d3', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>Setup New Subject Curriculum</h3>
+                  <button onClick={() => setShowAddModal(false)} style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '18px' }}>
+                    ✕
+                  </button>
+                </div>
+
+                <form onSubmit={handleSaveCurriculum} style={{ padding: '20px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Class *</label>
+                      <select
+                        value={formData.class_id}
+                        onChange={(e) => setFormData({ ...formData, class_id: e.target.value })}
+                        className="form-select"
+                        required
+                      >
+                        <option value="">Select Class</option>
+                        {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
                     </div>
-                    <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-indigo-600 dark:bg-indigo-500 rounded-full transition-all duration-500"
-                        style={{ width: `${Math.min(100, prog.coverage_pct || 0)}%` }}
+
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Subject *</label>
+                      <select
+                        value={formData.subject_id}
+                        onChange={(e) => setFormData({ ...formData, subject_id: e.target.value })}
+                        className="form-select"
+                        required
+                      >
+                        <option value="">Select Subject</option>
+                        {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: '14px' }}>
+                    <label className="form-label">Prescribed Book / Textbook Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. NCERT Mathematics Class 10"
+                      value={formData.book_name}
+                      onChange={(e) => setFormData({ ...formData, book_name: e.target.value })}
+                      className="form-input"
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Publisher</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. NCERT / Pearson"
+                        value={formData.publisher}
+                        onChange={(e) => setFormData({ ...formData, publisher: e.target.value })}
+                        className="form-input"
+                      />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Total Planned Periods</label>
+                      <input
+                        type="number"
+                        value={formData.estimated_periods}
+                        onChange={(e) => setFormData({ ...formData, estimated_periods: e.target.value })}
+                        className="form-input"
                       />
                     </div>
                   </div>
 
-                  {/* Quick stats footer */}
-                  <div className="mt-3 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                    <span>
-                      <strong className="text-slate-700 dark:text-slate-200">{c.total_chapters || 0}</strong> Chapters
-                    </span>
-                    <span>
-                      <strong className="text-slate-700 dark:text-slate-200">{c.estimated_periods || 0}</strong> Planned Periods
-                    </span>
-                    <span>
-                      <strong className="text-slate-700 dark:text-slate-200">{prog.actual_periods_taught || 0}</strong> Taught
-                    </span>
+                  <div style={{ background: '#f8fafc', borderRadius: '10px', padding: '12px 14px', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
+                    <label className="form-label" style={{ marginBottom: '4px' }}>Auto-Generate Chapter Skeleton (Fast Setup)</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <input
+                        type="number"
+                        min="0"
+                        max="30"
+                        value={formData.num_skeleton_chapters}
+                        onChange={(e) => setFormData({ ...formData, num_skeleton_chapters: e.target.value })}
+                        className="form-input"
+                        style={{ width: '100px' }}
+                      />
+                      <span style={{ fontSize: '12px', color: '#64748b' }}>
+                        Auto-creates placeholder chapters (Ch 1 to Ch {formData.num_skeleton_chapters}) with equal period budgets.
+                      </span>
+                    </div>
                   </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                    <button type="button" onClick={() => setShowAddModal(false)} className="btn btn-neutral">
+                      Cancel
+                    </button>
+                    <button type="submit" disabled={submitting} className="btn btn-primary">
+                      {submitting ? 'Creating...' : 'Save Curriculum'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* ══ MODAL 2: ADD/EDIT CHAPTER ══ */}
+          {showChapterModal && (
+            <div style={{
+              position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(3px)',
+              zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
+            }}>
+              <div style={{
+                background: '#ffffff', borderRadius: '16px', width: '100%', maxWidth: '540px',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.2)', border: '1px solid #e2e8f0', overflow: 'hidden'
+              }}>
+                <div style={{ padding: '16px 20px', background: '#0176d3', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>
+                    {chapterForm.id ? 'Edit Chapter' : 'Add Chapter'}
+                  </h3>
+                  <button onClick={() => setShowChapterModal(false)} style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '18px' }}>
+                    ✕
+                  </button>
                 </div>
-              );
-            })
+
+                <form onSubmit={handleSaveChapter} style={{ padding: '20px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr', gap: '12px', marginBottom: '14px' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Ch # *</label>
+                      <input
+                        type="number"
+                        value={chapterForm.chapter_no}
+                        onChange={(e) => setChapterForm({ ...chapterForm, chapter_no: e.target.value })}
+                        className="form-input"
+                        required
+                      />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Chapter Title *</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Real Numbers & Polynomials"
+                        value={chapterForm.title}
+                        onChange={(e) => setChapterForm({ ...chapterForm, title: e.target.value })}
+                        className="form-input"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Estimated Periods</label>
+                      <input
+                        type="number"
+                        value={chapterForm.estimated_periods}
+                        onChange={(e) => setChapterForm({ ...chapterForm, estimated_periods: e.target.value })}
+                        className="form-input"
+                      />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Weightage Marks (%)</label>
+                      <input
+                        type="number"
+                        value={chapterForm.weightage}
+                        onChange={(e) => setChapterForm({ ...chapterForm, weightage: e.target.value })}
+                        className="form-input"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: '16px' }}>
+                    <label className="form-label">Key Learning Outcomes</label>
+                    <textarea
+                      rows={2}
+                      placeholder="e.g. Students will learn Fundamental Theorem of Arithmetic & Proof of Irrationality"
+                      value={chapterForm.learning_outcomes}
+                      onChange={(e) => setChapterForm({ ...chapterForm, learning_outcomes: e.target.value })}
+                      className="form-textarea"
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                    <button type="button" onClick={() => setShowChapterModal(false)} className="btn btn-neutral">
+                      Cancel
+                    </button>
+                    <button type="submit" disabled={submitting} className="btn btn-primary">
+                      {submitting ? 'Saving...' : 'Save Chapter'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* ══ MODAL 3: ADD TOPIC ══ */}
+          {showTopicModal && (
+            <div style={{
+              position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(3px)',
+              zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
+            }}>
+              <div style={{
+                background: '#ffffff', borderRadius: '16px', width: '100%', maxWidth: '500px',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.2)', border: '1px solid #e2e8f0', overflow: 'hidden'
+              }}>
+                <div style={{ padding: '16px 20px', background: '#0176d3', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>
+                    Add Topic to Chapter {selectedChapterForTopic?.chapter_no}
+                  </h3>
+                  <button onClick={() => setShowTopicModal(false)} style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '18px' }}>
+                    ✕
+                  </button>
+                </div>
+
+                <form onSubmit={handleSaveTopic} style={{ padding: '20px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr', gap: '12px', marginBottom: '14px' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Topic # *</label>
+                      <input
+                        type="number"
+                        value={topicForm.topic_no}
+                        onChange={(e) => setTopicForm({ ...topicForm, topic_no: e.target.value })}
+                        className="form-input"
+                        required
+                      />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Topic Title *</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Fundamental Theorem of Arithmetic"
+                        value={topicForm.title}
+                        onChange={(e) => setTopicForm({ ...topicForm, title: e.target.value })}
+                        className="form-input"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: '16px' }}>
+                    <label className="form-label">Estimated Periods for this Topic</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      value={topicForm.estimated_periods}
+                      onChange={(e) => setTopicForm({ ...topicForm, estimated_periods: e.target.value })}
+                      className="form-input"
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                    <button type="button" onClick={() => setShowTopicModal(false)} className="btn btn-neutral">
+                      Cancel
+                    </button>
+                    <button type="submit" disabled={submitting} className="btn btn-primary">
+                      {submitting ? 'Saving...' : 'Save Topic'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* ══ MODAL 4: COPY TO NEXT SESSION ══ */}
+          {showCopyModal && (
+            <div style={{
+              position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(3px)',
+              zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
+            }}>
+              <div style={{
+                background: '#ffffff', borderRadius: '16px', width: '100%', maxWidth: '480px',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.2)', border: '1px solid #e2e8f0', overflow: 'hidden'
+              }}>
+                <div style={{ padding: '16px 20px', background: '#0176d3', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>Clone to Next Academic Session</h3>
+                  <button onClick={() => setShowCopyModal(false)} style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '18px' }}>
+                    ✕
+                  </button>
+                </div>
+
+                <form onSubmit={handleCopySession} style={{ padding: '20px' }}>
+                  <p style={{ margin: '0 0 14px', fontSize: '13px', color: '#475569' }}>
+                    Cloning will copy the textbook, chapters, topics, and planned periods into the target session. All completion progress and dates will be cleanly reset for the new academic year.
+                  </p>
+
+                  <div className="form-group" style={{ marginBottom: '16px' }}>
+                    <label className="form-label">Target Academic Session *</label>
+                    <input
+                      type="text"
+                      value={copySessionTarget}
+                      onChange={(e) => setCopySessionTarget(e.target.value)}
+                      className="form-input"
+                      placeholder="e.g. 2027-28"
+                      required
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                    <button type="button" onClick={() => setShowCopyModal(false)} className="btn btn-neutral">
+                      Cancel
+                    </button>
+                    <button type="submit" disabled={submitting} className="btn btn-primary">
+                      {submitting ? 'Cloning...' : 'Confirm & Clone'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
           )}
         </div>
-
-        {/* Right Column: Active Curriculum Chapters & Topics Details */}
-        {activeCurriculum && (
-          <div className="lg:col-span-7 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm p-6">
-            <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800 mb-6">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400">
-                    {activeCurriculum.class_name}
-                  </span>
-                  <span className="text-xs text-slate-400">•</span>
-                  <span className="text-xs text-slate-500">Session {activeCurriculum.session}</span>
-                </div>
-                <h2 className="text-xl font-bold mt-1">{activeCurriculum.subject_name} — Chapters & Topics</h2>
-                <p className="text-sm text-slate-500 flex items-center gap-1.5 mt-0.5">
-                  <i className="ti ti-book text-indigo-500" />
-                  <strong>{activeCurriculum.book_name}</strong>
-                  {activeCurriculum.publisher && <span>({activeCurriculum.publisher})</span>}
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setShowCopyModal(true)}
-                  className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5"
-                  title="Copy book & chapters to next session"
-                >
-                  <i className="ti ti-copy" />
-                  <span>Copy to Next Year</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    setChapterForm({
-                      id: null,
-                      chapter_no: (activeCurriculum.chapters?.length || 0) + 1,
-                      title: '',
-                      description: '',
-                      estimated_periods: 8,
-                      weightage: 0,
-                      planned_start_date: '',
-                      planned_completion_date: '',
-                      learning_outcomes: '',
-                    });
-                    setShowChapterModal(true);
-                  }}
-                  className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold inline-flex items-center gap-1 shadow-sm"
-                >
-                  <i className="ti ti-plus" />
-                  <span>Add Chapter</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Chapters Accordion / List */}
-            <div className="space-y-4">
-              {!activeCurriculum.chapters || activeCurriculum.chapters.length === 0 ? (
-                <div className="text-center py-12 text-slate-400">
-                  <i className="ti ti-folder-off text-3xl mb-2" />
-                  <p>No chapters added yet for this book.</p>
-                </div>
-              ) : (
-                activeCurriculum.chapters.map((ch) => (
-                  <div
-                    key={ch.id}
-                    className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden bg-slate-50/50 dark:bg-slate-900/50"
-                  >
-                    {/* Chapter Header */}
-                    <div className="p-4 flex items-center justify-between gap-3 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
-                      <div className="flex items-center gap-3">
-                        <span className="w-8 h-8 rounded-xl bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 font-bold text-xs flex items-center justify-center">
-                          Ch {ch.chapter_no}
-                        </span>
-                        <div>
-                          <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100">{ch.title}</h4>
-                          <p className="text-xs text-slate-500 flex items-center gap-3 mt-0.5">
-                            <span>{ch.estimated_periods || 0} Periods Planned</span>
-                            <span>•</span>
-                            <span>{ch.topics?.length || 0} Topics</span>
-                            {ch.planned_start_date && (
-                              <>
-                                <span>•</span>
-                                <span>Target: {ch.planned_start_date} to {ch.planned_completion_date}</span>
-                              </>
-                            )}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`text-xs px-2 py-0.5 rounded-full font-bold ${
-                            ch.status === 'COMPLETED'
-                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
-                              : ch.status === 'IN_PROGRESS'
-                              ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400'
-                              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
-                          }`}
-                        >
-                          {ch.status?.replace('_', ' ')}
-                        </span>
-
-                        <button
-                          onClick={() => {
-                            setSelectedChapterForTopic(ch);
-                            setTopicForm({
-                              id: null,
-                              topic_no: (ch.topics?.length || 0) + 1,
-                              title: '',
-                              description: '',
-                              sub_topics: '',
-                              estimated_periods: 2,
-                              learning_objectives: '',
-                            });
-                            setShowTopicModal(true);
-                          }}
-                          className="p-1.5 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-800 rounded-lg text-xs"
-                          title="Add Topic"
-                        >
-                          <i className="ti ti-plus" />
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            setChapterForm({
-                              id: ch.id,
-                              chapter_no: ch.chapter_no,
-                              title: ch.title,
-                              description: ch.description || '',
-                              estimated_periods: ch.estimated_periods || 8,
-                              weightage: ch.weightage || 0,
-                              planned_start_date: ch.planned_start_date || '',
-                              planned_completion_date: ch.planned_completion_date || '',
-                              learning_outcomes: ch.learning_outcomes || '',
-                            });
-                            setShowChapterModal(true);
-                          }}
-                          className="p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-xs"
-                          title="Edit Chapter"
-                        >
-                          <i className="ti ti-pencil" />
-                        </button>
-
-                        <button
-                          onClick={() => handleDeleteChapter(ch.id)}
-                          className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-slate-800 rounded-lg text-xs"
-                          title="Delete Chapter"
-                        >
-                          <i className="ti ti-trash" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Topics List */}
-                    <div className="p-3 space-y-2">
-                      {!ch.topics || ch.topics.length === 0 ? (
-                        <p className="text-xs text-slate-400 italic py-2 pl-3">
-                          No topics added for this chapter yet. Click "+" to add topics.
-                        </p>
-                      ) : (
-                        ch.topics.map((tp) => (
-                          <div
-                            key={tp.id}
-                            className="flex items-center justify-between p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/60 text-xs hover:border-slate-200 transition-colors"
-                          >
-                            <div className="flex items-center gap-2.5">
-                              <span className="w-5 h-5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold flex items-center justify-center text-[10px]">
-                                {tp.topic_no}
-                              </span>
-                              <div>
-                                <span className="font-semibold text-slate-800 dark:text-slate-200">{tp.title}</span>
-                                {tp.learning_objectives && (
-                                  <p className="text-[11px] text-slate-400 line-clamp-1">{tp.learning_objectives}</p>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-3">
-                              <span className="text-slate-400">{tp.estimated_periods || 1} Periods</span>
-                              <span
-                                className={`px-2 py-0.5 rounded-md font-semibold text-[10px] ${
-                                  tp.status === 'COMPLETED'
-                                    ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400'
-                                    : tp.status === 'IN_PROGRESS'
-                                    ? 'bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-400'
-                                    : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
-                                }`}
-                              >
-                                {tp.status?.replace('_', ' ')}
-                              </span>
-
-                              <button
-                                onClick={() => {
-                                  setSelectedChapterForTopic(ch);
-                                  setTopicForm({
-                                    id: tp.id,
-                                    topic_no: tp.topic_no,
-                                    title: tp.title,
-                                    description: tp.description || '',
-                                    sub_topics: tp.sub_topics || '',
-                                    estimated_periods: tp.estimated_periods || 2,
-                                    learning_objectives: tp.learning_objectives || '',
-                                  });
-                                  setShowTopicModal(true);
-                                }}
-                                className="text-slate-400 hover:text-slate-600"
-                              >
-                                <i className="ti ti-pencil" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteTopic(tp.id)}
-                                className="text-slate-400 hover:text-rose-600"
-                              >
-                                <i className="ti ti-trash" />
-                              </button>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        )}
       </div>
-
-      {/* ── MODAL: SETUP NEW CURRICULUM ──────────────────────────────────────── */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-4">
-              <h3 className="text-lg font-bold flex items-center gap-2">
-                <i className="ti ti-book text-indigo-600" />
-                <span>Setup Textbook & Curriculum</span>
-              </h3>
-              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600">
-                <i className="ti ti-x text-xl" />
-              </button>
-            </div>
-
-            {error && <div className="mb-4 p-3 bg-rose-50 text-rose-600 text-xs rounded-xl">{error}</div>}
-
-            <form onSubmit={handleCreateCurriculum} className="space-y-4 text-sm">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Class *</label>
-                  <select
-                    required
-                    value={selectedClassId}
-                    onChange={(e) => setSelectedClassId(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-xl dark:bg-slate-800 dark:border-slate-700"
-                  >
-                    <option value="">Select Class</option>
-                    {classes.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} {c.section ? `- ${c.section}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Subject *</label>
-                  <select
-                    required
-                    value={selectedSubjectId}
-                    onChange={(e) => setSelectedSubjectId(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-xl dark:bg-slate-800 dark:border-slate-700"
-                  >
-                    <option value="">Select Subject</option>
-                    {classSubjects.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1">Book / Textbook Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. NCERT Mathematics Class 6"
-                  value={formData.book_name}
-                  onChange={(e) => setFormData({ ...formData, book_name: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-xl dark:bg-slate-800 dark:border-slate-700"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Publisher (Optional)</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. NCERT / Oxford"
-                    value={formData.publisher}
-                    onChange={(e) => setFormData({ ...formData, publisher: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-xl dark:bg-slate-800 dark:border-slate-700"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Book Code / ISBN</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. MTH-06-NCERT"
-                    value={formData.book_code}
-                    onChange={(e) => setFormData({ ...formData, book_code: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-xl dark:bg-slate-800 dark:border-slate-700"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 p-3 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 rounded-2xl">
-                <div>
-                  <label className="block text-xs font-bold text-indigo-900 dark:text-indigo-300 mb-1">
-                    Auto-Generate Chapters
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="50"
-                    value={formData.num_skeleton_chapters}
-                    onChange={(e) => setFormData({ ...formData, num_skeleton_chapters: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-xl dark:bg-slate-800 dark:border-slate-700 font-bold"
-                  />
-                  <span className="text-[10px] text-slate-500">e.g. 14 chapters generated automatically</span>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-indigo-900 dark:text-indigo-300 mb-1">
-                    Total Estimated Periods
-                  </label>
-                  <input
-                    type="number"
-                    min="10"
-                    max="300"
-                    value={formData.estimated_periods}
-                    onChange={(e) => setFormData({ ...formData, estimated_periods: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-xl dark:bg-slate-800 dark:border-slate-700 font-bold"
-                  />
-                  <span className="text-[10px] text-slate-500">Yearly periods budgeted</span>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 border rounded-xl text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-5 py-2 bg-indigo-600 text-white rounded-xl font-semibold shadow hover:bg-indigo-700 disabled:opacity-50"
-                >
-                  {submitting ? 'Creating...' : 'Create Curriculum & Chapters'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ── MODAL: ADD / EDIT CHAPTER ────────────────────────────────────────── */}
-      {showChapterModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800">
-            <h3 className="text-lg font-bold mb-4">
-              {chapterForm.id ? `Edit Chapter ${chapterForm.chapter_no}` : 'Add New Chapter'}
-            </h3>
-
-            <form onSubmit={handleSaveChapter} className="space-y-3 text-sm">
-              <div className="grid grid-cols-4 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Ch No *</label>
-                  <input
-                    type="number"
-                    required
-                    value={chapterForm.chapter_no}
-                    onChange={(e) => setChapterForm({ ...chapterForm, chapter_no: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-xl dark:bg-slate-800 dark:border-slate-700"
-                  />
-                </div>
-                <div className="col-span-3">
-                  <label className="block text-xs font-semibold mb-1">Chapter Title *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Fractions and Decimals"
-                    value={chapterForm.title}
-                    onChange={(e) => setChapterForm({ ...chapterForm, title: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-xl dark:bg-slate-800 dark:border-slate-700"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Estimated Periods *</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={chapterForm.estimated_periods}
-                    onChange={(e) => setChapterForm({ ...chapterForm, estimated_periods: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-xl dark:bg-slate-800 dark:border-slate-700"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Marks Weightage</label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    value={chapterForm.weightage}
-                    onChange={(e) => setChapterForm({ ...chapterForm, weightage: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-xl dark:bg-slate-800 dark:border-slate-700"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Planned Start Date</label>
-                  <input
-                    type="date"
-                    value={chapterForm.planned_start_date}
-                    onChange={(e) => setChapterForm({ ...chapterForm, planned_start_date: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-xl dark:bg-slate-800 dark:border-slate-700 text-xs"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Planned End Date</label>
-                  <input
-                    type="date"
-                    value={chapterForm.planned_completion_date}
-                    onChange={(e) => setChapterForm({ ...chapterForm, planned_completion_date: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-xl dark:bg-slate-800 dark:border-slate-700 text-xs"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1">Learning Outcomes</label>
-                <textarea
-                  rows="2"
-                  placeholder="Key student learning outcomes for this chapter"
-                  value={chapterForm.learning_outcomes}
-                  onChange={(e) => setChapterForm({ ...chapterForm, learning_outcomes: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-xl dark:bg-slate-800 dark:border-slate-700"
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setShowChapterModal(false)}
-                  className="px-4 py-2 border rounded-xl text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-5 py-2 bg-indigo-600 text-white rounded-xl font-semibold shadow hover:bg-indigo-700"
-                >
-                  Save Chapter
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ── MODAL: ADD / EDIT TOPIC ──────────────────────────────────────────── */}
-      {showTopicModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800">
-            <h3 className="text-lg font-bold mb-1">
-              {topicForm.id ? `Edit Topic ${topicForm.topic_no}` : `Add Topic to Chapter ${selectedChapterForTopic?.chapter_no}`}
-            </h3>
-            <p className="text-xs text-slate-500 mb-4">{selectedChapterForTopic?.title}</p>
-
-            <form onSubmit={handleSaveTopic} className="space-y-3 text-sm">
-              <div className="grid grid-cols-4 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Topic #</label>
-                  <input
-                    type="number"
-                    required
-                    value={topicForm.topic_no}
-                    onChange={(e) => setTopicForm({ ...topicForm, topic_no: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-xl dark:bg-slate-800 dark:border-slate-700"
-                  />
-                </div>
-                <div className="col-span-3">
-                  <label className="block text-xs font-semibold mb-1">Topic Name *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Equivalent Fractions"
-                    value={topicForm.title}
-                    onChange={(e) => setTopicForm({ ...topicForm, title: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-xl dark:bg-slate-800 dark:border-slate-700"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1">Estimated Periods</label>
-                <input
-                  type="number"
-                  min="1"
-                  value={topicForm.estimated_periods}
-                  onChange={(e) => setTopicForm({ ...topicForm, estimated_periods: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-xl dark:bg-slate-800 dark:border-slate-700"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1">Sub-topics (Optional)</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Cross multiplication, Simplest form"
-                  value={topicForm.sub_topics}
-                  onChange={(e) => setTopicForm({ ...topicForm, sub_topics: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-xl dark:bg-slate-800 dark:border-slate-700"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1">Learning Objectives</label>
-                <textarea
-                  rows="2"
-                  placeholder="Students will be able to..."
-                  value={topicForm.learning_objectives}
-                  onChange={(e) => setTopicForm({ ...topicForm, learning_objectives: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-xl dark:bg-slate-800 dark:border-slate-700"
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setShowTopicModal(false)}
-                  className="px-4 py-2 border rounded-xl text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-5 py-2 bg-indigo-600 text-white rounded-xl font-semibold shadow hover:bg-indigo-700"
-                >
-                  Save Topic
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ── MODAL: COPY CURRICULUM TO NEXT SESSION ───────────────────────────── */}
-      {showCopyModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800">
-            <h3 className="text-lg font-bold mb-2 flex items-center gap-2">
-              <i className="ti ti-copy text-indigo-600" />
-              <span>Copy Curriculum to New Session</span>
-            </h3>
-            <p className="text-xs text-slate-500 mb-4">
-              This clones <strong>{activeCurriculum?.book_name}</strong> and all {activeCurriculum?.chapters?.length || 0} chapters and topics.
-              Historical dates and actual teaching logs are NOT copied.
-            </p>
-
-            <div className="mb-4">
-              <label className="block text-xs font-semibold mb-1">Target Academic Session *</label>
-              <input
-                type="text"
-                value={copyTargetSession}
-                onChange={(e) => setCopyTargetSession(e.target.value)}
-                placeholder="e.g. 2027-28"
-                className="w-full px-3 py-2 border rounded-xl dark:bg-slate-800 dark:border-slate-700 text-sm font-semibold"
-              />
-            </div>
-
-            <div className="flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setShowCopyModal(false)}
-                className="px-4 py-2 border rounded-xl text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleCopyCurriculum}
-                disabled={submitting}
-                className="px-5 py-2 bg-indigo-600 text-white rounded-xl font-semibold shadow hover:bg-indigo-700"
-              >
-                {submitting ? 'Copying...' : 'Confirm Copy'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

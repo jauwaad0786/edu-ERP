@@ -1,18 +1,16 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import Sidebar from '../../components/Sidebar';
+import Navbar from '../../components/Navbar';
 import api from '../../api/axios';
-import {
-  BookOpen, BarChart3, TrendingUp, AlertTriangle, CheckCircle2,
-  Clock, Award, Calendar, Layers, Users, ShieldAlert, ArrowUpRight,
-  Filter, Search, RefreshCw, Printer, ChevronRight, ChevronDown, Check,
-  BookMarked, Sparkles
-} from 'lucide-react';
+import toast from 'react-hot-toast';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip,
-  Legend, CartesianGrid, Cell, PieChart, Pie
+  CartesianGrid, Cell
 } from 'recharts';
-import toast from 'react-hot-toast';
 
 export default function PrincipalAcademicDashboard() {
+  const navigate = useNavigate();
   const [session, setSession] = useState('2026-27');
   const [loading, setLoading] = useState(true);
 
@@ -36,7 +34,7 @@ export default function PrincipalAcademicDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Fetch complete academic summary
-  const fetchDashboard = async () => {
+  const fetchDashboard = useCallback(async () => {
     setLoading(true);
     try {
       const res = await api.get(`/curriculum/analytics/summary?session=${session}`);
@@ -52,7 +50,7 @@ export default function PrincipalAcademicDashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [session, selectedCurriculumId]);
 
   useEffect(() => {
     fetchDashboard();
@@ -106,8 +104,6 @@ export default function PrincipalAcademicDashboard() {
     return (dashboardData.subjects_breakdown || []).slice(0, 10).map(s => ({
       name: `${s.subject_name} (${s.class_name})`,
       coverage: s.coverage_percentage || 0,
-      planned_periods: s.total_planned_periods || 0,
-      actual_periods: s.actual_periods_taught || 0
     }));
   }, [dashboardData.subjects_breakdown]);
 
@@ -121,427 +117,410 @@ export default function PrincipalAcademicDashboard() {
   const summary = dashboardData.summary || {};
 
   return (
-    <div className="p-6 bg-slate-50 min-h-screen text-slate-800 space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
-        <div>
-          <div className="flex items-center gap-2 text-indigo-600 font-semibold text-xs tracking-wider uppercase">
-            <BookMarked className="w-4 h-4" /> Academic Leadership & Monitoring
-          </div>
-          <h1 className="text-2xl font-bold text-slate-900 mt-1">Principal Academic & Syllabus Coverage Dashboard</h1>
-          <p className="text-slate-500 text-sm mt-0.5">
-            Institutional oversight of curriculum progress, planned vs actual teaching periods, and teacher lesson logs.
-          </p>
-        </div>
+    <div className="app-shell">
+      <Sidebar />
+      <div className="main-content">
+        <Navbar title="Academic Syllabus Oversight" />
 
-        <div className="flex items-center gap-3">
-          <select
-            value={session}
-            onChange={(e) => setSession(e.target.value)}
-            className="bg-white border border-slate-300 rounded-lg text-sm font-semibold px-3 py-2 shadow-sm text-slate-700"
-          >
-            <option value="2026-27">Session 2026-27</option>
-            <option value="2025-26">Session 2025-26</option>
-          </select>
-
-          <button
-            onClick={() => window.print()}
-            className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-slate-700 hover:text-indigo-600 bg-white border border-slate-300 px-3 py-2 rounded-lg shadow-sm"
-          >
-            <Printer className="w-3.5 h-3.5" /> Print Audit Report
-          </button>
-
-          <button
-            onClick={fetchDashboard}
-            className="flex items-center gap-1 text-xs font-semibold text-indigo-700 hover:text-indigo-900 bg-indigo-50 border border-indigo-200 px-3 py-2 rounded-lg shadow-sm"
-          >
-            <RefreshCw className="w-3.5 h-3.5" /> Refresh
-          </button>
-        </div>
-      </div>
-
-      {/* Critical Lag & Missing Curriculum Alerts */}
-      {(dashboardData.critical_alerts || []).length > 0 && (
-        <div className="bg-rose-50 border-l-4 border-rose-500 p-4 rounded-r-xl shadow-xs">
-          <div className="flex items-center gap-2 text-rose-800 font-bold text-sm">
-            <ShieldAlert className="w-4 h-4 text-rose-600" />
-            Curriculum Intervention Alerts ({dashboardData.critical_alerts.length})
-          </div>
-          <div className="mt-2 space-y-1 text-xs text-rose-700">
-            {dashboardData.critical_alerts.map((alert, idx) => (
-              <p key={idx} className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-                <strong>{alert.class_name} - {alert.subject_name}:</strong> Lagging behind by {alert.lag_percentage}% (Taught {alert.actual_periods} of {alert.planned_periods} planned periods).
+        <div className="page-body" style={{ maxWidth: '1440px', margin: '0 auto', padding: '24px 28px' }}>
+          {/* ══ HEADER ══ */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '22px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                <button
+                  onClick={() => navigate(-1)}
+                  style={{
+                    background: '#f1f5f9', border: 'none', borderRadius: '8px',
+                    padding: '6px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                    fontSize: '13px', fontWeight: 700, color: '#475569'
+                  }}
+                >
+                  <i className="ti ti-arrow-left" /> Back
+                </button>
+                <span style={{
+                  background: '#ecfdf5', color: '#059669', fontSize: '12px',
+                  fontWeight: 800, padding: '4px 10px', borderRadius: '100px'
+                }}>
+                  ● Institutional Oversight
+                </span>
+                <span style={{ fontSize: '13px', color: '#64748b' }}>
+                  Session <strong>{session}</strong>
+                </span>
+              </div>
+              <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 900, color: '#0f172a' }}>
+                Principal Academic &amp; Syllabus Coverage Dashboard
+              </h1>
+              <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>
+                Monitor curriculum delivery rates, planned vs actual teaching periods, and teacher lesson logs school-wide.
               </p>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Top 4 KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 uppercase">Avg School Coverage</span>
-            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
-              <TrendingUp className="w-4 h-4" />
             </div>
-          </div>
-          <h3 className="text-2xl font-black text-indigo-700 mt-2">
-            {summary.average_school_coverage || 0}%
-          </h3>
-          <p className="text-[11px] text-slate-400 mt-0.5">Across {summary.total_curriculums || 0} active subjects</p>
-        </div>
 
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 uppercase">On Schedule</span>
-            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-              <CheckCircle2 className="w-4 h-4" />
-            </div>
-          </div>
-          <h3 className="text-2xl font-black text-emerald-600 mt-2">
-            {summary.on_track_subjects || 0}
-          </h3>
-          <p className="text-[11px] text-slate-400 mt-0.5">Ahead or on track</p>
-        </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <select
+                value={session}
+                onChange={(e) => setSession(e.target.value)}
+                className="form-select"
+                style={{ width: '150px', fontWeight: 700, borderRadius: '10px' }}
+              >
+                <option value="2026-27">Session 2026-27</option>
+                <option value="2025-26">Session 2025-26</option>
+              </select>
 
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 uppercase">Behind Schedule</span>
-            <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
-              <AlertTriangle className="w-4 h-4" />
-            </div>
-          </div>
-          <h3 className="text-2xl font-black text-amber-600 mt-2">
-            {summary.behind_subjects || 0}
-          </h3>
-          <p className="text-[11px] text-slate-400 mt-0.5">Slight syllabus lag</p>
-        </div>
+              <button
+                onClick={() => window.print()}
+                className="btn btn-neutral"
+                style={{ borderRadius: '10px', padding: '10px 14px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <i className="ti ti-printer" /> Print Audit Report
+              </button>
 
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 uppercase">Critical Lag</span>
-            <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center font-bold">
-              <ShieldAlert className="w-4 h-4" />
-            </div>
-          </div>
-          <h3 className="text-2xl font-black text-rose-600 mt-2">
-            {summary.critical_subjects || 0}
-          </h3>
-          <p className="text-[11px] text-slate-400 mt-0.5">Immediate action required</p>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm col-span-2 md:col-span-1">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 uppercase">Total Lessons Logged</span>
-            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-              <BookOpen className="w-4 h-4" />
-            </div>
-          </div>
-          <h3 className="text-2xl font-black text-blue-700 mt-2">
-            {summary.total_teaching_logs || 0}
-          </h3>
-          <p className="text-[11px] text-slate-400 mt-0.5">{summary.total_periods_taught || 0} Periods taught</p>
-        </div>
-      </div>
-
-      {/* Visual Analytics Row: Subject Progress & Class Progress */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Subject-Wise Coverage Chart (7 cols) */}
-        <div className="lg:col-span-7 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="font-bold text-slate-900 text-sm">Subject Syllabus Coverage %</h3>
-              <p className="text-xs text-slate-500">Real-time completion percentage based on planned periods</p>
+              <button
+                onClick={fetchDashboard}
+                className="btn btn-neutral"
+                style={{ borderRadius: '10px', padding: '10px 14px', fontWeight: 700 }}
+              >
+                <i className="ti ti-refresh" /> Refresh
+              </button>
             </div>
           </div>
 
-          <div className="h-64 w-full">
-            {chartData.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-slate-400 text-xs">
-                No syllabus data available for session {session}
+          {/* ══ CRITICAL ALERTS STRIP ══ */}
+          {(dashboardData.critical_alerts || []).length > 0 && (
+            <div style={{
+              background: '#fef2f2', borderLeft: '4px solid #ef4444', borderRadius: '12px',
+              padding: '14px 18px', marginBottom: '20px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#991b1b', fontWeight: 800, fontSize: '13px' }}>
+                <i className="ti ti-alert-octagon" style={{ fontSize: '18px' }} />
+                Curriculum Delivery Alerts ({dashboardData.critical_alerts.length})
               </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-25} textAnchor="end" />
-                  <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} />
-                  <Tooltip
-                    contentStyle={{ borderRadius: '8px', fontSize: '11px' }}
-                    formatter={(val) => [`${val}%`, 'Coverage']}
-                  />
-                  <Bar dataKey="coverage" fill="#4f46e5" radius={[4, 4, 0, 0]}>
-                    {chartData.map((entry, idx) => (
-                      <Cell
-                        key={`cell-${idx}`}
-                        fill={
-                          entry.coverage >= 75 ? '#10b981' :
-                          entry.coverage >= 45 ? '#4f46e5' :
-                          entry.coverage >= 25 ? '#f59e0b' : '#ef4444'
-                        }
-                      />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
-
-        {/* Class-Wise Progress Chart (5 cols) */}
-        <div className="lg:col-span-5 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="font-bold text-slate-900 text-sm">Class-Wise Average Coverage</h3>
-              <p className="text-xs text-slate-500">Benchmark across classes</p>
-            </div>
-          </div>
-
-          <div className="h-64 w-full">
-            {classChartData.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-slate-400 text-xs">
-                No class data available
+              <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px', color: '#b91c1c' }}>
+                {dashboardData.critical_alerts.map((alert, idx) => (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>•</span>
+                    <strong>{alert.class_name} - {alert.subject_name}:</strong> Lagging behind by {alert.lag_percentage}% ({alert.actual_periods} of {alert.planned_periods} periods taught).
+                  </div>
+                ))}
               </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={classChartData} layout="vertical" margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
-                  <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 10 }} />
-                  <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} />
-                  <Tooltip
-                    contentStyle={{ borderRadius: '8px', fontSize: '11px' }}
-                    formatter={(val) => [`${val}%`, 'Avg Progress']}
-                  />
-                  <Bar dataKey="avg_coverage" fill="#3b82f6" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
-      </div>
+            </div>
+          )}
 
-      {/* Institutional Subjects Coverage Master Table */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
-          <div>
-            <h3 className="font-bold text-base text-slate-900">Institutional Curriculum Progress Register</h3>
-            <p className="text-xs text-slate-500">Detailed tracking of all classes, assigned teachers, and syllabus delivery status.</p>
-          </div>
-
-          {/* Filters */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
-              <input
-                type="text"
-                placeholder="Search subject/teacher..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="text-xs pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg outline-none"
-              />
+          {/* ══ TOP 5 KPI CARDS ══ */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '22px' }}>
+            <div style={{ background: '#fff', borderRadius: '16px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>AVG SCHOOL COVERAGE</span>
+                <span style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#e0f2fe', color: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <i className="ti ti-chart-bar" style={{ fontSize: '18px' }} />
+                </span>
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: '#0176d3' }}>
+                {summary.average_school_coverage || 0}%
+              </div>
+              <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>Across {summary.total_curriculums || 0} active subjects</p>
             </div>
 
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="text-xs bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 font-medium"
-            >
-              <option value="">All Statuses</option>
-              <option value="ON_TRACK">On Track</option>
-              <option value="AHEAD">Ahead</option>
-              <option value="BEHIND">Behind</option>
-              <option value="CRITICAL">Critical Lag</option>
-            </select>
+            <div style={{ background: '#fff', borderRadius: '16px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>ON SCHEDULE</span>
+                <span style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <i className="ti ti-circle-check" style={{ fontSize: '18px' }} />
+                </span>
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: '#059669' }}>
+                {summary.on_track_subjects || 0}
+              </div>
+              <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>Ahead or on schedule</p>
+            </div>
+
+            <div style={{ background: '#fff', borderRadius: '16px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>BEHIND SCHEDULE</span>
+                <span style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#fef3c7', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <i className="ti ti-alert-triangle" style={{ fontSize: '18px' }} />
+                </span>
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: '#d97706' }}>
+                {summary.behind_subjects || 0}
+              </div>
+              <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>Minor syllabus lag</p>
+            </div>
+
+            <div style={{ background: '#fff', borderRadius: '16px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>CRITICAL LAG</span>
+                <span style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#fef2f2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <i className="ti ti-shield-alert" style={{ fontSize: '18px' }} />
+                </span>
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: '#dc2626' }}>
+                {summary.critical_subjects || 0}
+              </div>
+              <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>Action required</p>
+            </div>
+
+            <div style={{ background: '#fff', borderRadius: '16px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>LESSONS LOGGED</span>
+                <span style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#ede9fe', color: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <i className="ti ti-notes" style={{ fontSize: '18px' }} />
+                </span>
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: '#7c3aed' }}>
+                {summary.total_teaching_logs || 0}
+              </div>
+              <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>{summary.total_periods_taught || 0} Periods taught</p>
+            </div>
           </div>
-        </div>
 
-        {/* Master Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-700">
-            <thead className="bg-slate-100 text-slate-700 uppercase font-semibold border-b border-slate-200">
-              <tr>
-                <th className="py-3 px-3">Class</th>
-                <th className="py-3 px-3">Subject & Book</th>
-                <th className="py-3 px-3">Assigned Teacher</th>
-                <th className="py-3 px-3">Coverage %</th>
-                <th className="py-3 px-3">Planned vs Taught</th>
-                <th className="py-3 px-3">Chapters</th>
-                <th className="py-3 px-3">Status</th>
-                <th className="py-3 px-3 text-right">Audit Drilldown</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredSubjects.length === 0 ? (
-                <tr>
-                  <td colSpan="8" className="py-8 text-center text-slate-400">
-                    No curriculums found matching criteria.
-                  </td>
-                </tr>
-              ) : (
-                filteredSubjects.map((sub) => {
-                  const isSelected = selectedCurriculumId === sub.curriculum_id;
-                  const cov = sub.coverage_percentage || 0;
+          {/* ══ CHARTS ROW ══ */}
+          <div style={{ display: 'grid', gridTemplateColumns: '7fr 5fr', gap: '20px', marginBottom: '22px' }}>
+            {/* Subject Coverage BarChart */}
+            <div style={{ background: '#fff', borderRadius: '16px', padding: '20px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+              <h3 style={{ margin: '0 0 4px', fontSize: '15px', fontWeight: 800, color: '#0f172a' }}>
+                Subject Syllabus Coverage %
+              </h3>
+              <p style={{ margin: '0 0 16px', fontSize: '12px', color: '#64748b' }}>
+                Real-time syllabus completion by subject
+              </p>
 
-                  return (
-                    <tr
-                      key={sub.curriculum_id}
-                      className={`hover:bg-slate-50/70 transition-colors ${
-                        isSelected ? 'bg-indigo-50/40 font-semibold' : ''
-                      }`}
-                    >
-                      <td className="py-3 px-3 font-bold text-slate-900 whitespace-nowrap">
-                        {sub.class_name}
-                      </td>
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        <div className="font-bold text-slate-900">{sub.subject_name}</div>
-                        {sub.book_name && (
-                          <div className="text-[11px] text-slate-500">{sub.book_name}</div>
-                        )}
-                      </td>
-                      <td className="py-3 px-3 whitespace-nowrap text-slate-700">
-                        {sub.teacher_name || 'Assigned Teacher'}
-                      </td>
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          <div className="w-16 bg-slate-200 rounded-full h-1.5 overflow-hidden">
-                            <div
-                              className={`h-1.5 rounded-full ${
-                                cov >= 75 ? 'bg-emerald-500' :
-                                cov >= 45 ? 'bg-indigo-600' :
-                                cov >= 25 ? 'bg-amber-500' : 'bg-rose-500'
-                              }`}
-                              style={{ width: `${cov}%` }}
-                            />
-                          </div>
-                          <span className="font-bold text-slate-800">{cov}%</span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        <span className="font-bold text-emerald-700">{sub.actual_periods_taught || 0}</span>
-                        <span className="text-slate-400"> / {sub.total_planned_periods || 0} pds</span>
-                      </td>
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        {sub.chapters_count || 0} Chapters
-                      </td>
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        {sub.status === 'AHEAD' && (
-                          <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">Ahead</span>
-                        )}
-                        {sub.status === 'ON_TRACK' && (
-                          <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full">On Track</span>
-                        )}
-                        {sub.status === 'BEHIND' && (
-                          <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full">Behind</span>
-                        )}
-                        {sub.status === 'CRITICAL' && (
-                          <span className="bg-rose-100 text-rose-800 text-[10px] font-bold px-2 py-0.5 rounded-full">Critical</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-3 text-right whitespace-nowrap">
-                        <button
-                          onClick={() => setSelectedCurriculumId(sub.curriculum_id)}
-                          className="text-xs font-bold text-indigo-600 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-md transition-all"
-                        >
-                          Audit Details →
-                        </button>
+              <div style={{ height: '240px', width: '100%' }}>
+                {chartData.length === 0 ? (
+                  <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: '12px' }}>
+                    No syllabus data available
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-20} textAnchor="end" />
+                      <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} />
+                      <Tooltip formatter={(val) => [`${val}%`, 'Coverage']} />
+                      <Bar dataKey="coverage" fill="#0176d3" radius={[4, 4, 0, 0]}>
+                        {chartData.map((entry, idx) => (
+                          <Cell
+                            key={`cell-${idx}`}
+                            fill={
+                              entry.coverage >= 75 ? '#16a34a' :
+                              entry.coverage >= 45 ? '#0176d3' :
+                              entry.coverage >= 25 ? '#d97706' : '#dc2626'
+                            }
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </div>
+
+            {/* Class-wise Progress BarChart */}
+            <div style={{ background: '#fff', borderRadius: '16px', padding: '20px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+              <h3 style={{ margin: '0 0 4px', fontSize: '15px', fontWeight: 800, color: '#0f172a' }}>
+                Class-Wise Average Progress
+              </h3>
+              <p style={{ margin: '0 0 16px', fontSize: '12px', color: '#64748b' }}>
+                Comparative benchmarks across classes
+              </p>
+
+              <div style={{ height: '240px', width: '100%' }}>
+                {classChartData.length === 0 ? (
+                  <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: '12px' }}>
+                    No class data available
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={classChartData} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                      <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 10 }} />
+                      <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} />
+                      <Tooltip formatter={(val) => [`${val}%`, 'Avg Coverage']} />
+                      <Bar dataKey="avg_coverage" fill="#0284c7" radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* ══ MASTER SUBJECTS REGISTER TABLE ══ */}
+          <div style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)', marginBottom: '22px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#0f172a' }}>
+                  Institutional Curriculum Progress Register
+                </h3>
+                <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>
+                  All subjects, assigned teachers, and delivery status
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="text"
+                    placeholder="Search subject or teacher..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="form-input"
+                    style={{ height: '32px', fontSize: '12px', paddingLeft: '30px' }}
+                  />
+                  <i className="ti ti-search" style={{ position: 'absolute', left: '8px', top: '8px', color: '#94a3b8' }} />
+                </div>
+
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="form-select"
+                  style={{ height: '32px', fontSize: '12px', width: '130px' }}
+                >
+                  <option value="">All Statuses</option>
+                  <option value="ON_TRACK">On Track</option>
+                  <option value="AHEAD">Ahead</option>
+                  <option value="BEHIND">Behind</option>
+                  <option value="CRITICAL">Critical Lag</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Class</th>
+                    <th>Subject &amp; Book</th>
+                    <th>Teacher</th>
+                    <th>Coverage %</th>
+                    <th>Planned vs Taught</th>
+                    <th>Chapters</th>
+                    <th>Status</th>
+                    <th style={{ textAlign: 'right' }}>Audit Drilldown</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredSubjects.length === 0 ? (
+                    <tr>
+                      <td colSpan="8" style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>
+                        No curriculums found matching filter.
                       </td>
                     </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                  ) : (
+                    filteredSubjects.map(sub => {
+                      const isSel = selectedCurriculumId === sub.curriculum_id;
+                      const cov = sub.coverage_percentage || 0;
 
-      {/* Drilldown Drawer / Inspection Section */}
-      {selectedCurriculumId && drilldownData && (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-5 animate-in fade-in duration-150">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
-            <div>
-              <span className="text-xs font-bold text-indigo-700 uppercase tracking-wider">
-                Inspection & Chapter Verification: {drilldownData.class_name} • {drilldownData.subject_name}
-              </span>
-              <h3 className="text-xl font-black text-slate-900 mt-1">
-                Curriculum Syllabus Execution Breakdown
-              </h3>
-              {drilldownData.book_name && (
-                <p className="text-xs text-slate-500">Prescribed Book: {drilldownData.book_name}</p>
-              )}
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div className="text-right">
-                <span className="text-3xl font-black text-indigo-600">
-                  {drilldownData.coverage_percentage || 0}%
-                </span>
-                <p className="text-[11px] text-slate-400 font-bold uppercase">Syllabus Delivered</p>
-              </div>
+                      return (
+                        <tr key={sub.curriculum_id} style={{ background: isSel ? '#f0f9ff' : 'transparent' }}>
+                          <td style={{ fontWeight: 800, color: '#0f172a' }}>{sub.class_name}</td>
+                          <td>
+                            <strong style={{ color: '#0f172a' }}>{sub.subject_name}</strong>
+                            {sub.book_name && <div style={{ fontSize: '11px', color: '#64748b' }}>{sub.book_name}</div>}
+                          </td>
+                          <td style={{ color: '#475569' }}>{sub.teacher_name || 'Assigned Teacher'}</td>
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <div style={{ width: '60px', height: '6px', background: '#e2e8f0', borderRadius: '100px', overflow: 'hidden' }}>
+                                <div
+                                  style={{
+                                    width: `${cov}%`, height: '100%', borderRadius: '100px',
+                                    background: cov >= 75 ? '#16a34a' : cov >= 45 ? '#0176d3' : cov >= 25 ? '#d97706' : '#dc2626'
+                                  }}
+                                />
+                              </div>
+                              <span style={{ fontWeight: 700, color: '#0f172a' }}>{cov}%</span>
+                            </div>
+                          </td>
+                          <td>
+                            <strong style={{ color: '#16a34a' }}>{sub.actual_periods_taught || 0}</strong>
+                            <span style={{ color: '#94a3b8' }}> / {sub.total_planned_periods || 0} pds</span>
+                          </td>
+                          <td>{sub.chapters_count || 0} Chapters</td>
+                          <td>
+                            {sub.status === 'AHEAD' && <span className="badge badge-success">Ahead</span>}
+                            {sub.status === 'ON_TRACK' && <span className="badge badge-info">On Track</span>}
+                            {sub.status === 'BEHIND' && <span className="badge badge-warning">Behind</span>}
+                            {sub.status === 'CRITICAL' && <span className="badge badge-error">Critical</span>}
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            <button
+                              onClick={() => setSelectedCurriculumId(sub.curriculum_id)}
+                              className="btn btn-neutral btn-sm"
+                              style={{ padding: '3px 8px', fontSize: '11px', fontWeight: 700 }}
+                            >
+                              Audit Details →
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
 
-          {/* Chapters & Topics Drilldown */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {drilldownData.chapters?.map((ch) => {
-              const isDone = ch.status === 'COMPLETED';
-              const topics = ch.topics || [];
-              const completedCount = topics.filter(t => t.status === 'COMPLETED').length;
+          {/* ══ AUDIT DRILLDOWN SECTION ══ */}
+          {selectedCurriculumId && drilldownData && (
+            <div style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+                <div>
+                  <span style={{ fontSize: '11px', fontWeight: 800, color: '#0176d3', textTransform: 'uppercase' }}>
+                    Inspection &amp; Verification: {drilldownData.class_name} • {drilldownData.subject_name}
+                  </span>
+                  <h3 style={{ margin: '2px 0 0', fontSize: '18px', fontWeight: 900, color: '#0f172a' }}>
+                    Curriculum Execution Breakdown
+                  </h3>
+                </div>
 
-              return (
-                <div key={ch.id} className="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
-                  <div className="flex items-start justify-between border-b border-slate-200 pb-2.5">
-                    <div>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase">Chapter {ch.chapter_no}</span>
-                      <h4 className="font-bold text-sm text-slate-900 mt-0.5">{ch.title}</h4>
-                      <p className="text-[11px] text-slate-500">
-                        {ch.estimated_periods || 0} Planned Periods • {completedCount} / {topics.length} Topics Done
-                      </p>
-                    </div>
-                    {isDone ? (
-                      <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                        <Check className="w-3 h-3" /> Done
-                      </span>
-                    ) : (
-                      <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                        In Progress
-                      </span>
-                    )}
-                  </div>
+                <div style={{ textAlign: 'right' }}>
+                  <span style={{ fontSize: '24px', fontWeight: 900, color: '#0176d3' }}>
+                    {drilldownData.coverage_percentage || 0}%
+                  </span>
+                  <div style={{ fontSize: '10px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Delivered</div>
+                </div>
+              </div>
 
-                  {/* Topics breakdown */}
-                  <div className="mt-3 space-y-1.5 text-xs">
-                    {topics.map(t => (
-                      <div
-                        key={t.id}
-                        className="flex items-center justify-between bg-white p-2 rounded-lg border border-slate-200/70"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] ${
-                            t.status === 'COMPLETED' ? 'bg-emerald-600 text-white' : 'border border-slate-300'
-                          }`}>
-                            {t.status === 'COMPLETED' ? '✓' : ''}
-                          </span>
-                          <span className={`text-slate-800 ${t.status === 'COMPLETED' ? 'font-semibold' : 'text-slate-600'}`}>
-                            {t.topic_no}. {t.title}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '14px' }}>
+                {drilldownData.chapters?.map(ch => {
+                  const isDone = ch.status === 'COMPLETED';
+                  const topics = ch.topics || [];
+                  const doneCount = topics.filter(t => t.status === 'COMPLETED').length;
+
+                  return (
+                    <div key={ch.id} style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px', background: '#f8fafc' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
+                        <div>
+                          <span style={{ fontSize: '10px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Ch {ch.chapter_no}</span>
+                          <h4 style={{ margin: '2px 0 0', fontSize: '13px', fontWeight: 800, color: '#0f172a' }}>{ch.title}</h4>
+                          <span style={{ fontSize: '11px', color: '#64748b' }}>
+                            {doneCount} / {topics.length} Topics • {ch.estimated_periods || 0} pds
                           </span>
                         </div>
-
-                        {t.status === 'COMPLETED' && t.actual_completion_date && (
-                          <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-1.5 py-0.5 rounded">
-                            {t.actual_completion_date}
-                          </span>
-                        )}
+                        <span className={isDone ? "badge badge-success" : "badge badge-neutral"}>
+                          {isDone ? 'Done' : 'In Progress'}
+                        </span>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '10px' }}>
+                        {topics.map(t => (
+                          <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', padding: '4px 6px', background: '#fff', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                            <span style={{ fontWeight: 600, color: '#1e293b' }}>{t.topic_no}. {t.title}</span>
+                            {t.status === 'COMPLETED' ? (
+                              <span style={{ color: '#16a34a', fontWeight: 700 }}>✓ Done</span>
+                            ) : (
+                              <span style={{ color: '#94a3b8' }}>-</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

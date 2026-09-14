@@ -1,48 +1,44 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import Sidebar from '../../components/Sidebar';
+import Navbar from '../../components/Navbar';
 import api from '../../api/axios';
-import {
-  BookOpen, Layers, CheckCircle2, Clock, AlertTriangle, AlertCircle,
-  TrendingUp, Calendar, ChevronRight, ChevronDown, Check, ArrowRight,
-  Filter, Search, RefreshCw, BarChart2, BookMarked
-} from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function TeacherSyllabusCoveragePage() {
+  const navigate = useNavigate();
   const [session, setSession] = useState('2026-27');
   const [loading, setLoading] = useState(true);
   const [subjectsCoverage, setSubjectsCoverage] = useState([]);
   const [selectedCurriculumId, setSelectedCurriculumId] = useState(null);
   const [drilldownData, setDrilldownData] = useState(null);
   const [loadingDrilldown, setLoadingDrilldown] = useState(false);
-
-  // Search filter
   const [searchTerm, setSearchTerm] = useState('');
 
   // Fetch coverage data
-  const fetchCoverage = async () => {
+  const fetchCoverage = useCallback(async () => {
     setLoading(true);
     try {
       const res = await api.get(`/curriculum/analytics/summary?session=${session}`);
       const list = res.data.subjects_breakdown || [];
       setSubjectsCoverage(list);
 
-      // Auto-select first subject for drilldown if available
       if (list.length > 0 && !selectedCurriculumId) {
         setSelectedCurriculumId(list[0].curriculum_id);
       }
     } catch (err) {
-      console.error('Error fetching coverage summary:', err);
+      console.error('Error fetching coverage:', err);
       toast.error('Failed to load syllabus coverage');
     } finally {
       setLoading(false);
     }
-  };
+  }, [session, selectedCurriculumId]);
 
   useEffect(() => {
     fetchCoverage();
   }, [session]);
 
-  // Fetch Drilldown when selectedCurriculumId changes
+  // Fetch Drilldown
   useEffect(() => {
     if (!selectedCurriculumId) {
       setDrilldownData(null);
@@ -56,7 +52,7 @@ export default function TeacherSyllabusCoveragePage() {
         setDrilldownData(res.data);
       } catch (err) {
         console.error('Error fetching drilldown:', err);
-        toast.error('Failed to load detailed chapter breakdown');
+        toast.error('Failed to load chapter breakdown');
       } finally {
         setLoadingDrilldown(false);
       }
@@ -66,7 +62,7 @@ export default function TeacherSyllabusCoveragePage() {
   }, [selectedCurriculumId]);
 
   // Aggregate Stats
-  const stats = React.useMemo(() => {
+  const stats = useMemo(() => {
     if (!subjectsCoverage.length) return { avgCoverage: 0, totalPlanned: 0, totalTaught: 0, onTrackCount: 0, behindCount: 0 };
 
     let totalPlanned = 0;
@@ -86,16 +82,9 @@ export default function TeacherSyllabusCoveragePage() {
 
     const avgCoverage = Math.round(weightedCoverageSum / subjectsCoverage.length);
 
-    return {
-      avgCoverage,
-      totalPlanned,
-      totalTaught,
-      onTrackCount,
-      behindCount
-    };
+    return { avgCoverage, totalPlanned, totalTaught, onTrackCount, behindCount };
   }, [subjectsCoverage]);
 
-  // Filtered subjects
   const filteredSubjects = subjectsCoverage.filter(s =>
     (s.subject_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (s.class_name || '').toLowerCase().includes(searchTerm.toLowerCase())
@@ -104,350 +93,353 @@ export default function TeacherSyllabusCoveragePage() {
   const getStatusBadge = (status) => {
     switch (status) {
       case 'AHEAD':
-        return <span className="bg-emerald-100 text-emerald-800 text-[11px] font-bold px-2.5 py-0.5 rounded-full">Ahead of Schedule</span>;
+        return <span className="badge badge-success">Ahead</span>;
       case 'ON_TRACK':
-        return <span className="bg-blue-100 text-blue-800 text-[11px] font-bold px-2.5 py-0.5 rounded-full">On Track</span>;
+        return <span className="badge badge-info">On Track</span>;
       case 'BEHIND':
-        return <span className="bg-amber-100 text-amber-800 text-[11px] font-bold px-2.5 py-0.5 rounded-full">Behind Schedule</span>;
+        return <span className="badge badge-warning">Behind</span>;
       case 'CRITICAL':
-        return <span className="bg-rose-100 text-rose-800 text-[11px] font-bold px-2.5 py-0.5 rounded-full">Critical Lag</span>;
+        return <span className="badge badge-error">Critical Lag</span>;
       default:
-        return <span className="bg-slate-100 text-slate-700 text-[11px] font-bold px-2.5 py-0.5 rounded-full">{status}</span>;
+        return <span className="badge badge-neutral">{status}</span>;
     }
   };
 
   return (
-    <div className="p-6 bg-slate-50 min-h-screen text-slate-800">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-200">
-        <div>
-          <div className="flex items-center gap-2 text-indigo-600 font-semibold text-xs tracking-wider uppercase">
-            <BookMarked className="w-4 h-4" /> Academic Progress Tracking
-          </div>
-          <h1 className="text-2xl font-bold text-slate-900 mt-1">My Syllabus & Curriculum Coverage</h1>
-          <p className="text-slate-500 text-sm mt-0.5">
-            Monitor real-time syllabus completion rates, planned vs actual periods taught, and chapter-wise progress.
-          </p>
-        </div>
+    <div className="app-shell">
+      <Sidebar />
+      <div className="main-content">
+        <Navbar title="My Syllabus Coverage" />
 
-        <div className="flex items-center gap-3">
-          <select
-            value={session}
-            onChange={(e) => setSession(e.target.value)}
-            className="bg-white border border-slate-300 rounded-lg text-sm font-medium px-3 py-1.5 shadow-sm text-slate-700"
-          >
-            <option value="2026-27">Session 2026-27</option>
-            <option value="2025-26">Session 2025-26</option>
-          </select>
-
-          <button
-            onClick={fetchCoverage}
-            className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 hover:text-indigo-600 bg-white border border-slate-300 px-3 py-2 rounded-lg shadow-sm"
-          >
-            <RefreshCw className="w-3.5 h-3.5" /> Refresh
-          </button>
-        </div>
-      </div>
-
-      {/* KPI Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-xs font-medium text-slate-500 uppercase">Average Coverage</p>
-            <h3 className="text-2xl font-extrabold text-indigo-600 mt-1">
-              {stats.avgCoverage}%
-            </h3>
-            <p className="text-[11px] text-slate-400 mt-0.5">Weighted across all topics</p>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 font-bold">
-            <TrendingUp className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-xs font-medium text-slate-500 uppercase">Periods Taught</p>
-            <h3 className="text-2xl font-extrabold text-emerald-600 mt-1">
-              {stats.totalTaught} <span className="text-xs font-normal text-slate-500">/ {stats.totalPlanned}</span>
-            </h3>
-            <p className="text-[11px] text-slate-400 mt-0.5">Actual vs Planned periods</p>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600 font-bold">
-            <Clock className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-xs font-medium text-slate-500 uppercase">Subjects On Track</p>
-            <h3 className="text-2xl font-extrabold text-blue-600 mt-1">
-              {stats.onTrackCount}
-            </h3>
-            <p className="text-[11px] text-slate-400 mt-0.5">Ahead or On schedule</p>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600 font-bold">
-            <CheckCircle2 className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-xs font-medium text-slate-500 uppercase">Needs Attention</p>
-            <h3 className={`text-2xl font-extrabold mt-1 ${stats.behindCount > 0 ? 'text-amber-600' : 'text-slate-400'}`}>
-              {stats.behindCount}
-            </h3>
-            <p className="text-[11px] text-slate-400 mt-0.5">Lagging behind schedule</p>
-          </div>
-          <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold ${
-            stats.behindCount > 0 ? 'bg-amber-50 text-amber-600' : 'bg-slate-100 text-slate-400'
-          }`}>
-            <AlertTriangle className="w-5 h-5" />
-          </div>
-        </div>
-      </div>
-
-      {/* Main Two-Column Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Subjects List (5 cols) */}
-        <div className="lg:col-span-5 space-y-4">
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-bold text-slate-900 text-sm">Assigned Subjects</h3>
-              <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-                {filteredSubjects.length} Curriculums
-              </span>
+        <div className="page-body" style={{ maxWidth: '1440px', margin: '0 auto', padding: '24px 28px' }}>
+          {/* ══ HEADER ══ */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '22px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                <button
+                  onClick={() => navigate(-1)}
+                  style={{
+                    background: '#f1f5f9', border: 'none', borderRadius: '8px',
+                    padding: '6px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                    fontSize: '13px', fontWeight: 700, color: '#475569'
+                  }}
+                >
+                  <i className="ti ti-arrow-left" /> Back
+                </button>
+                <span style={{
+                  background: '#ecfdf5', color: '#059669', fontSize: '12px',
+                  fontWeight: 800, padding: '4px 10px', borderRadius: '100px'
+                }}>
+                  ● Real-Time Coverage Tracker
+                </span>
+                <span style={{ fontSize: '13px', color: '#64748b' }}>
+                  Session <strong>{session}</strong>
+                </span>
+              </div>
+              <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 900, color: '#0f172a' }}>
+                My Syllabus &amp; Curriculum Coverage
+              </h1>
+              <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>
+                Monitor topic completion rates, planned vs actual teaching periods, and chapter-wise execution.
+              </p>
             </div>
 
-            {/* Search Input */}
-            <div className="relative mb-3">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-              <input
-                type="text"
-                placeholder="Search subject or class..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full text-xs pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-indigo-500 focus:bg-white transition-all"
-              />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <select
+                value={session}
+                onChange={(e) => setSession(e.target.value)}
+                className="form-select"
+                style={{ width: '150px', fontWeight: 700, borderRadius: '10px' }}
+              >
+                <option value="2026-27">Session 2026-27</option>
+                <option value="2025-26">Session 2025-26</option>
+              </select>
+
+              <button
+                onClick={fetchCoverage}
+                className="btn btn-neutral"
+                style={{ borderRadius: '10px', padding: '10px 14px', fontWeight: 700 }}
+              >
+                <i className="ti ti-refresh" /> Refresh
+              </button>
             </div>
-
-            {/* Subject List */}
-            {loading ? (
-              <div className="text-center py-10">
-                <div className="inline-block animate-spin rounded-full h-6 w-6 border-2 border-indigo-600 border-t-transparent"></div>
-                <p className="text-xs text-slate-400 mt-2">Loading subjects...</p>
-              </div>
-            ) : filteredSubjects.length === 0 ? (
-              <div className="text-center py-8 text-slate-400">
-                <p className="text-xs">No subjects match search</p>
-              </div>
-            ) : (
-              <div className="space-y-2.5">
-                {filteredSubjects.map((sub) => {
-                  const isSelected = selectedCurriculumId === sub.curriculum_id;
-                  const cov = sub.coverage_percentage || 0;
-
-                  return (
-                    <div
-                      key={sub.curriculum_id}
-                      onClick={() => setSelectedCurriculumId(sub.curriculum_id)}
-                      className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
-                        isSelected
-                          ? 'border-indigo-500 bg-indigo-50/50 shadow-sm ring-1 ring-indigo-300'
-                          : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                            {sub.class_name}
-                          </span>
-                          <h4 className="font-bold text-sm text-slate-900 mt-0.5">
-                            {sub.subject_name}
-                          </h4>
-                          {sub.book_name && (
-                            <p className="text-[11px] text-slate-400">Book: {sub.book_name}</p>
-                          )}
-                        </div>
-                        {getStatusBadge(sub.status)}
-                      </div>
-
-                      {/* Progress Bar */}
-                      <div className="mt-3">
-                        <div className="flex justify-between text-[11px] font-semibold mb-1">
-                          <span className="text-slate-600">Syllabus Coverage</span>
-                          <span className="text-indigo-700">{cov}%</span>
-                        </div>
-                        <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
-                          <div
-                            className={`h-2 rounded-full transition-all duration-500 ${
-                              cov >= 75 ? 'bg-emerald-500' :
-                              cov >= 45 ? 'bg-indigo-600' :
-                              cov >= 25 ? 'bg-amber-500' : 'bg-rose-500'
-                            }`}
-                            style={{ width: `${cov}%` }}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Periods Breakdown */}
-                      <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                        <span>Chapters: {sub.chapters_count || 0}</span>
-                        <span>
-                          Periods: <strong className="text-slate-700">{sub.actual_periods_taught || 0}</strong> / {sub.total_planned_periods || 0}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
           </div>
-        </div>
 
-        {/* Right Column: Chapter & Topic Breakdown Drilldown (7 cols) */}
-        <div className="lg:col-span-7">
-          {loadingDrilldown ? (
-            <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-600 border-t-transparent"></div>
-              <p className="text-xs text-slate-500 mt-3 font-medium">Loading syllabus breakdown...</p>
+          {/* ══ KPI CARDS ══ */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '22px' }}>
+            <div style={{ background: '#fff', borderRadius: '16px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>AVERAGE COVERAGE</span>
+                <span style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#e0f2fe', color: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <i className="ti ti-chart-pie" style={{ fontSize: '18px' }} />
+                </span>
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: '#0176d3' }}>{stats.avgCoverage}%</div>
+              <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>Weighted topic progress</p>
             </div>
-          ) : !drilldownData ? (
-            <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-slate-400">
-              <BookOpen className="w-12 h-12 mx-auto mb-2 opacity-40" />
-              <p className="text-sm font-medium">Select a subject from the left to view detailed syllabus progress</p>
-            </div>
-          ) : (
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-5">
-              {/* Drilldown Header */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-slate-200">
-                <div>
-                  <span className="text-xs font-bold text-indigo-700 uppercase tracking-wider">
-                    {drilldownData.class_name} • Session {drilldownData.session}
-                  </span>
-                  <h3 className="text-lg font-extrabold text-slate-900 mt-0.5">
-                    {drilldownData.subject_name}
-                  </h3>
-                  {drilldownData.book_name && (
-                    <p className="text-xs text-slate-500">Prescribed Book: {drilldownData.book_name}</p>
-                  )}
-                </div>
 
-                <div className="text-right">
-                  <span className="text-2xl font-black text-indigo-600">
-                    {drilldownData.coverage_percentage || 0}%
-                  </span>
-                  <p className="text-[11px] text-slate-400 font-medium">Total Syllabus Done</p>
-                </div>
+            <div style={{ background: '#fff', borderRadius: '16px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>PERIODS TAUGHT</span>
+                <span style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <i className="ti ti-clock" style={{ fontSize: '18px' }} />
+                </span>
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: '#059669' }}>
+                {stats.totalTaught} <span style={{ fontSize: '14px', fontWeight: 600, color: '#94a3b8' }}>/ {stats.totalPlanned} pds</span>
+              </div>
+              <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>Actual vs Planned</p>
+            </div>
+
+            <div style={{ background: '#fff', borderRadius: '16px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>ON SCHEDULE</span>
+                <span style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#e0f2fe', color: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <i className="ti ti-check" style={{ fontSize: '18px' }} />
+                </span>
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: '#0284c7' }}>{stats.onTrackCount}</div>
+              <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>Ahead or On track</p>
+            </div>
+
+            <div style={{ background: '#fff', borderRadius: '16px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>NEEDS ATTENTION</span>
+                <span style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#fef3c7', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <i className="ti ti-alert-triangle" style={{ fontSize: '18px' }} />
+                </span>
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: stats.behindCount > 0 ? '#d97706' : '#94a3b8' }}>
+                {stats.behindCount}
+              </div>
+              <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>Lagging behind schedule</p>
+            </div>
+          </div>
+
+          {/* ══ TWO-COLUMN PROGRESS VIEW ══ */}
+          <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: '20px', alignItems: 'start' }}>
+            {/* Left: Subjects List */}
+            <div style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 800, color: '#0f172a' }}>Assigned Subjects</h4>
+                <span style={{ fontSize: '11px', background: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: '100px', fontWeight: 700 }}>
+                  {filteredSubjects.length}
+                </span>
               </div>
 
-              {/* Chapter Accordion List */}
-              <div className="space-y-3">
-                <h4 className="text-xs font-bold uppercase text-slate-500 tracking-wider">
-                  Chapter & Topic Breakdown ({drilldownData.chapters?.length || 0} Chapters)
-                </h4>
+              {/* Search */}
+              <div style={{ position: 'relative', marginBottom: '12px' }}>
+                <input
+                  type="text"
+                  placeholder="Search subject..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="form-input"
+                  style={{ height: '34px', fontSize: '12px', paddingLeft: '32px' }}
+                />
+                <i className="ti ti-search" style={{ position: 'absolute', left: '10px', top: '9px', color: '#94a3b8' }} />
+              </div>
 
-                {(!drilldownData.chapters || drilldownData.chapters.length === 0) ? (
-                  <div className="text-center py-6 text-slate-400 text-xs">
-                    No chapters defined for this curriculum yet.
-                  </div>
-                ) : (
-                  drilldownData.chapters.map((ch) => {
-                    const isCompleted = ch.status === 'COMPLETED';
-                    const isInProgress = ch.status === 'IN_PROGRESS';
-                    const topics = ch.topics || [];
-                    const completedTopicsCount = topics.filter(t => t.status === 'COMPLETED').length;
+              {loading ? (
+                <div style={{ textAlign: 'center', padding: '30px' }}><i className="ti ti-loader animate-spin" /></div>
+              ) : filteredSubjects.length === 0 ? (
+                <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: '12px', padding: '20px' }}>No subjects found.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {filteredSubjects.map(sub => {
+                    const isSelected = selectedCurriculumId === sub.curriculum_id;
+                    const cov = sub.coverage_percentage || 0;
 
                     return (
                       <div
-                        key={ch.id}
-                        className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/50"
+                        key={sub.curriculum_id}
+                        onClick={() => setSelectedCurriculumId(sub.curriculum_id)}
+                        style={{
+                          padding: '14px', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.15s ease',
+                          border: isSelected ? '1px solid #0176d3' : '1px solid #f1f5f9',
+                          background: isSelected ? '#f0f7ff' : '#ffffff',
+                          boxShadow: isSelected ? '0 2px 8px rgba(1,118,211,0.1)' : 'none'
+                        }}
                       >
-                        {/* Chapter Banner */}
-                        <div className="p-3.5 bg-white border-b border-slate-100 flex items-center justify-between">
-                          <div className="flex items-center gap-2.5">
-                            <span className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs ${
-                              isCompleted
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : isInProgress
-                                ? 'bg-indigo-100 text-indigo-800'
-                                : 'bg-slate-100 text-slate-600'
-                            }`}>
-                              {ch.chapter_no}
-                            </span>
-                            <div>
-                              <h5 className="font-bold text-xs text-slate-900">{ch.title}</h5>
-                              <p className="text-[11px] text-slate-500">
-                                {topics.length} Topics • {ch.estimated_periods || 0} Planned Periods
-                              </p>
-                            </div>
-                          </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>
+                            {sub.class_name}
+                          </span>
+                          {getStatusBadge(sub.status)}
+                        </div>
 
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] font-semibold text-slate-600">
-                              {completedTopicsCount} / {topics.length} Topics
-                            </span>
-                            {isCompleted ? (
-                              <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                                <Check className="w-3 h-3" /> Done
-                              </span>
-                            ) : isInProgress ? (
-                              <span className="bg-indigo-100 text-indigo-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                                In Progress
-                              </span>
-                            ) : (
-                              <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                                Pending
-                              </span>
-                            )}
+                        <div style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
+                          {sub.subject_name}
+                        </div>
+
+                        {/* Progress Bar */}
+                        <div style={{ marginTop: '10px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 700, marginBottom: '4px' }}>
+                            <span style={{ color: '#64748b' }}>Coverage</span>
+                            <span style={{ color: '#0176d3' }}>{cov}%</span>
+                          </div>
+                          <div style={{ width: '100%', height: '6px', background: '#e2e8f0', borderRadius: '100px', overflow: 'hidden' }}>
+                            <div
+                              style={{
+                                width: `${cov}%`, height: '100%', borderRadius: '100px',
+                                background: cov >= 75 ? '#16a34a' : cov >= 45 ? '#0176d3' : cov >= 25 ? '#d97706' : '#dc2626'
+                              }}
+                            />
                           </div>
                         </div>
 
-                        {/* Topics Checklist within Chapter */}
-                        <div className="p-3 space-y-1.5 bg-slate-50/40">
-                          {topics.length === 0 ? (
-                            <p className="text-[11px] text-slate-400 italic">No topics recorded under this chapter.</p>
-                          ) : (
-                            topics.map((top) => {
-                              const isTopDone = top.status === 'COMPLETED';
-
-                              return (
-                                <div
-                                  key={top.id}
-                                  className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200/80 text-xs"
-                                >
-                                  <div className="flex items-center gap-2">
-                                    <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${
-                                      isTopDone
-                                        ? 'bg-emerald-600 text-white'
-                                        : 'border border-slate-300 text-transparent'
-                                    }`}>
-                                      ✓
-                                    </div>
-                                    <span className={`font-medium ${isTopDone ? 'text-slate-800' : 'text-slate-600'}`}>
-                                      {top.topic_no}. {top.title}
-                                    </span>
-                                  </div>
-
-                                  <div className="flex items-center gap-2 text-[11px] text-slate-400">
-                                    <span>{top.estimated_periods || 1} pd</span>
-                                    {isTopDone && top.actual_completion_date && (
-                                      <span className="text-emerald-700 font-semibold bg-emerald-50 px-1.5 py-0.5 rounded text-[10px]">
-                                        Completed on {top.actual_completion_date}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })
-                          )}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#64748b', marginTop: '8px' }}>
+                          <span>{sub.chapters_count || 0} Chapters</span>
+                          <span><strong>{sub.actual_periods_taught || 0}</strong> / {sub.total_planned_periods || 0} pds</span>
                         </div>
                       </div>
                     );
-                  })
-                )}
-              </div>
+                  })}
+                </div>
+              )}
             </div>
-          )}
+
+            {/* Right: Detailed Drilldown */}
+            <div>
+              {loadingDrilldown ? (
+                <div style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '60px', textAlign: 'center' }}>
+                  <i className="ti ti-loader animate-spin" style={{ fontSize: '32px', color: '#0176d3' }} />
+                  <p style={{ marginTop: '12px', fontSize: '13px', color: '#64748b' }}>Loading syllabus breakdown...</p>
+                </div>
+              ) : !drilldownData ? (
+                <div style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '60px', textAlign: 'center', color: '#94a3b8' }}>
+                  Select a subject on the left to inspect chapter-by-chapter execution.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  {/* Banner */}
+                  <div style={{
+                    background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0',
+                    padding: '20px 24px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px'
+                  }}>
+                    <div>
+                      <span style={{ fontSize: '11px', fontWeight: 800, color: '#0176d3', textTransform: 'uppercase' }}>
+                        {drilldownData.class_name} • Session {drilldownData.session}
+                      </span>
+                      <h2 style={{ margin: '2px 0 0', fontSize: '20px', fontWeight: 900, color: '#0f172a' }}>
+                        {drilldownData.subject_name} Execution Checklist
+                      </h2>
+                      {drilldownData.book_name && (
+                        <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>
+                          Prescribed Book: <strong>{drilldownData.book_name}</strong>
+                        </p>
+                      )}
+                    </div>
+
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '32px', fontWeight: 900, color: '#0176d3', lineHeight: 1 }}>
+                        {drilldownData.coverage_percentage || 0}%
+                      </div>
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+                        Total Syllabus Delivered
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Chapters List */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    {drilldownData.chapters?.map(ch => {
+                      const isCompleted = ch.status === 'COMPLETED';
+                      const isInProgress = ch.status === 'IN_PROGRESS';
+                      const topics = ch.topics || [];
+                      const doneCount = topics.filter(t => t.status === 'COMPLETED').length;
+
+                      return (
+                        <div
+                          key={ch.id}
+                          style={{
+                            background: '#ffffff', borderRadius: '14px', border: '1px solid #e2e8f0',
+                            overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+                          }}
+                        >
+                          <div style={{
+                            padding: '14px 18px', background: isCompleted ? '#f0fdf4' : '#f8fafc',
+                            borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <span style={{
+                                width: '28px', height: '28px', borderRadius: '8px',
+                                background: isCompleted ? '#16a34a' : isInProgress ? '#0176d3' : '#e2e8f0',
+                                color: isCompleted || isInProgress ? '#fff' : '#64748b',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 800
+                              }}>
+                                {ch.chapter_no}
+                              </span>
+                              <div>
+                                <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 800, color: '#0f172a' }}>
+                                  {ch.title}
+                                </h4>
+                                <span style={{ fontSize: '11px', color: '#64748b' }}>
+                                  {doneCount} / {topics.length} Topics Completed • {ch.estimated_periods || 0} Planned Periods
+                                </span>
+                              </div>
+                            </div>
+
+                            <span className={isCompleted ? "badge badge-success" : isInProgress ? "badge badge-info" : "badge badge-neutral"}>
+                              {isCompleted ? '✓ Completed' : isInProgress ? 'In Progress' : 'Pending'}
+                            </span>
+                          </div>
+
+                          <div style={{ padding: '12px 18px' }}>
+                            {topics.length === 0 ? (
+                              <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>
+                                No topics defined for this chapter.
+                              </p>
+                            ) : (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                {topics.map(t => {
+                                  const isTopDone = t.status === 'COMPLETED';
+
+                                  return (
+                                    <div
+                                      key={t.id}
+                                      style={{
+                                        padding: '8px 12px', borderRadius: '8px',
+                                        background: isTopDone ? '#f0fdf4' : '#ffffff',
+                                        border: isTopDone ? '1px solid #bbf7d0' : '1px solid #e2e8f0',
+                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                                      }}
+                                    >
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <i
+                                          className={isTopDone ? 'ti ti-circle-check-filled' : 'ti ti-circle'}
+                                          style={{ color: isTopDone ? '#16a34a' : '#cbd5e1', fontSize: '16px' }}
+                                        />
+                                        <span style={{ fontSize: '12px', fontWeight: 600, color: '#1e293b' }}>
+                                          {t.topic_no}. {t.title}
+                                        </span>
+                                      </div>
+
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontSize: '11px', color: '#64748b' }}>
+                                          {t.estimated_periods || 1} pd
+                                        </span>
+                                        {isTopDone && t.actual_completion_date && (
+                                          <span style={{ fontSize: '11px', fontWeight: 700, color: '#16a34a', background: '#dcfce7', padding: '2px 6px', borderRadius: '4px' }}>
+                                            Done on {t.actual_completion_date}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>
