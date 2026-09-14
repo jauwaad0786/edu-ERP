@@ -99,6 +99,9 @@ const ROLE_MENUS = {
             { icon: 'ti-list',          label: 'Classes & Sections', path: '/classes' },
             { icon: 'ti-bookmark',      label: 'Subject Management', path: '/subjects' },
             { icon: 'ti-calendar-time', label: 'Timetable',          path: '/timetable' },
+            { icon: 'ti-book-2',        label: 'Curriculum & Books', path: '/curriculum/setup' },
+            { icon: 'ti-notebook',      label: 'Teacher Teaching Diary', path: '/curriculum/diary' },
+            { icon: 'ti-chart-pie',     label: 'Syllabus Coverage',  path: '/curriculum/dashboard' },
           ],
         },
 
@@ -287,6 +290,8 @@ const ROLE_MENUS = {
     {
       group: 'Academics',
       items: [
+        { icon: 'ti-notebook',       label: "Today's Teaching Diary", path: '/curriculum/diary' },
+        { icon: 'ti-chart-pie',      label: 'My Syllabus Progress',  path: '/curriculum/coverage' },
         { icon: 'ti-books',          label: 'Notes & Materials', path: '/notes' },
         { icon: 'ti-clipboard-list', label: 'Assignments',       path: '/assignments' },
         { icon: 'ti-chart-dots',     label: 'Internal Marks',    path: '/internal-marks' },

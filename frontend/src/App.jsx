@@ -42,6 +42,10 @@ import AssignmentsPage  from './pages/AssignmentsPage';
 import InternalMarksPage from './pages/InternalMarksPage';
 import SubjectsPage     from './pages/SubjectsPage';
 import TimetablePage    from './pages/TimetablePage';
+import CurriculumSetupPage from './pages/academics/CurriculumSetupPage';
+import TeacherDailyDiaryPage from './pages/academics/TeacherDailyDiaryPage';
+import TeacherSyllabusCoveragePage from './pages/academics/TeacherSyllabusCoveragePage';
+import PrincipalAcademicDashboard from './pages/academics/PrincipalAcademicDashboard';
 import IDCardPage       from './pages/IDCardPage';
 import AdmitCardPage    from './pages/AdmitCardPage';
 import ResultCardPage   from './pages/ResultCardPage';
@@ -392,6 +396,33 @@ export default function App() {
             <Route path="/:schoolSlug/:role/timetable" element={
               <TenantProtectedRoute roles={['PRINCIPAL', 'TEACHER', 'STUDENT', 'PARENT']}>
                 <TimetablePage />
+              </TenantProtectedRoute>
+            } />
+
+            {/* Curriculum & Teacher Teaching Diary */}
+            <Route path="/:schoolSlug/:role/curriculum" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'VICE_PRINCIPAL', 'ACADEMIC_COORDINATOR']}>
+                <CurriculumSetupPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/curriculum/setup" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'VICE_PRINCIPAL', 'ACADEMIC_COORDINATOR']}>
+                <CurriculumSetupPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/curriculum/diary" element={
+              <TenantProtectedRoute roles={['TEACHER', 'PRINCIPAL', 'SUPER_ADMIN', 'VICE_PRINCIPAL', 'ACADEMIC_COORDINATOR']}>
+                <TeacherDailyDiaryPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/curriculum/coverage" element={
+              <TenantProtectedRoute roles={['TEACHER', 'PRINCIPAL', 'SUPER_ADMIN', 'VICE_PRINCIPAL', 'ACADEMIC_COORDINATOR']}>
+                <TeacherSyllabusCoveragePage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/curriculum/dashboard" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'VICE_PRINCIPAL', 'DIRECTOR', 'ACADEMIC_COORDINATOR']}>
+                <PrincipalAcademicDashboard />
               </TenantProtectedRoute>
             } />
 
@@ -869,6 +900,11 @@ export default function App() {
             <Route path="/internal-marks" element={<LegacyRedirect toService="internal-marks" />} />
             <Route path="/holidays" element={<LegacyRedirect toService="holidays" />} />
             <Route path="/timetable" element={<LegacyRedirect toService="timetable" />} />
+            <Route path="/curriculum" element={<LegacyRedirect toService="curriculum/setup" />} />
+            <Route path="/curriculum/setup" element={<LegacyRedirect toService="curriculum/setup" />} />
+            <Route path="/curriculum/diary" element={<LegacyRedirect toService="curriculum/diary" />} />
+            <Route path="/curriculum/coverage" element={<LegacyRedirect toService="curriculum/coverage" />} />
+            <Route path="/curriculum/dashboard" element={<LegacyRedirect toService="curriculum/dashboard" />} />
             <Route path="/admit-card" element={<LegacyRedirect toService="admit-card" />} />
             <Route path="/admit-cards" element={<LegacyRedirect toService="admit-card" />} />
             <Route path="/result-card" element={<LegacyRedirect toService="result-card" />} />

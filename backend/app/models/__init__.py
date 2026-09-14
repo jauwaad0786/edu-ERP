@@ -22,6 +22,7 @@ from app.models.deleted_item import DeletedItem, DeletedItemType, DeletedItemSta
 from app.models.otp import OTPVerification, OTPPurpose
 from app.models.device import UserDevice
 from app.models.delegation import TeacherDelegation, TeacherDelegationScope, TeacherDelegationPermission
+from app.models.curriculum import Curriculum, CurriculumChapter, CurriculumTopic, TeachingLog, TeachingWorksheet
 
 __all__ = [
     'User', 'UserRole', 'School', 'Product',
@@ -35,5 +36,7 @@ __all__ = [
     'DeletedItem', 'DeletedItemType', 'DeletedItemStatus',
     'OTPVerification', 'OTPPurpose', 'UserDevice',
     'TeacherDelegation', 'TeacherDelegationScope', 'TeacherDelegationPermission',
+    'Curriculum', 'CurriculumChapter', 'CurriculumTopic', 'TeachingLog', 'TeachingWorksheet',
 ]
+
 

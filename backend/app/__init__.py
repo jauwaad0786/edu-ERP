@@ -189,6 +189,8 @@ def create_app(config_name='default'):
     app.register_blueprint(academic_resources_bp)
     from app.routes.delegations import delegations_bp
     app.register_blueprint(delegations_bp, url_prefix='/api')
+    from app.routes.curriculum import curriculum_bp
+    app.register_blueprint(curriculum_bp)
 
     # ── 1P360 BOT — AI Blueprint ─────────────────────────────────────────────
     try:
@@ -206,6 +208,7 @@ def create_app(config_name='default'):
             from app.models import otp as otp_models  # noqa: F401
             from app.models import device as device_models  # noqa: F401
             from app.models import delegation as delegation_models  # noqa: F401
+            from app.models import curriculum as curriculum_models  # noqa: F401
             _ensure_school_columns()
             _ensure_user_columns()
             _ensure_teacher_columns()
