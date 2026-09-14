@@ -128,6 +128,8 @@ import OutstandingPage           from './pages/finance/OutstandingPage';
 import FinanceReportsPage        from './pages/finance/FinanceReportsPage';
 import PaymentLogsPage          from './pages/finance/PaymentLogsPage';
 import FinancePayrollPage       from './pages/finance/FinancePayrollPage';
+import FeeServiceGenerationPage from './pages/finance/FeeServiceGenerationPage';
+import FeeCollectionAnalyticsPage from './pages/finance/FeeCollectionAnalyticsPage';
 
 // ── Communication Hub Pages ───────────────────────────────────────────────────
 import SupportInbox     from './pages/communication/SupportInbox';
@@ -424,6 +426,26 @@ export default function App() {
             <Route path="/:schoolSlug/:role/finance/dashboard" element={
               <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
                 <FinanceDashboard />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/finance/service-generation" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <FeeServiceGenerationPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/finance/collection-analytics" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <FeeCollectionAnalyticsPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/fees/service-generation" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <FeeServiceGenerationPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/fees/collection-analytics" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <FeeCollectionAnalyticsPage />
               </TenantProtectedRoute>
             } />
             <Route path="/:schoolSlug/:role/finance/bills" element={
@@ -821,8 +843,12 @@ export default function App() {
             <Route path="/exams" element={<LegacyRedirect toService="exams" />} />
             <Route path="/fees" element={<LegacyRedirect toService="fees" />} />
             <Route path="/fees/structures" element={<LegacyRedirect toService="fees/structures" />} />
+            <Route path="/fees/service-generation" element={<LegacyRedirect toService="finance/service-generation" />} />
+            <Route path="/fees/collection-analytics" element={<LegacyRedirect toService="finance/collection-analytics" />} />
             <Route path="/finance" element={<LegacyRedirect toService="finance/dashboard" />} />
             <Route path="/finance/dashboard" element={<LegacyRedirect toService="finance/dashboard" />} />
+            <Route path="/finance/service-generation" element={<LegacyRedirect toService="finance/service-generation" />} />
+            <Route path="/finance/collection-analytics" element={<LegacyRedirect toService="finance/collection-analytics" />} />
             <Route path="/finance/bills" element={<LegacyRedirect toService="finance/bills" />} />
             <Route path="/finance/payments/collect" element={<LegacyRedirect toService="finance/payments/collect" />} />
             <Route path="/finance/receipts" element={<LegacyRedirect toService="finance/receipts" />} />

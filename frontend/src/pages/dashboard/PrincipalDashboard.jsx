@@ -538,18 +538,41 @@ export default function PrincipalDashboard() {
             </div>
 
             {/* Card 4: Fee Collected */}
-            <div style={{
-              background: darkMode ? '#111827' : '#ffffff',
-              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
-              borderRadius: '16px', padding: '18px 20px',
-              boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
-            }}>
-              <div style={{
-                width: '36px', height: '36px', borderRadius: '10px',
-                background: '#fffbeb', color: '#d97706',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '12px'
-              }}>
-                <i className="ti ti-currency-rupee" style={{ fontSize: '18px' }} />
+            <div
+              onClick={() => goTo('/finance/collection-analytics')}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goTo('/finance/collection-analytics'); } }}
+              style={{
+                background: darkMode ? '#111827' : '#ffffff',
+                border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+                borderRadius: '16px', padding: '18px 20px',
+                boxShadow: '0 2px 10px rgba(0,0,0,0.02)',
+                cursor: 'pointer',
+                transition: 'all 0.18s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-3px)';
+                e.currentTarget.style.boxShadow = '0 10px 24px rgba(16,185,129,0.12)';
+                e.currentTarget.style.borderColor = '#10b981';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 2px 10px rgba(0,0,0,0.02)';
+                e.currentTarget.style.borderColor = darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0';
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <div style={{
+                  width: '36px', height: '36px', borderRadius: '10px',
+                  background: '#fffbeb', color: '#d97706',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                  <i className="ti ti-currency-rupee" style={{ fontSize: '18px' }} />
+                </div>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#10b981', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                  Analytics <i className="ti ti-arrow-right" style={{ fontSize: '11px' }} />
+                </span>
               </div>
               <div style={{ fontSize: '11px', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.04em' }}>
                 FEE COLLECTED ({feePeriod === 'MONTH' ? 'MONTH' : feePeriod === 'YEAR' ? 'SESSION' : 'ALL'})
@@ -566,18 +589,41 @@ export default function PrincipalDashboard() {
             </div>
 
             {/* Card 5: Fee Pending */}
-            <div style={{
-              background: darkMode ? '#111827' : '#ffffff',
-              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
-              borderRadius: '16px', padding: '18px 20px',
-              boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
-            }}>
-              <div style={{
-                width: '36px', height: '36px', borderRadius: '10px',
-                background: '#fef2f2', color: '#ef4444',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '12px'
-              }}>
-                <i className="ti ti-alert-triangle" style={{ fontSize: '18px' }} />
+            <div
+              onClick={() => goTo('/finance/collection-analytics?status=PENDING')}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goTo('/finance/collection-analytics?status=PENDING'); } }}
+              style={{
+                background: darkMode ? '#111827' : '#ffffff',
+                border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+                borderRadius: '16px', padding: '18px 20px',
+                boxShadow: '0 2px 10px rgba(0,0,0,0.02)',
+                cursor: 'pointer',
+                transition: 'all 0.18s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-3px)';
+                e.currentTarget.style.boxShadow = '0 10px 24px rgba(239,68,68,0.12)';
+                e.currentTarget.style.borderColor = '#ef4444';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 2px 10px rgba(0,0,0,0.02)';
+                e.currentTarget.style.borderColor = darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0';
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <div style={{
+                  width: '36px', height: '36px', borderRadius: '10px',
+                  background: '#fef2f2', color: '#ef4444',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                  <i className="ti ti-alert-triangle" style={{ fontSize: '18px' }} />
+                </div>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#ef4444', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                  Dues List <i className="ti ti-arrow-right" style={{ fontSize: '11px' }} />
+                </span>
               </div>
               <div style={{ fontSize: '11px', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.04em' }}>
                 FEE PENDING ({feePeriod === 'MONTH' ? 'MONTH' : feePeriod === 'YEAR' ? 'SESSION' : 'ALL'})
@@ -611,7 +657,7 @@ export default function PrincipalDashboard() {
                     Today's Collection by Service (Central Finance Sync) 💰
                   </h3>
                   <p style={{ margin: '2px 0 0', fontSize: '11.5px', color: '#94a3b8' }}>
-                    Unified real-time inflows across School, Hostel, Transport, Library &amp; Admission counters
+                    Unified real-time inflows across School, Hostel, Transport, Library &amp; Admission counters (Click any service to view student realization)
                   </p>
                 </div>
               </div>
@@ -634,36 +680,96 @@ export default function PrincipalDashboard() {
               display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
               gap: '12px'
             }}>
-              <div style={{ background: darkMode ? '#1e293b' : '#f8fafc', padding: '12px 16px', borderRadius: '12px', borderLeft: '4px solid #3b82f6' }}>
-                <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8' }}>SCHOOL / TUITION</div>
+              <div
+                onClick={() => goTo('/finance/collection-analytics?service=TUITION')}
+                style={{
+                  background: darkMode ? '#1e293b' : '#f8fafc', padding: '12px 16px', borderRadius: '12px',
+                  borderLeft: '4px solid #3b82f6', cursor: 'pointer', transition: 'all 0.15s ease'
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(59,130,246,0.15)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
+                title="Click to view Tuition collection details"
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8' }}>SCHOOL / TUITION</span>
+                  <i className="ti ti-arrow-right" style={{ fontSize: '11px', color: '#3b82f6' }} />
+                </div>
                 <div style={{ fontSize: '18px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', marginTop: '2px' }}>
                   ₹{Number(feesSummary?.today_breakdown?.academic || 0).toLocaleString('en-IN')}
                 </div>
               </div>
 
-              <div style={{ background: darkMode ? '#1e293b' : '#f8fafc', padding: '12px 16px', borderRadius: '12px', borderLeft: '4px solid #8b5cf6' }}>
-                <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8' }}>HOSTEL FEES</div>
+              <div
+                onClick={() => goTo('/finance/collection-analytics?service=HOSTEL')}
+                style={{
+                  background: darkMode ? '#1e293b' : '#f8fafc', padding: '12px 16px', borderRadius: '12px',
+                  borderLeft: '4px solid #8b5cf6', cursor: 'pointer', transition: 'all 0.15s ease'
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(139,92,246,0.15)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
+                title="Click to view Hostel collection details"
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8' }}>HOSTEL FEES</span>
+                  <i className="ti ti-arrow-right" style={{ fontSize: '11px', color: '#8b5cf6' }} />
+                </div>
                 <div style={{ fontSize: '18px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', marginTop: '2px' }}>
                   ₹{Number(feesSummary?.today_breakdown?.hostel || 0).toLocaleString('en-IN')}
                 </div>
               </div>
 
-              <div style={{ background: darkMode ? '#1e293b' : '#f8fafc', padding: '12px 16px', borderRadius: '12px', borderLeft: '4px solid #06b6d4' }}>
-                <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8' }}>TRANSPORT FLEET</div>
+              <div
+                onClick={() => goTo('/finance/collection-analytics?service=TRANSPORT')}
+                style={{
+                  background: darkMode ? '#1e293b' : '#f8fafc', padding: '12px 16px', borderRadius: '12px',
+                  borderLeft: '4px solid #06b6d4', cursor: 'pointer', transition: 'all 0.15s ease'
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(6,182,212,0.15)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
+                title="Click to view Transport collection details"
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8' }}>TRANSPORT FLEET</span>
+                  <i className="ti ti-arrow-right" style={{ fontSize: '11px', color: '#06b6d4' }} />
+                </div>
                 <div style={{ fontSize: '18px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', marginTop: '2px' }}>
                   ₹{Number(feesSummary?.today_breakdown?.transport || 0).toLocaleString('en-IN')}
                 </div>
               </div>
 
-              <div style={{ background: darkMode ? '#1e293b' : '#f8fafc', padding: '12px 16px', borderRadius: '12px', borderLeft: '4px solid #f59e0b' }}>
-                <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8' }}>LIBRARY FINES</div>
+              <div
+                onClick={() => goTo('/finance/collection-analytics?service=LIB_FINE')}
+                style={{
+                  background: darkMode ? '#1e293b' : '#f8fafc', padding: '12px 16px', borderRadius: '12px',
+                  borderLeft: '4px solid #f59e0b', cursor: 'pointer', transition: 'all 0.15s ease'
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(245,158,11,0.15)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
+                title="Click to view Library collection details"
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8' }}>LIBRARY FINES</span>
+                  <i className="ti ti-arrow-right" style={{ fontSize: '11px', color: '#f59e0b' }} />
+                </div>
                 <div style={{ fontSize: '18px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', marginTop: '2px' }}>
                   ₹{Number(feesSummary?.today_breakdown?.library || 0).toLocaleString('en-IN')}
                 </div>
               </div>
 
-              <div style={{ background: darkMode ? '#1e293b' : '#f8fafc', padding: '12px 16px', borderRadius: '12px', borderLeft: '4px solid #10b981' }}>
-                <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8' }}>NEW ADMISSIONS</div>
+              <div
+                onClick={() => goTo('/finance/collection-analytics?service=ADMISSION')}
+                style={{
+                  background: darkMode ? '#1e293b' : '#f8fafc', padding: '12px 16px', borderRadius: '12px',
+                  borderLeft: '4px solid #10b981', cursor: 'pointer', transition: 'all 0.15s ease'
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(16,185,129,0.15)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
+                title="Click to view Admissions collection details"
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8' }}>NEW ADMISSIONS</span>
+                  <i className="ti ti-arrow-right" style={{ fontSize: '11px', color: '#10b981' }} />
+                </div>
                 <div style={{ fontSize: '18px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', marginTop: '2px' }}>
                   ₹{Number(feesSummary?.today_breakdown?.admission || 0).toLocaleString('en-IN')}
                 </div>
@@ -810,66 +916,158 @@ export default function PrincipalDashboard() {
               gap: '16px'
             }}>
               {/* Metric 1: Generated Fees */}
-              <div style={{
-                background: darkMode ? '#1e293b' : '#f8fafc',
-                border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
-                borderRadius: '14px', padding: '16px 18px'
-              }}>
-                <div style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  TOTAL FEES GENERATED
+              <div
+                onClick={() => goTo('/finance/service-generation')}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goTo('/finance/service-generation'); } }}
+                style={{
+                  background: darkMode ? '#1e293b' : '#f8fafc',
+                  border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                  borderRadius: '14px', padding: '16px 18px',
+                  cursor: 'pointer', transition: 'all 0.18s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-3px)';
+                  e.currentTarget.style.borderColor = '#2563eb';
+                  e.currentTarget.style.boxShadow = '0 8px 20px rgba(37,99,235,0.15)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.borderColor = darkMode ? '#334155' : '#e2e8f0';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+                title="Click to view which services have fees generated vs not generated"
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    TOTAL FEES GENERATED
+                  </div>
+                  <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#2563eb', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                    Service Status <i className="ti ti-arrow-right" style={{ fontSize: '10px' }} />
+                  </span>
                 </div>
                 <div style={{ fontSize: '24px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a', margin: '4px 0 2px' }}>
                   ₹{fmt(activeFeeGenerated)}
                 </div>
                 <div style={{ fontSize: '11.5px', color: '#64748b' }}>
-                  Total billed ({feePeriod === 'MONTH' ? 'Month' : feePeriod === 'YEAR' ? 'Session' : 'All-time'})
+                  Total billed ({feePeriod === 'MONTH' ? 'Month' : feePeriod === 'YEAR' ? 'Session' : 'All-time'}) • Click for breakdown
                 </div>
               </div>
 
               {/* Metric 2: Collected Fees */}
-              <div style={{
-                background: darkMode ? '#064e3b22' : '#f0fdf4',
-                border: `1px solid ${darkMode ? '#065f46' : '#bbf7d0'}`,
-                borderRadius: '14px', padding: '16px 18px'
-              }}>
-                <div style={{ fontSize: '11px', fontWeight: 800, color: '#16a34a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  COLLECTED REVENUE
+              <div
+                onClick={() => goTo('/finance/collection-analytics')}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goTo('/finance/collection-analytics'); } }}
+                style={{
+                  background: darkMode ? '#064e3b22' : '#f0fdf4',
+                  border: `1px solid ${darkMode ? '#065f46' : '#bbf7d0'}`,
+                  borderRadius: '14px', padding: '16px 18px',
+                  cursor: 'pointer', transition: 'all 0.18s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-3px)';
+                  e.currentTarget.style.borderColor = '#16a34a';
+                  e.currentTarget.style.boxShadow = '0 8px 20px rgba(22,163,74,0.15)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.borderColor = darkMode ? '#065f46' : '#bbf7d0';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+                title="Click to view student collection graphs & realization matrix"
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#16a34a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    COLLECTED REVENUE
+                  </div>
+                  <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#16a34a', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                    Graphs <i className="ti ti-arrow-right" style={{ fontSize: '10px' }} />
+                  </span>
                 </div>
                 <div style={{ fontSize: '24px', fontWeight: 900, color: '#16a34a', margin: '4px 0 2px' }}>
                   ₹{fmt(activeFeeCollected)}
                 </div>
                 <div style={{ fontSize: '11.5px', color: '#16a34a', fontWeight: 600 }}>
-                  Realized in bank / counter
+                  Realized in bank / counter • Click for student list
                 </div>
               </div>
 
               {/* Metric 3: Pending Dues */}
-              <div style={{
-                background: darkMode ? '#7f1d1d22' : '#fef2f2',
-                border: `1px solid ${darkMode ? '#991b1b' : '#fecaca'}`,
-                borderRadius: '14px', padding: '16px 18px'
-              }}>
-                <div style={{ fontSize: '11px', fontWeight: 800, color: '#dc2626', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  OUTSTANDING DUES
+              <div
+                onClick={() => goTo('/finance/collection-analytics?status=PENDING')}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goTo('/finance/collection-analytics?status=PENDING'); } }}
+                style={{
+                  background: darkMode ? '#7f1d1d22' : '#fef2f2',
+                  border: `1px solid ${darkMode ? '#991b1b' : '#fecaca'}`,
+                  borderRadius: '14px', padding: '16px 18px',
+                  cursor: 'pointer', transition: 'all 0.18s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-3px)';
+                  e.currentTarget.style.borderColor = '#dc2626';
+                  e.currentTarget.style.boxShadow = '0 8px 20px rgba(220,38,38,0.15)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.borderColor = darkMode ? '#991b1b' : '#fecaca';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+                title="Click to view students with pending dues"
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#dc2626', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    OUTSTANDING DUES
+                  </div>
+                  <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#dc2626', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                    Defaulters <i className="ti ti-arrow-right" style={{ fontSize: '10px' }} />
+                  </span>
                 </div>
                 <div style={{ fontSize: '24px', fontWeight: 900, color: '#dc2626', margin: '4px 0 2px' }}>
                   ₹{fmt(activeFeePending)}
                 </div>
                 <div style={{ fontSize: '11.5px', color: '#dc2626', fontWeight: 600 }}>
-                  Pending from students
+                  Pending from students • Click to collect
                 </div>
               </div>
 
               {/* Metric 4: Recovery / Collection Rate */}
-              <div style={{
-                background: darkMode ? '#1e293b' : '#f8fafc',
-                border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
-                borderRadius: '14px', padding: '16px 18px',
-                display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
-              }}>
+              <div
+                onClick={() => goTo('/finance/collection-analytics')}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goTo('/finance/collection-analytics'); } }}
+                style={{
+                  background: darkMode ? '#1e293b' : '#f8fafc',
+                  border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                  borderRadius: '14px', padding: '16px 18px',
+                  display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                  cursor: 'pointer', transition: 'all 0.18s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-3px)';
+                  e.currentTarget.style.borderColor = '#0891b2';
+                  e.currentTarget.style.boxShadow = '0 8px 20px rgba(8,145,178,0.15)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.borderColor = darkMode ? '#334155' : '#e2e8f0';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+                title="Click to view full recovery performance"
+              >
                 <div>
-                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#0891b2', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    COLLECTION RATE
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 800, color: '#0891b2', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      COLLECTION RATE
+                    </div>
+                    <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#0891b2', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                      Charts <i className="ti ti-arrow-right" style={{ fontSize: '10px' }} />
+                    </span>
                   </div>
                   <div style={{ fontSize: '24px', fontWeight: 900, color: '#0891b2', margin: '4px 0 2px' }}>
                     {activeCollectionPct}%

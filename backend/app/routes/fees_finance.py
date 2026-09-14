@@ -1740,3 +1740,93 @@ def get_outstanding():
 
     bills = q.order_by(FeeBill.balance_due.desc()).all()
     return jsonify([b.to_dict() for b in bills]), 200
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  9. SERVICE-WISE FEE GENERATION & COLLECTION INTELLIGENCE
+# ═══════════════════════════════════════════════════════════════════════
+
+@fees_finance_bp.route('/services/generation-status', methods=['GET'])
+@jwt_required()
+def get_service_generation_status_endpoint():
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    month    = request.args.get('month')
+    session  = request.args.get('session', '2026-27')
+    class_id = request.args.get('class_id')
+    category = request.args.get('category')
+
+    from app.services.fee_service_intelligence import get_services_generation_status
+    data = get_services_generation_status(
+        school_id=user.school_id,
+        month=month,
+        session=session,
+        class_id=class_id,
+        category=category
+    )
+    return jsonify(data), 200
+
+
+@fees_finance_bp.route('/services/collection-matrix', methods=['GET'])
+@jwt_required()
+def get_service_collection_matrix_endpoint():
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    month        = request.args.get('month')
+    session      = request.args.get('session', '2026-27')
+    class_id     = request.args.get('class_id')
+    status       = request.args.get('status')
+    service_code = request.args.get('service_code')
+    search       = request.args.get('search')
+
+    from app.services.fee_service_intelligence import get_services_collection_matrix
+    data = get_services_collection_matrix(
+        school_id=user.school_id,
+        month=month,
+        session=session,
+        class_id=class_id,
+        status=status,
+        service_code=service_code,
+        search=search
+    )
+    return jsonify(data), 200
+
+
+@fees_finance_bp.route('/services/<string:service_code>/generate', methods=['POST'])
+@jwt_required()
+def generate_service_fee_endpoint(service_code):
+    """
+    Generates fee for a specific service head (e.g. TUITION, TRANSPORT, HOSTEL, etc.)
+    either via central billing engine or module-specific generators.
+    """
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    data = request.get_json() or {}
+    bill_month = data.get('bill_month') or data.get('month') or date.today().strftime('%Y-%m')
+    due_date   = data.get('due_date') or f"{bill_month}-10"
+    session    = data.get('session', '2026-27')
+    class_id   = data.get('class_id')
+    force_regen= data.get('force_regenerate', False)
+
+    from app.services.fee_ledger_service import bulk_generate_fee_bills
+    result = bulk_generate_fee_bills(
+        school_id=user.school_id,
+        bill_month=bill_month,
+        due_date=due_date,
+        class_id=class_id,
+        actor_user=user,
+        session=session,
+        force_regenerate=force_regen
+    )
+    return jsonify({
+        'success': True,
+        'message': f"Generated fees for {service_code} ({result['generated_count']} generated, {result['skipped_count']} already covered/skipped)",
+        'result': result
+    }), 200
+

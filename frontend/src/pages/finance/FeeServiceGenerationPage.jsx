@@ -1,0 +1,890 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import Sidebar from '../../components/Sidebar';
+import Navbar from '../../components/Navbar';
+import api from '../../api/axios';
+import toast from 'react-hot-toast';
+import { useAuth } from '../../context/AuthContext';
+import { resolveTenantPath } from '../../utils/routeBuilder';
+
+export default function FeeServiceGenerationPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuth();
+
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState(null);
+  const [classes, setClasses] = useState([]);
+
+  // Filters
+  const currentMonthStr = new Date().toISOString().slice(0, 7);
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthStr);
+  const [selectedSession, setSelectedSession] = useState('2026-27');
+  const [selectedCategory, setSelectedCategory] = useState('ALL');
+  const [selectedStatus, setSelectedStatus] = useState('ALL'); // ALL, GENERATED, NOT_GENERATED, PARTIALLY_GENERATED
+  const [selectedClass, setSelectedClass] = useState('');
+  const [viewMode, setViewMode] = useState('GRID'); // GRID or TABLE
+
+  // Modals
+  const [genModal, setGenModal] = useState(false);
+  const [activeService, setActiveService] = useState(null);
+  const [genMonth, setGenMonth] = useState(currentMonthStr);
+  const [genDueDate, setGenDueDate] = useState(`${currentMonthStr}-10`);
+  const [genClassId, setGenClassId] = useState('');
+  const [forceRegen, setForceRegen] = useState(false);
+  const [generating, setGenerating] = useState(false);
+
+  // Edit Rate Modal
+  const [editRateModal, setEditRateModal] = useState(false);
+  const [editHead, setEditHead] = useState(null);
+  const [newRate, setNewRate] = useState('');
+  const [updatingRate, setUpdatingRate] = useState(false);
+
+  // Load Classes
+  useEffect(() => {
+    api.get('/principal/classes')
+      .then(res => setClasses(res.data || []))
+      .catch(() => {});
+  }, []);
+
+  // Fetch Services Generation Status
+  const fetchStatus = useCallback(async () => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams();
+      if (selectedMonth) params.append('month', selectedMonth);
+      if (selectedSession) params.append('session', selectedSession);
+      if (selectedClass) params.append('class_id', selectedClass);
+      if (selectedCategory && selectedCategory !== 'ALL') params.append('category', selectedCategory);
+
+      const res = await api.get(`/fees-finance/services/generation-status?${params.toString()}`);
+      setData(res.data || null);
+    } catch (err) {
+      toast.error('Failed to load service fee generation status');
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedMonth, selectedSession, selectedClass, selectedCategory]);
+
+  useEffect(() => {
+    fetchStatus();
+  }, [fetchStatus]);
+
+  // Handle Quick Fee Generation
+  const handleGenerate = async (e) => {
+    e.preventDefault();
+    if (!genMonth || !genDueDate) {
+      toast.error('Please specify both bill month and due date');
+      return;
+    }
+    try {
+      setGenerating(true);
+      const code = activeService?.code || 'TUITION';
+      const payload = {
+        bill_month: genMonth,
+        due_date: genDueDate,
+        session: selectedSession,
+        class_id: genClassId ? parseInt(genClassId) : null,
+        force_regenerate: forceRegen,
+      };
+
+      const res = await api.post(`/fees-finance/services/${code}/generate`, payload);
+      toast.success(res.data?.message || `Fees generated for ${activeService?.name || 'Service'}`);
+      setGenModal(false);
+      setActiveService(null);
+      fetchStatus();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to generate fees');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  // Filter services by status locally if needed
+  const rawServices = data?.services || [];
+  const filteredServices = rawServices.filter(svc => {
+    if (selectedStatus !== 'ALL') {
+      if (selectedStatus === 'GENERATED' && svc.status !== 'GENERATED') return false;
+      if (selectedStatus === 'NOT_GENERATED' && svc.status !== 'NOT_GENERATED') return false;
+      if (selectedStatus === 'PARTIALLY_GENERATED' && svc.status !== 'PARTIALLY_GENERATED') return false;
+    }
+    return true;
+  });
+
+  const getServiceIcon = (category, code) => {
+    const c = (category || '').toUpperCase();
+    const cd = (code || '').toUpperCase();
+    if (cd.includes('TRANSPORT') || c === 'TRANSPORT') return 'ti ti-bus';
+    if (cd.includes('HOSTEL') || c === 'HOSTEL') return 'ti ti-building-community';
+    if (cd.includes('LIBRARY') || c === 'LIBRARY') return 'ti ti-books';
+    if (cd.includes('EXAM') || c === 'EXAM') return 'ti ti-certificate';
+    if (cd.includes('ADMISSION')) return 'ti ti-user-plus';
+    if (cd.includes('LAB') || cd.includes('COMPUTER')) return 'ti ti-device-laptop';
+    return 'ti ti-school';
+  };
+
+  const getCategoryColor = (category) => {
+    switch ((category || '').toUpperCase()) {
+      case 'TRANSPORT': return { bg: '#e0f2fe', color: '#0284c7' };
+      case 'HOSTEL':    return { bg: '#f3e8ff', color: '#9333ea' };
+      case 'LIBRARY':   return { bg: '#fef3c7', color: '#d97706' };
+      case 'EXAM':      return { bg: '#ffedd5', color: '#ea580c' };
+      default:          return { bg: '#eff6ff', color: '#2563eb' };
+    }
+  };
+
+  const fmt = (n) => Number(n || 0).toLocaleString('en-IN');
+
+  const summary = data?.summary || {};
+
+  return (
+    <div className="app-shell">
+      <Sidebar />
+      <div className="main-content">
+        <Navbar title="Service Fee Generation Intelligence" />
+        <div className="page-body" style={{ maxWidth: '1440px', margin: '0 auto', padding: '24px 28px' }}>
+
+          {/* ══ 1. HEADER & TOP BANNER ══ */}
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            flexWrap: 'wrap', gap: '16px', marginBottom: '24px'
+          }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                <button
+                  onClick={() => navigate(-1)}
+                  style={{
+                    background: '#f1f5f9', border: 'none', borderRadius: '8px',
+                    padding: '6px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                    fontSize: '13px', fontWeight: 700, color: '#475569'
+                  }}
+                >
+                  <i className="ti ti-arrow-left" /> Back
+                </button>
+                <span style={{
+                  background: '#ecfdf5', color: '#059669', fontSize: '12px',
+                  fontWeight: 800, padding: '4px 10px', borderRadius: '100px'
+                }}>
+                  ● Live Backend Engine
+                </span>
+                <span style={{ fontSize: '13px', color: '#64748b' }}>
+                  Session <strong>{selectedSession}</strong>
+                </span>
+              </div>
+              <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 900, color: '#0f172a' }}>
+                Service-Wise Fee Generation &amp; Demand Status
+              </h1>
+              <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>
+                Track which school services (Tuition, Transport, Hostel, Library, Exams) have been billed for <strong>{data?.month_label || selectedMonth}</strong> and generate pending dues with 1 click.
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => {
+                  setActiveService({ code: 'TUITION', name: 'All Configured Services' });
+                  setGenMonth(selectedMonth);
+                  setGenDueDate(`${selectedMonth}-10`);
+                  setGenModal(true);
+                }}
+                className="btn btn-primary"
+                style={{
+                  borderRadius: '10px', padding: '10px 18px', fontWeight: 800,
+                  display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(37,99,235,0.2)'
+                }}
+              >
+                <i className="ti ti-bolt" style={{ fontSize: '17px' }} />
+                Generate All Monthly Bills
+              </button>
+
+              <button
+                onClick={() => navigate(resolveTenantPath('/finance/setup', user))}
+                className="btn btn-neutral"
+                style={{ borderRadius: '10px', padding: '10px 16px', fontWeight: 700 }}
+              >
+                <i className="ti ti-settings" />
+                Fee Structures &amp; Heads
+              </button>
+            </div>
+          </div>
+
+          {/* ══ 2. TOP METRICS SUMMARY STRIP ══ */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gap: '14px', marginBottom: '24px'
+          }}>
+            {/* Metric 1: Generated Services */}
+            <div style={{
+              background: '#ffffff', borderRadius: '16px', padding: '18px 20px',
+              border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>
+                  SERVICES GENERATED
+                </span>
+                <span style={{
+                  background: '#ecfdf5', color: '#16a34a', borderRadius: '8px',
+                  padding: '3px 8px', fontSize: '11px', fontWeight: 800
+                }}>
+                  {summary.generated_services_count || 0} / {summary.total_services || 0}
+                </span>
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: '#16a34a' }}>
+                {summary.generated_services_count || 0} <span style={{ fontSize: '14px', color: '#94a3b8', fontWeight: 600 }}>Active</span>
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                Fees created for {data?.month_label || 'current month'}
+              </div>
+            </div>
+
+            {/* Metric 2: Not Generated Services */}
+            <div style={{
+              background: '#ffffff', borderRadius: '16px', padding: '18px 20px',
+              border: (summary.not_generated_count || 0) > 0 ? '1px solid #fecaca' : '1px solid #e2e8f0',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>
+                  NOT YET GENERATED
+                </span>
+                <span style={{
+                  background: (summary.not_generated_count || 0) > 0 ? '#fef2f2' : '#f8fafc',
+                  color: (summary.not_generated_count || 0) > 0 ? '#dc2626' : '#94a3b8',
+                  borderRadius: '8px', padding: '3px 8px', fontSize: '11px', fontWeight: 800
+                }}>
+                  {summary.not_generated_count || 0} Services Pending
+                </span>
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: (summary.not_generated_count || 0) > 0 ? '#dc2626' : '#0f172a' }}>
+                {summary.not_generated_count || 0}
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                Awaiting fee generation trigger
+              </div>
+            </div>
+
+            {/* Metric 3: Total Billed */}
+            <div style={{
+              background: '#ffffff', borderRadius: '16px', padding: '18px 20px',
+              border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+            }}>
+              <div style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>
+                TOTAL AMOUNT BILLED
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: '#2563eb' }}>
+                ₹{fmt(summary.total_billed)}
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                Across all generated services
+              </div>
+            </div>
+
+            {/* Metric 4: Total Collected */}
+            <div style={{
+              background: '#ffffff', borderRadius: '16px', padding: '18px 20px',
+              border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>
+                  COLLECTED REVENUE
+                </span>
+                <span style={{ background: '#ecfdf5', color: '#059669', borderRadius: '8px', padding: '2px 6px', fontSize: '11px', fontWeight: 800 }}>
+                  {summary.collection_percentage || 0}%
+                </span>
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: '#059669' }}>
+                ₹{fmt(summary.total_collected)}
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                Pending: <strong>₹{fmt(summary.total_pending)}</strong>
+              </div>
+            </div>
+          </div>
+
+          {/* ══ 3. INTERACTIVE FILTERS BAR ══ */}
+          <div style={{
+            background: '#ffffff', borderRadius: '16px', padding: '16px 20px',
+            border: '1px solid #e2e8f0', marginBottom: '22px',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              {/* Month Picker */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Month:</span>
+                <input
+                  type="month"
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  style={{
+                    padding: '6px 10px', borderRadius: '8px', border: '1px solid #cbd5e1',
+                    fontSize: '13px', fontWeight: 700, color: '#0f172a'
+                  }}
+                />
+              </div>
+
+              {/* Status Tabs */}
+              <div style={{ background: '#f1f5f9', padding: '3px', borderRadius: '10px', display: 'inline-flex', gap: '4px' }}>
+                {[
+                  { key: 'ALL', label: 'All Services' },
+                  { key: 'GENERATED', label: '✅ Generated' },
+                  { key: 'NOT_GENERATED', label: '⚠️ Not Generated' },
+                  { key: 'PARTIALLY_GENERATED', label: '🔄 Partial' },
+                ].map(tab => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setSelectedStatus(tab.key)}
+                    style={{
+                      padding: '6px 12px', borderRadius: '7px', fontSize: '12px', fontWeight: 800,
+                      border: 'none', cursor: 'pointer',
+                      background: selectedStatus === tab.key ? '#2563eb' : 'transparent',
+                      color: selectedStatus === tab.key ? '#ffffff' : '#64748b',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Category Dropdown */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Category:</span>
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  style={{
+                    padding: '6px 10px', borderRadius: '8px', border: '1px solid #cbd5e1',
+                    fontSize: '13px', fontWeight: 700, color: '#0f172a'
+                  }}
+                >
+                  <option value="ALL">All Categories</option>
+                  <option value="ACADEMIC">Academic / Tuition</option>
+                  <option value="TRANSPORT">Transport Service</option>
+                  <option value="HOSTEL">Hostel &amp; Mess</option>
+                  <option value="LIBRARY">Library</option>
+                  <option value="EXAM">Exams</option>
+                  <option value="OTHER">Other / Activities</option>
+                </select>
+              </div>
+
+              {/* Class Filter */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Class:</span>
+                <select
+                  value={selectedClass}
+                  onChange={(e) => setSelectedClass(e.target.value)}
+                  style={{
+                    padding: '6px 10px', borderRadius: '8px', border: '1px solid #cbd5e1',
+                    fontSize: '13px', fontWeight: 700, color: '#0f172a'
+                  }}
+                >
+                  <option value="">All Classes</option>
+                  {classes.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} {c.section ? `(${c.section})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* View Mode Toggle */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <button
+                onClick={() => setViewMode('GRID')}
+                style={{
+                  padding: '6px 10px', borderRadius: '8px', border: '1px solid #cbd5e1',
+                  background: viewMode === 'GRID' ? '#e2e8f0' : '#ffffff', cursor: 'pointer'
+                }}
+                title="Grid View"
+              >
+                <i className="ti ti-layout-grid" />
+              </button>
+              <button
+                onClick={() => setViewMode('TABLE')}
+                style={{
+                  padding: '6px 10px', borderRadius: '8px', border: '1px solid #cbd5e1',
+                  background: viewMode === 'TABLE' ? '#e2e8f0' : '#ffffff', cursor: 'pointer'
+                }}
+                title="Table View"
+              >
+                <i className="ti ti-list" />
+              </button>
+            </div>
+          </div>
+
+          {/* ══ 4. SERVICES CONTENT DISPLAY ══ */}
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '60px 20px', background: '#ffffff', borderRadius: '16px' }}>
+              <div className="spinner" style={{ width: '36px', height: '36px', margin: '0 auto 14px' }}></div>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#0f172a' }}>
+                Loading service fee generation status...
+              </h3>
+              <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#94a3b8' }}>
+                Aggregating live data from school accounts, transport, hostel &amp; library ledgers
+              </p>
+            </div>
+          ) : filteredServices.length === 0 ? (
+            <div style={{
+              textAlign: 'center', padding: '60px 20px', background: '#ffffff',
+              borderRadius: '16px', border: '1px dashed #cbd5e1'
+            }}>
+              <i className="ti ti-file-search" style={{ fontSize: '42px', color: '#94a3b8' }} />
+              <h3 style={{ margin: '12px 0 4px', fontSize: '16px', fontWeight: 800, color: '#0f172a' }}>
+                No services found matching current filters
+              </h3>
+              <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
+                Try resetting your status or category filters above.
+              </p>
+            </div>
+          ) : viewMode === 'GRID' ? (
+            /* ── GRID VIEW ── */
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+              gap: '18px'
+            }}>
+              {filteredServices.map(svc => {
+                const catStyle = getCategoryColor(svc.category);
+                const isGen = svc.status === 'GENERATED';
+                const isPart = svc.status === 'PARTIALLY_GENERATED';
+                const isNotGen = svc.status === 'NOT_GENERATED';
+                const pct = svc.eligible_students_count > 0
+                  ? Math.round((svc.generated_students_count / svc.eligible_students_count) * 100)
+                  : (isGen ? 100 : 0);
+
+                return (
+                  <div
+                    key={svc.head_id}
+                    style={{
+                      background: '#ffffff',
+                      borderRadius: '16px',
+                      border: `1px solid ${isNotGen ? '#fed7aa' : isPart ? '#fde68a' : '#e2e8f0'}`,
+                      padding: '20px',
+                      boxShadow: '0 2px 10px rgba(0,0,0,0.02)',
+                      display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                      transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+                      position: 'relative'
+                    }}
+                  >
+                    {/* Header */}
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <div style={{
+                            width: '44px', height: '44px', borderRadius: '12px',
+                            background: catStyle.bg, color: catStyle.color,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px'
+                          }}>
+                            <i className={getServiceIcon(svc.category, svc.code)} />
+                          </div>
+                          <div>
+                            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 900, color: '#0f172a' }}>
+                              {svc.name}
+                            </h3>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
+                              <span style={{ fontSize: '11px', fontWeight: 800, color: catStyle.color, background: catStyle.bg, padding: '1px 6px', borderRadius: '4px' }}>
+                                {svc.category}
+                              </span>
+                              <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                                Code: {svc.code}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Status Badge */}
+                        <span style={{
+                          padding: '4px 10px', borderRadius: '100px', fontSize: '11px', fontWeight: 800,
+                          background: isGen ? '#ecfdf5' : isPart ? '#fef3c7' : '#fef2f2',
+                          color: isGen ? '#059669' : isPart ? '#d97706' : '#dc2626',
+                          border: `1px solid ${isGen ? '#a7f3d0' : isPart ? '#fde68a' : '#fecaca'}`
+                        }}>
+                          {isGen ? '● GENERATED' : isPart ? '● PARTIAL' : '○ NOT GENERATED'}
+                        </span>
+                      </div>
+
+                      {/* Coverage Progress */}
+                      <div style={{ marginBottom: '16px', background: '#f8fafc', padding: '12px', borderRadius: '12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', fontSize: '12px' }}>
+                          <span style={{ color: '#64748b', fontWeight: 700 }}>Students Covered:</span>
+                          <span style={{ fontWeight: 900, color: '#0f172a' }}>
+                            {svc.generated_students_count} / {svc.eligible_students_count} ({pct}%)
+                          </span>
+                        </div>
+                        <div style={{ width: '100%', height: '7px', background: '#e2e8f0', borderRadius: '100px', overflow: 'hidden' }}>
+                          <div style={{
+                            width: `${Math.min(100, Math.max(0, pct))}%`,
+                            background: isGen ? '#10b981' : isPart ? '#f59e0b' : '#ef4444',
+                            height: '100%', borderRadius: '100px', transition: 'width 0.3s ease'
+                          }} />
+                        </div>
+                        {svc.missing_students_count > 0 && (
+                          <div style={{ fontSize: '11px', color: '#dc2626', fontWeight: 700, marginTop: '6px' }}>
+                            ⚠️ {svc.missing_students_count} eligible students missing bills for this month
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Financial Amounts Breakdown */}
+                      <div style={{
+                        display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
+                        gap: '8px', marginBottom: '16px', textAlign: 'center'
+                      }}>
+                        <div style={{ background: '#f8fafc', padding: '8px 10px', borderRadius: '10px' }}>
+                          <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#64748b' }}>BILLED</div>
+                          <div style={{ fontSize: '15px', fontWeight: 900, color: '#0f172a', marginTop: '2px' }}>
+                            ₹{fmt(svc.total_billed)}
+                          </div>
+                        </div>
+                        <div style={{ background: '#f0fdf4', padding: '8px 10px', borderRadius: '10px' }}>
+                          <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#16a34a' }}>COLLECTED</div>
+                          <div style={{ fontSize: '15px', fontWeight: 900, color: '#16a34a', marginTop: '2px' }}>
+                            ₹{fmt(svc.total_collected)}
+                          </div>
+                        </div>
+                        <div style={{ background: '#fef2f2', padding: '8px 10px', borderRadius: '10px' }}>
+                          <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#dc2626' }}>PENDING</div>
+                          <div style={{ fontSize: '15px', fontWeight: 900, color: '#dc2626', marginTop: '2px' }}>
+                            ₹{fmt(svc.total_pending)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Footer Actions */}
+                    <div style={{
+                      display: 'flex', gap: '8px', paddingTop: '12px', borderTop: '1px solid #f1f5f9',
+                      flexWrap: 'wrap'
+                    }}>
+                      {/* Generate Action */}
+                      <button
+                        onClick={() => {
+                          setActiveService(svc);
+                          setGenMonth(selectedMonth);
+                          setGenDueDate(`${selectedMonth}-10`);
+                          setGenModal(true);
+                        }}
+                        className={isNotGen ? "btn btn-sm btn-primary" : "btn btn-sm btn-outline-primary"}
+                        style={{
+                          flex: 1, borderRadius: '8px', fontSize: '12px', fontWeight: 800,
+                          padding: '7px 10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
+                        }}
+                      >
+                        <i className="ti ti-plus" />
+                        {isNotGen ? 'Generate Fee' : isPart ? 'Complete Generation' : 'Re-Generate'}
+                      </button>
+
+                      {/* View Bills Action */}
+                      <button
+                        onClick={() => navigate(resolveTenantPath(`/finance/bills?month=${selectedMonth}&department=${svc.department}`, user))}
+                        className="btn btn-sm btn-neutral"
+                        style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 700, padding: '7px 12px' }}
+                        title="View Generated Bills"
+                      >
+                        <i className="ti ti-file-invoice" /> Bills
+                      </button>
+
+                      {/* Edit Rate Action */}
+                      <button
+                        onClick={() => {
+                          setEditHead(svc);
+                          setNewRate(svc.total_billed ? Math.round(svc.total_billed / (svc.generated_students_count || 1)) : 2000);
+                          setEditRateModal(true);
+                        }}
+                        className="btn btn-sm btn-neutral"
+                        style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 700, padding: '7px 10px' }}
+                        title="Edit Service Rate Card"
+                      >
+                        <i className="ti ti-edit" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            /* ── TABLE VIEW ── */
+            <div style={{
+              background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0',
+              overflow: 'hidden', boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
+            }}>
+              <div className="table-responsive">
+                <table className="table" style={{ width: '100%', margin: 0 }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                      <th style={{ padding: '14px 18px', fontSize: '12px', fontWeight: 800, color: '#475569' }}>SERVICE NAME</th>
+                      <th style={{ padding: '14px 18px', fontSize: '12px', fontWeight: 800, color: '#475569' }}>CATEGORY</th>
+                      <th style={{ padding: '14px 18px', fontSize: '12px', fontWeight: 800, color: '#475569' }}>STATUS</th>
+                      <th style={{ padding: '14px 18px', fontSize: '12px', fontWeight: 800, color: '#475569' }}>STUDENTS BILLED</th>
+                      <th style={{ padding: '14px 18px', fontSize: '12px', fontWeight: 800, color: '#475569' }}>TOTAL BILLED</th>
+                      <th style={{ padding: '14px 18px', fontSize: '12px', fontWeight: 800, color: '#475569' }}>COLLECTED</th>
+                      <th style={{ padding: '14px 18px', fontSize: '12px', fontWeight: 800, color: '#475569' }}>PENDING</th>
+                      <th style={{ padding: '14px 18px', fontSize: '12px', fontWeight: 800, color: '#475569', textAlign: 'right' }}>ACTIONS</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredServices.map(svc => {
+                      const isGen = svc.status === 'GENERATED';
+                      const isPart = svc.status === 'PARTIALLY_GENERATED';
+                      return (
+                        <tr key={svc.head_id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '14px 18px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <i className={getServiceIcon(svc.category, svc.code)} style={{ fontSize: '18px', color: '#2563eb' }} />
+                              <div>
+                                <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '13.5px' }}>{svc.name}</div>
+                                <div style={{ fontSize: '11px', color: '#94a3b8' }}>{svc.code} • {svc.frequency}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td style={{ padding: '14px 18px' }}>
+                            <span style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>
+                              {svc.category}
+                            </span>
+                          </td>
+                          <td style={{ padding: '14px 18px' }}>
+                            <span style={{
+                              padding: '3px 8px', borderRadius: '100px', fontSize: '11px', fontWeight: 800,
+                              background: isGen ? '#ecfdf5' : isPart ? '#fef3c7' : '#fef2f2',
+                              color: isGen ? '#059669' : isPart ? '#d97706' : '#dc2626',
+                            }}>
+                              {isGen ? 'GENERATED' : isPart ? 'PARTIAL' : 'NOT GENERATED'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '14px 18px', fontSize: '13px', fontWeight: 800 }}>
+                            {svc.generated_students_count} / {svc.eligible_students_count}
+                          </td>
+                          <td style={{ padding: '14px 18px', fontSize: '13.5px', fontWeight: 800, color: '#0f172a' }}>
+                            ₹{fmt(svc.total_billed)}
+                          </td>
+                          <td style={{ padding: '14px 18px', fontSize: '13.5px', fontWeight: 800, color: '#16a34a' }}>
+                            ₹{fmt(svc.total_collected)}
+                          </td>
+                          <td style={{ padding: '14px 18px', fontSize: '13.5px', fontWeight: 800, color: '#dc2626' }}>
+                            ₹{fmt(svc.total_pending)}
+                          </td>
+                          <td style={{ padding: '14px 18px', textAlign: 'right' }}>
+                            <div style={{ display: 'inline-flex', gap: '6px' }}>
+                              <button
+                                onClick={() => {
+                                  setActiveService(svc);
+                                  setGenMonth(selectedMonth);
+                                  setGenDueDate(`${selectedMonth}-10`);
+                                  setGenModal(true);
+                                }}
+                                className="btn btn-sm btn-primary"
+                                style={{ borderRadius: '6px', fontSize: '11.5px', fontWeight: 700 }}
+                              >
+                                {isGen ? 'Re-Gen' : 'Generate'}
+                              </button>
+                              <button
+                                onClick={() => navigate(resolveTenantPath(`/finance/bills?month=${selectedMonth}&department=${svc.department}`, user))}
+                                className="btn btn-sm btn-neutral"
+                                style={{ borderRadius: '6px', fontSize: '11.5px' }}
+                              >
+                                Bills
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* ══ MODAL: GENERATE FEES ══ */}
+          {genModal && (
+            <div className="modal-backdrop" style={{
+              position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '16px'
+            }}>
+              <div style={{
+                background: '#ffffff', borderRadius: '20px', width: '100%', maxWidth: '520px',
+                padding: '24px', boxShadow: '0 20px 40px rgba(0,0,0,0.2)', border: '1px solid #e2e8f0'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>
+                      <i className="ti ti-bolt" />
+                    </div>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 900, color: '#0f172a' }}>
+                        Generate Service Fees
+                      </h3>
+                      <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>
+                        {activeService?.name || 'All Services'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setGenModal(false)}
+                    style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#94a3b8' }}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <form onSubmit={handleGenerate}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+                        Target Bill Month (YYYY-MM) *
+                      </label>
+                      <input
+                        type="month"
+                        value={genMonth}
+                        onChange={(e) => {
+                          setGenMonth(e.target.value);
+                          setGenDueDate(`${e.target.value}-10`);
+                        }}
+                        required
+                        className="form-control"
+                        style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '13px', fontWeight: 700 }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+                        Fee Payment Due Date *
+                      </label>
+                      <input
+                        type="date"
+                        value={genDueDate}
+                        onChange={(e) => setGenDueDate(e.target.value)}
+                        required
+                        className="form-control"
+                        style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '13px', fontWeight: 700 }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+                        Scope / Target Class (Optional)
+                      </label>
+                      <select
+                        value={genClassId}
+                        onChange={(e) => setGenClassId(e.target.value)}
+                        className="form-control"
+                        style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '13px', fontWeight: 700 }}
+                      >
+                        <option value="">All Classes &amp; Active Students</option>
+                        {classes.map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} {c.section ? `(${c.section})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 700, color: '#0f172a', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={forceRegen}
+                          onChange={(e) => setForceRegen(e.target.checked)}
+                        />
+                        Force re-calculate / regenerate existing bills
+                      </label>
+                      <p style={{ margin: '4px 0 0 24px', fontSize: '11.5px', color: '#64748b' }}>
+                        Updates amounts for students who already have a draft or issued bill for this month.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setGenModal(false)}
+                      className="btn btn-neutral"
+                      style={{ borderRadius: '10px', padding: '8px 16px', fontWeight: 700 }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={generating}
+                      className="btn btn-primary"
+                      style={{ borderRadius: '10px', padding: '8px 20px', fontWeight: 800 }}
+                    >
+                      {generating ? 'Generating Bills...' : 'Start Fee Generation'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* ══ MODAL: EDIT SERVICE RATE CARD ══ */}
+          {editRateModal && (
+            <div className="modal-backdrop" style={{
+              position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '16px'
+            }}>
+              <div style={{
+                background: '#ffffff', borderRadius: '20px', width: '100%', maxWidth: '480px',
+                padding: '24px', boxShadow: '0 20px 40px rgba(0,0,0,0.2)', border: '1px solid #e2e8f0'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#fef3c7', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>
+                      <i className="ti ti-edit" />
+                    </div>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 900, color: '#0f172a' }}>
+                        Edit Service Rate / Structure
+                      </h3>
+                      <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>
+                        {editHead?.name} ({editHead?.code})
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setEditRateModal(false)}
+                    style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#94a3b8' }}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div style={{ padding: '12px 14px', background: '#f8fafc', borderRadius: '12px', marginBottom: '16px', fontSize: '12.5px', color: '#475569' }}>
+                  <p style={{ margin: '0 0 6px' }}>
+                    Service head belongs to <strong>{editHead?.department}</strong> department and applies with <strong>{editHead?.frequency}</strong> cadence.
+                  </p>
+                  <p style={{ margin: 0 }}>
+                    To configure class-by-class tiered rates, slabs, or payment plans, you can open the master Fee Structure Setup.
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setEditRateModal(false)}
+                    className="btn btn-neutral"
+                    style={{ borderRadius: '10px', padding: '8px 16px', fontWeight: 700 }}
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditRateModal(false);
+                      navigate(resolveTenantPath('/finance/setup', user));
+                    }}
+                    className="btn btn-primary"
+                    style={{ borderRadius: '10px', padding: '8px 18px', fontWeight: 800 }}
+                  >
+                    Go to Full Rate Card Setup <i className="ti ti-arrow-right" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+        </div>
+      </div>
+    </div>
+  );
+}
