@@ -917,10 +917,10 @@ export default function PrincipalDashboard() {
             }}>
               {/* Metric 1: Generated Fees */}
               <div
-                onClick={() => goTo('/finance/service-generation')}
+                onClick={() => goTo(`/finance/service-generation?month=${new Date().toISOString().slice(0, 7)}&session=${feeIntel.current_session || user?.school?.current_session || '2026-27'}`)}
                 role="button"
                 tabIndex={0}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goTo('/finance/service-generation'); } }}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goTo(`/finance/service-generation?month=${new Date().toISOString().slice(0, 7)}&session=${feeIntel.current_session || user?.school?.current_session || '2026-27'}`); } }}
                 style={{
                   background: darkMode ? '#1e293b' : '#f8fafc',
                   border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,

@@ -1796,12 +1796,33 @@ def get_service_collection_matrix_endpoint():
     return jsonify(data), 200
 
 
+@fees_finance_bp.route('/services/<string:service_code>/breakdown', methods=['GET'])
+@jwt_required()
+def get_service_breakdown_endpoint(service_code):
+    """Returns granular drill-down breakdown for a specific service (Class-wise, Route-wise, Room-type)."""
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    month   = request.args.get('month')
+    session = request.args.get('session', '2026-27')
+
+    from app.services.fee_service_intelligence import get_service_detail_breakdown
+    data = get_service_detail_breakdown(
+        school_id=user.school_id,
+        service_code=service_code,
+        month=month,
+        session=session
+    )
+    return jsonify(data), 200
+
+
 @fees_finance_bp.route('/services/<string:service_code>/generate', methods=['POST'])
 @jwt_required()
 def generate_service_fee_endpoint(service_code):
     """
-    Generates fee for a specific service head (e.g. TUITION, TRANSPORT, HOSTEL, etc.)
-    either via central billing engine or module-specific generators.
+    Generates fee for a specific service head (TUITION, TRANSPORT, HOSTEL, etc.)
+    with granular targeting (class_id, route_id, room_type/is_ac).
     """
     user = _get_current_user()
     if not user or not user.school_id:
@@ -1812,23 +1833,117 @@ def generate_service_fee_endpoint(service_code):
     due_date   = data.get('due_date') or f"{bill_month}-10"
     session    = data.get('session', '2026-27')
     class_id   = data.get('class_id')
+    route_id   = data.get('route_id')
+    room_type  = data.get('room_type')
+    is_ac      = data.get('is_ac')
     force_regen= data.get('force_regenerate', False)
 
-    from app.services.fee_ledger_service import bulk_generate_fee_bills
-    result = bulk_generate_fee_bills(
-        school_id=user.school_id,
-        bill_month=bill_month,
-        due_date=due_date,
-        class_id=class_id,
-        actor_user=user,
-        session=session,
-        force_regenerate=force_regen
-    )
-    return jsonify({
-        'success': True,
-        'message': f"Generated fees for {service_code} ({result['generated_count']} generated, {result['skipped_count']} already covered/skipped)",
-        'result': result
-    }), 200
+    from app.services.fee_service_intelligence import _normalize_service_code
+    from app.services.fee_central_service import FeeCentralService
+    norm_code = _normalize_service_code(service_code)
+
+    created_count = 0
+    skipped_count = 0
+
+    if norm_code == 'TRANSPORT':
+        from app.models.transport_student import StudentTransport, TransportFeeStructure
+        q = StudentTransport.query.filter_by(school_id=user.school_id, status='ACTIVE')
+        if route_id:
+            q = q.filter_by(route_id=int(route_id))
+        assignments = q.all()
+
+        for a in assignments:
+            # Route fee structure
+            fs = None
+            if a.route_id:
+                fs = TransportFeeStructure.query.filter_by(school_id=user.school_id, route_id=a.route_id, status='ACTIVE').first()
+            if not fs:
+                fs = TransportFeeStructure.query.filter_by(school_id=user.school_id, route_id=None, status='ACTIVE').first()
+            amt = float(fs.amount) if (fs and fs.amount) else 1500.0
+
+            rec, was_created = FeeCentralService.generate_fee(
+                school_id=user.school_id,
+                student_id=a.student_id,
+                fee_type='Transport Fee',
+                amount_due=amt,
+                month=bill_month,
+                session=session,
+                source='TRANSPORT'
+            )
+            if was_created:
+                created_count += 1
+            else:
+                skipped_count += 1
+
+        return jsonify({
+            'success': True,
+            'message': f"Generated transport fees ({created_count} generated, {skipped_count} skipped/already covered)",
+            'generated_count': created_count,
+            'skipped_count': skipped_count
+        }), 200
+
+    elif norm_code == 'HOSTEL':
+        from app.models.hostel import HostelBedAllocation, HostelBed, HostelFeeStructure
+        q = HostelBedAllocation.query.filter_by(school_id=user.school_id, status='ACTIVE')
+        allocations = q.all()
+
+        for alloc in allocations:
+            bed = HostelBed.query.get(alloc.bed_id)
+            room = bed.room if bed else None
+            rtype = (room.room_type if room and room.room_type else 'STANDARD').upper()
+            room_ac = bool(room.is_ac) if room else False
+
+            # If filtered by room_type or is_ac, skip mismatches
+            if room_type and rtype != str(room_type).upper():
+                continue
+            if is_ac is not None and room_ac != bool(is_ac):
+                continue
+
+            fs = HostelFeeStructure.query.filter_by(
+                school_id=user.school_id, sharing_type=rtype, is_ac=room_ac, status='ACTIVE'
+            ).first()
+            amt = float(fs.monthly_fee) if (fs and fs.monthly_fee) else 5000.0
+
+            rec, was_created = FeeCentralService.generate_fee(
+                school_id=user.school_id,
+                student_id=alloc.student_id,
+                fee_type='Hostel Fee',
+                amount_due=amt,
+                month=bill_month,
+                session=session,
+                source='HOSTEL'
+            )
+            if was_created:
+                created_count += 1
+            else:
+                skipped_count += 1
+
+        return jsonify({
+            'success': True,
+            'message': f"Generated hostel fees ({created_count} generated, {skipped_count} skipped/already covered)",
+            'generated_count': created_count,
+            'skipped_count': skipped_count
+        }), 200
+
+    else:
+        # Academic / Tuition & General billing
+        from app.services.fee_ledger_service import bulk_generate_fee_bills
+        result = bulk_generate_fee_bills(
+            school_id=user.school_id,
+            bill_month=bill_month,
+            due_date=due_date,
+            class_id=int(class_id) if class_id else None,
+            actor_user=user,
+            session=session,
+            force_regenerate=force_regen
+        )
+        return jsonify({
+            'success': True,
+            'message': f"Generated fees for {service_code} ({result['generated_count']} generated, {result['skipped_count']} already covered/skipped)",
+            'result': result,
+            'generated_count': result.get('generated_count', 0),
+            'skipped_count': result.get('skipped_count', 0)
+        }), 200
 
 
 @fees_finance_bp.route('/reconcile', methods=['POST'])

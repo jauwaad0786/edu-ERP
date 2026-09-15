@@ -12,24 +12,30 @@ export default function FeeServiceGenerationPage() {
   const location = useLocation();
   const { user } = useAuth();
 
+  const currentMonthStr = new Date().toISOString().slice(0, 7);
+  const queryParams = new URLSearchParams(location.search);
+  const initialMonth = queryParams.get('month') || currentMonthStr;
+  const initialSession = queryParams.get('session') || '2026-27';
+  const initialCategory = queryParams.get('category') || 'ALL';
+  const initialClass = queryParams.get('class_id') || '';
+
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
   const [classes, setClasses] = useState([]);
 
   // Filters
-  const currentMonthStr = new Date().toISOString().slice(0, 7);
-  const [selectedMonth, setSelectedMonth] = useState(currentMonthStr);
-  const [selectedSession, setSelectedSession] = useState('2026-27');
-  const [selectedCategory, setSelectedCategory] = useState('ALL');
+  const [selectedMonth, setSelectedMonth] = useState(initialMonth);
+  const [selectedSession, setSelectedSession] = useState(initialSession);
+  const [selectedCategory, setSelectedCategory] = useState(initialCategory);
   const [selectedStatus, setSelectedStatus] = useState('ALL'); // ALL, GENERATED, NOT_GENERATED, PARTIALLY_GENERATED
-  const [selectedClass, setSelectedClass] = useState('');
+  const [selectedClass, setSelectedClass] = useState(initialClass);
   const [viewMode, setViewMode] = useState('GRID'); // GRID or TABLE
 
   // Modals
   const [genModal, setGenModal] = useState(false);
   const [activeService, setActiveService] = useState(null);
-  const [genMonth, setGenMonth] = useState(currentMonthStr);
-  const [genDueDate, setGenDueDate] = useState(`${currentMonthStr}-10`);
+  const [genMonth, setGenMonth] = useState(initialMonth);
+  const [genDueDate, setGenDueDate] = useState(`${initialMonth}-10`);
   const [genClassId, setGenClassId] = useState('');
   const [forceRegen, setForceRegen] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -39,6 +45,13 @@ export default function FeeServiceGenerationPage() {
   const [editHead, setEditHead] = useState(null);
   const [newRate, setNewRate] = useState('');
   const [updatingRate, setUpdatingRate] = useState(false);
+
+  // Breakdown Modal (Class-wise, Route-wise, Room-type-wise)
+  const [breakdownModalOpen, setBreakdownModalOpen] = useState(false);
+  const [breakdownService, setBreakdownService] = useState(null);
+  const [breakdownData, setBreakdownData] = useState(null);
+  const [breakdownLoading, setBreakdownLoading] = useState(false);
+  const [generatingUnitKey, setGeneratingUnitKey] = useState(null);
 
   // Load Classes
   useEffect(() => {
@@ -69,6 +82,86 @@ export default function FeeServiceGenerationPage() {
   useEffect(() => {
     fetchStatus();
   }, [fetchStatus]);
+
+  // Open Service Breakdown Modal
+  const openBreakdown = async (svc) => {
+    setBreakdownService(svc);
+    setBreakdownModalOpen(true);
+    setBreakdownLoading(true);
+    try {
+      const res = await api.get(`/fees-finance/services/${svc.code}/breakdown`, {
+        params: { month: selectedMonth, session: selectedSession }
+      });
+      setBreakdownData(res.data);
+    } catch (err) {
+      if (svc.breakdown) {
+        setBreakdownData({ service_code: svc.code, ...svc.breakdown });
+      } else {
+        toast.error('Failed to load detailed service breakdown');
+      }
+    } finally {
+      setBreakdownLoading(false);
+    }
+  };
+
+  // Generate Unit Fee (specific class, route, or room type)
+  const handleGenerateUnit = async (unit) => {
+    const unitKey = unit.class_id || unit.route_id || `${unit.room_type}_${unit.is_ac}` || 'unit';
+    try {
+      setGeneratingUnitKey(unitKey);
+      const payload = {
+        bill_month: selectedMonth,
+        due_date: `${selectedMonth}-10`,
+        session: selectedSession,
+        class_id: unit.class_id || null,
+        route_id: unit.route_id || null,
+        room_type: unit.room_type || null,
+        is_ac: unit.is_ac !== undefined ? unit.is_ac : null,
+        force_regenerate: false,
+      };
+
+      const res = await api.post(`/fees-finance/services/${breakdownService?.code || 'TUITION'}/generate`, payload);
+      toast.success(res.data?.message || `Fee generated for ${unit.class_name || unit.route_name || unit.room_category || 'unit'}`);
+      
+      // Refresh status & breakdown
+      fetchStatus();
+      if (breakdownService) {
+        const updated = await api.get(`/fees-finance/services/${breakdownService.code}/breakdown`, {
+          params: { month: selectedMonth, session: selectedSession }
+        });
+        setBreakdownData(updated.data);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to generate fee for unit');
+    } finally {
+      setGeneratingUnitKey(null);
+    }
+  };
+
+  // Generate All Pending for Active Breakdown Service
+  const handleGenerateAllPendingInBreakdown = async () => {
+    if (!breakdownService) return;
+    try {
+      setGenerating(true);
+      const payload = {
+        bill_month: selectedMonth,
+        due_date: `${selectedMonth}-10`,
+        session: selectedSession,
+        force_regenerate: false,
+      };
+      const res = await api.post(`/fees-finance/services/${breakdownService.code}/generate`, payload);
+      toast.success(res.data?.message || `All pending bills generated for ${breakdownService.name}`);
+      fetchStatus();
+      const updated = await api.get(`/fees-finance/services/${breakdownService.code}/breakdown`, {
+        params: { month: selectedMonth, session: selectedSession }
+      });
+      setBreakdownData(updated.data);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to generate pending bills');
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   // Handle Quick Fee Generation
   const handleGenerate = async (e) => {
@@ -525,6 +618,37 @@ export default function FeeServiceGenerationPage() {
                         )}
                       </div>
 
+                      {/* Breakdown Status Badge (Class-wise / Route-wise / Room-type-wise) */}
+                      {svc.breakdown?.summary && (
+                        <div
+                          onClick={() => openBreakdown(svc)}
+                          style={{
+                            marginBottom: '14px', padding: '8px 12px', borderRadius: '10px',
+                            background: (svc.breakdown.summary.pending_units || 0) > 0 ? '#fffbeb' : '#f0fdf4',
+                            border: `1px solid ${(svc.breakdown.summary.pending_units || 0) > 0 ? '#fde68a' : '#bbf7d0'}`,
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11.5px',
+                            cursor: 'pointer', transition: 'transform 0.1s ease'
+                          }}
+                          title="Click to view live granular breakdown"
+                        >
+                          <span style={{ fontWeight: 800, color: (svc.breakdown.summary.pending_units || 0) > 0 ? '#b45309' : '#15803d', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <i className="ti ti-list-details" />
+                            {svc.breakdown.breakdown_type === 'CLASS_WISE' && 'Class Breakdown:'}
+                            {svc.breakdown.breakdown_type === 'ROUTE_WISE' && 'Route Breakdown:'}
+                            {svc.breakdown.breakdown_type === 'HOSTEL_ROOM_TYPE_WISE' && 'Room Type Breakdown:'}
+                            {svc.breakdown.breakdown_type === 'GENERIC' && 'Unit Breakdown:'}
+                          </span>
+                          <span style={{ fontWeight: 800, color: '#0f172a' }}>
+                            {svc.breakdown.summary.generated_units} / {svc.breakdown.summary.total_units} Generated
+                            {(svc.breakdown.summary.pending_units || 0) > 0 ? (
+                              <span style={{ color: '#dc2626', marginLeft: '5px' }}>({svc.breakdown.summary.pending_units} pending)</span>
+                            ) : (
+                              <span style={{ color: '#16a34a', marginLeft: '5px' }}>✓</span>
+                            )}
+                          </span>
+                        </div>
+                      )}
+
                       {/* Financial Amounts Breakdown */}
                       <div style={{
                         display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
@@ -556,6 +680,19 @@ export default function FeeServiceGenerationPage() {
                       display: 'flex', gap: '8px', paddingTop: '12px', borderTop: '1px solid #f1f5f9',
                       flexWrap: 'wrap'
                     }}>
+                      {/* Breakdown Drill-Down Action */}
+                      <button
+                        onClick={() => openBreakdown(svc)}
+                        className="btn btn-sm btn-outline-primary"
+                        style={{
+                          borderRadius: '8px', fontSize: '12px', fontWeight: 800,
+                          padding: '7px 11px', display: 'flex', alignItems: 'center', gap: '5px'
+                        }}
+                        title="View Class-wise, Route-wise, or Room-type breakdown"
+                      >
+                        <i className="ti ti-layout-list" /> Breakdown
+                      </button>
+
                       {/* Generate Action */}
                       <button
                         onClick={() => {
@@ -571,14 +708,14 @@ export default function FeeServiceGenerationPage() {
                         }}
                       >
                         <i className="ti ti-plus" />
-                        {isNotGen ? 'Generate Fee' : isPart ? 'Complete Generation' : 'Re-Generate'}
+                        {isNotGen ? 'Generate' : isPart ? 'Complete' : 'Re-Gen'}
                       </button>
 
                       {/* View Bills Action */}
                       <button
                         onClick={() => navigate(resolveTenantPath(`/finance/bills?month=${selectedMonth}&department=${svc.department}`, user))}
                         className="btn btn-sm btn-neutral"
-                        style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 700, padding: '7px 12px' }}
+                        style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 700, padding: '7px 11px' }}
                         title="View Generated Bills"
                       >
                         <i className="ti ti-file-invoice" /> Bills
@@ -615,6 +752,7 @@ export default function FeeServiceGenerationPage() {
                       <th style={{ padding: '14px 18px', fontSize: '12px', fontWeight: 800, color: '#475569' }}>SERVICE NAME</th>
                       <th style={{ padding: '14px 18px', fontSize: '12px', fontWeight: 800, color: '#475569' }}>CATEGORY</th>
                       <th style={{ padding: '14px 18px', fontSize: '12px', fontWeight: 800, color: '#475569' }}>STATUS</th>
+                      <th style={{ padding: '14px 18px', fontSize: '12px', fontWeight: 800, color: '#475569' }}>UNITS / BREAKDOWN</th>
                       <th style={{ padding: '14px 18px', fontSize: '12px', fontWeight: 800, color: '#475569' }}>STUDENTS BILLED</th>
                       <th style={{ padding: '14px 18px', fontSize: '12px', fontWeight: 800, color: '#475569' }}>TOTAL BILLED</th>
                       <th style={{ padding: '14px 18px', fontSize: '12px', fontWeight: 800, color: '#475569' }}>COLLECTED</th>
@@ -651,6 +789,20 @@ export default function FeeServiceGenerationPage() {
                               {isGen ? 'GENERATED' : isPart ? 'PARTIAL' : 'NOT GENERATED'}
                             </span>
                           </td>
+                          <td style={{ padding: '14px 18px' }}>
+                            {svc.breakdown?.summary ? (
+                              <button
+                                onClick={() => openBreakdown(svc)}
+                                className="btn btn-sm btn-outline-primary"
+                                style={{ borderRadius: '6px', fontSize: '11px', fontWeight: 800, padding: '3px 8px' }}
+                              >
+                                {svc.breakdown.summary.generated_units}/{svc.breakdown.summary.total_units} Done
+                                {svc.breakdown.summary.pending_units > 0 && ` (${svc.breakdown.summary.pending_units} pending)`}
+                              </button>
+                            ) : (
+                              <span style={{ fontSize: '12px', color: '#94a3b8' }}>-</span>
+                            )}
+                          </td>
                           <td style={{ padding: '14px 18px', fontSize: '13px', fontWeight: 800 }}>
                             {svc.generated_students_count} / {svc.eligible_students_count}
                           </td>
@@ -665,6 +817,14 @@ export default function FeeServiceGenerationPage() {
                           </td>
                           <td style={{ padding: '14px 18px', textAlign: 'right' }}>
                             <div style={{ display: 'inline-flex', gap: '6px' }}>
+                              <button
+                                onClick={() => openBreakdown(svc)}
+                                className="btn btn-sm btn-outline-primary"
+                                style={{ borderRadius: '6px', fontSize: '11.5px', fontWeight: 700 }}
+                                title="View granular breakdown"
+                              >
+                                Breakdown
+                              </button>
                               <button
                                 onClick={() => {
                                   setActiveService(svc);
@@ -691,6 +851,247 @@ export default function FeeServiceGenerationPage() {
                     })}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+
+          {/* ══ MODAL: DETAILED SERVICE BREAKDOWN (CLASS-WISE, ROUTE-WISE, ROOM-WISE) ══ */}
+          {breakdownModalOpen && (
+            <div className="modal-backdrop" style={{
+              position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(5px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '16px'
+            }}>
+              <div style={{
+                background: '#ffffff', borderRadius: '20px', width: '100%', maxWidth: '960px', maxHeight: '90vh',
+                display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+                border: '1px solid #e2e8f0', overflow: 'hidden'
+              }}>
+                {/* Modal Header */}
+                <div style={{
+                  padding: '20px 24px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{
+                      width: '42px', height: '42px', borderRadius: '12px',
+                      background: '#eff6ff', color: '#2563eb',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px'
+                    }}>
+                      <i className={getServiceIcon(breakdownService?.category, breakdownService?.code)} />
+                    </div>
+                    <div>
+                      <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 900, color: '#0f172a' }}>
+                        {breakdownService?.name} – Detailed Breakdown
+                      </h2>
+                      <p style={{ margin: '2px 0 0', fontSize: '12.5px', color: '#64748b' }}>
+                        {breakdownData?.breakdown_type === 'CLASS_WISE' && '📚 Class-Wise Tuition Fee Demand & Coverage'}
+                        {breakdownData?.breakdown_type === 'ROUTE_WISE' && '🚌 Route-Wise Transport Fee Demand & Allocation'}
+                        {breakdownData?.breakdown_type === 'HOSTEL_ROOM_TYPE_WISE' && '🏢 Room Category & AC/Non-AC Fee Status'}
+                        {!['CLASS_WISE', 'ROUTE_WISE', 'HOSTEL_ROOM_TYPE_WISE'].includes(breakdownData?.breakdown_type) && '⚡ Unit-Wise Fee Generation & Collection Status'}
+                        {' '}• Month: <strong>{data?.month_label || selectedMonth}</strong> • Session <strong>{selectedSession}</strong>
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setBreakdownModalOpen(false);
+                      setBreakdownService(null);
+                      setBreakdownData(null);
+                    }}
+                    style={{
+                      background: '#f1f5f9', border: 'none', borderRadius: '8px',
+                      width: '32px', height: '32px', cursor: 'pointer', color: '#64748b',
+                      fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Modal Body */}
+                <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1 }}>
+                  {breakdownLoading ? (
+                    <div style={{ textAlign: 'center', padding: '50px 20px' }}>
+                      <div className="spinner" style={{ width: '32px', height: '32px', margin: '0 auto 12px' }}></div>
+                      <div style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>
+                        Loading real-time fee breakdown from database...
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Summary Banner */}
+                      <div style={{
+                        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                        gap: '12px', marginBottom: '20px'
+                      }}>
+                        <div style={{ background: '#f8fafc', padding: '12px 16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                          <div style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>
+                            {breakdownData?.breakdown_type === 'CLASS_WISE' ? 'Total Classes' : breakdownData?.breakdown_type === 'ROUTE_WISE' ? 'Total Routes' : 'Total Categories'}
+                          </div>
+                          <div style={{ fontSize: '22px', fontWeight: 900, color: '#0f172a', marginTop: '2px' }}>
+                            {breakdownData?.summary?.total_units || 0}
+                          </div>
+                        </div>
+
+                        <div style={{ background: '#f0fdf4', padding: '12px 16px', borderRadius: '12px', border: '1px solid #bbf7d0' }}>
+                          <div style={{ fontSize: '11px', fontWeight: 800, color: '#16a34a', textTransform: 'uppercase' }}>
+                            Fully Generated
+                          </div>
+                          <div style={{ fontSize: '22px', fontWeight: 900, color: '#16a34a', marginTop: '2px' }}>
+                            {breakdownData?.summary?.generated_units || 0}
+                          </div>
+                        </div>
+
+                        <div style={{ background: '#fef2f2', padding: '12px 16px', borderRadius: '12px', border: '1px solid #fecaca' }}>
+                          <div style={{ fontSize: '11px', fontWeight: 800, color: '#dc2626', textTransform: 'uppercase' }}>
+                            Pending / Incomplete
+                          </div>
+                          <div style={{ fontSize: '22px', fontWeight: 900, color: '#dc2626', marginTop: '2px' }}>
+                            {breakdownData?.summary?.pending_units || 0}
+                          </div>
+                        </div>
+
+                        <div style={{ background: '#eff6ff', padding: '12px 16px', borderRadius: '12px', border: '1px solid #bfdbfe', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                          <button
+                            disabled={generating || (breakdownData?.summary?.pending_units || 0) === 0}
+                            onClick={handleGenerateAllPendingInBreakdown}
+                            className="btn btn-primary"
+                            style={{
+                              width: '100%', borderRadius: '10px', fontSize: '12.5px', fontWeight: 800,
+                              padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
+                            }}
+                          >
+                            <i className="ti ti-bolt" />
+                            {generating ? 'Generating...' : `Generate All Pending (${breakdownData?.summary?.pending_units || 0})`}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Granular Table */}
+                      <div style={{ borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+                        <table className="table" style={{ width: '100%', margin: 0 }}>
+                          <thead>
+                            <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                              <th style={{ padding: '12px 16px', fontSize: '11.5px', fontWeight: 800, color: '#475569' }}>
+                                {breakdownData?.breakdown_type === 'CLASS_WISE' && 'CLASS & SECTION'}
+                                {breakdownData?.breakdown_type === 'ROUTE_WISE' && 'ROUTE / VEHICLE'}
+                                {breakdownData?.breakdown_type === 'HOSTEL_ROOM_TYPE_WISE' && 'ROOM TYPE & AC STATUS'}
+                                {!['CLASS_WISE', 'ROUTE_WISE', 'HOSTEL_ROOM_TYPE_WISE'].includes(breakdownData?.breakdown_type) && 'UNIT'}
+                              </th>
+                              <th style={{ padding: '12px 16px', fontSize: '11.5px', fontWeight: 800, color: '#475569' }}>RATE (₹)</th>
+                              <th style={{ padding: '12px 16px', fontSize: '11.5px', fontWeight: 800, color: '#475569' }}>ELIGIBLE</th>
+                              <th style={{ padding: '12px 16px', fontSize: '11.5px', fontWeight: 800, color: '#475569' }}>BILLED</th>
+                              <th style={{ padding: '12px 16px', fontSize: '11.5px', fontWeight: 800, color: '#475569' }}>PENDING</th>
+                              <th style={{ padding: '12px 16px', fontSize: '11.5px', fontWeight: 800, color: '#475569' }}>TOTAL BILLED</th>
+                              <th style={{ padding: '12px 16px', fontSize: '11.5px', fontWeight: 800, color: '#475569' }}>STATUS</th>
+                              <th style={{ padding: '12px 16px', fontSize: '11.5px', fontWeight: 800, color: '#475569', textAlign: 'right' }}>ACTION</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(breakdownData?.breakdown || []).map((row, idx) => {
+                              const isRowGen = row.generation_status === 'GENERATED';
+                              const isRowPart = row.generation_status === 'PARTIALLY_GENERATED';
+                              const isRowNotGen = row.generation_status === 'NOT_GENERATED';
+                              const rowKey = row.class_id || row.route_id || `${row.room_type}_${row.is_ac}` || idx;
+                              const isRowBusy = generatingUnitKey === rowKey;
+
+                              return (
+                                <tr key={rowKey} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                  <td style={{ padding: '12px 16px' }}>
+                                    <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '13px' }}>
+                                      {row.class_name || row.route_name || row.room_category || row.name || 'Standard'}
+                                    </div>
+                                    {row.vehicle_number && (
+                                      <div style={{ fontSize: '11px', color: '#64748b' }}>
+                                        Vehicle: {row.vehicle_number}
+                                      </div>
+                                    )}
+                                    {row.route_code && (
+                                      <div style={{ fontSize: '10.5px', color: '#94a3b8' }}>
+                                        Code: {row.route_code}
+                                      </div>
+                                    )}
+                                  </td>
+
+                                  <td style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 700, color: '#0f172a' }}>
+                                    ₹{fmt(row.rate ?? row.monthly_fee ?? row.monthly_tuition_rate ?? 0)}
+                                  </td>
+
+                                  <td style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 700 }}>
+                                    {row.active_students ?? row.allocated_students ?? row.boarders_count ?? row.eligible_students ?? 0}
+                                  </td>
+
+                                  <td style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 800, color: '#16a34a' }}>
+                                    {row.generated_students ?? row.billed_students ?? 0}
+                                  </td>
+
+                                  <td style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 800, color: (row.pending_students || 0) > 0 ? '#dc2626' : '#64748b' }}>
+                                    {row.pending_students ?? 0}
+                                  </td>
+
+                                  <td style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 800, color: '#0f172a' }}>
+                                    ₹{fmt(row.total_billed)}
+                                  </td>
+
+                                  <td style={{ padding: '12px 16px' }}>
+                                    <span style={{
+                                      padding: '3px 8px', borderRadius: '100px', fontSize: '10.5px', fontWeight: 800,
+                                      background: isRowGen ? '#ecfdf5' : isRowPart ? '#fef3c7' : '#fef2f2',
+                                      color: isRowGen ? '#059669' : isRowPart ? '#d97706' : '#dc2626',
+                                    }}>
+                                      {isRowGen ? 'GENERATED' : isRowPart ? 'PARTIAL' : 'NOT GENERATED'}
+                                    </span>
+                                  </td>
+
+                                  <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                                    {(row.pending_students || 0) > 0 || isRowNotGen ? (
+                                      <button
+                                        disabled={isRowBusy || generating}
+                                        onClick={() => handleGenerateUnit(row)}
+                                        className="btn btn-sm btn-primary"
+                                        style={{ borderRadius: '7px', fontSize: '11.5px', fontWeight: 800, padding: '5px 12px' }}
+                                      >
+                                        {isRowBusy ? 'Generating...' : '+ Generate Fee'}
+                                      </button>
+                                    ) : (
+                                      <span style={{
+                                        fontSize: '11.5px', fontWeight: 800, color: '#059669',
+                                        background: '#ecfdf5', padding: '4px 8px', borderRadius: '6px'
+                                      }}>
+                                        ✓ Complete
+                                      </span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Modal Footer */}
+                <div style={{
+                  padding: '14px 24px', borderTop: '1px solid #e2e8f0', background: '#f8fafc',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                }}>
+                  <div style={{ fontSize: '12px', color: '#64748b' }}>
+                    💡 Real-time synchronization active. Generating fees creates pending demand in student ledgers safely.
+                  </div>
+                  <button
+                    onClick={() => {
+                      setBreakdownModalOpen(false);
+                      setBreakdownService(null);
+                      setBreakdownData(null);
+                    }}
+                    className="btn btn-neutral"
+                    style={{ borderRadius: '8px', padding: '8px 18px', fontWeight: 700 }}
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
             </div>
           )}

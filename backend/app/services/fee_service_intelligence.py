@@ -31,22 +31,461 @@ def _parse_month(month_str=None):
         return today.strftime('%Y-%m'), today.strftime('%B %Y'), today.year, today.month
 
 
+def _normalize_service_code(val):
+    """Maps varied service labels and types to canonical service codes."""
+    v = (val or '').strip().upper()
+    if any(k in v for k in ('TUITION', 'ACADEMIC', 'CLASS', 'SCHOOL')):
+        return 'TUITION'
+    if any(k in v for k in ('TRANSPORT', 'BUS', 'VAN', 'CAB', 'ROUTE')):
+        return 'TRANSPORT'
+    if any(k in v for k in ('HOSTEL', 'MESS', 'ROOM', 'BED', 'DORM')):
+        return 'HOSTEL'
+    if any(k in v for k in ('LIB', 'BOOK')):
+        return 'LIBRARY'
+    if any(k in v for k in ('EXAM', 'TEST', 'ASSESS')):
+        return 'EXAM'
+    if any(k in v for k in ('ADMISSION', 'REGIST', 'ENROLL')):
+        return 'ADMISSION'
+    if any(k in v for k in ('SPORT', 'ACTIVIT')):
+        return 'ACTIVITY'
+    if any(k in v for k in ('LAB', 'COMPUTER', 'SCIENCE')):
+        return 'LAB'
+    return v or 'ACADEMIC'
+
+
+def get_academic_class_breakdown(school_id, month_code, session='2026-27'):
+    """
+    Returns live class-wise fee generation and pending status.
+    Accounts for class-specific tuition fees.
+    """
+    classes = Class.query.filter_by(school_id=school_id).order_by(Class.name.asc(), Class.section.asc()).all()
+    breakdown = []
+    total_classes = len(classes)
+    generated_classes = 0
+    pending_classes = 0
+
+    for cls in classes:
+        # 1. Total active students in this class
+        students = Student.query.filter_by(school_id=school_id, class_id=cls.id, status='ACTIVE', is_deleted=False).all()
+        stu_count = len(students)
+        stu_ids = [s.id for s in students]
+
+        # 2. Fee records for students in this class for this month
+        fee_records = []
+        if stu_ids:
+            fee_records = FeeRecord.query.filter(
+                FeeRecord.school_id == school_id,
+                FeeRecord.student_id.in_(stu_ids),
+                FeeRecord.status != 'DRAFT',
+                FeeRecord.status != 'CANCELLED',
+                or_(
+                    FeeRecord.source.in_(['ACADEMIC', 'TUITION']),
+                    FeeRecord.fee_type.ilike('%Tuition%')
+                ),
+                or_(
+                    FeeRecord.month == month_code,
+                    FeeRecord.month.like(f"%{month_code}%")
+                )
+            ).all()
+
+        gen_stu_ids = {r.student_id for r in fee_records}
+        gen_count = len(gen_stu_ids)
+        pending_count = max(0, stu_count - gen_count)
+
+        billed = sum(float(r.amount_due + (r.fine or 0.0) - (r.discount or 0.0)) for r in fee_records)
+        paid = sum(float(r.amount_paid or 0.0) for r in fee_records)
+        pending_amt = max(0.0, billed - paid)
+
+        # Rate determination: from FeeStructure or average billed
+        rate = 0.0
+        try:
+            from app.models.financial import FeeStructure
+            fs = FeeStructure.query.filter_by(school_id=school_id, class_id=cls.id, fee_type='Tuition Fee').first()
+            if fs and fs.amount:
+                rate = float(fs.amount)
+            elif billed > 0 and gen_count > 0:
+                rate = round(billed / gen_count, 2)
+        except Exception:
+            rate = 0.0
+
+        if stu_count == 0:
+            st = 'EMPTY'
+        elif gen_count == 0:
+            st = 'NOT_GENERATED'
+            pending_classes += 1
+        elif gen_count >= stu_count:
+            st = 'GENERATED'
+            generated_classes += 1
+        else:
+            st = 'PARTIALLY_GENERATED'
+            pending_classes += 1
+
+        breakdown.append({
+            'item_id': cls.id,
+            'class_id': cls.id,
+            'name': f"{cls.name} {f'({cls.section})' if cls.section else ''}".strip(),
+            'class_name': cls.name,
+            'section': cls.section or '',
+            'total_students': stu_count,
+            'generated_students': gen_count,
+            'pending_students': pending_count,
+            'rate': rate,
+            'billed': round(billed, 2),
+            'paid': round(paid, 2),
+            'pending': round(pending_amt, 2),
+            'status': st,
+            'can_generate': st in ('NOT_GENERATED', 'PARTIALLY_GENERATED') and stu_count > 0
+        })
+
+    return {
+        'type': 'CLASS_WISE',
+        'unit_label': 'Classes',
+        'title': 'Class-Wise Academic & Tuition Status',
+        'description': 'Each class can have distinct fee structures and tuition rates.',
+        'summary': {
+            'total_units': total_classes,
+            'generated_units': generated_classes,
+            'pending_units': pending_classes,
+        },
+        'items': breakdown
+    }
+
+
+def get_transport_route_breakdown(school_id, month_code, session='2026-27'):
+    """
+    Returns live route-wise fee generation and pending status.
+    Accounts for route-specific pricing slabs.
+    """
+    from app.models.transport import Route
+    from app.models.transport_student import StudentTransport, TransportFeeStructure
+
+    routes = Route.query.filter_by(school_id=school_id).order_by(Route.name.asc()).all()
+    breakdown = []
+    total_routes = len(routes)
+    generated_routes = 0
+    pending_routes = 0
+
+    for r in routes:
+        # Active students allocated to this route
+        assignments = StudentTransport.query.filter_by(school_id=school_id, route_id=r.id, status='ACTIVE').all()
+        stu_ids = [a.student_id for a in assignments]
+        stu_count = len(stu_ids)
+
+        # Route rate from TransportFeeStructure
+        tfs = TransportFeeStructure.query.filter_by(school_id=school_id, route_id=r.id, status='ACTIVE').first()
+        if not tfs:
+            tfs = TransportFeeStructure.query.filter_by(school_id=school_id, route_id=None, status='ACTIVE').first()
+        rate = float(tfs.amount or 0.0) if tfs else 0.0
+
+        fee_records = []
+        if stu_ids:
+            fee_records = FeeRecord.query.filter(
+                FeeRecord.school_id == school_id,
+                FeeRecord.student_id.in_(stu_ids),
+                FeeRecord.status != 'DRAFT',
+                FeeRecord.status != 'CANCELLED',
+                or_(
+                    FeeRecord.source == 'TRANSPORT',
+                    FeeRecord.fee_type.ilike('%Transport%')
+                ),
+                or_(
+                    FeeRecord.month == month_code,
+                    FeeRecord.month.like(f"%{month_code}%")
+                )
+            ).all()
+
+        gen_stu_ids = {rec.student_id for rec in fee_records}
+        gen_count = len(gen_stu_ids)
+        pending_count = max(0, stu_count - gen_count)
+
+        billed = sum(float(rec.amount_due + (rec.fine or 0.0) - (rec.discount or 0.0)) for rec in fee_records)
+        paid = sum(float(rec.amount_paid or 0.0) for rec in fee_records)
+        pending_amt = max(0.0, billed - paid)
+
+        if stu_count == 0:
+            st = 'EMPTY'
+        elif gen_count == 0:
+            st = 'NOT_GENERATED'
+            pending_routes += 1
+        elif gen_count >= stu_count:
+            st = 'GENERATED'
+            generated_routes += 1
+        else:
+            st = 'PARTIALLY_GENERATED'
+            pending_routes += 1
+
+        breakdown.append({
+            'item_id': r.id,
+            'route_id': r.id,
+            'name': r.name,
+            'code': r.code or '',
+            'vehicle_number': r.vehicle.vehicle_number if r.vehicle else 'Not Assigned',
+            'total_students': stu_count,
+            'generated_students': gen_count,
+            'pending_students': pending_count,
+            'rate': rate,
+            'billed': round(billed, 2),
+            'paid': round(paid, 2),
+            'pending': round(pending_amt, 2),
+            'status': st,
+            'can_generate': st in ('NOT_GENERATED', 'PARTIALLY_GENERATED') and stu_count > 0
+        })
+
+    # Also account for any student who has a transport FeeRecord not linked to a specific route
+    all_transport_recs = FeeRecord.query.filter(
+        FeeRecord.school_id == school_id,
+        FeeRecord.status != 'DRAFT',
+        FeeRecord.status != 'CANCELLED',
+        or_(
+            FeeRecord.source == 'TRANSPORT',
+            FeeRecord.fee_type.ilike('%Transport%')
+        ),
+        or_(
+            FeeRecord.month == month_code,
+            FeeRecord.month.like(f"%{month_code}%")
+        )
+    ).all()
+    assigned_stu_ids = set()
+    for r in routes:
+        assigned_stu_ids.update([a.student_id for a in StudentTransport.query.filter_by(school_id=school_id, route_id=r.id, status='ACTIVE').all()])
+
+    unlinked_stu_ids = {rec.student_id for rec in all_transport_recs if rec.student_id not in assigned_stu_ids}
+    if unlinked_stu_ids:
+        u_billed = sum(float(rec.amount_due + (rec.fine or 0.0) - (rec.discount or 0.0)) for rec in all_transport_recs if rec.student_id in unlinked_stu_ids)
+        u_paid = sum(float(rec.amount_paid or 0.0) for rec in all_transport_recs if rec.student_id in unlinked_stu_ids)
+        breakdown.append({
+            'item_id': 0,
+            'route_id': None,
+            'name': 'Standard / Campus Transport Slabs',
+            'code': 'STD',
+            'vehicle_number': 'School Transport',
+            'total_students': len(unlinked_stu_ids),
+            'generated_students': len(unlinked_stu_ids),
+            'pending_students': 0,
+            'rate': round(u_billed / len(unlinked_stu_ids), 2) if unlinked_stu_ids else 0.0,
+            'billed': round(u_billed, 2),
+            'paid': round(u_paid, 2),
+            'pending': round(max(0.0, u_billed - u_paid), 2),
+            'status': 'GENERATED',
+            'can_generate': False
+        })
+        total_routes += 1
+        generated_routes += 1
+
+    return {
+        'type': 'ROUTE_WISE',
+        'unit_label': 'Routes',
+        'title': 'Route-Wise Transport Fee Generation Status',
+        'description': 'Each transport route has distinct pricing slabs and vehicle allocations.',
+        'summary': {
+            'total_units': total_routes,
+            'generated_units': generated_routes,
+            'pending_units': pending_routes,
+        },
+        'items': breakdown
+    }
+
+
+def get_hostel_room_type_breakdown(school_id, month_code, session='2026-27'):
+    """
+    Returns live room type / AC vs Non-AC fee generation and pending status.
+    Accounts for room-type and AC vs Non-AC rate differences.
+    """
+    from app.models.hostel import (
+        HostelRoom, HostelBed, HostelBedAllocation, HostelFeeStructure
+    )
+
+    active_allocs = HostelBedAllocation.query.filter_by(school_id=school_id, status='ACTIVE').all()
+    alloc_map = {}
+    for alloc in active_allocs:
+        bed = HostelBed.query.get(alloc.bed_id)
+        room = bed.room if bed else None
+        rtype = (room.room_type if room and room.room_type else 'STANDARD').upper()
+        is_ac = bool(room.is_ac) if room else False
+        key = f"{rtype}_{'AC' if is_ac else 'NON_AC'}"
+        if key not in alloc_map:
+            alloc_map[key] = {
+                'room_type': rtype,
+                'is_ac': is_ac,
+                'student_ids': []
+            }
+        alloc_map[key]['student_ids'].append(alloc.student_id)
+
+    # Also inspect configured fee structures
+    fee_structures = HostelFeeStructure.query.filter_by(school_id=school_id, status='ACTIVE').all()
+    for fs in fee_structures:
+        key = f"{fs.sharing_type.upper()}_{'AC' if fs.is_ac else 'NON_AC'}"
+        if key not in alloc_map:
+            alloc_map[key] = {
+                'room_type': fs.sharing_type.upper(),
+                'is_ac': bool(fs.is_ac),
+                'student_ids': []
+            }
+
+    # Also check if any student has Hostel FeeRecord directly without bed allocation
+    all_hostel_recs = FeeRecord.query.filter(
+        FeeRecord.school_id == school_id,
+        FeeRecord.status != 'DRAFT',
+        FeeRecord.status != 'CANCELLED',
+        or_(
+            FeeRecord.source == 'HOSTEL',
+            FeeRecord.fee_type.ilike('%Hostel%')
+        ),
+        or_(
+            FeeRecord.month == month_code,
+            FeeRecord.month.like(f"%{month_code}%")
+        )
+    ).all()
+    allocated_stu_ids = set()
+    for info in alloc_map.values():
+        allocated_stu_ids.update(info['student_ids'])
+    unlinked_stu_ids = {r.student_id for r in all_hostel_recs if r.student_id not in allocated_stu_ids}
+    if unlinked_stu_ids:
+        alloc_map['STANDARD_HOSTEL'] = {
+            'room_type': 'STANDARD',
+            'is_ac': False,
+            'student_ids': list(unlinked_stu_ids)
+        }
+
+    # If nothing configured, present defaults
+    if not alloc_map:
+        for rtype in ['SINGLE', 'DOUBLE', 'TRIPLE']:
+            for is_ac in [True, False]:
+                key = f"{rtype}_{'AC' if is_ac else 'NON_AC'}"
+                alloc_map[key] = {'room_type': rtype, 'is_ac': is_ac, 'student_ids': []}
+
+    breakdown = []
+    total_categories = len(alloc_map)
+    generated_categories = 0
+    pending_categories = 0
+
+    for key, info in sorted(alloc_map.items()):
+        rtype = info['room_type']
+        is_ac = info['is_ac']
+        stu_ids = info['student_ids']
+        stu_count = len(stu_ids)
+
+        fs = HostelFeeStructure.query.filter_by(
+            school_id=school_id, sharing_type=rtype, is_ac=is_ac, status='ACTIVE'
+        ).first()
+        rate = float(fs.monthly_fee or 0.0) if fs else 0.0
+
+        fee_records = []
+        if stu_ids:
+            fee_records = FeeRecord.query.filter(
+                FeeRecord.school_id == school_id,
+                FeeRecord.student_id.in_(stu_ids),
+                FeeRecord.status != 'DRAFT',
+                FeeRecord.status != 'CANCELLED',
+                or_(
+                    FeeRecord.source == 'HOSTEL',
+                    FeeRecord.fee_type.ilike('%Hostel%')
+                ),
+                or_(
+                    FeeRecord.month == month_code,
+                    FeeRecord.month.like(f"%{month_code}%")
+                )
+            ).all()
+
+        gen_stu_ids = {rec.student_id for rec in fee_records}
+        gen_count = len(gen_stu_ids)
+        pending_count = max(0, stu_count - gen_count)
+
+        billed = sum(float(rec.amount_due + (rec.fine or 0.0) - (rec.discount or 0.0)) for rec in fee_records)
+        paid = sum(float(rec.amount_paid or 0.0) for rec in fee_records)
+        pending_amt = max(0.0, billed - paid)
+
+        if not rate and billed > 0 and gen_count > 0:
+            rate = round(billed / gen_count, 2)
+
+        label_title = f"{rtype.replace('_', ' ').title()} ({'AC' if is_ac else 'Non-AC'})" if rtype != 'STANDARD' else 'Standard Hostel & Mess'
+
+        if stu_count == 0:
+            st = 'EMPTY'
+        elif gen_count == 0:
+            st = 'NOT_GENERATED'
+            pending_categories += 1
+        elif gen_count >= stu_count:
+            st = 'GENERATED'
+            generated_categories += 1
+        else:
+            st = 'PARTIALLY_GENERATED'
+            pending_categories += 1
+
+        breakdown.append({
+            'item_id': key,
+            'name': label_title,
+            'room_type': rtype,
+            'is_ac': is_ac,
+            'total_students': stu_count,
+            'generated_students': gen_count,
+            'pending_students': pending_count,
+            'rate': rate,
+            'billed': round(billed, 2),
+            'paid': round(paid, 2),
+            'pending': round(pending_amt, 2),
+            'status': st,
+            'can_generate': st in ('NOT_GENERATED', 'PARTIALLY_GENERATED') and stu_count > 0
+        })
+
+    return {
+        'type': 'ROOM_WISE',
+        'unit_label': 'Room Categories',
+        'title': 'Hostel Room-Type & AC Status',
+        'description': 'Hostel charges differ by sharing capacity and Air Conditioning (AC) availability.',
+        'summary': {
+            'total_units': total_categories,
+            'generated_units': generated_categories,
+            'pending_units': pending_categories,
+        },
+        'items': breakdown
+    }
+
+
+def get_service_detail_breakdown(school_id, service_code, month=None, session='2026-27'):
+    """Returns granular drill-down breakdown for a specific service."""
+    month_code, month_label, yr, mo = _parse_month(month)
+    norm_code = _normalize_service_code(service_code)
+    if norm_code == 'TUITION':
+        return get_academic_class_breakdown(school_id, month_code, session)
+    elif norm_code == 'TRANSPORT':
+        return get_transport_route_breakdown(school_id, month_code, session)
+    elif norm_code == 'HOSTEL':
+        return get_hostel_room_type_breakdown(school_id, month_code, session)
+    else:
+        return {
+            'type': 'GENERIC',
+            'unit_label': 'Service',
+            'title': f'{service_code} Breakdown',
+            'summary': {'total_units': 1, 'generated_units': 1, 'pending_units': 0},
+            'items': []
+        }
+
+
 def get_services_generation_status(school_id, month=None, session='2026-27', class_id=None, category=None):
     """
     Returns dynamic status of each service in the school for a given month:
     - Generated vs Not Generated vs Partially Generated
+    - Granular breakdown (Class-wise for Academic, Route-wise for Transport, Room-type for Hostel)
     - Total eligible students vs generated students count
     - Billed, Collected, and Pending totals per service
-    - Batch and generation timestamps
     """
     ensure_default_fee_heads(school_id)
     month_code, month_label, yr, mo = _parse_month(month)
 
-    # 1. Fetch all active fee heads / services for the school
+    # 1. Fetch active fee heads for the school and deduplicate by canonical code
     head_query = FeeHead.query.filter_by(school_id=school_id, is_active=True)
     if category and category.upper() != 'ALL':
         head_query = head_query.filter_by(category=category.upper())
-    fee_heads = head_query.order_by(FeeHead.id.asc()).all()
+    raw_fee_heads = head_query.order_by(FeeHead.id.asc()).all()
+
+    seen_norm = set()
+    fee_heads = []
+    for fh in raw_fee_heads:
+        norm = _normalize_service_code(fh.code)
+        if norm not in seen_norm:
+            seen_norm.add(norm)
+            fee_heads.append(fh)
 
     # 2. Count active eligible students in the school / class
     stu_q = Student.query.filter_by(school_id=school_id, status='ACTIVE', is_deleted=False)
@@ -95,7 +534,6 @@ def get_services_generation_status(school_id, month=None, session='2026-27', cla
         FeeBill.bill_month == month_code,
         FeeBill.status != BillStatus.CANCELLED.value
     )
-
     if class_id:
         bill_items_q = bill_items_q.join(Student, FeeBill.student_id == Student.id).filter(Student.class_id == int(class_id))
 
@@ -110,7 +548,10 @@ def get_services_generation_status(school_id, month=None, session='2026-27', cla
         for row in bill_items_q.group_by(FeeBillItem.fee_head_id).all()
     }
 
-    # 4. Also check FeeRecords (support legacy/direct batches)
+    # 4. Check FeeRecords with robust multi-format month & session matching
+    m_start = date(yr, mo, 1)
+    m_end = date(yr, mo, calendar.monthrange(yr, mo)[1])
+
     fee_rec_q = db.session.query(
         FeeRecord.fee_type,
         FeeRecord.source,
@@ -124,19 +565,22 @@ def get_services_generation_status(school_id, month=None, session='2026-27', cla
         FeeRecord.status != 'CANCELLED',
         or_(
             FeeRecord.month == month_code,
-            FeeRecord.month == month_label
+            FeeRecord.month == month_label,
+            FeeRecord.month.like(f"%{month_code}%"),
+            and_(FeeRecord.due_date >= m_start, FeeRecord.due_date <= m_end)
         )
     )
+    if session:
+        fee_rec_q = fee_rec_q.filter(or_(FeeRecord.session == session, FeeRecord.session.is_(None)))
     if class_id:
         fee_rec_q = fee_rec_q.join(Student, FeeRecord.student_id == Student.id).filter(Student.class_id == int(class_id))
 
     fee_rec_rows = fee_rec_q.group_by(FeeRecord.fee_type, FeeRecord.source).all()
     rec_data_by_key = {}
     for r in fee_rec_rows:
-        key = (r.fee_type or r.source or 'ACADEMIC').upper()
         b_amt = float(r.billed_amt or 0.0)
         p_amt = float(r.paid_amt or 0.0)
-        rec_data_by_key[key] = {
+        entry = {
             'student_count': int(r.student_count or 0),
             'billed': round(b_amt, 2),
             'paid': round(p_amt, 2),
@@ -144,11 +588,24 @@ def get_services_generation_status(school_id, month=None, session='2026-27', cla
             'last_generated': r.last_generated.isoformat() if r.last_generated else None
         }
 
+        # Determine single canonical key for this row
+        k_src = _normalize_service_code(r.source) if r.source and r.source.upper() != 'ACADEMIC' else None
+        k_typ = _normalize_service_code(r.fee_type) if r.fee_type else None
+        canonical_k = k_src or k_typ or 'TUITION'
+
+        if canonical_k not in rec_data_by_key:
+            rec_data_by_key[canonical_k] = dict(entry)
+        else:
+            rec_data_by_key[canonical_k]['student_count'] += entry['student_count']
+            rec_data_by_key[canonical_k]['billed'] += entry['billed']
+            rec_data_by_key[canonical_k]['paid'] += entry['paid']
+            rec_data_by_key[canonical_k]['pending'] += entry['pending']
+
     # 5. Fetch batches for this month
     batch_q = FeeGenerationBatch.query.filter_by(school_id=school_id, month=month_code)
     if class_id:
         batch_q = batch_q.filter(or_(FeeGenerationBatch.class_id == int(class_id), FeeGenerationBatch.class_id.is_(None)))
-    batches = {b.fee_type.upper(): b.to_dict() for b in batch_q.all()}
+    batches = {_normalize_service_code(b.fee_type): b.to_dict() for b in batch_q.all()}
 
     services_result = []
     generated_services_count = 0
@@ -157,20 +614,20 @@ def get_services_generation_status(school_id, month=None, session='2026-27', cla
     total_collected_all = 0.0
 
     for fh in fee_heads:
+        norm_code = _normalize_service_code(fh.code)
+
         # Determine target eligible students for this service
-        cat = (fh.category or 'ACADEMIC').upper()
-        if cat == 'TRANSPORT':
+        if norm_code == 'TRANSPORT':
             eligible = transport_count
-        elif cat == 'HOSTEL':
+        elif norm_code == 'HOSTEL':
             eligible = hostel_count
         else:
             eligible = total_active_students
 
         # Merge bill item data or fee record data
-        b_data = bill_items_data.get(fh.id)
-        if not b_data:
-            # Check by code or category
-            b_data = rec_data_by_key.get(fh.code.upper()) or rec_data_by_key.get(cat)
+        b_data = bill_items_data.get(fh.id) or rec_data_by_key.get(norm_code)
+        if not b_data and norm_code == 'TUITION':
+            b_data = rec_data_by_key.get('ACADEMIC')
 
         student_count = b_data['student_count'] if b_data else 0
         billed = b_data['billed'] if b_data else 0.0
@@ -178,20 +635,61 @@ def get_services_generation_status(school_id, month=None, session='2026-27', cla
         pending = b_data['pending'] if b_data else 0.0
         last_gen = b_data['last_generated'] if b_data else None
 
-        batch_info = batches.get(fh.code.upper()) or batches.get(cat)
+        batch_info = batches.get(norm_code)
 
-        # Determine generation status
-        if student_count == 0 or (billed == 0 and paid == 0):
-            status = 'NOT_GENERATED'
-            not_generated_services_count += 1
-        elif eligible > 0 and student_count >= eligible:
-            status = 'GENERATED'
-            generated_services_count += 1
-        elif eligible > 0 and student_count < eligible:
-            status = 'PARTIALLY_GENERATED'
-            generated_services_count += 1
+        # Attach service-specific granular breakdown
+        breakdown = None
+        if norm_code == 'TUITION':
+            breakdown = get_academic_class_breakdown(school_id, month_code, session)
+        elif norm_code == 'TRANSPORT':
+            breakdown = get_transport_route_breakdown(school_id, month_code, session)
+            # If no routes configured but fee was generated, add an unassigned item
+            if breakdown and breakdown['summary']['total_units'] == 0 and (billed > 0 or student_count > 0):
+                breakdown['summary']['total_units'] = 1
+                breakdown['summary']['generated_units'] = 1
+                breakdown['items'].append({
+                    'item_id': 0, 'route_id': None, 'name': 'Direct / Standard Transport Fee',
+                    'code': 'STD', 'vehicle_number': 'Standard', 'total_students': student_count,
+                    'generated_students': student_count, 'pending_students': 0, 'rate': billed,
+                    'billed': billed, 'paid': paid, 'pending': pending, 'status': 'GENERATED',
+                    'can_generate': False
+                })
+        elif norm_code == 'HOSTEL':
+            breakdown = get_hostel_room_type_breakdown(school_id, month_code, session)
+            # If no room allocations but fee was generated, add a general hostel item
+            if breakdown and breakdown['summary']['total_units'] == 0 and (billed > 0 or student_count > 0):
+                breakdown['summary']['total_units'] = 1
+                breakdown['summary']['generated_units'] = 1
+                breakdown['items'].append({
+                    'item_id': 'STD_HOSTEL', 'name': 'Standard Hostel & Mess Fee',
+                    'room_type': 'STANDARD', 'is_ac': False, 'total_students': student_count,
+                    'generated_students': student_count, 'pending_students': 0, 'rate': billed,
+                    'billed': billed, 'paid': paid, 'pending': pending, 'status': 'GENERATED',
+                    'can_generate': False
+                })
+
+        # Status determination: if breakdown has items, align status
+        if breakdown and breakdown.get('summary') and breakdown['summary']['total_units'] > 0:
+            bsum = breakdown['summary']
+            if bsum['generated_units'] >= bsum['total_units']:
+                status = 'GENERATED'
+            elif bsum['generated_units'] > 0:
+                status = 'PARTIALLY_GENERATED'
+            else:
+                status = 'NOT_GENERATED'
         else:
-            status = 'GENERATED'
+            if student_count == 0 or (billed == 0 and paid == 0):
+                status = 'NOT_GENERATED'
+            elif eligible > 0 and student_count >= eligible:
+                status = 'GENERATED'
+            elif eligible > 0 and student_count < eligible:
+                status = 'PARTIALLY_GENERATED'
+            else:
+                status = 'GENERATED' if (billed > 0 or paid > 0) else 'NOT_GENERATED'
+
+        if status == 'NOT_GENERATED':
+            not_generated_services_count += 1
+        else:
             generated_services_count += 1
 
         total_billed_all += billed
@@ -201,6 +699,7 @@ def get_services_generation_status(school_id, month=None, session='2026-27', cla
             'head_id':                  fh.id,
             'name':                     fh.name,
             'code':                     fh.code,
+            'canonical_code':           norm_code,
             'category':                 fh.category or 'ACADEMIC',
             'department':               fh.department or 'ACCOUNTS',
             'frequency':                fh.default_frequency or 'MONTHLY',
@@ -217,6 +716,7 @@ def get_services_generation_status(school_id, month=None, session='2026-27', cla
             'last_generated_at':        last_gen,
             'batch':                    batch_info,
             'can_generate':             status != 'GENERATED' and eligible > 0,
+            'breakdown':                breakdown,
         })
 
     # Summary object
