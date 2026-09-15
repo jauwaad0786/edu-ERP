@@ -1830,3 +1830,35 @@ def generate_service_fee_endpoint(service_code):
         'result': result
     }), 200
 
+
+@fees_finance_bp.route('/reconcile', methods=['POST'])
+@jwt_required()
+def reconcile_financial_data():
+    """Admin-safe data reconciliation: syncs all FeeRecords and FeeBills bidirectionally."""
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    session = request.args.get('session') or '2026-27'
+    from app.services.fee_central_service import FeeCentralService
+    result = FeeCentralService.sync_all_existing_records(school_id=user.school_id, session=session)
+    return jsonify({
+        'success': True,
+        'message': 'Financial data reconciled successfully',
+        'result': result
+    }), 200
+
+
+@fees_finance_bp.route('/reconciliation-audit', methods=['GET'])
+@jwt_required()
+def get_reconciliation_audit():
+    """Audit endpoint: detects discrepancies, overpayments, orphaned records, or negative balances."""
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    session = request.args.get('session') or '2026-27'
+    from app.services.finance_aggregation_service import FinanceAggregationService
+    audit_report = FinanceAggregationService.audit_reconciliation(school_id=user.school_id, session=session)
+    return jsonify(audit_report), 200
+

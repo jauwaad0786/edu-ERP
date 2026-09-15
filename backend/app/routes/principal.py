@@ -144,20 +144,20 @@ def class_detail(class_id):
     ).filter_by(class_id=class_id).all()
     total_students = len(students)
 
-    # ── Fee summary ──
+    # ── Fee summary (Net Due = Due + Fine - Discount, excluding drafts) ──
     student_ids = [s.id for s in students]
-    total_due  = db.session.query(func.sum(FeeRecord.amount_due))\
-                   .filter(FeeRecord.student_id.in_(student_ids)).scalar() or 0 if student_ids else 0
-    total_paid = db.session.query(func.sum(FeeRecord.amount_paid))\
-                   .filter(FeeRecord.student_id.in_(student_ids)).scalar() or 0 if student_ids else 0
+    total_due  = db.session.query(
+        func.coalesce(func.sum(FeeRecord.amount_due + func.coalesce(FeeRecord.fine, 0.0) - func.coalesce(FeeRecord.discount, 0.0)), 0.0)
+    ).filter(FeeRecord.student_id.in_(student_ids), FeeRecord.status != 'DRAFT').scalar() or 0 if student_ids else 0
+    total_paid = db.session.query(func.coalesce(func.sum(FeeRecord.amount_paid), 0.0))\
+                   .filter(FeeRecord.student_id.in_(student_ids), FeeRecord.status != 'DRAFT').scalar() or 0 if student_ids else 0
 
     # Single query — per student fee aggregates
-    from sqlalchemy import case
     fee_agg = db.session.query(
         FeeRecord.student_id,
-        func.sum(FeeRecord.amount_due).label('due'),
+        func.sum(FeeRecord.amount_due + func.coalesce(FeeRecord.fine, 0.0) - func.coalesce(FeeRecord.discount, 0.0)).label('due'),
         func.sum(FeeRecord.amount_paid).label('paid'),
-    ).filter(FeeRecord.student_id.in_(student_ids))\
+    ).filter(FeeRecord.student_id.in_(student_ids), FeeRecord.status != 'DRAFT')\
      .group_by(FeeRecord.student_id).all() if student_ids else []
     
     fee_paid_count    = 0
@@ -1484,100 +1484,45 @@ def create_student():
 @permission_required('fees.reports.view')
 def fees_summary():
     sid = _school_id()
-    # NEW
-    total_due  = db.session.query(func.sum(FeeRecord.amount_due))\
-        .filter(FeeRecord.school_id == sid, FeeRecord.status.notin_(['DRAFT', 'CANCELLED'])).scalar() or 0
-    total_paid = db.session.query(func.sum(FeeRecord.amount_paid))\
-        .filter(FeeRecord.school_id == sid, FeeRecord.status.notin_(['DRAFT', 'CANCELLED'])).scalar() or 0
-    pending    = db.session.query(func.count(FeeRecord.id)).filter_by(school_id=sid, status='PENDING').scalar() or 0
-    overdue    = db.session.query(func.count(FeeRecord.id)).filter_by(school_id=sid, status='OVERDUE').scalar() or 0
+    session_param = request.args.get('session') or '2026-27'
+    month_param   = request.args.get('month')
+    class_id      = request.args.get('class_id', type=int)
+    source_param  = request.args.get('source') or request.args.get('service')
+    status_param  = request.args.get('status')
 
-    # ── FeeTransaction-based cards ──
-    # record.amount_paid sirf running total hai, isliye "kab collect hua" ye
-    # FeeTransaction se nikalta hai — ab date/month/mode-wise sahi hai.
-    today = date.today()
-
-    # optional month filter — "YYYY-MM" (top filter se aata hai)
-    # diya hai to usi month ka label banao, warna current month use karo.
-    month_param = request.args.get('month')
-    if month_param:
-        try:
-            y, m = map(int, month_param.split('-'))
-            this_month = date(y, m, 1).strftime('%B %Y')
-        except (ValueError, TypeError):
-            this_month = today.strftime('%B %Y')
-    else:
-        this_month = today.strftime('%B %Y')
-
-    # "Today's Collection" hamesha actual aaj ka din hi rahega — filter se independent
-    today_collection = db.session.query(func.sum(FeeTransaction.amount)).filter_by(
-        school_id=sid, transaction_date=today
-    ).scalar() or 0
-
-    month_collection = db.session.query(func.sum(FeeTransaction.amount)).filter_by(
-        school_id=sid, txn_month=this_month
-    ).scalar() or 0
-
-    mode_agg = db.session.query(
-        FeeTransaction.payment_mode,
-        func.sum(FeeTransaction.amount)
-    ).filter_by(school_id=sid, txn_month=this_month)\
-     .group_by(FeeTransaction.payment_mode).all()
-    mode_map = {mode: amt for mode, amt in mode_agg}
-
-    # Department/Service breakdown of Today's collection in a single joined query
-    today_txns = db.session.query(
-        FeeTransaction.amount,
-        FeeRecord.source,
-        FeeRecord.fee_type
-    ).outerjoin(
-        FeeRecord, FeeTransaction.fee_record_id == FeeRecord.id
-    ).filter(
-        FeeTransaction.school_id == sid,
-        FeeTransaction.transaction_date == today
-    ).all()
-
-    today_by_dept = {
-        'academic': 0.0,
-        'hostel': 0.0,
-        'transport': 0.0,
-        'library': 0.0,
-        'admission': 0.0,
-        'other': 0.0,
-        'total': float(today_collection or 0.0),
-    }
-    for amt_val, rec_source, rec_type in today_txns:
-        src = (rec_source if rec_source else (rec_type if rec_type else 'ACADEMIC')).upper()
-        amt = float(amt_val or 0.0)
-        if 'HOSTEL' in src:
-            today_by_dept['hostel'] += amt
-        elif 'TRANSPORT' in src:
-            today_by_dept['transport'] += amt
-        elif 'LIBRARY' in src:
-            today_by_dept['library'] += amt
-        elif 'ADMISSION' in src:
-            today_by_dept['admission'] += amt
-        elif any(k in src for k in ['ACADEMIC', 'TUITION', 'EXAM']):
-            today_by_dept['academic'] += amt
-        else:
-            today_by_dept['other'] += amt
-
-    for k in ['academic', 'hostel', 'transport', 'library', 'admission', 'other']:
-        today_by_dept[k] = round(today_by_dept[k], 2)
+    from app.services.finance_aggregation_service import FinanceAggregationService
+    summary = FinanceAggregationService.get_fee_summary(
+        school_id=sid,
+        session=session_param,
+        month=month_param,
+        class_id=class_id,
+        source=source_param,
+        status=status_param
+    )
 
     return jsonify({
-        'total_due': total_due, 'total_collected': total_paid,
-        'pending_count': pending, 'overdue_count': overdue,
-        'collection_rate': round(total_paid / total_due * 100, 1) if total_due else 0,
-
-        'today_collection':      today_collection,
-        'today_breakdown':       today_by_dept,
-        'this_month':            this_month,
-        'this_month_collection': month_collection,
-        'cash_collection':       mode_map.get('CASH', 0),
-        'upi_collection':        mode_map.get('UPI', 0),
-        'online_collection':     mode_map.get('ONLINE', 0),
-        'cheque_collection':     mode_map.get('CHEQUE', 0),
+        'total_due':              summary['total_due'],
+        'total_collected':        summary['total_collected'],
+        'total_paid':             summary['total_paid'],
+        'outstanding':            summary['outstanding'],
+        'gross_due':              summary['gross_due'],
+        'total_discount':         summary['total_discount'],
+        'total_fine':             summary['total_fine'],
+        'pending_count':          summary['pending_count'],
+        'partial_count':          summary['partial_count'],
+        'paid_count':             summary['paid_count'],
+        'overdue_count':          summary['overdue_count'],
+        'collection_rate':        summary['collection_rate'],
+        'today_collection':       summary['today_collection'],
+        'today_breakdown':        summary['today_breakdown'],
+        'this_month':             summary['this_month'],
+        'this_month_collection':  summary['this_month_collection'],
+        'cash_collection':        summary['cash_collection'],
+        'upi_collection':         summary['upi_collection'],
+        'online_collection':      summary['online_collection'],
+        'cheque_collection':      summary['cheque_collection'],
+        'services':               summary['services'],
+        'service_breakdown':      summary['service_breakdown']
     }), 200
 
 
@@ -1674,44 +1619,44 @@ def recent_fee_collections():
 @permission_required('fees.receipt.view')
 def fee_records():
     sid        = _school_id()
-    class_id   = request.args.get('class_id')
+    session    = request.args.get('session')
+    class_id   = request.args.get('class_id', type=int)
     status     = request.args.get('status')
-    student_id = request.args.get('student_id')
+    student_id = request.args.get('student_id', type=int)
     month      = request.args.get('month')
     fee_type   = request.args.get('fee_type')
+    source     = request.args.get('source') or request.args.get('service')
 
-    # NEW
     q = FeeRecord.query.filter_by(school_id=sid)
 
-    if status:
-        q = q.filter_by(status=status)
+    if session:
+        q = q.filter(FeeRecord.session == session)
+    if status and status != 'ALL':
+        q = q.filter(FeeRecord.status == status)
     else:
         q = q.filter(FeeRecord.status != 'DRAFT')
     if student_id:
-        q = q.filter_by(student_id=student_id)
+        q = q.filter(FeeRecord.student_id == student_id)
     if month:
         q = q.filter(FeeRecord.month == month)
     if fee_type:
-        q = q.filter(FeeRecord.fee_type == fee_type.upper())
+        q = q.filter(FeeRecord.fee_type.ilike(f"%{fee_type}%"))
+    if source and source != 'ALL':
+        src_up = source.upper()
+        if src_up == 'ACADEMIC':
+            from sqlalchemy import or_
+            q = q.filter(or_(FeeRecord.source.in_(['ACADEMIC', 'TUITION', None]), FeeRecord.source == ''))
+        else:
+            q = q.filter(FeeRecord.source == src_up)
 
     if class_id:
-        q = q.join(Student, FeeRecord.student_id == Student.id)\
-             .filter(Student.class_id == class_id)
+        q = q.join(Student, FeeRecord.student_id == Student.id).filter(Student.class_id == class_id)
 
-    
-
-    from sqlalchemy.orm import joinedload, contains_eager
-
+    from sqlalchemy.orm import joinedload
     page     = request.args.get('page', 1, type=int)
     per_page = min(request.args.get('per_page', 50, type=int), 100)
 
-    # Eager load student + user + class in one shot
-    q = q.join(Student, FeeRecord.student_id == Student.id)\
-         .join(User, Student.user_id == User.id)\
-         .options(
-             contains_eager(FeeRecord.student).contains_eager(Student.user),
-         ).order_by(FeeRecord.created_at.desc()) if not class_id else q.order_by(FeeRecord.created_at.desc())
-
+    q = q.options(joinedload(FeeRecord.student).joinedload(Student.user)).order_by(FeeRecord.created_at.desc())
     paginated = q.paginate(page=page, per_page=per_page, error_out=False)
 
     result = []
@@ -1719,14 +1664,13 @@ def fee_records():
         d = r.to_dict()
         student = r.student if hasattr(r, 'student') and r.student else Student.query.get(r.student_id)
         if student:
-            cls = Class.query.get(student.class_id)
-            d['student_id']   = student.id  # frontend navigation ke liye guaranteed
+            cls = Class.query.get(student.class_id) if student.class_id else None
+            d['student_id']   = student.id
             d['student_name'] = student.user.name if student.user else ''
             d['father_name']  = student.parent_name or ''
             d['roll_number']  = student.roll_number or ''
             d['class_name']   = f"{cls.name} - {cls.section}" if cls else ''
         result.append(d)
-    
 
     return jsonify({
         'data':     result,
@@ -1762,82 +1706,17 @@ def collect_fee():
         if new_payment <= 0:
             return jsonify({'error': 'amount_paid must be greater than 0'}), 400
 
-        # Accumulate — this is a new installment, not the new total
-        record.amount_paid  = (record.amount_paid or 0) + new_payment
-        record.payment_mode = data.get('payment_mode', 'CASH')
-        record.paid_date    = date.today()
-        record.collected_by = get_current_user().id
-        record.remarks      = data.get('remarks', '')
-
-        # Auto status
-        if record.amount_paid >= record.effective_due():
-            record.status = 'PAID'
-        elif record.amount_paid > 0:
-            record.status = 'PARTIAL'
-
-        # Auto-Confirm Student Admission if currently PROVISIONAL
-        if record.student_ref and record.student_ref.status == 'PROVISIONAL':
-            try:
-                from app.services.admission_service import promote_provisional_student
-                promote_provisional_student(record.student_ref)
-            except Exception as prom_err:
-                print(f"[WARN] Error promoting provisional student in collect_fee: {prom_err}")
-
-        # Auto receipt number if not already set
-        if not record.receipt_no:
-            while True:
-                rno = _gen_receipt()
-                if not FeeRecord.query.filter_by(receipt_no=rno).first():
-                    record.receipt_no = rno
-                    break
-
-        today = date.today()
-        txn = FeeTransaction(
-            fee_record_id    = record.id,
-            student_id       = record.student_id,
-            school_id        = _school_id(),
-            amount           = new_payment,
-            payment_mode     = record.payment_mode,
-            transaction_date = today,
-            txn_month        = today.strftime('%B %Y'),
-            receipt_no       = record.receipt_no,
-            remarks          = data.get('remarks', ''),
-            collected_by     = get_current_user().id,
+        from app.services.fee_central_service import FeeCentralService
+        updated_rec, central_payment = FeeCentralService.collect_payment(
+            school_id=_school_id(),
+            record_id=record.id,
+            student_id=record.student_id,
+            amount_paid=new_payment,
+            payment_mode=data.get('payment_mode', 'CASH'),
+            collected_by=get_current_user(),
+            remarks=data.get('remarks', '')
         )
-        db.session.add(txn)
-        db.session.flush()
-
-        if record.source == 'LIBRARY':
-            from app.services.library_fee_service import sync_library_fine_from_fee_record
-            sync_library_fine_from_fee_record(record, txn)
-        elif record.source == 'HOSTEL_FINE':
-            from app.services.hostel_fee_service import sync_hostel_fine_from_fee_record
-            sync_hostel_fine_from_fee_record(record, txn)
-        elif record.source in ('TRANSPORT', 'TRANSPORT_FINE'):
-            from app.services.transport_fee_service import sync_transport_from_fee_record
-            sync_transport_from_fee_record(record, txn)
-
-        # ── Canonical Central Finance Ledger Sync ──
-        try:
-            from app.services.fee_ledger_service import collect_fee_payment
-            central_pmt = collect_fee_payment(
-                student_id=record.student_id,
-                amount_paid=new_payment,
-                payment_mode=record.payment_mode,
-                collected_by=get_current_user(),
-                department=record.source or 'ACCOUNTS',
-                remarks=data.get('remarks', '') or f"Fee collected via Principal / Accounts Counter",
-                session=getattr(record, 'session', '2026-27') or '2026-27',
-                allocations=[]
-            )
-            if central_pmt:
-                record.receipt_no = central_pmt.receipt_no
-                txn.receipt_no = central_pmt.receipt_no
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-
-        db.session.commit()
+        record = updated_rec or record
 
         try:
             from app.services.audit_service import record_audit_event
@@ -2553,11 +2432,15 @@ def publish_fee_batch(batch_id):
     batch = FeeGenerationBatch.query.get_or_404(batch_id)
     if batch.school_id != _school_id():
         return jsonify({'error': 'Unauthorized'}), 403
-    if batch.status != 'DRAFT':
-        return jsonify({'error': f'Batch already {batch.status}'}), 400
-
-    FeeRecord.query.filter_by(batch_id=batch.id, status='DRAFT')\
-        .update({'status': 'PENDING'})
+    recs = FeeRecord.query.filter_by(batch_id=batch.id).all()
+    from app.services.fee_central_service import sync_fee_record_to_bill
+    for r in recs:
+        if r.status == 'DRAFT':
+            r.status = 'PENDING'
+        try:
+            sync_fee_record_to_bill(r)
+        except Exception as sync_err:
+            print(f"[FeePublish] Sync to central bill error: {sync_err}")
 
     batch.status       = 'PUBLISHED'
     batch.published_by = get_current_user().id
@@ -2807,27 +2690,35 @@ def cancel_fee_record(record_id):
 @permission_required('fees.reports.view')
 def fees_monthly_trend():
     """
-    Month-wise Expected vs Collected vs Pending — FeeRecord.month based
-    (jis month record generate hua, wahi group-by key — records/generate
-    flow mein already yahi field use ho raha hai, isliye consistent hai).
+    Month-wise Expected vs Collected vs Pending — strictly session-scoped
+    with canonical net due calculation.
     """
     sid = _school_id()
-    agg = db.session.query(
+    session = request.args.get('session') or '2026-27'
+    net_expr = FeeRecord.amount_due + func.coalesce(FeeRecord.fine, 0.0) - func.coalesce(FeeRecord.discount, 0.0)
+    q = db.session.query(
         FeeRecord.month,
-        func.sum(FeeRecord.amount_due).label('due'),
+        func.sum(net_expr).label('due'),
         func.sum(FeeRecord.amount_paid).label('paid'),
-    ).filter(FeeRecord.school_id == sid, FeeRecord.month.isnot(None))\
-     .group_by(FeeRecord.month).all()
+    ).filter(
+        FeeRecord.school_id == sid,
+        FeeRecord.month.isnot(None),
+        FeeRecord.status.notin_(['DRAFT', 'CANCELLED'])
+    )
+    if session:
+        q = q.filter(FeeRecord.session == session)
+    agg = q.group_by(FeeRecord.month).all()
 
     result = []
     for r in agg:
-        due, paid = r.due or 0, r.paid or 0
+        due = round(float(r.due or 0.0), 2)
+        paid = round(float(r.paid or 0.0), 2)
         result.append({
             'month':           r.month,
             'expected':        due,
             'collected':       paid,
-            'pending':         due - paid,
-            'collection_pct':  round(paid / due * 100, 1) if due else 0,
+            'pending':         max(0.0, round(due - paid, 2)),
+            'collection_pct':  round(paid / due * 100, 1) if due else 0.0,
         })
     result.sort(key=lambda x: x['month'])
     return jsonify(result), 200
@@ -2836,45 +2727,15 @@ def fees_monthly_trend():
 @permission_required('fees.reports.view')
 def fees_class_summary():
     sid     = _school_id()
-    month   = request.args.get('month')  # optional — "YYYY-MM"
-    classes = Class.query.filter_by(school_id=sid).all()
-    if not classes:
-        return jsonify([]), 200
+    session = request.args.get('session') or '2026-27'
+    month   = request.args.get('month')
 
-    # Pre-fetch student counts per class in 1 query
-    stu_counts = dict(
-        db.session.query(Student.class_id, func.count(Student.id))
-        .filter(Student.school_id == sid, Student.is_deleted == False)
-        .group_by(Student.class_id)
-        .all()
+    from app.services.finance_aggregation_service import FinanceAggregationService
+    result = FinanceAggregationService.get_class_wise_summary(
+        school_id=sid,
+        session=session,
+        month=month
     )
-
-    # ONE query: aggregate fee due and paid per class
-    agg_q = db.session.query(
-        Student.class_id,
-        func.sum(FeeRecord.amount_due).label('total_due'),
-        func.sum(FeeRecord.amount_paid).label('total_paid'),
-    ).join(FeeRecord, FeeRecord.student_id == Student.id)\
-     .filter(Student.school_id == sid)
-    if month:
-        agg_q = agg_q.filter(FeeRecord.month == month)
-    agg = agg_q.group_by(Student.class_id).all()
-
-    agg_map = {r.class_id: {'due': r.total_due or 0, 'paid': r.total_paid or 0}
-               for r in agg}
-
-    result = []
-    for c in classes:
-        totals = agg_map.get(c.id, {'due': 0, 'paid': 0})
-        s_count = stu_counts.get(c.id, 0)
-        result.append({
-            'class_id': c.id, 'class_name': c.name, 'section': c.section,
-            'student_count': s_count,
-            'total_due': totals['due'], 'total_collected': totals['paid'],
-            'pending': totals['due'] - totals['paid'],
-            'collection_pct': round(totals['paid'] / totals['due'] * 100, 1)
-                              if totals['due'] else 0,
-        })
     return jsonify(result), 200
 
 # NEW — Class-wise Fee Structure CRUD (mirrors HostelFeeStructure pattern)

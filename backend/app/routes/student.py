@@ -185,15 +185,34 @@ def my_fees():
     user    = get_current_user()
     student = Student.query.filter_by(user_id=user.id).first()
     if not student:
-        return jsonify({'error': 'Not found'}), 404
-    # NEW
-    records  = FeeRecord.query.filter_by(student_id=student.id)\
-                 .filter(FeeRecord.status != 'DRAFT').all()
-    total_due   = sum(r.amount_due for r in records if r.status != 'CANCELLED')
-    total_paid  = sum(r.amount_paid for r in records if r.status != 'CANCELLED')
+        role_str = getattr(user.role, 'value', str(user.role))
+        if role_str == 'PARENT':
+            child_id = request.args.get('student_id', type=int)
+            if child_id:
+                student = Student.query.filter_by(id=child_id, school_id=user.school_id).first()
+            if not student and getattr(user, 'phone', None):
+                student = Student.query.filter_by(parent_phone=user.phone, school_id=user.school_id).first()
+
+    if not student:
+        return jsonify({'error': 'Student not found'}), 404
+
+    session = request.args.get('session')
+    q = FeeRecord.query.filter_by(student_id=student.id).filter(FeeRecord.status != 'DRAFT')
+    if session:
+        q = q.filter_by(session=session)
+    records = q.order_by(FeeRecord.created_at.desc()).all()
+
+    total_gross = sum(r.amount_due for r in records if r.status != 'CANCELLED')
+    total_due   = sum(r.effective_due() for r in records if r.status != 'CANCELLED')
+    total_paid  = sum(r.amount_paid or 0 for r in records if r.status != 'CANCELLED')
+    balance     = max(0.0, total_due - total_paid)
+
     return jsonify({
-        'total_due': total_due, 'total_paid': total_paid,
-        'balance': total_due - total_paid,
+        'gross_due': total_gross,
+        'total_due': total_due,
+        'total_paid': total_paid,
+        'balance': balance,
+        'outstanding': balance,
         'records': [r.to_dict() for r in records]
     }), 200
 

@@ -727,6 +727,14 @@ def register_or_sync_service_charge(
         created_by=actor_user_id,
     )
     db.session.add(ledger_entry)
+
+    # ── Real-time Sync to Canonical FeeRecord ──
+    try:
+        from app.services.fee_central_service import sync_bill_item_to_fee_record
+        sync_bill_item_to_fee_record(existing_item or new_item, bill)
+    except Exception as sync_err:
+        print(f"[FeeLedgerService] Error syncing service charge to FeeRecord: {sync_err}")
+
     db.session.commit()
 
     return bill
@@ -850,6 +858,14 @@ def generate_fee_bill(student_id, bill_month, due_date, actor_user, session='202
         created_by=actor_user.id if actor_user else None,
     )
     db.session.add(ledger_entry)
+
+    # ── Real-time Sync to Canonical FeeRecord ──
+    try:
+        from app.services.fee_central_service import sync_bill_item_to_fee_record
+        for it in bill.items:
+            sync_bill_item_to_fee_record(it, bill)
+    except Exception as sync_err:
+        print(f"[FeeLedgerService] Error syncing bill items to FeeRecord: {sync_err}")
 
     # Log Audit
     audit = FinancialAuditLog(
@@ -1409,18 +1425,17 @@ def get_finance_dashboard_metrics(school_id, session='2026-27', month=None):
             pass
 
     bills_in_session_count = bill_query.count()
-    use_fallback = (bills_in_session_count == 0 and not month)
+    if bills_in_session_count == 0 and not month:
+        try:
+            from app.services.fee_central_service import FeeCentralService
+            FeeCentralService.sync_all_existing_records(school_id, session=session)
+            bills_in_session_count = bill_query.count()
+        except Exception:
+            pass
 
-    if use_fallback:
-        active_bills = FeeBill.query.filter_by(school_id=school_id).filter(FeeBill.status != BillStatus.CANCELLED.value)
-        active_payments = FeePayment.query.filter_by(school_id=school_id, status=PaymentStatus.VALID.value)
-        total_billed = active_bills.with_entities(func.coalesce(func.sum(FeeBill.total_payable), 0.0)).scalar() or 0.0
-        total_collected = active_payments.with_entities(func.coalesce(func.sum(FeePayment.total_paid), 0.0)).scalar() or 0.0
-        outstanding = active_bills.with_entities(func.coalesce(func.sum(FeeBill.balance_due), 0.0)).scalar() or 0.0
-    else:
-        total_billed = bill_query.with_entities(func.coalesce(func.sum(FeeBill.total_payable), 0.0)).scalar() or 0.0
-        total_collected = pay_query.with_entities(func.coalesce(func.sum(FeePayment.total_paid), 0.0)).scalar() or 0.0
-        outstanding = bill_query.with_entities(func.coalesce(func.sum(FeeBill.balance_due), 0.0)).scalar() or 0.0
+    total_billed = bill_query.with_entities(func.coalesce(func.sum(FeeBill.total_payable), 0.0)).scalar() or 0.0
+    total_collected = pay_query.with_entities(func.coalesce(func.sum(FeePayment.total_paid), 0.0)).scalar() or 0.0
+    outstanding = bill_query.with_entities(func.coalesce(func.sum(FeeBill.balance_due), 0.0)).scalar() or 0.0
 
     total_billed = float(total_billed)
     total_collected = float(total_collected)
@@ -1454,7 +1469,7 @@ def get_finance_dashboard_metrics(school_id, session='2026-27', month=None):
         FeeBill.status != BillStatus.CANCELLED.value
     )
 
-    if not use_fallback:
+    if session:
         item_query = item_query.filter(FeeBill.session == session)
     if month:
         item_query = item_query.filter(FeeBill.bill_month == month)

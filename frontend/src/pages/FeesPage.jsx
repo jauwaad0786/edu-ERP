@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Navbar  from '../components/Navbar';
 import api     from '../api/axios';
@@ -30,14 +30,25 @@ function Badge({ status }) {
 /* ── main component ─────────────────────────────────────────────────────── */
 export default function FeesPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  const initStatus = searchParams.get('status') || '';
+  const initClass  = searchParams.get('class_id') || '';
+  const initMonth  = searchParams.get('month') || '';
+  const initSource = searchParams.get('source') || searchParams.get('service') || '';
+  const initFeeType = searchParams.get('fee_type') || (['TRANSPORT', 'HOSTEL', 'LIBRARY', 'EXAM', 'ADMISSION', 'TUITION'].includes(initSource.toUpperCase()) ? initSource.toUpperCase() : '');
+  const initSession = searchParams.get('session') || '2026-27';
+
   const [summary,  setSummary]  = useState(null);
   const [records,  setRecords]  = useState([]);
   const [classes,  setClasses]  = useState([]);
   const [search,   setSearch]   = useState('');
-  const [filterStatus,  setFilterStatus]  = useState('');
-  const [filterClass,   setFilterClass]   = useState('');
-  const [filterMonth, setFilterMonth] = useState('');
-  const [filterFeeType, setFilterFeeType] = useState('');
+  const [filterStatus,  setFilterStatus]  = useState(initStatus);
+  const [filterClass,   setFilterClass]   = useState(initClass);
+  const [filterMonth, setFilterMonth] = useState(initMonth);
+  const [filterFeeType, setFilterFeeType] = useState(initFeeType);
+  const [filterSource, setFilterSource] = useState(initSource);
+  const [filterSession, setFilterSession] = useState(initSession);
   const [snapshotMonth, setSnapshotMonth] = useState('');
   const [classSummary, setClassSummary] = useState([]);
   const [loading,  setLoading]  = useState(false);
@@ -114,14 +125,23 @@ export default function FeesPage() {
     const params = new URLSearchParams();
     if (filterStatus) params.append('status',   filterStatus);
     if (filterClass)  params.append('class_id', filterClass);
-    if (filterMonth) params.append('month', filterMonth);
+    if (filterMonth)  params.append('month', filterMonth);
     if (filterFeeType) params.append('fee_type', filterFeeType);
+    if (filterSource) params.append('source', filterSource);
+    if (filterSession) params.append('session', filterSession);
+
+    const summaryParams = new URLSearchParams();
+    if (snapshotMonth || filterMonth) summaryParams.append('month', snapshotMonth || filterMonth);
+    if (filterClass) summaryParams.append('class_id', filterClass);
+    if (filterSource || filterFeeType) summaryParams.append('source', filterSource || filterFeeType);
+    if (filterSession) summaryParams.append('session', filterSession);
+    if (filterStatus) summaryParams.append('status', filterStatus);
 
     Promise.all([
-      api.get('/principal/fees/summary' + (snapshotMonth ? `?month=${snapshotMonth}` : '')),
+      api.get('/principal/fees/summary?' + summaryParams.toString()),
       api.get('/principal/fees/records?' + params.toString()),
       api.get('/principal/classes'),
-      api.get('/principal/fees/class-summary' + (snapshotMonth ? `?month=${snapshotMonth}` : '')),
+      api.get('/principal/fees/class-summary?' + summaryParams.toString()),
     ])
       .then(([s, r, c, cs]) => {
         setClassSummary(Array.isArray(cs.data) ? cs.data : []);
@@ -141,7 +161,7 @@ export default function FeesPage() {
       })
       .catch(() => flash('❌ Data load karne mein error aaya', 'error'))
       .finally(() => setLoading(false));
-  }, [filterStatus, filterClass, filterMonth, filterFeeType, snapshotMonth]);
+  }, [filterStatus, filterClass, filterMonth, filterFeeType, filterSource, filterSession, snapshotMonth]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -155,7 +175,8 @@ export default function FeesPage() {
   /* ── single collect ── */
   function openCollect(rec) {
     setSelRec(rec);
-    setPayAmt(String(rec.amount_due - rec.amount_paid));
+    const bal = rec.balance != null ? rec.balance : (rec.effective_due ? rec.effective_due - (rec.amount_paid || 0) : (rec.amount_due - (rec.amount_paid || 0)));
+    setPayAmt(String(Math.max(0, bal)));
     setPayMode('CASH');
     setRemarks('');
     setModal(true);
@@ -617,17 +638,21 @@ export default function FeesPage() {
                 </select>
                 <select
                   className="form-select"
-                  style={{ width: 150 }}
-                  value={filterFeeType}
-                  onChange={e => setFilterFeeType(e.target.value)}
+                  style={{ width: 160 }}
+                  value={filterSource || filterFeeType}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setFilterSource(val);
+                    setFilterFeeType(val);
+                  }}
                 >
-                  <option value="">All Types</option>
-                  <option value="TUITION">Tuition</option>
-                  <option value="EXAM">Exam</option>
+                  <option value="">All Services / Types</option>
+                  <option value="ACADEMIC">Academic / Tuition</option>
                   <option value="TRANSPORT">Transport</option>
                   <option value="HOSTEL">Hostel</option>
-                  <option value="ADMISSION">Admission</option>
                   <option value="LIBRARY">Library</option>
+                  <option value="EXAM">Examination</option>
+                  <option value="ADMISSION">Admission</option>
                 </select>
                 <input
                   type="month"
