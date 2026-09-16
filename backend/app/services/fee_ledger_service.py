@@ -76,6 +76,11 @@ DEFAULT_FEE_HEADS = [
         'department': FeeDepartment.ACCOUNTS.value, 'income_account': 'Misc Income',
         'is_recurring': False, 'default_frequency': FeeFrequency.ONE_TIME.value, 'is_refundable': False
     },
+    {
+        'code': 'OPENING_BALANCE', 'name': 'Previous Dues / Opening Balance', 'category': FeeCategory.OTHER.value,
+        'department': FeeDepartment.ACCOUNTS.value, 'income_account': 'Prior Period Fee Receivables',
+        'is_recurring': False, 'default_frequency': FeeFrequency.ONE_TIME.value, 'is_refundable': False
+    },
 ]
 
 
@@ -785,6 +790,17 @@ def generate_fee_bill(student_id, bill_month, due_date, actor_user, session='202
         FeeBill.status != BillStatus.CANCELLED.value
     ).all()
     previous_dues = sum(b.balance_due for b in prev_bills)
+
+    # Incorporate unbilled legacy Opening Balance from FeeRecord if not already settled or billed
+    if not prev_bills:
+        from app.models.financial import FeeRecord
+        ob_records = FeeRecord.query.filter_by(
+            student_id=student_id,
+            source='OPENING_BALANCE',
+            status='PENDING'
+        ).all()
+        ob_due = sum(max(0.0, (fr.amount_due or 0.0) - (fr.amount_paid or 0.0)) for fr in ob_records)
+        previous_dues += ob_due
 
     # Fetch applicable charges
     applicable_charges = get_student_applicable_charges(student_id, session=session, bill_month=bill_month)

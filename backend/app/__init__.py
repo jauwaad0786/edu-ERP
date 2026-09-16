@@ -182,6 +182,8 @@ def create_app(config_name='default'):
     app.register_blueprint(principal_bp,    url_prefix='/api/principal')
     from app.routes.student_lifecycle import student_lifecycle_bp
     app.register_blueprint(student_lifecycle_bp, url_prefix='/api/principal/students')
+    from app.routes.migration_routes import migration_bp
+    app.register_blueprint(migration_bp, url_prefix='/api/principal/migration')
     app.register_blueprint(teacher_bp,      url_prefix='/api/teacher')
     app.register_blueprint(teacher_self_bp, url_prefix='/api/teacher')
     app.register_blueprint(student_bp,      url_prefix='/api/student')

@@ -936,6 +936,7 @@ export default function App() {
             <Route path="/principal/deleted-items" element={<LegacyRedirect toService="deleted-items" />} />
             <Route path="/admissions" element={<LegacyRedirect toService="admission" />} />
             <Route path="/admissions/new" element={<LegacyRedirect toService="admission" />} />
+            <Route path="/admissions/provisional" element={<LegacyRedirect toService="admissions/provisional" />} />
             <Route path="/school-profile" element={<LegacyRedirect toService="school-settings" />} />
             <Route path="/support/announcements" element={<LegacyRedirect toService="announcements" />} />
             <Route path="/announcements/create" element={<LegacyRedirect toService="announcements/create" />} />

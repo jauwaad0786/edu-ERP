@@ -24,11 +24,13 @@ from app.models.device import UserDevice
 from app.models.delegation import TeacherDelegation, TeacherDelegationScope, TeacherDelegationPermission
 from app.models.curriculum import Curriculum, CurriculumChapter, CurriculumTopic, TeachingLog, TeachingWorksheet
 
+from app.models.migration import MigrationBatch, MigrationRecord
+
 __all__ = [
     'User', 'UserRole', 'School', 'Product',
     'Role', 'Permission', 'RolePermission', 'UserRoleAssignment', 'UserPermissionOverride',
     'AuditLog', 'CompanyActivityLog', 'LoginHistory', 'SessionHistory', 'DeletedLogsArchive', 'AuditRetentionSetting', 'ErrorLog', 'IssueAssignment',
-    'Class', 'Subject', 'Teacher', 'Student', 'Attendance', 'Marks', 'Note',
+    'Class', 'Subject', 'Teacher', 'Student', 'StudentEnrollment', 'Attendance', 'Marks', 'Note',
     'FeeStructure', 'FeeRecord', 'ExamSchedule', 'ExamTimetable',
     'ExamClass', 'ExamSubject', 'ExamTeacherDelegation', 'ResultVersion',
     'StaffAttendanceSettings', 'StaffAttendance', 'StaffAttendanceRegularization',
@@ -37,6 +39,5 @@ __all__ = [
     'OTPVerification', 'OTPPurpose', 'UserDevice',
     'TeacherDelegation', 'TeacherDelegationScope', 'TeacherDelegationPermission',
     'Curriculum', 'CurriculumChapter', 'CurriculumTopic', 'TeachingLog', 'TeachingWorksheet',
+    'MigrationBatch', 'MigrationRecord',
 ]
-
-
