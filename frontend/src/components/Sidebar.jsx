@@ -86,8 +86,7 @@ const ROLE_MENUS = {
             { icon: 'ti-rocket',         label: 'Promote & Rollover',    path: '/students/promotion' },
             { icon: 'ti-user-check',     label: 'Annual Re-Registration',path: '/students/annual-register' },
             { icon: 'ti-file-import',    label: 'Bulk Import CSV',       path: '/students/import' },
-            { icon: 'ti-id-badge',       label: 'ID Cards',              path: '/id-cards' },
-            { icon: 'ti-certificate',    label: 'Transfer Certificates', path: '/students/transfer-cert' },
+            { icon: 'ti-id-badge',       label: 'ID Cards',              path: '/id-cards/students' },
           ],
         },
 

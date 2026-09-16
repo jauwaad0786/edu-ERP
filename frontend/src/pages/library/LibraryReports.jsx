@@ -261,19 +261,19 @@ export default function LibraryReports() {
   ];
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: darkMode ? '#0f172a' : '#f8fafc' }}>
+    <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
       <Sidebar darkMode={darkMode} />
-      <div style={{ marginLeft: 232, flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <div className="main-content">
         <Navbar title="Library Reports" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
 
-        <div style={{ padding: 24, maxWidth: 1100 }}>
+        <div className="page-body">
           {/* Tabs */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 18, flexWrap: 'wrap' }}>
             {TABS.map(t => (
               <button key={t.key} onClick={() => setTab(t.key)} style={{
                 padding: '9px 18px', fontSize: 13, fontWeight: 700, borderRadius: 8,
                 border: 'none', cursor: 'pointer',
-                background: tab === t.key ? '#4f46e5' : (darkMode ? '#1e293b' : '#e2e8f0'),
+                background: tab === t.key ? '#0176d3' : (darkMode ? '#1e293b' : '#e2e8f0'),
                 color: tab === t.key ? '#fff' : (darkMode ? '#94a3b8' : '#64748b'),
               }}>
                 {t.label}
@@ -295,7 +295,7 @@ export default function LibraryReports() {
                   { key: 'overdue_days', label: 'Overdue Days' },
                   { key: 'estimated_fine', label: 'Estimated Fine' },
                 ])} style={{
-                  background: '#eef2ff', color: '#4f46e5', border: 'none', borderRadius: 6,
+                  background: '#e0f2fe', color: '#0176d3', border: 'none', borderRadius: 6,
                   padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
                 }}>
                   ⬇ Export CSV
@@ -365,7 +365,7 @@ export default function LibraryReports() {
                   )}
                 </div>
                 <button onClick={() => setManualModal(true)} style={{
-                  background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 8,
+                  background: '#0176d3', color: '#fff', border: 'none', borderRadius: 8,
                   padding: '9px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
                 }}>
                   + Manual Fine Add Karo
@@ -477,7 +477,7 @@ export default function LibraryReports() {
                     { key: 'status', label: 'Status' },
                     { key: 'created_at', label: 'Date' },
                   ])} style={{
-                    background: '#eef2ff', color: '#4f46e5', border: 'none', borderRadius: 6,
+                    background: '#e0f2fe', color: '#0176d3', border: 'none', borderRadius: 6,
                     padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
                   }}>
                     ⬇ Export CSV
@@ -556,7 +556,7 @@ export default function LibraryReports() {
                     { key: 'status', label: 'Status' },
                     { key: 'estimated_fine', label: 'Fine' },
                   ])} style={{
-                    background: '#eef2ff', color: '#4f46e5', border: 'none', borderRadius: 6,
+                    background: '#e0f2fe', color: '#0176d3', border: 'none', borderRadius: 6,
                     padding: '7px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
                   }}>
                     ⬇ Export CSV
@@ -646,7 +646,7 @@ export default function LibraryReports() {
                       <div style={{ fontSize: 11, color: '#94a3b8' }}>{p.author}</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: 15, fontWeight: 800, color: '#4f46e5' }}>{p.issue_count}</div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: '#0176d3' }}>{p.issue_count}</div>
                       <div style={{ fontSize: 10, color: '#94a3b8' }}>issues</div>
                     </div>
                   </div>
@@ -674,7 +674,7 @@ export default function LibraryReports() {
                     <div>
                       <span style={{
                         fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
-                        background: '#eef2ff', color: '#4f46e5', marginRight: 8,
+                        background: '#e0f2fe', color: '#0176d3', marginRight: 8,
                       }}>
                         {a.action}
                       </span>
@@ -773,7 +773,7 @@ export default function LibraryReports() {
                 background: '#f1f5f9', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer',
               }}>Cancel</button>
               <button onClick={submitManualFine} disabled={manualSaving} style={{
-                background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 8,
+                background: '#0176d3', color: '#fff', border: 'none', borderRadius: 8,
                 padding: '8px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
               }}>
                 {manualSaving ? 'Adding...' : '✅ Add Fine'}

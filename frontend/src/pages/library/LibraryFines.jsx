@@ -223,13 +223,11 @@ export default function LibraryFines() {
       <div className="main-content">
         <Navbar title="Library Fines & Dues Management" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
 
-        <div className="page-body" style={{ padding: '24px', maxWidth: '1200px' }}>
+        <div className="page-body">
 
           {/* ══ Header Banner ══ */}
           <div style={{
-            background: darkMode
-              ? 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #0f172a 100%)'
-              : 'linear-gradient(135deg, #4338ca 0%, #4f46e5 50%, #6366f1 100%)',
+            background: 'linear-gradient(135deg, #032d60 0%, #0176d3 100%)',
             borderRadius: '20px', padding: '24px 30px', marginBottom: '24px', color: '#ffffff',
             display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px'
           }}>
@@ -248,7 +246,7 @@ export default function LibraryFines() {
             <button
               onClick={() => setManualModal(true)}
               style={{
-                background: '#ffffff', color: '#4338ca', border: 'none', borderRadius: '12px',
+                background: '#ffffff', color: '#0176d3', border: 'none', borderRadius: '12px',
                 padding: '12px 24px', fontSize: '13.5px', fontWeight: 800, cursor: 'pointer',
                 boxShadow: '0 6px 18px rgba(0,0,0,0.18)'
               }}
@@ -325,7 +323,7 @@ export default function LibraryFines() {
                     onClick={() => setStatusFilter(t.id)}
                     style={{
                       padding: '8px 16px', fontSize: '13px', fontWeight: 700, borderRadius: '8px', border: 'none', cursor: 'pointer',
-                      background: statusFilter === t.id ? '#4f46e5' : (darkMode ? '#1e293b' : '#f1f5f9'),
+                      background: statusFilter === t.id ? '#0176d3' : (darkMode ? '#1e293b' : '#f1f5f9'),
                       color: statusFilter === t.id ? '#ffffff' : (darkMode ? '#94a3b8' : '#475569'),
                       transition: 'all 0.2s'
                     }}
@@ -762,7 +760,7 @@ export default function LibraryFines() {
                                 }}
                               >
                                 <strong>{m.name}</strong>
-                                <span style={{ color: '#6366f1' }}>{m.card_number}</span>
+                                <span style={{ color: '#0176d3' }}>{m.card_number}</span>
                               </div>
                             ))}
                           </div>
@@ -831,8 +829,8 @@ export default function LibraryFines() {
                     onClick={handleCreateManualFine}
                     style={{
                       padding: '10px 24px', borderRadius: '10px', border: 'none',
-                      background: '#4f46e5', color: '#ffffff', cursor: creatingManual ? 'not-allowed' : 'pointer',
-                      fontSize: '13.5px', fontWeight: 800, boxShadow: '0 4px 14px rgba(79,70,229,0.35)'
+                      background: '#0176d3', color: '#ffffff', cursor: creatingManual ? 'not-allowed' : 'pointer',
+                      fontSize: '13.5px', fontWeight: 800, boxShadow: '0 4px 14px rgba(1,118,211,0.35)'
                     }}
                   >
                     {creatingManual ? '⏳ Saving...' : '✅ Assess Penalty'}

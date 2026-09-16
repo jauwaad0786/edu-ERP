@@ -36,6 +36,8 @@ export default function TeacherDailyDiaryPage() {
   // Filter / Dropdown state
   const [classes, setClasses] = useState([]);
   const [subjects, setSubjects] = useState([]);
+  const [teachersList, setTeachersList] = useState([]);
+  const [selectedTeacherId, setSelectedTeacherId] = useState('');
 
   // Modal State
   const [showEntryModal, setShowEntryModal] = useState(false);
@@ -109,37 +111,47 @@ export default function TeacherDailyDiaryPage() {
   const fetchTodaySchedule = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get(`/curriculum/teaching-diary/today?date=${selectedDate}&session=${session}`);
-      setScheduleData(res.data);
+      const teacherParam = selectedTeacherId ? `&teacher_id=${selectedTeacherId}` : '';
+      const res = await api.get(`/curriculum/teaching-diary/today?date=${selectedDate}&session=${session}${teacherParam}`);
+      setScheduleData(res.data || { schedule: [], summary: {} });
+      if (res.data?.teachers && Array.isArray(res.data.teachers)) {
+        setTeachersList(res.data.teachers);
+        if (!selectedTeacherId && res.data.selected_teacher_id) {
+          setSelectedTeacherId(String(res.data.selected_teacher_id));
+        }
+      }
     } catch (err) {
       console.error('Error loading schedule:', err);
       toast.error('Failed to load schedule for selected date');
     } finally {
       setLoading(false);
     }
-  }, [selectedDate, session]);
+  }, [selectedDate, session, selectedTeacherId]);
 
   // History Tab Fetcher
   const fetchHistory = useCallback(async () => {
     setLoadingHistory(true);
     try {
       const params = new URLSearchParams({
+        date_from: historyFilters.from_date,
+        date_to: historyFilters.to_date,
         start_date: historyFilters.from_date,
         end_date: historyFilters.to_date,
         session: session
       });
       if (historyFilters.class_id) params.append('class_id', historyFilters.class_id);
       if (historyFilters.subject_id) params.append('subject_id', historyFilters.subject_id);
+      if (selectedTeacherId) params.append('teacher_id', selectedTeacherId);
 
       const res = await api.get(`/curriculum/teaching-diary/history?${params.toString()}`);
-      setHistoryLogs(res.data.logs || []);
+      setHistoryLogs(Array.isArray(res.data) ? res.data : (res.data?.logs || []));
     } catch (err) {
       console.error('Error fetching history:', err);
       toast.error('Failed to load teaching history');
     } finally {
       setLoadingHistory(false);
     }
-  }, [historyFilters, session]);
+  }, [historyFilters, session, selectedTeacherId]);
 
   // Worksheets Tab Fetcher
   const fetchWorksheets = useCallback(async () => {
@@ -408,7 +420,7 @@ export default function TeacherDailyDiaryPage() {
       <div className="main-content">
         <Navbar title="Teacher Daily Teaching Diary" />
 
-        <div className="page-body" style={{ maxWidth: '1440px', margin: '0 auto', padding: '24px 28px' }}>
+        <div className="page-body">
           {/* ══ HEADER & TOOLBAR ══ */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '22px' }}>
             <div>
@@ -424,7 +436,7 @@ export default function TeacherDailyDiaryPage() {
                   <i className="ti ti-arrow-left" /> Back
                 </button>
                 <span style={{
-                  background: '#ecfdf5', color: '#059669', fontSize: '12px',
+                  background: '#e0f2fe', color: '#0284c7', fontSize: '12px',
                   fontWeight: 800, padding: '4px 10px', borderRadius: '100px'
                 }}>
                   ● 1P360 Teacher Diary
@@ -437,11 +449,27 @@ export default function TeacherDailyDiaryPage() {
                 Daily Teaching Diary &amp; Lesson Log
               </h1>
               <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>
-                Log your daily lessons, classwork, homework, and topic-linked worksheets in under 2 minutes.
+                Log daily lessons, classwork, homework, and topic-linked worksheets with complete syllabus alignment.
               </p>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              {/* Teacher Selector (for Principal / Admin) */}
+              {teachersList.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '4px 10px', gap: '6px' }}>
+                  <i className="ti ti-user" style={{ color: '#0176d3', fontSize: '15px' }} />
+                  <select
+                    value={selectedTeacherId}
+                    onChange={(e) => setSelectedTeacherId(e.target.value)}
+                    style={{ border: 'none', outline: 'none', fontSize: '13px', fontWeight: 700, color: '#0f172a', cursor: 'pointer', background: 'transparent' }}
+                  >
+                    {teachersList.map(t => (
+                      <option key={t.id} value={t.id}>👨‍🏫 {t.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {/* Date Input */}
               <div style={{ display: 'flex', alignItems: 'center', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '4px 12px', gap: '8px' }}>
                 <i className="ti ti-calendar" style={{ color: '#0176d3' }} />

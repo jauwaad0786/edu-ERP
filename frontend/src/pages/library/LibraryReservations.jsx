@@ -103,12 +103,12 @@ export default function LibraryReservations() {
   };
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: darkMode ? '#0f172a' : '#f8fafc' }}>
+    <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
       <Sidebar darkMode={darkMode} />
-      <div style={{ marginLeft: 232, flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <div className="main-content">
         <Navbar title="Reservations" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
 
-        <div style={{ padding: 24, maxWidth: 1000 }}>
+        <div className="page-body">
 
           {/* ── Create Reservation (staff only) ── */}
           {!isStudent && (
@@ -206,8 +206,8 @@ export default function LibraryReservations() {
                   )}
                 </div>
 
-                <button onClick={handleCreateReservation} disabled={creating} style={{
-                  background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 8,
+                <button onClick={handleCreateReservation} disabled={creating} className="btn btn-primary" style={{
+                  background: '#0176d3', borderColor: '#0176d3', color: '#fff', borderRadius: 8,
                   padding: '9px 20px', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
                 }}>
                   {creating ? 'Creating...' : 'Reserve'}

@@ -110,12 +110,12 @@ export default function LibraryBooks() {
   }
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: darkMode ? '#0f172a' : '#f8fafc' }}>
+    <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
       <Sidebar darkMode={darkMode} />
-      <div style={{ marginLeft: 232, flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <div className="main-content">
         <Navbar title="Book Master" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
 
-        <div style={{ padding: 24 }}>
+        <div className="page-body">
           {/* Toolbar */}
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', gap: 10, flex: 1 }}>
@@ -137,9 +137,9 @@ export default function LibraryBooks() {
                 {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
-            <button onClick={openCreate} style={{
-              background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 8,
-              padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+            <button onClick={openCreate} className="btn btn-primary" style={{
+              background: '#0176d3', borderColor: '#0176d3', color: '#fff', borderRadius: 8,
+              padding: '9px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
             }}>
               + Add Book
             </button>
@@ -293,8 +293,8 @@ export default function LibraryBooks() {
             </div>
             <div className="modal-footer">
               <button className="btn btn-neutral" onClick={() => setAddCopiesTarget(null)}>Cancel</button>
-              <button onClick={handleAddCopies} style={{
-                background: '#4f46e5', color: '#fff', border: 'none', borderRadius: 6,
+              <button onClick={handleAddCopies} className="btn btn-primary" style={{
+                background: '#0176d3', borderColor: '#0176d3', color: '#fff', borderRadius: 6,
                 padding: '8px 20px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
               }}>
                 Add Copies

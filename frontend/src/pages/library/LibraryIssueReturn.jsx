@@ -198,13 +198,11 @@ export default function LibraryIssueReturn() {
       <div className="main-content">
         <Navbar title="Library Issue & Return Counter" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
 
-        <div className="page-body" style={{ padding: '24px', maxWidth: '1200px' }}>
+        <div className="page-body">
 
           {/* ══ Counter Header Banner ══ */}
           <div style={{
-            background: darkMode
-              ? 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #0f172a 100%)'
-              : 'linear-gradient(135deg, #4338ca 0%, #4f46e5 50%, #6366f1 100%)',
+            background: 'linear-gradient(135deg, #032d60 0%, #0176d3 100%)',
             borderRadius: '20px', padding: '24px 30px', marginBottom: '24px', color: '#ffffff',
             display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px'
           }}>
@@ -227,7 +225,7 @@ export default function LibraryIssueReturn() {
                 style={{
                   padding: '10px 22px', fontSize: '14px', fontWeight: 800, borderRadius: '10px', border: 'none', cursor: 'pointer',
                   background: tab === 'ISSUE' ? '#ffffff' : 'transparent',
-                  color: tab === 'ISSUE' ? '#4338ca' : '#e0e7ff',
+                  color: tab === 'ISSUE' ? '#0176d3' : '#e0e7ff',
                   transition: 'all 0.2s', boxShadow: tab === 'ISSUE' ? '0 4px 12px rgba(0,0,0,0.15)' : 'none'
                 }}
               >
@@ -256,7 +254,7 @@ export default function LibraryIssueReturn() {
               {/* Step 1: Member Search */}
               <div style={cardStyle}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(99,102,241,0.15)', color: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '15px' }}>
+                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(1,118,211,0.15)', color: '#0176d3', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '15px' }}>
                     1
                   </div>
                   <h4 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a' }}>
@@ -277,7 +275,7 @@ export default function LibraryIssueReturn() {
                       <div style={{ fontSize: '12.5px', color: darkMode ? '#94a3b8' : '#475569', marginTop: '4px' }}>
                         Card: <strong>{selectedMember.card_number}</strong> · Type: <strong>{selectedMember.member_type}</strong>
                       </div>
-                      <div style={{ fontSize: '12px', color: '#6366f1', fontWeight: 600, marginTop: '2px' }}>
+                      <div style={{ fontSize: '12px', color: '#0176d3', fontWeight: 600, marginTop: '2px' }}>
                         Currently Borrowed: {selectedMember.current_issues || 0} books
                       </div>
                     </div>
@@ -333,7 +331,7 @@ export default function LibraryIssueReturn() {
                               <strong style={{ color: darkMode ? '#f1f5f9' : '#0f172a' }}>{m.name}</strong>
                               <span style={{ fontSize: '11.5px', color: '#94a3b8', marginLeft: '8px' }}>({m.member_type})</span>
                             </div>
-                            <span style={{ fontSize: '11px', color: '#6366f1', fontFamily: 'monospace', fontWeight: 700 }}>
+                            <span style={{ fontSize: '11px', color: '#0176d3', fontFamily: 'monospace', fontWeight: 700 }}>
                               {m.card_number}
                             </span>
                           </div>
@@ -347,7 +345,7 @@ export default function LibraryIssueReturn() {
               {/* Step 2: Book Search */}
               <div style={cardStyle}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(99,102,241,0.15)', color: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '15px' }}>
+                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(1,118,211,0.15)', color: '#0176d3', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '15px' }}>
                     2
                   </div>
                   <h4 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a' }}>
@@ -456,11 +454,11 @@ export default function LibraryIssueReturn() {
                   onClick={handleIssue}
                   disabled={issuing || !selectedMember || !selectedBook}
                   style={{
-                    background: (!selectedMember || !selectedBook) ? (darkMode ? '#334155' : '#cbd5e1') : '#4f46e5',
+                    background: (!selectedMember || !selectedBook) ? (darkMode ? '#334155' : '#cbd5e1') : '#0176d3',
                     color: '#ffffff', border: 'none', borderRadius: '12px',
                     padding: '12px 32px', fontSize: '14.5px', fontWeight: 800,
                     cursor: (!selectedMember || !selectedBook) ? 'not-allowed' : 'pointer',
-                    boxShadow: (selectedMember && selectedBook) ? '0 6px 18px rgba(79,70,229,0.35)' : 'none',
+                    boxShadow: (selectedMember && selectedBook) ? '0 6px 18px rgba(1,118,211,0.35)' : 'none',
                     transition: 'all 0.2s'
                   }}
                 >
@@ -742,7 +740,7 @@ export default function LibraryIssueReturn() {
                       </div>
                     </div>
 
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12.5px', fontWeight: 700, color: '#6366f1' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12.5px', fontWeight: 700, color: '#0176d3' }}>
                       <input
                         type="checkbox"
                         checked={collectNow}
@@ -762,7 +760,7 @@ export default function LibraryIssueReturn() {
                           onClick={() => setPaymentMode(mode)}
                           style={{
                             padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 700, border: 'none', cursor: 'pointer',
-                            background: paymentMode === mode ? '#6366f1' : (darkMode ? '#334155' : '#e2e8f0'),
+                            background: paymentMode === mode ? '#0176d3' : (darkMode ? '#334155' : '#e2e8f0'),
                             color: paymentMode === mode ? '#fff' : (darkMode ? '#cbd5e1' : '#475569')
                           }}
                         >

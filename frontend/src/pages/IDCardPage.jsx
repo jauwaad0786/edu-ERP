@@ -4,6 +4,7 @@ import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
+import { resolveTenantPath } from '../utils/routeBuilder';
 
 // ── ID Card Live Preview ──────────────────────────────────────────────────────
 function IDCardPreview({ student, school, type = 'student' }) {
@@ -461,9 +462,13 @@ export default function IDCardPage() {
   useEffect(function() {
     api.get('/principal/classes').then(function(r) {
       var raw = r.data;
-      setClasses(Array.isArray(raw) ? raw : (raw.data || []));
+      var clsList = Array.isArray(raw) ? raw : (raw.data || []);
+      setClasses(clsList);
+      if (clsList.length > 0 && !selClass && !isEmployee && !isStaff) {
+        setSelClass(clsList[0].id);
+      }
     }).catch(function() {});
-  }, []);
+  }, [isEmployee, isStaff]);
 
   // Load items (students or employees)
   // Load items (students or employees or staff)
@@ -645,7 +650,7 @@ export default function IDCardPage() {
               var isActive = isEmployee ? tab.path.includes('employees') : tab.path.includes('students');
               return (
                 <button key={tab.path}
-                  onClick={function() { navigate(tab.path); }}
+                  onClick={function() { navigate(resolveTenantPath(tab.path)); }}
                   style={{
                     padding: '9px 18px', borderRadius: 8, border: '2px solid',
                     borderColor: isActive ? '#0176d3' : '#e2e8f0',

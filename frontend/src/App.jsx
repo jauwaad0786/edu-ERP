@@ -442,6 +442,11 @@ export default function App() {
                 <ResultCardPage />
               </TenantProtectedRoute>
             } />
+            <Route path="/:schoolSlug/:role/id-cards" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']}>
+                <IDCardPage />
+              </TenantProtectedRoute>
+            } />
             <Route path="/:schoolSlug/:role/id-cards/:type" element={
               <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']}>
                 <IDCardPage />

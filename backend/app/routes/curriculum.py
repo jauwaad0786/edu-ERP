@@ -320,6 +320,8 @@ def get_today_schedule():
     school_id = _get_active_school_id(user)
 
     teacher_id = request.args.get('teacher_id', type=int)
+    school_teachers = Teacher.query.filter_by(school_id=school_id).all()
+
     if not teacher_id:
         if user.role == 'TEACHER':
             t = Teacher.query.filter_by(user_id=user.id).first()
@@ -327,7 +329,22 @@ def get_today_schedule():
                 return jsonify({'error': 'Teacher profile not found'}), 404
             teacher_id = t.id
         else:
-            return jsonify({'error': 'teacher_id parameter is required for administrators'}), 400
+            # Fallback for Principal / Admin: default to first school teacher
+            if school_teachers:
+                teacher_id = school_teachers[0].id
+            else:
+                return jsonify({
+                    'date': request.args.get('date', str(date.today())),
+                    'schedule': [],
+                    'summary': {
+                        'total_scheduled_periods': 0,
+                        'recorded_periods': 0,
+                        'pending_periods': 0,
+                        'all_periods_completed': True
+                    },
+                    'teachers': [],
+                    'selected_teacher_id': None
+                }), 200
 
     target_date = request.args.get('date', str(date.today()))
     session     = request.args.get('session', '2026-27')
@@ -338,6 +355,9 @@ def get_today_schedule():
         target_date=target_date,
         session=session
     )
+    if isinstance(schedule_data, dict):
+        schedule_data['teachers'] = [{'id': t.id, 'name': t.name} for t in school_teachers]
+        schedule_data['selected_teacher_id'] = teacher_id
     return jsonify(schedule_data), 200
 
 
@@ -360,7 +380,11 @@ def save_teaching_log_endpoint():
                 return jsonify({'error': 'Teacher profile not found'}), 404
             teacher_id = t.id
         else:
-            return jsonify({'error': 'teacher_id is required'}), 400
+            t = Teacher.query.filter_by(school_id=school_id).first()
+            if t:
+                teacher_id = t.id
+            else:
+                return jsonify({'error': 'teacher_id is required'}), 400
 
     try:
         log = record_teaching_log(
@@ -386,8 +410,8 @@ def list_teaching_history():
     teacher_id = request.args.get('teacher_id', type=int)
     class_id   = request.args.get('class_id', type=int)
     subject_id = request.args.get('subject_id', type=int)
-    date_from  = request.args.get('date_from')
-    date_to    = request.args.get('date_to')
+    date_from  = request.args.get('date_from') or request.args.get('start_date')
+    date_to    = request.args.get('date_to') or request.args.get('end_date')
     session    = request.args.get('session', '2026-27')
     status     = request.args.get('status')
     search     = request.args.get('search', '').strip()
