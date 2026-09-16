@@ -658,22 +658,33 @@ export default function ProvisionalAdmissionsPage() {
                     {filtered.map((s, idx) => (
                       <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
                         <td style={{ padding: '14px 18px' }}>
-                          <span style={{
-                            display: 'inline-block',
-                            background: '#fef3c7',
-                            color: '#92400e',
-                            fontWeight: 700,
-                            fontFamily: 'monospace',
-                            fontSize: 12,
-                            padding: '3px 8px',
-                            borderRadius: 6,
-                            border: '1px solid #fde68a'
-                          }}>
+                          <span
+                            onClick={() => navigate(`/students/${s.id}`)}
+                            title="Click to view student profile"
+                            style={{
+                              display: 'inline-block',
+                              background: '#fef3c7',
+                              color: '#92400e',
+                              fontWeight: 700,
+                              fontFamily: 'monospace',
+                              fontSize: 12,
+                              padding: '3px 8px',
+                              borderRadius: 6,
+                              border: '1px solid #fde68a',
+                              cursor: 'pointer'
+                            }}
+                          >
                             {s.provisional_no || s.admission_no}
                           </span>
                         </td>
                         <td style={{ padding: '14px 18px' }}>
-                          <div style={{ fontWeight: 700, color: '#0f172a' }}>{s.name}</div>
+                          <div
+                            style={{ fontWeight: 700, color: '#0176d3', cursor: 'pointer' }}
+                            onClick={() => navigate(`/students/${s.id}`)}
+                            title="Click to view student profile"
+                          >
+                            {s.name}
+                          </div>
                           <div style={{ fontSize: 12, color: '#64748b' }}>Father: {s.father_name || '—'}</div>
                         </td>
                         <td style={{ padding: '14px 18px' }}>

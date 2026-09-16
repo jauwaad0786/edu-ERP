@@ -529,7 +529,12 @@ export default function StudentsPage() {
                           />
                         </td>
                         <td>
-                          <span className="badge badge-info" style={{ fontWeight: 700 }}>
+                          <span
+                            className="badge badge-info"
+                            style={{ fontWeight: 700, cursor: 'pointer' }}
+                            onClick={() => navigate(`/students/${s.id}`)}
+                            title="Click to view student profile"
+                          >
                             {s.roll_number || '—'}
                           </span>
                         </td>
@@ -561,7 +566,13 @@ export default function StudentsPage() {
                           </div>
                         </td>
                         <td>
-                          <div style={{ fontWeight: 600, fontSize: 12 }}>{s.admission_no || '—'}</div>
+                          <div
+                            style={{ fontWeight: 700, fontSize: 12, color: '#0176d3', cursor: 'pointer' }}
+                            onClick={() => navigate(`/students/${s.id}`)}
+                            title="Click to view student profile"
+                          >
+                            {s.admission_no || '—'}
+                          </div>
                           {s.original_admission_year && (
                             <div style={{ fontSize: 10, color: 'var(--neutral-4)' }}>
                               Admitted: {s.original_admission_year}

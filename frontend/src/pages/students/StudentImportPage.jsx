@@ -8,8 +8,8 @@ import toast from 'react-hot-toast';
 export default function StudentImportPage() {
   const navigate = useNavigate();
 
-  // Mode: 'spreadsheet' | 'register' | 'history'
-  const [activeTab, setActiveTab] = useState('spreadsheet');
+  // Mode: 'register' | 'history' | 'spreadsheet'
+  const [activeTab, setActiveTab] = useState('register');
   const [sources, setSources] = useState([]);
   const [canonicalFields, setCanonicalFields] = useState([]);
   const [session, setSession] = useState('2026-27');
@@ -28,24 +28,41 @@ export default function StudentImportPage() {
   const [spotCheckSample, setSpotCheckSample] = useState(null);
   const [showSpotCheckModal, setShowSpotCheckModal] = useState(false);
   const [recentBatches, setRecentBatches] = useState([]);
+  const [classList, setClassList] = useState([]);
 
-  // Manual Register state
+  // Manual Register state (populated dynamically from backend classes)
   const [manualRows, setManualRows] = useState([
-    { admission_no: '', name: '', class_name: 'Class 1', section: 'A', roll_number: '', parent_phone: '', father_name: '', opening_balance: '0' },
-    { admission_no: '', name: '', class_name: 'Class 1', section: 'A', roll_number: '', parent_phone: '', father_name: '', opening_balance: '0' },
-    { admission_no: '', name: '', class_name: 'Class 2', section: 'A', roll_number: '', parent_phone: '', father_name: '', opening_balance: '0' }
+    { admission_no: '', name: '', class_name: '', section: 'A', roll_number: '', parent_phone: '', father_name: '', opening_balance: '0' },
+    { admission_no: '', name: '', class_name: '', section: 'A', roll_number: '', parent_phone: '', father_name: '', opening_balance: '0' },
+    { admission_no: '', name: '', class_name: '', section: 'A', roll_number: '', parent_phone: '', father_name: '', opening_balance: '0' }
   ]);
   const [manualSubmitting, setManualSubmitting] = useState(false);
 
   useEffect(() => {
-    // Load migration metadata and sources
-    api.get('/principal/migration/sources')
-      .then(res => {
-        setSources(res.data.sources || []);
-        setCanonicalFields(res.data.canonical_fields || []);
-        if (res.data.current_session) setSession(res.data.current_session);
-      })
-      .catch(() => {});
+    // Load migration metadata, canonical fields, and backend classes
+    Promise.all([
+      api.get('/principal/migration/sources'),
+      api.get('/principal/classes').catch(() => ({ data: [] }))
+    ]).then(([srcRes, clsRes]) => {
+      setSources(srcRes.data.sources || []);
+      setCanonicalFields(srcRes.data.canonical_fields || []);
+      if (srcRes.data.current_session) setSession(srcRes.data.current_session);
+
+      const rawClasses = (Array.isArray(clsRes.data) && clsRes.data.length > 0)
+        ? clsRes.data
+        : (srcRes.data.existing_classes || []);
+      setClassList(rawClasses);
+
+      if (rawClasses.length > 0) {
+        const defaultName = rawClasses[0].name || '';
+        const defaultSec = rawClasses[0].section || 'A';
+        setManualRows(prev => prev.map(r => ({
+          ...r,
+          class_name: r.class_name || defaultName,
+          section: r.section || defaultSec
+        })));
+      }
+    }).catch(() => {});
 
     loadRecentBatches();
   }, []);
@@ -146,9 +163,11 @@ export default function StudentImportPage() {
 
   // 5. Manual Register Entry
   function handleAddManualRow() {
+    const defaultCls = classList[0]?.name || '';
+    const defaultSec = classList[0]?.section || 'A';
     setManualRows(prev => [
       ...prev,
-      { admission_no: '', name: '', class_name: 'Class 1', section: 'A', roll_number: '', parent_phone: '', father_name: '', opening_balance: '0' }
+      { admission_no: '', name: '', class_name: defaultCls, section: defaultSec, roll_number: '', parent_phone: '', father_name: '', opening_balance: '0' }
     ]);
   }
 
@@ -178,8 +197,10 @@ export default function StudentImportPage() {
         session
       });
       toast.success(`Successfully onboarded ${res.data.imported_new} students from register!`);
+      const defaultCls = classList[0]?.name || '';
+      const defaultSec = classList[0]?.section || 'A';
       setManualRows([
-        { admission_no: '', name: '', class_name: 'Class 1', section: 'A', roll_number: '', parent_phone: '', father_name: '', opening_balance: '0' }
+        { admission_no: '', name: '', class_name: defaultCls, section: defaultSec, roll_number: '', parent_phone: '', father_name: '', opening_balance: '0' }
       ]);
       loadRecentBatches();
     } catch (err) {
@@ -198,6 +219,19 @@ export default function StudentImportPage() {
       <div className="main-content">
         <Navbar title="School Data Migration & Student Onboarding" />
         <div className="page-body">
+
+          {/* Credentials & App Login Awareness Banner */}
+          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '12px 18px', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: '#166534' }}>
+              <span style={{ fontSize: 22 }}>🔑</span>
+              <div>
+                <strong>Instant Student & Parent Login:</strong> Every onboarded student instantly receives a login account. They can log in to the web portal and mobile app using their <strong>Mobile Number</strong> or <strong>Scholar No</strong> with initial default password: <code style={{ background: '#dcfce7', padding: '2px 6px', borderRadius: 4, fontWeight: 800, color: '#14532d' }}>Student@123</code>.
+              </div>
+            </div>
+            <span style={{ fontSize: 12, fontWeight: 800, color: '#15803d', background: '#dcfce7', padding: '4px 10px', borderRadius: 20 }}>
+              ⚡ Same Profile Route as New Admission
+            </span>
+          </div>
 
           {/* Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
@@ -238,16 +272,6 @@ export default function StudentImportPage() {
           {/* Navigation Tabs */}
           <div style={{ display: 'flex', gap: 8, borderBottom: '2px solid #e2e8f0', marginBottom: 24 }}>
             <button
-              onClick={() => setActiveTab('spreadsheet')}
-              style={{
-                padding: '10px 18px', fontSize: 14, fontWeight: 700, border: 'none', background: 'none', cursor: 'pointer',
-                borderBottom: activeTab === 'spreadsheet' ? '3px solid #0176d3' : '3px solid transparent',
-                color: activeTab === 'spreadsheet' ? '#0176d3' : '#64748b'
-              }}
-            >
-              📊 Excel / CSV Spreadsheet Import
-            </button>
-            <button
               onClick={() => setActiveTab('register')}
               style={{
                 padding: '10px 18px', fontSize: 14, fontWeight: 700, border: 'none', background: 'none', cursor: 'pointer',
@@ -267,9 +291,270 @@ export default function StudentImportPage() {
             >
               📋 Migration History & Spot Checks ({recentBatches.length})
             </button>
+            <button
+              onClick={() => setActiveTab('spreadsheet')}
+              style={{
+                padding: '10px 18px', fontSize: 14, fontWeight: 700, border: 'none', background: 'none', cursor: 'pointer',
+                borderBottom: activeTab === 'spreadsheet' ? '3px solid #0176d3' : '3px solid transparent',
+                color: activeTab === 'spreadsheet' ? '#0176d3' : '#64748b'
+              }}
+            >
+              📊 Excel / CSV Spreadsheet Import
+            </button>
           </div>
 
-          {/* TAB 1: SPREADSHEET MIGRATION */}
+          {/* TAB 1: PHYSICAL PAPER REGISTER QUICK ENTRY */}
+          {activeTab === 'register' && (
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 14, padding: 24, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: '#1e293b' }}>
+                    📖 Physical Register / Notebook Quick Ledger Entry
+                  </h3>
+                  <p style={{ margin: '2px 0 0', fontSize: 13, color: '#64748b' }}>
+                    For schools migrating directly from paper fee cards, registers, or notebooks without computer spreadsheets.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-neutral"
+                  onClick={handleAddManualRow}
+                  style={{ fontSize: 12, fontWeight: 700, borderColor: '#0284c7', color: '#0284c7' }}
+                >
+                  + Add Row
+                </button>
+              </div>
+
+              <div style={{ overflowX: 'auto', marginBottom: 20 }}>
+                <table className="table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                      <th style={{ padding: '8px 10px', fontSize: 11, textAlign: 'left' }}>Scholar / Adm No</th>
+                      <th style={{ padding: '8px 10px', fontSize: 11, textAlign: 'left' }}>Student Name *</th>
+                      <th style={{ padding: '8px 10px', fontSize: 11, textAlign: 'left' }}>Class</th>
+                      <th style={{ padding: '8px 10px', fontSize: 11, textAlign: 'left' }}>Sec</th>
+                      <th style={{ padding: '8px 10px', fontSize: 11, textAlign: 'left' }}>Roll</th>
+                      <th style={{ padding: '8px 10px', fontSize: 11, textAlign: 'left' }}>Mobile No</th>
+                      <th style={{ padding: '8px 10px', fontSize: 11, textAlign: 'left' }}>Father Name</th>
+                      <th style={{ padding: '8px 10px', fontSize: 11, textAlign: 'left' }}>Opening Balance (₹)</th>
+                      <th style={{ padding: '8px 10px', fontSize: 11, textAlign: 'center' }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {manualRows.map((row, idx) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '6px 8px' }}>
+                          <input
+                            className="form-input"
+                            value={row.admission_no}
+                            onChange={e => handleManualRowChange(idx, 'admission_no', e.target.value)}
+                            placeholder="e.g. 2019/042"
+                            style={{ fontSize: 12, padding: '4px 6px', width: 110 }}
+                          />
+                        </td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <input
+                            className="form-input"
+                            value={row.name}
+                            onChange={e => handleManualRowChange(idx, 'name', e.target.value)}
+                            placeholder="Student Full Name"
+                            style={{ fontSize: 12, padding: '4px 6px', minWidth: 150 }}
+                          />
+                        </td>
+                        <td style={{ padding: '6px 8px' }}>
+                          {classList.length > 0 ? (
+                            <select
+                              className="form-input"
+                              value={row.class_name}
+                              onChange={e => {
+                                const selectedName = e.target.value;
+                                handleManualRowChange(idx, 'class_name', selectedName);
+                                const matched = classList.find(c => c.name === selectedName);
+                                if (matched && matched.section) {
+                                  handleManualRowChange(idx, 'section', matched.section);
+                                }
+                              }}
+                              style={{ fontSize: 12, padding: '4px 6px', minWidth: 105, fontWeight: 600 }}
+                            >
+                              <option value="">-- Class --</option>
+                              {Array.from(new Set(classList.map(c => c.name))).map(cName => (
+                                <option key={cName} value={cName}>{cName}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              className="form-input"
+                              value={row.class_name}
+                              onChange={e => handleManualRowChange(idx, 'class_name', e.target.value)}
+                              placeholder="Class 5"
+                              style={{ fontSize: 12, padding: '4px 6px', width: 85 }}
+                            />
+                          )}
+                        </td>
+                        <td style={{ padding: '6px 8px' }}>
+                          {classList.length > 0 ? (
+                            <select
+                              className="form-input"
+                              value={row.section}
+                              onChange={e => handleManualRowChange(idx, 'section', e.target.value)}
+                              style={{ fontSize: 12, padding: '4px 6px', width: 55, textAlign: 'center', fontWeight: 600 }}
+                            >
+                              {Array.from(new Set(classList.filter(c => !row.class_name || c.name === row.class_name).map(c => c.section || 'A'))).map(sec => (
+                                <option key={sec} value={sec}>{sec}</option>
+                              ))}
+                              {!classList.some(c => c.section === row.section) && (
+                                <option value={row.section || 'A'}>{row.section || 'A'}</option>
+                              )}
+                            </select>
+                          ) : (
+                            <input
+                              className="form-input"
+                              value={row.section}
+                              onChange={e => handleManualRowChange(idx, 'section', e.target.value)}
+                              placeholder="A"
+                              style={{ fontSize: 12, padding: '4px 6px', width: 45, textAlign: 'center' }}
+                            />
+                          )}
+                        </td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <input
+                            className="form-input"
+                            value={row.roll_number}
+                            onChange={e => handleManualRowChange(idx, 'roll_number', e.target.value)}
+                            placeholder="01"
+                            style={{ fontSize: 12, padding: '4px 6px', width: 50, textAlign: 'center' }}
+                          />
+                        </td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <input
+                            className="form-input"
+                            value={row.parent_phone}
+                            onChange={e => handleManualRowChange(idx, 'parent_phone', e.target.value)}
+                            placeholder="10 Digits"
+                            style={{ fontSize: 12, padding: '4px 6px', width: 110 }}
+                          />
+                        </td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <input
+                            className="form-input"
+                            value={row.father_name}
+                            onChange={e => handleManualRowChange(idx, 'father_name', e.target.value)}
+                            placeholder="Father Name"
+                            style={{ fontSize: 12, padding: '4px 6px', width: 130 }}
+                          />
+                        </td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <input
+                            className="form-input"
+                            type="number"
+                            value={row.opening_balance}
+                            onChange={e => handleManualRowChange(idx, 'opening_balance', e.target.value)}
+                            placeholder="0"
+                            style={{ fontSize: 12, padding: '4px 6px', width: 100, fontWeight: 700 }}
+                          />
+                        </td>
+                        <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveManualRow(idx)}
+                            style={{ border: 'none', background: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 14 }}
+                            title="Remove Row"
+                          >
+                            ✕
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className="btn btn-neutral"
+                  onClick={handleAddManualRow}
+                  style={{ fontWeight: 600, fontSize: 12 }}
+                >
+                  + Add Another Row
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={manualSubmitting}
+                  onClick={handleManualSubmit}
+                  style={{ background: '#16a34a', borderColor: '#16a34a', fontWeight: 800 }}
+                >
+                  {manualSubmitting ? 'Onboarding Students...' : '✓ Submit & Commit Register to Edu-ERP'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: MIGRATION HISTORY & SPOT CHECK */}
+          {activeTab === 'history' && (
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 14, padding: 24, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: '#1e293b', marginBottom: 14 }}>
+                📋 Executed Migration Batches & Audit Trail
+              </h3>
+
+              {recentBatches.length === 0 ? (
+                <div style={{ padding: 30, textAlign: 'center', color: '#64748b' }}>
+                  No migration batches recorded yet. Upload an Excel or CSV file in the Spreadsheet tab.
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                        <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12 }}>Batch ID</th>
+                        <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12 }}>Source Type</th>
+                        <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12 }}>Session</th>
+                        <th style={{ padding: '10px 14px', textAlign: 'center', fontSize: 12 }}>Total Students</th>
+                        <th style={{ padding: '10px 14px', textAlign: 'center', fontSize: 12 }}>Opening Dues (₹)</th>
+                        <th style={{ padding: '10px 14px', textAlign: 'center', fontSize: 12 }}>Status</th>
+                        <th style={{ padding: '10px 14px', textAlign: 'center', fontSize: 12 }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recentBatches.map(b => (
+                        <tr key={b.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '10px 14px', fontWeight: 700, color: '#0176d3' }}>{b.batch_no}</td>
+                          <td style={{ padding: '10px 14px', fontSize: 12 }}>{b.source_type}</td>
+                          <td style={{ padding: '10px 14px', fontSize: 12 }}>{b.session}</td>
+                          <td style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700 }}>{b.total_records}</td>
+                          <td style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: '#854d0e' }}>
+                            ₹{b.total_opening_dues?.toLocaleString() || 0}
+                          </td>
+                          <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                            <span style={{
+                              fontSize: 11, fontWeight: 800, padding: '3px 8px', borderRadius: 12,
+                              background: b.status === 'COMMITTED' ? '#dcfce7' : '#e0f2fe',
+                              color: b.status === 'COMMITTED' ? '#15803d' : '#0369a1'
+                            }}>
+                              {b.status}
+                            </span>
+                          </td>
+                          <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                            <button
+                              type="button"
+                              className="btn btn-neutral"
+                              onClick={() => handleSpotCheck(b.id)}
+                              style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px' }}
+                            >
+                              🔍 Spot Check
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 3: SPREADSHEET MIGRATION (EXCEL / CSV) */}
           {activeTab === 'spreadsheet' && (
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 20, maxWidth: 1100 }}>
               
@@ -513,220 +798,6 @@ export default function StudentImportPage() {
             </div>
           )}
 
-          {/* TAB 2: PHYSICAL PAPER REGISTER MANUAL ENTRY */}
-          {activeTab === 'register' && (
-            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 14, padding: 24, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: '#1e293b' }}>
-                    📖 Physical Register / Notebook Quick Ledger Entry
-                  </h3>
-                  <p style={{ margin: '2px 0 0', fontSize: 13, color: '#64748b' }}>
-                    For schools migrating directly from paper fee cards, registers, or notebooks without computer spreadsheets.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  className="btn btn-neutral"
-                  onClick={handleAddManualRow}
-                  style={{ fontSize: 12, fontWeight: 700, borderColor: '#0284c7', color: '#0284c7' }}
-                >
-                  + Add Row
-                </button>
-              </div>
-
-              <div style={{ overflowX: 'auto', marginBottom: 20 }}>
-                <table className="table" style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                      <th style={{ padding: '8px 10px', fontSize: 11, textAlign: 'left' }}>Scholar / Adm No</th>
-                      <th style={{ padding: '8px 10px', fontSize: 11, textAlign: 'left' }}>Student Name *</th>
-                      <th style={{ padding: '8px 10px', fontSize: 11, textAlign: 'left' }}>Class</th>
-                      <th style={{ padding: '8px 10px', fontSize: 11, textAlign: 'left' }}>Sec</th>
-                      <th style={{ padding: '8px 10px', fontSize: 11, textAlign: 'left' }}>Roll</th>
-                      <th style={{ padding: '8px 10px', fontSize: 11, textAlign: 'left' }}>Mobile No</th>
-                      <th style={{ padding: '8px 10px', fontSize: 11, textAlign: 'left' }}>Father Name</th>
-                      <th style={{ padding: '8px 10px', fontSize: 11, textAlign: 'left' }}>Opening Balance (₹)</th>
-                      <th style={{ padding: '8px 10px', fontSize: 11, textAlign: 'center' }}>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {manualRows.map((row, idx) => (
-                      <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td style={{ padding: '6px 8px' }}>
-                          <input
-                            className="form-input"
-                            value={row.admission_no}
-                            onChange={e => handleManualRowChange(idx, 'admission_no', e.target.value)}
-                            placeholder="e.g. 2019/042"
-                            style={{ fontSize: 12, padding: '4px 6px', width: 110 }}
-                          />
-                        </td>
-                        <td style={{ padding: '6px 8px' }}>
-                          <input
-                            className="form-input"
-                            value={row.name}
-                            onChange={e => handleManualRowChange(idx, 'name', e.target.value)}
-                            placeholder="Student Full Name"
-                            style={{ fontSize: 12, padding: '4px 6px', minWidth: 150 }}
-                          />
-                        </td>
-                        <td style={{ padding: '6px 8px' }}>
-                          <input
-                            className="form-input"
-                            value={row.class_name}
-                            onChange={e => handleManualRowChange(idx, 'class_name', e.target.value)}
-                            placeholder="Class 5"
-                            style={{ fontSize: 12, padding: '4px 6px', width: 85 }}
-                          />
-                        </td>
-                        <td style={{ padding: '6px 8px' }}>
-                          <input
-                            className="form-input"
-                            value={row.section}
-                            onChange={e => handleManualRowChange(idx, 'section', e.target.value)}
-                            placeholder="A"
-                            style={{ fontSize: 12, padding: '4px 6px', width: 45, textAlign: 'center' }}
-                          />
-                        </td>
-                        <td style={{ padding: '6px 8px' }}>
-                          <input
-                            className="form-input"
-                            value={row.roll_number}
-                            onChange={e => handleManualRowChange(idx, 'roll_number', e.target.value)}
-                            placeholder="01"
-                            style={{ fontSize: 12, padding: '4px 6px', width: 50, textAlign: 'center' }}
-                          />
-                        </td>
-                        <td style={{ padding: '6px 8px' }}>
-                          <input
-                            className="form-input"
-                            value={row.parent_phone}
-                            onChange={e => handleManualRowChange(idx, 'parent_phone', e.target.value)}
-                            placeholder="10 Digits"
-                            style={{ fontSize: 12, padding: '4px 6px', width: 110 }}
-                          />
-                        </td>
-                        <td style={{ padding: '6px 8px' }}>
-                          <input
-                            className="form-input"
-                            value={row.father_name}
-                            onChange={e => handleManualRowChange(idx, 'father_name', e.target.value)}
-                            placeholder="Father Name"
-                            style={{ fontSize: 12, padding: '4px 6px', width: 130 }}
-                          />
-                        </td>
-                        <td style={{ padding: '6px 8px' }}>
-                          <input
-                            className="form-input"
-                            type="number"
-                            value={row.opening_balance}
-                            onChange={e => handleManualRowChange(idx, 'opening_balance', e.target.value)}
-                            placeholder="0"
-                            style={{ fontSize: 12, padding: '4px 6px', width: 100, fontWeight: 700 }}
-                          />
-                        </td>
-                        <td style={{ padding: '6px 8px', textAlign: 'center' }}>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveManualRow(idx)}
-                            style={{ border: 'none', background: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 14 }}
-                            title="Remove Row"
-                          >
-                            ✕
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <button
-                  type="button"
-                  className="btn btn-neutral"
-                  onClick={handleAddManualRow}
-                  style={{ fontWeight: 600, fontSize: 12 }}
-                >
-                  + Add Another Row
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  disabled={manualSubmitting}
-                  onClick={handleManualSubmit}
-                  style={{ background: '#16a34a', borderColor: '#16a34a', fontWeight: 800 }}
-                >
-                  {manualSubmitting ? 'Onboarding Students...' : '✓ Submit & Commit Register to Edu-ERP'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 3: MIGRATION HISTORY & SPOT CHECK */}
-          {activeTab === 'history' && (
-            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 14, padding: 24, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: '#1e293b', marginBottom: 14 }}>
-                📋 Executed Migration Batches & Audit Trail
-              </h3>
-
-              {recentBatches.length === 0 ? (
-                <div style={{ padding: 30, textAlign: 'center', color: '#64748b' }}>
-                  No migration batches recorded yet. Upload an Excel or CSV file in the Spreadsheet tab.
-                </div>
-              ) : (
-                <div style={{ overflowX: 'auto' }}>
-                  <table className="table" style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                        <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12 }}>Batch ID</th>
-                        <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12 }}>Source Type</th>
-                        <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: 12 }}>Session</th>
-                        <th style={{ padding: '10px 14px', textAlign: 'center', fontSize: 12 }}>Total Students</th>
-                        <th style={{ padding: '10px 14px', textAlign: 'center', fontSize: 12 }}>Opening Dues (₹)</th>
-                        <th style={{ padding: '10px 14px', textAlign: 'center', fontSize: 12 }}>Status</th>
-                        <th style={{ padding: '10px 14px', textAlign: 'center', fontSize: 12 }}>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {recentBatches.map(b => (
-                        <tr key={b.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                          <td style={{ padding: '10px 14px', fontWeight: 700, color: '#0176d3' }}>{b.batch_no}</td>
-                          <td style={{ padding: '10px 14px', fontSize: 12 }}>{b.source_type}</td>
-                          <td style={{ padding: '10px 14px', fontSize: 12 }}>{b.session}</td>
-                          <td style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700 }}>{b.total_records}</td>
-                          <td style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: '#854d0e' }}>
-                            ₹{b.total_opening_dues?.toLocaleString() || 0}
-                          </td>
-                          <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                            <span style={{
-                              fontSize: 11, fontWeight: 800, padding: '3px 8px', borderRadius: 12,
-                              background: b.status === 'COMMITTED' ? '#dcfce7' : '#e0f2fe',
-                              color: b.status === 'COMMITTED' ? '#15803d' : '#0369a1'
-                            }}>
-                              {b.status}
-                            </span>
-                          </td>
-                          <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                            <button
-                              type="button"
-                              className="btn btn-neutral"
-                              onClick={() => handleSpotCheck(b.id)}
-                              style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px' }}
-                            >
-                              🔍 Spot Check
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Spot Check Verification Modal */}
           {showSpotCheckModal && (
             <div className="modal-backdrop" onClick={() => setShowSpotCheckModal(false)}>
@@ -759,6 +830,7 @@ export default function StudentImportPage() {
                       <th style={{ padding: '8px 12px', fontSize: 11, textAlign: 'left' }}>Live Edu-ERP Record</th>
                       <th style={{ padding: '8px 12px', fontSize: 11, textAlign: 'center' }}>Opening Due</th>
                       <th style={{ padding: '8px 12px', fontSize: 11, textAlign: 'center' }}>Verification</th>
+                      <th style={{ padding: '8px 12px', fontSize: 11, textAlign: 'center' }}>Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -766,12 +838,37 @@ export default function StudentImportPage() {
                       <tr key={i} style={{ borderBottom: '1px solid #e2e8f0' }}>
                         <td style={{ padding: '8px 12px', fontSize: 12 }}>
                           <div><strong>{s.legacy.admission_no || '—'}</strong></div>
-                          <div style={{ color: '#0f172a' }}>{s.legacy.name}</div>
+                          <div
+                            style={{ color: s.erp.id ? '#0176d3' : '#0f172a', cursor: s.erp.id ? 'pointer' : 'default', fontWeight: 600 }}
+                            onClick={() => {
+                              if (s.erp.id) {
+                                setShowSpotCheckModal(false);
+                                navigate(`/students/${s.erp.id}`);
+                              }
+                            }}
+                            title={s.erp.id ? "Click to view student profile" : undefined}
+                          >
+                            {s.legacy.name}
+                          </div>
                           <div style={{ fontSize: 11, color: '#64748b' }}>{s.legacy.class}</div>
                         </td>
                         <td style={{ padding: '8px 12px', fontSize: 12 }}>
-                          <div><strong>{s.erp.admission_no}</strong></div>
-                          <div style={{ color: '#0f172a' }}>{s.erp.name}</div>
+                          <div>
+                            <strong
+                              style={{ color: '#0176d3', cursor: 'pointer' }}
+                              onClick={() => { setShowSpotCheckModal(false); navigate(`/students/${s.erp.id}`); }}
+                              title="Click to view student profile"
+                            >
+                              {s.erp.admission_no}
+                            </strong>
+                          </div>
+                          <div
+                            style={{ color: '#0176d3', cursor: 'pointer', fontWeight: 600 }}
+                            onClick={() => { setShowSpotCheckModal(false); navigate(`/students/${s.erp.id}`); }}
+                            title="Click to view student profile"
+                          >
+                            {s.erp.name}
+                          </div>
                           <div style={{ fontSize: 11, color: '#64748b' }}>{s.erp.class} • Status: <span style={{ color: '#16a34a', fontWeight: 700 }}>{s.erp.status}</span></div>
                         </td>
                         <td style={{ padding: '8px 12px', textAlign: 'center', fontSize: 12, fontWeight: 700 }}>
@@ -781,6 +878,23 @@ export default function StudentImportPage() {
                           <span style={{ fontSize: 11, background: '#dcfce7', color: '#15803d', fontWeight: 800, padding: '2px 8px', borderRadius: 10 }}>
                             ✓ VERIFIED
                           </span>
+                        </td>
+                        <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                          {s.erp.id ? (
+                            <button
+                              type="button"
+                              className="btn btn-neutral"
+                              onClick={() => {
+                                setShowSpotCheckModal(false);
+                                navigate(`/students/${s.erp.id}`);
+                              }}
+                              style={{ fontSize: 11, fontWeight: 700, padding: '4px 8px', borderColor: '#0284c7', color: '#0284c7', background: '#f0f9ff' }}
+                            >
+                              👤 View Profile
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: 11, color: '#94a3b8' }}>—</span>
+                          )}
                         </td>
                       </tr>
                     ))}

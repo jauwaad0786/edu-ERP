@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Navbar  from '../components/Navbar';
 import api     from '../api/axios';
@@ -19,6 +20,7 @@ function StatCard({ icon, label, value, color, bg }) {
 }
 
 export default function AttendancePage() {
+  const navigate = useNavigate();
   const [summary,     setSummary]     = useState(null);
   const [classes,     setClasses]     = useState([]);
   const [selClass,    setSelClass]    = useState(null);   // clicked class
@@ -383,11 +385,18 @@ export default function AttendancePage() {
                                              s.status === 'LATE'       ? '🕐' : '—'}
                                           </div>
                                           <div style={{ flex: 1, overflow: 'hidden' }}>
-                                            <div style={{
-                                              fontSize: 12, fontWeight: 600,
-                                              overflow: 'hidden', textOverflow: 'ellipsis',
-                                              whiteSpace: 'nowrap',
-                                            }}>{s.student_name}</div>
+                                            <div
+                                              style={{
+                                                fontSize: 12, fontWeight: 700,
+                                                overflow: 'hidden', textOverflow: 'ellipsis',
+                                                whiteSpace: 'nowrap',
+                                                color: '#0176d3', cursor: 'pointer'
+                                              }}
+                                              onClick={() => navigate(`/students/${s.student_id}`)}
+                                              title="Click to view student profile"
+                                            >
+                                              {s.student_name}
+                                            </div>
                                             <div style={{ fontSize: 10, color: 'var(--neutral-5)' }}>
                                               Roll: {s.roll_number || '—'}
                                             </div>
@@ -536,7 +545,13 @@ export default function AttendancePage() {
 
                           {/* info */}
                           <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 13, fontWeight: 600 }}>{s.name || s.student_name || 'Student'}</div>
+                            <div
+                              style={{ fontSize: 13, fontWeight: 700, color: '#0176d3', cursor: 'pointer' }}
+                              onClick={() => navigate(`/students/${s.id || s.student_id}`)}
+                              title="Click to view student profile"
+                            >
+                              {s.name || s.student_name || 'Student'}
+                            </div>
                             <div style={{ fontSize: 11, color: 'var(--neutral-5)' }}>
                               Roll: {s.roll_number || '—'}
                             </div>

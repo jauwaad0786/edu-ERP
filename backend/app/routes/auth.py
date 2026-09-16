@@ -206,6 +206,13 @@ def _find_user_by_identifier(raw_identifier):
             if user:
                 return user
 
+    # 6. Try Student admission_no / scholar number lookup
+    student_adm = Student.query.filter(sqlfunc.lower(Student.admission_no) == identifier).first()
+    if student_adm and student_adm.user_id:
+        user = db.session.get(User, student_adm.user_id)
+        if user:
+            return user
+
     return None
 
 

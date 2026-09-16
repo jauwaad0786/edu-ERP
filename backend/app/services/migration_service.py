@@ -442,6 +442,8 @@ def execute_school_migration(
                     existing_student.roll_number = roll_no
                 if phone_clean:
                     existing_student.parent_phone = phone_clean
+                    if existing_student.user and not existing_student.user.phone:
+                        existing_student.user.phone = phone_clean
                 if father:
                     existing_student.father_name = father
                 if mother:
@@ -492,11 +494,21 @@ def execute_school_migration(
                 db.session.add(user)
                 db.session.flush()
 
+                try:
+                    from app.services.permission_resolver import ensure_role_assignment_for_user
+                    ensure_role_assignment_for_user(user)
+                except Exception:
+                    pass
+
                 # If school has existing admission number, PRESERVE IT!
                 final_adm_no = adm_no
                 if not final_adm_no:
                     count_all = Student.query.filter_by(school_id=school_id).count()
                     final_adm_no = f"ADM-{session[:4]}-{count_all + 1:04d}"
+
+                clean_uname = final_adm_no.lower().replace('/', '_').replace(' ', '').replace('-', '_')
+                if not User.query.filter_by(username=clean_uname).first():
+                    user.username = clean_uname
 
                 new_student = Student(
                     user_id=user.id,
