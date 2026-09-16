@@ -995,7 +995,12 @@ def search_students():
     session = request.args.get('session', None)
     only_pending = request.args.get('only_pending', 'false').lower() in ('true', '1')
 
-    q = Student.query.join(User, Student.user_id == User.id).filter(Student.school_id == user.school_id)
+    q = Student.query.join(User, Student.user_id == User.id).filter(
+        Student.school_id == user.school_id,
+        Student.is_deleted == False,
+        Student.status != 'DELETED',
+        User.is_deleted == False
+    )
 
     if class_id:
         q = q.filter(Student.class_id == class_id)
@@ -1146,11 +1151,16 @@ def list_bills():
     department = request.args.get('department')
 
     from sqlalchemy.orm import joinedload
-    q = FeeBill.query.options(
+    q = FeeBill.query.join(Student, FeeBill.student_id == Student.id).options(
         joinedload(FeeBill.student).joinedload(Student.user),
         joinedload(FeeBill.student).joinedload(Student.class_ref),
         joinedload(FeeBill.items)
-    ).filter_by(school_id=user.school_id).filter(FeeBill.status != BillStatus.CANCELLED.value)
+    ).filter(
+        FeeBill.school_id == user.school_id,
+        FeeBill.status != BillStatus.CANCELLED.value,
+        Student.is_deleted == False,
+        Student.status != 'DELETED'
+    )
 
     if session:
         q = q.filter(db.or_(FeeBill.session == session, FeeBill.session.is_(None), FeeBill.session == ''))

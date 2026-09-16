@@ -56,7 +56,11 @@ def browse_students():
     driving table, not StudentTransport.
     """
     sid = _school_id()
-    q = db.session.query(Student).filter(Student.school_id == sid)
+    q = db.session.query(Student).filter(
+        Student.school_id == sid,
+        Student.is_deleted == False,
+        Student.status != 'DELETED'
+    )
 
     academic_year = request.args.get('academic_year', '').strip()
     if academic_year:

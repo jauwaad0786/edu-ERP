@@ -530,7 +530,7 @@ export default function App() {
               </TenantProtectedRoute>
             } />
             <Route path="/:schoolSlug/:role/fees" element={
-              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'ACCOUNTANT']}>
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
                 <FeeBillsPage />
               </TenantProtectedRoute>
             } />
@@ -594,7 +594,7 @@ export default function App() {
               </TenantProtectedRoute>
             } />
             <Route path="/:schoolSlug/:role/library/books" element={
-              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN', 'TEACHER', 'STUDENT']}>
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN', 'TEACHER']}>
                 <LibraryBooks />
               </TenantProtectedRoute>
             } />

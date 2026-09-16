@@ -1627,7 +1627,12 @@ def fee_records():
     fee_type   = request.args.get('fee_type')
     source     = request.args.get('source') or request.args.get('service')
 
-    q = FeeRecord.query.filter_by(school_id=sid)
+    q = FeeRecord.query.filter(FeeRecord.school_id == sid)
+    if not student_id:
+        q = q.join(Student, FeeRecord.student_id == Student.id).filter(
+            Student.is_deleted == False,
+            Student.status != 'DELETED'
+        )
 
     if session:
         q = q.filter(FeeRecord.session == session)
@@ -2623,7 +2628,11 @@ def fees_student_search():
     class_id = request.args.get('class_id')
     q        = (request.args.get('q') or '').strip()
 
-    query = Student.query.filter_by(school_id=sid)
+    query = Student.query.filter(
+        Student.school_id == sid,
+        Student.is_deleted == False,
+        Student.status != 'DELETED'
+    )
     if class_id:
         query = query.filter_by(class_id=class_id)
     if q:

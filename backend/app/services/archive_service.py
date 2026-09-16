@@ -32,6 +32,7 @@ def soft_delete_student(student_id, school_id, actor_user, reason=''):
 
     # 1. Mark soft delete on Student & User
     student.is_deleted = True
+    student.status = 'DELETED'
     student.deleted_at = utc_now()
     student.deleted_by = actor_user.id if actor_user else None
     student.delete_reason = reason
@@ -335,6 +336,7 @@ def recover_deleted_item(item_id, school_id, actor_user):
             student.class_id = None
 
         student.is_deleted = False
+        student.status = 'ACTIVE'
         student.deleted_at = None
         student.deleted_by = None
         student.delete_reason = None

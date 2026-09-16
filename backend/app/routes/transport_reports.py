@@ -38,7 +38,7 @@ def dashboard():
     total_conductors = Conductor.query.filter_by(school_id=sid, status='ACTIVE').count()
 
     students_with_transport = StudentTransport.query.filter_by(school_id=sid, status='ACTIVE').count()
-    total_students = Student.query.filter_by(school_id=sid).count()
+    total_students = Student.query.filter_by(school_id=sid, is_deleted=False).filter(Student.status != 'DELETED').count()
     students_without_transport = max(total_students - students_with_transport, 0)
 
     vehicle_type_counts = dict(
@@ -243,7 +243,11 @@ def report_students_without_transport():
     sid = _school_id()
     assigned_ids = {a.student_id for a in
                     StudentTransport.query.filter_by(school_id=sid, status='ACTIVE').all()}
-    q = Student.query.filter(Student.school_id == sid)
+    q = Student.query.filter(
+        Student.school_id == sid,
+        Student.is_deleted == False,
+        Student.status != 'DELETED'
+    )
     if assigned_ids:
         q = q.filter(~Student.id.in_(assigned_ids))
 

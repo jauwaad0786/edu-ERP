@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import Sidebar from '../../components/Sidebar';
 import Navbar  from '../../components/Navbar';
 import api from '../../api/axios';
@@ -10,6 +10,7 @@ import {
 
 export default function StudentDashboard() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
   useEffect(() => { localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
 
@@ -17,7 +18,19 @@ export default function StudentDashboard() {
   const [attendance,   setAttendance]   = useState(null);
   const [fees,         setFees]         = useState(null);
   const [marks,        setMarks]        = useState([]);
-  const [tab,          setTab]          = useState('overview');
+  const tabFromUrl = searchParams.get('tab');
+  const [tab,          setTab]          = useState(tabFromUrl || 'overview');
+
+  useEffect(() => {
+    if (tabFromUrl && tabFromUrl !== tab) {
+      setTab(tabFromUrl);
+    }
+  }, [tabFromUrl]);
+
+  const handleTabChange = (newTab) => {
+    setTab(newTab);
+    setSearchParams({ tab: newTab });
+  };
   const [exams,        setExams]        = useState([]);
   const [examModal,    setExamModal]    = useState(null);
   const [selectedExam, setSelectedExam] = useState('');
@@ -58,20 +71,26 @@ export default function StudentDashboard() {
     fetchHostelData();
   }, []);
 
-  const fmt = n => n?.toLocaleString('en-IN') ?? '—';
+  const fmt = n => (typeof n === 'number' ? n.toLocaleString('en-IN') : (n ? Number(n).toLocaleString('en-IN') : '0'));
   const today = new Date().toISOString().split('T')[0];
 
-  const presentDays = attendance?.present || 28;
-  const absentDays = attendance?.absent || 3;
-  const lateDays = attendance?.late || 1;
-  const totalDays = attendance?.total_days || (presentDays + absentDays + lateDays);
-  const attendancePct = attendance?.percentage || (totalDays ? Math.round((presentDays / totalDays) * 100) : 92);
+  const presentDays = Number(attendance?.present ?? 0);
+  const absentDays  = Number(attendance?.absent ?? 0);
+  const lateDays    = Number(attendance?.late ?? 0);
+  const totalDays   = Number(attendance?.total_days ?? (presentDays + absentDays + lateDays));
+  const attendancePct = totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0;
 
-  const donutData = [
-    { name: 'Present', value: Number(presentDays), color: '#10b981' },
-    { name: 'Absent',  value: Number(absentDays),  color: '#ef4444' },
-    { name: 'Late',    value: Number(lateDays),    color: '#f59e0b' },
-  ];
+  const donutData = totalDays > 0 ? [
+    { name: 'Present', value: presentDays, color: '#10b981' },
+    { name: 'Absent',  value: absentDays,  color: '#ef4444' },
+    { name: 'Late',    value: lateDays,    color: '#f59e0b' },
+  ].filter(d => d.value > 0) : [];
+
+  const totalPaid  = Number(fees?.total_paid ?? 0);
+  const balanceDue = Number(fees?.balance ?? fees?.outstanding ?? 0);
+
+  const uniqueSubjects = [...new Set(marks.map(m => m.subject_name || (m.subject_id ? `Subject ${m.subject_id}` : '')))].filter(Boolean);
+  const subjectsCount = uniqueSubjects.length || (profile?.class_name ? 'Enrolled' : 0);
 
   const TABS = [
     { key: 'overview',   icon: 'ti-smart-home',      label: 'Overview' },
@@ -166,21 +185,21 @@ export default function StudentDashboard() {
                   background: 'rgba(255,255,255,0.16)', color: '#ffffff',
                   backdropFilter: 'blur(6px)', border: '1px solid rgba(255,255,255,0.2)'
                 }}>
-                  🎟 Roll: <strong>{profile?.roll_number || '12'}</strong>
+                  🎟 Roll: <strong>{profile?.roll_number || '—'}</strong>
                 </span>
                 <span style={{
                   fontSize: '12px', fontWeight: 700, padding: '5px 12px', borderRadius: '10px',
                   background: 'rgba(255,255,255,0.16)', color: '#ffffff',
                   backdropFilter: 'blur(6px)', border: '1px solid rgba(255,255,255,0.2)'
                 }}>
-                  📋 Adm: <strong>{profile?.admission_no || profile?.admission_number || 'ADM-042'}</strong>
+                  📋 Adm: <strong>{profile?.admission_no || profile?.admission_number || '—'}</strong>
                 </span>
                 <span style={{
                   fontSize: '12px', fontWeight: 700, padding: '5px 12px', borderRadius: '10px',
                   background: 'rgba(255,255,255,0.16)', color: '#ffffff',
                   backdropFilter: 'blur(6px)', border: '1px solid rgba(255,255,255,0.2)'
                 }}>
-                  👨‍👩‍👦 Parent: <strong>{profile?.parent_name || profile?.father_name || 'Guardian'}</strong>
+                  👨‍👩‍👦 Parent: <strong>{profile?.parent_name || profile?.father_name || '—'}</strong>
                 </span>
               </div>
 
@@ -263,11 +282,11 @@ export default function StudentDashboard() {
               <div style={{ fontSize: '11px', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.04em' }}>
                 ATTENDANCE RATE
               </div>
-              <div style={{ fontSize: '26px', fontWeight: 900, color: attendancePct >= 75 ? '#10b981' : '#ef4444', margin: '4px 0 2px' }}>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: totalDays === 0 ? '#94a3b8' : (attendancePct >= 75 ? '#10b981' : '#ef4444'), margin: '4px 0 2px' }}>
                 {attendancePct}%
               </div>
               <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                {presentDays} of {totalDays} days attended
+                {totalDays > 0 ? `${presentDays} of ${totalDays} days attended` : 'No days marked yet'}
               </div>
               <div style={{ width: '100%', height: '6px', borderRadius: '3px', background: darkMode ? '#1e293b' : '#f1f5f9', marginTop: '10px', overflow: 'hidden' }}>
                 <div style={{ width: `${attendancePct}%`, height: '100%', background: '#10b981', borderRadius: '3px' }} />
@@ -288,15 +307,21 @@ export default function StudentDashboard() {
                 FEES PAID
               </div>
               <div style={{ fontSize: '26px', fontWeight: 900, color: '#2563eb', margin: '4px 0 2px' }}>
-                ₹{fmt(fees?.total_paid || 14500)}
+                ₹{fmt(totalPaid)}
               </div>
               <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                Balance Due: <strong>₹{fmt(fees?.balance || 2000)}</strong>
+                Balance Due: <strong style={{ color: balanceDue > 0 ? '#ef4444' : '#10b981' }}>₹{fmt(balanceDue)}</strong>
               </div>
               <div style={{ marginTop: '10px' }}>
-                <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#16a34a', background: '#f0fdf4', padding: '2px 8px', borderRadius: '6px' }}>
-                  ✓ In Good Standing
-                </span>
+                {balanceDue > 0 ? (
+                  <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#dc2626', background: '#fef2f2', padding: '2px 8px', borderRadius: '6px', border: '1px solid #fecaca' }}>
+                    ⚠️ Pending: ₹{fmt(balanceDue)}
+                  </span>
+                ) : (
+                  <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#16a34a', background: '#f0fdf4', padding: '2px 8px', borderRadius: '6px' }}>
+                    ✓ In Good Standing
+                  </span>
+                )}
               </div>
             </div>
 
@@ -314,14 +339,14 @@ export default function StudentDashboard() {
                 ENROLLED SUBJECTS
               </div>
               <div style={{ fontSize: '26px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a', margin: '4px 0 2px' }}>
-                {[...new Set(marks.map(m => m.subject_id))].length || 6}
+                {subjectsCount}
               </div>
               <div style={{ fontSize: '12px', color: '#94a3b8' }}>
                 Active curriculum courses
               </div>
               <div style={{ marginTop: '10px' }}>
                 <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#8b5cf6', background: '#f3f0ff', padding: '2px 8px', borderRadius: '6px' }}>
-                  6 Graded Exams
+                  {marks.length > 0 ? `${marks.length} Graded Exams` : (profile?.session || 'Current Session')}
                 </span>
               </div>
             </div>
@@ -340,14 +365,14 @@ export default function StudentDashboard() {
                 STUDY MATERIALS
               </div>
               <div style={{ fontSize: '26px', fontWeight: 900, color: '#0891b2', margin: '4px 0 2px' }}>
-                {notes.length || 8}
+                {notes.length}
               </div>
               <div style={{ fontSize: '12px', color: '#94a3b8' }}>
                 PDFs &amp; Chapter notes uploaded
               </div>
               <div style={{ marginTop: '10px' }}>
                 <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#0891b2', background: '#ecfeff', padding: '2px 8px', borderRadius: '6px' }}>
-                  Ready to download
+                  {notes.length > 0 ? 'Ready to download' : 'No notes uploaded'}
                 </span>
               </div>
             </div>
@@ -362,7 +387,7 @@ export default function StudentDashboard() {
             {TABS.map(t => (
               <button
                 key={t.key}
-                onClick={() => setTab(t.key)}
+                onClick={() => handleTabChange(t.key)}
                 style={{
                   background: 'none', border: 'none', cursor: 'pointer',
                   padding: '10px 18px', fontSize: '13px', fontWeight: 700,
@@ -400,44 +425,46 @@ export default function StudentDashboard() {
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {(marks.length ? marks.slice(0, 5) : [
-                      { subject_name: 'Mathematics', marks_obtained: 94, max_marks: 100, grade: 'A+' },
-                      { subject_name: 'Physics', marks_obtained: 88, max_marks: 100, grade: 'A' },
-                      { subject_name: 'Chemistry', marks_obtained: 85, max_marks: 100, grade: 'A' },
-                      { subject_name: 'English Literature', marks_obtained: 90, max_marks: 100, grade: 'A+' },
-                      { subject_name: 'Computer Science', marks_obtained: 98, max_marks: 100, grade: 'A+' },
-                    ]).map((m, idx) => {
-                      const pct = Math.round((m.marks_obtained / m.max_marks) * 100);
-                      return (
-                        <div key={idx} style={{
-                          display: 'flex', alignItems: 'center', gap: '14px',
-                          padding: '10px 14px', borderRadius: '12px',
-                          background: darkMode ? '#1e293b' : '#f8fafc',
-                          border: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}`
-                        }}>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '13px' }}>
-                              <strong style={{ color: darkMode ? '#ffffff' : '#0f172a' }}>{m.subject_name}</strong>
-                              <span style={{ color: '#94a3b8' }}>{m.marks_obtained} / {m.max_marks} ({pct}%)</span>
-                            </div>
-                            <div style={{ height: '6px', borderRadius: '3px', background: darkMode ? '#334155' : '#e2e8f0', overflow: 'hidden' }}>
-                              <div style={{
-                                width: `${pct}%`, height: '100%',
-                                background: pct >= 90 ? '#10b981' : pct >= 75 ? '#3b82f6' : '#f59e0b',
-                                borderRadius: '3px'
-                              }} />
-                            </div>
-                          </div>
-                          <span style={{
-                            padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 900,
-                            background: pct >= 80 ? '#ecfdf5' : '#eff6ff',
-                            color: pct >= 80 ? '#10b981' : '#2563eb'
+                    {marks.length > 0 ? (
+                      marks.slice(0, 5).map((m, idx) => {
+                        const pct = m.max_marks > 0 ? Math.round((m.marks_obtained / m.max_marks) * 100) : 0;
+                        return (
+                          <div key={idx} style={{
+                            display: 'flex', alignItems: 'center', gap: '14px',
+                            padding: '10px 14px', borderRadius: '12px',
+                            background: darkMode ? '#1e293b' : '#f8fafc',
+                            border: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}`
                           }}>
-                            {m.grade}
-                          </span>
-                        </div>
-                      );
-                    })}
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '13px' }}>
+                                <strong style={{ color: darkMode ? '#ffffff' : '#0f172a' }}>{m.subject_name || `Subject ${m.subject_id}`}</strong>
+                                <span style={{ color: '#94a3b8' }}>{m.marks_obtained} / {m.max_marks} ({pct}%)</span>
+                              </div>
+                              <div style={{ height: '6px', borderRadius: '3px', background: darkMode ? '#334155' : '#e2e8f0', overflow: 'hidden' }}>
+                                <div style={{
+                                  width: `${pct}%`, height: '100%',
+                                  background: pct >= 90 ? '#10b981' : pct >= 75 ? '#3b82f6' : '#f59e0b',
+                                  borderRadius: '3px'
+                                }} />
+                              </div>
+                            </div>
+                            <span style={{
+                              padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 900,
+                              background: pct >= 80 ? '#ecfdf5' : '#eff6ff',
+                              color: pct >= 80 ? '#10b981' : '#2563eb'
+                            }}>
+                              {m.grade || '—'}
+                            </span>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div style={{ textAlign: 'center', padding: '30px 12px', color: '#94a3b8' }}>
+                        <i className="ti ti-notes-off" style={{ fontSize: '28px', display: 'block', marginBottom: '8px', opacity: 0.6 }} />
+                        <div style={{ fontSize: '13px', fontWeight: 700, color: darkMode ? '#cbd5e1' : '#475569' }}>No examination marks published yet</div>
+                        <div style={{ fontSize: '11.5px', marginTop: '3px' }}>Term exam scores will appear here once published by school administration</div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -456,16 +483,28 @@ export default function StudentDashboard() {
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                       <div style={{ width: '120px', height: '120px' }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie data={donutData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={36} outerRadius={54}>
-                              {donutData.map(entry => (
-                                <Cell key={entry.name} fill={entry.color} />
-                              ))}
-                            </Pie>
-                            <Tooltip />
-                          </PieChart>
-                        </ResponsiveContainer>
+                        {totalDays > 0 ? (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie data={donutData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={36} outerRadius={54}>
+                                {donutData.map(entry => (
+                                  <Cell key={entry.name} fill={entry.color} />
+                                ))}
+                              </Pie>
+                              <Tooltip />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        ) : (
+                          <div style={{
+                            width: '100%', height: '100%', borderRadius: '50%',
+                            background: darkMode ? '#1e293b' : '#f1f5f9',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            flexDirection: 'column', color: '#94a3b8', fontSize: '11px', fontWeight: 700
+                          }}>
+                            <i className="ti ti-calendar-off" style={{ fontSize: '20px', marginBottom: '2px' }} />
+                            <span>0 Records</span>
+                          </div>
+                        )}
                       </div>
 
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -490,11 +529,20 @@ export default function StudentDashboard() {
 
                   <div style={{
                     marginTop: '16px', padding: '10px 14px', borderRadius: '10px',
-                    background: darkMode ? '#1e293b' : '#ecfdf5',
-                    color: '#10b981', fontSize: '12.5px', fontWeight: 700,
+                    background: totalDays === 0
+                      ? (darkMode ? '#1e293b' : '#f8fafc')
+                      : (attendancePct >= 75 ? (darkMode ? '#1e293b' : '#ecfdf5') : (darkMode ? '#1e293b' : '#fef2f2')),
+                    color: totalDays === 0 ? '#94a3b8' : (attendancePct >= 75 ? '#10b981' : '#ef4444'),
+                    fontSize: '12.5px', fontWeight: 700,
                     display: 'flex', alignItems: 'center', gap: '6px'
                   }}>
-                    <i className="ti ti-circle-check" /> Awesome! You are above 75% attendance threshold.
+                    {totalDays === 0 ? (
+                      <><i className="ti ti-info-circle" /> No attendance has been marked for current session.</>
+                    ) : attendancePct >= 75 ? (
+                      <><i className="ti ti-circle-check" /> Awesome! You are above 75% attendance threshold.</>
+                    ) : (
+                      <><i className="ti ti-alert-triangle" /> Low attendance ({attendancePct}%). Maintain at least 75%.</>
+                    )}
                   </div>
                 </div>
               </div>
@@ -518,37 +566,41 @@ export default function StudentDashboard() {
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {(notes.length ? notes.slice(0, 4) : [
-                      { title: 'Chapter 4: Thermodynamics Notes', description: 'Complete formulas and solved numericals', uploaded_at: '2026-08-10' },
-                      { title: 'Algebraic Polynomials Worksheet', description: 'Practice set for upcoming mid-term', uploaded_at: '2026-08-08' },
-                      { title: 'Chemical Bonding Summary Sheet', description: 'Key concepts and Lewis structures', uploaded_at: '2026-08-05' },
-                    ]).map((n, idx) => (
-                      <div key={idx} style={{
-                        display: 'flex', alignItems: 'center', gap: '12px',
-                        padding: '10px 12px', borderRadius: '10px',
-                        background: darkMode ? '#1e293b' : '#f8fafc',
-                        border: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}`
-                      }}>
-                        <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: '#fee2e2', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', flexShrink: 0 }}>
-                          <i className="ti ti-file-text" />
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '13px', fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {n.title}
+                    {notes.length > 0 ? (
+                      notes.slice(0, 4).map((n, idx) => (
+                        <div key={idx} style={{
+                          display: 'flex', alignItems: 'center', gap: '12px',
+                          padding: '10px 12px', borderRadius: '10px',
+                          background: darkMode ? '#1e293b' : '#f8fafc',
+                          border: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}`
+                        }}>
+                          <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: '#fee2e2', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', flexShrink: 0 }}>
+                            <i className="ti ti-file-text" />
                           </div>
-                          <div style={{ fontSize: '11px', color: '#94a3b8' }}>{n.description}</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: '13px', fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {n.title}
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#94a3b8' }}>{n.description || n.file_name || 'Study document'}</div>
+                          </div>
+                          <button
+                            onClick={() => setTab('notes')}
+                            style={{
+                              padding: '4px 10px', borderRadius: '6px', border: 'none',
+                              background: '#2563eb', color: '#ffffff', fontSize: '11px', fontWeight: 700, cursor: 'pointer'
+                            }}
+                          >
+                            View
+                          </button>
                         </div>
-                        <button
-                          onClick={() => setTab('notes')}
-                          style={{
-                            padding: '4px 10px', borderRadius: '6px', border: 'none',
-                            background: '#2563eb', color: '#ffffff', fontSize: '11px', fontWeight: 700, cursor: 'pointer'
-                          }}
-                        >
-                          Download
-                        </button>
+                      ))
+                    ) : (
+                      <div style={{ textAlign: 'center', padding: '24px 12px', color: '#94a3b8' }}>
+                        <i className="ti ti-book-off" style={{ fontSize: '26px', display: 'block', marginBottom: '6px', opacity: 0.6 }} />
+                        <div style={{ fontSize: '13px', fontWeight: 600 }}>No study materials uploaded yet</div>
+                        <div style={{ fontSize: '11px', marginTop: '2px' }}>Teachers have not uploaded notes for your class yet</div>
                       </div>
-                    ))}
+                    )}
                   </div>
                 </div>
 
@@ -566,31 +618,34 @@ export default function StudentDashboard() {
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {(holidays.length ? holidays.slice(0, 4) : [
-                      { title: 'Independence Day', date: '2026-08-15', holiday_type: 'National Holiday' },
-                      { title: 'Raksha Bandhan', date: '2026-08-28', holiday_type: 'Festival' },
-                      { title: "Teachers' Day", date: '2026-09-05', holiday_type: 'Special Event' },
-                    ]).map((h, idx) => {
-                      const d = new Date(h.date);
-                      return (
-                        <div key={idx} style={{
-                          display: 'flex', alignItems: 'center', gap: '12px',
-                          padding: '8px 0', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`
-                        }}>
-                          <div style={{
-                            width: '38px', textAlign: 'center', borderRadius: '8px',
-                            background: darkMode ? '#1e293b' : '#f1f5f9', padding: '4px 0'
+                    {holidays.length > 0 ? (
+                      holidays.slice(0, 4).map((h, idx) => {
+                        const d = new Date(h.date);
+                        return (
+                          <div key={idx} style={{
+                            display: 'flex', alignItems: 'center', gap: '12px',
+                            padding: '8px 0', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`
                           }}>
-                            <div style={{ fontSize: '9px', fontWeight: 800, color: '#3b82f6' }}>{d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}</div>
-                            <div style={{ fontSize: '15px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a' }}>{d.getDate() || '15'}</div>
+                            <div style={{
+                              width: '38px', textAlign: 'center', borderRadius: '8px',
+                              background: darkMode ? '#1e293b' : '#f1f5f9', padding: '4px 0'
+                            }}>
+                              <div style={{ fontSize: '9px', fontWeight: 800, color: '#3b82f6' }}>{isNaN(d) ? 'CAL' : d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}</div>
+                              <div style={{ fontSize: '15px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a' }}>{isNaN(d) ? '—' : d.getDate()}</div>
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: '13px', fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a' }}>{h.title}</div>
+                              <div style={{ fontSize: '11px', color: '#94a3b8' }}>{h.holiday_type || 'School Holiday'}</div>
+                            </div>
                           </div>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: '13px', fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a' }}>{h.title}</div>
-                            <div style={{ fontSize: '11px', color: '#94a3b8' }}>{h.holiday_type}</div>
-                          </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })
+                    ) : (
+                      <div style={{ textAlign: 'center', padding: '24px 12px', color: '#94a3b8' }}>
+                        <i className="ti ti-calendar-off" style={{ fontSize: '26px', display: 'block', marginBottom: '6px', opacity: 0.6 }} />
+                        <div style={{ fontSize: '13px', fontWeight: 600 }}>No upcoming holidays scheduled</div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -688,49 +743,127 @@ export default function StudentDashboard() {
 
           {/* ══ TAB: FEES ══ */}
           {tab === 'fees' && (
-            <div className="card" style={{
-              borderRadius: '16px',
-              background: darkMode ? '#111827' : '#ffffff',
-              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
-            }}>
-              <div className="card-header" style={{ padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h4 style={{ margin: 0, fontSize: '15px', color: darkMode ? '#ffffff' : '#0f172a' }}>
-                  Fee Ledger &amp; Invoices
-                </h4>
-                <div style={{ display: 'flex', gap: '14px', fontSize: '13px' }}>
-                  <span style={{ fontWeight: 700, color: '#10b981' }}>Paid: ₹{fmt(fees?.total_paid)}</span>
-                  <span style={{ fontWeight: 700, color: '#ef4444' }}>Due: ₹{fmt(fees?.balance)}</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* Fee Quick KPI Cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                <div className="card" style={{
+                  borderRadius: '16px', padding: '18px',
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`,
+                  display: 'flex', alignItems: 'center', gap: '14px'
+                }}>
+                  <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(37,99,235,0.12)', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px' }}>
+                    <i className="ti ti-receipt" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Total Billed</div>
+                    <div style={{ fontSize: '22px', fontWeight: 800, color: darkMode ? '#fff' : '#0f172a' }}>
+                      ₹{fmt(fees?.gross_due || fees?.total_due || (totalPaid + balanceDue))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="card" style={{
+                  borderRadius: '16px', padding: '18px',
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`,
+                  display: 'flex', alignItems: 'center', gap: '14px'
+                }}>
+                  <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(16,185,129,0.12)', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px' }}>
+                    <i className="ti ti-cash" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Total Paid</div>
+                    <div style={{ fontSize: '22px', fontWeight: 800, color: '#10b981' }}>
+                      ₹{fmt(totalPaid)}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="card" style={{
+                  borderRadius: '16px', padding: '18px',
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`,
+                  display: 'flex', alignItems: 'center', gap: '14px'
+                }}>
+                  <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: balanceDue > 0 ? 'rgba(239,68,68,0.12)' : 'rgba(16,185,129,0.12)', color: balanceDue > 0 ? '#ef4444' : '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px' }}>
+                    <i className={balanceDue > 0 ? 'ti ti-alert-circle' : 'ti ti-check'} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Balance Outstanding</div>
+                    <div style={{ fontSize: '22px', fontWeight: 800, color: balanceDue > 0 ? '#ef4444' : '#10b981' }}>
+                      ₹{fmt(balanceDue)}
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div className="table-container" style={{ border: 'none' }}>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Fee Category</th><th>Billing Month</th><th>Due Amount</th>
-                      <th>Paid Amount</th><th>Payment Channel</th><th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(fees?.records || []).map(r => (
-                      <tr key={r.id}>
-                        <td style={{ fontWeight: 700 }}>{r.fee_type}</td>
-                        <td>{r.month}</td>
-                        <td>₹{r.amount_due?.toLocaleString('en-IN')}</td>
-                        <td style={{ color: '#10b981', fontWeight: 600 }}>₹{r.amount_paid?.toLocaleString('en-IN')}</td>
-                        <td style={{ color: '#94a3b8' }}>{r.payment_mode || '—'}</td>
-                        <td>
-                          <span className={`badge ${
-                            r.status === 'PAID'    ? 'badge-success' :
-                            r.status === 'PARTIAL' ? 'badge-warning' : 'badge-error'
-                          }`}>{r.status}</span>
-                        </td>
+
+              {/* Fee Ledger Table */}
+              <div className="card" style={{
+                borderRadius: '16px',
+                background: darkMode ? '#111827' : '#ffffff',
+                border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+              }}>
+                <div className="card-header" style={{ padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h4 style={{ margin: 0, fontSize: '15px', color: darkMode ? '#ffffff' : '#0f172a' }}>
+                    Fee Ledger &amp; Invoices
+                  </h4>
+                  <div style={{ display: 'flex', gap: '14px', fontSize: '13px' }}>
+                    <span style={{ fontWeight: 700, color: '#10b981' }}>Paid: ₹{fmt(totalPaid)}</span>
+                    <span style={{ fontWeight: 700, color: '#ef4444' }}>Due: ₹{fmt(balanceDue)}</span>
+                  </div>
+                </div>
+                <div className="table-container" style={{ border: 'none' }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Fee Category</th><th>Billing Month / Term</th><th>Amount Due</th>
+                        <th>Amount Paid</th><th>Balance</th><th>Status</th><th>Receipt / Mode</th>
                       </tr>
-                    ))}
-                    {!fees?.records?.length && (
-                      <tr><td colSpan={6} style={{ textAlign: 'center', color: '#94a3b8', padding: '30px' }}>No fee transactions recorded</td></tr>
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {(fees?.records || []).map(r => {
+                        const isMigrated = (r.fee_type || '').toLowerCase().includes('migrat') ||
+                                           (r.fee_type || '').toLowerCase().includes('previous') ||
+                                           (r.remarks || '').toLowerCase().includes('migrat');
+                        const recBalance = r.balance !== undefined ? r.balance : Math.max(0, (r.amount_due || 0) - (r.amount_paid || 0));
+                        return (
+                          <tr key={r.id}>
+                            <td>
+                              <div style={{ fontWeight: 700, color: darkMode ? '#fff' : '#0f172a' }}>{r.fee_type}</div>
+                              {isMigrated && (
+                                <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', background: '#fef3c7', color: '#92400e', fontWeight: 800 }}>
+                                  MIGRATED OPENING DUES
+                                </span>
+                              )}
+                              {r.remarks && !isMigrated && (
+                                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{r.remarks}</div>
+                              )}
+                            </td>
+                            <td>{r.month || r.coverage_label || '—'}</td>
+                            <td style={{ fontWeight: 700 }}>₹{r.amount_due?.toLocaleString('en-IN')}</td>
+                            <td style={{ color: '#10b981', fontWeight: 600 }}>₹{r.amount_paid?.toLocaleString('en-IN')}</td>
+                            <td style={{ color: recBalance > 0 ? '#ef4444' : '#10b981', fontWeight: 800 }}>
+                              ₹{recBalance?.toLocaleString('en-IN')}
+                            </td>
+                            <td>
+                              <span className={`badge ${
+                                r.status === 'PAID'    ? 'badge-success' :
+                                r.status === 'PARTIAL' ? 'badge-warning' : 'badge-error'
+                              }`}>{r.status}</span>
+                            </td>
+                            <td style={{ fontSize: '12px', color: '#94a3b8' }}>
+                              {r.receipt_no ? <span style={{ fontFamily: 'monospace' }}>#{r.receipt_no}</span> : (r.payment_mode || '—')}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {!fees?.records?.length && (
+                        <tr><td colSpan={7} style={{ textAlign: 'center', color: '#94a3b8', padding: '30px' }}>No fee transactions recorded</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}
@@ -740,72 +873,79 @@ export default function StudentDashboard() {
             <div style={{
               display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px'
             }}>
-              {(notes.length ? notes : [
-                { id: 1, title: 'Chapter 4: Thermodynamics Notes', description: 'Complete formulas and solved numericals', uploaded_at: '2026-08-10', file_name: 'notes.pdf' },
-                { id: 2, title: 'Algebraic Polynomials Worksheet', description: 'Practice set for upcoming mid-term', uploaded_at: '2026-08-08', file_name: 'math.docx' },
-                { id: 3, title: 'Chemical Bonding Summary Sheet', description: 'Key concepts and Lewis structures', uploaded_at: '2026-08-05', file_name: 'chem.pdf' },
-                { id: 4, title: 'Computer Science Python Loops Guide', description: 'For loops, while loops, recursion with code samples', uploaded_at: '2026-08-02', file_name: 'python.pdf' },
-              ]).map(n => (
-                <div key={n.id} className="card" style={{
-                  borderRadius: '16px',
-                  background: darkMode ? '#111827' : '#ffffff',
-                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`,
-                  display: 'flex', flexDirection: 'column'
-                }}>
-                  <div className="card-body" style={{ padding: '18px', flex: 1 }}>
-                    <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-                      <div style={{
-                        width: '42px', height: '42px', borderRadius: '10px',
-                        background: 'rgba(239,68,68,0.1)', color: '#ef4444',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', flexShrink: 0
-                      }}>
-                        <i className="ti ti-file-text" />
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
+              {notes.length > 0 ? (
+                notes.map(n => (
+                  <div key={n.id} className="card" style={{
+                    borderRadius: '16px',
+                    background: darkMode ? '#111827' : '#ffffff',
+                    border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`,
+                    display: 'flex', flexDirection: 'column'
+                  }}>
+                    <div className="card-body" style={{ padding: '18px', flex: 1 }}>
+                      <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
                         <div style={{
-                          fontSize: '14.5px', fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a',
-                          marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                          width: '42px', height: '42px', borderRadius: '10px',
+                          background: 'rgba(239,68,68,0.1)', color: '#ef4444',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', flexShrink: 0
                         }}>
-                          {n.title}
+                          <i className="ti ti-file-text" />
                         </div>
-                        {n.description && (
-                          <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '6px', lineHeight: 1.4 }}>
-                            {n.description}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{
+                            fontSize: '14.5px', fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a',
+                            marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                          }}>
+                            {n.title}
                           </div>
-                        )}
-                        <div style={{ fontSize: '11px', color: '#64748b' }}>
-                          🕒 {new Date(n.uploaded_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          {n.description && (
+                            <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '6px', lineHeight: 1.4 }}>
+                              {n.description}
+                            </div>
+                          )}
+                          <div style={{ fontSize: '11px', color: '#64748b' }}>
+                            🕒 {n.uploaded_at ? new Date(n.uploaded_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div style={{
-                    padding: '10px 18px', borderTop: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`,
-                    display: 'flex', gap: '8px', justifyContent: 'flex-end'
-                  }}>
-                    {n.file_url ? (
-                      <a
-                        href={n.file_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="btn btn-primary btn-sm"
-                        style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 700, background: '#2563eb' }}
-                      >
-                        <i className="ti ti-download" /> Download
-                      </a>
-                    ) : (
-                      <button
-                        onClick={() => alert('Downloading file...')}
-                        className="btn btn-primary btn-sm"
-                        style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 700, background: '#2563eb' }}
-                      >
-                        <i className="ti ti-download" /> Download
-                      </button>
-                    )}
+                    <div style={{
+                      padding: '10px 18px', borderTop: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`,
+                      display: 'flex', gap: '8px', justifyContent: 'flex-end'
+                    }}>
+                      {n.file_url ? (
+                        <a
+                          href={n.file_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn btn-primary btn-sm"
+                          style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 700, background: '#2563eb' }}
+                        >
+                          <i className="ti ti-download" /> Download
+                        </a>
+                      ) : (
+                        <button
+                          onClick={() => alert('Download link not available')}
+                          className="btn btn-secondary btn-sm"
+                          style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 700 }}
+                        >
+                          <i className="ti ti-file" /> Document
+                        </button>
+                      )}
+                    </div>
                   </div>
+                ))
+              ) : (
+                <div className="card text-center" style={{
+                  gridColumn: '1 / -1', borderRadius: '16px', padding: '40px 20px',
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+                }}>
+                  <i className="ti ti-file-off" style={{ fontSize: '36px', color: '#94a3b8', display: 'block', marginBottom: '10px' }} />
+                  <h4 style={{ margin: '0 0 6px', color: darkMode ? '#fff' : '#0f172a' }}>No Study Material Available</h4>
+                  <p style={{ margin: 0, color: '#94a3b8', fontSize: '13px' }}>Subject teachers have not uploaded any study notes or worksheets for your class yet.</p>
                 </div>
-              ))}
+              )}
             </div>
           )}
 
@@ -822,35 +962,39 @@ export default function StudentDashboard() {
                 </h4>
               </div>
               <div>
-                {(holidays.length ? holidays : [
-                  { title: 'Independence Day', date: '2026-08-15', holiday_type: 'National Holiday' },
-                  { title: 'Raksha Bandhan', date: '2026-08-28', holiday_type: 'Festival' },
-                  { title: "Teachers' Day", date: '2026-09-05', holiday_type: 'Special Event' },
-                ]).map((h, i) => {
-                  const d = new Date(h.date);
-                  const isToday = h.date === today;
-                  return (
-                    <div key={i} style={{
-                      display: 'flex', alignItems: 'center', gap: '14px',
-                      padding: '14px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`,
-                      background: isToday ? (darkMode ? 'rgba(245,158,11,0.1)' : '#fffbeb') : 'transparent'
-                    }}>
-                      <div style={{
-                        width: '42px', textAlign: 'center',
-                        background: darkMode ? '#1e293b' : '#f1f5f9', borderRadius: '8px', padding: '4px 0'
+                {holidays.length > 0 ? (
+                  holidays.map((h, i) => {
+                    const d = new Date(h.date);
+                    const isToday = h.date === today;
+                    return (
+                      <div key={i} style={{
+                        display: 'flex', alignItems: 'center', gap: '14px',
+                        padding: '14px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`,
+                        background: isToday ? (darkMode ? 'rgba(245,158,11,0.1)' : '#fffbeb') : 'transparent'
                       }}>
-                        <div style={{ fontSize: '9px', fontWeight: 800, color: '#3b82f6' }}>{d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}</div>
-                        <div style={{ fontSize: '16px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a' }}>{d.getDate() || '15'}</div>
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 700, fontSize: '14px', color: darkMode ? '#ffffff' : '#0f172a' }}>
-                          {h.title}
+                        <div style={{
+                          width: '42px', textAlign: 'center',
+                          background: darkMode ? '#1e293b' : '#f1f5f9', borderRadius: '8px', padding: '4px 0'
+                        }}>
+                          <div style={{ fontSize: '9px', fontWeight: 800, color: '#3b82f6' }}>{isNaN(d) ? 'CAL' : d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}</div>
+                          <div style={{ fontSize: '16px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a' }}>{isNaN(d) ? '—' : d.getDate()}</div>
                         </div>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{h.holiday_type}</div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 700, fontSize: '14px', color: darkMode ? '#ffffff' : '#0f172a' }}>
+                            {h.title}
+                          </div>
+                          <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{h.holiday_type || 'School Holiday'}</div>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '36px 20px', color: '#94a3b8' }}>
+                    <i className="ti ti-calendar-off" style={{ fontSize: '32px', display: 'block', marginBottom: '8px', opacity: 0.6 }} />
+                    <div style={{ fontSize: '14px', fontWeight: 600 }}>No upcoming holidays scheduled</div>
+                    <div style={{ fontSize: '12px', marginTop: '2px' }}>Institutional holiday list will appear here once approved by management</div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -872,7 +1016,7 @@ export default function StudentDashboard() {
                   <div>
                     <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Active Loans</div>
                     <div style={{ fontSize: '20px', fontWeight: 800, color: darkMode ? '#fff' : '#0f172a' }}>
-                      {libraryData?.active_loans?.length || 0}
+                      {libraryData?.summary?.issued_count ?? (libraryData?.currently_issued?.length || libraryData?.active_loans?.length || 0)}
                     </div>
                   </div>
                 </div>
@@ -888,8 +1032,8 @@ export default function StudentDashboard() {
                   </div>
                   <div>
                     <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Overdue Books</div>
-                    <div style={{ fontSize: '20px', fontWeight: 800, color: (libraryData?.active_loans || []).filter(b => b.is_overdue).length > 0 ? '#ef4444' : '#10b981' }}>
-                      {(libraryData?.active_loans || []).filter(b => b.is_overdue).length}
+                    <div style={{ fontSize: '20px', fontWeight: 800, color: (libraryData?.summary?.overdue_count ?? (libraryData?.currently_issued || libraryData?.active_loans || []).filter(b => b.overdue_days > 0 || b.is_overdue).length) > 0 ? '#ef4444' : '#10b981' }}>
+                      {libraryData?.summary?.overdue_count ?? (libraryData?.currently_issued || libraryData?.active_loans || []).filter(b => b.overdue_days > 0 || b.is_overdue).length}
                     </div>
                   </div>
                 </div>
@@ -905,8 +1049,8 @@ export default function StudentDashboard() {
                   </div>
                   <div>
                     <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Outstanding Fines</div>
-                    <div style={{ fontSize: '20px', fontWeight: 800, color: (libraryData?.member?.outstanding_fines || 0) > 0 ? '#ef4444' : '#10b981' }}>
-                      ₹{libraryData?.member?.outstanding_fines || 0}
+                    <div style={{ fontSize: '20px', fontWeight: 800, color: (libraryData?.summary?.outstanding_fines ?? libraryData?.member?.outstanding_fines ?? 0) > 0 ? '#ef4444' : '#10b981' }}>
+                      ₹{libraryData?.summary?.outstanding_fines ?? libraryData?.member?.outstanding_fines ?? 0}
                     </div>
                   </div>
                 </div>
@@ -944,30 +1088,33 @@ export default function StudentDashboard() {
                   <table>
                     <thead>
                       <tr>
-                        <th>Book Title</th><th>Author</th><th>Barcode</th>
+                        <th>Book Title</th><th>Author</th><th>Barcode / Accession</th>
                         <th>Issued Date</th><th>Due Date</th><th>Status / Fine</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {(libraryData?.active_loans || []).map(b => (
-                        <tr key={b.id}>
-                          <td style={{ fontWeight: 700, color: darkMode ? '#fff' : '#0f172a' }}>{b.book_title}</td>
-                          <td style={{ color: '#94a3b8' }}>{b.author || '—'}</td>
-                          <td style={{ fontFamily: 'monospace', fontSize: '12px' }}>{b.barcode || '—'}</td>
-                          <td>{b.issue_date}</td>
-                          <td style={{ fontWeight: 600, color: b.is_overdue ? '#ef4444' : '#10b981' }}>{b.due_date}</td>
-                          <td>
-                            {b.is_overdue ? (
-                              <span className="badge badge-error">
-                                OVERDUE ({b.overdue_days}d) · Est. ₹{b.estimated_fine}
-                              </span>
-                            ) : (
-                              <span className="badge badge-success">ON SCHEDULE</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                      {!libraryData?.active_loans?.length && (
+                      {(libraryData?.currently_issued || libraryData?.active_loans || []).map(b => {
+                        const isOverdue = b.overdue_days > 0 || b.is_overdue;
+                        return (
+                          <tr key={b.id}>
+                            <td style={{ fontWeight: 700, color: darkMode ? '#fff' : '#0f172a' }}>{b.book_title}</td>
+                            <td style={{ color: '#94a3b8' }}>{b.author || '—'}</td>
+                            <td style={{ fontFamily: 'monospace', fontSize: '12px' }}>{b.barcode || b.accession_no || '—'}</td>
+                            <td>{b.issue_date}</td>
+                            <td style={{ fontWeight: 600, color: isOverdue ? '#ef4444' : '#10b981' }}>{b.due_date}</td>
+                            <td>
+                              {isOverdue ? (
+                                <span className="badge badge-error">
+                                  OVERDUE ({b.overdue_days}d) · Est. ₹{b.estimated_fine || 0}
+                                </span>
+                              ) : (
+                                <span className="badge badge-success">ON SCHEDULE</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {!(libraryData?.currently_issued || libraryData?.active_loans || [])?.length && (
                         <tr><td colSpan={6} style={{ textAlign: 'center', color: '#94a3b8', padding: '30px' }}>No books currently borrowed</td></tr>
                       )}
                     </tbody>
