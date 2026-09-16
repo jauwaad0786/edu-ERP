@@ -14,8 +14,9 @@ export default function HostelAdmission() {
   const [tab, setTab] = useState('EXISTING'); // EXISTING | NEW
 
   // ── Existing student search ──
-  const [search, setSearch]     = useState('');
-  const [results, setResults]   = useState([]);
+  const [search, setSearch]           = useState('');
+  const [classFilter, setClassFilter] = useState('');
+  const [results, setResults]         = useState([]);
   const [selectedStudent, setSelectedStudent] = useState(null);
 
   // ── New student form ──
@@ -59,17 +60,22 @@ export default function HostelAdmission() {
   // ── Search existing students (debounced) ──
   useEffect(() => {
     if (tab !== 'EXISTING') return;
+    if (!search.trim() && !classFilter) {
+      setResults([]);
+      return;
+    }
     const t = setTimeout(() => {
       const params = new URLSearchParams();
-      if (search) params.set('search', search);
+      if (search.trim()) params.set('search', search.trim());
+      if (classFilter) params.set('class_id', classFilter);
       const hostel = hostels.find(h => h.id === Number(hostelId));
       if (hostel && hostel.gender !== 'CO_ED') params.set('gender', hostel.gender);
       api.get('/hostel/students/search-eligible?' + params.toString())
         .then(r => setResults(r.data || []))
         .catch(() => setResults([]));
-    }, 300);
+    }, 250);
     return () => clearTimeout(t);
-  }, [search, tab, hostelId, hostels]);
+  }, [search, classFilter, tab, hostelId, hostels]);
 
   // ── Load full visual room-map for selected hostel ──
   useEffect(() => {
@@ -225,12 +231,33 @@ export default function HostelAdmission() {
 
                   {tab === 'EXISTING' ? (
                     <>
-                      <input value={search} onChange={e => setSearch(e.target.value)}
-                        placeholder="Search by name, roll no, admission no..." style={inputStyle} />
-                      <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+                      <div style={{ marginBottom: 8 }}>
+                        <label style={{ ...labelStyle, fontSize: 11, marginBottom: 3 }}>
+                          FILTER BY CLASS & SECTION
+                        </label>
+                        <select
+                          value={classFilter}
+                          onChange={e => setClassFilter(e.target.value)}
+                          style={inputStyle}
+                        >
+                          <option value="">-- All Classes (or select class) --</option>
+                          {classes.map(c => (
+                            <option key={c.id} value={c.id}>
+                              {c.name} {c.section ? `(${c.section})` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <input
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        placeholder="Search by name, roll no, admission no..."
+                        style={inputStyle}
+                      />
+                      <div style={{ maxHeight: 420, overflowY: 'auto', marginTop: 8 }}>
                         {results.length === 0 ? (
                           <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', padding: 20 }}>
-                            {search ? 'Koi eligible student nahi mila' : 'Naam type karke search karo'}
+                            {classFilter || search ? 'Koi eligible student nahi mila' : 'Class select karein ya naam/roll search karein'}
                           </div>
                         ) : results.map(s => (
                           <div key={s.student_id}
@@ -239,15 +266,23 @@ export default function HostelAdmission() {
                             onClick={() => setSelectedStudent(s)}
                             onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedStudent(s); } }}
                             style={{
-                              padding: '9px 10px', cursor: 'pointer', borderRadius: 6,
+                              padding: '10px 12px', cursor: 'pointer', borderRadius: 6,
                               borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}`,
+                              background: selectedStudent?.student_id === s.student_id ? (darkMode ? '#1e3a8a' : '#e0f2fe') : 'transparent'
                             }}
-                            onMouseEnter={e => e.currentTarget.style.background = darkMode ? '#273349' : '#f8fafc'}
-                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                            onMouseEnter={e => {
+                              if (selectedStudent?.student_id !== s.student_id) e.currentTarget.style.background = darkMode ? '#273349' : '#f8fafc';
+                            }}
+                            onMouseLeave={e => {
+                              if (selectedStudent?.student_id !== s.student_id) e.currentTarget.style.background = 'transparent';
+                            }}
                           >
-                            <div style={{ fontSize: 13, fontWeight: 600, color: darkMode ? '#f1f5f9' : '#0f172a' }}>{s.name}</div>
-                            <div style={{ fontSize: 11, color: '#94a3b8' }}>
-                              {s.roll_number} · {s.class_name} · {s.gender}
+                            <div style={{ fontSize: 13, fontWeight: 700, color: darkMode ? '#f1f5f9' : '#0f172a' }}>{s.name}</div>
+                            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                              <span style={{ color: '#0176d3', fontWeight: 600 }}>{s.class_name || 'Class N/A'}</span>
+                              {s.roll_number ? <span> · Roll: {s.roll_number}</span> : null}
+                              {s.admission_no ? <span> · Adm: {s.admission_no}</span> : null}
+                              {s.gender ? <span> · {s.gender}</span> : null}
                             </div>
                           </div>
                         ))}

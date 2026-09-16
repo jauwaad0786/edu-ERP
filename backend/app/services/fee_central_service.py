@@ -59,6 +59,8 @@ def normalize_service_code(source_or_dept):
         return 'ACTIVITY', 'ACCOUNTS', 'ACTIVITY'
     if 'LAB' in s:
         return 'ACADEMIC', 'ACCOUNTS', 'LAB'
+    if 'OPENING' in s or 'MIGRAT' in s:
+        return 'OPENING_BALANCE', 'ACCOUNTS', 'OPENING_BALANCE'
     if 'TUITION' in s or 'ACADEMIC' in s or 'SCHOOL' in s:
         return 'ACADEMIC', 'ACCOUNTS', 'TUITION'
     return 'OTHER', 'ACCOUNTS', s
@@ -203,6 +205,10 @@ def sync_fee_record_to_bill(fee_record):
     ).first()
 
     if not existing_ledger and fee_record.status != 'DRAFT':
+        is_ob = (fee_record.source == 'OPENING_BALANCE' or getattr(fee_record, 'fee_type', '') == 'OPENING_BALANCE')
+        ledger_period = 'Opening Balance' if is_ob else (fee_record.coverage_label or month_label)
+        ledger_desc = f"Legacy school balance brought forward (₹{net_amt:,.2f})" if is_ob else f"{fee_record.fee_type or fee_head.name} ({month_label})"
+
         ledger_entry = StudentLedger(
             school_id=school_id,
             student_id=student_id,
@@ -210,13 +216,13 @@ def sync_fee_record_to_bill(fee_record):
             department=dept,
             entry_type='DEBIT',
             entry_date=date.today(),
-            period_label=month_label,
+            period_label=ledger_period,
             session=session,
             amount=net_amt,
             balance_after=bal_amt,
             bill_id=bill.id,
             reference_no=bill.bill_no,
-            description=f"{fee_record.fee_type or fee_head.name} ({month_label})",
+            description=ledger_desc,
             created_by=fee_record.collected_by
         )
         db.session.add(ledger_entry)

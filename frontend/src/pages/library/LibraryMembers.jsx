@@ -22,7 +22,13 @@ export default function LibraryMembers() {
   const [enrolling, setEnrolling]     = useState(false);
 
   // ── Member detail drawer ──
+  const [classes, setClasses] = useState([]);
+  const [enrollClassId, setEnrollClassId] = useState('');
   const [detail, setDetail] = useState(null);
+
+  useEffect(() => {
+    api.get('/principal/classes').then(r => setClasses(r.data || [])).catch(() => {});
+  }, []);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -38,14 +44,25 @@ export default function LibraryMembers() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    if (!enrollSearch.trim()) { setEnrollResults([]); return; }
+    if (!enrollSearch.trim() && !enrollClassId && enrollType === 'STUDENT') {
+      setEnrollResults([]);
+      return;
+    }
+    if (!enrollSearch.trim() && enrollType === 'TEACHER') {
+      setEnrollResults([]);
+      return;
+    }
     const t = setTimeout(() => {
-      api.get(`/library/members/search-eligible?search=${encodeURIComponent(enrollSearch)}&type=${enrollType}`)
+      const params = new URLSearchParams();
+      if (enrollSearch.trim()) params.set('search', enrollSearch.trim());
+      if (enrollType === 'STUDENT' && enrollClassId) params.set('class_id', enrollClassId);
+      params.set('type', enrollType);
+      api.get(`/library/members/search-eligible?${params.toString()}`)
         .then(r => setEnrollResults(r.data || []))
         .catch(() => setEnrollResults([]));
-    }, 300);
+    }, 250);
     return () => clearTimeout(t);
-  }, [enrollSearch, enrollType]);
+  }, [enrollSearch, enrollClassId, enrollType]);
 
   async function handleEnroll(userItem) {
     if (userItem.is_member) { toast.error('Already library member hai'); return; }
@@ -198,7 +215,7 @@ export default function LibraryMembers() {
             <div className="modal-body">
               <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                 {['STUDENT', 'TEACHER'].map(t => (
-                  <button key={t} onClick={() => { setEnrollType(t); setEnrollSearch(''); setEnrollResults([]); }}
+                  <button key={t} onClick={() => { setEnrollType(t); setEnrollSearch(''); setEnrollClassId(''); setEnrollResults([]); }}
                     style={{
                       flex: 1, padding: '8px 0', fontSize: 12, fontWeight: 700, borderRadius: 6,
                       border: 'none', cursor: 'pointer',
@@ -209,18 +226,53 @@ export default function LibraryMembers() {
                   </button>
                 ))}
               </div>
-              <input value={enrollSearch} onChange={e => setEnrollSearch(e.target.value)}
-                placeholder={`Search ${enrollType.toLowerCase()} by name/email...`} className="form-input" />
 
-              <div style={{ marginTop: 10, maxHeight: 260, overflowY: 'auto' }}>
-                {enrollResults.map(u => (
+              {enrollType === 'STUDENT' && (
+                <div style={{ marginBottom: 10 }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 4 }}>
+                    FILTER BY CLASS & SECTION
+                  </label>
+                  <select
+                    className="form-input"
+                    value={enrollClassId}
+                    onChange={e => setEnrollClassId(e.target.value)}
+                    style={{ marginBottom: 8 }}
+                  >
+                    <option value="">-- All Classes (or select class) --</option>
+                    {classes.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} {c.section ? `(${c.section})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <input
+                value={enrollSearch}
+                onChange={e => setEnrollSearch(e.target.value)}
+                placeholder={enrollType === 'STUDENT' ? "Search by name, roll no, or admission no..." : "Search teacher by name or email..."}
+                className="form-input"
+              />
+
+              <div style={{ marginTop: 10, maxHeight: 280, overflowY: 'auto' }}>
+                {enrollResults.length === 0 ? (
+                  <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', padding: 24 }}>
+                    {enrollClassId || enrollSearch ? 'Koi eligible record nahi mila' : 'Class chunein ya naam/roll search karein'}
+                  </div>
+                ) : enrollResults.map(u => (
                   <div key={u.user_id} style={{
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                     padding: '10px 8px', borderBottom: '1px solid #f1f5f9',
                   }}>
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 600 }}>{u.name}</div>
-                      <div style={{ fontSize: 11, color: '#94a3b8' }}>{u.email}</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{u.name}</div>
+                      <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                        {u.class_name ? <span style={{ fontWeight: 600, color: '#0176d3' }}>{u.class_name}</span> : null}
+                        {u.roll_number && u.roll_number !== '—' ? <span> · Roll: {u.roll_number}</span> : null}
+                        {u.admission_no && u.admission_no !== '—' ? <span> · Adm: {u.admission_no}</span> : null}
+                        {(!u.roll_number || u.roll_number === '—') && u.email ? <span> · {u.email}</span> : null}
+                      </div>
                     </div>
                     <button
                       disabled={u.is_member || enrolling}

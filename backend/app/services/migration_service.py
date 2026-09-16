@@ -562,10 +562,13 @@ def execute_school_migration(
                     school_id=school_id, student_id=st_id, source='OPENING_BALANCE'
                 ).first()
                 if not existing_ob:
+                    curr_month_str = ist_today().strftime('%Y-%m')
                     ob_rec = FeeRecord(
                         school_id=school_id,
                         student_id=st_id,
                         fee_type='OPENING_BALANCE',
+                        month=curr_month_str,
+                        coverage_label='Migrated Opening Balance',
                         amount_due=ob_val,
                         amount_paid=0.0,
                         status='PENDING',
@@ -577,20 +580,27 @@ def execute_school_migration(
                         created_at=ist_naive_now()
                     )
                     db.session.add(ob_rec)
+                    db.session.flush()
 
-                    ledger_entry = StudentLedger(
-                        school_id=school_id,
-                        student_id=st_id,
-                        entry_type='DEBIT',
-                        amount=ob_val,
-                        period_label='Opening Balance',
-                        session=session,
-                        reference_no=f"OB-{batch_no}",
-                        description=f"Legacy school balance brought forward (₹{ob_val:,.2f})",
-                        created_by=user_id,
-                        created_at=ist_naive_now()
-                    )
-                    db.session.add(ledger_entry)
+                    # Real-time sync to Central Finance (FeeBill, FeeBillItem & StudentLedger)
+                    try:
+                        from app.services.fee_central_service import sync_fee_record_to_bill
+                        sync_fee_record_to_bill(ob_rec)
+                    except Exception as sync_err:
+                        print(f"[MigrationService] Error syncing opening balance FeeRecord to FeeBill: {sync_err}")
+                        ledger_entry = StudentLedger(
+                            school_id=school_id,
+                            student_id=st_id,
+                            entry_type='DEBIT',
+                            amount=ob_val,
+                            period_label='Opening Balance',
+                            session=session,
+                            reference_no=f"OB-{batch_no}",
+                            description=f"Legacy school balance brought forward (₹{ob_val:,.2f})",
+                            created_by=user_id,
+                            created_at=ist_naive_now()
+                        )
+                        db.session.add(ledger_entry)
 
             # ── OPTIONAL SERVICES ASSIGNMENT (Reuse Existing Entities) ──
             # 1. Transport

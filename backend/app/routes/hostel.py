@@ -621,22 +621,27 @@ def search_eligible_students():
     allocation — used by the "Select Existing Student" tab on Admission page.
     Query: search (name/roll/admission_no), class_id, gender
     """
-    sid    = _school_id()
-    search = (request.args.get('search') or '').strip()
+    sid      = _school_id()
+    search   = (request.args.get('search') or '').strip()
     class_id = request.args.get('class_id')
     gender   = request.args.get('gender')  # optional filter matching hostel gender
 
+    if not search and not class_id:
+        return jsonify([]), 200
+
     active_student_ids = {
-        r.student_id for r in HostelBedAllocation.query.filter_by(
+        r[0] for r in db.session.query(HostelBedAllocation.student_id).filter_by(
             school_id=sid, status='ACTIVE'
-        ).with_entities(HostelBedAllocation.student_id).all()
+        ).all() if r[0]
     }
 
-    q = Student.query.filter_by(school_id=sid)
+    q = Student.query.filter_by(school_id=sid, is_deleted=False)
+    if active_student_ids:
+        q = q.filter(~Student.id.in_(active_student_ids))
     if class_id:
-        q = q.filter_by(class_id=class_id)
+        q = q.filter(Student.class_id == class_id)
     if gender:
-        q = q.filter_by(gender=gender)
+        q = q.filter(Student.gender == gender)
     if search:
         q = q.join(User, Student.user_id == User.id).filter(db.or_(
             User.name.ilike(f'%{search}%'),
@@ -644,11 +649,9 @@ def search_eligible_students():
             Student.admission_no.ilike(f'%{search}%'),
         ))
 
-    students = q.limit(50).all()
+    students = q.order_by(Student.roll_number.asc()).limit(100).all()
     result = []
     for s in students:
-        if s.id in active_student_ids:
-            continue
         cls = Class.query.get(s.class_id) if s.class_id else None
         result.append({
             'student_id':   s.id,

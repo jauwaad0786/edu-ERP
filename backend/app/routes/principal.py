@@ -4200,6 +4200,191 @@ def student_notice_pdf(student_id):
     return send_file(buf, mimetype='application/pdf',
                       download_name=f'Notice_{student.roll_number or student_id}_{month}.pdf')
 
+@principal_bp.route('/students/<int:student_id>', methods=['PUT', 'PATCH'])
+@role_required('PRINCIPAL', 'ADMIN', 'SUPER_ADMIN', 'TEACHER')
+def update_student(student_id):
+    """
+    Principal / Admin / Teacher can edit student profile information.
+    Principal & Admin can edit all fields (admission, academic, parent, previous TC).
+    Teacher can edit demographic / ID card fields.
+    """
+    sid = _school_id()
+    student = Student.query.filter_by(id=student_id, school_id=sid).first_or_404()
+    user = student.user
+
+    data = request.get_json() or {}
+
+    old_state = {
+        'name': student.user.name if student.user else '',
+        'roll_number': student.roll_number or '',
+        'admission_no': student.admission_no or '',
+        'gender': student.gender or '',
+        'dob': str(student.dob) if student.dob else '',
+        'address': student.address or '',
+        'session': student.session or '',
+        'blood_group': student.blood_group or '',
+        'father_name': student.father_name or '',
+        'mother_name': student.mother_name or '',
+        'parent_name': student.parent_name or '',
+        'parent_phone': student.parent_phone or '',
+        'parent_email': student.parent_email or '',
+        'class_id': str(student.class_id or ''),
+    }
+
+    # 1. Update User basic credentials / contact info
+    if user:
+        if 'name' in data and data['name']:
+            user.name = data['name'].strip()
+        if 'email' in data and data['email']:
+            cand_email = data['email'].strip().lower()
+            existing_user = User.query.filter(User.email == cand_email, User.id != user.id).first()
+            if existing_user:
+                return jsonify({'error': f'Email {cand_email} already exists for another user'}), 400
+            user.email = cand_email
+        if 'phone' in data:
+            user.phone = (data.get('phone') or '').strip()
+
+    # 2. Admission Number & Roll Number
+    if 'admission_no' in data and data['admission_no']:
+        cand_adm = data['admission_no'].strip()
+        dup_adm = Student.query.filter(
+            Student.school_id == sid,
+            Student.admission_no == cand_adm,
+            Student.id != student.id
+        ).first()
+        if dup_adm:
+            return jsonify({'error': f'Admission No {cand_adm} already assigned to another student'}), 400
+        student.admission_no = cand_adm
+
+    if 'roll_number' in data:
+        student.roll_number = (data.get('roll_number') or '').strip()
+
+    # 3. Class & Enrollment Sync
+    if 'class_id' in data:
+        new_cls_id = int(data['class_id']) if data['class_id'] else None
+        if new_cls_id:
+            cls_check = Class.query.filter_by(id=new_cls_id, school_id=sid).first()
+            if not cls_check:
+                return jsonify({'error': 'Selected class not found in school'}), 404
+            student.class_id = new_cls_id
+            # Sync active enrollment
+            active_enroll = StudentEnrollment.query.filter_by(
+                school_id=sid, student_id=student.id, session=student.session or '2026-27'
+            ).first()
+            if active_enroll:
+                active_enroll.class_id = new_cls_id
+                active_enroll.section = cls_check.section or ''
+                active_enroll.roll_number = student.roll_number
+        else:
+            student.class_id = None
+
+    # 4. Dates
+    if 'dob' in data:
+        dob_raw = data.get('dob')
+        if dob_raw:
+            try:
+                student.dob = datetime.strptime(str(dob_raw)[:10], '%Y-%m-%d').date()
+            except Exception:
+                pass
+        else:
+            student.dob = None
+
+    if 'admission_date' in data:
+        adm_raw = data.get('admission_date')
+        if adm_raw:
+            try:
+                student.admission_date = datetime.strptime(str(adm_raw)[:10], '%Y-%m-%d').date()
+            except Exception:
+                pass
+
+    if 'previous_tc_date' in data:
+        tc_raw = data.get('previous_tc_date')
+        if tc_raw:
+            try:
+                student.previous_tc_date = datetime.strptime(str(tc_raw)[:10], '%Y-%m-%d').date()
+            except Exception:
+                pass
+        else:
+            student.previous_tc_date = None
+
+    # 5. Core Academic & Demographic
+    for field in ['gender', 'blood_group', 'address', 'session', 'category', 'nationality',
+                  'religion', 'house', 'stream', 'status', 'photo_url']:
+        if field in data:
+            setattr(student, field, (data.get(field) or '').strip() if isinstance(data.get(field), str) else data.get(field))
+
+    # 6. Parents & Guardian
+    for field in ['father_name', 'mother_name', 'parent_name', 'parent_phone', 'parent_email',
+                  'father_occupation', 'mother_occupation', 'guardian_name', 'guardian_relation',
+                  'guardian_phone', 'aadhar_no', 'parent_aadhar_no']:
+        if field in data:
+            setattr(student, field, (data.get(field) or '').strip() if isinstance(data.get(field), str) else data.get(field))
+
+    # 7. Previous Schooling / Transfer Certificate
+    if 'is_first_school' in data:
+        student.is_first_school = bool(data.get('is_first_school'))
+    for field in ['previous_school_name', 'previous_class', 'previous_tc_no', 'previous_reason']:
+        if field in data:
+            setattr(student, field, (data.get(field) or '').strip() if isinstance(data.get(field), str) else data.get(field))
+
+    db.session.commit()
+
+    # Audit Logging
+    try:
+        from app.services.audit_service import compute_changed_fields, record_audit_event
+        new_state = {
+            'name': student.user.name if student.user else '',
+            'roll_number': student.roll_number or '',
+            'admission_no': student.admission_no or '',
+            'gender': student.gender or '',
+            'dob': str(student.dob) if student.dob else '',
+            'address': student.address or '',
+            'session': student.session or '',
+            'blood_group': student.blood_group or '',
+            'father_name': student.father_name or '',
+            'mother_name': student.mother_name or '',
+            'parent_name': student.parent_name or '',
+            'parent_phone': student.parent_phone or '',
+            'parent_email': student.parent_email or '',
+            'class_id': str(student.class_id or ''),
+        }
+        diff = compute_changed_fields(old_state, new_state)
+        if diff:
+            record_audit_event(
+                school_id=sid,
+                actor_user_id=get_current_user().id if get_current_user() else None,
+                action='STUDENT_UPDATED',
+                module='students',
+                entity_type='Student',
+                entity_id=student.id,
+                student_id=student.id,
+                class_id=student.class_id,
+                changed_fields=diff,
+                remarks=f"Updated student profile fields: {', '.join(diff.keys())}",
+                status='SUCCESS',
+                severity='LOW'
+            )
+    except Exception as audit_err:
+        print(f"[AUDIT] Student update diff logging failed: {audit_err}")
+
+    cls = Class.query.get(student.class_id) if student.class_id else None
+    return jsonify({
+        'message': 'Student profile updated successfully',
+        'student': student.to_dict(),
+        'id':           student.id,
+        'name':         student.user.name if student.user else '',
+        'roll_number':  student.roll_number  or '',
+        'admission_no': student.admission_no or '',
+        'session':      student.session      or '',
+        'blood_group':  student.blood_group  or '',
+        'gender':       student.gender       or '',
+        'father_name':  student.father_name  or '',
+        'parent_phone': student.parent_phone or '',
+        'class_name':   f"{cls.name} - {cls.section}" if cls else '',
+        'photo_url':    student.photo_url    or None,
+    }), 200
+
+
 @principal_bp.route('/students/<int:student_id>/profile', methods=['GET'])
 @principal_bp.route('/students/<int:student_id>', methods=['GET'])
 @role_required('PRINCIPAL', 'TEACHER')
@@ -4217,25 +4402,49 @@ def student_profile(student_id):
     cls  = Class.query.get(student.class_id) if student.class_id else None
     user = student.user
 
-    # ── Basic Info ──────────────────────────────────────────
+    # ── Basic Info (Comprehensive Admission & Profile Metadata) ──
     info = {
-        'id':           student.id,
-        'name':         user.name       if user else '',
-        'email':        user.email      if user else '',
-        'roll_number':  student.roll_number  or '',
-        'admission_no': student.admission_no or '',
-        'gender':       student.gender       or '',
-        'dob':          str(student.dob)     if student.dob else '',
-        'address':      student.address      or '',
-        'session':      student.session      or '',
-        'parent_name':  student.parent_name  or '',
-        'parent_phone': student.parent_phone or '',
-        'parent_email': student.parent_email or '',
-        'class_name':   f"{cls.name} - {cls.section}" if cls else '',
-        'class_id':     student.class_id,
-        'father_name':  student.father_name  or '',
-        'mother_name':  student.mother_name  or '',
-        'photo_url':    student.photo_url    or '',
+        'id':                      student.id,
+        'name':                    user.name       if user else '',
+        'email':                   user.email      if user else '',
+        'phone':                   user.phone      if user else '',
+        'roll_number':             student.roll_number  or '',
+        'admission_no':            student.admission_no or '',
+        'gender':                  student.gender       or '',
+        'dob':                     str(student.dob)     if student.dob else '',
+        'blood_group':             student.blood_group  or '',
+        'address':                 student.address      or '',
+        'session':                 student.session      or '',
+        'parent_name':             student.parent_name  or student.father_name or '',
+        'parent_phone':            student.parent_phone or '',
+        'parent_email':            student.parent_email or '',
+        'class_name':              f"{cls.name} - {cls.section}" if cls else '',
+        'class_id':                student.class_id,
+        'father_name':             student.father_name  or '',
+        'father_occupation':       student.father_occupation or '',
+        'mother_name':             student.mother_name  or '',
+        'mother_occupation':       student.mother_occupation or '',
+        'guardian_name':           student.guardian_name or '',
+        'guardian_relation':       student.guardian_relation or '',
+        'guardian_phone':          student.guardian_phone or '',
+        'photo_url':               student.photo_url    or '',
+        'admission_date':          str(student.admission_date) if student.admission_date else '',
+        'aadhar_no':               student.aadhar_no or '',
+        'parent_aadhar_no':        student.parent_aadhar_no or '',
+        'category':                student.category or 'General',
+        'nationality':             student.nationality or 'Indian',
+        'religion':                student.religion or '',
+        'is_first_school':         bool(student.is_first_school),
+        'previous_school_name':    student.previous_school_name or '',
+        'previous_class':          student.previous_class or '',
+        'previous_tc_no':          student.previous_tc_no or '',
+        'previous_tc_date':        str(student.previous_tc_date) if student.previous_tc_date else '',
+        'previous_reason':         student.previous_reason or '',
+        'house':                   student.house or '',
+        'stream':                  student.stream or '',
+        'status':                  student.status or 'ACTIVE',
+        'provisional_no':          student.provisional_no or '',
+        'original_admission_year': student.original_admission_year or '',
     }
 
     # ── Attendance Summary ───────────────────────────────────
@@ -4287,18 +4496,21 @@ def student_profile(student_id):
         'calendar_30':  calendar_30,
     }
 
-    # ── Fee Records ─────────────────────────────────────────
+    # ── Fee Records & Segregated Reconciliation ─────────────
     fee_records = FeeRecord.query.filter_by(student_id=student_id)\
                                  .order_by(FeeRecord.created_at.desc()).all()
     total_due   = sum(f.amount_due  for f in fee_records)
     total_paid  = sum(f.amount_paid for f in fee_records)
     pending     = total_due - total_paid
 
+    # Segregate Migrated Opening Dues vs Current Academic Dues
+    migrated_records = [f for f in fee_records if (f.fee_type == 'OPENING_BALANCE' or f.source == 'OPENING_BALANCE')]
+    migrated_due_sum  = sum(f.amount_due for f in migrated_records)
+    migrated_paid_sum = sum(f.amount_paid for f in migrated_records)
+    migrated_dues     = max(0.0, round(migrated_due_sum - migrated_paid_sum, 2))
+    current_dues      = max(0.0, round(pending - migrated_dues, 2))
+
     # This month's fees
-    # This month's fees — FeeRecord.month DB mein "YYYY-MM" format mein store
-    # hota hai (Generate Fees flow), isliye comparison bhi usi format mein
-    # honi chahiye. Display ke liye alag se human-readable label banaya.
-    today             = date.today()
     this_month_key    = today.strftime('%Y-%m')   # matches FeeRecord.month
     this_month_label  = today.strftime('%B %Y')   # sirf UI display ke liye
 
@@ -4307,20 +4519,22 @@ def student_profile(student_id):
     month_due   = sum(f.amount_due  for f in month_fees)
 
     fees = {
-        'total_due':    total_due,
-        'total_paid':   total_paid,
-        'pending':      pending,
-        'this_month':   this_month_label,
-        'month_due':    month_due,
-        'month_paid':   month_paid,
-        'month_status': 'PAID' if month_paid >= month_due and month_due > 0
-                        else 'PARTIAL' if month_paid > 0
-                        else 'NO_RECORD' if month_due == 0
-                        else 'PENDING',
+        'total_due':             total_due,
+        'total_paid':            total_paid,
+        'pending':               pending,
+        'migrated_dues':         migrated_dues,
+        'current_dues':          current_dues,
+        'this_month':            this_month_label,
+        'month_due':             month_due,
+        'month_paid':            month_paid,
+        'month_status':          'PAID' if month_paid >= month_due and month_due > 0
+                                 else 'PARTIAL' if month_paid > 0
+                                 else 'NO_RECORD' if month_due == 0
+                                 else 'PENDING',
         'records': [
             {
                 'id':           r.id,
-                'month':        r.month,
+                'month':        'Migrated Opening Dues (Previous School Records)' if (r.fee_type == 'OPENING_BALANCE' or r.source == 'OPENING_BALANCE') else r.month,
                 'fee_type':     r.fee_type,
                 'amount_due':   r.amount_due,
                 'amount_paid':  r.amount_paid,
@@ -4832,7 +5046,9 @@ def dashboard():
         db.or_(
             FeeRecord.month == curr_month_str,
             FeeRecord.month == curr_month_name,
-            db.and_(FeeRecord.due_date >= m_start, FeeRecord.due_date <= m_end)
+            db.and_(FeeRecord.due_date >= m_start, FeeRecord.due_date <= m_end),
+            FeeRecord.source == 'OPENING_BALANCE',
+            FeeRecord.fee_type == 'OPENING_BALANCE'
         )
     ).first()
 
@@ -4882,6 +5098,20 @@ def dashboard():
     fee_pending_total = max(0.0, round(all_time_generated - fee_collected_total, 2))
     all_time_col_pct = round((fee_collected_total / all_time_generated * 100), 1) if all_time_generated > 0 else 0.0
 
+    # 4. Opening Balance / Migrated Dues Reconciliation
+    migrated_row = db.session.query(fee_due_expr, fee_paid_expr).filter(
+        FeeRecord.school_id == sid,
+        FeeRecord.status != 'DRAFT',
+        db.or_(
+            FeeRecord.fee_type == 'OPENING_BALANCE',
+            FeeRecord.source == 'OPENING_BALANCE'
+        )
+    ).first()
+    migrated_opening_due = float(migrated_row[0] or 0.0) if migrated_row else 0.0
+    migrated_opening_paid = float(migrated_row[1] or 0.0) if migrated_row else 0.0
+    migrated_opening_pending = max(0.0, round(migrated_opening_due - migrated_opening_paid, 2))
+    current_academic_pending = max(0.0, round(fee_pending_total - migrated_opening_pending, 2))
+
     teachers_marked_count = len(t_att_today)
     teachers_pct = round((t_present / total_teachers * 100), 1) if total_teachers > 0 else 0
 
@@ -4910,6 +5140,9 @@ def dashboard():
             'all_time_collected':    round(float(fee_collected_total), 2),
             'all_time_pending':      round(float(fee_pending_total), 2),
             'all_time_percentage':   all_time_col_pct,
+            # Migrated vs Current Reconciliation
+            'migrated_opening_dues': round(float(migrated_opening_pending), 2),
+            'current_academic_dues': round(float(current_academic_pending), 2),
         },
 
         'fee_collected':           float(fee_collected_total),
@@ -5651,101 +5884,7 @@ def generate_employee_id_card(teacher_id):
     return send_file(buf, mimetype='application/pdf', as_attachment=True, download_name=filename)
 
 
-@principal_bp.route('/students/<int:student_id>', methods=['PATCH'])
-@role_required('PRINCIPAL', 'TEACHER')
-def update_student(student_id):
-    """Edit student details from ID card management page."""
-    student = Student.query.get_or_404(student_id)
-    if student.school_id != _school_id():
-        return jsonify({'error': 'Unauthorized'}), 403
 
-    data = request.get_json() or {}
-
-    old_state = {
-        'name': student.user.name if student.user else '',
-        'roll_number': student.roll_number or '',
-        'gender': student.gender or '',
-        'dob': str(student.dob) if student.dob else '',
-        'address': student.address or '',
-        'session': student.session or '',
-        'blood_group': student.blood_group or '',
-        'father_name': student.father_name or '',
-        'mother_name': student.mother_name or '',
-        'parent_name': student.parent_name or '',
-        'parent_phone': student.parent_phone or '',
-        'parent_email': student.parent_email or '',
-    }
-
-    # Update user name if provided
-    if data.get('name') and student.user:
-        student.user.name = data['name']
-
-    # Update student fields
-    for field in ['roll_number', 'gender', 'dob', 'address', 'session',
-                  'blood_group', 'father_name', 'mother_name', 'parent_name',
-                  'parent_phone', 'parent_email']:
-        if field in data:
-            val = data[field]
-            if field == 'dob' and val:
-                try:
-                    val = date.fromisoformat(val)
-                except Exception:
-                    val = None
-            setattr(student, field, val)
-
-    db.session.commit()
-
-    new_state = {
-        'name': student.user.name if student.user else '',
-        'roll_number': student.roll_number or '',
-        'gender': student.gender or '',
-        'dob': str(student.dob) if student.dob else '',
-        'address': student.address or '',
-        'session': student.session or '',
-        'blood_group': student.blood_group or '',
-        'father_name': student.father_name or '',
-        'mother_name': student.mother_name or '',
-        'parent_name': student.parent_name or '',
-        'parent_phone': student.parent_phone or '',
-        'parent_email': student.parent_email or '',
-    }
-
-    try:
-        from app.services.audit_service import compute_changed_fields, record_audit_event
-        diff = compute_changed_fields(old_state, new_state)
-        if diff:
-            record_audit_event(
-                school_id=_school_id(),
-                actor_user_id=get_current_user().id if get_current_user() else None,
-                action='STUDENT_UPDATED',
-                module='students',
-                entity_type='Student',
-                entity_id=student.id,
-                student_id=student.id,
-                class_id=student.class_id,
-                changed_fields=diff,
-                remarks=f"Updated student profile fields: {', '.join(diff.keys())}",
-                status='SUCCESS',
-                severity='LOW'
-            )
-    except Exception as audit_err:
-        print(f"[AUDIT] Student update diff logging failed: {audit_err}")
-
-    # Return updated preview data
-    cls = Class.query.get(student.class_id) if student.class_id else None
-    return jsonify({
-        'id':           student.id,
-        'name':         student.user.name if student.user else '',
-        'roll_number':  student.roll_number  or '',
-        'admission_no': student.admission_no or '',
-        'session':      student.session      or '',
-        'blood_group':  student.blood_group  or '',
-        'gender':       student.gender       or '',
-        'father_name':  student.father_name  or '',
-        'parent_phone': student.parent_phone or '',
-        'class_name':   f"{cls.name} - {cls.section}" if cls else '',
-        'photo_url':    student.photo_url    or None,
-    }), 200
 @principal_bp.route('/staff-list', methods=['GET'])
 @role_required('PRINCIPAL', 'TEACHER')
 def staff_list_for_id_cards():

@@ -5,6 +5,7 @@ import Navbar  from '../components/Navbar';
 import api     from '../api/axios';
 import toast   from 'react-hot-toast';
 import EntityAuditTimeline from '../components/audit/EntityAuditTimeline';
+import { useAuth } from '../context/AuthContext';
 
 const STATUS_COLOR = {
   PRESENT:    { bg: '#dcfce7', color: '#16a34a', label: 'P' },
@@ -647,14 +648,527 @@ function AcademicHistoryTab({ studentId }) {
   );
 }
 
+function EditStudentModal({ studentId, initialData, onClose, onUpdated }) {
+  const [classes, setClasses] = useState([]);
+  const [activeSubTab, setActiveSubTab] = useState('academic');
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    name: initialData?.name || '',
+    email: initialData?.email || '',
+    phone: initialData?.phone || '',
+    roll_number: initialData?.roll_number || '',
+    admission_no: initialData?.admission_no || '',
+    class_id: initialData?.class_id || '',
+    session: initialData?.session || '2026-27',
+    admission_date: initialData?.admission_date || '',
+    gender: initialData?.gender || 'Male',
+    dob: initialData?.dob || '',
+    blood_group: initialData?.blood_group || '',
+    category: initialData?.category || 'General',
+    nationality: initialData?.nationality || 'Indian',
+    religion: initialData?.religion || '',
+    aadhar_no: initialData?.aadhar_no || '',
+    house: initialData?.house || '',
+    stream: initialData?.stream || '',
+    status: initialData?.status || 'ACTIVE',
+    address: initialData?.address || '',
+    father_name: initialData?.father_name || '',
+    father_occupation: initialData?.father_occupation || '',
+    mother_name: initialData?.mother_name || '',
+    mother_occupation: initialData?.mother_occupation || '',
+    parent_name: initialData?.parent_name || '',
+    parent_phone: initialData?.parent_phone || '',
+    parent_email: initialData?.parent_email || '',
+    parent_aadhar_no: initialData?.parent_aadhar_no || '',
+    guardian_name: initialData?.guardian_name || '',
+    guardian_relation: initialData?.guardian_relation || '',
+    guardian_phone: initialData?.guardian_phone || '',
+    is_first_school: Boolean(initialData?.is_first_school),
+    previous_school_name: initialData?.previous_school_name || '',
+    previous_class: initialData?.previous_class || '',
+    previous_tc_no: initialData?.previous_tc_no || '',
+    previous_tc_date: initialData?.previous_tc_date || '',
+    previous_reason: initialData?.previous_reason || '',
+  });
+
+  useEffect(() => {
+    api.get('/principal/classes').then(r => setClasses(r.data || [])).catch(() => {});
+  }, []);
+
+  const handleChange = (field, val) => {
+    setForm(prev => ({ ...prev, [field]: val }));
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    if (!form.name.trim()) {
+      toast.error('Student name is required');
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.put(`/principal/students/${studentId}`, form);
+      toast.success('Student profile updated successfully! 🎉');
+      if (onUpdated) onUpdated();
+      onClose();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to update student profile');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      className="modal-backdrop"
+      role="button"
+      tabIndex={0}
+      aria-label="Close modal"
+      onClick={e => e.target === e.currentTarget && onClose()}
+      onKeyDown={e => e.key === 'Escape' && onClose()}
+      style={{ zIndex: 1100 }}
+    >
+      <div className="modal" style={{ maxWidth: 840, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+        <div className="modal-header" style={{ borderBottom: '1px solid #e2e8f0', padding: '16px 24px' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 18, color: '#0f172a' }}>✏️ Edit Student Profile (Admin Access)</h3>
+            <p style={{ margin: '3px 0 0 0', fontSize: 12, color: '#64748b' }}>
+              Modify academic, personal, parent, or previous school records.
+            </p>
+          </div>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+
+        {/* Subtabs Header */}
+        <div style={{ display: 'flex', gap: 6, padding: '10px 24px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', overflowX: 'auto' }}>
+          {[
+            { id: 'academic', label: '🎓 Academic & Identity' },
+            { id: 'personal', label: '👤 Personal & Address' },
+            { id: 'parent',   label: '👨‍👩‍👧 Parents & Guardian' },
+            { id: 'previous', label: '📜 Previous School / TC' },
+          ].map(st => (
+            <button
+              key={st.id}
+              type="button"
+              onClick={() => setActiveSubTab(st.id)}
+              style={{
+                padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 700,
+                border: activeSubTab === st.id ? '1px solid #0176d3' : '1px solid #cbd5e1',
+                background: activeSubTab === st.id ? '#0176d3' : '#ffffff',
+                color: activeSubTab === st.id ? '#ffffff' : '#475569',
+                cursor: 'pointer', transition: 'all 0.15s'
+              }}
+            >
+              {st.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Form Body */}
+        <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+          <div className="modal-body" style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+            {activeSubTab === 'academic' && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div className="form-group">
+                  <label className="form-label">Full Name *</label>
+                  <input
+                    className="form-input"
+                    value={form.name}
+                    onChange={e => handleChange('name', e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Class & Section</label>
+                  <select
+                    className="form-input"
+                    value={form.class_id}
+                    onChange={e => handleChange('class_id', e.target.value)}
+                  >
+                    <option value="">-- Select Class --</option>
+                    {classes.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} {c.section ? `(${c.section})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Admission Number</label>
+                  <input
+                    className="form-input"
+                    value={form.admission_no}
+                    onChange={e => handleChange('admission_no', e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Roll Number</label>
+                  <input
+                    className="form-input"
+                    value={form.roll_number}
+                    onChange={e => handleChange('roll_number', e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Academic Session</label>
+                  <input
+                    className="form-input"
+                    value={form.session}
+                    onChange={e => handleChange('session', e.target.value)}
+                    placeholder="2026-27"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Admission Date</label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={form.admission_date}
+                    onChange={e => handleChange('admission_date', e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Student Status</label>
+                  <select
+                    className="form-input"
+                    value={form.status}
+                    onChange={e => handleChange('status', e.target.value)}
+                  >
+                    <option value="ACTIVE">ACTIVE</option>
+                    <option value="PROVISIONAL">PROVISIONAL</option>
+                    <option value="PROMOTED">PROMOTED</option>
+                    <option value="RETAINED">RETAINED</option>
+                    <option value="GRADUATED">GRADUATED</option>
+                    <option value="WITHDRAWN">WITHDRAWN</option>
+                    <option value="LEFT">LEFT</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">House</label>
+                  <input
+                    className="form-input"
+                    value={form.house}
+                    onChange={e => handleChange('house', e.target.value)}
+                    placeholder="e.g. Red, Blue, Tagore"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Stream (Senior Secondary)</label>
+                  <input
+                    className="form-input"
+                    value={form.stream}
+                    onChange={e => handleChange('stream', e.target.value)}
+                    placeholder="Science / Commerce / Arts"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Login Email (Student)</label>
+                  <input
+                    type="email"
+                    className="form-input"
+                    value={form.email}
+                    onChange={e => handleChange('email', e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+
+            {activeSubTab === 'personal' && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div className="form-group">
+                  <label className="form-label">Date of Birth</label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={form.dob}
+                    onChange={e => handleChange('dob', e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Gender</label>
+                  <select
+                    className="form-input"
+                    value={form.gender}
+                    onChange={e => handleChange('gender', e.target.value)}
+                  >
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Blood Group</label>
+                  <select
+                    className="form-input"
+                    value={form.blood_group}
+                    onChange={e => handleChange('blood_group', e.target.value)}
+                  >
+                    <option value="">-- Select --</option>
+                    <option value="A+">A+</option>
+                    <option value="A-">A-</option>
+                    <option value="B+">B+</option>
+                    <option value="B-">B-</option>
+                    <option value="AB+">AB+</option>
+                    <option value="AB-">AB-</option>
+                    <option value="O+">O+</option>
+                    <option value="O-">O-</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Category</label>
+                  <select
+                    className="form-input"
+                    value={form.category}
+                    onChange={e => handleChange('category', e.target.value)}
+                  >
+                    <option value="General">General</option>
+                    <option value="OBC">OBC</option>
+                    <option value="SC">SC</option>
+                    <option value="ST">ST</option>
+                    <option value="EWS">EWS</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Student Aadhar Card No</label>
+                  <input
+                    className="form-input"
+                    value={form.aadhar_no}
+                    onChange={e => handleChange('aadhar_no', e.target.value)}
+                    placeholder="12-digit Aadhar"
+                    maxLength={14}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Student Phone / Mobile</label>
+                  <input
+                    className="form-input"
+                    value={form.phone}
+                    onChange={e => handleChange('phone', e.target.value)}
+                    placeholder="10-digit mobile"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Religion</label>
+                  <input
+                    className="form-input"
+                    value={form.religion}
+                    onChange={e => handleChange('religion', e.target.value)}
+                    placeholder="Hindu, Muslim, Christian, Sikh, etc."
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Nationality</label>
+                  <input
+                    className="form-input"
+                    value={form.nationality}
+                    onChange={e => handleChange('nationality', e.target.value)}
+                    placeholder="Indian"
+                  />
+                </div>
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label className="form-label">Residential Address</label>
+                  <textarea
+                    rows={2}
+                    className="form-input"
+                    value={form.address}
+                    onChange={e => handleChange('address', e.target.value)}
+                    placeholder="Street, City, District, PIN Code"
+                  />
+                </div>
+              </div>
+            )}
+
+            {activeSubTab === 'parent' && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div className="form-group">
+                  <label className="form-label">Father's Name</label>
+                  <input
+                    className="form-input"
+                    value={form.father_name}
+                    onChange={e => handleChange('father_name', e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Father's Occupation</label>
+                  <input
+                    className="form-input"
+                    value={form.father_occupation}
+                    onChange={e => handleChange('father_occupation', e.target.value)}
+                    placeholder="e.g. Business, Govt Service, Farmer"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Mother's Name</label>
+                  <input
+                    className="form-input"
+                    value={form.mother_name}
+                    onChange={e => handleChange('mother_name', e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Mother's Occupation</label>
+                  <input
+                    className="form-input"
+                    value={form.mother_occupation}
+                    onChange={e => handleChange('mother_occupation', e.target.value)}
+                    placeholder="e.g. Homemaker, Teacher, Doctor"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Primary Parent Contact Name</label>
+                  <input
+                    className="form-input"
+                    value={form.parent_name}
+                    onChange={e => handleChange('parent_name', e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Parent Mobile / WhatsApp</label>
+                  <input
+                    className="form-input"
+                    value={form.parent_phone}
+                    onChange={e => handleChange('parent_phone', e.target.value)}
+                    placeholder="10-digit mobile"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Parent Email Address</label>
+                  <input
+                    type="email"
+                    className="form-input"
+                    value={form.parent_email}
+                    onChange={e => handleChange('parent_email', e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Parent Aadhar Card No</label>
+                  <input
+                    className="form-input"
+                    value={form.parent_aadhar_no}
+                    onChange={e => handleChange('parent_aadhar_no', e.target.value)}
+                    maxLength={14}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Guardian Name (Optional)</label>
+                  <input
+                    className="form-input"
+                    value={form.guardian_name}
+                    onChange={e => handleChange('guardian_name', e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Guardian Relation</label>
+                  <input
+                    className="form-input"
+                    value={form.guardian_relation}
+                    onChange={e => handleChange('guardian_relation', e.target.value)}
+                    placeholder="e.g. Uncle, Grandfather"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Guardian Phone</label>
+                  <input
+                    className="form-input"
+                    value={form.guardian_phone}
+                    onChange={e => handleChange('guardian_phone', e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+
+            {activeSubTab === 'previous' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ padding: '12px 16px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontWeight: 700, fontSize: 13, color: '#1e293b' }}>
+                    <input
+                      type="checkbox"
+                      checked={form.is_first_school}
+                      onChange={e => handleChange('is_first_school', e.target.checked)}
+                      style={{ width: 18, height: 18, accentColor: '#0176d3' }}
+                    />
+                    Is this the student's first school? (Pehla School / Nursery / LKG)
+                  </label>
+                </div>
+
+                {!form.is_first_school && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                    <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                      <label className="form-label">Previous School Name</label>
+                      <input
+                        className="form-input"
+                        value={form.previous_school_name}
+                        onChange={e => handleChange('previous_school_name', e.target.value)}
+                        placeholder="Name of previous school"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Previous Class Passed</label>
+                      <input
+                        className="form-input"
+                        value={form.previous_class}
+                        onChange={e => handleChange('previous_class', e.target.value)}
+                        placeholder="e.g. Class 5"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Transfer Certificate (TC) Number</label>
+                      <input
+                        className="form-input"
+                        value={form.previous_tc_no}
+                        onChange={e => handleChange('previous_tc_no', e.target.value)}
+                        placeholder="TC-12345"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">TC Date</label>
+                      <input
+                        type="date"
+                        className="form-input"
+                        value={form.previous_tc_date}
+                        onChange={e => handleChange('previous_tc_date', e.target.value)}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Reason for Transfer</label>
+                      <input
+                        className="form-input"
+                        value={form.previous_reason}
+                        onChange={e => handleChange('previous_reason', e.target.value)}
+                        placeholder="e.g. Father Transfer / Relocation"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="modal-footer" style={{ borderTop: '1px solid #e2e8f0', padding: '16px 24px', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <button type="button" className="btn btn-neutral" onClick={onClose} disabled={saving}>
+              Cancel
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? 'Saving Changes...' : '💾 Save Profile'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function StudentProfile() {
   const { id }     = useParams();
   const navigate   = useNavigate();
   const [searchParams] = useSearchParams();
+  const { user }   = useAuth();
   const [data,     setData]     = useState(null);
   const [tab,      setTab]      = useState(searchParams.get('tab') || 'overview');
   const [loading,  setLoading]  = useState(true);
   const [dlLoading,setDlLoading]= useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const isAdmin = ['PRINCIPAL', 'ADMIN', 'SUPER_ADMIN'].includes(user?.role);
 
   const [examMarks, setExamMarks] = useState([]);
 
@@ -838,7 +1352,7 @@ export default function StudentProfile() {
         <div className="page-body">
 
           {/* ── Header ── */}
-          <div style={{ display:'flex', alignItems:'center', gap:16, marginBottom:24 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:16, marginBottom:20, flexWrap:'wrap' }}>
             <button
               onClick={() => navigate(-1)}
               style={{
@@ -858,22 +1372,45 @@ export default function StudentProfile() {
                   }}>{info.name?.charAt(0).toUpperCase()}</div>
               }
             </div>
-            <div style={{ flex:1 }}>
-              <h2 style={{ margin:0, fontSize:20, fontWeight:800, color:'var(--neutral-9)' }}>
-                {info.name}
-              </h2>
+            <div style={{ flex:1, minWidth:220 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <h2 style={{ margin:0, fontSize:20, fontWeight:800, color:'var(--neutral-9)' }}>
+                  {info.name}
+                </h2>
+                {isAdmin && (
+                  <button
+                    onClick={() => setShowEditModal(true)}
+                    style={{
+                      background:'#0176d3', color:'#fff', border:'none',
+                      borderRadius:6, padding:'5px 12px', fontSize:12,
+                      fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', gap:4,
+                      boxShadow:'0 1px 3px rgba(1,118,211,0.3)'
+                    }}>
+                    ✏️ Edit Profile
+                  </button>
+                )}
+              </div>
               <div style={{ fontSize:12, color:'var(--neutral-5)', marginTop:2 }}>
                 {info.class_name} &nbsp;·&nbsp; Roll: {info.roll_number || '—'} &nbsp;·&nbsp; Adm: {info.admission_no || '—'}
+                {info.status && (
+                  <span style={{
+                    marginLeft: 8, padding: '2px 8px', borderRadius: 12, fontSize: 10, fontWeight: 700,
+                    background: info.status === 'ACTIVE' ? '#dcfce7' : '#fef3c7',
+                    color: info.status === 'ACTIVE' ? '#16a34a' : '#d97706'
+                  }}>
+                    {info.status}
+                  </span>
+                )}
               </div>
             </div>
             {/* Quick status pills */}
-            <div style={{ display:'flex', gap:10 }}>
+            <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
               <div style={{
-                background: (feeData.month_status === 'PAID' || feeData.month_status === 'NO_RECORD') ? '#dcfce7' : '#fee2e2',
-                color:      (feeData.month_status === 'PAID' || feeData.month_status === 'NO_RECORD') ? '#16a34a' : '#dc2626',
+                background: feeData.pending > 0 ? '#fee2e2' : (feeData.month_status === 'PAID' ? '#dcfce7' : '#f1f5f9'),
+                color:      feeData.pending > 0 ? '#dc2626' : (feeData.month_status === 'PAID' ? '#16a34a' : '#64748b'),
                 padding:'6px 14px', borderRadius:20, fontSize:12, fontWeight:700,
               }}>
-                💰 {feeData.month_status === 'PAID' ? 'Fees Paid' : feeData.month_status === 'NO_RECORD' ? 'No Dues' : 'Fees Pending'}
+                💰 {feeData.pending > 0 ? `Fees Pending: ₹${fmt(feeData.pending)}` : feeData.month_status === 'PAID' ? 'Fees Paid' : 'No Dues'}
               </div>
               <div style={{
                 background: att.percentage >= 75 ? '#dcfce7' : '#fee2e2',
@@ -884,6 +1421,51 @@ export default function StudentProfile() {
               </div>
             </div>
           </div>
+
+          {/* ── Fee Dues & Legacy Migration Reconciliation Banner ── */}
+          {(Number(feeData.pending || 0) > 0 || Number(feeData.migrated_dues || 0) > 0) && (
+            <div style={{
+              background: 'linear-gradient(135deg, #f8fafc 0%, #ffffff 100%)',
+              border: '1px solid #cbd5e1',
+              borderLeft: '5px solid #0176d3',
+              borderRadius: 8,
+              padding: '12px 18px',
+              marginBottom: 20,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: 12,
+              boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+            }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  📊 Fee Reconciliation (Migrated vs Current Academic Records)
+                </div>
+                <div style={{ fontSize: 13, color: '#1e293b', marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span>
+                    Legacy Migrated Dues: <strong style={{ color: '#d97706' }}>₹{fmt(feeData.migrated_dues || 0)}</strong>
+                  </span>
+                  <span style={{ color: '#94a3b8' }}>+</span>
+                  <span>
+                    Current Academic Dues: <strong style={{ color: '#0176d3' }}>₹{fmt(feeData.current_dues || 0)}</strong>
+                  </span>
+                  <span style={{ color: '#94a3b8' }}>=</span>
+                  <span>
+                    Total Outstanding: <strong style={{ color: '#dc2626' }}>₹{fmt(feeData.pending || 0)}</strong>
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setTab('fees')}
+                style={{
+                  background: '#f1f5f9', color: '#0176d3', border: '1px solid #cbd5e1',
+                  borderRadius: 6, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer'
+                }}>
+                View Detailed Fee Ledger →
+              </button>
+            </div>
+          )}
 
           {/* ── Tabs ── */}
           <div style={{ display:'flex', borderBottom:'2px solid var(--neutral-2)', marginBottom:20 }}>
@@ -909,19 +1491,32 @@ export default function StudentProfile() {
 
               {/* Personal Info */}
               <div className="card" style={{ margin:0 }}>
-                <div className="card-header"><h4>👤 Personal Details</h4></div>
+                <div className="card-header" style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <h4>👤 Personal Details</h4>
+                  {isAdmin && (
+                    <button onClick={() => setShowEditModal(true)} style={{ background:'none', border:'none', color:'#0176d3', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                      Edit ✏️
+                    </button>
+                  )}
+                </div>
                 <div className="card-body">
                   {[
                     ['Full Name',     info.name],
                     ['Roll Number',   info.roll_number  || '—'],
                     ['Admission No',  info.admission_no || '—'],
                     ['Class',         info.class_name   || '—'],
+                    ['Session',       info.session      || '—'],
+                    ['Admission Date',info.admission_date || '—'],
                     ['Gender',        info.gender       || '—'],
                     ['Date of Birth', info.dob          || '—'],
-                    ['Session',       info.session      || '—'],
+                    ['Blood Group',   info.blood_group  || '—'],
+                    ['Category',      info.category     || 'General'],
+                    ['Aadhar No',     info.aadhar_no    || '—'],
+                    ['Religion',      info.religion     || '—'],
+                    ['Nationality',   info.nationality  || 'Indian'],
+                    ['House',         info.house        || '—'],
+                    ['Stream',        info.stream       || '—'],
                     ['Address',       info.address      || '—'],
-                    ['Father Name',   info.father_name  || '—'],
-                    ['Mother Name',   info.mother_name  || '—'],
                   ].map(([label, value]) => (
                     <div key={label} style={{
                       display:'flex', justifyContent:'space-between',
@@ -938,23 +1533,70 @@ export default function StudentProfile() {
               {/* Parent + Quick Stats */}
               <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
                 <div className="card" style={{ margin:0 }}>
-                  <div className="card-header"><h4>👨‍👩‍👦 Parent / Guardian</h4></div>
+                  <div className="card-header" style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                    <h4>👨‍👩‍👦 Parent / Guardian</h4>
+                    {isAdmin && (
+                      <button onClick={() => setShowEditModal(true)} style={{ background:'none', border:'none', color:'#0176d3', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                        Edit ✏️
+                      </button>
+                    )}
+                  </div>
                   <div className="card-body">
                     {[
-                      ['Name',  info.parent_name  || '—'],
-                      ['Phone', info.parent_phone || '—'],
-                      ['Email', info.parent_email || '—'],
+                      ['Primary Contact', info.parent_name  || '—'],
+                      ['Parent Phone',    info.parent_phone || '—'],
+                      ['Parent Email',    info.parent_email || '—'],
+                      ['Parent Aadhar',   info.parent_aadhar_no || '—'],
+                      ['Father Name',     info.father_name  || '—'],
+                      ['Father Occupation', info.father_occupation || '—'],
+                      ['Mother Name',     info.mother_name  || '—'],
+                      ['Mother Occupation', info.mother_occupation || '—'],
+                      ['Guardian Name',   info.guardian_name || '—'],
+                      ['Guardian Relation', info.guardian_relation || '—'],
+                      ['Guardian Phone',  info.guardian_phone || '—'],
                     ].map(([label, value]) => (
                       <div key={label} style={{
                         display:'flex', justifyContent:'space-between',
                         padding:'8px 0', borderBottom:'1px solid var(--neutral-1)', fontSize:13,
                       }}>
                         <span style={{ color:'var(--neutral-6)' }}>{label}</span>
-                        <span style={{ fontWeight:600 }}>{value}</span>
+                        <span style={{ fontWeight:600, textAlign:'right' }}>{value}</span>
                       </div>
                     ))}
                   </div>
                 </div>
+
+                {/* Previous Schooling / Transfer Certificate Details */}
+                {(info.previous_school_name || info.previous_tc_no || info.is_first_school) && (
+                  <div className="card" style={{ margin:0 }}>
+                    <div className="card-header" style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                      <h4>📜 Previous School & TC Records</h4>
+                    </div>
+                    <div className="card-body">
+                      {info.is_first_school ? (
+                        <div style={{ fontSize:13, color:'#16a34a', fontWeight:600 }}>
+                          ✅ First School Admission (Pehla School / No Previous Records)
+                        </div>
+                      ) : (
+                        [
+                          ['Previous School', info.previous_school_name || '—'],
+                          ['Previous Class',  info.previous_class || '—'],
+                          ['TC Number',       info.previous_tc_no || '—'],
+                          ['TC Date',         info.previous_tc_date || '—'],
+                          ['Leaving Reason',  info.previous_reason || '—'],
+                        ].map(([label, value]) => (
+                          <div key={label} style={{
+                            display:'flex', justifyContent:'space-between',
+                            padding:'7px 0', borderBottom:'1px solid var(--neutral-1)', fontSize:13,
+                          }}>
+                            <span style={{ color:'var(--neutral-6)' }}>{label}</span>
+                            <span style={{ fontWeight:600, textAlign:'right' }}>{value}</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Quick stats */}
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
@@ -962,11 +1604,11 @@ export default function StudentProfile() {
                     { icon:'📅', label:'Attendance', value:`${att.percentage||0}%`,
                       sub:`${att.present||0} present / ${att.absent||0} absent`,
                       color: att.percentage>=75 ? '#16a34a' : '#dc2626' },
-                    { icon:'💰', label:'Fees This Month', value: feeData.month_status || 'N/A',
-                      sub:`Paid: ₹${fmt(feeData.month_paid)} / Due: ₹${fmt(feeData.month_due)}`,
-                      color: (feeData.month_status==='PAID' || feeData.month_status==='NO_RECORD') ? '#16a34a' : '#dc2626' },
+                    { icon:'💰', label:'Pending Dues', value: `₹${fmt(feeData.pending)}`,
+                      sub: Number(feeData.migrated_dues || 0) > 0 ? `Migrated: ₹${fmt(feeData.migrated_dues)}` : 'All clear',
+                      color: Number(feeData.pending) > 0 ? '#dc2626' : '#16a34a' },
                     { icon:'💸', label:'Total Paid', value: `₹${fmt(feeData.total_paid)}`,
-                      sub:`Pending: ₹${fmt(feeData.pending)}`, color:'#0176d3' },
+                      sub:`Total Due: ₹${fmt(feeData.total_due)}`, color:'#0176d3' },
                     { icon:'📝', label:'Exams',
                       value: `${exams?.length || 0} exams`,
                       sub: exams?.length ? `Avg: ${Math.round(exams.reduce((a,e)=>a+e.avg_pct,0)/exams.length)}%` : 'No data',
@@ -1083,6 +1725,52 @@ export default function StudentProfile() {
           {/* ══ FEES ══ */}
           {tab === 'fees' && (
             <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+
+              {/* Fee Reconciliation Banner */}
+              <div style={{
+                background: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderLeft: '4px solid #0176d3',
+                borderRadius: 10,
+                padding: '16px 20px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 16,
+                boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+              }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    ⚖️ Fee Ledger Reconciliation
+                  </div>
+                  <div style={{ fontSize: 14, color: '#1e293b', marginTop: 4 }}>
+                    Legacy Migrated Opening Dues: <strong style={{ color: '#d97706' }}>₹{fmt(feeData.migrated_dues || 0)}</strong>
+                    <span style={{ margin: '0 8px', color: '#94a3b8' }}>+</span>
+                    Current Academic Charges: <strong style={{ color: '#0176d3' }}>₹{fmt(feeData.current_dues || 0)}</strong>
+                    <span style={{ margin: '0 8px', color: '#94a3b8' }}>=</span>
+                    Total Outstanding: <strong style={{ color: '#dc2626' }}>₹{fmt(feeData.pending || 0)}</strong>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{
+                    padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700,
+                    background: Number(feeData.migrated_dues || 0) > 0 ? '#fffbeb' : '#f1f5f9',
+                    color: Number(feeData.migrated_dues || 0) > 0 ? '#b45309' : '#64748b',
+                    border: '1px solid #fde68a'
+                  }}>
+                    📂 Migrated Dues: ₹{fmt(feeData.migrated_dues || 0)}
+                  </span>
+                  <span style={{
+                    padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700,
+                    background: Number(feeData.current_dues || 0) > 0 ? '#eff6ff' : '#f1f5f9',
+                    color: Number(feeData.current_dues || 0) > 0 ? '#1d4ed8' : '#64748b',
+                    border: '1px solid #bfdbfe'
+                  }}>
+                    🏫 Academic Dues: ₹{fmt(feeData.current_dues || 0)}
+                  </span>
+                </div>
+              </div>
 
               {/* Summary */}
               <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14 }}>
@@ -1489,6 +2177,20 @@ export default function StudentProfile() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Edit Student Modal (Admin / Principal) ── */}
+      {showEditModal && (
+        <EditStudentModal
+          studentId={id}
+          initialData={info}
+          onClose={() => setShowEditModal(false)}
+          onUpdated={() => {
+            api.get(`/principal/students/${id}/profile`)
+              .then(r => setData(r.data))
+              .catch(() => {});
+          }}
+        />
       )}
     </div>
   );

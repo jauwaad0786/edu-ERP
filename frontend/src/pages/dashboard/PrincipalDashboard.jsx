@@ -631,6 +631,11 @@ export default function PrincipalDashboard() {
               <div style={{ fontSize: '26px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a', margin: '4px 0 2px' }}>
                 {fmtK(activeFeePending)}
               </div>
+              {Number(feeIntel?.migrated_opening_dues || 0) > 0 ? (
+                <div style={{ fontSize: '11px', color: '#b45309', fontWeight: 700, margin: '2px 0 4px' }}>
+                  Migrated: ₹{fmtK(feeIntel.migrated_opening_dues)} · Current: ₹{fmtK(feeIntel.current_academic_dues || 0)}
+                </div>
+              ) : null}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '12px', color: '#94a3b8' }}>Outstanding</span>
                 <span style={{ fontSize: '11px', fontWeight: 800, color: '#ef4444', background: '#fef2f2', padding: '2px 6px', borderRadius: '6px' }}>
@@ -1030,6 +1035,11 @@ export default function PrincipalDashboard() {
                 <div style={{ fontSize: '24px', fontWeight: 900, color: '#dc2626', margin: '4px 0 2px' }}>
                   ₹{fmt(activeFeePending)}
                 </div>
+                {Number(feeIntel?.migrated_opening_dues || 0) > 0 ? (
+                  <div style={{ fontSize: '11px', color: '#b45309', fontWeight: 700, marginBottom: 4 }}>
+                    📂 Migrated: ₹{fmt(feeIntel.migrated_opening_dues)} · 🏫 Current: ₹{fmt(feeIntel.current_academic_dues || 0)}
+                  </div>
+                ) : null}
                 <div style={{ fontSize: '11.5px', color: '#dc2626', fontWeight: 600 }}>
                   Pending from students • Click to collect
                 </div>

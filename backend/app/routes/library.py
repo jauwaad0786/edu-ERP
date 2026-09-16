@@ -481,29 +481,72 @@ def list_members():
 @role_required(*LIBRARY_ROLES)
 def search_eligible_users():
     """
-    Search Students/Teachers who are NOT yet library members, to enroll them.
+    Search Students/Teachers who are eligible for library membership.
+    Supports class_id filter, name/roll/admission search.
     """
-    sid    = _school_id()
-    search = (request.args.get('search') or '').strip()
-    u_type = request.args.get('type', 'STUDENT')
+    sid      = _school_id()
+    search   = (request.args.get('search') or '').strip()
+    class_id = request.args.get('class_id')
+    u_type   = request.args.get('type', 'STUDENT')
 
-    if not search:
+    if not search and not class_id and u_type == 'STUDENT':
         return jsonify([]), 200
-
-    role_enum = UserRole.STUDENT if u_type == 'STUDENT' else UserRole.TEACHER
-    like = f'%{search}%'
 
     existing_user_ids = {m.user_id for m in LibraryMember.query.filter_by(school_id=sid).all()}
 
-    users = User.query.filter(
-        User.school_id == sid, User.role == role_enum,
-        db.or_(User.name.ilike(like), User.email.ilike(like))
-    ).limit(20).all()
+    if u_type == 'STUDENT':
+        q = db.session.query(User, Student, Class)\
+            .join(Student, Student.user_id == User.id)\
+            .outerjoin(Class, Student.class_id == Class.id)\
+            .filter(
+                Student.school_id == sid,
+                Student.is_deleted == False,
+                User.role == UserRole.STUDENT
+            )
+        if class_id:
+            q = q.filter(Student.class_id == class_id)
+        if search:
+            like = f'%{search}%'
+            q = q.filter(db.or_(
+                User.name.ilike(like),
+                User.email.ilike(like),
+                Student.roll_number.ilike(like),
+                Student.admission_no.ilike(like)
+            ))
 
-    return jsonify([
-        {'user_id': u.id, 'name': u.name, 'email': u.email, 'is_member': u.id in existing_user_ids}
-        for u in users
-    ]), 200
+        rows = q.order_by(Student.roll_number.asc(), User.name.asc()).limit(100).all()
+        return jsonify([
+            {
+                'user_id':      u.id,
+                'student_id':   s.id,
+                'name':         u.name,
+                'email':        u.email,
+                'roll_number':  s.roll_number or '—',
+                'admission_no': s.admission_no or '—',
+                'class_name':   f"{c.name} - {c.section}" if c else '—',
+                'is_member':    u.id in existing_user_ids
+            }
+            for u, s, c in rows
+        ]), 200
+    else:
+        # Teachers
+        q = User.query.filter(User.school_id == sid, User.role == UserRole.TEACHER)
+        if search:
+            like = f'%{search}%'
+            q = q.filter(db.or_(User.name.ilike(like), User.email.ilike(like)))
+        users = q.order_by(User.name.asc()).limit(50).all()
+        return jsonify([
+            {
+                'user_id':      u.id,
+                'name':         u.name,
+                'email':        u.email,
+                'roll_number':  '',
+                'admission_no': '',
+                'class_name':   'Teacher',
+                'is_member':    u.id in existing_user_ids
+            }
+            for u in users
+        ]), 200
 
 
 @library_bp.route('/members', methods=['POST'])
