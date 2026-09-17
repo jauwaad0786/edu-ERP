@@ -10,11 +10,12 @@ from sqlalchemy import func, or_, and_
 from app import db
 from app.models.fee_finance import (
     FeeHead, FeeStructureV2, FeeStructureItemV2,
-    FeeBill, FeeBillItem, FeePayment, FeePaymentAllocation,
+    FeeBill, FeeBillItem, StudentLedger, FeePayment, FeePaymentAllocation,
     BillStatus, PaymentStatus
 )
 from app.models.financial import FeeRecord, FeeGenerationBatch
 from app.models.academic import Student, Class
+from app.models.user import User
 from app.services.fee_ledger_service import ensure_default_fee_heads
 
 
@@ -34,6 +35,8 @@ def _parse_month(month_str=None):
 def _normalize_service_code(val):
     """Maps varied service labels and types to canonical service codes."""
     v = (val or '').strip().upper()
+    if any(k in v for k in ('OPENING', 'PREVIOUS', 'MIGRAT', 'PRIOR', 'BACKLOG', 'LEGACY')):
+        return 'OPENING_BALANCE'
     if any(k in v for k in ('TUITION', 'ACADEMIC', 'CLASS', 'SCHOOL')):
         return 'TUITION'
     if any(k in v for k in ('TRANSPORT', 'BUS', 'VAN', 'CAB', 'ROUTE')):
@@ -766,11 +769,11 @@ def get_services_collection_matrix(
         stu_q = stu_q.filter_by(class_id=int(class_id))
     if search:
         s = f"%{search.strip()}%"
-        stu_q = stu_q.join(Student.user).filter(
+        stu_q = stu_q.join(User, Student.user_id == User.id).filter(
             or_(
                 Student.admission_no.ilike(s),
                 Student.roll_number.ilike(s),
-                db.func.lower(db.text("users.name")).ilike(s.lower())
+                User.name.ilike(s)
             )
         )
     students = stu_q.order_by(Student.class_id.asc(), Student.id.asc()).all()
@@ -784,28 +787,97 @@ def get_services_collection_matrix(
     st_ids = [s.id for s in students]
 
     # 3. Fetch FeeBills for these students this month
-    bills = FeeBill.query.filter(
+    bill_q = FeeBill.query.filter(
         FeeBill.school_id == school_id,
         FeeBill.student_id.in_(st_ids),
         FeeBill.bill_month == month_code,
         FeeBill.status != BillStatus.CANCELLED.value
-    ).all()
+    )
+    if session:
+        bill_q = bill_q.filter(or_(FeeBill.session == session, FeeBill.session.is_(None)))
+    bills = bill_q.all()
 
     bill_map = {b.student_id: b for b in bills}
 
-    # 4. Fetch FeeRecords (support legacy records if bills not present)
-    records = FeeRecord.query.filter(
+    # 4. Fetch FeeRecords for these students for this month
+    rec_q = FeeRecord.query.filter(
         FeeRecord.school_id == school_id,
         FeeRecord.student_id.in_(st_ids),
         or_(FeeRecord.month == month_code, FeeRecord.month == month_label),
         FeeRecord.status.notin_(['DRAFT', 'CANCELLED'])
-    ).all()
+    )
+    if session:
+        rec_q = rec_q.filter(or_(FeeRecord.session == session, FeeRecord.session.is_(None)))
+    records = rec_q.all()
 
     rec_by_student = {}
     for r in records:
         rec_by_student.setdefault(r.student_id, []).append(r)
 
-    # 5. Build student collection records
+    # 5. Fetch all Opening Balance & Previous Dues for these students
+    # (Opening balance / legacy dues persist across months until settled)
+    ob_q = FeeRecord.query.filter(
+        FeeRecord.school_id == school_id,
+        FeeRecord.student_id.in_(st_ids),
+        or_(
+            FeeRecord.source == 'OPENING_BALANCE',
+            FeeRecord.fee_type == 'OPENING_BALANCE',
+            FeeRecord.fee_type.ilike('%opening%'),
+            FeeRecord.fee_type.ilike('%previous%'),
+            FeeRecord.coverage_label.ilike('%opening%'),
+            FeeRecord.coverage_label.ilike('%migrat%')
+        ),
+        FeeRecord.status.notin_(['DRAFT', 'CANCELLED'])
+    )
+    if session:
+        ob_q = ob_q.filter(or_(FeeRecord.session == session, FeeRecord.session.is_(None)))
+    ob_records = ob_q.all()
+
+    ob_by_student = {}
+    for r in ob_records:
+        ob_by_student.setdefault(r.student_id, []).append(r)
+
+    # Also check bill items for OPENING_BALANCE across any bill
+    ob_fh_ids = [fh.id for fh in fee_heads if fh.code == 'OPENING_BALANCE']
+    ob_bi_q = FeeBillItem.query.join(FeeBill).filter(
+        FeeBill.school_id == school_id,
+        FeeBill.student_id.in_(st_ids),
+        FeeBill.status != BillStatus.CANCELLED.value,
+        or_(
+            FeeBillItem.department == 'OPENING_BALANCE',
+            FeeBillItem.coverage_label.ilike('%opening%'),
+            FeeBillItem.fee_head_id.in_(ob_fh_ids) if ob_fh_ids else False
+        )
+    )
+    if session:
+        ob_bi_q = ob_bi_q.filter(or_(FeeBill.session == session, FeeBill.session.is_(None)))
+    ob_bill_items = ob_bi_q.all()
+
+    ob_bi_by_student = {}
+    for bi in ob_bill_items:
+        ob_bi_by_student.setdefault(bi.bill.student_id, []).append(bi)
+
+    # Also check student ledgers for opening balance debits
+    ob_lg_q = StudentLedger.query.filter(
+        StudentLedger.school_id == school_id,
+        StudentLedger.student_id.in_(st_ids),
+        StudentLedger.entry_type == 'DEBIT',
+        or_(
+            StudentLedger.period_label == 'Opening Balance',
+            StudentLedger.reference_no.ilike('OB-%'),
+            StudentLedger.description.ilike('%opening%'),
+            StudentLedger.description.ilike('%legacy%')
+        )
+    )
+    if session:
+        ob_lg_q = ob_lg_q.filter(or_(StudentLedger.session == session, StudentLedger.session.is_(None)))
+    ob_ledgers = ob_lg_q.all()
+
+    ob_ledg_by_student = {}
+    for lg in ob_ledgers:
+        ob_ledg_by_student.setdefault(lg.student_id, []).append(lg)
+
+    # 6. Build student collection records
     student_records = []
     fully_paid_count = 0
     partial_count = 0
@@ -826,6 +898,17 @@ def get_services_collection_matrix(
         }
         for fh in fee_heads
     }
+    if 'OPENING_BALANCE' not in service_totals:
+        service_totals['OPENING_BALANCE'] = {
+            'code': 'OPENING_BALANCE',
+            'name': 'Previous Dues / Opening Balance',
+            'category': 'OTHER',
+            'billed': 0.0,
+            'collected': 0.0,
+            'pending': 0.0,
+            'paid_students': 0,
+            'pending_students': 0
+        }
 
     class_totals = {}
 
@@ -842,6 +925,8 @@ def get_services_collection_matrix(
         s_total_due = 0.0
         s_total_paid = 0.0
         s_balance = 0.0
+        candidate_bill_id = b.id if b else None
+        candidate_bill_no = b.bill_no if b else None
 
         if b and b.items:
             s_total_due = float(b.total_payable or 0.0)
@@ -850,14 +935,14 @@ def get_services_collection_matrix(
 
             for it in b.items:
                 head = fh_map.get(it.fee_head_id)
-                h_code = head.code if head else (it.department or 'TUITION')
+                h_code = head.code if head else _normalize_service_code(it.department or 'TUITION')
                 net = float(it.net_amount or 0.0)
                 paid = float(it.paid_amount or 0.0)
                 bal = float(it.balance_amount or 0.0)
 
                 st_code = 'PAID' if bal <= 0 and net > 0 else ('PARTIAL' if paid > 0 else 'PENDING')
                 student_services[h_code] = {
-                    'name': head.name if head else h_code,
+                    'name': head.name if head else h_code.replace('_', ' ').title(),
                     'code': h_code,
                     'billed': round(net, 2),
                     'paid': round(paid, 2),
@@ -876,7 +961,8 @@ def get_services_collection_matrix(
 
         elif s_recs:
             for r in s_recs:
-                h_code = (r.fee_type or r.source or 'TUITION').upper()
+                norm_k = _normalize_service_code(r.source or r.fee_type)
+                h_code = norm_k if norm_k in service_totals else (r.fee_type or r.source or 'TUITION').upper()
                 due = float(r.effective_due() if hasattr(r, 'effective_due') else (r.amount_due or 0.0))
                 paid = float(r.amount_paid or 0.0)
                 bal = max(0.0, due - paid)
@@ -903,6 +989,72 @@ def get_services_collection_matrix(
                         service_totals[h_code]['paid_students'] += 1
                     elif bal > 0:
                         service_totals[h_code]['pending_students'] += 1
+
+        # Check if student has Opening Balance / Previous Dues not yet in student_services
+        if 'OPENING_BALANCE' not in student_services:
+            s_ob_recs = ob_by_student.get(s.id, [])
+            s_ob_bis = ob_bi_by_student.get(s.id, [])
+            s_ob_lgs = ob_ledg_by_student.get(s.id, [])
+
+            ob_billed = 0.0
+            ob_collected = 0.0
+            ob_bal = 0.0
+
+            if s_ob_recs:
+                for obr in s_ob_recs:
+                    d = float(obr.effective_due() if hasattr(obr, 'effective_due') else (obr.amount_due or 0.0))
+                    p = float(obr.amount_paid or 0.0)
+                    ob_billed += d
+                    ob_collected += p
+                    ob_bal += max(0.0, d - p)
+            elif s_ob_bis:
+                for bi in s_ob_bis:
+                    d = float(bi.net_amount or 0.0)
+                    p = float(bi.paid_amount or 0.0)
+                    ob_billed += d
+                    ob_collected += p
+                    ob_bal += float(bi.balance_amount or max(0.0, d - p))
+                    if not candidate_bill_id and bi.bill:
+                        candidate_bill_id = bi.bill.id
+                        candidate_bill_no = bi.bill.bill_no
+            elif s_ob_lgs:
+                for lg in s_ob_lgs:
+                    d = float(lg.amount or 0.0)
+                    ob_billed += d
+                    ob_bal += d
+
+            # Also check if b has previous_dues and b was used
+            prev_dues = float(getattr(b, 'previous_dues', 0.0) or 0.0) if b else 0.0
+            if prev_dues > 0 and ob_billed == 0.0:
+                ob_billed = prev_dues
+                ob_bal = prev_dues
+
+            if ob_billed > 0 or ob_collected > 0:
+                # If b was present and already counted b.previous_dues in b.total_payable,
+                # avoid double counting in s_total_due / s_balance
+                if not (b and prev_dues > 0 and abs(prev_dues - ob_billed) < 0.01):
+                    s_total_due += ob_billed
+                    s_total_paid += ob_collected
+                    s_balance += ob_bal
+
+                st_code = 'PAID' if ob_bal <= 0 and ob_billed > 0 else ('PARTIAL' if ob_collected > 0 else 'PENDING')
+                student_services['OPENING_BALANCE'] = {
+                    'name': 'Previous Dues / Opening Balance',
+                    'code': 'OPENING_BALANCE',
+                    'billed': round(ob_billed, 2),
+                    'paid': round(ob_collected, 2),
+                    'balance': round(ob_bal, 2),
+                    'status': st_code,
+                }
+
+                if 'OPENING_BALANCE' in service_totals:
+                    service_totals['OPENING_BALANCE']['billed'] += ob_billed
+                    service_totals['OPENING_BALANCE']['collected'] += ob_collected
+                    service_totals['OPENING_BALANCE']['pending'] += ob_bal
+                    if ob_bal <= 0 and ob_billed > 0:
+                        service_totals['OPENING_BALANCE']['paid_students'] += 1
+                    elif ob_bal > 0:
+                        service_totals['OPENING_BALANCE']['pending_students'] += 1
 
         # Evaluate student status
         if s_total_due == 0.0:
@@ -951,8 +1103,8 @@ def get_services_collection_matrix(
             'balance_due':  round(s_balance, 2),
             'status':       st_overall,
             'services':     student_services,
-            'bill_no':      b.bill_no if b else None,
-            'bill_id':      b.id if b else None,
+            'bill_no':      candidate_bill_no,
+            'bill_id':      candidate_bill_id,
         })
 
     # Prepare service breakdown array for graph
