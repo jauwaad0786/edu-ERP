@@ -12,23 +12,46 @@ from app.routes.marks import _grade
 student_bp = Blueprint('student', __name__)
 
 
+def _get_effective_student(user, student_id=None):
+    if not user:
+        return None
+    role_str = getattr(user.role, 'value', str(user.role))
+    if role_str == 'PARENT':
+        if student_id:
+            student = Student.query.filter_by(id=student_id, school_id=user.school_id).first()
+            if not student or (student.parent_email != user.email and student.parent_phone != user.phone and student.user_id != user.id):
+                return None
+            return student
+        return Student.query.filter(
+            Student.school_id == user.school_id,
+            (
+                (Student.parent_email == user.email) |
+                (Student.parent_phone == user.phone) |
+                (Student.user_id == user.id)
+            )
+        ).first()
+    return Student.query.filter_by(user_id=user.id, school_id=user.school_id).first()
+
+
 @student_bp.route('/profile', methods=['GET'])
 @role_required('STUDENT', 'PARENT')
 def my_profile():
-    user    = get_current_user()
-    student = Student.query.filter_by(user_id=user.id).first()
+    user = get_current_user()
+    student_id = request.args.get('student_id', type=int)
+    student = _get_effective_student(user, student_id)
     if not student:
         return jsonify({'error': 'Student profile not found'}), 404
     return jsonify(student.to_dict()), 200
 
 
 @student_bp.route('/attendance', methods=['GET'])
-@role_required('STUDENT')
+@role_required('STUDENT', 'PARENT')
 def my_attendance():
-    user    = get_current_user()
-    student = Student.query.filter_by(user_id=user.id).first()
+    user = get_current_user()
+    student_id = request.args.get('student_id', type=int)
+    student = _get_effective_student(user, student_id)
     if not student:
-        return jsonify({'error': 'Not found'}), 404
+        return jsonify({'error': 'Student attendance not found'}), 404
     records = Attendance.query.filter_by(student_id=student.id).order_by(Attendance.date.desc()).all()
     total   = len(records)
     present = sum(1 for r in records if r.status == 'PRESENT')

@@ -301,7 +301,7 @@ const ROLE_MENUS = {
       group: 'My Work',
       items: [
         { icon: 'ti-user-circle',     label: 'My HR & Self-Service', path: '/my-hr' },
-        { icon: 'ti-map-pin',         label: 'My GPS Attendance',    path: '/staff/attendance' },
+        { icon: 'ti-map-pin',         label: 'My GPS Attendance',    path: '/my-hr' },
         { icon: 'ti-clipboard-check', label: 'Student Attendance',   path: '/attendance' },
         { icon: 'ti-pencil',          label: 'Exam Marks Entry',     path: '/marks' },
         { icon: 'ti-checklist',       label: 'Result Submission',    path: '/mark-entry' },
@@ -315,8 +315,8 @@ const ROLE_MENUS = {
       items: [
         { icon: 'ti-ticket',       label: 'My Tickets',    path: '/support/tickets' },
         { icon: 'ti-speakerphone', label: 'Announcements', path: '/support/announcements' },
-        { icon: 'ti-message-2',    label: 'Messages',      path: '/support/chat' },
-        { icon: 'ti-help-circle',  label: 'Help Center',   path: '/support/help' },
+        { icon: 'ti-message-2',    label: 'Messages',      path: '/messages' },
+        { icon: 'ti-help-circle',  label: 'Help Center',   path: '/help-center' },
       ],
     },
     {
@@ -347,8 +347,8 @@ const ROLE_MENUS = {
       group: 'Customer Service',
       items: [
         { icon: 'ti-ticket',       label: 'My Tickets',    path: '/support/tickets' },
-        { icon: 'ti-message-2',    label: 'Messages',      path: '/support/chat' },
-        { icon: 'ti-help-circle',  label: 'Help Center',   path: '/support/help' },
+        { icon: 'ti-message-2',    label: 'Messages',      path: '/messages' },
+        { icon: 'ti-help-circle',  label: 'Help Center',   path: '/help-center' },
       ],
     },
   ],
@@ -380,8 +380,8 @@ const ROLE_MENUS = {
       group: 'Customer Service',
       items: [
         { icon: 'ti-ticket',      label: 'My Tickets', path: '/support/tickets' },
-        { icon: 'ti-message-2',   label: 'Messages',   path: '/support/chat' },
-        { icon: 'ti-help-circle', label: 'Help Center',path: '/support/help' },
+        { icon: 'ti-message-2',   label: 'Messages',   path: '/messages' },
+        { icon: 'ti-help-circle', label: 'Help Center',path: '/help-center' },
       ],
     },
   ],
@@ -405,8 +405,8 @@ const ROLE_MENUS = {
       group: 'Customer Service',
       items: [
         { icon: 'ti-ticket',       label: 'My Tickets',    path: '/support/tickets' },
-        { icon: 'ti-message-2',    label: 'Messages',      path: '/support/chat' },
-        { icon: 'ti-help-circle',  label: 'Help Center',   path: '/support/help' },
+        { icon: 'ti-message-2',    label: 'Messages',      path: '/messages' },
+        { icon: 'ti-help-circle',  label: 'Help Center',   path: '/help-center' },
       ],
     },
   ],
@@ -436,8 +436,8 @@ const ROLE_MENUS = {
       group: 'Customer Service',
       items: [
         { icon: 'ti-ticket',       label: 'My Tickets',    path: '/support/tickets' },
-        { icon: 'ti-message-2',    label: 'Messages',      path: '/support/chat' },
-        { icon: 'ti-help-circle',  label: 'Help Center',   path: '/support/help' },
+        { icon: 'ti-message-2',    label: 'Messages',      path: '/messages' },
+        { icon: 'ti-help-circle',  label: 'Help Center',   path: '/help-center' },
       ],
     },
   ],
@@ -451,8 +451,8 @@ const ROLE_MENUS = {
       group: 'Customer Service',
       items: [
         { icon: 'ti-ticket',       label: 'My Tickets',    path: '/support/tickets' },
-        { icon: 'ti-message-2',    label: 'Messages',      path: '/support/chat' },
-        { icon: 'ti-help-circle',  label: 'Help Center',   path: '/support/help' },
+        { icon: 'ti-message-2',    label: 'Messages',      path: '/messages' },
+        { icon: 'ti-help-circle',  label: 'Help Center',   path: '/help-center' },
       ],
     },
   ],
@@ -460,7 +460,10 @@ const ROLE_MENUS = {
   STUDENT: [
     {
       group: 'Overview',
-      items: [{ icon: 'ti-layout-dashboard', label: 'Dashboard', path: '/dashboard' }],
+      items: [
+        { icon: 'ti-layout-dashboard', label: 'Dashboard',  path: '/dashboard' },
+        { icon: 'ti-user',             label: 'My Profile', path: '/dashboard?tab=profile' },
+      ],
     },
     {
       group: 'My School',
@@ -469,7 +472,7 @@ const ROLE_MENUS = {
         { icon: 'ti-clipboard-list',  label: 'Assignments',       path: '/assignments' },
         { icon: 'ti-chart-dots',      label: 'Internal Marks',    path: '/internal-marks' },
         { icon: 'ti-calendar-time',   label: 'Timetable',         path: '/timetable' },
-        { icon: 'ti-clipboard-check', label: 'Attendance',        path: '/attendance' },
+        { icon: 'ti-clipboard-check', label: 'Attendance',        path: '/dashboard?tab=attendance' },
         { icon: 'ti-file-certificate',label: 'Result Card',       path: '/result-card' },
         { icon: 'ti-receipt',         label: 'Fees',              path: '/dashboard?tab=fees' },
         { icon: 'ti-bus',             label: 'My Transport',      path: '/transport/parent' },
@@ -483,8 +486,8 @@ const ROLE_MENUS = {
       group: 'Customer Service',
       items: [
         { icon: 'ti-ticket',      label: 'Support',     path: '/support/tickets' },
-        { icon: 'ti-message-2',   label: 'Messages',    path: '/support/chat' },
-        { icon: 'ti-help-circle', label: 'Help Center', path: '/support/help' },
+        { icon: 'ti-message-2',   label: 'Messages',    path: '/messages' },
+        { icon: 'ti-help-circle', label: 'Help Center', path: '/help-center' },
       ],
     },
   ],
@@ -497,7 +500,7 @@ const ROLE_MENUS = {
     {
       group: 'My Child',
       items: [
-        { icon: 'ti-clipboard-check', label: 'Attendance',   path: '/attendance' },
+        { icon: 'ti-clipboard-check', label: 'Attendance',   path: '/dashboard?tab=attendance' },
         { icon: 'ti-file-certificate',label: 'Report Card',  path: '/result-card' },
         { icon: 'ti-receipt',         label: 'Fees',         path: '/dashboard?tab=fees' },
         { icon: 'ti-bus',             label: 'Bus Tracking', path: '/transport/parent' },
@@ -508,8 +511,8 @@ const ROLE_MENUS = {
       group: 'Customer Service',
       items: [
         { icon: 'ti-ticket',      label: 'Support',     path: '/support/tickets' },
-        { icon: 'ti-message-2',   label: 'Messages',    path: '/support/chat' },
-        { icon: 'ti-help-circle', label: 'Help Center', path: '/support/help' },
+        { icon: 'ti-message-2',   label: 'Messages',    path: '/messages' },
+        { icon: 'ti-help-circle', label: 'Help Center', path: '/help-center' },
       ],
     },
   ],
@@ -535,8 +538,8 @@ const ROLE_MENUS = {
       group: 'Customer Service',
       items: [
         { icon: 'ti-ticket',       label: 'My Tickets',    path: '/support/tickets' },
-        { icon: 'ti-message-2',    label: 'Messages',      path: '/support/chat' },
-        { icon: 'ti-help-circle',  label: 'Help Center',   path: '/support/help' },
+        { icon: 'ti-message-2',    label: 'Messages',      path: '/messages' },
+        { icon: 'ti-help-circle',  label: 'Help Center',   path: '/help-center' },
       ],
     },
   ],

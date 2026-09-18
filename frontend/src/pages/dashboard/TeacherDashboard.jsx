@@ -14,8 +14,10 @@ export default function TeacherDashboard() {
   const [tab,           setTab]           = useState('attendance');
   const [selectedClass, setSelectedClass] = useState('');
   const [students,      setStudents]      = useState([]);
+  const [loadingStudents, setLoadingStudents] = useState(false);
   const [attendance,    setAttendance]    = useState({});
   const [marksData,     setMarksData]     = useState([]);
+  const [loadingMarks,  setLoadingMarks]  = useState(false);
   const [subjects,      setSubjects]      = useState([]);
   const [selectedSubject, setSelectedSubject] = useState('');
   const [examType,      setExamType]      = useState('Mid Term');
@@ -33,6 +35,7 @@ export default function TeacherDashboard() {
   const [regSaving,      setRegSaving]      = useState(false);
 
   const today = new Date().toISOString().split('T')[0];
+  const [selectedDate,  setSelectedDate]  = useState(today);
   const [assignments, setAssignments] = useState([]); // [{class_id, class_name, subject_id, subject_name}]
   const [activeDelegations, setActiveDelegations] = useState([]);
 
@@ -77,12 +80,18 @@ export default function TeacherDashboard() {
       .catch(() => {});
   }, []);
 
+  // 1. Fetch Students and Attendance whenever selectedClass or selectedDate changes
   useEffect(() => {
-    if (!selectedClass) return;
+    if (!selectedClass) {
+      setStudents([]);
+      setAttendance({});
+      return;
+    }
     const firstAssign = assignments.find(a => String(a.class_id) === String(selectedClass));
-    if (firstAssign) setSelectedSubject(String(firstAssign.subject_id));
-    setStudents([]);
-    setAttendance({});
+    if (firstAssign && !selectedSubject) {
+      setSelectedSubject(String(firstAssign.subject_id));
+    }
+    setLoadingStudents(true);
     setAlreadyMarked(false);
 
     api.get('/principal/students?class_id=' + selectedClass)
@@ -92,7 +101,7 @@ export default function TeacherDashboard() {
         const init = {};
         list.forEach(s => { init[String(s.id)] = 'PRESENT'; });
 
-        api.get('/teacher/attendance/' + selectedClass + '?date=' + today)
+        api.get('/teacher/attendance/' + selectedClass + '?date=' + selectedDate)
           .then(att => {
             if (att.data && att.data.length > 0) {
               att.data.forEach(a => { init[String(a.student_id)] = a.status; });
@@ -101,9 +110,55 @@ export default function TeacherDashboard() {
             setAttendance(init);
           })
           .catch(() => { setAttendance(init); });
+      })
+      .catch(() => {
+        setStudents([]);
+        setAttendance({});
+      })
+      .finally(() => setLoadingStudents(false));
+  }, [selectedClass, selectedDate]);
+
+  // 2. Fetch Existing Marks whenever selectedClass, selectedSubject, examType, or students change
+  useEffect(() => {
+    if (!selectedClass || students.length === 0) {
+      setMarksData([]);
+      return;
+    }
+    setLoadingMarks(true);
+    api.get(`/teacher/marks/${selectedClass}?exam_type=${encodeURIComponent(examType)}`)
+      .then(r => {
+        const existingList = Array.isArray(r.data) ? r.data : [];
+        const subjId = selectedSubject ? parseInt(selectedSubject) : null;
+        const marksMap = {};
+
+        existingList.forEach(item => {
+          const stId = item.student?.id;
+          if (stId && Array.isArray(item.marks)) {
+            const matched = subjId
+              ? item.marks.find(m => m.subject_id === subjId)
+              : item.marks[0];
+            if (matched) {
+              marksMap[stId] = matched;
+            }
+          }
+        });
 
         setMarksData(
-          list.map(s => ({
+          students.map(s => {
+            const saved = marksMap[s.id];
+            return {
+              student_id:     s.id,
+              name:           s.name,
+              roll_number:    s.roll_number,
+              marks_obtained: saved && saved.marks_obtained !== undefined && saved.marks_obtained !== null ? String(saved.marks_obtained) : '',
+              max_marks:      saved?.max_marks || 100,
+            };
+          })
+        );
+      })
+      .catch(() => {
+        setMarksData(
+          students.map(s => ({
             student_id:     s.id,
             name:           s.name,
             roll_number:    s.roll_number,
@@ -112,8 +167,8 @@ export default function TeacherDashboard() {
           }))
         );
       })
-      .catch(() => {});
-  }, [selectedClass]);
+      .finally(() => setLoadingMarks(false));
+  }, [selectedClass, selectedSubject, examType, students]);
 
   function toggle(studentId, status) {
     setAttendance(prev => ({
@@ -123,6 +178,7 @@ export default function TeacherDashboard() {
   }
 
   async function saveAttendance() {
+    if (saving || !selectedClass || !students.length) return;
     setSaving(true);
     try {
       const records = Object.entries(attendance).map(([id, st]) => ({
@@ -130,41 +186,58 @@ export default function TeacherDashboard() {
         status: st
       }));
       await api.post('/teacher/attendance', {
-        class_id: selectedClass,
-        date:     today,
+        class_id: parseInt(selectedClass),
+        date:     selectedDate,
         records:  records,
       });
-      toast.success('Attendance saved successfully! ✓');
+      toast.success(`Attendance saved for ${records.length} students on ${selectedDate}! ✓`);
       setAlreadyMarked(true);
     } catch(e) {
-      toast.error('Error saving attendance');
+      toast.error((e.response && e.response.data && e.response.data.error) || 'Error saving attendance');
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   }
 
   async function saveMarks() {
+    if (saving || !selectedClass || !students.length) return;
     setSaving(true);
     try {
-      const entries = marksData
-        .filter(m => m.marks_obtained !== '')
-        .map(m => ({
-          student_id:     m.student_id,
-          subject_id:     selectedSubject ? parseInt(selectedSubject) : 1,
-          marks_obtained: parseFloat(m.marks_obtained),
-          max_marks:      m.max_marks,
-        }));
+      const entries = [];
+      for (const m of marksData) {
+        if (m.marks_obtained !== '') {
+          const val = parseFloat(m.marks_obtained);
+          if (isNaN(val) || val < 0) {
+            toast.error(`Invalid marks entered for ${m.name}`);
+            setSaving(false);
+            return;
+          }
+          if (val > m.max_marks) {
+            toast.error(`Marks for ${m.name} (${val}) cannot exceed Max Marks (${m.max_marks})`);
+            setSaving(false);
+            return;
+          }
+          entries.push({
+            student_id:     m.student_id,
+            subject_id:     selectedSubject ? parseInt(selectedSubject) : 1,
+            marks_obtained: val,
+            max_marks:      m.max_marks,
+          });
+        }
+      }
 
       if (!entries.length) {
-        toast.error('Marks enter nahi kiye gaye');
+        toast.error('Kripya pehle students ke marks enter karein');
         setSaving(false);
         return;
       }
-      await api.post('/teacher/marks', { entries, exam_type: examType });
-      toast.success(`${entries.length} students ke marks saved! ✓`);
+      const res = await api.post('/teacher/marks', { entries, exam_type: examType });
+      toast.success(res.data?.message || `${entries.length} students ke marks saved! ✓`);
     } catch(e) {
-      toast.error('Error saving marks');
+      toast.error((e.response && e.response.data && e.response.data.error) || 'Error saving marks');
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   }
 
   const presentCount = Object.values(attendance).filter(s => s === 'PRESENT').length;
@@ -361,6 +434,7 @@ export default function TeacherDashboard() {
               {/* Quick Actions */}
               <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
                 <button
+                  type="button"
                   onClick={() => setTab('attendance')}
                   style={{
                     background: '#ffffff', color: '#064e3b', border: 'none',
@@ -374,6 +448,7 @@ export default function TeacherDashboard() {
                   <i className="ti ti-clipboard-check" style={{ color: '#059669' }} /> Mark Attendance
                 </button>
                 <button
+                  type="button"
                   onClick={() => setTab('marks')}
                   style={{
                     background: 'rgba(255,255,255,0.16)',
@@ -393,7 +468,7 @@ export default function TeacherDashboard() {
 
             {/* Right Side: Framed 3D Teacher Teaching Illustration */}
             <div style={{
-              width: '320px', height: '160px', borderRadius: '18px', overflow: 'hidden',
+              width: '320px', maxWidth: '100%', height: '160px', borderRadius: '18px', overflow: 'hidden',
               display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
               background: 'rgba(255,255,255,0.12)',
               border: '1.5px solid rgba(255,255,255,0.25)',
@@ -511,7 +586,7 @@ export default function TeacherDashboard() {
 
           {/* ══ 2. BENTO STAT CARDS ══ */}
           <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
             gap: '16px', marginBottom: '22px'
           }}>
             {/* Card 1: Active Classes */}
@@ -528,14 +603,14 @@ export default function TeacherDashboard() {
                 ASSIGNED CLASSES
               </div>
               <div style={{ fontSize: '26px', fontWeight: 900, color: '#2563eb', margin: '4px 0 2px' }}>
-                {classes.length || 4}
+                {classes.length || 0}
               </div>
               <div style={{ fontSize: '12px', color: '#94a3b8' }}>
                 Active classroom periods
               </div>
               <div style={{ marginTop: '10px' }}>
                 <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#2563eb', background: '#eff6ff', padding: '2px 8px', borderRadius: '6px' }}>
-                  {classes.map(c => c.name).join(', ') || 'Class 9, 10'}
+                  {classes.map(c => c.name).join(', ') || 'None assigned'}
                 </span>
               </div>
             </div>
@@ -554,19 +629,19 @@ export default function TeacherDashboard() {
                 STUDENTS IN CLASS
               </div>
               <div style={{ fontSize: '26px', fontWeight: 900, color: '#8b5cf6', margin: '4px 0 2px' }}>
-                {students.length || 38}
+                {loadingStudents ? '...' : students.length}
               </div>
               <div style={{ fontSize: '12px', color: '#94a3b8' }}>
                 In active selected section
               </div>
               <div style={{ marginTop: '10px' }}>
                 <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#16a34a', background: '#ecfdf5', padding: '2px 8px', borderRadius: '6px' }}>
-                  {presentCount || students.length} Present Today
+                  {presentCount} Present on {selectedDate}
                 </span>
               </div>
             </div>
 
-            {/* Card 3: Today's Attendance Rate */}
+            {/* Card 3: Selected Date's Attendance Rate */}
             <div style={{
               background: darkMode ? '#111827' : '#ffffff',
               border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
@@ -583,7 +658,7 @@ export default function TeacherDashboard() {
                 {alreadyMarked ? 'SAVED ✓' : 'PENDING'}
               </div>
               <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                {alreadyMarked ? 'Synchronized with office' : 'Mark today’s roll call'}
+                {alreadyMarked ? `Recorded for ${selectedDate}` : `Roll call for ${selectedDate}`}
               </div>
               <div style={{ marginTop: '10px' }}>
                 <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#10b981', background: '#ecfdf5', padding: '2px 8px', borderRadius: '6px' }}>
@@ -614,6 +689,7 @@ export default function TeacherDashboard() {
               <div style={{ marginTop: '10px' }}>
                 {!myStatus?.check_in_time ? (
                   <button
+                    type="button"
                     onClick={doCheckIn}
                     disabled={checkingIn}
                     style={{
@@ -632,7 +708,7 @@ export default function TeacherDashboard() {
             </div>
           </div>
 
-          {/* ══ 3. ACTIVE CLASS SWITCHER BAR ══ */}
+          {/* ══ 3. ACTIVE CLASS SWITCHER & DATE BAR ══ */}
           <div style={{
             background: darkMode ? '#111827' : '#ffffff',
             borderRadius: '16px', padding: '14px 20px',
@@ -650,7 +726,7 @@ export default function TeacherDashboard() {
             <select
               className="form-select"
               style={{
-                width: '180px', fontSize: '13px', borderRadius: '8px', fontWeight: 700,
+                width: '200px', fontSize: '13px', borderRadius: '8px', fontWeight: 700,
                 background: darkMode ? '#1e293b' : '#ffffff',
                 borderColor: darkMode ? '#334155' : '#cbd5e1',
                 color: darkMode ? '#ffffff' : '#0f172a'
@@ -665,12 +741,32 @@ export default function TeacherDashboard() {
               ))}
             </select>
 
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <i className="ti ti-calendar" style={{ color: '#059669', fontSize: '18px' }} />
+              <label style={{ fontSize: '13px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', margin: 0 }}>
+                Date:
+              </label>
+            </div>
+
+            <input
+              type="date"
+              className="form-input"
+              style={{
+                width: '150px', fontSize: '13px', borderRadius: '8px', fontWeight: 700,
+                background: darkMode ? '#1e293b' : '#ffffff',
+                borderColor: darkMode ? '#334155' : '#cbd5e1',
+                color: darkMode ? '#ffffff' : '#0f172a'
+              }}
+              value={selectedDate}
+              onChange={e => setSelectedDate(e.target.value)}
+            />
+
             <span style={{
               fontSize: '12px', fontWeight: 700, padding: '4px 12px', borderRadius: '20px',
               background: students.length ? '#eff6ff' : '#fee2e2',
               color: students.length ? '#2563eb' : '#dc2626',
             }}>
-              {students.length} Enrolled Students
+              {loadingStudents ? 'Loading roster...' : `${students.length} Enrolled Students`}
             </span>
           </div>
 
@@ -683,6 +779,7 @@ export default function TeacherDashboard() {
             {TABS.map(t => (
               <button
                 key={t.key}
+                type="button"
                 onClick={() => setTab(t.key)}
                 style={{
                   background: 'none', border: 'none', cursor: 'pointer',
@@ -715,9 +812,13 @@ export default function TeacherDashboard() {
                   <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
                     Mark Student Attendance
                   </h4>
-                  {alreadyMarked && (
+                  {alreadyMarked ? (
                     <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 700 }}>
-                      ✓ Today's roll call already recorded in the system
+                      ✓ Roll call for {selectedDate} already recorded in the system
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 700 }}>
+                      Roll call for {selectedDate} pending
                     </span>
                   )}
                 </div>
@@ -736,6 +837,7 @@ export default function TeacherDashboard() {
                   )}
 
                   <button
+                    type="button"
                     className="btn btn-neutral btn-sm"
                     style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 700 }}
                     onClick={() => {
@@ -749,23 +851,29 @@ export default function TeacherDashboard() {
                   </button>
 
                   <button
+                    type="button"
                     className="btn btn-primary btn-sm"
                     style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 800, background: '#2563eb' }}
                     onClick={saveAttendance}
-                    disabled={saving || !students.length}
+                    disabled={saving || !students.length || loadingStudents}
                   >
                     {saving ? 'Saving...' : 'Save Attendance'}
                   </button>
                 </div>
               </div>
 
-              {students.length === 0 ? (
+              {loadingStudents ? (
+                <div style={{ padding: '60px 20px', textAlign: 'center', color: '#94a3b8' }}>
+                  <i className="ti ti-loader ti-spin" style={{ fontSize: '32px', display: 'block', marginBottom: '8px' }} />
+                  <p>Loading classroom roster &amp; attendance...</p>
+                </div>
+              ) : students.length === 0 ? (
                 <div style={{ padding: '60px 20px', textAlign: 'center', color: '#94a3b8' }}>
                   <i className="ti ti-users" style={{ fontSize: '36px', opacity: 0.5, display: 'block', marginBottom: '8px' }} />
                   <p>Is class mein koi student enrolled nahi hai</p>
                 </div>
               ) : (
-                <div className="table-container" style={{ border: 'none' }}>
+                <div className="table-container" style={{ border: 'none', overflowX: 'auto' }}>
                   <table>
                     <thead>
                       <tr>
@@ -799,6 +907,7 @@ export default function TeacherDashboard() {
                             <td>
                               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                 <button
+                                  type="button"
                                   onClick={() => toggle(s.id, 'PRESENT')}
                                   style={{
                                     width: '36px', height: '36px', borderRadius: '8px',
@@ -809,6 +918,7 @@ export default function TeacherDashboard() {
                                   }}
                                 >P</button>
                                 <button
+                                  type="button"
                                   onClick={() => toggle(s.id, 'ABSENT')}
                                   style={{
                                     width: '36px', height: '36px', borderRadius: '8px',
@@ -819,6 +929,7 @@ export default function TeacherDashboard() {
                                   }}
                                 >A</button>
                                 <button
+                                  type="button"
                                   onClick={() => toggle(s.id, 'LATE')}
                                   style={{
                                     width: '36px', height: '36px', borderRadius: '8px',
@@ -901,22 +1012,28 @@ export default function TeacherDashboard() {
                     <option>Pre-Board</option>
                   </select>
                   <button
+                    type="button"
                     className="btn btn-primary btn-sm"
                     style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 800, background: '#2563eb' }}
                     onClick={saveMarks}
-                    disabled={saving || !students.length}
+                    disabled={saving || !students.length || loadingMarks}
                   >
                     {saving ? 'Saving...' : 'Save Marks'}
                   </button>
                 </div>
               </div>
 
-              {students.length === 0 ? (
+              {loadingMarks ? (
+                <div style={{ padding: '60px 20px', textAlign: 'center', color: '#94a3b8' }}>
+                  <i className="ti ti-loader ti-spin" style={{ fontSize: '32px', display: 'block', marginBottom: '8px' }} />
+                  <p>Loading assessment marks roster...</p>
+                </div>
+              ) : students.length === 0 ? (
                 <div style={{ padding: '60px 20px', textAlign: 'center', color: '#94a3b8' }}>
                   <p>Is class mein koi student enrolled nahi hai</p>
                 </div>
               ) : (
-                <div className="table-container" style={{ border: 'none' }}>
+                <div className="table-container" style={{ border: 'none', overflowX: 'auto' }}>
                   <table>
                     <thead>
                       <tr>
@@ -1000,8 +1117,15 @@ export default function TeacherDashboard() {
             </div>
           )}
 
-          {/* ══ TAB: STUDY NOTES UPLOAD ══ */}
-          {tab === 'notes' && <NotesUpload selectedClass={selectedClass} darkMode={darkMode} />}
+          {/* ══ TAB: STUDY NOTES UPLOAD & LIBRARY ══ */}
+          {tab === 'notes' && (
+            <NotesUpload
+              selectedClass={selectedClass}
+              classes={classes}
+              assignments={assignments}
+              darkMode={darkMode}
+            />
+          )}
 
           {/* ══ TAB: MY GPS ATTENDANCE ══ */}
           {tab === 'my-att' && (
@@ -1063,6 +1187,7 @@ export default function TeacherDashboard() {
 
                       {!myStatus || !myStatus.check_in_time ? (
                         <button
+                          type="button"
                           onClick={doCheckIn}
                           disabled={checkingIn}
                           style={{
@@ -1075,6 +1200,7 @@ export default function TeacherDashboard() {
                         </button>
                       ) : !myStatus.check_out_time ? (
                         <button
+                          type="button"
                           onClick={doCheckOut}
                           disabled={checkingOut}
                           style={{
@@ -1093,6 +1219,7 @@ export default function TeacherDashboard() {
 
                       {myStatus && (myStatus.status === 'MISSING_CHECKOUT' || myStatus.approval_status === 'REJECTED') && !showRegularize && (
                         <button
+                          type="button"
                           onClick={() => setShowRegularize(true)}
                           style={{
                             width: '100%', padding: '10px', borderRadius: '8px', marginTop: '12px',
@@ -1144,6 +1271,7 @@ export default function TeacherDashboard() {
                           />
                           <div style={{ display: 'flex', gap: '8px' }}>
                             <button
+                              type="button"
                               onClick={submitRegularization}
                               disabled={regSaving}
                               style={{
@@ -1154,6 +1282,7 @@ export default function TeacherDashboard() {
                               {regSaving ? 'Submitting...' : 'Submit Request'}
                             </button>
                             <button
+                              type="button"
                               onClick={() => setShowRegularize(false)}
                               style={{
                                 padding: '10px 16px', borderRadius: '8px',
@@ -1240,103 +1369,307 @@ export default function TeacherDashboard() {
 }
 
 
-function NotesUpload({ selectedClass, darkMode }) {
-  const [form, setForm] = useState({ title: '', description: '' });
+function NotesUpload({ selectedClass, classes, assignments, darkMode }) {
+  const [form, setForm] = useState({ title: '', description: '', subject_id: '' });
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [notes, setNotes] = useState([]);
+  const [loadingNotes, setLoadingNotes] = useState(false);
+
+  // Filter subjects for the selected class from assignments
+  const classAssignments = (assignments || []).filter(a => String(a.class_id) === String(selectedClass));
+
+  useEffect(() => {
+    if (classAssignments.length > 0 && !form.subject_id) {
+      setForm(f => ({ ...f, subject_id: String(classAssignments[0].subject_id) }));
+    }
+  }, [selectedClass, classAssignments]);
+
+  const loadNotes = () => {
+    if (!selectedClass) {
+      setNotes([]);
+      return;
+    }
+    setLoadingNotes(true);
+    api.get('/teacher/notes?class_id=' + selectedClass)
+      .then(r => setNotes(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setNotes([]))
+      .finally(() => setLoadingNotes(false));
+  };
+
+  useEffect(() => {
+    loadNotes();
+  }, [selectedClass]);
 
   async function handleUpload(e) {
     e.preventDefault();
-    if (!file) { toast.error('Please select a file to upload'); return; }
+    if (!selectedClass) {
+      toast.error('Please select an active classroom first');
+      return;
+    }
+    if (!form.title.trim()) {
+      toast.error('Please enter a note title');
+      return;
+    }
+    if (!file) {
+      toast.error('Please select a file to upload');
+      return;
+    }
+
+    // Client-side file extension check
+    const allowed = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'txt', 'png', 'jpg'];
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    if (!allowed.includes(ext)) {
+      toast.error(`Invalid file format .${ext}. Allowed: PDF, DOC, PPT, TXT, PNG, JPG`);
+      return;
+    }
+
     setUploading(true);
     const fd = new FormData();
-    fd.append('title',       form.title);
-    fd.append('description', form.description);
+    fd.append('title',       form.title.trim());
+    fd.append('description', form.description.trim());
     fd.append('class_id',    selectedClass);
-    fd.append('file',        file);
+    if (form.subject_id) {
+      fd.append('subject_id', form.subject_id);
+    }
+    fd.append('file', file);
+
     try {
       await api.post('/teacher/notes', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       toast.success('Study Note uploaded successfully! 📚');
-      setForm({ title: '', description: '' });
+      setForm(f => ({ ...f, title: '', description: '' }));
       setFile(null);
+      const fileInput = document.getElementById('teacher-note-file-input');
+      if (fileInput) fileInput.value = '';
+      loadNotes();
     } catch(e) {
-      toast.error('Upload failed. Please try again.');
+      toast.error((e.response && e.response.data && e.response.data.error) || 'Upload failed. Please try again.');
+    } finally {
+      setUploading(false);
     }
-    setUploading(false);
   }
 
+  const selectedClassName = (classes || []).find(c => String(c.id) === String(selectedClass))?.name || 'Class';
+
   return (
-    <div className="card" style={{
-      borderRadius: '16px', maxWidth: '640px',
-      background: darkMode ? '#111827' : '#ffffff',
-      border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
-      boxShadow: '0 4px 20px rgba(0,0,0,0.03)'
-    }}>
-      <div className="card-header" style={{ padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}` }}>
-        <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
-          Upload Course Material &amp; Notes
-        </h4>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '20px', alignItems: 'start' }}>
+      {/* Upload Card */}
+      <div className="card" style={{
+        borderRadius: '16px',
+        background: darkMode ? '#111827' : '#ffffff',
+        border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+        boxShadow: '0 4px 20px rgba(0,0,0,0.03)'
+      }}>
+        <div className="card-header" style={{ padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}` }}>
+          <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+            Upload Course Material &amp; Notes
+          </h4>
+        </div>
+        <div className="card-body" style={{ padding: '20px' }}>
+          <form onSubmit={handleUpload}>
+            {classAssignments.length > 0 && (
+              <div className="form-group" style={{ marginBottom: '14px' }}>
+                <label className="form-label" style={{ color: darkMode ? '#cbd5e1' : '#334155', fontWeight: 700 }}>Subject *</label>
+                <select
+                  className="form-select"
+                  value={form.subject_id}
+                  onChange={e => setForm(f => ({ ...f, subject_id: e.target.value }))}
+                  style={{
+                    width: '100%', borderRadius: '8px',
+                    background: darkMode ? '#0f172a' : '#ffffff',
+                    borderColor: darkMode ? '#334155' : '#cbd5e1',
+                    color: darkMode ? '#ffffff' : '#0f172a'
+                  }}
+                >
+                  {classAssignments.map(a => (
+                    <option key={a.subject_id} value={String(a.subject_id)}>
+                      {a.subject_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="form-group" style={{ marginBottom: '14px' }}>
+              <label className="form-label" style={{ color: darkMode ? '#cbd5e1' : '#334155', fontWeight: 700 }}>Note Title *</label>
+              <input
+                className="form-input"
+                placeholder="e.g. Chapter 5 - Algebraic Expressions & Formulas"
+                value={form.title}
+                onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                style={{
+                  borderRadius: '8px', width: '100%',
+                  background: darkMode ? '#0f172a' : '#ffffff',
+                  borderColor: darkMode ? '#334155' : '#cbd5e1',
+                  color: darkMode ? '#ffffff' : '#0f172a'
+                }}
+                required
+              />
+            </div>
+
+            <div className="form-group" style={{ marginBottom: '14px' }}>
+              <label className="form-label" style={{ color: darkMode ? '#cbd5e1' : '#334155', fontWeight: 700 }}>Description</label>
+              <textarea
+                className="form-textarea"
+                rows={3}
+                placeholder="Brief summary or instructions for students..."
+                value={form.description}
+                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                style={{
+                  borderRadius: '8px', width: '100%',
+                  background: darkMode ? '#0f172a' : '#ffffff',
+                  borderColor: darkMode ? '#334155' : '#cbd5e1',
+                  color: darkMode ? '#ffffff' : '#0f172a'
+                }}
+              />
+            </div>
+
+            <div className="form-group" style={{ marginBottom: '20px' }}>
+              <label className="form-label" style={{ color: darkMode ? '#cbd5e1' : '#334155', fontWeight: 700 }}>Upload Document (PDF, DOC, PPT, Image)</label>
+              <input
+                id="teacher-note-file-input"
+                type="file"
+                accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.png,.jpg"
+                onChange={e => setFile(e.target.files[0] || null)}
+                style={{ display: 'block', fontSize: '13px', color: darkMode ? '#94a3b8' : '#475569', width: '100%' }}
+                required
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="btn btn-primary"
+              style={{
+                borderRadius: '8px', padding: '10px 20px', fontSize: '13px', fontWeight: 800,
+                background: '#2563eb', border: 'none', boxShadow: '0 4px 12px rgba(37,99,235,0.3)'
+              }}
+              disabled={uploading}
+            >
+              {uploading ? 'Uploading...' : 'Upload Note to Class'}
+            </button>
+          </form>
+        </div>
       </div>
-      <div className="card-body" style={{ padding: '20px' }}>
-        <form onSubmit={handleUpload}>
-          <div className="form-group" style={{ marginBottom: '14px' }}>
-            <label className="form-label" style={{ color: darkMode ? '#cbd5e1' : '#334155', fontWeight: 700 }}>Note Title *</label>
-            <input
-              className="form-input"
-              placeholder="e.g. Chapter 5 - Algebraic Expressions & Formulas"
-              value={form.title}
-              onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-              style={{
-                borderRadius: '8px',
-                background: darkMode ? '#0f172a' : '#ffffff',
-                borderColor: darkMode ? '#334155' : '#cbd5e1',
-                color: darkMode ? '#ffffff' : '#0f172a'
-              }}
-              required
-            />
-          </div>
 
-          <div className="form-group" style={{ marginBottom: '14px' }}>
-            <label className="form-label" style={{ color: darkMode ? '#cbd5e1' : '#334155', fontWeight: 700 }}>Description</label>
-            <textarea
-              className="form-textarea"
-              rows={3}
-              placeholder="Brief summary or instructions for students..."
-              value={form.description}
-              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-              style={{
-                borderRadius: '8px',
-                background: darkMode ? '#0f172a' : '#ffffff',
-                borderColor: darkMode ? '#334155' : '#cbd5e1',
-                color: darkMode ? '#ffffff' : '#0f172a'
-              }}
-            />
+      {/* Uploaded Notes List Card */}
+      <div className="card" style={{
+        borderRadius: '16px',
+        background: darkMode ? '#111827' : '#ffffff',
+        border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+        boxShadow: '0 4px 20px rgba(0,0,0,0.03)'
+      }}>
+        <div className="card-header" style={{
+          padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`,
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+        }}>
+          <div>
+            <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+              Notes for {selectedClassName}
+            </h4>
+            <span style={{ fontSize: '11px', color: '#94a3b8' }}>{notes.length} uploaded resources</span>
           </div>
-
-          <div className="form-group" style={{ marginBottom: '20px' }}>
-            <label className="form-label" style={{ color: darkMode ? '#cbd5e1' : '#334155', fontWeight: 700 }}>Upload Document (PDF, DOC, PPT, Image)</label>
-            <input
-              type="file"
-              accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.png,.jpg"
-              onChange={e => setFile(e.target.files[0])}
-              style={{ display: 'block', fontSize: '13px', color: darkMode ? '#94a3b8' : '#475569' }}
-            />
-          </div>
-
           <button
-            type="submit"
-            className="btn btn-primary"
-            style={{
-              borderRadius: '8px', padding: '10px 20px', fontSize: '13px', fontWeight: 800,
-              background: '#2563eb', border: 'none', boxShadow: '0 4px 12px rgba(37,99,235,0.3)'
-            }}
-            disabled={uploading}
+            type="button"
+            className="btn btn-neutral btn-sm"
+            onClick={loadNotes}
+            disabled={loadingNotes}
+            style={{ borderRadius: '8px', fontSize: '12px' }}
           >
-            {uploading ? 'Uploading...' : 'Upload Note to Class'}
+            <i className={`ti ti-refresh ${loadingNotes ? 'ti-spin' : ''}`} /> Refresh
           </button>
-        </form>
+        </div>
+
+        <div className="card-body" style={{ padding: '16px 20px' }}>
+          {loadingNotes ? (
+            <div style={{ padding: '40px 0', textAlign: 'center', color: '#94a3b8' }}>
+              <i className="ti ti-loader ti-spin" style={{ fontSize: '28px', display: 'block', marginBottom: '8px' }} />
+              Loading notes...
+            </div>
+          ) : notes.length === 0 ? (
+            <div style={{ padding: '40px 0', textAlign: 'center', color: '#94a3b8' }}>
+              <i className="ti ti-file-text" style={{ fontSize: '36px', opacity: 0.5, display: 'block', marginBottom: '8px' }} />
+              <p>Is class ke liye abhi koi note upload nahi hua hai</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {notes.map(n => {
+                const ext = (n.file_name ? n.file_name.split('.').pop() : 'pdf').toLowerCase();
+                const iconClass = ['pdf'].includes(ext) ? 'ti-file-type-pdf'
+                  : ['doc', 'docx'].includes(ext) ? 'ti-file-type-doc'
+                  : ['ppt', 'pptx'].includes(ext) ? 'ti-file-type-ppt'
+                  : ['jpg', 'jpeg', 'png'].includes(ext) ? 'ti-photo'
+                  : 'ti-file-text';
+                const iconColor = ['pdf'].includes(ext) ? '#dc2626'
+                  : ['doc', 'docx'].includes(ext) ? '#2563eb'
+                  : ['ppt', 'pptx'].includes(ext) ? '#d97706'
+                  : ['jpg', 'jpeg', 'png'].includes(ext) ? '#0891b2'
+                  : '#475569';
+
+                return (
+                  <div
+                    key={n.id}
+                    style={{
+                      border: `1px solid ${darkMode ? '#1f2937' : '#e2e8f0'}`,
+                      borderRadius: '12px', padding: '14px',
+                      background: darkMode ? '#0f172a' : '#f8fafc',
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      gap: '12px', flexWrap: 'wrap'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: '220px' }}>
+                      <div style={{
+                        width: '40px', height: '40px', borderRadius: '10px',
+                        background: darkMode ? '#1e293b' : '#ffffff',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: iconColor, fontSize: '20px', flexShrink: 0,
+                        border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`
+                      }}>
+                        <i className={`ti ${iconClass}`} />
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: '13.5px', color: darkMode ? '#ffffff' : '#0f172a' }}>
+                          {n.title}
+                        </div>
+                        {n.description && (
+                          <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px', lineHeight: 1.3 }}>
+                            {n.description}
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px', flexWrap: 'wrap' }}>
+                          {n.subject?.name && (
+                            <span style={{ fontSize: '10.5px', fontWeight: 700, padding: '1px 7px', borderRadius: '6px', background: '#eff6ff', color: '#2563eb' }}>
+                              {n.subject.name}
+                            </span>
+                          )}
+                          <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                            {n.uploaded_at ? new Date(n.uploaded_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : ''}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {n.file_url && (
+                      <a
+                        href={n.file_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-neutral btn-sm"
+                        style={{
+                          borderRadius: '8px', fontSize: '12px', fontWeight: 700,
+                          display: 'inline-flex', alignItems: 'center', gap: '6px', textDecoration: 'none'
+                        }}
+                      >
+                        <i className="ti ti-external-link" /> View Note
+                      </a>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

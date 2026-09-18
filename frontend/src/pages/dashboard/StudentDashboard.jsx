@@ -14,12 +14,26 @@ export default function StudentDashboard() {
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
   useEffect(() => { localStorage.setItem('ederp_theme', darkMode ? 'dark' : 'light'); }, [darkMode]);
 
-  const [profile,      setProfile]      = useState(null);
-  const [attendance,   setAttendance]   = useState(null);
-  const [fees,         setFees]         = useState(null);
-  const [marks,        setMarks]        = useState([]);
+  const [profile,           setProfile]           = useState(null);
+  const [loadingProfile,    setLoadingProfile]    = useState(true);
+  const [profileError,      setProfileError]      = useState(false);
+
+  const [attendance,        setAttendance]        = useState(null);
+  const [loadingAttendance, setLoadingAttendance] = useState(true);
+  const [attendanceError,   setAttendanceError]   = useState(false);
+
+  const [fees,              setFees]              = useState(null);
+  const [loadingFees,       setLoadingFees]       = useState(true);
+  const [feesError,         setFeesError]         = useState(false);
+
+  const [examsSummary,      setExamsSummary]      = useState([]);
+  const [selectedExamId,    setSelectedExamId]    = useState(null);
+  const [reportCard,        setReportCard]        = useState(null);
+  const [loadingMarks,      setLoadingMarks]      = useState(true);
+  const [marksError,        setMarksError]        = useState(false);
+
   const tabFromUrl = searchParams.get('tab');
-  const [tab,          setTab]          = useState(tabFromUrl || 'overview');
+  const [tab,               setTab]               = useState(tabFromUrl || 'overview');
 
   useEffect(() => {
     if (tabFromUrl && tabFromUrl !== tab) {
@@ -31,45 +45,111 @@ export default function StudentDashboard() {
     setTab(newTab);
     setSearchParams({ tab: newTab });
   };
-  const [exams,        setExams]        = useState([]);
-  const [examModal,    setExamModal]    = useState(null);
-  const [selectedExam, setSelectedExam] = useState('');
-  const [holidays,     setHolidays]     = useState([]);
-  const [notes,        setNotes]        = useState([]);
-  const [libraryData,  setLibraryData]  = useState(null);
-  const [hostelData,   setHostelData]   = useState(null);
-  const [downloading,  setDownloading]  = useState(false);
+
+  const [exams,             setExams]             = useState([]);
+  const [examModal,         setExamModal]         = useState(null);
+  const [selectedExam,      setSelectedExam]      = useState('');
+  const [holidays,          setHolidays]          = useState([]);
+  const [notes,             setNotes]             = useState([]);
+  const [loadingNotes,      setLoadingNotes]      = useState(true);
+  const [libraryData,       setLibraryData]       = useState(null);
+  const [hostelData,        setHostelData]        = useState(null);
+  const [downloading,       setDownloading]       = useState(false);
 
   // Hostel Student Modals
-  const [studentPassModal, setStudentPassModal] = useState(false);
-  const [passType, setPassType]         = useState('DAY_OUTING');
-  const [passReason, setPassReason]     = useState('');
-  const [passDest, setPassDest]         = useState('');
-  const [passOutTime, setPassOutTime]   = useState('');
-  const [passReturnTime, setPassReturnTime] = useState('');
-  const [submittingPass, setSubmittingPass] = useState(false);
+  const [studentPassModal,  setStudentPassModal]  = useState(false);
+  const [passType,          setPassType]          = useState('DAY_OUTING');
+  const [passReason,        setPassReason]        = useState('');
+  const [passDest,          setPassDest]          = useState('');
+  const [passOutTime,       setPassOutTime]       = useState('');
+  const [passReturnTime,    setPassReturnTime]    = useState('');
+  const [submittingPass,    setSubmittingPass]    = useState(false);
 
-  const [studentCompModal, setStudentCompModal] = useState(false);
-  const [compCategory, setCompCategory] = useState('MAINTENANCE');
-  const [compTitle, setCompTitle]       = useState('');
-  const [compDesc, setCompDesc]         = useState('');
-  const [submittingComp, setSubmittingComp] = useState(false);
+  const [studentCompModal,  setStudentCompModal]  = useState(false);
+  const [compCategory,      setCompCategory]      = useState('MAINTENANCE');
+  const [compTitle,         setCompTitle]         = useState('');
+  const [compDesc,          setCompDesc]          = useState('');
+  const [submittingComp,    setSubmittingComp]    = useState(false);
 
   const fetchHostelData = () => {
     api.get('/student/hostel').then(r => setHostelData(r.data)).catch(() => {});
   };
 
+  const fetchProfile = () => {
+    setLoadingProfile(true);
+    setProfileError(false);
+    api.get('/student/profile')
+      .then(r => setProfile(r.data))
+      .catch(() => setProfileError(true))
+      .finally(() => setLoadingProfile(false));
+  };
+
+  const fetchAttendance = () => {
+    setLoadingAttendance(true);
+    setAttendanceError(false);
+    api.get('/student/attendance')
+      .then(r => setAttendance(r.data))
+      .catch(() => setAttendanceError(true))
+      .finally(() => setLoadingAttendance(false));
+  };
+
+  const fetchFees = () => {
+    setLoadingFees(true);
+    setFeesError(false);
+    api.get('/student/fees')
+      .then(r => setFees(r.data))
+      .catch(() => setFeesError(true))
+      .finally(() => setLoadingFees(false));
+  };
+
+  const fetchNotes = () => {
+    setLoadingNotes(true);
+    api.get('/teacher/notes')
+      .then(r => setNotes(r.data || []))
+      .catch(() => {})
+      .finally(() => setLoadingNotes(false));
+  };
+
+  const fetchMarksOverview = () => {
+    setLoadingMarks(true);
+    setMarksError(false);
+    api.get('/student/marks')
+      .then(r => {
+        const list = Array.isArray(r.data) ? r.data : [];
+        setExamsSummary(list);
+        if (list.length > 0) {
+          const firstExId = list[0].exam_id;
+          setSelectedExamId(firstExId);
+          api.get(`/student/marks?exam_id=${firstExId}`)
+            .then(res => setReportCard(res.data))
+            .catch(() => {});
+        }
+      })
+      .catch(() => setMarksError(true))
+      .finally(() => setLoadingMarks(false));
+  };
+
   useEffect(() => {
-    api.get('/student/profile').then(r => setProfile(r.data)).catch(() => {});
-    api.get('/student/attendance').then(r => setAttendance(r.data)).catch(() => {});
-    api.get('/student/fees').then(r => setFees(r.data)).catch(() => {});
-    api.get('/student/marks').then(r => setMarks(r.data)).catch(() => {});
+    fetchProfile();
+    fetchAttendance();
+    fetchFees();
+    fetchMarksOverview();
+    fetchNotes();
     api.get('/principal/exams?status=PUBLISHED').then(r => setExams(r.data || [])).catch(() => {});
     api.get('/principal/holidays').then(r => setHolidays(r.data || [])).catch(() => {});
-    api.get('/teacher/notes').then(r => setNotes(r.data || [])).catch(() => {});
     api.get('/student/library').then(r => setLibraryData(r.data)).catch(() => {});
     fetchHostelData();
   }, []);
+
+  useEffect(() => {
+    if (selectedExamId) {
+      setLoadingMarks(true);
+      api.get(`/student/marks?exam_id=${selectedExamId}`)
+        .then(r => setReportCard(r.data))
+        .catch(() => {})
+        .finally(() => setLoadingMarks(false));
+    }
+  }, [selectedExamId]);
 
   const fmt = n => (typeof n === 'number' ? n.toLocaleString('en-IN') : (n ? Number(n).toLocaleString('en-IN') : '0'));
   const today = new Date().toISOString().split('T')[0];
@@ -78,7 +158,9 @@ export default function StudentDashboard() {
   const absentDays  = Number(attendance?.absent ?? 0);
   const lateDays    = Number(attendance?.late ?? 0);
   const totalDays   = Number(attendance?.total_days ?? (presentDays + absentDays + lateDays));
-  const attendancePct = totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0;
+  const attendancePct = attendance?.percentage !== undefined
+    ? Number(attendance.percentage)
+    : (totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0);
 
   const donutData = totalDays > 0 ? [
     { name: 'Present', value: presentDays, color: '#10b981' },
@@ -89,11 +171,27 @@ export default function StudentDashboard() {
   const totalPaid  = Number(fees?.total_paid ?? 0);
   const balanceDue = Number(fees?.balance ?? fees?.outstanding ?? 0);
 
-  const uniqueSubjects = [...new Set(marks.map(m => m.subject_name || (m.subject_id ? `Subject ${m.subject_id}` : '')))].filter(Boolean);
-  const subjectsCount = uniqueSubjects.length || (profile?.class_name ? 'Enrolled' : 0);
+  const displayScores = reportCard?.subjects?.length
+    ? reportCard.subjects.map(s => ({
+        name: s.subject_name || (s.subject_id ? `Subject ${s.subject_id}` : 'Subject'),
+        obtained: s.marks_obtained ?? 0,
+        max: s.max_marks ?? 100,
+        grade: s.grade || '—',
+        is_absent: s.is_absent
+      }))
+    : examsSummary.map(e => ({
+        name: e.exam_name || 'Term Exam',
+        obtained: e.total_obtained ?? 0,
+        max: e.total_max ?? 100,
+        grade: e.grade || '—',
+        is_absent: false
+      }));
+
+  const subjectsCount = displayScores.length || (profile?.class_display || profile?.class_name ? 'Enrolled' : 0);
 
   const TABS = [
     { key: 'overview',   icon: 'ti-smart-home',      label: 'Overview' },
+    { key: 'profile',    icon: 'ti-user',            label: 'My Profile' },
     { key: 'attendance', icon: 'ti-clipboard-check', label: 'Attendance' },
     { key: 'marks',      icon: 'ti-award',           label: 'Report Card' },
     { key: 'fees',       icon: 'ti-receipt-2',       label: 'Fee Details' },
@@ -206,6 +304,7 @@ export default function StudentDashboard() {
               {/* Quick Triggers */}
               <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
                 <button
+                  type="button"
                   onClick={() => navigate('/admit-card')}
                   style={{
                     background: '#ffffff', color: '#3730a3', border: 'none',
@@ -219,6 +318,7 @@ export default function StudentDashboard() {
                   <i className="ti ti-ticket" style={{ color: '#4f46e5' }} /> Download Admit Card
                 </button>
                 <button
+                  type="button"
                   onClick={() => navigate('/result-card')}
                   style={{
                     background: 'rgba(255,255,255,0.16)',
@@ -266,7 +366,7 @@ export default function StudentDashboard() {
 
           {/* ══ 2. 4 BENTO STAT CARDS ══ */}
           <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
             gap: '16px', marginBottom: '22px'
           }}>
             {/* Card 1: Attendance */}
@@ -346,7 +446,7 @@ export default function StudentDashboard() {
               </div>
               <div style={{ marginTop: '10px' }}>
                 <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#8b5cf6', background: '#f3f0ff', padding: '2px 8px', borderRadius: '6px' }}>
-                  {marks.length > 0 ? `${marks.length} Graded Exams` : (profile?.session || 'Current Session')}
+                  {examsSummary.length > 0 ? `${examsSummary.length} Graded Exams` : (profile?.session || 'Current Session')}
                 </span>
               </div>
             </div>
@@ -407,7 +507,7 @@ export default function StudentDashboard() {
           {tab === 'overview' && (
             <>
               {/* Middle Grid: Performance & Attendance Donut */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '20px', marginBottom: '24px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px', marginBottom: '24px' }}>
                 {/* Latest Scores */}
                 <div style={{
                   background: darkMode ? '#111827' : '#ffffff',
@@ -419,15 +519,20 @@ export default function StudentDashboard() {
                     <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <i className="ti ti-award" style={{ color: '#2563eb' }} /> Subject Performance &amp; Grades
                     </h3>
-                    <button onClick={() => setTab('marks')} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+                    <button type="button" onClick={() => handleTabChange('marks')} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
                       Full Report →
                     </button>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {marks.length > 0 ? (
-                      marks.slice(0, 5).map((m, idx) => {
-                        const pct = m.max_marks > 0 ? Math.round((m.marks_obtained / m.max_marks) * 100) : 0;
+                    {loadingMarks ? (
+                      <div style={{ textAlign: 'center', padding: '30px 12px', color: '#94a3b8' }}>
+                        <i className="ti ti-loader-2 spin" style={{ fontSize: '24px', display: 'inline-block', marginBottom: '6px' }} />
+                        <div style={{ fontSize: '12.5px' }}>Loading academic scores...</div>
+                      </div>
+                    ) : displayScores.length > 0 ? (
+                      displayScores.slice(0, 5).map((m, idx) => {
+                        const pct = m.max > 0 ? Math.round((m.obtained / m.max) * 100) : 0;
                         return (
                           <div key={idx} style={{
                             display: 'flex', alignItems: 'center', gap: '14px',
@@ -437,8 +542,8 @@ export default function StudentDashboard() {
                           }}>
                             <div style={{ flex: 1 }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '13px' }}>
-                                <strong style={{ color: darkMode ? '#ffffff' : '#0f172a' }}>{m.subject_name || `Subject ${m.subject_id}`}</strong>
-                                <span style={{ color: '#94a3b8' }}>{m.marks_obtained} / {m.max_marks} ({pct}%)</span>
+                                <strong style={{ color: darkMode ? '#ffffff' : '#0f172a' }}>{m.name}</strong>
+                                <span style={{ color: '#94a3b8' }}>{m.obtained} / {m.max} ({pct}%)</span>
                               </div>
                               <div style={{ height: '6px', borderRadius: '3px', background: darkMode ? '#334155' : '#e2e8f0', overflow: 'hidden' }}>
                                 <div style={{
@@ -537,7 +642,7 @@ export default function StudentDashboard() {
                     display: 'flex', alignItems: 'center', gap: '6px'
                   }}>
                     {totalDays === 0 ? (
-                      <><i className="ti ti-info-circle" /> No attendance has been marked for current session.</>
+                      <><i className="ti ti-info-circle" /> No attendance records marked for current session.</>
                     ) : attendancePct >= 75 ? (
                       <><i className="ti ti-circle-check" /> Awesome! You are above 75% attendance threshold.</>
                     ) : (
@@ -548,7 +653,7 @@ export default function StudentDashboard() {
               </div>
 
               {/* Lower Row: Study Notes & Upcoming Holidays */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '20px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
                 {/* Notes Grid */}
                 <div style={{
                   background: darkMode ? '#111827' : '#ffffff',
@@ -560,7 +665,7 @@ export default function StudentDashboard() {
                     <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <i className="ti ti-file-text" style={{ color: '#2563eb' }} /> Recent Study Material
                     </h4>
-                    <button onClick={() => setTab('notes')} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+                    <button type="button" onClick={() => handleTabChange('notes')} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
                       View All →
                     </button>
                   </div>
@@ -584,7 +689,8 @@ export default function StudentDashboard() {
                             <div style={{ fontSize: '11px', color: '#94a3b8' }}>{n.description || n.file_name || 'Study document'}</div>
                           </div>
                           <button
-                            onClick={() => setTab('notes')}
+                            type="button"
+                            onClick={() => handleTabChange('notes')}
                             style={{
                               padding: '4px 10px', borderRadius: '6px', border: 'none',
                               background: '#2563eb', color: '#ffffff', fontSize: '11px', fontWeight: 700, cursor: 'pointer'
@@ -652,6 +758,250 @@ export default function StudentDashboard() {
             </>
           )}
 
+          {/* ══ TAB: PROFILE ══ */}
+          {tab === 'profile' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {loadingProfile ? (
+                <div className="card text-center" style={{
+                  borderRadius: '16px', padding: '50px 20px',
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+                }}>
+                  <i className="ti ti-loader-2 spin" style={{ fontSize: '32px', color: '#2563eb', display: 'inline-block', marginBottom: '10px' }} />
+                  <div style={{ color: darkMode ? '#fff' : '#0f172a', fontWeight: 700 }}>Loading student profile details...</div>
+                </div>
+              ) : profileError ? (
+                <div className="card text-center" style={{
+                  borderRadius: '16px', padding: '40px 20px',
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: '1px solid #ef4444'
+                }}>
+                  <i className="ti ti-alert-triangle" style={{ fontSize: '36px', color: '#ef4444', display: 'block', marginBottom: '10px' }} />
+                  <h4 style={{ margin: '0 0 6px', color: darkMode ? '#fff' : '#0f172a' }}>Unable to load student profile</h4>
+                  <p style={{ margin: '0 0 16px', color: '#94a3b8', fontSize: '13px' }}>The profile details could not be retrieved from the school database.</p>
+                  <button
+                    type="button"
+                    onClick={fetchProfile}
+                    className="btn btn-primary"
+                    style={{ margin: '0 auto', background: '#2563eb', borderRadius: '8px' }}
+                  >
+                    <i className="ti ti-refresh" /> Retry
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* Hero Profile Card */}
+                  <div className="card" style={{
+                    borderRadius: '18px', padding: '24px',
+                    background: darkMode ? '#111827' : '#ffffff',
+                    border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`,
+                    display: 'flex', alignItems: 'center', gap: '24px', flexWrap: 'wrap'
+                  }}>
+                    <div style={{
+                      width: '84px', height: '84px', borderRadius: '20px',
+                      background: 'linear-gradient(135deg, #2563eb, #38bdf8)',
+                      color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '36px', fontWeight: 900, boxShadow: '0 8px 20px rgba(37,99,235,0.25)', flexShrink: 0
+                    }}>
+                      {(profile?.name || user?.name || 'S').charAt(0).toUpperCase()}
+                    </div>
+                    <div style={{ flex: 1, minWidth: '220px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                        <h2 style={{ margin: 0, fontSize: '22px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                          {profile?.name || user?.name || 'Student Profile'}
+                        </h2>
+                        <span className="badge badge-success" style={{ fontSize: '11px', fontWeight: 800 }}>ACTIVE ENROLLMENT</span>
+                        <span style={{ fontSize: '12px', color: '#94a3b8', background: darkMode ? '#1e293b' : '#f1f5f9', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
+                          ID: #{profile?.id || user?.id || '—'}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '13px', color: '#94a3b8' }}>
+                        <span><strong style={{ color: darkMode ? '#cbd5e1' : '#475569' }}>Class:</strong> {profile?.class_display || profile?.class_name || 'Not Assigned'}</span>
+                        <span><strong style={{ color: darkMode ? '#cbd5e1' : '#475569' }}>Roll No:</strong> {profile?.roll_no || '—'}</span>
+                        <span><strong style={{ color: darkMode ? '#cbd5e1' : '#475569' }}>Admission No:</strong> {profile?.admission_no || profile?.reg_no || '—'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Profile Details Sections */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+                    {/* Academic Information */}
+                    <div className="card" style={{
+                      borderRadius: '16px', padding: '20px',
+                      background: darkMode ? '#111827' : '#ffffff',
+                      border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+                    }}>
+                      <h4 style={{ margin: '0 0 16px', fontSize: '15px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <i className="ti ti-school" style={{ color: '#2563eb' }} /> Academic Information
+                      </h4>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '13px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`, paddingBottom: '8px' }}>
+                          <span style={{ color: '#94a3b8' }}>Class &amp; Section</span>
+                          <strong style={{ color: darkMode ? '#fff' : '#0f172a' }}>{profile?.class_display || profile?.class_name || '—'}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`, paddingBottom: '8px' }}>
+                          <span style={{ color: '#94a3b8' }}>Roll Number</span>
+                          <strong style={{ color: darkMode ? '#fff' : '#0f172a' }}>{profile?.roll_no || '—'}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`, paddingBottom: '8px' }}>
+                          <span style={{ color: '#94a3b8' }}>Admission Number</span>
+                          <strong style={{ color: darkMode ? '#fff' : '#0f172a' }}>{profile?.admission_no || profile?.reg_no || '—'}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`, paddingBottom: '8px' }}>
+                          <span style={{ color: '#94a3b8' }}>Academic Session</span>
+                          <strong style={{ color: darkMode ? '#fff' : '#0f172a' }}>{profile?.session || '2025-2026'}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: '#94a3b8' }}>Current Status</span>
+                          <span className="badge badge-success">{profile?.status || 'ACTIVE'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Personal Information */}
+                    <div className="card" style={{
+                      borderRadius: '16px', padding: '20px',
+                      background: darkMode ? '#111827' : '#ffffff',
+                      border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+                    }}>
+                      <h4 style={{ margin: '0 0 16px', fontSize: '15px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <i className="ti ti-id" style={{ color: '#2563eb' }} /> Personal Details
+                      </h4>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '13px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`, paddingBottom: '8px' }}>
+                          <span style={{ color: '#94a3b8' }}>Date of Birth</span>
+                          <strong style={{ color: darkMode ? '#fff' : '#0f172a' }}>{profile?.dob || '—'}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`, paddingBottom: '8px' }}>
+                          <span style={{ color: '#94a3b8' }}>Gender</span>
+                          <strong style={{ color: darkMode ? '#fff' : '#0f172a' }}>{profile?.gender || '—'}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`, paddingBottom: '8px' }}>
+                          <span style={{ color: '#94a3b8' }}>Blood Group</span>
+                          <strong style={{ color: darkMode ? '#fff' : '#0f172a' }}>{profile?.blood_group || '—'}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`, paddingBottom: '8px' }}>
+                          <span style={{ color: '#94a3b8' }}>Category</span>
+                          <strong style={{ color: darkMode ? '#fff' : '#0f172a' }}>{profile?.category || 'General'}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: '#94a3b8' }}>Email Address</span>
+                          <span style={{ color: darkMode ? '#cbd5e1' : '#334155', fontWeight: 600 }}>{profile?.email || user?.email || '—'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Parent & Contact Information */}
+                    <div className="card" style={{
+                      borderRadius: '16px', padding: '20px',
+                      background: darkMode ? '#111827' : '#ffffff',
+                      border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+                    }}>
+                      <h4 style={{ margin: '0 0 16px', fontSize: '15px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <i className="ti ti-users" style={{ color: '#2563eb' }} /> Parent &amp; Contact Information
+                      </h4>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '13px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`, paddingBottom: '8px' }}>
+                          <span style={{ color: '#94a3b8' }}>Father / Guardian</span>
+                          <strong style={{ color: darkMode ? '#fff' : '#0f172a' }}>{profile?.parent_name || profile?.father_name || '—'}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`, paddingBottom: '8px' }}>
+                          <span style={{ color: '#94a3b8' }}>Mother's Name</span>
+                          <strong style={{ color: darkMode ? '#fff' : '#0f172a' }}>{profile?.mother_name || '—'}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`, paddingBottom: '8px' }}>
+                          <span style={{ color: '#94a3b8' }}>Contact Number</span>
+                          <strong style={{ color: darkMode ? '#fff' : '#0f172a' }}>{profile?.parent_phone || profile?.phone || '—'}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`, paddingBottom: '8px' }}>
+                          <span style={{ color: '#94a3b8' }}>Emergency Contact</span>
+                          <strong style={{ color: darkMode ? '#fff' : '#0f172a' }}>{profile?.emergency_contact || profile?.parent_phone || '—'}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: '#94a3b8' }}>Residential Address</span>
+                          <span style={{ color: darkMode ? '#cbd5e1' : '#334155', fontWeight: 600, textAlign: 'right', maxWidth: '180px' }}>
+                            {profile?.address || '—'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Quick Portal Navigation */}
+                    <div className="card" style={{
+                      borderRadius: '16px', padding: '20px',
+                      background: darkMode ? '#111827' : '#ffffff',
+                      border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`,
+                      display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
+                    }}>
+                      <div>
+                        <h4 style={{ margin: '0 0 8px', fontSize: '15px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <i className="ti ti-layout-grid" style={{ color: '#2563eb' }} /> Student Modules
+                        </h4>
+                        <p style={{ margin: '0 0 16px', fontSize: '12px', color: '#94a3b8' }}>
+                          Quickly navigate to linked records and portal journals for your profile.
+                        </p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleTabChange('attendance')}
+                            style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                              padding: '10px 14px', borderRadius: '10px',
+                              background: darkMode ? '#1e293b' : '#f8fafc',
+                              border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                              color: darkMode ? '#fff' : '#0f172a', fontSize: '13px', fontWeight: 700, cursor: 'pointer'
+                            }}
+                          >
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <i className="ti ti-clipboard-check" style={{ color: '#10b981' }} /> Attendance Records
+                            </span>
+                            <span style={{ color: '#94a3b8', fontSize: '12px' }}>{attendancePct}% →</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleTabChange('marks')}
+                            style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                              padding: '10px 14px', borderRadius: '10px',
+                              background: darkMode ? '#1e293b' : '#f8fafc',
+                              border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                              color: darkMode ? '#fff' : '#0f172a', fontSize: '13px', fontWeight: 700, cursor: 'pointer'
+                            }}
+                          >
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <i className="ti ti-award" style={{ color: '#2563eb' }} /> Academic Report Card
+                            </span>
+                            <span style={{ color: '#94a3b8', fontSize: '12px' }}>Scores →</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleTabChange('fees')}
+                            style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                              padding: '10px 14px', borderRadius: '10px',
+                              background: darkMode ? '#1e293b' : '#f8fafc',
+                              border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
+                              color: darkMode ? '#fff' : '#0f172a', fontSize: '13px', fontWeight: 700, cursor: 'pointer'
+                            }}
+                          >
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <i className="ti ti-receipt-2" style={{ color: '#f59e0b' }} /> Fee Ledger &amp; Due
+                            </span>
+                            <span style={{ color: balanceDue > 0 ? '#ef4444' : '#10b981', fontSize: '12px' }}>
+                              {balanceDue > 0 ? `₹${fmt(balanceDue)} Due` : 'Clear'} →
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
           {/* ══ TAB: ATTENDANCE ══ */}
           {tab === 'attendance' && (
             <div className="card" style={{
@@ -659,84 +1009,287 @@ export default function StudentDashboard() {
               background: darkMode ? '#111827' : '#ffffff',
               border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
             }}>
-              <div className="card-header" style={{ padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h4 style={{ margin: 0, fontSize: '15px', color: darkMode ? '#ffffff' : '#0f172a' }}>
-                  Full Attendance Journal
-                </h4>
-                <div style={{ display: 'flex', gap: '8px' }}>
+              <div className="card-header" style={{ padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '15px', color: darkMode ? '#ffffff' : '#0f172a' }}>
+                    Full Attendance Journal
+                  </h4>
+                  <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
+                    Official daily presence record logged by class teachers
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   <span className="badge badge-success">Present: {presentDays}</span>
                   <span className="badge badge-error">Absent: {absentDays}</span>
-                  <span className="badge badge-info">{attendancePct}% Rate</span>
+                  {lateDays > 0 && <span className="badge badge-warning">Late: {lateDays}</span>}
+                  <span className="badge badge-info">{attendancePct}% Overall</span>
                 </div>
               </div>
-              <div className="table-container" style={{ border: 'none' }}>
-                <table>
-                  <thead><tr><th>#</th><th>Date</th><th>Status</th></tr></thead>
-                  <tbody>
-                    {(attendance?.records || []).map((r, i) => (
-                      <tr key={r.id}>
-                        <td style={{ color: '#94a3b8' }}>{i + 1}</td>
-                        <td>{r.date}</td>
-                        <td>
-                          <span className={`badge ${
-                            r.status === 'PRESENT' ? 'badge-success' :
-                            r.status === 'LATE'    ? 'badge-warning' : 'badge-error'
-                          }`}>{r.status}</span>
-                        </td>
+
+              {loadingAttendance ? (
+                <div style={{ textAlign: 'center', padding: '40px 20px', color: '#94a3b8' }}>
+                  <i className="ti ti-loader-2 spin" style={{ fontSize: '28px', color: '#2563eb', display: 'inline-block', marginBottom: '8px' }} />
+                  <div>Loading attendance records...</div>
+                </div>
+              ) : attendanceError ? (
+                <div style={{ textAlign: 'center', padding: '36px 20px' }}>
+                  <i className="ti ti-alert-triangle" style={{ fontSize: '32px', color: '#ef4444', display: 'block', marginBottom: '8px' }} />
+                  <div style={{ color: darkMode ? '#fff' : '#0f172a', fontWeight: 700 }}>Unable to load attendance journal</div>
+                  <button type="button" onClick={fetchAttendance} className="btn btn-secondary btn-sm" style={{ marginTop: '12px' }}>
+                    <i className="ti ti-refresh" /> Try Again
+                  </button>
+                </div>
+              ) : (
+                <div className="table-container" style={{ border: 'none' }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th style={{ width: '60px' }}>#</th>
+                        <th>Date</th>
+                        <th>Day</th>
+                        <th>Status</th>
+                        <th>Remarks / Notes</th>
                       </tr>
-                    ))}
-                    {!attendance?.records?.length && (
-                      <tr><td colSpan={3} style={{ textAlign: 'center', color: '#94a3b8', padding: '30px' }}>No attendance records yet</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {(attendance?.records || []).map((r, i) => {
+                        const recDate = r.date ? new Date(r.date) : null;
+                        const validDate = recDate && !isNaN(recDate);
+                        const formattedDate = validDate
+                          ? recDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+                          : (r.date || '—');
+                        const dayName = validDate ? recDate.toLocaleDateString('en-IN', { weekday: 'short' }) : '—';
+                        return (
+                          <tr key={r.id || i}>
+                            <td style={{ color: '#94a3b8' }}>{i + 1}</td>
+                            <td style={{ fontWeight: 700, color: darkMode ? '#fff' : '#0f172a' }}>{formattedDate}</td>
+                            <td style={{ color: '#94a3b8' }}>{dayName}</td>
+                            <td>
+                              <span className={`badge ${
+                                r.status === 'PRESENT' ? 'badge-success' :
+                                r.status === 'LATE'    ? 'badge-warning' :
+                                r.status === 'HALF_DAY'? 'badge-info' : 'badge-error'
+                              }`}>{r.status}</span>
+                            </td>
+                            <td style={{ fontSize: '12px', color: '#94a3b8' }}>
+                              {r.remarks || '—'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {!attendance?.records?.length && (
+                        <tr>
+                          <td colSpan={5} style={{ textAlign: 'center', color: '#94a3b8', padding: '36px' }}>
+                            <i className="ti ti-calendar-off" style={{ fontSize: '30px', display: 'block', marginBottom: '8px', opacity: 0.6 }} />
+                            No attendance records marked yet for this session.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 
-          {/* ══ TAB: MARKS ══ */}
+          {/* ══ TAB: MARKS / REPORT CARD ══ */}
           {tab === 'marks' && (
-            <div className="card" style={{
-              borderRadius: '16px',
-              background: darkMode ? '#111827' : '#ffffff',
-              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
-            }}>
-              <div className="card-header" style={{ padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}` }}>
-                <h4 style={{ margin: 0, fontSize: '15px', color: darkMode ? '#ffffff' : '#0f172a' }}>
-                  Academic Performance &amp; Grades
-                </h4>
-              </div>
-              <div className="table-container" style={{ border: 'none' }}>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Subject</th><th>Exam Type</th><th>Marks Scored</th>
-                      <th>Percentage</th><th>Grade</th><th>Outcome</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {marks.map(m => {
-                      const pct = Math.round(m.marks_obtained / m.max_marks * 100);
-                      return (
-                        <tr key={m.id}>
-                          <td style={{ fontWeight: 700 }}>{m.subject_name || `Subject ${m.subject_id}`}</td>
-                          <td style={{ color: '#94a3b8' }}>{m.exam_type}</td>
-                          <td style={{ fontWeight: 800 }}>{m.marks_obtained} / {m.max_marks}</td>
-                          <td style={{ fontWeight: 700 }}>{pct}%</td>
-                          <td><span className="badge badge-info">{m.grade}</span></td>
-                          <td>
-                            <span className={`badge ${pct >= 33 ? 'badge-success' : 'badge-error'}`}>
-                              {pct >= 33 ? 'PASSED' : 'RETAKE'}
-                            </span>
-                          </td>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* Exam Selector Pill Bar */}
+              {examsSummary.length > 0 && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+                  background: darkMode ? '#111827' : '#ffffff',
+                  padding: '14px 18px', borderRadius: '16px',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+                }}>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: darkMode ? '#cbd5e1' : '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <i className="ti ti-files" style={{ color: '#2563eb' }} /> Select Exam:
+                  </span>
+                  {examsSummary.map(ex => {
+                    const isSelected = selectedExamId === ex.exam_id;
+                    return (
+                      <button
+                        key={ex.exam_id}
+                        type="button"
+                        onClick={() => setSelectedExamId(ex.exam_id)}
+                        style={{
+                          padding: '6px 14px', borderRadius: '10px', border: 'none', cursor: 'pointer',
+                          background: isSelected ? '#2563eb' : (darkMode ? '#1e293b' : '#f1f5f9'),
+                          color: isSelected ? '#ffffff' : (darkMode ? '#cbd5e1' : '#334155'),
+                          fontSize: '12.5px', fontWeight: 700,
+                          transition: 'all 0.15s ease',
+                          display: 'flex', alignItems: 'center', gap: '6px'
+                        }}
+                      >
+                        {ex.exam_name}
+                        <span style={{
+                          padding: '1px 6px', borderRadius: '6px', fontSize: '10.5px',
+                          background: isSelected ? 'rgba(255,255,255,0.2)' : (darkMode ? '#334155' : '#e2e8f0'),
+                          color: isSelected ? '#ffffff' : '#64748b'
+                        }}>
+                          {ex.percentage}%
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Selected Exam Report Card Summary */}
+              {reportCard && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                  <div className="card" style={{
+                    borderRadius: '16px', padding: '18px',
+                    background: darkMode ? '#111827' : '#ffffff',
+                    border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+                  }}>
+                    <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Total Marks Scored</div>
+                    <div style={{ fontSize: '22px', fontWeight: 900, color: darkMode ? '#fff' : '#0f172a', marginTop: '4px' }}>
+                      {reportCard.total_obtained ?? '—'} <span style={{ fontSize: '14px', color: '#94a3b8', fontWeight: 600 }}>/ {reportCard.total_max ?? '—'}</span>
+                    </div>
+                  </div>
+
+                  <div className="card" style={{
+                    borderRadius: '16px', padding: '18px',
+                    background: darkMode ? '#111827' : '#ffffff',
+                    border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+                  }}>
+                    <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Aggregate Score</div>
+                    <div style={{ fontSize: '22px', fontWeight: 900, color: '#2563eb', marginTop: '4px' }}>
+                      {reportCard.percentage ?? '—'}%
+                    </div>
+                  </div>
+
+                  <div className="card" style={{
+                    borderRadius: '16px', padding: '18px',
+                    background: darkMode ? '#111827' : '#ffffff',
+                    border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+                  }}>
+                    <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Overall Grade</div>
+                    <div style={{ fontSize: '22px', fontWeight: 900, color: '#10b981', marginTop: '4px' }}>
+                      {reportCard.grade || '—'}
+                    </div>
+                  </div>
+
+                  <div className="card" style={{
+                    borderRadius: '16px', padding: '18px',
+                    background: darkMode ? '#111827' : '#ffffff',
+                    border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+                  }}>
+                    <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600 }}>Result Status</div>
+                    <div style={{ marginTop: '6px' }}>
+                      <span className={`badge ${
+                        (reportCard.result || '').toUpperCase() === 'PASS' || (reportCard.percentage >= 33)
+                          ? 'badge-success'
+                          : 'badge-error'
+                      }`} style={{ fontSize: '13px', padding: '4px 10px' }}>
+                        {reportCard.result || ((reportCard.percentage >= 33) ? 'PASS' : 'FAIL')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Detailed Subjects Table */}
+              <div className="card" style={{
+                borderRadius: '16px',
+                background: darkMode ? '#111827' : '#ffffff',
+                border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+              }}>
+                <div className="card-header" style={{ padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: '15px', color: darkMode ? '#ffffff' : '#0f172a' }}>
+                      {reportCard?.exam?.name ? `${reportCard.exam.name} - Subject Breakdown` : 'Subject Performance & Grades'}
+                    </h4>
+                    <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
+                      Official evaluation records published by academic department
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="btn btn-secondary btn-sm"
+                    style={{ borderRadius: '8px', fontSize: '12px' }}
+                  >
+                    <i className="ti ti-printer" /> Print Report
+                  </button>
+                </div>
+
+                {loadingMarks ? (
+                  <div style={{ textAlign: 'center', padding: '40px 20px', color: '#94a3b8' }}>
+                    <i className="ti ti-loader-2 spin" style={{ fontSize: '28px', color: '#2563eb', display: 'inline-block', marginBottom: '8px' }} />
+                    <div>Loading evaluation records...</div>
+                  </div>
+                ) : marksError ? (
+                  <div style={{ textAlign: 'center', padding: '36px 20px' }}>
+                    <i className="ti ti-alert-triangle" style={{ fontSize: '32px', color: '#ef4444', display: 'block', marginBottom: '8px' }} />
+                    <div style={{ color: darkMode ? '#fff' : '#0f172a', fontWeight: 700 }}>Unable to load marks records</div>
+                    <button type="button" onClick={fetchMarksOverview} className="btn btn-secondary btn-sm" style={{ marginTop: '12px' }}>
+                      <i className="ti ti-refresh" /> Try Again
+                    </button>
+                  </div>
+                ) : (
+                  <div className="table-container" style={{ border: 'none' }}>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Subject</th>
+                          <th>Marks Scored</th>
+                          <th>Percentage</th>
+                          <th>Grade</th>
+                          <th>Outcome</th>
                         </tr>
-                      );
-                    })}
-                    {!marks.length && (
-                      <tr><td colSpan={6} style={{ textAlign: 'center', color: '#94a3b8', padding: '30px' }}>No examination records found</td></tr>
-                    )}
-                  </tbody>
-                </table>
+                      </thead>
+                      <tbody>
+                        {(reportCard?.subjects || []).map((s, idx) => {
+                          const pct = s.max_marks > 0 ? Math.round((s.marks_obtained / s.max_marks) * 100) : 0;
+                          return (
+                            <tr key={s.subject_id || idx}>
+                              <td style={{ fontWeight: 700, color: darkMode ? '#fff' : '#0f172a' }}>
+                                {s.subject_name || `Subject ${s.subject_id}`}
+                              </td>
+                              <td style={{ fontWeight: 800 }}>
+                                {s.is_absent ? (
+                                  <span style={{ color: '#ef4444' }}>ABSENT</span>
+                                ) : (
+                                  `${s.marks_obtained} / ${s.max_marks}`
+                                )}
+                              </td>
+                              <td>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <div style={{ width: '80px', height: '6px', borderRadius: '3px', background: darkMode ? '#334155' : '#e2e8f0', overflow: 'hidden' }}>
+                                    <div style={{
+                                      width: `${pct}%`, height: '100%',
+                                      background: pct >= 80 ? '#10b981' : pct >= 50 ? '#3b82f6' : '#ef4444'
+                                    }} />
+                                  </div>
+                                  <span style={{ fontSize: '12px', fontWeight: 700 }}>{pct}%</span>
+                                </div>
+                              </td>
+                              <td>
+                                <span className="badge badge-info">{s.grade || '—'}</span>
+                              </td>
+                              <td>
+                                <span className={`badge ${s.is_absent || pct < 33 ? 'badge-error' : 'badge-success'}`}>
+                                  {s.is_absent ? 'ABSENT' : (pct >= 33 ? 'PASSED' : 'RETAKE')}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {(!reportCard?.subjects || reportCard.subjects.length === 0) && (
+                          <tr>
+                            <td colSpan={5} style={{ textAlign: 'center', color: '#94a3b8', padding: '36px' }}>
+                              <i className="ti ti-notes-off" style={{ fontSize: '30px', display: 'block', marginBottom: '8px', opacity: 0.6 }} />
+                              No examination records published for this assessment yet.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -804,66 +1357,87 @@ export default function StudentDashboard() {
                 background: darkMode ? '#111827' : '#ffffff',
                 border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
               }}>
-                <div className="card-header" style={{ padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h4 style={{ margin: 0, fontSize: '15px', color: darkMode ? '#ffffff' : '#0f172a' }}>
-                    Fee Ledger &amp; Invoices
-                  </h4>
+                <div className="card-header" style={{ padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: '15px', color: darkMode ? '#ffffff' : '#0f172a' }}>
+                      Fee Ledger &amp; Invoices
+                    </h4>
+                    <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
+                      Official financial transaction statements logged with accounts office
+                    </div>
+                  </div>
                   <div style={{ display: 'flex', gap: '14px', fontSize: '13px' }}>
                     <span style={{ fontWeight: 700, color: '#10b981' }}>Paid: ₹{fmt(totalPaid)}</span>
                     <span style={{ fontWeight: 700, color: '#ef4444' }}>Due: ₹{fmt(balanceDue)}</span>
                   </div>
                 </div>
-                <div className="table-container" style={{ border: 'none' }}>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Fee Category</th><th>Billing Month / Term</th><th>Amount Due</th>
-                        <th>Amount Paid</th><th>Balance</th><th>Status</th><th>Receipt / Mode</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(fees?.records || []).map(r => {
-                        const isMigrated = (r.fee_type || '').toLowerCase().includes('migrat') ||
-                                           (r.fee_type || '').toLowerCase().includes('previous') ||
-                                           (r.remarks || '').toLowerCase().includes('migrat');
-                        const recBalance = r.balance !== undefined ? r.balance : Math.max(0, (r.amount_due || 0) - (r.amount_paid || 0));
-                        return (
-                          <tr key={r.id}>
-                            <td>
-                              <div style={{ fontWeight: 700, color: darkMode ? '#fff' : '#0f172a' }}>{r.fee_type}</div>
-                              {isMigrated && (
-                                <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', background: '#fef3c7', color: '#92400e', fontWeight: 800 }}>
-                                  MIGRATED OPENING DUES
-                                </span>
-                              )}
-                              {r.remarks && !isMigrated && (
-                                <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{r.remarks}</div>
-                              )}
-                            </td>
-                            <td>{r.month || r.coverage_label || '—'}</td>
-                            <td style={{ fontWeight: 700 }}>₹{r.amount_due?.toLocaleString('en-IN')}</td>
-                            <td style={{ color: '#10b981', fontWeight: 600 }}>₹{r.amount_paid?.toLocaleString('en-IN')}</td>
-                            <td style={{ color: recBalance > 0 ? '#ef4444' : '#10b981', fontWeight: 800 }}>
-                              ₹{recBalance?.toLocaleString('en-IN')}
-                            </td>
-                            <td>
-                              <span className={`badge ${
-                                r.status === 'PAID'    ? 'badge-success' :
-                                r.status === 'PARTIAL' ? 'badge-warning' : 'badge-error'
-                              }`}>{r.status}</span>
-                            </td>
-                            <td style={{ fontSize: '12px', color: '#94a3b8' }}>
-                              {r.receipt_no ? <span style={{ fontFamily: 'monospace' }}>#{r.receipt_no}</span> : (r.payment_mode || '—')}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                      {!fees?.records?.length && (
-                        <tr><td colSpan={7} style={{ textAlign: 'center', color: '#94a3b8', padding: '30px' }}>No fee transactions recorded</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+
+                {loadingFees ? (
+                  <div style={{ textAlign: 'center', padding: '40px 20px', color: '#94a3b8' }}>
+                    <i className="ti ti-loader-2 spin" style={{ fontSize: '28px', color: '#2563eb', display: 'inline-block', marginBottom: '8px' }} />
+                    <div>Loading fee transactions...</div>
+                  </div>
+                ) : feesError ? (
+                  <div style={{ textAlign: 'center', padding: '36px 20px' }}>
+                    <i className="ti ti-alert-triangle" style={{ fontSize: '32px', color: '#ef4444', display: 'block', marginBottom: '8px' }} />
+                    <div style={{ color: darkMode ? '#fff' : '#0f172a', fontWeight: 700 }}>Unable to load fee ledger</div>
+                    <button type="button" onClick={fetchFees} className="btn btn-secondary btn-sm" style={{ marginTop: '12px' }}>
+                      <i className="ti ti-refresh" /> Try Again
+                    </button>
+                  </div>
+                ) : (
+                  <div className="table-container" style={{ border: 'none' }}>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Fee Category</th><th>Billing Month / Term</th><th>Amount Due</th>
+                          <th>Amount Paid</th><th>Balance</th><th>Status</th><th>Receipt / Mode</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(fees?.records || []).map(r => {
+                          const isMigrated = (r.fee_type || '').toLowerCase().includes('migrat') ||
+                                             (r.fee_type || '').toLowerCase().includes('previous') ||
+                                             (r.remarks || '').toLowerCase().includes('migrat');
+                          const recBalance = r.balance !== undefined ? r.balance : Math.max(0, (r.amount_due || 0) - (r.amount_paid || 0));
+                          return (
+                            <tr key={r.id}>
+                              <td>
+                                <div style={{ fontWeight: 700, color: darkMode ? '#fff' : '#0f172a' }}>{r.fee_type}</div>
+                                {isMigrated && (
+                                  <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', background: '#fef3c7', color: '#92400e', fontWeight: 800 }}>
+                                    MIGRATED OPENING DUES
+                                  </span>
+                                )}
+                                {r.remarks && !isMigrated && (
+                                  <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{r.remarks}</div>
+                                )}
+                              </td>
+                              <td>{r.month || r.coverage_label || '—'}</td>
+                              <td style={{ fontWeight: 700 }}>₹{r.amount_due?.toLocaleString('en-IN')}</td>
+                              <td style={{ color: '#10b981', fontWeight: 600 }}>₹{r.amount_paid?.toLocaleString('en-IN')}</td>
+                              <td style={{ color: recBalance > 0 ? '#ef4444' : '#10b981', fontWeight: 800 }}>
+                                ₹{recBalance?.toLocaleString('en-IN')}
+                              </td>
+                              <td>
+                                <span className={`badge ${
+                                  r.status === 'PAID'    ? 'badge-success' :
+                                  r.status === 'PARTIAL' ? 'badge-warning' : 'badge-error'
+                                }`}>{r.status}</span>
+                              </td>
+                              <td style={{ fontSize: '12px', color: '#94a3b8' }}>
+                                {r.receipt_no ? <span style={{ fontFamily: 'monospace' }}>#{r.receipt_no}</span> : (r.payment_mode || '—')}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {!fees?.records?.length && (
+                          <tr><td colSpan={7} style={{ textAlign: 'center', color: '#94a3b8', padding: '30px' }}>No fee transactions recorded</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           )}

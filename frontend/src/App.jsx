@@ -787,7 +787,9 @@ export default function App() {
             <Route path="/:schoolSlug/:role/announcements" element={<TenantProtectedRoute permissions={ROUTE_PERMISSIONS['/support/announcements']}><Announcements /></TenantProtectedRoute>} />
             <Route path="/:schoolSlug/:role/announcements/create" element={<TenantProtectedRoute permissions={ROUTE_PERMISSIONS['/support/announcements']}><Announcements initialShowForm={true} /></TenantProtectedRoute>} />
             <Route path="/:schoolSlug/:role/messages" element={<TenantProtectedRoute><ChatWindow /></TenantProtectedRoute>} />
+            <Route path="/:schoolSlug/:role/support/chat" element={<LegacyRedirect toService="messages" />} />
             <Route path="/:schoolSlug/:role/help-center" element={<TenantProtectedRoute><KnowledgeBase /></TenantProtectedRoute>} />
+            <Route path="/:schoolSlug/:role/support/help" element={<LegacyRedirect toService="help-center" />} />
 
             {/* School Settings & WhatsApp */}
             <Route path="/:schoolSlug/:role/school-settings" element={

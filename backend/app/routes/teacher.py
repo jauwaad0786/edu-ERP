@@ -208,42 +208,60 @@ def _allowed(filename):
 @teacher_bp.route('/notes', methods=['POST'])
 @role_required('TEACHER')
 def upload_note():
-    
-
-    
     user       = get_current_user()
-    title      = request.form.get('title')
+    title      = (request.form.get('title') or '').strip()
     subject_id = request.form.get('subject_id')
     class_id   = request.form.get('class_id')
-    description= request.form.get('description', '')
+    description= (request.form.get('description') or '').strip()
     file       = request.files.get('file')
 
+    if not title:
+        return jsonify({'error': 'Title is required'}), 400
+
     if not file or not _allowed(file.filename):
-        return jsonify({'error': 'Invalid file type'}), 400
-
-    filename = secure_filename(file.filename)
-
-    # Upload to Cloudinary as raw file (PDF, DOC etc.)
-    result = cloudinary.uploader.upload(
-        file,
-        folder        = 'eduerp/notes',
-        public_id     = f'note_{user.school_id}_{filename}',
-        resource_type = 'raw',
-        overwrite     = True,
-    )
-    file_url = result['secure_url']
+        return jsonify({'error': 'Invalid file type. Allowed: PDF, DOC, PPT, TXT, PNG, JPG'}), 400
 
     from app.models.academic import Teacher as TeacherModel
     teacher = TeacherModel.query.filter_by(user_id=user.id).first()
     school_id = teacher.school_id if teacher else user.school_id
+    teacher_id = teacher.id if teacher else None
+
+    if class_id:
+        cls = Class.query.filter_by(id=class_id, school_id=school_id).first()
+        if not cls:
+            return jsonify({'error': 'Class not found or unauthorized'}), 403
+
+    filename = secure_filename(file.filename)
+
+    file_url = None
+    try:
+        # Upload to Cloudinary as raw file (PDF, DOC etc.)
+        result = cloudinary.uploader.upload(
+            file,
+            folder        = 'eduerp/notes',
+            public_id     = f'note_{user.school_id}_{filename}',
+            resource_type = 'raw',
+            overwrite     = True,
+        )
+        file_url = result.get('secure_url')
+    except Exception as ex:
+        # Safe fallback if Cloudinary credentials missing or network issue: save to uploads/notes
+        upload_folder = os.path.join(current_app.root_path, 'uploads', 'notes')
+        os.makedirs(upload_folder, exist_ok=True)
+        local_filename = f"{user.school_id}_{filename}"
+        local_path = os.path.join(upload_folder, local_filename)
+        file.seek(0)
+        file.save(local_path)
+        file_url = f"/api/teacher/notes/download/{local_filename}"
 
     note = Note(
         title       = title,
         description = description,
         file_url    = file_url,
         file_name   = filename,
-        subject_id  = subject_id,
-        class_id    = class_id,
+        subject_id  = int(subject_id) if subject_id else None,
+        class_id    = int(class_id) if class_id else None,
+        teacher_id  = teacher_id,
         school_id   = school_id,
         uploaded_by = user.id,
     )
@@ -253,17 +271,42 @@ def upload_note():
 
 
 @teacher_bp.route('/notes', methods=['GET'])
-@role_required('TEACHER', 'STUDENT', 'PRINCIPAL')
+@role_required('TEACHER', 'STUDENT', 'PRINCIPAL', 'PARENT')
 def list_notes():
     user     = get_current_user()
     class_id = request.args.get('class_id')
-    from app.models.academic import Teacher as TeacherModel
+    from app.models.academic import Teacher as TeacherModel, Student as StudentModel
     teacher = TeacherModel.query.filter_by(user_id=user.id).first()
     school_id = teacher.school_id if teacher else getattr(user, 'school_id', None)
     q = Note.query.filter_by(school_id=school_id)
+
+    role_str = getattr(user.role, 'value', str(user.role))
+    if not class_id and role_str in ('STUDENT', 'PARENT'):
+        std = None
+        if role_str == 'STUDENT':
+            std = StudentModel.query.filter_by(user_id=user.id).first()
+        else:
+            std = StudentModel.query.filter(
+                StudentModel.school_id == school_id,
+                (
+                    (StudentModel.parent_email == user.email) |
+                    (StudentModel.parent_phone == user.phone) |
+                    (StudentModel.user_id == user.id)
+                )
+            ).first()
+        if std and std.class_id:
+            class_id = std.class_id
+
     if class_id:
         q = q.filter_by(class_id=class_id)
-    return jsonify([n.to_dict() for n in q.all()]), 200
+    notes = q.order_by(Note.id.desc()).all()
+    return jsonify([n.to_dict() for n in notes]), 200
+
+
+@teacher_bp.route('/notes/download/<path:filename>', methods=['GET'])
+def download_note_file(filename):
+    upload_folder = os.path.join(current_app.root_path, 'uploads', 'notes')
+    return send_from_directory(upload_folder, filename)
 
 
 def _grade(marks, max_marks):
