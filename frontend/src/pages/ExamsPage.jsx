@@ -236,9 +236,9 @@ function TimetableBuilder({ exam, onUpdate }) {
           <form onSubmit={addItem}>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(170px,1fr))', gap:12 }}>
               <div>
-                <label style={{ fontSize:11, fontWeight:700, color:'#334155', display:'block', marginBottom:3 }}>Subject *</label>
+                <label htmlFor="exam-item-subject" style={{ fontSize:11, fontWeight:700, color:'#334155', display:'block', marginBottom:3 }}>Subject *</label>
                 {subjects.length > 0 ? (
-                  <select value={form.subject_id} required
+                  <select id="exam-item-subject" value={form.subject_id} required
                     onChange={e => {
                       const sId = e.target.value;
                       const selSub = subjects.find(s => String(s.id) === String(sId));
@@ -259,7 +259,7 @@ function TimetableBuilder({ exam, onUpdate }) {
                   </select>
                 ) : (
                   <div>
-                    <input required
+                    <input id="exam-item-subject" required
                       placeholder='Type subject name (e.g. Maths)'
                       value={form.subject_name || ''}
                       onChange={e => setForm(f => ({...f, subject_name: e.target.value, subject_id: ''}))}
@@ -271,46 +271,46 @@ function TimetableBuilder({ exam, onUpdate }) {
                 )}
               </div>
               <div>
-                <label style={{ fontSize:11, fontWeight:700, color:'#334155', display:'block', marginBottom:3 }}>
+                <label htmlFor="exam-item-date" style={{ fontSize:11, fontWeight:700, color:'#334155', display:'block', marginBottom:3 }}>
                   Exam Date *
                 </label>
-                <input required type='date' value={form.exam_date}
+                <input id="exam-item-date" required type='date' value={form.exam_date}
                   min={startDateStr || undefined}
                   max={endDateStr || undefined}
                   onChange={e => setForm(f => ({...f, exam_date: e.target.value}))}
                   style={{ width:'100%', padding:'7px 9px', borderRadius:6, border:'1.5px solid #cbd5e1', fontSize:12, background:'white', boxSizing:'border-box' }} />
               </div>
               <div>
-                <label style={{ fontSize:11, fontWeight:700, color:'#334155', display:'block', marginBottom:3 }}>Start Time</label>
-                <select value={form.start_time}
+                <label htmlFor="exam-item-start-time" style={{ fontSize:11, fontWeight:700, color:'#334155', display:'block', marginBottom:3 }}>Start Time</label>
+                <select id="exam-item-start-time" value={form.start_time}
                   onChange={e => setForm(f => ({...f, start_time: e.target.value}))}
                   style={{ width:'100%', padding:'7px 9px', borderRadius:6, border:'1.5px solid #cbd5e1', fontSize:12, background:'white' }}>
                   {TIME_OPTIONS.map(t => <option key={t}>{t}</option>)}
                 </select>
               </div>
               <div>
-                <label style={{ fontSize:11, fontWeight:700, color:'#334155', display:'block', marginBottom:3 }}>End Time</label>
-                <select value={form.end_time}
+                <label htmlFor="exam-item-end-time" style={{ fontSize:11, fontWeight:700, color:'#334155', display:'block', marginBottom:3 }}>End Time</label>
+                <select id="exam-item-end-time" value={form.end_time}
                   onChange={e => setForm(f => ({...f, end_time: e.target.value}))}
                   style={{ width:'100%', padding:'7px 9px', borderRadius:6, border:'1.5px solid #cbd5e1', fontSize:12, background:'white' }}>
                   {TIME_OPTIONS.map(t => <option key={t}>{t}</option>)}
                 </select>
               </div>
               <div>
-                <label style={{ fontSize:11, fontWeight:700, color:'#334155', display:'block', marginBottom:3 }}>Venue / Room</label>
-                <input value={form.venue} placeholder='e.g. Room 101 / Hall'
+                <label htmlFor="exam-item-venue" style={{ fontSize:11, fontWeight:700, color:'#334155', display:'block', marginBottom:3 }}>Venue / Room</label>
+                <input id="exam-item-venue" value={form.venue} placeholder='e.g. Room 101 / Hall'
                   onChange={e => setForm(f => ({...f, venue: e.target.value}))}
                   style={{ width:'100%', padding:'7px 9px', borderRadius:6, border:'1.5px solid #cbd5e1', fontSize:12, boxSizing:'border-box' }} />
               </div>
               <div>
-                <label style={{ fontSize:11, fontWeight:700, color:'#334155', display:'block', marginBottom:3 }}>Max Marks</label>
-                <input type='number' value={form.max_marks} min={1}
+                <label htmlFor="exam-item-max-marks" style={{ fontSize:11, fontWeight:700, color:'#334155', display:'block', marginBottom:3 }}>Max Marks</label>
+                <input id="exam-item-max-marks" type='number' value={form.max_marks} min={1}
                   onChange={e => setForm(f => ({...f, max_marks: Number(e.target.value)}))}
                   style={{ width:'100%', padding:'7px 9px', borderRadius:6, border:'1.5px solid #cbd5e1', fontSize:12, boxSizing:'border-box' }} />
               </div>
               <div>
-                <label style={{ fontSize:11, fontWeight:700, color:'#334155', display:'block', marginBottom:3 }}>Pass Marks</label>
-                <input type='number' value={form.pass_marks} min={0}
+                <label htmlFor="exam-item-pass-marks" style={{ fontSize:11, fontWeight:700, color:'#334155', display:'block', marginBottom:3 }}>Pass Marks</label>
+                <input id="exam-item-pass-marks" type='number' value={form.pass_marks} min={0}
                   onChange={e => setForm(f => ({...f, pass_marks: Number(e.target.value)}))}
                   style={{ width:'100%', padding:'7px 9px', borderRadius:6, border:'1.5px solid #cbd5e1', fontSize:12, boxSizing:'border-box' }} />
               </div>
@@ -819,34 +819,34 @@ function ExamDetailPanel({ exam, onClose, onUpdate }) {
           <form onSubmit={saveEdit}>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
               <div style={{ gridColumn:'1/-1' }}>
-                <label style={{ fontSize:11, fontWeight:600, color:'#475569', display:'block', marginBottom:3 }}>Exam Name *</label>
-                <input required value={form.exam_name}
+                <label htmlFor="edit-exam-name" style={{ fontSize:11, fontWeight:600, color:'#475569', display:'block', marginBottom:3 }}>Exam Name *</label>
+                <input id="edit-exam-name" required value={form.exam_name}
                   onChange={e => setForm(f => ({...f, exam_name: e.target.value}))}
                   style={{ width:'100%', padding:'7px 10px', borderRadius:6, border:'1px solid #cbd5e1', fontSize:13, boxSizing:'border-box' }} />
               </div>
               <div>
-                <label style={{ fontSize:11, fontWeight:600, color:'#475569', display:'block', marginBottom:3 }}>Type</label>
-                <select value={form.exam_type} onChange={e => setForm(f => ({...f, exam_type: e.target.value}))}
+                <label htmlFor="edit-exam-type" style={{ fontSize:11, fontWeight:600, color:'#475569', display:'block', marginBottom:3 }}>Type</label>
+                <select id="edit-exam-type" value={form.exam_type} onChange={e => setForm(f => ({...f, exam_type: e.target.value}))}
                   style={{ width:'100%', padding:'7px 10px', borderRadius:6, border:'1px solid #cbd5e1', fontSize:13 }}>
                   {EXAM_TYPES.map(t => <option key={t} value={t}>{TYPE_META[t]?.label || t}</option>)}
                 </select>
               </div>
               <div>
-                <label style={{ fontSize:11, fontWeight:600, color:'#475569', display:'block', marginBottom:3 }}>Grading Scheme</label>
-                <select value={form.grading_system} onChange={e => setForm(f => ({...f, grading_system: e.target.value}))}
+                <label htmlFor="edit-exam-grading" style={{ fontSize:11, fontWeight:600, color:'#475569', display:'block', marginBottom:3 }}>Grading Scheme</label>
+                <select id="edit-exam-grading" value={form.grading_system} onChange={e => setForm(f => ({...f, grading_system: e.target.value}))}
                   style={{ width:'100%', padding:'7px 10px', borderRadius:6, border:'1px solid #cbd5e1', fontSize:13 }}>
                   {GRADING_SCHEMES.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
                 </select>
               </div>
               <div>
-                <label style={{ fontSize:11, fontWeight:600, color:'#475569', display:'block', marginBottom:3 }}>Start Date</label>
-                <input type='date' value={form.start_date || ''}
+                <label htmlFor="edit-exam-start-date" style={{ fontSize:11, fontWeight:600, color:'#475569', display:'block', marginBottom:3 }}>Start Date</label>
+                <input id="edit-exam-start-date" type='date' value={form.start_date || ''}
                   onChange={e => setForm(f => ({...f, start_date: e.target.value}))}
                   style={{ width:'100%', padding:'7px 10px', borderRadius:6, border:'1px solid #cbd5e1', fontSize:13, boxSizing:'border-box' }} />
               </div>
               <div>
-                <label style={{ fontSize:11, fontWeight:600, color:'#475569', display:'block', marginBottom:3 }}>End Date</label>
-                <input type='date' value={form.end_date || ''}
+                <label htmlFor="edit-exam-end-date" style={{ fontSize:11, fontWeight:600, color:'#475569', display:'block', marginBottom:3 }}>End Date</label>
+                <input id="edit-exam-end-date" type='date' value={form.end_date || ''}
                   onChange={e => setForm(f => ({...f, end_date: e.target.value}))}
                   style={{ width:'100%', padding:'7px 10px', borderRadius:6, border:'1px solid #cbd5e1', fontSize:13, boxSizing:'border-box' }} />
               </div>
@@ -982,10 +982,17 @@ function CreateExamModal({ onClose, onCreated }) {
   };
 
   return (
-    <div style={{
-      position:'fixed', inset:0, background:'rgba(15,23,42,0.5)',
-      display:'flex', alignItems:'center', justifyContent:'center', zIndex:1100,
-    }} onClick={e => e.target === e.currentTarget && onClose?.()}>
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label="Close create examination modal"
+      style={{
+        position:'fixed', inset:0, background:'rgba(15,23,42,0.5)',
+        display:'flex', alignItems:'center', justifyContent:'center', zIndex:1100,
+      }}
+      onClick={e => e.target === e.currentTarget && onClose?.()}
+      onKeyDown={e => e.key === 'Escape' && onClose?.()}
+    >
       <div style={{
         background:'white', borderRadius:12, width:600, maxWidth:'95vw',
         maxHeight:'90vh', overflowY:'auto', boxShadow:'0 20px 60px rgba(0,0,0,0.2)',
@@ -1004,43 +1011,43 @@ function CreateExamModal({ onClose, onCreated }) {
         <form onSubmit={submit}>
           <div style={{ padding:'16px 20px', display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
             <div style={{ gridColumn:'1/-1' }}>
-              <label style={{ fontSize:11, fontWeight:700, color:'#475569', display:'block', marginBottom:4 }}>Exam Name *</label>
-              <input required value={form.exam_name} placeholder='e.g. Annual Examination 2026'
+              <label htmlFor="new-exam-name" style={{ fontSize:11, fontWeight:700, color:'#475569', display:'block', marginBottom:4 }}>Exam Name *</label>
+              <input id="new-exam-name" required value={form.exam_name} placeholder='e.g. Annual Examination 2026'
                 onChange={e => set('exam_name', e.target.value)}
                 style={{ width:'100%', padding:'9px 12px', borderRadius:7, border:'1.5px solid #e2e8f0', fontSize:13, boxSizing:'border-box' }} />
             </div>
             <div>
-              <label style={{ fontSize:11, fontWeight:700, color:'#475569', display:'block', marginBottom:4 }}>Exam Type</label>
-              <select value={form.exam_type} onChange={e => set('exam_type', e.target.value)}
+              <label htmlFor="new-exam-type" style={{ fontSize:11, fontWeight:700, color:'#475569', display:'block', marginBottom:4 }}>Exam Type</label>
+              <select id="new-exam-type" value={form.exam_type} onChange={e => set('exam_type', e.target.value)}
                 style={{ width:'100%', padding:'9px 12px', borderRadius:7, border:'1.5px solid #e2e8f0', fontSize:13 }}>
                 {EXAM_TYPES.map(t => <option key={t} value={t}>{TYPE_META[t]?.label || t}</option>)}
               </select>
             </div>
             <div>
-              <label style={{ fontSize:11, fontWeight:700, color:'#475569', display:'block', marginBottom:4 }}>Session</label>
-              <select value={form.session} onChange={e => set('session', e.target.value)}
+              <label htmlFor="new-exam-session" style={{ fontSize:11, fontWeight:700, color:'#475569', display:'block', marginBottom:4 }}>Session</label>
+              <select id="new-exam-session" value={form.session} onChange={e => set('session', e.target.value)}
                 style={{ width:'100%', padding:'9px 12px', borderRadius:7, border:'1.5px solid #e2e8f0', fontSize:13 }}>
                 {SESSIONS.map(s => <option key={s}>{s}</option>)}
               </select>
             </div>
             <div>
-              <label style={{ fontSize:11, fontWeight:700, color:'#475569', display:'block', marginBottom:4 }}>Start Date *</label>
-              <input required type='date' value={form.start_date}
+              <label htmlFor="new-exam-start-date" style={{ fontSize:11, fontWeight:700, color:'#475569', display:'block', marginBottom:4 }}>Start Date *</label>
+              <input id="new-exam-start-date" required type='date' value={form.start_date}
                 onChange={e => set('start_date', e.target.value)}
                 style={{ width:'100%', padding:'9px 12px', borderRadius:7, border:'1.5px solid #e2e8f0', fontSize:13, boxSizing:'border-box' }} />
             </div>
             <div>
-              <label style={{ fontSize:11, fontWeight:700, color:'#475569', display:'block', marginBottom:4 }}>End Date *</label>
-              <input required type='date' value={form.end_date}
+              <label htmlFor="new-exam-end-date" style={{ fontSize:11, fontWeight:700, color:'#475569', display:'block', marginBottom:4 }}>End Date *</label>
+              <input id="new-exam-end-date" required type='date' value={form.end_date}
                 onChange={e => set('end_date', e.target.value)}
                 style={{ width:'100%', padding:'9px 12px', borderRadius:7, border:'1.5px solid #e2e8f0', fontSize:13, boxSizing:'border-box' }} />
             </div>
 
             {/* Participating Classes Selection */}
             <div style={{ gridColumn:'1/-1' }}>
-              <label style={{ fontSize:11, fontWeight:700, color:'#475569', display:'block', marginBottom:6 }}>
+              <span style={{ fontSize:11, fontWeight:700, color:'#475569', display:'block', marginBottom:6 }}>
                 Participating Classes & Sections:
-              </label>
+              </span>
               <div style={{ display:'flex', flexWrap:'wrap', gap:6, maxHeight:120, overflowY:'auto', padding:8, background:'#f8fafc', borderRadius:8, border:'1px solid #e2e8f0' }}>
                 {classes.map(c => {
                   const active = selectedClasses.includes(c.id);
@@ -1060,8 +1067,8 @@ function CreateExamModal({ onClose, onCreated }) {
             </div>
 
             <div style={{ gridColumn:'1/-1' }}>
-              <label style={{ fontSize:11, fontWeight:700, color:'#475569', display:'block', marginBottom:4 }}>General Instructions</label>
-              <textarea rows={2} value={form.instructions}
+              <label htmlFor="new-exam-instructions" style={{ fontSize:11, fontWeight:700, color:'#475569', display:'block', marginBottom:4 }}>General Instructions</label>
+              <textarea id="new-exam-instructions" rows={2} value={form.instructions}
                 onChange={e => set('instructions', e.target.value)}
                 placeholder='e.g. Students must carry admit card, No electronic devices...'
                 style={{ width:'100%', padding:'9px 12px', borderRadius:7, border:'1.5px solid #e2e8f0', fontSize:13, resize:'vertical', boxSizing:'border-box' }} />
@@ -1214,7 +1221,15 @@ export default function ExamsPage() {
                 const tm = TYPE_META[exam.exam_type] || { label: exam.exam_type, color:'#64748b', bg:'#f1f5f9' };
                 return (
                   <div key={exam.id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setSelected(exam)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelected(exam);
+                      }
+                    }}
                     style={{
                       background:'white', borderRadius:10, padding:'14px 16px',
                       border: selected?.id === exam.id ? '2px solid #0176d3' : '1px solid #e2e8f0',
@@ -1294,8 +1309,12 @@ export default function ExamsPage() {
           {/* Overlay */}
           {selected && (
             <div
+              role="button"
+              tabIndex={0}
+              aria-label="Close details"
               style={{ position:'fixed', inset:0, background:'rgba(15,23,42,0.3)', zIndex:999 }}
               onClick={() => setSelected(null)}
+              onKeyDown={e => { if (e.key === 'Escape') setSelected(null); }}
             />
           )}
 

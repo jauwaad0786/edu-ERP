@@ -57,7 +57,7 @@ export const formatIndianDate = (d) => {
       return `${parts[2]}-${parts[1]}-${parts[0]}`;
     }
     const dt = new Date(d);
-    return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-');
+    return Number.isNaN(dt.getTime()) ? d : dt.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-');
   } catch {
     return d;
   }
@@ -583,7 +583,7 @@ export default function NewAdmissionPage() {
     }
   }
 
-  const waiverNum = Math.max(0, parseFloat(manualWaiver) || 0);
+  const waiverNum = Math.max(0, Number.parseFloat(manualWaiver) || 0);
   const totalDeductions = advanceDiscount + waiverNum;
   const netPayable = Math.max(0, grossTotal - totalDeductions);
   const totalFee = netPayable;
@@ -625,7 +625,7 @@ export default function NewAdmissionPage() {
       const autoEmail = form.parent_email || `${firstName || 'student'}@${schoolSlug}.com`;
       const cleanPhone = (form.parent_phone || '').trim();
 
-      const payAmount = isSkipPayment ? 0 : (paymentAmount !== '' ? (parseFloat(paymentAmount) || 0) : netPayable);
+      const payAmount = isSkipPayment ? 0 : (paymentAmount !== '' ? (Number.parseFloat(paymentAmount) || 0) : netPayable);
       const payStatus = isSkipPayment ? 'DUE' : (payAmount >= netPayable && netPayable > 0 ? 'PAID' : (payAmount > 0 ? 'PARTIAL' : 'DUE'));
       const isProvisional = isSkipPayment || payAmount <= 0;
 
@@ -1046,9 +1046,9 @@ export default function NewAdmissionPage() {
                         
                         {/* Student Name */}
                         <div>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 6 }}>
+                          <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 6 }}>
                             Student Full Name <span style={{ color: '#ef4444' }}>*</span>
-                          </label>
+                          </span>
                           <input
                             type="text"
                             placeholder="e.g. Aarav Sharma"
@@ -1061,9 +1061,9 @@ export default function NewAdmissionPage() {
                         {/* Registration / Admission Number */}
                         <div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                            <label style={{ fontSize: 12, fontWeight: 700, color: '#0B3B7B' }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: '#0B3B7B' }}>
                               Registration / Admission No (Login ID) <span style={{ color: '#ef4444' }}>*</span>
-                            </label>
+                            </span>
                             <span style={{ fontSize: 10.5, background: '#dbeafe', color: '#1e40af', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
                               Mandatory
                             </span>
@@ -1090,9 +1090,9 @@ export default function NewAdmissionPage() {
                         {/* Father's Name */}
                         <div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                            <label style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>
                               Father's Name (Login Verification) <span style={{ color: '#ef4444' }}>*</span>
-                            </label>
+                            </span>
                             <span style={{ fontSize: 10.5, background: '#dbeafe', color: '#1e40af', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
                               Mandatory
                             </span>
@@ -1108,9 +1108,9 @@ export default function NewAdmissionPage() {
 
                         {/* Admission Class */}
                         <div>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 6 }}>
+                          <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 6 }}>
                             Admission Class &amp; Section <span style={{ color: '#ef4444' }}>*</span>
-                          </label>
+                          </span>
                           <select
                             value={form.class_id}
                             onChange={e => set('class_id', e.target.value)}
@@ -1128,9 +1128,9 @@ export default function NewAdmissionPage() {
                         {/* Primary Mobile */}
                         <div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                            <label style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>
                               Primary Mobile No (10 Digits) <span style={{ color: '#ef4444' }}>*</span>
-                            </label>
+                            </span>
                             <span style={{ fontSize: 10.5, background: '#dbeafe', color: '#1e40af', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
                               Mandatory / Login
                             </span>
@@ -1148,9 +1148,9 @@ export default function NewAdmissionPage() {
                         {/* Student Portal Password */}
                         <div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                            <label style={{ fontSize: 12, fontWeight: 700, color: '#0B3B7B' }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: '#0B3B7B' }}>
                               Portal Password <span style={{ color: '#ef4444' }}>*</span>
-                            </label>
+                            </span>
                             <span style={{ fontSize: 10.5, background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
                               Default: 12345 (Editable)
                             </span>
@@ -1176,9 +1176,9 @@ export default function NewAdmissionPage() {
 
                         {/* Date of Birth */}
                         <div>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                          <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                             Date of Birth
-                          </label>
+                          </span>
                           <input
                             type="date"
                             value={form.dob}
@@ -1189,9 +1189,9 @@ export default function NewAdmissionPage() {
 
                         {/* Gender */}
                         <div>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                          <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                             Gender
-                          </label>
+                          </span>
                           <select
                             value={form.gender}
                             onChange={e => set('gender', e.target.value)}
@@ -1345,9 +1345,9 @@ export default function NewAdmissionPage() {
                       {paymentPlans.length > 0 && (
                         <div style={{ background: '#f8fafc', padding: 16, borderRadius: 10, border: '1px solid #e2e8f0', marginBottom: 20 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 6 }}>
-                            <label style={{ fontSize: 12.5, fontWeight: 700, color: '#0B3B7B' }}>
+                            <span style={{ fontSize: 12.5, fontWeight: 700, color: '#0B3B7B' }}>
                               📅 Payment Cadence &amp; Duration (Default: 1 Month):
-                            </label>
+                            </span>
                             {selectedPaymentPlan && Number(selectedPaymentPlan.discount_value) > 0 && (
                               <span style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 12 }}>
                                 🎁 {selectedPaymentPlan.discount_type === 'PERCENTAGE' ? `${selectedPaymentPlan.discount_value}% Discount` : `₹${selectedPaymentPlan.discount_value} Discount`} on Academic Heads
@@ -1560,7 +1560,7 @@ export default function NewAdmissionPage() {
                                             min="0"
                                             value={customFeeAmounts[it.id] !== undefined ? customFeeAmounts[it.id] : (it.amount || 0)}
                                             onChange={e => {
-                                              const v = e.target.value === '' ? '' : parseFloat(e.target.value);
+                                              const v = e.target.value === '' ? '' : Number.parseFloat(e.target.value);
                                               setCustomFeeAmounts(prev => ({ ...prev, [it.id]: v }));
                                             }}
                                             style={{
@@ -1718,22 +1718,22 @@ export default function NewAdmissionPage() {
 
                             <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: 10, alignItems: 'center' }}>
                               <div>
-                                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 3 }}>
+                                <span style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 3 }}>
                                   Waiver (₹)
-                                </label>
+                                </span>
                                 <input
                                   type="number"
                                   min="0"
                                   max={grossTotal}
                                   value={manualWaiver}
-                                  onChange={e => setManualWaiver(Math.max(0, parseFloat(e.target.value) || 0))}
+                                  onChange={e => setManualWaiver(Math.max(0, Number.parseFloat(e.target.value) || 0))}
                                   style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 12, fontWeight: 700, textAlign: 'right' }}
                                 />
                               </div>
                               <div>
-                                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 3 }}>
+                                <span style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 3 }}>
                                   Waiver Reason {waiverNum > 0 && <span style={{ color: '#ef4444' }}>*</span>}
-                                </label>
+                                </span>
                                 <select
                                   value={waiverReason}
                                   onChange={e => setWaiverReason(e.target.value)}
@@ -1799,9 +1799,9 @@ export default function NewAdmissionPage() {
                                 {form.transport_required === 'Yes' && (
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4 }}>
                                     <div>
-                                      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 2 }}>
+                                      <span style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 2 }}>
                                         Select Bus Route *
-                                      </label>
+                                      </span>
                                       <select
                                         value={form.transport_route_id}
                                         onChange={e => {
@@ -1824,9 +1824,9 @@ export default function NewAdmissionPage() {
 
                                     {form.transport_route_id && (
                                       <div>
-                                        <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 2 }}>
+                                        <span style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 2 }}>
                                           Pickup / Drop Bus Stop (Optional)
-                                        </label>
+                                        </span>
                                         <select
                                           value={form.transport_stop_id}
                                           onChange={e => set('transport_stop_id', e.target.value)}
@@ -1876,9 +1876,9 @@ export default function NewAdmissionPage() {
                                 {form.hostel_required === 'Yes' && (
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4 }}>
                                     <div>
-                                      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 2 }}>
+                                      <span style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 2 }}>
                                         Hostel Building / Wing *
-                                      </label>
+                                      </span>
                                       <select
                                         value={form.hostel_id}
                                         onChange={e => {
@@ -1902,9 +1902,9 @@ export default function NewAdmissionPage() {
 
                                     {form.hostel_id && (
                                       <div>
-                                        <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 2 }}>
+                                        <span style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 2 }}>
                                           Room Type &amp; Pricing Plan *
-                                        </label>
+                                        </span>
                                         <select
                                           value={form.hostel_fee_structure_id}
                                           onChange={e => {
@@ -1984,7 +1984,7 @@ export default function NewAdmissionPage() {
                                 </div>
                                 {form.library_required === 'Yes' && (
                                   <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <label style={{ fontSize: 11, color: '#475569' }}>Card Fee (₹):</label>
+                                    <span style={{ fontSize: 11, color: '#475569' }}>Card Fee (₹):</span>
                                     <input
                                       type="number"
                                       value={form.library_fee || defaultLibRate}
@@ -2027,9 +2027,9 @@ export default function NewAdmissionPage() {
                             </h4>
 
                             <div>
-                              <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 3 }}>
+                              <span style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 3 }}>
                                 Payment Mode
-                              </label>
+                              </span>
                               <select
                                 value={form.payment_mode}
                                 onChange={e => set('payment_mode', e.target.value)}
@@ -2040,9 +2040,9 @@ export default function NewAdmissionPage() {
                             </div>
 
                             <div>
-                              <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 3 }}>
+                              <span style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 3 }}>
                                 Amount Collected Now (₹)
-                              </label>
+                              </span>
                               <input
                                 type="number"
                                 min="0"
@@ -2055,9 +2055,9 @@ export default function NewAdmissionPage() {
                             </div>
 
                             <div>
-                              <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 3 }}>
+                              <span style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 3 }}>
                                 Transaction Ref / Cheque No / UPI ID
-                              </label>
+                              </span>
                               <input
                                 type="text"
                                 placeholder="e.g. UPI-928410 / Cash Counter"
@@ -2384,9 +2384,9 @@ export default function NewAdmissionPage() {
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 20px' }}>
                         
                         <div style={{ gridColumn: '1 / -1' }}>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                          <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                             Student Full Name (As per Aadhaar / Birth Certificate) <span style={{ color: '#ef4444' }}>*</span>
-                          </label>
+                          </span>
                           <input
                             type="text"
                             placeholder="e.g. Aarav Sharma"
@@ -2398,9 +2398,9 @@ export default function NewAdmissionPage() {
 
                         <div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                            <label style={{ fontSize: 12, fontWeight: 600, color: '#0B3B7B' }}>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: '#0B3B7B' }}>
                               Registration / Admission No (Login ID)
-                            </label>
+                            </span>
                             <span style={{ fontSize: 10.5, background: '#dbeafe', color: '#1e40af', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
                               Auto-Candidate
                             </span>
@@ -2426,9 +2426,9 @@ export default function NewAdmissionPage() {
 
                         <div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                            <label style={{ fontSize: 12, fontWeight: 600, color: '#0B3B7B' }}>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: '#0B3B7B' }}>
                               Student Portal Password
-                            </label>
+                            </span>
                             <span style={{ fontSize: 10.5, background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
                               Default: 12345
                             </span>
@@ -2453,9 +2453,9 @@ export default function NewAdmissionPage() {
                         </div>
 
                         <div>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                          <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                             Date of Birth <span style={{ color: '#ef4444' }}>*</span>
-                          </label>
+                          </span>
                           <input
                             type="date"
                             value={form.dob}
@@ -2465,9 +2465,9 @@ export default function NewAdmissionPage() {
                         </div>
 
                         <div>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                          <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                             Gender <span style={{ color: '#ef4444' }}>*</span>
-                          </label>
+                          </span>
                           <select
                             value={form.gender}
                             onChange={e => set('gender', e.target.value)}
@@ -2478,9 +2478,9 @@ export default function NewAdmissionPage() {
                         </div>
 
                         <div>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                          <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                             Category / Social Reservation
-                          </label>
+                          </span>
                           <select
                             value={form.category}
                             onChange={e => set('category', e.target.value)}
@@ -2491,9 +2491,9 @@ export default function NewAdmissionPage() {
                         </div>
 
                         <div>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                          <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                             Blood Group
-                          </label>
+                          </span>
                           <select
                             value={form.blood_group}
                             onChange={e => set('blood_group', e.target.value)}
@@ -2504,9 +2504,9 @@ export default function NewAdmissionPage() {
                         </div>
 
                         <div>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                          <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                             Student Aadhaar Card No. (12 Digits)
-                          </label>
+                          </span>
                           <input
                             type="text"
                             placeholder="1234 5678 9012"
@@ -2517,9 +2517,9 @@ export default function NewAdmissionPage() {
                         </div>
 
                         <div>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                          <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                             Nationality
-                          </label>
+                          </span>
                           <input
                             type="text"
                             placeholder="Indian"
@@ -2530,9 +2530,9 @@ export default function NewAdmissionPage() {
                         </div>
 
                         <div style={{ gridColumn: '1 / -1' }}>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                          <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                             Religion
-                          </label>
+                          </span>
                           <select
                             value={form.religion}
                             onChange={e => set('religion', e.target.value)}
@@ -2610,9 +2610,9 @@ export default function NewAdmissionPage() {
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 24px' }}>
                       <div>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                        <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                           Father's Full Name <span style={{ color: '#ef4444' }}>*</span>
-                        </label>
+                        </span>
                         <input
                           type="text"
                           placeholder="e.g. Rajesh Sharma"
@@ -2623,9 +2623,9 @@ export default function NewAdmissionPage() {
                       </div>
 
                       <div>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                        <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                           Father's Occupation
-                        </label>
+                        </span>
                         <input
                           type="text"
                           placeholder="e.g. Business / Government Service"
@@ -2636,9 +2636,9 @@ export default function NewAdmissionPage() {
                       </div>
 
                       <div>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                        <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                           Primary Mobile Number (SMS &amp; Login) <span style={{ color: '#ef4444' }}>*</span>
-                        </label>
+                        </span>
                         <input
                           type="text"
                           placeholder="e.g. 9876543210"
@@ -2649,9 +2649,9 @@ export default function NewAdmissionPage() {
                       </div>
 
                       <div>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                        <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                           Parent Aadhaar Number (12 Digits)
-                        </label>
+                        </span>
                         <input
                           type="text"
                           placeholder="9876 5432 1098"
@@ -2662,9 +2662,9 @@ export default function NewAdmissionPage() {
                       </div>
 
                       <div>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                        <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                           Parent Email Address
-                        </label>
+                        </span>
                         <input
                           type="email"
                           placeholder="e.g. rajesh.sharma@gmail.com"
@@ -2675,9 +2675,9 @@ export default function NewAdmissionPage() {
                       </div>
 
                       <div>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                        <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                           Mother's Full Name
-                        </label>
+                        </span>
                         <input
                           type="text"
                           placeholder="e.g. Sunita Sharma"
@@ -2688,9 +2688,9 @@ export default function NewAdmissionPage() {
                       </div>
 
                       <div>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                        <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                           Mother's Occupation
-                        </label>
+                        </span>
                         <input
                           type="text"
                           placeholder="e.g. Teacher / Homemaker"
@@ -2701,9 +2701,9 @@ export default function NewAdmissionPage() {
                       </div>
 
                       <div>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                        <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                           Guardian Details (If living with local guardian)
-                        </label>
+                        </span>
                         <div style={{ display: 'flex', gap: 10 }}>
                           <input
                             type="text"
@@ -2728,9 +2728,9 @@ export default function NewAdmissionPage() {
                       </div>
 
                       <div style={{ gridColumn: '1 / -1' }}>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                        <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                           House No., Street &amp; Colony <span style={{ color: '#ef4444' }}>*</span>
-                        </label>
+                        </span>
                         <input
                           type="text"
                           placeholder="e.g. House No. 44B, Sector 21"
@@ -2741,9 +2741,9 @@ export default function NewAdmissionPage() {
                       </div>
 
                       <div>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                        <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                           City / District <span style={{ color: '#ef4444' }}>*</span>
-                        </label>
+                        </span>
                         <input
                           type="text"
                           placeholder="e.g. Lucknow / Noida"
@@ -2754,9 +2754,9 @@ export default function NewAdmissionPage() {
                       </div>
 
                       <div>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                        <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                           State
-                        </label>
+                        </span>
                         <input
                           type="text"
                           placeholder="Uttar Pradesh"
@@ -2767,9 +2767,9 @@ export default function NewAdmissionPage() {
                       </div>
 
                       <div>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                        <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                           Postal PIN Code
-                        </label>
+                        </span>
                         <input
                           type="text"
                           placeholder="e.g. 201301"
@@ -2780,9 +2780,9 @@ export default function NewAdmissionPage() {
                       </div>
 
                       <div>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                        <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                           Emergency Contact Number
-                        </label>
+                        </span>
                         <input
                           type="text"
                           placeholder="e.g. 9811223344"
@@ -2905,9 +2905,9 @@ export default function NewAdmissionPage() {
                     ) : (
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 24px' }}>
                         <div style={{ gridColumn: '1 / -1' }}>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                          <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                             Previous School Name <span style={{ color: '#94a3b8' }}>(Optional / Skippable)</span>
-                          </label>
+                          </span>
                           <input
                             type="text"
                             placeholder="e.g. Delhi Public School, Noida"
@@ -2918,9 +2918,9 @@ export default function NewAdmissionPage() {
                         </div>
 
                         <div>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                          <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                             Last Class Passed
-                          </label>
+                          </span>
                           <input
                             type="text"
                             placeholder="e.g. 5th Standard"
@@ -2931,9 +2931,9 @@ export default function NewAdmissionPage() {
                         </div>
 
                         <div>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                          <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                             Transfer Certificate (TC) No.
-                          </label>
+                          </span>
                           <input
                             type="text"
                             placeholder="e.g. TC-2024-884"
@@ -2944,9 +2944,9 @@ export default function NewAdmissionPage() {
                         </div>
 
                         <div>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                          <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                             TC Issuing Date
-                          </label>
+                          </span>
                           <input
                             type="date"
                             value={form.previous_tc_date}
@@ -2956,9 +2956,9 @@ export default function NewAdmissionPage() {
                         </div>
 
                         <div>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                          <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                             Reason for Leaving Previous School
-                          </label>
+                          </span>
                           <input
                             type="text"
                             placeholder="e.g. Parent Relocation / Better Facilities"
@@ -2984,9 +2984,9 @@ export default function NewAdmissionPage() {
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 24px' }}>
                       <div>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                        <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                           Admission Class &amp; Section <span style={{ color: '#ef4444' }}>*</span>
-                        </label>
+                        </span>
                         <select
                           value={form.class_id}
                           onChange={e => set('class_id', e.target.value)}
@@ -3000,9 +3000,9 @@ export default function NewAdmissionPage() {
                       </div>
 
                       <div>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                        <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                           Academic Session <span style={{ color: '#ef4444' }}>*</span>
-                        </label>
+                        </span>
                         <select
                           value={form.session}
                           onChange={e => set('session', e.target.value)}
@@ -3013,9 +3013,9 @@ export default function NewAdmissionPage() {
                       </div>
 
                       <div>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                        <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                           Date of Admission <span style={{ color: '#ef4444' }}>*</span>
-                        </label>
+                        </span>
                         <input
                           type="date"
                           value={form.admission_date}
@@ -3025,9 +3025,9 @@ export default function NewAdmissionPage() {
                       </div>
 
                       <div>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                        <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                           Class Roll Number (Optional)
-                        </label>
+                        </span>
                         <input
                           type="text"
                           placeholder="e.g. 15 (auto-assigned if blank)"
@@ -3121,9 +3121,9 @@ export default function NewAdmissionPage() {
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                             <div>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                                <label style={{ fontSize: 11.5, fontWeight: 600, color: '#475569' }}>
+                                <span style={{ fontSize: 11.5, fontWeight: 600, color: '#475569' }}>
                                   Select Bus Route *
-                                </label>
+                                </span>
                                 {selectedRoute && (
                                   <span style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', background: '#dcfce7', padding: '2px 8px', borderRadius: 6 }}>
                                     Fee: ₹{selectedRoute.fare || selectedRoute.fee_amount || 0}/mo
@@ -3155,9 +3155,9 @@ export default function NewAdmissionPage() {
 
                             {form.transport_route_id && (
                               <div>
-                                <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                                <span style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
                                   Pickup / Drop Bus Stop (Optional)
-                                </label>
+                                </span>
                                 <select
                                   value={form.transport_stop_id}
                                   onChange={e => set('transport_stop_id', e.target.value)}
@@ -3212,9 +3212,9 @@ export default function NewAdmissionPage() {
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                             <div>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                                <label style={{ fontSize: 11.5, fontWeight: 600, color: '#475569' }}>
+                                <span style={{ fontSize: 11.5, fontWeight: 600, color: '#475569' }}>
                                   Select Hostel Building / Wing *
-                                </label>
+                                </span>
                                 {hostelMonthlyRate > 0 && (
                                   <span style={{ fontSize: 11, fontWeight: 700, color: '#059669', background: '#ecfdf5', padding: '1px 8px', borderRadius: 4 }}>
                                     Fee: ₹{hostelMonthlyRate.toLocaleString('en-IN')}/mo
@@ -3245,9 +3245,9 @@ export default function NewAdmissionPage() {
                             {/* Dynamic Room Category / Fee Plan from Hostel Setup */}
                             {form.hostel_id && (
                               <div>
-                                <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                                <span style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
                                   Select Room Type &amp; Accommodation Fee Plan *
-                                </label>
+                                </span>
                                 <select
                                   value={form.hostel_fee_structure_id}
                                   onChange={e => {
@@ -3284,9 +3284,9 @@ export default function NewAdmissionPage() {
                             {(form.hostel_fee_structure_id === 'CUSTOM' || (form.hostel_id && hostelPlans.filter(p => String(p.hostel_id) === String(form.hostel_id)).length === 0)) && (
                               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, background: '#fff', padding: 10, borderRadius: 8, border: '1px dashed #cbd5e1' }}>
                                 <div>
-                                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 3 }}>
+                                  <span style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 3 }}>
                                     Monthly Rent (₹/mo) *
-                                  </label>
+                                  </span>
                                   <input
                                     type="number"
                                     min="0"
@@ -3297,9 +3297,9 @@ export default function NewAdmissionPage() {
                                   />
                                 </div>
                                 <div>
-                                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 3 }}>
+                                  <span style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#475569', marginBottom: 3 }}>
                                     Security Deposit (₹ One-Time)
-                                  </label>
+                                  </span>
                                   <input
                                     type="number"
                                     min="0"
@@ -3319,9 +3319,9 @@ export default function NewAdmissionPage() {
                             )}
 
                             <div>
-                              <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                              <span style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
                                 Special Requests / Remarks
-                              </label>
+                              </span>
                               <input
                                 type="text"
                                 placeholder="e.g. Ground floor preferred, vegetarian mess"
@@ -3361,9 +3361,9 @@ export default function NewAdmissionPage() {
                         {form.library_required === 'Yes' ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                             <div>
-                              <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                              <span style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
                                 Library Admission / Membership Fee (₹)
-                              </label>
+                              </span>
                               <input
                                 type="number"
                                 placeholder={String(defaultLibRate)}
@@ -3645,9 +3645,9 @@ export default function NewAdmissionPage() {
                           {/* Payment Cadence Selector */}
                           <div style={{ background: '#f8fafc', padding: 16, borderRadius: 10, border: '1px solid #e2e8f0' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                              <label style={{ fontSize: 12.5, fontWeight: 700, color: '#0B3B7B' }}>
+                              <span style={{ fontSize: 12.5, fontWeight: 700, color: '#0B3B7B' }}>
                                 📅 Payment Cadence &amp; Duration:
-                              </label>
+                              </span>
                               {selectedPaymentPlan && Number(selectedPaymentPlan.discount_value) > 0 && (
                                 <span style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 12 }}>
                                   🎁 {selectedPaymentPlan.discount_type === 'PERCENTAGE' ? `${selectedPaymentPlan.discount_value}% Discount` : `₹${selectedPaymentPlan.discount_value} Discount`} on Academic Heads
@@ -3853,7 +3853,7 @@ export default function NewAdmissionPage() {
                                             min="0"
                                             value={customFeeAmounts[it.id] !== undefined ? customFeeAmounts[it.id] : (it.amount || 0)}
                                             onChange={e => {
-                                              const v = e.target.value === '' ? '' : parseFloat(e.target.value);
+                                              const v = e.target.value === '' ? '' : Number.parseFloat(e.target.value);
                                               setCustomFeeAmounts(prev => ({ ...prev, [it.id]: v }));
                                             }}
                                             style={{
@@ -4011,22 +4011,22 @@ export default function NewAdmissionPage() {
 
                             <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: 12, alignItems: 'center' }}>
                               <div>
-                                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>
+                                <span style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>
                                   Special Waiver (₹)
-                                </label>
+                                </span>
                                 <input
                                   type="number"
                                   min="0"
                                   max={grossTotal}
                                   value={manualWaiver}
-                                  onChange={e => setManualWaiver(Math.max(0, parseFloat(e.target.value) || 0))}
+                                  onChange={e => setManualWaiver(Math.max(0, Number.parseFloat(e.target.value) || 0))}
                                   style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 13, fontWeight: 700, textAlign: 'right' }}
                                 />
                               </div>
                               <div>
-                                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>
+                                <span style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>
                                   Authorization / Waiver Reason {waiverNum > 0 && <span style={{ color: '#ef4444' }}>*</span>}
-                                </label>
+                                </span>
                                 <select
                                   value={waiverReason}
                                   onChange={e => setWaiverReason(e.target.value)}
@@ -4080,9 +4080,9 @@ export default function NewAdmissionPage() {
                             </h4>
 
                             <div>
-                              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                              <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                                 Initial Payment Status
-                              </label>
+                              </span>
                               <select
                                 value={form.payment_status}
                                 onChange={e => {
@@ -4105,9 +4105,9 @@ export default function NewAdmissionPage() {
                             {form.payment_status !== 'DUE' && (
                               <>
                                 <div>
-                                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                                  <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                                     Payment Mode
-                                  </label>
+                                  </span>
                                   <select
                                     value={form.payment_mode}
                                     onChange={e => set('payment_mode', e.target.value)}
@@ -4119,9 +4119,9 @@ export default function NewAdmissionPage() {
 
                                 {form.payment_status === 'PARTIAL' && (
                                   <div>
-                                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                                    <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                                       Amount Collected Now (₹)
-                                    </label>
+                                    </span>
                                     <input
                                       type="number"
                                       min="1"
@@ -4135,9 +4135,9 @@ export default function NewAdmissionPage() {
                                 )}
 
                                 <div>
-                                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+                                  <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
                                     Transaction Ref / Cheque No / UPI ID
-                                  </label>
+                                  </span>
                                   <input
                                     type="text"
                                     placeholder="e.g. UPI-984214 / CHQ-10492"
@@ -4274,9 +4274,9 @@ export default function NewAdmissionPage() {
 
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, alignItems: 'center' }}>
                         <div>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                          <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
                             Payment Mode
-                          </label>
+                          </span>
                           <select
                             value={form.payment_mode}
                             onChange={e => set('payment_mode', e.target.value)}
@@ -4287,9 +4287,9 @@ export default function NewAdmissionPage() {
                         </div>
 
                         <div>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                          <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
                             Amount to Collect (₹)
-                          </label>
+                          </span>
                           <input
                             type="number"
                             min="0"
@@ -4302,9 +4302,9 @@ export default function NewAdmissionPage() {
                         </div>
 
                         <div>
-                          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
+                          <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4 }}>
                             Transaction Ref / Cheque No / UPI ID
-                          </label>
+                          </span>
                           <input
                             type="text"
                             placeholder="e.g. UPI-728192 / Cash Counter"

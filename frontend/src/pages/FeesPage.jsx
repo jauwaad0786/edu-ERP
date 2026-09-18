@@ -1,18 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
-import Navbar  from '../components/Navbar';
-import api     from '../api/axios';
-import toast   from 'react-hot-toast';
+import Navbar from '../components/Navbar';
+import api from '../api/axios';
+import toast from 'react-hot-toast';
 
 /* ── small helpers ──────────────────────────────────────────────────────── */
-const fmt  = n => Number(n ?? 0).toLocaleString('en-IN');
+const fmt = n => Number(n ?? 0).toLocaleString('en-IN');
 const MODES = ['CASH', 'UPI', 'ONLINE', 'CHEQUE'];
 const STATUS_OPTS = ['', 'PENDING', 'PAID', 'PARTIAL', 'OVERDUE'];
 
 function Badge({ status }) {
   const map = {
-    PAID:    { bg: '#eaf5ea', color: '#2e844a' },
+    PAID: { bg: '#eaf5ea', color: '#2e844a' },
     PARTIAL: { bg: '#fef5e4', color: '#dd7a01' },
     OVERDUE: { bg: '#fef1ee', color: '#ba0517' },
     PENDING: { bg: '#f3f0ff', color: '#5867e8' },
@@ -33,26 +33,26 @@ export default function FeesPage() {
   const [searchParams] = useSearchParams();
 
   const initStatus = searchParams.get('status') || '';
-  const initClass  = searchParams.get('class_id') || '';
-  const initMonth  = searchParams.get('month') || '';
+  const initClass = searchParams.get('class_id') || '';
+  const initMonth = searchParams.get('month') || '';
   const initSource = searchParams.get('source') || searchParams.get('service') || '';
   const initFeeType = searchParams.get('fee_type') || (['TRANSPORT', 'HOSTEL', 'LIBRARY', 'EXAM', 'ADMISSION', 'TUITION'].includes(initSource.toUpperCase()) ? initSource.toUpperCase() : '');
   const initSession = searchParams.get('session') || '2026-27';
 
-  const [summary,  setSummary]  = useState(null);
-  const [records,  setRecords]  = useState([]);
-  const [classes,  setClasses]  = useState([]);
-  const [search,   setSearch]   = useState('');
-  const [filterStatus,  setFilterStatus]  = useState(initStatus);
-  const [filterClass,   setFilterClass]   = useState(initClass);
+  const [summary, setSummary] = useState(null);
+  const [records, setRecords] = useState([]);
+  const [classes, setClasses] = useState([]);
+  const [search, setSearch] = useState('');
+  const [filterStatus, setFilterStatus] = useState(initStatus);
+  const [filterClass, setFilterClass] = useState(initClass);
   const [filterMonth, setFilterMonth] = useState(initMonth);
   const [filterFeeType, setFilterFeeType] = useState(initFeeType);
   const [filterSource, setFilterSource] = useState(initSource);
   const [filterSession, setFilterSession] = useState(initSession);
   const [snapshotMonth, setSnapshotMonth] = useState('');
   const [classSummary, setClassSummary] = useState([]);
-  const [loading,  setLoading]  = useState(false);
-  const [msg,      setMsg]      = useState({ text: '', type: '' });
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState({ text: '', type: '' });
   const [batches, setBatches] = useState([]);         // DRAFT — pending review
   const [publishedBatches, setPublishedBatches] = useState([]); // PUBLISHED — reviewed/passed
   const [showBatches, setShowBatches] = useState(false);
@@ -64,12 +64,12 @@ export default function FeesPage() {
   const [addStudentId, setAddStudentId] = useState('');
 
   /* collect modal (single record) */
-  const [modal,    setModal]    = useState(false);
-  const [selRec,   setSelRec]   = useState(null);
-  const [payAmt,   setPayAmt]   = useState('');
-  const [payMode,  setPayMode]  = useState('CASH');
-  const [remarks,  setRemarks]  = useState('');
-  const [saving,   setSaving]   = useState(false);
+  const [modal, setModal] = useState(false);
+  const [selRec, setSelRec] = useState(null);
+  const [payAmt, setPayAmt] = useState('');
+  const [payMode, setPayMode] = useState('CASH');
+  const [remarks, setRemarks] = useState('');
+  const [saving, setSaving] = useState(false);
 
   /* generate fees modal */
   const [genModal, setGenModal] = useState(false);
@@ -123,9 +123,9 @@ export default function FeesPage() {
   const load = useCallback(() => {
     setLoading(true);
     const params = new URLSearchParams();
-    if (filterStatus) params.append('status',   filterStatus);
-    if (filterClass)  params.append('class_id', filterClass);
-    if (filterMonth)  params.append('month', filterMonth);
+    if (filterStatus) params.append('status', filterStatus);
+    if (filterClass) params.append('class_id', filterClass);
+    if (filterMonth) params.append('month', filterMonth);
     if (filterFeeType) params.append('fee_type', filterFeeType);
     if (filterSource) params.append('source', filterSource);
     if (filterSession) params.append('session', filterSession);
@@ -147,15 +147,15 @@ export default function FeesPage() {
         setClassSummary(Array.isArray(cs.data) ? cs.data : []);
         const rawR = r.data;
         setRecords(
-          Array.isArray(rawR)          ? rawR :
-          Array.isArray(rawR?.records) ? rawR.records :
-          Array.isArray(rawR?.data)    ? rawR.data : []
+          Array.isArray(rawR) ? rawR :
+            Array.isArray(rawR?.records) ? rawR.records :
+              Array.isArray(rawR?.data) ? rawR.data : []
         );
         const rawC = c.data;
         setClasses(
-          Array.isArray(rawC)          ? rawC :
-          Array.isArray(rawC?.classes) ? rawC.classes :
-          Array.isArray(rawC?.data)    ? rawC.data : []
+          Array.isArray(rawC) ? rawC :
+            Array.isArray(rawC?.classes) ? rawC.classes :
+              Array.isArray(rawC?.data) ? rawC.data : []
         );
         setSummary(s.data?.summary ?? s.data ?? null);
       })
@@ -183,23 +183,23 @@ export default function FeesPage() {
   }
 
   async function submitPayment() {
-    if (!payAmt || isNaN(payAmt) || Number(payAmt) <= 0) {
-      flash('❌ Sahi amount daalo', 'error'); return;
+    if (!payAmt || Number.isNaN(Number(payAmt)) || Number(payAmt) <= 0) {
+      flash(' Sahi amount daalo', 'error'); return;
     }
     setSaving(true);
     try {
       const res = await api.post('/principal/fees/collect', {
-        record_id:    selRec.id,
-        amount_paid:  parseFloat(payAmt),
+        record_id: selRec.id,
+        amount_paid: Number.parseFloat(payAmt),
         payment_mode: payMode,
         remarks,
       });
       setModal(false);
-      flash(`✅ Receipt ${res.data.receipt_no} — ₹${fmt(payAmt)} collect hua`);
+      flash(` Receipt ${res.data.receipt_no} — ₹${fmt(payAmt)} collect hua`);
       load();
       setReceiptRec(res.data);
     } catch (e) {
-      flash(e.response?.data?.error || '❌ Payment mein error', 'error');
+      flash(e.response?.data?.error || ' Payment mein error', 'error');
     }
     setSaving(false);
   }
@@ -208,11 +208,11 @@ export default function FeesPage() {
   function loadBatches() {
     api.get('/principal/fees/batches?status=DRAFT')
       .then(r => setBatches(r.data || []))
-      .catch(() => {});
+      .catch(() => { });
     // NEW — reviewed/published count bhi laao, widget mein dono dikhane ke liye
     api.get('/principal/fees/batches?status=PUBLISHED')
       .then(r => setPublishedBatches(r.data || []))
-      .catch(() => {});
+      .catch(() => { });
   }
 
   useEffect(() => { loadBatches(); }, []);
@@ -244,11 +244,11 @@ export default function FeesPage() {
   }
 
   async function saveRecordAmount(recId) {
-    if (!editAmt || isNaN(editAmt) || Number(editAmt) <= 0) {
+    if (!editAmt || Number.isNaN(Number(editAmt)) || Number(editAmt) <= 0) {
       flash('❌ Sahi amount daalo', 'error'); return;
     }
     try {
-      await api.patch(`/principal/fees/records/${recId}`, { amount_due: parseFloat(editAmt) });
+      await api.patch(`/principal/fees/records/${recId}`, { amount_due: Number.parseFloat(editAmt) });
       flash('✅ Amount updated');
       setEditingRecId(null);
       openBatchReview(batchRecords.batch.id);
@@ -419,7 +419,7 @@ export default function FeesPage() {
   const collectionPct = summary
     ? Math.round((summary.total_collected / (summary.total_due || 1)) * 100)
     : 0;
-  
+
   /* ════════════════════════════════════════════════════════════════════════ */
   return (
     <div className="app-shell">
@@ -444,14 +444,14 @@ export default function FeesPage() {
           </div>
 
           {/* ── Draft batches pending banner ── */}
-          
+
 
           {/* alert */}
           {msg.text && (
             <div style={{
               padding: '10px 16px', borderRadius: 8, marginBottom: 16, fontSize: 13,
               background: msg.type === 'error' ? '#fef1ee' : '#eaf5ea',
-              color:      msg.type === 'error' ? '#ba0517' : '#2e844a',
+              color: msg.type === 'error' ? '#ba0517' : '#2e844a',
               border: `1px solid ${msg.type === 'error' ? '#f9c9c0' : '#a3d9a5'}`,
             }}>{msg.text}</div>
           )}
@@ -459,10 +459,10 @@ export default function FeesPage() {
           {/* ── summary cards ── */}
           <div className="grid-4 mb-6">
             {[
-              { icon: '💰', label: 'Total Revenue',  value: `₹${fmt(summary?.total_collected)}`, color: '#2e844a', bg: '#eaf5ea' },
-              { icon: '📋', label: 'Total Billed',   value: `₹${fmt(summary?.total_due)}`,       color: '#0176d3', bg: '#e8f4fd' },
-              { icon: '⏳', label: 'Pending Count',  value: fmt(summary?.pending_count),          color: '#dd7a01', bg: '#fef5e4' },
-              { icon: '⚠️', label: 'Overdue',        value: fmt(summary?.overdue_count),          color: '#ba0517', bg: '#fef1ee' },
+              { icon: '💰', label: 'Total Revenue', value: `₹${fmt(summary?.total_collected)}`, color: '#2e844a', bg: '#eaf5ea' },
+              { icon: '📋', label: 'Total Billed', value: `₹${fmt(summary?.total_due)}`, color: '#0176d3', bg: '#e8f4fd' },
+              { icon: '⏳', label: 'Pending Count', value: fmt(summary?.pending_count), color: '#dd7a01', bg: '#fef5e4' },
+              { icon: '⚠️', label: 'Overdue', value: fmt(summary?.overdue_count), color: '#ba0517', bg: '#fef1ee' },
             ].map(s => (
               <div className="stat-card" key={s.label}>
                 <div className="stat-icon" style={{ background: s.bg }}>
@@ -503,10 +503,10 @@ export default function FeesPage() {
           </div>
           <div className="grid-4 mb-6">
             {[
-              { icon: '📅', label: "Today's Collection",     value: `₹${fmt(summary?.today_collection)}`,      color: '#2e844a', bg: '#eaf5ea' },
+              { icon: '📅', label: "Today's Collection", value: `₹${fmt(summary?.today_collection)}`, color: '#2e844a', bg: '#eaf5ea' },
               { icon: '🗓️', label: `${summary?.this_month || 'This Month'} Collection`, value: `₹${fmt(summary?.this_month_collection)}`, color: '#0176d3', bg: '#e8f4fd' },
-              { icon: '💵', label: 'Cash Collection',         value: `₹${fmt(summary?.cash_collection)}`,       color: '#dd7a01', bg: '#fef5e4' },
-              { icon: '📱', label: 'UPI + Online Collection',  value: `₹${fmt((summary?.upi_collection || 0) + (summary?.online_collection || 0))}`, color: '#5867e8', bg: '#f3f0ff' },
+              { icon: '💵', label: 'Cash Collection', value: `₹${fmt(summary?.cash_collection)}`, color: '#dd7a01', bg: '#fef5e4' },
+              { icon: '📱', label: 'UPI + Online Collection', value: `₹${fmt((summary?.upi_collection || 0) + (summary?.online_collection || 0))}`, color: '#5867e8', bg: '#f3f0ff' },
             ].map(s => (
               <div className="stat-card" key={s.label}>
                 <div className="stat-icon" style={{ background: s.bg }}>
@@ -877,8 +877,14 @@ export default function FeesPage() {
 
       {/* ══ SINGLE COLLECT FEE MODAL ═══════════════════════════════════════ */}
       {modal && selRec && (
-        <div className="modal-backdrop"
-          onClick={e => e.target === e.currentTarget && setModal(false)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close fee collection modal"
+          onClick={e => e.target === e.currentTarget && setModal(false)}
+          onKeyDown={e => e.key === 'Escape' && setModal(false)}
+        >
           <div className="modal" style={{ width: 460 }}>
             <div className="modal-header">
               <h3>💸 Fee Collect Karo</h3>
@@ -892,12 +898,12 @@ export default function FeesPage() {
               }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', fontSize: 13 }}>
                   {[
-                    ['👤 Student',   selRec.student_name],
-                    ['👨 Father',    selRec.father_name],
-                    ['🏛 Class',     selRec.class_name],
-                    ['🔢 Roll No.',  selRec.roll_number],
-                    ['📋 Fee Type',  selRec.fee_type],
-                    ['📅 Month',     selRec.month],
+                    ['👤 Student', selRec.student_name],
+                    ['👨 Father', selRec.father_name],
+                    ['🏛 Class', selRec.class_name],
+                    ['🔢 Roll No.', selRec.roll_number],
+                    ['📋 Fee Type', selRec.fee_type],
+                    ['📅 Month', selRec.month],
                   ].map(([label, val]) => (
                     <div key={label}>
                       <div style={{ color: 'var(--neutral-5)', fontSize: 11 }}>{label}</div>
@@ -920,8 +926,9 @@ export default function FeesPage() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Amount to Collect (₹) *</label>
+                <label className="form-label" htmlFor="collect-fee-amount">Amount to Collect (₹) *</label>
                 <input
+                  id="collect-fee-amount"
                   className="form-input"
                   type="number"
                   min="1"
@@ -933,7 +940,7 @@ export default function FeesPage() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Payment Mode *</label>
+                <span className="form-label">Payment Mode *</span>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {MODES.map(m => (
                     <button key={m}
@@ -942,9 +949,9 @@ export default function FeesPage() {
                         padding: '7px 16px', borderRadius: 6, fontSize: 12,
                         fontWeight: 600, cursor: 'pointer', border: '2px solid',
                         borderColor: payMode === m ? '#0176d3' : '#e2e8f0',
-                        background:  payMode === m ? '#e8f4fd' : '#fff',
-                        color:       payMode === m ? '#0176d3' : '#64748b',
-                        transition:  'all 0.15s',
+                        background: payMode === m ? '#e8f4fd' : '#fff',
+                        color: payMode === m ? '#0176d3' : '#64748b',
+                        transition: 'all 0.15s',
                       }}>
                       {m === 'CASH' ? '💵' : m === 'UPI' ? '📱' : m === 'ONLINE' ? '🌐' : '📝'} {m}
                     </button>
@@ -953,8 +960,9 @@ export default function FeesPage() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Remarks (optional)</label>
+                <label className="form-label" htmlFor="collect-fee-remarks">Remarks (optional)</label>
                 <input
+                  id="collect-fee-remarks"
                   className="form-input"
                   value={remarks}
                   onChange={e => setRemarks(e.target.value)}
@@ -1001,7 +1009,7 @@ export default function FeesPage() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Kaise Collect Karein? *</label>
+                <span className="form-label">Kaise Collect Karein? *</span>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button onClick={() => setCollectMode('COMBINED')}
                     style={{
@@ -1010,7 +1018,7 @@ export default function FeesPage() {
                       background: collectMode === 'COMBINED' ? '#eff6ff' : '#fff',
                       color: collectMode === 'COMBINED' ? '#0176d3' : '#64748b',
                     }}>
-                    🧾 Ek Sath<br/><span style={{ fontWeight: 400, fontSize: 10 }}>Ek receipt, ek PDF</span>
+                    🧾 Ek Sath<br /><span style={{ fontWeight: 400, fontSize: 10 }}>Ek receipt, ek PDF</span>
                   </button>
                   <button onClick={() => setCollectMode('SEPARATE')}
                     style={{
@@ -1019,13 +1027,13 @@ export default function FeesPage() {
                       background: collectMode === 'SEPARATE' ? '#eff6ff' : '#fff',
                       color: collectMode === 'SEPARATE' ? '#0176d3' : '#64748b',
                     }}>
-                    📑 Alag Alag<br/><span style={{ fontWeight: 400, fontSize: 10 }}>Source-wise alag PDF</span>
+                    📑 Alag Alag<br /><span style={{ fontWeight: 400, fontSize: 10 }}>Source-wise alag PDF</span>
                   </button>
                 </div>
               </div>
 
               <div className="form-group">
-                <label className="form-label">Payment Mode *</label>
+                <span className="form-label">Payment Mode *</span>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {MODES.map(m => (
                     <button key={m} onClick={() => setMultiPayMode(m)}
@@ -1042,8 +1050,8 @@ export default function FeesPage() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Remarks (optional)</label>
-                <input className="form-input" value={multiRemarks} onChange={e => setMultiRemarks(e.target.value)} />
+                <label className="form-label" htmlFor="multi-collect-remarks">Remarks (optional)</label>
+                <input id="multi-collect-remarks" className="form-input" value={multiRemarks} onChange={e => setMultiRemarks(e.target.value)} />
               </div>
             </div>
             <div className="modal-footer">
@@ -1074,8 +1082,8 @@ export default function FeesPage() {
 
             <div className="modal-body">
               <div className="form-group">
-                <label className="form-label">Class *</label>
-                <select className="form-select" value={genClass} onChange={e => setGenClass(e.target.value)}>
+                <label className="form-label" htmlFor="gen-fee-class">Class *</label>
+                <select id="gen-fee-class" className="form-select" value={genClass} onChange={e => setGenClass(e.target.value)}>
                   <option value="">Select Class</option>
                   {classes.map(c => (
                     <option key={c.id} value={c.id}>{c.name} - {c.section}</option>
@@ -1084,13 +1092,13 @@ export default function FeesPage() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Month *</label>
-                <input type="month" className="form-input" value={genMonth} onChange={e => setGenMonth(e.target.value)} />
+                <label className="form-label" htmlFor="gen-fee-month">Month *</label>
+                <input id="gen-fee-month" type="month" className="form-input" value={genMonth} onChange={e => setGenMonth(e.target.value)} />
               </div>
 
               <div className="form-group">
-                <label className="form-label">Fee Type *</label>
-                <select className="form-select" value={genFeeType} onChange={e => setGenFeeType(e.target.value)}>
+                <label className="form-label" htmlFor="gen-fee-type">Fee Type *</label>
+                <select id="gen-fee-type" className="form-select" value={genFeeType} onChange={e => setGenFeeType(e.target.value)}>
                   <option value="TUITION">Tuition</option>
                   <option value="EXAM">Exam</option>
                   <option value="TRANSPORT">Transport</option>
@@ -1101,14 +1109,14 @@ export default function FeesPage() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Collection Start (optional)</label>
-                <input type="date" className="form-input" value={genWindowStart}
+                <label className="form-label" htmlFor="gen-fee-window-start">Collection Start (optional)</label>
+                <input id="gen-fee-window-start" type="date" className="form-input" value={genWindowStart}
                   onChange={e => setGenWindowStart(e.target.value)} />
               </div>
 
               <div className="form-group">
-                <label className="form-label">Last Date to Pay (optional)</label>
-                <input type="date" className="form-input" value={genWindowEnd}
+                <label className="form-label" htmlFor="gen-fee-window-end">Last Date to Pay (optional)</label>
+                <input id="gen-fee-window-end" type="date" className="form-input" value={genWindowEnd}
                   onChange={e => setGenWindowEnd(e.target.value)} />
                 <span style={{ fontSize: 11, color: '#64748b' }}>
                   Ye hi Due Date banegi. Khali chodo to Fee Structure ka default due-day use hoga.
@@ -1144,15 +1152,15 @@ export default function FeesPage() {
                 Ek hi PDF mein poori class — roll-number order — har student ka page (tuition+hostel+library+sports+exam sab consolidated).
               </p>
               <div className="form-group">
-                <label className="form-label">Class *</label>
-                <select className="form-select" value={bulkNoticeClass} onChange={e => setBulkNoticeClass(e.target.value)}>
+                <label className="form-label" htmlFor="bulk-notice-class">Class *</label>
+                <select id="bulk-notice-class" className="form-select" value={bulkNoticeClass} onChange={e => setBulkNoticeClass(e.target.value)}>
                   <option value="">Select Class</option>
                   {classes.map(c => <option key={c.id} value={c.id}>{c.name} - {c.section}</option>)}
                 </select>
               </div>
               <div className="form-group">
-                <label className="form-label">Month</label>
-                <input type="month" className="form-input" value={bulkNoticeMonth} onChange={e => setBulkNoticeMonth(e.target.value)} />
+                <label className="form-label" htmlFor="bulk-notice-month">Month</label>
+                <input id="bulk-notice-month" type="month" className="form-input" value={bulkNoticeMonth} onChange={e => setBulkNoticeMonth(e.target.value)} />
               </div>
             </div>
             <div className="modal-footer">
@@ -1262,7 +1270,7 @@ export default function FeesPage() {
                       <td>{r.student_name}</td>
                       <td>
                         {editingRecId === r.id ? (
-                          <input type="number" value={editAmt} autoFocus
+                          <input type="number" value={editAmt}
                             onChange={e => setEditAmt(e.target.value)}
                             style={{ width: 80, fontSize: 12, padding: '2px 6px' }} />
                         ) : `₹${fmt(r.amount_due)}`}
@@ -1326,7 +1334,7 @@ export default function FeesPage() {
           aria-label="Close invoice modal"
         >
           <div className="modal" style={{ width: '100%', maxWidth: 780, maxHeight: '92vh', overflowY: 'auto', background: '#ffffff', borderRadius: 16, padding: 0 }}>
-            
+
             {/* Invoice Modal Header */}
             <div style={{ padding: '18px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
               <div>
@@ -1342,7 +1350,7 @@ export default function FeesPage() {
             </div>
 
             <div className="modal-body" style={{ padding: 24 }}>
-              
+
               {/* Invoice Number & Action Buttons Bar */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -1420,7 +1428,7 @@ export default function FeesPage() {
 
               {/* Particulars Table & Payment Details Side-by-Side */}
               <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 20, alignItems: 'start' }}>
-                
+
                 {/* Left: Particulars Breakdown */}
                 <div>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
@@ -1481,7 +1489,7 @@ export default function FeesPage() {
                 {/* Right: Payment Details Card */}
                 <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: 18 }}>
                   <h4 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 800, color: '#0f172a' }}>Payment Details</h4>
-                  
+
                   <div style={{ fontSize: 12, lineHeight: 2, marginBottom: 16 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ color: '#64748b' }}>Payment Date:</span>

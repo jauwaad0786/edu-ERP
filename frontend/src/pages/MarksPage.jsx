@@ -168,7 +168,7 @@ export default function MarksPage() {
         subjects: (grid.subjects || []).map(subj => {
           const key  = `${row.student_id}-${subj.id}`;
           const cell = cells[key] || {};
-          const max  = parseFloat(maxEdits[subj.id] ?? subj.max_marks);
+          const max  = Number.parseFloat(maxEdits[subj.id] ?? subj.max_marks);
           return {
             subject_id:     subj.id,
             marks_obtained: cell.is_absent ? 0 : (cell.marks_obtained ?? null),
@@ -221,9 +221,9 @@ export default function MarksPage() {
     (grid?.subjects || []).forEach(subj => {
       const key  = `${row.student_id}-${subj.id}`;
       const cell = cells[key] || {};
-      const m    = parseFloat(maxEdits[subj.id] ?? subj.max_marks);
+      const m    = Number.parseFloat(maxEdits[subj.id] ?? subj.max_marks);
       if (!cell.is_absent && cell.marks_obtained !== null && cell.marks_obtained !== undefined && cell.marks_obtained !== '') {
-        obt += parseFloat(cell.marks_obtained);
+        obt += Number.parseFloat(cell.marks_obtained);
         max += m;
       }
     });
@@ -276,15 +276,15 @@ export default function MarksPage() {
           <div className="card mb-6">
             <div className="card-body" style={{ display:'flex', gap:16, flexWrap:'wrap', alignItems:'flex-end' }}>
               <div className="form-group" style={{ minWidth:180, marginBottom:0 }}>
-                <label className="form-label">Class</label>
-                <select className="form-select" value={classId} onChange={e => setClassId(e.target.value)}>
+                <label className="form-label" htmlFor="marks-class-filter">Class</label>
+                <select id="marks-class-filter" className="form-select" value={classId} onChange={e => setClassId(e.target.value)}>
                   <option value="">Select class</option>
                   {classes.map(c => <option key={c.id} value={c.id}>{c.name} - {c.section}</option>)}
                 </select>
               </div>
               <div className="form-group" style={{ minWidth:220, marginBottom:0 }}>
-                <label className="form-label">Exam</label>
-                <select className="form-select" value={examId} onChange={e => setExamId(e.target.value)}>
+                <label className="form-label" htmlFor="marks-exam-filter">Exam</label>
+                <select id="marks-exam-filter" className="form-select" value={examId} onChange={e => setExamId(e.target.value)}>
                   <option value="">Select exam</option>
                   {exams.map(ex => <option key={ex.id} value={ex.id}>{ex.exam_name} ({ex.session})</option>)}
                 </select>
@@ -466,7 +466,7 @@ export default function MarksPage() {
                             {grid.subjects.map(subj => {
                               const key  = `${row.student_id}-${subj.id}`;
                               const cell = cells[key] || {};
-                              const max  = parseFloat(maxEdits[subj.id] ?? subj.max_marks);
+                              const max  = Number.parseFloat(maxEdits[subj.id] ?? subj.max_marks);
                               const mo   = cell.marks_obtained;
                               const locked = cell.is_locked || isGridLocked;
                               return (

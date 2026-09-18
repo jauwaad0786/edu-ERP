@@ -107,14 +107,14 @@ export default function InternalMarksPage() {
     setSaving(true);
     try {
       const payload = {
-        class_id: parseInt(selectedClassId),
-        subject_id: parseInt(selectedSubjectId),
+        class_id: Number.parseInt(selectedClassId, 10),
+        subject_id: Number.parseInt(selectedSubjectId, 10),
         academic_year: academicYear,
         term: term,
         marks: students.map(s => ({
           student_id: s.student_id,
-          marks_obtained: parseFloat(s.marks_obtained || 0),
-          max_marks: parseFloat(s.max_marks || defaultMaxMarks),
+          marks_obtained: Number.parseFloat(s.marks_obtained || 0),
+          max_marks: Number.parseFloat(s.max_marks || defaultMaxMarks),
           remarks: s.remarks || '',
         })),
       };
@@ -133,8 +133,8 @@ export default function InternalMarksPage() {
   const handleMarkChange = (index, val) => {
     const copy = [...students];
     copy[index].marks_obtained = val;
-    const max = parseFloat(copy[index].max_marks || defaultMaxMarks);
-    const obt = parseFloat(val || 0);
+    const max = Number.parseFloat(copy[index].max_marks || defaultMaxMarks);
+    const obt = Number.parseFloat(val || 0);
     copy[index].percentage = max > 0 ? Math.round((obt / max) * 100) : 0;
     setStudents(copy);
   };
@@ -202,24 +202,24 @@ export default function InternalMarksPage() {
               <div style={{ ...S.card, marginBottom: 20, padding: '16px 20px' }}>
                 <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'flex-end' }}>
                   <div style={{ flex: '1 1 200px' }}>
-                    <label style={S.label}>Class & Section *</label>
-                    <select value={selectedClassId} onChange={e => setSelectedClassId(e.target.value)} style={S.select}>
+                    <label htmlFor="im-class-select" style={S.label}>Class & Section *</label>
+                    <select id="im-class-select" value={selectedClassId} onChange={e => setSelectedClassId(e.target.value)} style={S.select}>
                       <option value="">Select Class</option>
                       {classes.map(c => <option key={c.id} value={c.id}>{c.name} - {c.section}</option>)}
                     </select>
                   </div>
 
                   <div style={{ flex: '1 1 200px' }}>
-                    <label style={S.label}>Subject *</label>
-                    <select value={selectedSubjectId} onChange={e => setSelectedSubjectId(e.target.value)} style={S.select}>
+                    <label htmlFor="im-subject-select" style={S.label}>Subject *</label>
+                    <select id="im-subject-select" value={selectedSubjectId} onChange={e => setSelectedSubjectId(e.target.value)} style={S.select}>
                       <option value="">Select Subject</option>
                       {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
                   </div>
 
                   <div style={{ flex: '1 1 180px' }}>
-                    <label style={S.label}>Assessment Term / Component</label>
-                    <select value={term} onChange={e => setTerm(e.target.value)} style={S.select}>
+                    <label htmlFor="im-term-select" style={S.label}>Assessment Term / Component</label>
+                    <select id="im-term-select" value={term} onChange={e => setTerm(e.target.value)} style={S.select}>
                       <option value="Continuous Assessment">Continuous Assessment</option>
                       <option value="Term 1 Internal">Term 1 Internal</option>
                       <option value="Term 2 Internal">Term 2 Internal</option>
@@ -230,8 +230,8 @@ export default function InternalMarksPage() {
                   </div>
 
                   <div style={{ flex: '1 1 130px' }}>
-                    <label style={S.label}>Academic Session</label>
-                    <input style={S.input} value={academicYear} onChange={e => setAcademicYear(e.target.value)} placeholder="2026" />
+                    <label htmlFor="im-academic-year" style={S.label}>Academic Session</label>
+                    <input id="im-academic-year" style={S.input} value={academicYear} onChange={e => setAcademicYear(e.target.value)} placeholder="2026" />
                   </div>
                 </div>
               </div>

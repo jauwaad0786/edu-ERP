@@ -307,10 +307,11 @@ export default function NotesPage() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, alignItems: 'flex-end' }}>
               {/* Search */}
               <div style={{ gridColumn: 'span 2', minWidth: 240 }}>
-                <label style={S.label}>Search Title / File / Keywords</label>
+                <label htmlFor="notes-search-input" style={S.label}>Search Title / File / Keywords</label>
                 <div style={{ position: 'relative' }}>
                   <i className="ti ti-search" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: 14 }} />
                   <input
+                    id="notes-search-input"
                     style={{ ...S.input, paddingLeft: 32 }}
                     placeholder="Search by topic, file name, keyword..."
                     value={search}
@@ -322,8 +323,8 @@ export default function NotesPage() {
 
               {/* Class Filter */}
               <div>
-                <label style={S.label}>Class</label>
-                <select value={filterClass} onChange={e => setFilterClass(e.target.value)} style={S.select}>
+                <label htmlFor="notes-filter-class" style={S.label}>Class</label>
+                <select id="notes-filter-class" value={filterClass} onChange={e => setFilterClass(e.target.value)} style={S.select}>
                   <option value="">🏫 All Classes</option>
                   {classes.map(c => (
                     <option key={c.id} value={c.id}>
@@ -335,8 +336,8 @@ export default function NotesPage() {
 
               {/* Section Filter */}
               <div>
-                <label style={S.label}>Section</label>
-                <select value={filterSection} onChange={e => setFilterSection(e.target.value)} style={S.select}>
+                <label htmlFor="notes-filter-section" style={S.label}>Section</label>
+                <select id="notes-filter-section" value={filterSection} onChange={e => setFilterSection(e.target.value)} style={S.select}>
                   <option value="">🔤 All Sections</option>
                   {availableSections.map(sec => (
                     <option key={sec} value={sec}>Section {sec}</option>
@@ -346,8 +347,8 @@ export default function NotesPage() {
 
               {/* Subject Filter */}
               <div>
-                <label style={S.label}>Subject</label>
-                <select value={filterSubject} onChange={e => setFilterSubject(e.target.value)} style={S.select}>
+                <label htmlFor="notes-filter-subject" style={S.label}>Subject</label>
+                <select id="notes-filter-subject" value={filterSubject} onChange={e => setFilterSubject(e.target.value)} style={S.select}>
                   <option value="">📚 All Subjects</option>
                   {filteredSubjectOptions.map(s => (
                     <option key={s.id} value={s.id}>
@@ -360,8 +361,8 @@ export default function NotesPage() {
               {/* Teacher Filter (Visible for Principal & Admins) */}
               {isPrincipal && (
                 <div>
-                  <label style={S.label}>Teacher / Uploader</label>
-                  <select value={filterTeacher} onChange={e => setFilterTeacher(e.target.value)} style={S.select}>
+                  <label htmlFor="notes-filter-teacher" style={S.label}>Teacher / Uploader</label>
+                  <select id="notes-filter-teacher" value={filterTeacher} onChange={e => setFilterTeacher(e.target.value)} style={S.select}>
                     <option value="">👨‍🏫 All Teachers</option>
                     {teachers.map(t => (
                       <option key={t.id} value={t.id}>{t.name} ({t.designation || 'Teacher'})</option>
@@ -372,8 +373,8 @@ export default function NotesPage() {
 
               {/* Document Type Filter */}
               <div>
-                <label style={S.label}>File Type</label>
-                <select value={filterFileType} onChange={e => setFilterFileType(e.target.value)} style={S.select}>
+                <label htmlFor="notes-filter-file-type" style={S.label}>File Type</label>
+                <select id="notes-filter-file-type" value={filterFileType} onChange={e => setFilterFileType(e.target.value)} style={S.select}>
                   <option value="">📄 All Formats</option>
                   <option value="pdf">PDF Documents</option>
                   <option value="doc">Word Docs (DOC/DOCX)</option>
@@ -386,8 +387,9 @@ export default function NotesPage() {
 
               {/* Date From */}
               <div>
-                <label style={S.label}>Date From</label>
+                <label htmlFor="notes-filter-date-from" style={S.label}>Date From</label>
                 <input
+                  id="notes-filter-date-from"
                   type="date"
                   style={S.input}
                   value={filterDateFrom}
@@ -397,8 +399,9 @@ export default function NotesPage() {
 
               {/* Date To */}
               <div>
-                <label style={S.label}>Date To</label>
+                <label htmlFor="notes-filter-date-to" style={S.label}>Date To</label>
                 <input
+                  id="notes-filter-date-to"
                   type="date"
                   style={S.input}
                   value={filterDateTo}
@@ -753,8 +756,9 @@ export default function NotesPage() {
                 <form onSubmit={handleUploadNote} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div>
-                      <label style={S.label}>Class & Section *</label>
+                      <label htmlFor="notes-upload-class" style={S.label}>Class & Section *</label>
                       <select
+                        id="notes-upload-class"
                         value={formClassId}
                         onChange={e => setFormClassId(e.target.value)}
                         style={S.select}

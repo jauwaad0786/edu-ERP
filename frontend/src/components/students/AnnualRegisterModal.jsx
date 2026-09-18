@@ -118,10 +118,9 @@ export default function AnnualRegisterModal({ isOpen, onClose, onSuccess, classe
                   {searchResults.map(s => (
                     <div
                       key={s.id}
-                      onClick={() => pickStudent(s)}
                       style={{
                         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        padding: '10px 14px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer',
+                        padding: '10px 14px', borderBottom: '1px solid #f1f5f9',
                         transition: 'background 0.1s',
                       }}
                       onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
@@ -133,7 +132,7 @@ export default function AnnualRegisterModal({ isOpen, onClose, onSuccess, classe
                           Adm No: {s.admission_no || '—'} &nbsp;·&nbsp; Current Class: {s.class_name || '—'} &nbsp;·&nbsp; Session: {s.session || '—'}
                         </div>
                       </div>
-                      <button type="button" className="btn btn-neutral btn-sm">
+                      <button type="button" className="btn btn-neutral btn-sm" onClick={() => pickStudent(s)}>
                         Select →
                       </button>
                     </div>

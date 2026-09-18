@@ -526,8 +526,9 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
               <div style={{ ...S.card, marginBottom: 18, padding: "14px 18px" }}>
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
                   <div style={{ flex: "1 1 160px" }}>
-                    <label style={S.label}>Class</label>
+                    <label htmlFor="ws-class-select" style={S.label}>Class</label>
                     <select
+                      id="ws-class-select"
                       value={wsClassId}
                       onChange={e => setWsClassId(e.target.value)}
                       style={S.select}
@@ -540,8 +541,9 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
                   </div>
 
                   <div style={{ flex: "1 1 130px" }}>
-                    <label style={S.label}>Section</label>
+                    <label htmlFor="ws-section-input" style={S.label}>Section</label>
                     <input
+                      id="ws-section-input"
                       style={S.input}
                       placeholder="e.g. A / B"
                       value={wsSection}
@@ -550,8 +552,9 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
                   </div>
 
                   <div style={{ flex: "1 1 200px" }}>
-                    <label style={S.label}>Certificate Type Filter</label>
+                    <label htmlFor="ws-doc-type" style={S.label}>Certificate Type Filter</label>
                     <select
+                      id="ws-doc-type"
                       value={wsDocType}
                       onChange={e => setWsDocType(e.target.value)}
                       style={S.select}
@@ -564,8 +567,9 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
                   </div>
 
                   <div style={{ flex: "1 1 150px" }}>
-                    <label style={S.label}>Status</label>
+                    <label htmlFor="ws-status" style={S.label}>Status</label>
                     <select
+                      id="ws-status"
                       value={wsStatus}
                       onChange={e => setWsStatus(e.target.value)}
                       style={S.select}
@@ -577,10 +581,11 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
                   </div>
 
                   <div style={{ flex: "2 1 220px" }}>
-                    <label style={S.label}>Search Student</label>
+                    <label htmlFor="ws-search-student" style={S.label}>Search Student</label>
                     <div style={{ position: "relative" }}>
                       <i className="ti ti-search" style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
                       <input
+                        id="ws-search-student"
                         style={{ ...S.input, paddingLeft: 32 }}
                         placeholder="Search student name, roll, adm no, parent..."
                         value={wsSearch}
@@ -1390,8 +1395,9 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
               <div style={{ ...S.card, marginBottom: 18, padding: "14px 18px" }}>
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
                   <div style={{ flex: "1 1 200px" }}>
-                    <label style={S.label}>Class</label>
+                    <label htmlFor="matrix-class-select" style={S.label}>Class</label>
                     <select
+                      id="matrix-class-select"
                       value={matrixClassId}
                       onChange={e => setMatrixClassId(e.target.value)}
                       style={S.select}
@@ -1404,8 +1410,9 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
                   </div>
 
                   <div style={{ flex: "1 1 180px" }}>
-                    <label style={S.label}>Status</label>
+                    <label htmlFor="matrix-status-select" style={S.label}>Status</label>
                     <select
+                      id="matrix-status-select"
                       value={matrixStatusFilter}
                       onChange={e => setMatrixStatusFilter(e.target.value)}
                       style={S.select}
@@ -1418,8 +1425,9 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
                   </div>
 
                   <div style={{ flex: "2 1 260px" }}>
-                    <label style={S.label}>Search</label>
+                    <label htmlFor="matrix-search-input" style={S.label}>Search</label>
                     <input
+                      id="matrix-search-input"
                       style={S.input}
                       placeholder="Search student name, roll number, admission no, parent..."
                       value={matrixSearch}
@@ -1521,27 +1529,27 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
               <div style={{ ...S.card, marginBottom: 18 }}>
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
                   <div style={{ flex: "2 1 200px" }}>
-                    <label style={S.label}>Search</label>
-                    <input style={S.input} placeholder="Student name, admission no, serial..." value={repoSearch} onChange={e => setRepoSearch(e.target.value)} onKeyDown={e => e.key === "Enter" && loadRepo()} />
+                    <label htmlFor="repo-search-input" style={S.label}>Search</label>
+                    <input id="repo-search-input" style={S.input} placeholder="Student name, admission no, serial..." value={repoSearch} onChange={e => setRepoSearch(e.target.value)} onKeyDown={e => e.key === "Enter" && loadRepo()} />
                   </div>
                   <div style={{ flex: "1 1 150px" }}>
-                    <label style={S.label}>Class</label>
-                    <select value={repoClass} onChange={e => setRepoClass(e.target.value)} style={S.select}>
+                    <label htmlFor="repo-class-select" style={S.label}>Class</label>
+                    <select id="repo-class-select" value={repoClass} onChange={e => setRepoClass(e.target.value)} style={S.select}>
                       <option value="">All Classes</option>
                       {(workspaceData?.classes || []).map(c => <option key={c.id} value={c.id}>{c.display}</option>)}
                     </select>
                   </div>
                   <div style={{ flex: "1 1 130px" }}>
-                    <label style={S.label}>Category</label>
-                    <select value={repoCategory} onChange={e => setRepoCategory(e.target.value)} style={S.select}>
+                    <label htmlFor="repo-category-select" style={S.label}>Category</label>
+                    <select id="repo-category-select" value={repoCategory} onChange={e => setRepoCategory(e.target.value)} style={S.select}>
                       <option value="all">All Documents</option>
                       <option value="issued">Issued Certificates</option>
                       <option value="kyc">KYC Documents</option>
                     </select>
                   </div>
                   <div style={{ flex: "1 1 110px" }}>
-                    <label style={S.label}>Year</label>
-                    <input style={S.input} placeholder="2026" value={repoYear} onChange={e => setRepoYear(e.target.value)} />
+                    <label htmlFor="repo-year-input" style={S.label}>Year</label>
+                    <input id="repo-year-input" style={S.input} placeholder="2026" value={repoYear} onChange={e => setRepoYear(e.target.value)} />
                   </div>
                   <button onClick={loadRepo} style={S.btnPrimary}>
                     <i className="ti ti-search" /> Search
@@ -1667,20 +1675,20 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
                 <p style={{ fontSize: 12.5, color: "#64748b", margin: "0 0 14px" }}>Upload your Aadhaar Card, Birth Certificate, or other KYC documents.</p>
                 <form onSubmit={handleMyUpload} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                   <div>
-                    <label style={S.label}>Document Type *</label>
-                    <select value={myDocType} onChange={e => setMyDocType(e.target.value)} style={S.select}>
+                    <label htmlFor="my-upload-doc-type" style={S.label}>Document Type *</label>
+                    <select id="my-upload-doc-type" value={myDocType} onChange={e => setMyDocType(e.target.value)} style={S.select}>
                       {DEFAULT_DOC_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
                   </div>
                   {myDocType === "OTHER" ? (
                     <div>
-                      <label style={S.label}>Document Name *</label>
-                      <input style={S.input} placeholder="e.g. Migration Certificate" value={myCustomLabel} onChange={e => setMyCustomLabel(e.target.value)} required />
+                      <label htmlFor="my-upload-custom-label" style={S.label}>Document Name *</label>
+                      <input id="my-upload-custom-label" style={S.input} placeholder="e.g. Migration Certificate" value={myCustomLabel} onChange={e => setMyCustomLabel(e.target.value)} required />
                     </div>
                   ) : (
                     <div>
-                      <label style={S.label}>Title (Optional)</label>
-                      <input style={S.input} placeholder="e.g. Aadhaar Card Front & Back" value={myTitle} onChange={e => setMyTitle(e.target.value)} />
+                      <label htmlFor="my-upload-title" style={S.label}>Title (Optional)</label>
+                      <input id="my-upload-title" style={S.input} placeholder="e.g. Aadhaar Card Front & Back" value={myTitle} onChange={e => setMyTitle(e.target.value)} />
                     </div>
                   )}
                   <div style={{ background: "#f8fafc", border: "1.5px dashed #cbd5e1", borderRadius: 10, padding: 16, textAlign: "center" }}>
@@ -1782,8 +1790,8 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
 
                 <form onSubmit={handleModalUpload} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                   <div>
-                    <label style={S.label}>Document Type *</label>
-                    <select value={modalDocType} onChange={e => setModalDocType(e.target.value)} style={S.select}>
+                    <label htmlFor="modal-doc-type" style={S.label}>Document Type *</label>
+                    <select id="modal-doc-type" value={modalDocType} onChange={e => setModalDocType(e.target.value)} style={S.select}>
                       {DEFAULT_DOC_TYPES.map(t => (
                         <option key={t.value} value={t.value}>{t.label}</option>
                       ))}
@@ -1792,19 +1800,19 @@ export default function DocumentsPage({ initialTab, initialDocType }) {
 
                   {modalDocType === "OTHER" ? (
                     <div>
-                      <label style={S.label}>Document Custom Name *</label>
-                      <input style={S.input} placeholder="e.g. Migration Certificate" value={modalCustomLabel} onChange={e => setModalCustomLabel(e.target.value)} required />
+                      <label htmlFor="modal-custom-label" style={S.label}>Document Custom Name *</label>
+                      <input id="modal-custom-label" style={S.input} placeholder="e.g. Migration Certificate" value={modalCustomLabel} onChange={e => setModalCustomLabel(e.target.value)} required />
                     </div>
                   ) : (
                     <div>
-                      <label style={S.label}>Document Title (Optional)</label>
-                      <input style={S.input} placeholder="e.g. Aadhaar Card Front & Back" value={modalTitle} onChange={e => setModalTitle(e.target.value)} />
+                      <label htmlFor="modal-doc-title" style={S.label}>Document Title (Optional)</label>
+                      <input id="modal-doc-title" style={S.input} placeholder="e.g. Aadhaar Card Front & Back" value={modalTitle} onChange={e => setModalTitle(e.target.value)} />
                     </div>
                   )}
 
                   <div>
-                    <label style={S.label}>Remarks (Optional)</label>
-                    <input style={S.input} placeholder="e.g. Verified by class teacher" value={modalRemarks} onChange={e => setModalRemarks(e.target.value)} />
+                    <label htmlFor="modal-remarks" style={S.label}>Remarks (Optional)</label>
+                    <input id="modal-remarks" style={S.input} placeholder="e.g. Verified by class teacher" value={modalRemarks} onChange={e => setModalRemarks(e.target.value)} />
                   </div>
 
                   <div style={{ background: "#f8fafc", border: "1.5px dashed #cbd5e1", borderRadius: 10, padding: 16, textAlign: "center" }}>

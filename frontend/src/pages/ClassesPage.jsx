@@ -79,6 +79,8 @@ export default function ClassesPage() {
               <div
                 className="stat-card"
                 key={c.id}
+                role="button"
+                tabIndex={0}
                 style={{
                   cursor: 'pointer',
                   padding: '20px',
@@ -100,6 +102,12 @@ export default function ClassesPage() {
                   e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.05)';
                 }}
                 onClick={() => navigate(`/classes/${c.id}`)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    navigate(`/classes/${c.id}`);
+                  }
+                }}
               >
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
@@ -194,7 +202,14 @@ export default function ClassesPage() {
       </div>
 
       {showModal && (
-        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowModal(false)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={e => e.target === e.currentTarget && setShowModal(false)}
+          onKeyDown={e => e.key === 'Escape' && setShowModal(false)}
+        >
           <div className="modal">
             <div className="modal-header">
               <h3>{form.id ? '✏️ Edit Class' : '🏛 Add New Class'}</h3>
@@ -204,8 +219,9 @@ export default function ClassesPage() {
               <div className="modal-body">
                 <div className="grid-2">
                   <div className="form-group" style={{ gridColumn: '1/-1' }}>
-                    <label className="form-label">Class Name *</label>
+                    <label className="form-label" htmlFor="new-class-name">Class Name *</label>
                     <input
+                      id="new-class-name"
                       className="form-input"
                       required
                       placeholder="e.g. Class 10, Class 9, Nursery"
@@ -214,8 +230,9 @@ export default function ClassesPage() {
                     />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Section</label>
+                    <label className="form-label" htmlFor="new-class-section">Section</label>
                     <select
+                      id="new-class-section"
                       className="form-select"
                       value={form.section}
                       onChange={e => setForm(f => ({...f, section: e.target.value}))}
@@ -224,8 +241,9 @@ export default function ClassesPage() {
                     </select>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Session</label>
+                    <label className="form-label" htmlFor="new-class-session">Session</label>
                     <input
+                      id="new-class-session"
                       className="form-input"
                       value={form.session}
                       onChange={e => setForm(f => ({...f, session: e.target.value}))}

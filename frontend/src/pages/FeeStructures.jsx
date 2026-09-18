@@ -189,7 +189,7 @@ export default function FeeStructures() {
   }
 
   async function submitAdjustment() {
-    if (!adjAmount || isNaN(adjAmount) || Number(adjAmount) <= 0) {
+    if (!adjAmount || Number.isNaN(Number(adjAmount)) || Number(adjAmount) <= 0) {
       toast.error('Sahi amount daalo');
       return;
     }
@@ -200,7 +200,7 @@ export default function FeeStructures() {
     setAdjSaving(true);
     try {
       await api.post(`/principal/fees/records/${adjustModal.record.id}/adjust`, {
-        type: adjustModal.type, amount: parseFloat(adjAmount), reason: adjReason.trim(),
+        type: adjustModal.type, amount: Number.parseFloat(adjAmount), reason: adjReason.trim(),
       });
       toast.success(adjustModal.type === 'FINE' ? 'Fine lag gaya' : 'Waiver apply ho gaya');
       setAdjustModal(null);
@@ -580,35 +580,35 @@ export default function FeeStructures() {
               <button className="modal-close" onClick={() => setShowModal(false)}>✕</button>
             </div>
             <div className="modal-body">
-              <label style={labelStyle}>Fee Type *</label>
-              <select style={inputStyle} value={form.fee_type} disabled={!!editingId}
+              <label htmlFor="fs-fee-type" style={labelStyle}>Fee Type *</label>
+              <select id="fs-fee-type" style={inputStyle} value={form.fee_type} disabled={!!editingId}
                 onChange={e => handleFeeTypeChange(e.target.value)}>
                 {FEE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
 
-              <label style={labelStyle}>Frequency *</label>
-              <select style={inputStyle} value={form.frequency} disabled={!!editingId}
+              <label htmlFor="fs-frequency" style={labelStyle}>Frequency *</label>
+              <select id="fs-frequency" style={inputStyle} value={form.frequency} disabled={!!editingId}
                 onChange={e => setForm({ ...form, frequency: e.target.value })}>
                 {FREQUENCIES.map(f => <option key={f} value={f}>{f === 'ONE_TIME' ? 'One-Time (e.g. Admission)' : f}</option>)}
               </select>
 
-              <label style={labelStyle}>
+              <label htmlFor="fs-class-id" style={labelStyle}>
                 Class {form.frequency === 'ONE_TIME' ? '(optional — khali chodo to sab classes)' : '*'}
               </label>
-              <select style={inputStyle} value={form.class_id} disabled={!!editingId}
+              <select id="fs-class-id" style={inputStyle} value={form.class_id} disabled={!!editingId}
                 onChange={e => setForm({ ...form, class_id: e.target.value })}>
                 <option value="">{form.frequency === 'ONE_TIME' ? 'All Classes (School-wide)' : 'Select Class'}</option>
                 {classes.map(c => <option key={c.id} value={c.id}>{c.name} - {c.section}</option>)}
               </select>
 
-              <label style={labelStyle}>Amount (₹) *</label>
-              <input type="number" style={inputStyle} value={form.amount}
+              <label htmlFor="fs-amount" style={labelStyle}>Amount (₹) *</label>
+              <input id="fs-amount" type="number" style={inputStyle} value={form.amount}
                 onChange={e => setForm({ ...form, amount: e.target.value })} />
 
               {form.frequency !== 'ONE_TIME' && (
                 <>
-                  <label style={labelStyle}>Due Date Day (1-28)</label>
-                  <input type="number" min="1" max="28" style={inputStyle} value={form.due_date_day}
+                  <label htmlFor="fs-due-date-day" style={labelStyle}>Due Date Day (1-28)</label>
+                  <input id="fs-due-date-day" type="number" min="1" max="28" style={inputStyle} value={form.due_date_day}
                     onChange={e => setForm({ ...form, due_date_day: e.target.value })} />
                 </>
               )}
@@ -642,12 +642,13 @@ export default function FeeStructures() {
               <div style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>
                 {adjustModal.record.fee_type} — {adjustModal.record.month || 'One-Time'} — Current Effective: ₹{fmt(adjustModal.record.effective_due)}
               </div>
-              <label style={labelStyle}>
+              <label htmlFor="fs-adj-amount" style={labelStyle}>
                 {adjustModal.type === 'FINE' ? 'Fine Amount (₹) *' : 'Waiver Amount (₹) *'}
               </label>
-              <input type="number" value={adjAmount} onChange={e => setAdjAmount(e.target.value)} style={inputStyle} />
-              <label style={labelStyle}>Reason *</label>
+              <input id="fs-adj-amount" type="number" value={adjAmount} onChange={e => setAdjAmount(e.target.value)} style={inputStyle} />
+              <label htmlFor="fs-adj-reason" style={labelStyle}>Reason *</label>
               <input
+                id="fs-adj-reason"
                 value={adjReason}
                 onChange={e => setAdjReason(e.target.value)}
                 placeholder={adjustModal.type === 'FINE' ? 'e.g. Late payment penalty' : 'e.g. Sports scholarship, sibling discount'}

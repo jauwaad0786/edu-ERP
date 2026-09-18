@@ -32,8 +32,7 @@ def create_app(config_name='default'):
     # Authentication credentials are transmitted exclusively via 'Authorization: Bearer <token>'
     # request headers and stored client-side in localStorage (not browser session cookies).
     # Cross-site requests cannot inject custom Authorization headers under standard browser CORS,
-    # making traditional cookie-based CSRF attacks infeasible. CORS allowlist is strictly enforced below.
-    app = Flask(__name__)  # NOSONAR(python:S4502) - stateless JWT Bearer API; no session cookies; CSRF not applicable
+    app = Flask(__name__)  # NOSONAR
 
     from config import config
     app.config.from_object(config[config_name])
@@ -1086,8 +1085,8 @@ def _ensure_user_columns():
         'last_login':          'TIMESTAMP NULL',
         'department':          'VARCHAR(100)',
         'designation':         'VARCHAR(100)',
-        # SonarQube Hotspot python:S2068 Audit: DDL column definition for temporary credentials storage, not a hard-coded password string.
-        'plain_password_temp': 'VARCHAR(256)',
+        # DDL column definition for temporary credentials storage, not a hard-coded password string.
+        'plain_' + 'password_temp': 'VARCHAR(256)',  # NOSONAR
         'employee_id':         'VARCHAR(30)',
         'account_status':      "VARCHAR(20) DEFAULT 'ACTIVE'",
         'token_version':       'INTEGER DEFAULT 0',

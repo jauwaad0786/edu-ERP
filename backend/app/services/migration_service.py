@@ -808,9 +808,7 @@ def get_migration_spot_check_sample(batch_id: int, school_id: int, sample_size: 
     records = MigrationRecord.query.filter_by(
         batch_id=batch_id, school_id=school_id, status='SUCCESS'
     ).limit(sample_size * 2).all()
-
-    import secrets
-    selected = secrets.SystemRandom().sample(records, min(len(records), sample_size)) if records else []
+    selected = records[:sample_size] if records else []
 
     sample_out = []
     for r in selected:

@@ -821,7 +821,6 @@ export default function Login() {
                   value={identifier}
                   onChange={e => setIdentifier(e.target.value)}
                   required
-                  autoFocus
                 />
               </div>
             </div>
@@ -896,8 +895,15 @@ export default function Login() {
 
       {/* ── Forgot Password Security Directive Modal ── */}
       {showForgotModal && (
-        <div className="modal-overlay" onClick={() => setShowForgotModal(false)}>
-          <div className="modal-dialog" onClick={e => e.stopPropagation()}>
+        <div
+          className="modal-overlay"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={e => { if (e.target === e.currentTarget) setShowForgotModal(false); }}
+          onKeyDown={e => { if (e.key === 'Escape') setShowForgotModal(false); }}
+        >
+          <div className="modal-dialog">
             <div className="modal-header">
               <div className="modal-title-row">
                 <div className="modal-title-icon">

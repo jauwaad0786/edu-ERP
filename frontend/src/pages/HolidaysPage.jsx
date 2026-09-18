@@ -360,8 +360,14 @@ export default function HolidaysPage() {
 
       {/* ── Modal ── */}
       {showModal && (
-        <div className="modal-backdrop"
-          onClick={e => e.target === e.currentTarget && setShowModal(false)}>
+        <div
+          className="modal-backdrop"
+          role="button"
+          tabIndex={0}
+          aria-label="Close modal"
+          onClick={e => e.target === e.currentTarget && setShowModal(false)}
+          onKeyDown={e => e.key === 'Escape' && setShowModal(false)}
+        >
           <div className="modal" style={{ maxWidth: 500 }}>
             <div className="modal-header">
               <h3>{editItem ? '✏️ Edit Holiday' : '+ New Holiday'}</h3>
@@ -371,8 +377,8 @@ export default function HolidaysPage() {
               <div className="modal-body">
 
                 <div className="form-group">
-                  <label className="form-label">Title *</label>
-                  <input className="form-input" required
+                  <label className="form-label" htmlFor="hol-title">Title *</label>
+                  <input id="hol-title" className="form-input" required
                     placeholder="e.g. Diwali, Republic Day"
                     value={form.title}
                     onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
@@ -380,14 +386,14 @@ export default function HolidaysPage() {
 
                 <div className="grid-2">
                   <div className="form-group">
-                    <label className="form-label">Start Date *</label>
-                    <input type="date" className="form-input" required
+                    <label className="form-label" htmlFor="hol-start-date">Start Date *</label>
+                    <input id="hol-start-date" type="date" className="form-input" required
                       value={form.date}
                       onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">End Date (optional)</label>
-                    <input type="date" className="form-input"
+                    <label className="form-label" htmlFor="hol-end-date">End Date (optional)</label>
+                    <input id="hol-end-date" type="date" className="form-input"
                       value={form.end_date}
                       onChange={e => setForm(f => ({ ...f, end_date: e.target.value }))} />
                   </div>
@@ -395,8 +401,8 @@ export default function HolidaysPage() {
 
                 <div className="grid-2">
                   <div className="form-group">
-                    <label className="form-label">Type *</label>
-                    <select className="form-select"
+                    <label className="form-label" htmlFor="hol-type">Type *</label>
+                    <select id="hol-type" className="form-select"
                       value={form.holiday_type}
                       onChange={e => setForm(f => ({ ...f, holiday_type: e.target.value }))}>
                       {['HOLIDAY','FESTIVAL','EXAM','EVENT','OTHER'].map(t => (
@@ -405,8 +411,8 @@ export default function HolidaysPage() {
                     </select>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Applies To</label>
-                    <select className="form-select"
+                    <label className="form-label" htmlFor="hol-applies-to">Applies To</label>
+                    <select id="hol-applies-to" className="form-select"
                       value={form.applies_to}
                       onChange={e => setForm(f => ({ ...f, applies_to: e.target.value }))}>
                       <option value="ALL">All (Students + Teachers)</option>
@@ -417,8 +423,8 @@ export default function HolidaysPage() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">Description (optional)</label>
-                  <textarea className="form-textarea" rows={2}
+                  <label className="form-label" htmlFor="hol-desc">Description (optional)</label>
+                  <textarea id="hol-desc" className="form-textarea" rows={2}
                     placeholder="Koi additional detail..."
                     value={form.description}
                     onChange={e => setForm(f => ({ ...f, description: e.target.value }))}

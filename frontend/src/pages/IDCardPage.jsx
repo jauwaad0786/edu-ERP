@@ -380,8 +380,14 @@ function EditEmployeeModal({ employee, onClose, onSaved }) {
   function f(field, val) { setForm(p => ({ ...p, [field]: val })); }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label="Close edit employee modal"
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      onKeyDown={e => { if (e.key === 'Escape') onClose(); }}
+    >
       <div style={{ background: '#fff', borderRadius: 16, padding: '28px 28px', width: 480, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 24px 64px rgba(0,0,0,0.2)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>✏️ Edit Employee</div>
@@ -672,8 +678,8 @@ export default function IDCardPage() {
                 {/* Class Select — only for students */}
                 {!isEmployee && (
                   <div className="form-group" style={{ flex: 1, minWidth: 180, marginBottom: 0 }}>
-                    <label className="form-label">📚 Class Select Karo</label>
-                    <select className="form-select" value={selClass} onChange={function(e) { setSelClass(e.target.value); }}>
+                    <label className="form-label" htmlFor="idcard-class-select">📚 Class Select Karo</label>
+                    <select id="idcard-class-select" className="form-select" value={selClass} onChange={function(e) { setSelClass(e.target.value); }}>
                       <option value="">— Class Choose Karo —</option>
                       {classes.map(function(c) {
                         return <option key={c.id} value={c.id}>{c.name} — {c.section}</option>;
@@ -684,8 +690,8 @@ export default function IDCardPage() {
 
                 {/* Search */}
                 <div className="form-group" style={{ flex: 1, minWidth: 200, marginBottom: 0 }}>
-                  <label className="form-label">🔍 Search</label>
-                  <input className="form-input"
+                  <label className="form-label" htmlFor="idcard-search-input">🔍 Search</label>
+                  <input id="idcard-search-input" className="form-input"
                     placeholder={isEmployee ? 'Name / Employee ID...' : 'Name / Roll No...'}
                     value={search}
                     onChange={function(e) { setSearch(e.target.value); }} />
@@ -793,14 +799,15 @@ export default function IDCardPage() {
                               }
                             </td>
                             <td>
-                              <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }} onClick={function(e) { e.stopPropagation(); }}>
+                              <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
                                 {/* Edit */}
-                                <button onClick={function() { setEditTarget(s); }}
+                                <button onClick={function(e) { e.stopPropagation(); setEditTarget(s); }}
                                   style={{ background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: 4, padding: '4px 8px', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
                                   ✏️ Edit
                                 </button>
                                 {/* Preview */}
-                                <button onClick={function() {
+                                <button onClick={function(e) {
+                                    e.stopPropagation();
                                     setSelId(s.id);
                                     loadPreview(s.id, isEmployee ? 'employee' : 'student');
                                   }}
@@ -808,12 +815,12 @@ export default function IDCardPage() {
                                   👁 Preview
                                 </button>
                                 {/* Download */}
-                                <button onClick={function() { downloadSingle(s.id, displayName); }}
+                                <button onClick={function(e) { e.stopPropagation(); downloadSingle(s.id, displayName); }}
                                   style={{ background: '#e8f4fd', color: '#0176d3', border: 'none', borderRadius: 4, padding: '4px 8px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
                                   📄 Download
                                 </button>
                                 {/* Delete */}
-                                <button onClick={function() { setDeleteConfirm(s.id); }}
+                                <button onClick={function(e) { e.stopPropagation(); setDeleteConfirm(s.id); }}
                                   style={{ background: '#fef1ee', color: '#dc2626', border: 'none', borderRadius: 4, padding: '4px 8px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
                                   🗑
                                 </button>

@@ -269,13 +269,18 @@ export default function CreateDelegationWizardModal({ isOpen, onClose, onSuccess
             { n: 3, label: '3. Access' },
             { n: 4, label: '4. Schedule' },
           ].map(s => (
-            <div
+            <button
+              type="button"
               key={s.n}
+              disabled={step <= s.n}
               onClick={() => { if (step > s.n) setStep(s.n); }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700,
                 color: step === s.n ? '#0176d3' : step > s.n ? '#16a34a' : '#94a3b8',
                 cursor: step > s.n ? 'pointer' : 'default',
+                background: 'transparent',
+                border: 'none',
+                padding: 0,
               }}
             >
               <span style={{
@@ -437,7 +442,8 @@ export default function CreateDelegationWizardModal({ isOpen, onClose, onSuccess
                               subjs.map(s => {
                                 const subChecked = pickedSubs.includes(s.id);
                                 return (
-                                  <span
+                                  <button
+                                    type="button"
                                     key={s.id}
                                     onClick={() => toggleSubject(c.id, s.id)}
                                     style={{
@@ -445,10 +451,11 @@ export default function CreateDelegationWizardModal({ isOpen, onClose, onSuccess
                                       background: subChecked ? '#0284c7' : '#e0f2fe',
                                       color: subChecked ? '#fff' : '#0369a1',
                                       fontWeight: subChecked ? 700 : 500,
+                                      border: 'none',
                                     }}
                                   >
                                     {s.name}
-                                  </span>
+                                  </button>
                                 );
                               })
                             )}
@@ -490,9 +497,8 @@ export default function CreateDelegationWizardModal({ isOpen, onClose, onSuccess
                     {cat.items.map(item => {
                       const isChecked = selectedPermissions.has(item.code);
                       return (
-                        <div
+                        <label
                           key={item.code}
-                          onClick={() => togglePermission(item.code)}
                           style={{
                             padding: '8px 10px', borderRadius: 6, cursor: 'pointer', border: isChecked ? '1.5px solid #0176d3' : '1px solid #cbd5e1',
                             background: isChecked ? '#eff6ff' : '#fff', display: 'flex', alignItems: 'flex-start', gap: 8
@@ -501,7 +507,7 @@ export default function CreateDelegationWizardModal({ isOpen, onClose, onSuccess
                           <input
                             type="checkbox"
                             checked={isChecked}
-                            onChange={() => {}}
+                            onChange={() => togglePermission(item.code)}
                             style={{ marginTop: 2 }}
                           />
                           <div>

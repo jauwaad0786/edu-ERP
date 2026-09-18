@@ -144,7 +144,7 @@ def _extract_class(text: str) -> str:
     m = re.search(r'class\s*(\d+|[ivx]+)', text.lower())
     if m:
         return m.group(1)
-    m = re.search(r'(\d+)(?:st|nd|rd|th)?\s+class', text.lower())
+    m = re.search(r'\b(\d{1,2})(?:st|nd|rd|th)?\s+class\b', text.lower())
     if m:
         return m.group(1)
     return None
