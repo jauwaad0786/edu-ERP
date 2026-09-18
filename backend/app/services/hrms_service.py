@@ -12,7 +12,8 @@ Handles:
 - Audit Logging
 """
 
-from datetime import datetime, date, timedelta`nfrom app.utils.timezone_util import utc_now
+from datetime import datetime, date, timedelta
+from app.utils.timezone_util import utc_now
 from app import db, bcrypt
 from app.models.user import User, UserRole
 from app.models.academic import Teacher

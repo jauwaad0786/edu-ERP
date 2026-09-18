@@ -1,4 +1,5 @@
-from datetime import date, datetime`nfrom app.utils.timezone_util import utc_now
+from datetime import date, datetime
+from app.utils.timezone_util import utc_now
 from app import db
 from app.models.financial import FeeRecord, FeeTransaction
 from app.models.academic import Student

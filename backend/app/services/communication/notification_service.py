@@ -10,7 +10,8 @@ Supports:
 
 import json
 import logging
-from datetime import datetime`nfrom app.utils.timezone_util import utc_now
+from datetime import datetime
+from app.utils.timezone_util import utc_now
 from app import db
 from app.models.user import User, UserRole
 from app.models.communication import SupportNotification

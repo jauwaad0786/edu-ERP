@@ -6,7 +6,8 @@ Endpoints for Principals to create, monitor, and revoke substitute teacher deleg
 and for Teachers to view their active delegated access in real time.
 """
 
-from datetime import datetime, timedelta`nfrom app.utils.timezone_util import utc_now
+from datetime import datetime, timedelta
+from app.utils.timezone_util import utc_now
 from flask import Blueprint, request, jsonify
 from app import db
 from app.models.academic import Teacher, Class, Subject

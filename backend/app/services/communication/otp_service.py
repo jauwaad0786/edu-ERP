@@ -9,7 +9,8 @@ import re
 import secrets
 import hashlib
 import hmac
-from datetime import datetime, timedelta`nfrom app.utils.timezone_util import utc_now
+from datetime import datetime, timedelta
+from app.utils.timezone_util import utc_now
 from flask import current_app
 from app import db
 from app.models.otp import OTPVerification, OTPPurpose

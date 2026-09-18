@@ -17,7 +17,8 @@ Calculates accurate monthly payroll for all employees (Teachers and Staff):
 """
 
 import calendar
-from datetime import datetime, date, timedelta`nfrom app.utils.timezone_util import utc_now
+from datetime import datetime, date, timedelta
+from app.utils.timezone_util import utc_now
 from calendar import monthrange
 from app import db
 from app.models.user import User, UserRole

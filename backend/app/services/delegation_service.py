@@ -17,7 +17,8 @@ Key features:
 """
 
 import logging
-from datetime import datetime, timedelta`nfrom app.utils.timezone_util import utc_now
+from datetime import datetime, timedelta
+from app.utils.timezone_util import utc_now
 from flask import g
 from app import db
 

@@ -3,7 +3,8 @@ Staff Attendance — business logic layer.
 Keeps routes thin: routes only handle request/response, all rules live here.
 """
 
-from datetime import datetime, date, timedelta`nfrom app.utils.timezone_util import utc_now
+from datetime import datetime, date, timedelta
+from app.utils.timezone_util import utc_now
 from calendar import monthrange
 
 from app import db

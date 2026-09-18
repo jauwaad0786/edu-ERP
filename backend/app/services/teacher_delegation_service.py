@@ -13,7 +13,8 @@ Enforces:
 """
 
 import logging
-from datetime import datetime`nfrom app.utils.timezone_util import utc_now
+from datetime import datetime
+from app.utils.timezone_util import utc_now
 from flask import g
 from app import db
 from app.models.academic import Teacher, Class, Subject

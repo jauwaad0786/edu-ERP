@@ -12,7 +12,8 @@ Core Workflows:
 - Executive Finance Reporting, Expense Reconciliation & Net Surplus
 """
 
-from datetime import datetime, date`nfrom app.utils.timezone_util import utc_now
+from datetime import datetime, date
+from app.utils.timezone_util import utc_now
 import calendar
 from sqlalchemy import func, case
 from sqlalchemy.orm import joinedload
@@ -1743,7 +1744,8 @@ def get_finance_dashboard_metrics(school_id, session='2026-27', month=None):
 
         # Expiring warranty check
         today_val = date.today()
-        from datetime import timedelta`nfrom app.utils.timezone_util import utc_now
+        from datetime import timedelta
+from app.utils.timezone_util import utc_now
         soon_limit = today_val + timedelta(days=30)
         warranty_expiring_assets = SchoolAsset.query.filter(
             SchoolAsset.school_id == school_id,

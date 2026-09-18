@@ -17,7 +17,8 @@ Guarantees:
 import os
 import json
 import logging
-from datetime import datetime, timedelta`nfrom app.utils.timezone_util import utc_now
+from datetime import datetime, timedelta
+from app.utils.timezone_util import utc_now
 from sqlalchemy import text, inspect, bindparam, table, column, delete, or_, select, func
 
 from app import db

@@ -4,7 +4,8 @@ from app.models.hostel import (
     log_hostel_activity
 )
 from app.models.financial import FeeRecord, FeeTransaction
-from datetime import date, datetime`nfrom app.utils.timezone_util import utc_now
+from datetime import date, datetime
+from app.utils.timezone_util import utc_now
 import secrets
 import string
 
