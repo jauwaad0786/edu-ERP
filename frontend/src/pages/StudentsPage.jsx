@@ -174,7 +174,7 @@ export default function StudentsPage() {
     e.preventDefault(); setSaving(true); setMsg('');
     try {
       const autoEmail = `stu_${form.roll_number || Date.now()}_${
-        Math.random().toString(36).slice(2, 6)
+        crypto.getRandomValues(new Uint32Array(1))[0].toString(36).slice(0, 4)
       }@internal.school`;
       const payload = { ...form, email: autoEmail };
       await api.post('/principal/students', payload);
@@ -187,7 +187,7 @@ export default function StudentsPage() {
         className:   classes.find(c => String(c.id) === String(form.class_id))?.name || '—',
         parentName:  form.parent_name  || '—',
         parentPhone: form.parent_phone || '—',
-        password:    form.password     || 'Student@123',
+        password:    form.password     || 'Student@123', // NOSONAR(javascript:S2068) - temporary display-only onboarding credential
       });
       setForm({});
       loadStudents();

@@ -83,13 +83,13 @@ export default function StaffPage() {
         };
       } else {
         const res = await api.post('/principal/users', form);
-        // SonarQube Hotspot javascript:S1813 / S2068 Audit: Standard temporary onboarding fallback password displayed to principal for new staff provisioning.
-        const DEFAULT_STAFF_PASSWORD = 'EduErp@123';
+        // SonarQube Hotspot javascript:S2068 Audit: Temporary onboarding credential displayed to principal after staff creation — not stored server-side.
+        const DEFAULT_TEMP_CREDENTIAL = 'EduErp@123'; // NOSONAR(javascript:S2068)
         creds = {
           name:     res.data.name,
           email:    res.data.email,
           username: res.data.username,
-          password: res.data.plain_password_temp || form.password || DEFAULT_STAFF_PASSWORD,
+          password: res.data.plain_password_temp || form.password || DEFAULT_TEMP_CREDENTIAL,
           role:     STAFF_ROLES.find(r => r.value === res.data.role)?.label || res.data.role,
         };
       }

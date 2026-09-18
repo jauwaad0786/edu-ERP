@@ -3,7 +3,7 @@ Staff Attendance — business logic layer.
 Keeps routes thin: routes only handle request/response, all rules live here.
 """
 
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta`nfrom app.utils.timezone_util import utc_now
 from calendar import monthrange
 
 from app import db
@@ -177,7 +177,7 @@ def check_in(user, latitude, longitude, accuracy=None, is_mock=False, device=Non
     if settings.mock_location_detection and is_mock:
         raise ValueError('Mock/Fake GPS location detect hui — attendance allowed nahi.')
 
-    now = datetime.utcnow()
+    now = utc_now()
     ctx = {}
     try:
         ctx = capture_request_context()
@@ -238,7 +238,7 @@ def check_out(user, latitude=None, longitude=None):
         raise ValueError('Check-out already ho chuka hai.')
 
     settings = StaffAttendanceSettings.get_or_create(user.school_id)
-    now = datetime.utcnow()
+    now = utc_now()
     ctx = {}
     try:
         ctx = capture_request_context()
@@ -296,7 +296,7 @@ def approve_attendance(record, approver, reason=None):
     old_status = record.approval_status
     record.approval_status = 'APPROVED'
     record.approved_by = approver.id
-    record.approved_at = datetime.utcnow()
+    record.approved_at = utc_now()
 
     if record.check_out_time:
         finalize_working_status(record, settings)
@@ -313,7 +313,7 @@ def reject_attendance(record, approver, reason=None):
     old_status = record.approval_status
     record.approval_status = 'REJECTED'
     record.approved_by = approver.id
-    record.approved_at = datetime.utcnow()
+    record.approved_at = utc_now()
     record.rejection_reason = reason
     record.status = 'ABSENT'
 
@@ -366,7 +366,7 @@ def review_regularization(reg, approver, approve, review_note=None):
     settings = StaffAttendanceSettings.get_or_create(reg.school_id)
     reg.status = 'APPROVED' if approve else 'REJECTED'
     reg.reviewed_by = approver.id
-    reg.reviewed_at = datetime.utcnow()
+    reg.reviewed_at = utc_now()
     reg.review_note = review_note
 
     if approve:

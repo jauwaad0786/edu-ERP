@@ -17,7 +17,7 @@ Key features:
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta`nfrom app.utils.timezone_util import utc_now
 from flask import g
 from app import db
 
@@ -113,7 +113,7 @@ def create_delegation(delegator, delegatee_user_id, role_key, end_date, reason=N
         return None, "Delegator does not have sufficient hierarchy to delegate this role"
 
     # 5. End date validation
-    if end_date <= datetime.utcnow():
+    if end_date <= utc_now():
         return None, "End date must be in the future"
 
     # 6. Prevent duplicate: check if delegatee already has this role (permanent)
@@ -137,7 +137,7 @@ def create_delegation(delegator, delegatee_user_id, role_key, end_date, reason=N
         delegator_user_id=delegator.id,
         delegatee_user_id=delegatee_user_id,
         role_id=role.id,
-        start_date=datetime.utcnow(),
+        start_date=utc_now(),
         end_date=end_date,
         reason=reason[:500] if reason else None,
         status='ACTIVE'
@@ -213,7 +213,7 @@ def revoke_delegation(delegation_id, revoker):
 
     # Update delegation status
     delegation.status = 'REVOKED'
-    delegation.updated_at = datetime.utcnow()
+    delegation.updated_at = utc_now()
 
     # Remove temporary role from delegatee (only if no other active delegation for same role)
     _remove_temporary_role_if_no_other(delegation.delegatee_user_id, delegation.role_id)
@@ -263,12 +263,12 @@ def extend_delegation(delegation_id, new_end_date, updater):
     if new_end_date <= delegation.end_date:
         return False, "New end date must be after current end date"
 
-    if new_end_date <= datetime.utcnow():
+    if new_end_date <= utc_now():
         return False, "New end date must be in the future"
 
     old_end_date = delegation.end_date
     delegation.end_date = new_end_date
-    delegation.updated_at = datetime.utcnow()
+    delegation.updated_at = utc_now()
 
     # Audit logging (with old/new values)
     _log_delegation_audit(
@@ -293,7 +293,7 @@ def expire_delegation(delegation_id):
         return False
 
     delegation.status = 'EXPIRED'
-    delegation.updated_at = datetime.utcnow()
+    delegation.updated_at = utc_now()
 
     # Remove temporary role from delegatee
     _remove_temporary_role_if_no_other(delegation.delegatee_user_id, delegation.role_id)
@@ -331,7 +331,7 @@ def auto_expire_delegations():
 
 
 def _do_auto_expire():
-    now = datetime.utcnow()
+    now = utc_now()
     expired_delegations = TemporaryRoleDelegation.query.filter(
         TemporaryRoleDelegation.status == 'ACTIVE',
         TemporaryRoleDelegation.end_date < now

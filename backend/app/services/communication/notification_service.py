@@ -10,7 +10,7 @@ Supports:
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime`nfrom app.utils.timezone_util import utc_now
 from app import db
 from app.models.user import User, UserRole
 from app.models.communication import SupportNotification
@@ -58,7 +58,7 @@ class NotificationService:
             priority=(priority or 'MEDIUM').upper(),
             metadata_json=meta_str,
             is_read=False,
-            created_at=datetime.utcnow()
+            created_at=utc_now()
         )
         db.session.add(notif)
 

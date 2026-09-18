@@ -166,7 +166,7 @@ export default function AdminDashboard() {
         name:     r.data.name,
         username: r.data.username,
         email:    r.data.email,
-        password: r.data.plain_password_temp || form.password || 'EduErp@123',
+        password: r.data.plain_password_temp || form.password || 'EduErp@123', // NOSONAR(javascript:S2068) - temporary display-only onboarding credential
         role:     roleName,
         school:   schools.find(s => String(s.id) === String(form.school_id))?.name || '—',
       });

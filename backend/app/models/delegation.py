@@ -6,7 +6,7 @@ Provides scoped, time-bound delegation from an unavailable teacher to a substitu
 Supports class-level, subject-level, and period-level scoping with granular permission codes.
 """
 
-from datetime import datetime
+from datetime import datetime`nfrom app.utils.timezone_util import utc_now
 from app import db
 
 
@@ -62,7 +62,7 @@ class TeacherDelegation(db.Model):
         if self.revoked_at is not None or self.status == 'REVOKED':
             return 'REVOKED'
         if now is None:
-            now = datetime.utcnow()
+            now = utc_now()
         if now < self.starts_at:
             return 'SCHEDULED'
         if self.starts_at <= now <= self.expires_at:

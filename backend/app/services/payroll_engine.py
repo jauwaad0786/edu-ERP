@@ -17,7 +17,7 @@ Calculates accurate monthly payroll for all employees (Teachers and Staff):
 """
 
 import calendar
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta`nfrom app.utils.timezone_util import utc_now
 from calendar import monthrange
 from app import db
 from app.models.user import User, UserRole
@@ -325,14 +325,14 @@ def generate_payroll_run(school_id, month, year, calculation_policy='PAYABLE_DAY
             calculation_policy=calculation_policy,
             status=PayrollRunStatus.DRAFT.value,
             generated_by=actor_user.id if actor_user else None,
-            generated_at=datetime.utcnow(),
+            generated_at=utc_now(),
         )
         db.session.add(payroll_run)
         db.session.flush()
     else:
         payroll_run = existing_run
         payroll_run.calculation_policy = calculation_policy
-        payroll_run.generated_at = datetime.utcnow()
+        payroll_run.generated_at = utc_now()
         # Delete existing slips to regenerate
         PayrollSlip.query.filter_by(payroll_run_id=payroll_run.id).delete()
         db.session.flush()
@@ -409,7 +409,7 @@ def approve_payroll_run(payroll_run_id, approver):
 
     pr.status = PayrollRunStatus.APPROVED.value
     pr.approved_by = approver.id
-    pr.approved_at = datetime.utcnow()
+    pr.approved_at = utc_now()
 
     log_hrms_audit(
         school_id=pr.school_id,
@@ -538,7 +538,7 @@ def pay_payroll_run_all(payroll_run_id, payment_mode='BANK_TRANSFER', paid_by_us
 
     pr.status = PayrollRunStatus.LOCKED.value
     pr.locked_by = paid_by_user.id if paid_by_user else None
-    pr.locked_at = datetime.utcnow()
+    pr.locked_at = utc_now()
     db.session.commit()
     return pr, paid_count
 

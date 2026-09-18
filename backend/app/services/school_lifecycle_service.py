@@ -17,7 +17,7 @@ Guarantees:
 import os
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta`nfrom app.utils.timezone_util import utc_now
 from sqlalchemy import text, inspect, bindparam, table, column, delete, or_, select, func
 
 from app import db
@@ -46,8 +46,8 @@ def get_school_archive_summary(school_id: int) -> dict:
         'status': school.status or ('ACTIVE' if school.is_active else 'INACTIVE'),
         'archived_at': school.archived_at.isoformat() if school.archived_at else None,
         'permanent_delete_eligible_at': school.permanent_delete_eligible_at.isoformat() if school.permanent_delete_eligible_at else None,
-        'days_remaining': max(0, (school.permanent_delete_eligible_at - datetime.utcnow()).days) if school.permanent_delete_eligible_at else (365 if school.status == 'ARCHIVED' else None),
-        'is_eligible_for_permanent_delete': bool(school.status == 'ARCHIVED' and school.permanent_delete_eligible_at and datetime.utcnow() >= school.permanent_delete_eligible_at),
+        'days_remaining': max(0, (school.permanent_delete_eligible_at - utc_now()).days) if school.permanent_delete_eligible_at else (365 if school.status == 'ARCHIVED' else None),
+        'is_eligible_for_permanent_delete': bool(school.status == 'ARCHIVED' and school.permanent_delete_eligible_at and utc_now() >= school.permanent_delete_eligible_at),
         'counts': {
             'students': 0,
             'teachers': 0,
@@ -164,7 +164,7 @@ def archive_school(school_id: int, actor_user, reason: str = '') -> dict:
     if getattr(school, 'status', None) == 'ARCHIVED':
         raise ValueError(f"School '{school.name}' is already archived.")
 
-    now = datetime.utcnow()
+    now = utc_now()
     eligible_at = now + timedelta(days=365)
     clean_reason = (reason or '').strip() or 'Archived by Super Admin'
 
@@ -301,7 +301,7 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
         )
 
     # Security guard 3: 1-Year retention check
-    now = datetime.utcnow()
+    now = utc_now()
     if not force and school.permanent_delete_eligible_at and now < school.permanent_delete_eligible_at:
         days_left = (school.permanent_delete_eligible_at - now).days
         raise ValueError(
@@ -618,7 +618,7 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
                     actor_id_val, role_snap, 'SCHOOL_LIFECYCLE', 'SCHOOL_PERMANENTLY_DELETED',
                     old_val_json, new_val_json,
                     meta.get('ip_address'), meta.get('browser'), meta.get('os'),
-                    remarks_txt, datetime.utcnow()
+                    remarks_txt, utc_now()
                 ))
 
             raw_conn.commit()

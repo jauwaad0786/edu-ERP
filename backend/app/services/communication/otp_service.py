@@ -9,7 +9,7 @@ import re
 import secrets
 import hashlib
 import hmac
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta`nfrom app.utils.timezone_util import utc_now
 from flask import current_app
 from app import db
 from app.models.otp import OTPVerification, OTPPurpose
@@ -71,7 +71,7 @@ class OTPService:
         if not latest:
             return 0
 
-        elapsed = (datetime.utcnow() - latest.created_at).total_seconds()
+        elapsed = (utc_now() - latest.created_at).total_seconds()
         remaining = cooldown_seconds - elapsed
         return max(0, int(remaining))
 
@@ -101,12 +101,12 @@ class OTPService:
             query = query.filter((OTPVerification.identifier == norm_id) | (OTPVerification.user_id == user_id))
         else:
             query = query.filter(OTPVerification.identifier == norm_id)
-        query.update({'is_used': True, 'used_at': datetime.utcnow()}, synchronize_session=False)
+        query.update({'is_used': True, 'used_at': utc_now()}, synchronize_session=False)
 
         # 3. Generate new 6-digit OTP
         plain_otp = cls.generate_otp(6)
         otp_hash = cls.hash_otp(plain_otp)
-        expires_at = datetime.utcnow() + timedelta(minutes=expiry_minutes)
+        expires_at = utc_now() + timedelta(minutes=expiry_minutes)
 
         otp_record = OTPVerification(
             identifier=norm_id,
@@ -118,7 +118,7 @@ class OTPService:
             attempts=0,
             max_attempts=cls.DEFAULT_MAX_ATTEMPTS,
             is_used=False,
-            created_at=datetime.utcnow()
+            created_at=utc_now()
         )
 
         db.session.add(otp_record)
@@ -175,7 +175,7 @@ class OTPService:
         if record.is_used:
             return False, "This OTP has already been used. Please request a new one.", record
 
-        if datetime.utcnow() > record.expires_at:
+        if utc_now() > record.expires_at:
             return False, "OTP has expired. Please request a new one.", record
 
         if record.attempts >= record.max_attempts:
@@ -196,7 +196,7 @@ class OTPService:
 
         # Mark OTP as successfully verified and consumed
         record.is_used = True
-        record.used_at = datetime.utcnow()
+        record.used_at = utc_now()
         db.session.commit()
 
         return True, "OTP verified successfully.", record

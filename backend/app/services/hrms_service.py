@@ -12,7 +12,7 @@ Handles:
 - Audit Logging
 """
 
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta`nfrom app.utils.timezone_util import utc_now
 from app import db, bcrypt
 from app.models.user import User, UserRole
 from app.models.academic import Teacher
@@ -507,7 +507,7 @@ def review_leave_request(request_id, reviewer, approve=True, review_remarks=None
 
     req.status = LeaveStatus.APPROVED.value if approve else LeaveStatus.REJECTED.value
     req.reviewed_by = reviewer.id
-    req.reviewed_at = datetime.utcnow()
+    req.reviewed_at = utc_now()
     req.review_remarks = review_remarks
 
     # Update balance
@@ -584,7 +584,7 @@ def review_official_duty(duty_id, reviewer, approve=True, review_remarks=None):
 
     od.status = 'APPROVED' if approve else 'REJECTED'
     od.reviewed_by = reviewer.id
-    od.reviewed_at = datetime.utcnow()
+    od.reviewed_at = utc_now()
     od.review_remarks = review_remarks
 
     log_hrms_audit(
@@ -610,7 +610,7 @@ def verify_employee_document(doc_id, verifier, approve=True, verification_notes=
 
     doc.verification_status = DocumentVerificationStatus.VERIFIED.value if approve else DocumentVerificationStatus.REJECTED.value
     doc.verified_by = verifier.id
-    doc.verified_at = datetime.utcnow()
+    doc.verified_at = utc_now()
     doc.verification_notes = verification_notes
 
     log_hrms_audit(

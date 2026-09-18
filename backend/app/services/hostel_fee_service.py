@@ -4,7 +4,7 @@ from app.models.hostel import (
     log_hostel_activity
 )
 from app.models.financial import FeeRecord, FeeTransaction
-from datetime import date, datetime
+from datetime import date, datetime`nfrom app.utils.timezone_util import utc_now
 import secrets
 import string
 
@@ -334,7 +334,7 @@ def sync_hostel_fine_from_fee_record(fee_record, txn):
         fine.amount_paid = (fine.amount_paid or 0.0) + (txn.amount if txn else 0.0)
         fine.payment_mode = txn.payment_mode if txn else fee_record.payment_mode
         fine.receipt_no = txn.receipt_no if txn else fee_record.receipt_no
-        fine.collected_at = datetime.utcnow()
+        fine.collected_at = utc_now()
         fine.collected_by = txn.collected_by if txn else fee_record.collected_by
         fine.fee_transaction_id = txn.id if txn else None
 
@@ -380,14 +380,14 @@ def record_hostel_fine_payment(fine, amount, payment_mode='CASH', remarks='', co
         fine.amount_paid = fee_rec.amount_paid
         fine.payment_mode = fee_rec.payment_mode
         fine.receipt_no = fee_rec.receipt_no
-        fine.collected_at = datetime.utcnow()
+        fine.collected_at = utc_now()
         fine.collected_by = user_id
         fine.status = 'PAID' if fine.outstanding_amount <= 0 else 'PARTIALLY_PAID'
     else:
         fine.amount_paid = (fine.amount_paid or 0.0) + amount
         fine.payment_mode = payment_mode
         fine.receipt_no = _generate_receipt_no()
-        fine.collected_at = datetime.utcnow()
+        fine.collected_at = utc_now()
         fine.collected_by = user_id
         fine.status = 'PAID' if fine.outstanding_amount <= 0 else 'PARTIALLY_PAID'
 

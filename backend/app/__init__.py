@@ -33,7 +33,7 @@ def create_app(config_name='default'):
     # request headers and stored client-side in localStorage (not browser session cookies).
     # Cross-site requests cannot inject custom Authorization headers under standard browser CORS,
     # making traditional cookie-based CSRF attacks infeasible. CORS allowlist is strictly enforced below.
-    app = Flask(__name__)
+    app = Flask(__name__)  # NOSONAR(python:S4502) - stateless JWT Bearer API; no session cookies; CSRF not applicable
 
     from config import config
     app.config.from_object(config[config_name])

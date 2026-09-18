@@ -6,7 +6,7 @@ Endpoints for Principals to create, monitor, and revoke substitute teacher deleg
 and for Teachers to view their active delegated access in real time.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta`nfrom app.utils.timezone_util import utc_now
 from flask import Blueprint, request, jsonify
 from app import db
 from app.models.academic import Teacher, Class, Subject
@@ -34,7 +34,7 @@ def list_delegations():
     school_id = user.school_id
 
     # Sync status flags
-    now = datetime.utcnow()
+    now = utc_now()
     expiring_threshold = now + timedelta(days=2)
 
     # Base query scoped strictly to tenant school

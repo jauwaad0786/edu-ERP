@@ -12,7 +12,7 @@ Core Workflows:
 - Executive Finance Reporting, Expense Reconciliation & Net Surplus
 """
 
-from datetime import datetime, date
+from datetime import datetime, date`nfrom app.utils.timezone_util import utc_now
 import calendar
 from sqlalchemy import func, case
 from sqlalchemy.orm import joinedload
@@ -1105,7 +1105,7 @@ def collect_fee_payment(
                     continue
                 settle_amt = min(h_rem, due)
                 hf.amount_paid = round((hf.amount_paid or 0.0) + settle_amt, 2)
-                hf.paid_at = datetime.utcnow()
+                hf.paid_at = utc_now()
                 hf.receipt_no = payment.receipt_no
                 if hf.amount_paid >= hf.amount:
                     hf.status = 'PAID'
@@ -1131,7 +1131,7 @@ def collect_fee_payment(
                         continue
                     settle_amt = min(l_rem, due)
                     lf.amount_paid = round((lf.amount_paid or 0.0) + settle_amt, 2)
-                    lf.paid_at = datetime.utcnow()
+                    lf.paid_at = utc_now()
                     lf.receipt_no = payment.receipt_no
                     lf.collected_by = collected_by.id if (collected_by and hasattr(collected_by, 'id')) else None
                     if lf.amount_paid >= lf.amount:
@@ -1223,7 +1223,7 @@ def apply_concession_and_adjust_bills(
         requested_by=actor_user.id if actor_user else None,
         approved_by=actor_user.id if actor_user else None,
         approval_status='APPROVED',
-        approved_at=datetime.utcnow(),
+        approved_at=utc_now(),
         is_active=True,
     )
     db.session.add(conc)
@@ -1305,7 +1305,7 @@ def cancel_payment_receipt(payment_id, actor_user, cancel_reason):
 
     payment.status = PaymentStatus.CANCELLED.value
     payment.cancelled_by = actor_user.id if actor_user else None
-    payment.cancelled_at = datetime.utcnow()
+    payment.cancelled_at = utc_now()
     payment.cancel_reason = cancel_reason
 
     # Reverse bill items
@@ -1743,7 +1743,7 @@ def get_finance_dashboard_metrics(school_id, session='2026-27', month=None):
 
         # Expiring warranty check
         today_val = date.today()
-        from datetime import timedelta
+        from datetime import timedelta`nfrom app.utils.timezone_util import utc_now
         soon_limit = today_val + timedelta(days=30)
         warranty_expiring_assets = SchoolAsset.query.filter(
             SchoolAsset.school_id == school_id,

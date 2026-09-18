@@ -23,8 +23,25 @@ from app.services.communication.otp_service import OTPService
 logger = logging.getLogger('auth')
 auth_bp = Blueprint('auth', __name__)
 
-# Pre-computed dummy hash to prevent timing-based user enumeration attacks
-DUMMY_BCRYPT_HASH = "$2b$12$e8YQ3L8R7F6dY5Vv4C3b2uK1o9I8U7Y6T5R4E3W2Q1Z0P9O8N7M6L"
+# Lazy-initialized dummy hash to prevent timing-based user enumeration attacks.
+# Generated at runtime from a random secret — never stored in source code.
+_dummy_hash_cache = None
+
+
+def _get_dummy_hash():
+    """Return a bcrypt hash generated once per process from a random value.
+
+    Using a runtime-generated hash (instead of a hardcoded literal) satisfies
+    SonarCloud rule python:S6437 / CWE-798 while preserving the constant-time
+    protection against user-enumeration timing attacks.
+    """
+    global _dummy_hash_cache
+    if _dummy_hash_cache is None:
+        import secrets
+        _dummy_hash_cache = bcrypt.generate_password_hash(
+            secrets.token_hex(32)
+        ).decode('utf-8')
+    return _dummy_hash_cache
 
 
 def _extract_client_meta():
@@ -392,7 +409,7 @@ def login():
     if not matched_user:
         # Constant-time dummy verification to protect against timing analysis attacks
         try:
-            bcrypt.check_password_hash(DUMMY_BCRYPT_HASH, password)
+            bcrypt.check_password_hash(_get_dummy_hash(), password)
         except Exception:
             pass
         _record_login_attempt(user=None, identifier=raw_identifier, success=False, failure_reason='INVALID_CREDENTIALS')
@@ -1063,7 +1080,7 @@ def reset_password():
             record_audit_event(
                 school_id=user.school_id,
                 actor_user_id=user.id,
-                action='PASSWORD_RESET',
+                action='PASSWORD_RESET',  # NOSONAR(python:S2068) - audit action label, not a credential
                 module='auth',
                 entity_type='User',
                 entity_id=user.id,

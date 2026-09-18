@@ -9,7 +9,7 @@ Handles:
 6. Inventory Issues (to classes, teachers, departments) and Audited Stock Adjustments
 """
 
-from datetime import date, datetime
+from datetime import date, datetime`nfrom app.utils.timezone_util import utc_now
 from app import db
 from app.models.finance import (
     Vendor, InventoryItem, StockMovement,
@@ -102,7 +102,7 @@ def approve_purchase_order(po_id, school_id, user):
 
     po.status = 'APPROVED'
     po.approved_by = user.id if user else None
-    po.approved_at = datetime.utcnow()
+    po.approved_at = utc_now()
     db.session.commit()
     return po
 

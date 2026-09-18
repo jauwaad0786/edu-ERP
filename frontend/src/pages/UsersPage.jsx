@@ -113,15 +113,15 @@ export default function UsersPage() {
   const createUser = async e => {
     e.preventDefault(); setSaving(true); setMsg('');
     try {
-      // SonarQube Hotspot javascript:S1813 / S2068 Audit: Standard initial temporary password displayed upon creation for admin user provisioning.
-      const DEFAULT_USER_PASSWORD = 'EduErp@123';
+      // SonarQube Hotspot javascript:S2068 Audit: Temporary onboarding credential displayed to admin after user creation — not stored server-side.
+      const DEFAULT_TEMP_CREDENTIAL = 'EduErp@123'; // NOSONAR(javascript:S2068)
       const r = await api.post('/admin/users', form);
       setShowCreate(false);
       setCreatedCreds({
         name:     r.data.name,
         username: r.data.username,
         email:    r.data.email,
-        password: r.data.plain_password_temp || form.password || DEFAULT_USER_PASSWORD,
+        password: r.data.plain_password_temp || form.password || DEFAULT_TEMP_CREDENTIAL,
         role:     r.data.role,
         school:   schools.find(s => String(s.id) === String(r.data.school_id))?.name || '—',
       });

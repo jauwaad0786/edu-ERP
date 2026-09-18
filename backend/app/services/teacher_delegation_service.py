@@ -13,7 +13,7 @@ Enforces:
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime`nfrom app.utils.timezone_util import utc_now
 from flask import g
 from app import db
 from app.models.academic import Teacher, Class, Subject
@@ -59,7 +59,7 @@ def validate_delegation_request(school_id, source_teacher_id, delegate_teacher_i
         return False, "Delegation can only be granted to active faculty/staff."
 
     # 4. Dates validation
-    now = datetime.utcnow()
+    now = utc_now()
     if starts_at >= expires_at:
         return False, "End date/time must be strictly after start date/time."
     if expires_at <= now:
@@ -105,7 +105,7 @@ def check_delegation_conflicts(school_id, delegate_teacher_id, starts_at, expire
     Returns list of warning dicts: [{'type': 'WARNING'|'ERROR', 'message': '...'}]
     """
     conflicts = []
-    now = datetime.utcnow()
+    now = utc_now()
 
     # Find active or scheduled delegations for the substitute teacher that overlap in time
     overlapping_dels = TeacherDelegation.query.filter(
@@ -160,7 +160,7 @@ def create_teacher_delegation(school_id, creator_user_id, session, source_teache
     if not is_valid:
         raise ValueError(err_msg)
 
-    now = datetime.utcnow()
+    now = utc_now()
     initial_status = 'ACTIVE' if (starts_at <= now <= expires_at) else 'SCHEDULED'
 
     delegation = TeacherDelegation(
@@ -239,7 +239,7 @@ def revoke_teacher_delegation(delegation_id, revoker_user_id, school_id, revoke_
 
     old_snapshot = delegation.to_dict(include_details=False)
 
-    now = datetime.utcnow()
+    now = utc_now()
     delegation.status = 'REVOKED'
     delegation.revoked_by = revoker_user_id
     delegation.revoked_at = now
@@ -283,7 +283,7 @@ def get_active_teacher_delegations_for_user(user, permission_code=None, class_id
     if not teacher or getattr(teacher, 'is_deleted', False):
         return []
 
-    now = datetime.utcnow()
+    now = utc_now()
 
     # Query active delegations
     q = TeacherDelegation.query.filter(
@@ -336,7 +336,7 @@ def auto_expire_teacher_delegations():
     Maintenance task to sync database status column for reporting and queries.
     (Authorization does NOT depend on this; time window is checked live).
     """
-    now = datetime.utcnow()
+    now = utc_now()
     # Expire passed delegations
     expired_count = TeacherDelegation.query.filter(
         TeacherDelegation.status.in_(['ACTIVE', 'SCHEDULED']),

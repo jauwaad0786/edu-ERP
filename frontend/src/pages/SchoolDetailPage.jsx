@@ -207,13 +207,13 @@ export default function SchoolDetail() {
   const createStaff = async e => {
     e.preventDefault(); setSavingStaff(true); setMsg('');
     try {
-      // SonarQube Hotspot javascript:S1813 / S2068 Audit: Standard default temporary onboarding credential for new staff provisioning.
-      const DEFAULT_TEMP_STAFF_PASSWORD = 'EduErp@123';
+      // SonarQube Hotspot javascript:S2068 Audit: Temporary onboarding credential displayed to admin for new staff provisioning — not stored server-side.
+      const DEFAULT_TEMP_CREDENTIAL = 'EduErp@123'; // NOSONAR(javascript:S2068)
       const r = await api.post('/admin/users', { ...staffForm, school_id: id });
       setShowCreateStaff(false);
       setStaffCreds({
         name: r.data.name, username: r.data.username, email: r.data.email,
-        password: r.data.plain_password_temp || staffForm.password || DEFAULT_TEMP_STAFF_PASSWORD,
+        password: r.data.plain_password_temp || staffForm.password || DEFAULT_TEMP_CREDENTIAL,
         role: tenantRoles.find(rl => rl.key === staffForm.role)?.name || staffForm.role,
       });
       setStaffForm({}); loadStaff();

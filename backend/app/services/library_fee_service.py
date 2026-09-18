@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime`nfrom app.utils.timezone_util import utc_now
 from app import db
 from app.models.financial import FeeRecord, FeeTransaction
 from app.models.academic import Student
@@ -80,7 +80,7 @@ def record_library_fine_payment(fine_txn, payment_amount, payment_mode='CASH', c
 
     sid = fine_txn.school_id
     today = date.today()
-    now = datetime.utcnow()
+    now = utc_now()
 
     # 1. Update FineTransaction
     fine_txn.amount_paid = round((fine_txn.amount_paid or 0.0) + collect_amt, 2)
