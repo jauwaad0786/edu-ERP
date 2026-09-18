@@ -86,7 +86,7 @@ export default function BulkEditModal({ isOpen, onClose, onSuccess, selectedStud
   }
 
   return (
-    <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && !executing && onClose()}>
+    <div className="modal-backdrop" role="presentation" onClick={e => e.target === e.currentTarget && !executing && onClose()} onKeyDown={e => e.key === "Escape" && (!executing && onClose())}>
       <div className="modal" style={{ maxWidth: 880, width: '95%' }}>
         <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
@@ -140,8 +140,8 @@ export default function BulkEditModal({ isOpen, onClose, onSuccess, selectedStud
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div className="form-group">
-                  <label className="form-label">Stream</label>
-                  <select
+                  <label className="form-label" htmlFor="bulkedit-f1">Stream</label>
+                  <select id="bulkedit-f1"
                     className="form-select"
                     value={academicFields.stream}
                     onChange={e => { setAcademicFields(f => ({ ...f, stream: e.target.value })); setPreviewDiff(null); }}
@@ -154,8 +154,8 @@ export default function BulkEditModal({ isOpen, onClose, onSuccess, selectedStud
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">House</label>
-                  <input
+                  <label className="form-label" htmlFor="bulkedit-f2">House</label>
+                  <input id="bulkedit-f2"
                     className="form-input"
                     placeholder="e.g. Red Tigers, Blue Whales"
                     value={academicFields.house}
@@ -163,8 +163,8 @@ export default function BulkEditModal({ isOpen, onClose, onSuccess, selectedStud
                   />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Enrollment Status</label>
-                  <select
+                  <label className="form-label" htmlFor="bulkedit-f3">Enrollment Status</label>
+                  <select id="bulkedit-f3"
                     className="form-select"
                     value={academicFields.enrollment_status}
                     onChange={e => { setAcademicFields(f => ({ ...f, enrollment_status: e.target.value })); setPreviewDiff(null); }}
@@ -179,8 +179,8 @@ export default function BulkEditModal({ isOpen, onClose, onSuccess, selectedStud
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Roll Number Prefix (Sequential)</label>
-                  <input
+                  <label className="form-label" htmlFor="bulkedit-f4">Roll Number Prefix (Sequential)</label>
+                  <input id="bulkedit-f4"
                     className="form-input"
                     placeholder="e.g. 24A- (will set 24A-1, 24A-2...)"
                     value={academicFields.roll_number_prefix}
@@ -200,8 +200,8 @@ export default function BulkEditModal({ isOpen, onClose, onSuccess, selectedStud
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div className="form-group">
-                  <label className="form-label">Category / Caste</label>
-                  <select
+                  <label className="form-label" htmlFor="bulkedit-f5">Category / Caste</label>
+                  <select id="bulkedit-f5"
                     className="form-select"
                     value={permanentFields.category}
                     onChange={e => { setPermanentFields(f => ({ ...f, category: e.target.value })); setPreviewDiff(null); }}
@@ -215,8 +215,8 @@ export default function BulkEditModal({ isOpen, onClose, onSuccess, selectedStud
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Blood Group</label>
-                  <select
+                  <label className="form-label" htmlFor="bulkedit-f6">Blood Group</label>
+                  <select id="bulkedit-f6"
                     className="form-select"
                     value={permanentFields.blood_group}
                     onChange={e => { setPermanentFields(f => ({ ...f, blood_group: e.target.value })); setPreviewDiff(null); }}
@@ -233,8 +233,8 @@ export default function BulkEditModal({ isOpen, onClose, onSuccess, selectedStud
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Nationality</label>
-                  <input
+                  <label className="form-label" htmlFor="bulkedit-f7">Nationality</label>
+                  <input id="bulkedit-f7"
                     className="form-input"
                     placeholder="e.g. Indian"
                     value={permanentFields.nationality}
@@ -242,8 +242,8 @@ export default function BulkEditModal({ isOpen, onClose, onSuccess, selectedStud
                   />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Permanent Address</label>
-                  <input
+                  <label className="form-label" htmlFor="bulkedit-f8">Permanent Address</label>
+                  <input id="bulkedit-f8"
                     className="form-input"
                     placeholder="e.g. City, State, PIN"
                     value={permanentFields.address}

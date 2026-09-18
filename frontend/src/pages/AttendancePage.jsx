@@ -386,6 +386,8 @@ export default function AttendancePage() {
                                           </div>
                                           <div style={{ flex: 1, overflow: 'hidden' }}>
                                             <div
+                                              role="button"
+                                              tabIndex={0}
                                               style={{
                                                 fontSize: 12, fontWeight: 700,
                                                 overflow: 'hidden', textOverflow: 'ellipsis',
@@ -393,6 +395,7 @@ export default function AttendancePage() {
                                                 color: '#0176d3', cursor: 'pointer'
                                               }}
                                               onClick={() => navigate(`/students/${s.student_id}`)}
+                                              onKeyDown={e => e.key === 'Enter' && navigate(`/students/${s.student_id}`)}
                                               title="Click to view student profile"
                                             >
                                               {s.student_name}
@@ -451,8 +454,8 @@ export default function AttendancePage() {
                 {/* class + date select */}
                 <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 24 }}>
                   <div className="form-group" style={{ flex: 1, minWidth: 200 }}>
-                    <label className="form-label">Class Select Karo *</label>
-                    <select
+                    <label className="form-label" htmlFor="attendancepa-f1">Class Select Karo *</label>
+                    <select id="attendancepa-f1"
                       className="form-select"
                       value={markClass}
                       onChange={e => {
@@ -468,8 +471,8 @@ export default function AttendancePage() {
                     </select>
                   </div>
                   <div className="form-group" style={{ flex: 1, minWidth: 200 }}>
-                    <label className="form-label">Date *</label>
-                    <input
+                    <label className="form-label" htmlFor="attendancepa-f2">Date *</label>
+                    <input id="attendancepa-f2"
                       type="date"
                       className="form-input"
                       value={markDate}
@@ -546,8 +549,11 @@ export default function AttendancePage() {
                           {/* info */}
                           <div style={{ flex: 1 }}>
                             <div
+                              role="button"
+                              tabIndex={0}
                               style={{ fontSize: 13, fontWeight: 700, color: '#0176d3', cursor: 'pointer' }}
                               onClick={() => navigate(`/students/${s.id || s.student_id}`)}
+                              onKeyDown={e => e.key === 'Enter' && navigate(`/students/${s.id || s.student_id}`)}
                               title="Click to view student profile"
                             >
                               {s.name || s.student_name || 'Student'}

@@ -387,10 +387,10 @@ export default function AdmitCardPage() {
               
               {/* Exam Selector */}
               <div>
-                <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 6 }}>
+                <label htmlFor="admitcard-f1" style={{ fontSize: 12, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 6 }}>
                   Select Examination <span style={{ color: '#ef4444' }}>*</span>
                 </label>
-                <select
+                <select id="admitcard-f1"
                   value={selectedExamId}
                   onChange={e => setSelectedExamId(e.target.value)}
                   style={{
@@ -422,10 +422,10 @@ export default function AdmitCardPage() {
               {/* Class Filter (Admin/Teacher only) */}
               {!isStudentOrParent && (
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 6 }}>
+                  <label htmlFor="admitcard-f2" style={{ fontSize: 12, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 6 }}>
                     Filter by Class & Section
                   </label>
-                  <select
+                  <select id="admitcard-f2"
                     value={selectedClassId}
                     onChange={e => setSelectedClassId(e.target.value)}
                     style={{
@@ -453,12 +453,12 @@ export default function AdmitCardPage() {
               {/* Search (Admin/Teacher only) */}
               {!isStudentOrParent && (
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 6 }}>
+                  <label htmlFor="admitcard-f3" style={{ fontSize: 12, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 6 }}>
                     Search Student
                   </label>
                   <div style={{ position: 'relative' }}>
                     <i className="ti ti-search" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-                    <input
+                    <input id="admitcard-f3"
                       type="text"
                       value={search}
                       onChange={e => setSearch(e.target.value)}

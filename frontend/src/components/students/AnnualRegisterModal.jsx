@@ -60,7 +60,7 @@ export default function AnnualRegisterModal({ isOpen, onClose, onSuccess, classe
       const payload = {
         student_id: selectedStudent.id,
         session: targetSession,
-        class_id: parseInt(targetClassId),
+        class_id: Number.parseInt(targetClassId),
         roll_number: rollNumber || undefined,
         stream: stream || undefined,
         house: house || undefined,
@@ -78,7 +78,7 @@ export default function AnnualRegisterModal({ isOpen, onClose, onSuccess, classe
   }
 
   return (
-    <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && !saving && onClose()}>
+    <div className="modal-backdrop" role="presentation" onClick={e => e.target === e.currentTarget && !saving && onClose()} onKeyDown={e => e.key === "Escape" && (!saving && onClose())}>
       <div className="modal" style={{ maxWidth: 680, width: '95%' }}>
         <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
@@ -169,8 +169,8 @@ export default function AnnualRegisterModal({ isOpen, onClose, onSuccess, classe
               <form onSubmit={handleSubmitRegistration} id="annual-reg-form">
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                   <div className="form-group">
-                    <label className="form-label">New Academic Session *</label>
-                    <input
+                    <label className="form-label" htmlFor="annualregister-f1">New Academic Session *</label>
+                    <input id="annualregister-f1"
                       className="form-input"
                       required
                       value={targetSession}
@@ -180,8 +180,8 @@ export default function AnnualRegisterModal({ isOpen, onClose, onSuccess, classe
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">Enrolled Class & Section *</label>
-                    <select
+                    <label className="form-label" htmlFor="annualregister-f2">Enrolled Class & Section *</label>
+                    <select id="annualregister-f2"
                       className="form-select"
                       required
                       value={targetClassId}
@@ -195,8 +195,8 @@ export default function AnnualRegisterModal({ isOpen, onClose, onSuccess, classe
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">New Roll Number</label>
-                    <input
+                    <label className="form-label" htmlFor="annualregister-f3">New Roll Number</label>
+                    <input id="annualregister-f3"
                       className="form-input"
                       value={rollNumber}
                       onChange={e => setRollNumber(e.target.value)}
@@ -205,8 +205,8 @@ export default function AnnualRegisterModal({ isOpen, onClose, onSuccess, classe
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">Stream</label>
-                    <select
+                    <label className="form-label" htmlFor="annualregister-f4">Stream</label>
+                    <select id="annualregister-f4"
                       className="form-select"
                       value={stream}
                       onChange={e => setStream(e.target.value)}
@@ -219,8 +219,8 @@ export default function AnnualRegisterModal({ isOpen, onClose, onSuccess, classe
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">House</label>
-                    <input
+                    <label className="form-label" htmlFor="annualregister-f5">House</label>
+                    <input id="annualregister-f5"
                       className="form-input"
                       value={house}
                       onChange={e => setHouse(e.target.value)}
@@ -229,8 +229,8 @@ export default function AnnualRegisterModal({ isOpen, onClose, onSuccess, classe
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">Remarks</label>
-                    <input
+                    <label className="form-label" htmlFor="annualregister-f6">Remarks</label>
+                    <input id="annualregister-f6"
                       className="form-input"
                       value={remarks}
                       onChange={e => setRemarks(e.target.value)}

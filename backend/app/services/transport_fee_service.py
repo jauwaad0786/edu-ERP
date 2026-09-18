@@ -16,6 +16,7 @@ import secrets
 import string
 import threading
 from datetime import date, datetime
+from app.utils.timezone_util import utc_now
 from app import db
 from app.models.financial import FeeRecord, FeeTransaction
 from app.models.transport_student import (
@@ -234,7 +235,7 @@ def record_transport_fee_payment(record, amount, payment_mode='CASH', remarks=''
                 payment_mode=payment_mode,
                 transaction_ref=transaction_ref or txn.receipt_no,
                 receipt_number=txn.receipt_no,
-                payment_date=datetime.utcnow(),
+                payment_date=utc_now(),
                 collected_by=user_id,
                 remarks=remarks,
             ))
@@ -365,14 +366,14 @@ def record_transport_fine_payment(fine, amount, payment_mode='CASH', remarks='',
         fine.amount_paid = fee_rec.amount_paid
         fine.payment_mode = fee_rec.payment_mode
         fine.receipt_no = fee_rec.receipt_no
-        fine.collected_at = datetime.utcnow()
+        fine.collected_at = utc_now()
         fine.collected_by = user_id
         fine.status = 'PAID' if fine.outstanding_amount <= 0 else 'PARTIALLY_PAID'
     else:
         fine.amount_paid = round((fine.amount_paid or 0.0) + amount, 2)
         fine.payment_mode = payment_mode
         fine.receipt_no = _generate_receipt_no()
-        fine.collected_at = datetime.utcnow()
+        fine.collected_at = utc_now()
         fine.collected_by = user_id
         fine.status = 'PAID' if fine.outstanding_amount <= 0 else 'PARTIALLY_PAID'
 
@@ -401,7 +402,7 @@ def waive_transport_fine(fine, waiver_amount, reason='', waived_by_user=None):
 
     fine.waived_amount = round((fine.waived_amount or 0.0) + waiver_amount, 2)
     fine.waived_by = user_id
-    fine.waived_at = datetime.utcnow()
+    fine.waived_at = utc_now()
     fine.waive_reason = reason or 'Waived by Principal/Authorized Admin'
 
     if fine.outstanding_amount <= 0:
@@ -421,7 +422,7 @@ def waive_transport_fine(fine, waiver_amount, reason='', waived_by_user=None):
         fee_rec.discount = (fee_rec.discount or 0.0) + waiver_amount
         fee_rec.discount_reason = fine.waive_reason
         fee_rec.adjusted_by = user_id
-        fee_rec.adjusted_at = datetime.utcnow()
+        fee_rec.adjusted_at = utc_now()
         if (fee_rec.amount_paid or 0.0) >= fee_rec.effective_due():
             fee_rec.status = 'WAIVED' if (fee_rec.amount_paid or 0.0) == 0 else 'PAID'
 
@@ -457,7 +458,7 @@ def sync_transport_from_fee_record(fee_record, txn):
                     payment_mode=txn.payment_mode or fee_record.payment_mode or 'CASH',
                     transaction_ref=txn.receipt_no or fee_record.receipt_no,
                     receipt_number=txn.receipt_no or fee_record.receipt_no,
-                    payment_date=txn.transaction_date or datetime.utcnow(),
+                    payment_date=txn.transaction_date or utc_now(),
                     collected_by=txn.collected_by,
                     remarks=txn.remarks or 'Paid via Fee Management',
                 ))
@@ -471,7 +472,7 @@ def sync_transport_from_fee_record(fee_record, txn):
             fine.amount_paid = (fine.amount_paid or 0.0) + (txn.amount if txn else fee_record.amount_paid or 0.0)
             fine.payment_mode = txn.payment_mode if txn else fee_record.payment_mode
             fine.receipt_no = txn.receipt_no if txn else fee_record.receipt_no
-            fine.collected_at = datetime.utcnow()
+            fine.collected_at = utc_now()
             fine.collected_by = txn.collected_by if txn else fee_record.collected_by
             fine.fee_transaction_id = txn.id if txn else None
 

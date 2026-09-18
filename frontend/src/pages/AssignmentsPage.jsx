@@ -180,8 +180,8 @@ export default function AssignmentsPage() {
       return toast.error('Please enter marks');
     }
 
-    const marksNum = parseFloat(g.marks);
-    if (isNaN(marksNum) || marksNum < 0 || marksNum > selectedAssignment.max_marks) {
+    const marksNum = Number.parseFloat(g.marks);
+    if (Number.isNaN(marksNum) || marksNum < 0 || marksNum > selectedAssignment.max_marks) {
       return toast.error(`Marks must be between 0 and ${selectedAssignment.max_marks}`);
     }
 
@@ -357,8 +357,8 @@ export default function AssignmentsPage() {
               {!isStudent && (
                 <>
                   <div style={{ flex: '1 1 170px' }}>
-                    <label style={S.label}>Class</label>
-                    <select value={filterClass} onChange={e => setFilterClass(e.target.value)} style={S.select}>
+                    <label htmlFor="assignpage-f1" style={S.label}>Class</label>
+                    <select id="assignpage-f1" value={filterClass} onChange={e => setFilterClass(e.target.value)} style={S.select}>
                       <option value="">🏫 All Classes</option>
                       {classes.map(c => <option key={c.id} value={c.id}>{c.name} - {c.section}</option>)}
                     </select>
@@ -366,8 +366,8 @@ export default function AssignmentsPage() {
 
                   {isPrincipal && (
                     <div style={{ flex: '1 1 180px' }}>
-                      <label style={S.label}>Teacher</label>
-                      <select value={filterTeacher} onChange={e => setFilterTeacher(e.target.value)} style={S.select}>
+                      <label htmlFor="assignpage-f2" style={S.label}>Teacher</label>
+                      <select id="assignpage-f2" value={filterTeacher} onChange={e => setFilterTeacher(e.target.value)} style={S.select}>
                         <option value="">👨‍🏫 All Teachers</option>
                         {teachers.map(t => <option key={t.id} value={t.id}>{t.name} ({t.department || 'Academic'})</option>)}
                       </select>
@@ -377,8 +377,8 @@ export default function AssignmentsPage() {
               )}
 
               <div style={{ flex: '1 1 140px' }}>
-                <label style={S.label}>Status</label>
-                <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={S.select}>
+                <label htmlFor="assignpage-f3" style={S.label}>Status</label>
+                <select id="assignpage-f3" value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={S.select}>
                   <option value="">All Statuses</option>
                   <option value="ACTIVE">Active</option>
                   <option value="CLOSED">Closed / Expired</option>
@@ -386,10 +386,10 @@ export default function AssignmentsPage() {
               </div>
 
               <div style={{ flex: '2 1 240px' }}>
-                <label style={S.label}>Search</label>
+                <label htmlFor="assignpage-f4" style={S.label}>Search</label>
                 <div style={{ position: 'relative' }}>
                   <i className="ti ti-search" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-                  <input
+                  <input id="assignpage-f4"
                     style={{ ...S.input, paddingLeft: 32 }}
                     placeholder="Search assignment title, UID, instructions..."
                     value={search}
@@ -868,16 +868,16 @@ export default function AssignmentsPage() {
                 <form onSubmit={handleCreateAssignment} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                     <div>
-                      <label style={S.label}>Class & Section *</label>
-                      <select value={formClassId} onChange={e => setFormClassId(e.target.value)} style={S.select} required>
+                      <label htmlFor="assignpage-f5" style={S.label}>Class & Section *</label>
+                      <select id="assignpage-f5" value={formClassId} onChange={e => setFormClassId(e.target.value)} style={S.select} required>
                         <option value="">Select Class</option>
                         {classes.map(c => <option key={c.id} value={c.id}>{c.name} - {c.section}</option>)}
                       </select>
                     </div>
 
                     <div>
-                      <label style={S.label}>Subject *</label>
-                      <select value={formSubjectId} onChange={e => setFormSubjectId(e.target.value)} style={S.select} required>
+                      <label htmlFor="assignpage-f6" style={S.label}>Subject *</label>
+                      <select id="assignpage-f6" value={formSubjectId} onChange={e => setFormSubjectId(e.target.value)} style={S.select} required>
                         <option value="">Select Subject</option>
                         {formSubjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                       </select>
@@ -885,8 +885,8 @@ export default function AssignmentsPage() {
                   </div>
 
                   <div>
-                    <label style={S.label}>Assignment Title *</label>
-                    <input
+                    <label htmlFor="assignpage-f7" style={S.label}>Assignment Title *</label>
+                    <input id="assignpage-f7"
                       style={S.input}
                       placeholder="e.g. Chapter 4 Trigonometry Problem Set"
                       value={formTitle}
@@ -896,8 +896,8 @@ export default function AssignmentsPage() {
                   </div>
 
                   <div>
-                    <label style={S.label}>Instructions / Description</label>
-                    <textarea
+                    <label htmlFor="assignpage-f8" style={S.label}>Instructions / Description</label>
+                    <textarea id="assignpage-f8"
                       style={{ ...S.input, minHeight: 65 }}
                       placeholder="Detailed instructions for students..."
                       value={formDescription}
@@ -907,8 +907,8 @@ export default function AssignmentsPage() {
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                     <div>
-                      <label style={S.label}>Maximum Marks *</label>
-                      <input
+                      <label htmlFor="assignpage-f9" style={S.label}>Maximum Marks *</label>
+                      <input id="assignpage-f9"
                         type="number"
                         min="1"
                         step="1"
@@ -920,8 +920,8 @@ export default function AssignmentsPage() {
                     </div>
 
                     <div>
-                      <label style={S.label}>Due Date & Time *</label>
-                      <input
+                      <label htmlFor="assignpage-f10" style={S.label}>Due Date & Time *</label>
+                      <input id="assignpage-f10"
                         type="datetime-local"
                         style={S.input}
                         value={formDueDate}

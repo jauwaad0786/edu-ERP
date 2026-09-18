@@ -268,10 +268,10 @@ def list_notes():
 
 def _grade(marks, max_marks):
     pct = marks / max_marks * 100 if max_marks else 0
-    if pct >= 90: return 'A+'
-    if pct >= 80: return 'A'
-    if pct >= 70: return 'B+'
-    if pct >= 60: return 'B'
-    if pct >= 50: return 'C'
-    if pct >= 33: return 'D'
-    return 'F'
+    if pct >= 90:   return 'A+'
+    elif pct >= 80: return 'A'
+    elif pct >= 70: return 'B+'
+    elif pct >= 60: return 'B'
+    elif pct >= 50: return 'C'
+    elif pct >= 33: return 'D'
+    else:           return 'F'

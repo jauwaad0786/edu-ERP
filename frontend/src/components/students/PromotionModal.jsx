@@ -20,8 +20,8 @@ export default function PromotionModal({ isOpen, onClose, onSuccess, classes = [
         setTargetSession(sessions[1]);
       } else {
         const parts = sessions[0].split('-');
-        if (parts.length === 2 && !isNaN(parts[0])) {
-          setTargetSession(`${parseInt(parts[0]) + 1}-${parseInt(parts[1]) + 1}`);
+        if (parts.length === 2 && !Number.isNaN(parts[0])) {
+          setTargetSession(`${Number.parseInt(parts[0]) + 1}-${Number.parseInt(parts[1]) + 1}`);
         } else {
           setTargetSession('2025-26');
         }
@@ -40,9 +40,9 @@ export default function PromotionModal({ isOpen, onClose, onSuccess, classes = [
     try {
       const res = await api.post('/principal/students/promote/preview', {
         source_session: sourceSession,
-        source_class_id: parseInt(sourceClassId),
+        source_class_id: Number.parseInt(sourceClassId),
         target_session: targetSession,
-        target_class_id: targetClassId ? parseInt(targetClassId) : null,
+        target_class_id: targetClassId ? Number.parseInt(targetClassId) : null,
       });
 
       const list = res.data.preview || [];
@@ -58,7 +58,7 @@ export default function PromotionModal({ isOpen, onClose, onSuccess, classes = [
       list.forEach(s => {
         initial[s.student_id] = {
           action: s.recommended_action || 'PROMOTE',
-          target_class_id: s.suggested_class_id || (targetClassId ? parseInt(targetClassId) : s.current_class_id),
+          target_class_id: s.suggested_class_id || (targetClassId ? Number.parseInt(targetClassId) : s.current_class_id),
           target_section: s.current_section || 'A',
           target_roll_number: s.current_roll_no || '',
           remarks: s.has_conflict ? s.conflict_reason : '',
@@ -83,7 +83,7 @@ export default function PromotionModal({ isOpen, onClose, onSuccess, classes = [
         if (val === 'RETAIN') {
           updated.target_class_id = student ? student.current_class_id : current.target_class_id;
         } else if (val === 'PROMOTE') {
-          updated.target_class_id = (student && student.suggested_class_id) || (targetClassId ? parseInt(targetClassId) : current.target_class_id);
+          updated.target_class_id = (student && student.suggested_class_id) || (targetClassId ? Number.parseInt(targetClassId) : current.target_class_id);
         }
       }
       return { ...prev, [studentId]: updated };
@@ -94,7 +94,7 @@ export default function PromotionModal({ isOpen, onClose, onSuccess, classes = [
     setStudentActions(prev => {
       const next = { ...prev };
       previewList.forEach(s => {
-        const targetClass = actionType === 'RETAIN' ? s.current_class_id : (s.suggested_class_id || (targetClassId ? parseInt(targetClassId) : s.current_class_id));
+        const targetClass = actionType === 'RETAIN' ? s.current_class_id : (s.suggested_class_id || (targetClassId ? Number.parseInt(targetClassId) : s.current_class_id));
         next[s.student_id] = {
           ...next[s.student_id],
           action: actionType,
@@ -111,7 +111,7 @@ export default function PromotionModal({ isOpen, onClose, onSuccess, classes = [
       const next = { ...prev };
       previewList.forEach(s => {
         const rec = s.recommended_action || 'PROMOTE';
-        const targetClass = rec === 'RETAIN' ? s.current_class_id : (s.suggested_class_id || (targetClassId ? parseInt(targetClassId) : s.current_class_id));
+        const targetClass = rec === 'RETAIN' ? s.current_class_id : (s.suggested_class_id || (targetClassId ? Number.parseInt(targetClassId) : s.current_class_id));
         next[s.student_id] = {
           ...next[s.student_id],
           action: rec,
@@ -134,7 +134,7 @@ export default function PromotionModal({ isOpen, onClose, onSuccess, classes = [
           return {
             student_id: s.student_id,
             action: act.action || 'PROMOTE',
-            target_class_id: act.target_class_id ? parseInt(act.target_class_id) : undefined,
+            target_class_id: act.target_class_id ? Number.parseInt(act.target_class_id) : undefined,
             target_section: act.target_section || undefined,
             target_roll_number: act.target_roll_number || undefined,
             remarks: act.remarks || undefined,
@@ -159,7 +159,7 @@ export default function PromotionModal({ isOpen, onClose, onSuccess, classes = [
   const otherCount = Object.values(studentActions).filter(a => a.action === 'WITHDRAWN' || a.action === 'LEFT').length;
 
   return (
-    <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && !executing && onClose()}>
+    <div className="modal-backdrop" role="presentation" onClick={e => e.target === e.currentTarget && !executing && onClose()} onKeyDown={e => e.key === "Escape" && (!executing && onClose())}>
       <div className="modal" style={{ maxWidth: step === 2 ? 1080 : 640, width: '95%' }}>
         <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
@@ -184,8 +184,8 @@ export default function PromotionModal({ isOpen, onClose, onSuccess, classes = [
               <div style={{ background: '#f8fafc', padding: 14, borderRadius: 8, border: '1px solid #e2e8f0' }}>
                 <h4 style={{ margin: '0 0 10px 0', fontSize: 13, color: 'var(--neutral-7)' }}>FROM (Source)</h4>
                 <div className="form-group" style={{ marginBottom: 12 }}>
-                  <label className="form-label">Source Session *</label>
-                  <input
+                  <label className="form-label" htmlFor="promotion-f1">Source Session *</label>
+                  <input id="promotion-f1"
                     className="form-input"
                     value={sourceSession}
                     onChange={e => setSourceSession(e.target.value)}
@@ -193,8 +193,8 @@ export default function PromotionModal({ isOpen, onClose, onSuccess, classes = [
                   />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Source Class & Section *</label>
-                  <select
+                  <label className="form-label" htmlFor="promotion-f2">Source Class & Section *</label>
+                  <select id="promotion-f2"
                     className="form-select"
                     value={sourceClassId}
                     onChange={e => setSourceClassId(e.target.value)}
@@ -210,8 +210,8 @@ export default function PromotionModal({ isOpen, onClose, onSuccess, classes = [
               <div style={{ background: '#f8fafc', padding: 14, borderRadius: 8, border: '1px solid #e2e8f0' }}>
                 <h4 style={{ margin: '0 0 10px 0', fontSize: 13, color: 'var(--neutral-7)' }}>TO (Target)</h4>
                 <div className="form-group" style={{ marginBottom: 12 }}>
-                  <label className="form-label">Target New Session *</label>
-                  <input
+                  <label className="form-label" htmlFor="promotion-f3">Target New Session *</label>
+                  <input id="promotion-f3"
                     className="form-input"
                     value={targetSession}
                     onChange={e => setTargetSession(e.target.value)}
@@ -219,8 +219,8 @@ export default function PromotionModal({ isOpen, onClose, onSuccess, classes = [
                   />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Default Target Class (Optional)</label>
-                  <select
+                  <label className="form-label" htmlFor="promotion-f4">Default Target Class (Optional)</label>
+                  <select id="promotion-f4"
                     className="form-select"
                     value={targetClassId}
                     onChange={e => setTargetClassId(e.target.value)}
@@ -342,7 +342,7 @@ export default function PromotionModal({ isOpen, onClose, onSuccess, classes = [
                               className="form-select"
                               style={{ padding: '4px 8px', fontSize: 12, minWidth: 120 }}
                               value={act.target_class_id || ''}
-                              onChange={e => updateStudentAction(s.student_id, 'target_class_id', parseInt(e.target.value))}
+                              onChange={e => updateStudentAction(s.student_id, 'target_class_id', Number.parseInt(e.target.value))}
                             >
                               {classes.map(c => (
                                 <option key={c.id} value={c.id}>{c.name} — {c.section}</option>

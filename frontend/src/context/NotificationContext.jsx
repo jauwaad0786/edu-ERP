@@ -19,8 +19,8 @@ export function NotificationProvider({ children }) {
     // ✅ Sirf number extract karo — object kabhi set mat karo
     const notifCount = Number(notifRes.data?.unread ?? 0);
     const chatCount  = Number(chatRes.data?.unread  ?? 0);
-    setUnreadTickets(isNaN(notifCount)  ? 0 : notifCount);
-    setUnreadMessages(isNaN(chatCount) ? 0 : chatCount);
+    setUnreadTickets(Number.isNaN(notifCount)  ? 0 : notifCount);
+    setUnreadMessages(Number.isNaN(chatCount) ? 0 : chatCount);
   } catch (err) {
     // ✅ 401 pe interval band karo — infinite loop rokne ke liye
     if (err?.response?.status === 401) {

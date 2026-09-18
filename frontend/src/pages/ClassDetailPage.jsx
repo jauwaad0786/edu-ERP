@@ -540,8 +540,8 @@ export default function ClassDetailPage() {
             <form onSubmit={handleAddSubject}>
               <div className="modal-body" style={{ display:'flex', flexDirection:'column', gap:14 }}>
                 <div className="form-group">
-                  <label className="form-label" style={{ fontSize:12, fontWeight:700 }}>Subject Name *</label>
-                  <input
+                  <label htmlFor="classdetail-f1" className="form-label" style={{ fontSize:12, fontWeight:700 }}>Subject Name *</label>
+                  <input id="classdetail-f1"
                     className="form-input"
                     required
                     placeholder="e.g. Mathematics, Science, Hindi"
@@ -550,8 +550,8 @@ export default function ClassDetailPage() {
                   />
                 </div>
                 <div className="form-group">
-                  <label className="form-label" style={{ fontSize:12, fontWeight:700 }}>Subject Code</label>
-                  <input
+                  <label htmlFor="classdetail-f2" className="form-label" style={{ fontSize:12, fontWeight:700 }}>Subject Code</label>
+                  <input id="classdetail-f2"
                     className="form-input"
                     placeholder="e.g. MTH101"
                     value={subForm.code}
@@ -559,8 +559,8 @@ export default function ClassDetailPage() {
                   />
                 </div>
                 <div className="form-group">
-                  <label className="form-label" style={{ fontSize:12, fontWeight:700 }}>Assign Subject Teacher</label>
-                  <select
+                  <label htmlFor="classdetail-f3" className="form-label" style={{ fontSize:12, fontWeight:700 }}>Assign Subject Teacher</label>
+                  <select id="classdetail-f3"
                     className="form-select"
                     value={subForm.teacher_id}
                     onChange={e => setSubForm(f => ({ ...f, teacher_id: e.target.value }))}
@@ -573,8 +573,8 @@ export default function ClassDetailPage() {
                 </div>
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
                   <div className="form-group">
-                    <label className="form-label" style={{ fontSize:12, fontWeight:700 }}>Max Marks</label>
-                    <input
+                    <label htmlFor="classdetail-f4" className="form-label" style={{ fontSize:12, fontWeight:700 }}>Max Marks</label>
+                    <input id="classdetail-f4"
                       type="number"
                       className="form-input"
                       value={subForm.max_marks}
@@ -582,8 +582,8 @@ export default function ClassDetailPage() {
                     />
                   </div>
                   <div className="form-group">
-                    <label className="form-label" style={{ fontSize:12, fontWeight:700 }}>Pass Marks</label>
-                    <input
+                    <label htmlFor="classdetail-f5" className="form-label" style={{ fontSize:12, fontWeight:700 }}>Pass Marks</label>
+                    <input id="classdetail-f5"
                       type="number"
                       className="form-input"
                       value={subForm.pass_marks}

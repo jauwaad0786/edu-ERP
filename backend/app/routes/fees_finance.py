@@ -558,20 +558,6 @@ def delete_optional_hostel_fee(id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 400
-    except Exception as ex:
-        print(f"[ERROR] get_fee_setup_readiness failed: {ex}")
-        return jsonify({
-            'session': session,
-            'total_classes': 0,
-            'published_classes_count': 0,
-            'missing_classes_count': 0,
-            'classes_with_plan': [],
-            'classes_missing_plan': [],
-            'is_ready_for_admissions': False,
-            'payment_plans_count': 0,
-            'hostel_fee_count': 0,
-            'transport_fee_count': 0,
-        }), 200
 
 
 @fees_finance_bp.route('/structures/<int:struct_id>/publish', methods=['PATCH'])

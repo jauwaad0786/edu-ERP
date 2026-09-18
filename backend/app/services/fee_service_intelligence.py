@@ -1025,7 +1025,7 @@ def get_services_collection_matrix(
 
             # Also check if b has previous_dues and b was used
             prev_dues = float(getattr(b, 'previous_dues', 0.0) or 0.0) if b else 0.0
-            if prev_dues > 0 and ob_billed == 0.0:
+            if prev_dues > 0 and ob_billed < 0.001:
                 ob_billed = prev_dues
                 ob_bal = prev_dues
 
@@ -1057,7 +1057,7 @@ def get_services_collection_matrix(
                         service_totals['OPENING_BALANCE']['pending_students'] += 1
 
         # Evaluate student status
-        if s_total_due == 0.0:
+        if abs(s_total_due) < 0.001:
             st_overall = 'NOT_BILLED'
         elif s_balance <= 0.0:
             st_overall = 'PAID'

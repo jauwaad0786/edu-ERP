@@ -68,7 +68,7 @@ export default function ImportCsvModal({ isOpen, onClose, onSuccess, sessions = 
   }
 
   return (
-    <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && !importing && onClose()}>
+    <div className="modal-backdrop" role="presentation" onClick={e => e.target === e.currentTarget && !importing && onClose()} onKeyDown={e => e.key === "Escape" && (!importing && onClose())}>
       <div className="modal" style={{ maxWidth: 720, width: '95%' }}>
         <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
@@ -86,8 +86,8 @@ export default function ImportCsvModal({ isOpen, onClose, onSuccess, sessions = 
           {/* Controls */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             <div className="form-group">
-              <label className="form-label">Academic Session *</label>
-              <input
+              <label className="form-label" htmlFor="importcsv-f1">Academic Session *</label>
+              <input id="importcsv-f1"
                 className="form-input"
                 value={session}
                 onChange={e => { setSession(e.target.value); setValidationData(null); }}
@@ -95,7 +95,7 @@ export default function ImportCsvModal({ isOpen, onClose, onSuccess, sessions = 
               />
             </div>
             <div className="form-group">
-              <label className="form-label">Sample CSV Template</label>
+              <label className="form-label" htmlFor="importcsv-f2">Sample CSV Template</label>
               <button
                 type="button"
                 className="btn btn-neutral"
@@ -108,8 +108,8 @@ export default function ImportCsvModal({ isOpen, onClose, onSuccess, sessions = 
           </div>
 
           <div className="form-group">
-            <label className="form-label">Choose CSV File *</label>
-            <input
+            <label className="form-label" htmlFor="importcsv-f3">Choose CSV File *</label>
+            <input id="importcsv-f3"
               type="file"
               accept=".csv"
               className="form-input"

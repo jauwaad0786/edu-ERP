@@ -132,7 +132,7 @@ export default function HolidaysPage() {
     return acc;
   }, {});
 
-  const sortedMonths = Object.keys(grouped).sort();
+  const sortedMonths = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
 
   function monthLabel(ym) {
     if (!ym || ym === 'Unknown') return 'Unknown';

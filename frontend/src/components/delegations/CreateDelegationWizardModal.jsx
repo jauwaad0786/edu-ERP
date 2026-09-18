@@ -194,8 +194,8 @@ export default function CreateDelegationWizardModal({ isOpen, onClose, onSuccess
     setSubmitting(true);
     try {
       const payload = {
-        source_teacher_id: parseInt(sourceTeacherId, 10),
-        delegate_teacher_id: parseInt(delegateTeacherId, 10),
+        source_teacher_id: Number.parseInt(sourceTeacherId, 10),
+        delegate_teacher_id: Number.parseInt(delegateTeacherId, 10),
         session,
         starts_at,
         expires_at,
@@ -245,7 +245,7 @@ export default function CreateDelegationWizardModal({ isOpen, onClose, onSuccess
   ];
 
   return (
-    <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && !submitting && onClose()}>
+    <div className="modal-backdrop" role="presentation" onClick={e => e.target === e.currentTarget && !submitting && onClose()} onKeyDown={e => e.key === "Escape" && (!submitting && onClose())}>
       <div className="modal" style={{ maxWidth: 840, width: '95%', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
 
         {/* Modal Header with Progress Steps */}
@@ -304,10 +304,10 @@ export default function CreateDelegationWizardModal({ isOpen, onClose, onSuccess
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 {/* Absent Teacher */}
                 <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: 16 }}>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#991b1b', marginBottom: 6 }}>
+                  <label htmlFor="delegwiz-f1" style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#991b1b', marginBottom: 6 }}>
                     1. Teacher who is Unavailable / Absent *
                   </label>
-                  <select
+                  <select id="delegwiz-f1"
                     className="form-select"
                     value={sourceTeacherId}
                     onChange={e => setSourceTeacherId(e.target.value)}
@@ -334,10 +334,10 @@ export default function CreateDelegationWizardModal({ isOpen, onClose, onSuccess
 
                 {/* Substitute Teacher */}
                 <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: 16 }}>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#166534', marginBottom: 6 }}>
+                  <label htmlFor="delegwiz-f2" style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#166534', marginBottom: 6 }}>
                     2. Substitute Teacher (Receives Access) *
                   </label>
-                  <select
+                  <select id="delegwiz-f2"
                     className="form-select"
                     value={delegateTeacherId}
                     onChange={e => setDelegateTeacherId(e.target.value)}
@@ -416,8 +416,8 @@ export default function CreateDelegationWizardModal({ isOpen, onClose, onSuccess
                         transition: 'all 0.15s'
                       }}
                     >
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 700, fontSize: 13, color: '#0f172a' }}>
-                        <input
+                      <label htmlFor="delegwiz-f3" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 700, fontSize: 13, color: '#0f172a' }}>
+                        <input id="delegwiz-f3"
                           type="checkbox"
                           checked={isChecked}
                           onChange={() => toggleClass(c.id)}
@@ -531,8 +531,8 @@ export default function CreateDelegationWizardModal({ isOpen, onClose, onSuccess
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 4 }}>Start Date *</label>
-                    <input
+                    <label htmlFor="delegwiz-f4" style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 4 }}>Start Date *</label>
+                    <input id="delegwiz-f4"
                       type="date"
                       className="form-input"
                       value={startDate}
@@ -541,8 +541,8 @@ export default function CreateDelegationWizardModal({ isOpen, onClose, onSuccess
                     />
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 4 }}>Start Time</label>
-                    <input
+                    <label htmlFor="delegwiz-f5" style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 4 }}>Start Time</label>
+                    <input id="delegwiz-f5"
                       type="time"
                       className="form-input"
                       value={startTime}
@@ -551,8 +551,8 @@ export default function CreateDelegationWizardModal({ isOpen, onClose, onSuccess
                     />
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 4 }}>End Date *</label>
-                    <input
+                    <label htmlFor="delegwiz-f6" style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 4 }}>End Date *</label>
+                    <input id="delegwiz-f6"
                       type="date"
                       className="form-input"
                       value={endDate}
@@ -561,8 +561,8 @@ export default function CreateDelegationWizardModal({ isOpen, onClose, onSuccess
                     />
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 4 }}>End Time</label>
-                    <input
+                    <label htmlFor="delegwiz-f7" style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 4 }}>End Time</label>
+                    <input id="delegwiz-f7"
                       type="time"
                       className="form-input"
                       value={endTime}
@@ -574,8 +574,8 @@ export default function CreateDelegationWizardModal({ isOpen, onClose, onSuccess
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 4 }}>Reason for Delegation *</label>
-                    <input
+                    <label htmlFor="delegwiz-f8" style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 4 }}>Reason for Delegation *</label>
+                    <input id="delegwiz-f8"
                       className="form-input"
                       value={reason}
                       onChange={e => setReason(e.target.value)}
@@ -584,8 +584,8 @@ export default function CreateDelegationWizardModal({ isOpen, onClose, onSuccess
                     />
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 4 }}>Internal Notes / Instructions</label>
-                    <input
+                    <label htmlFor="delegwiz-f9" style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 4 }}>Internal Notes / Instructions</label>
+                    <input id="delegwiz-f9"
                       className="form-input"
                       value={notes}
                       onChange={e => setNotes(e.target.value)}

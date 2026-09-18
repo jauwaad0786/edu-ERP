@@ -147,7 +147,7 @@ export default function ShuffleModal({ isOpen, onClose, onSuccess, classes = [],
   }
 
   return (
-    <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && !executing && onClose()}>
+    <div className="modal-backdrop" role="presentation" onClick={e => e.target === e.currentTarget && !executing && onClose()} onKeyDown={e => e.key === "Escape" && (!executing && onClose())}>
       <div className="modal" style={{ maxWidth: 960, width: '95%' }}>
         <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
@@ -165,8 +165,8 @@ export default function ShuffleModal({ isOpen, onClose, onSuccess, classes = [],
           {/* Top Controls */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, background: '#f8fafc', padding: 14, borderRadius: 8, border: '1px solid #e2e8f0' }}>
             <div className="form-group">
-              <label className="form-label">Academic Session</label>
-              <input
+              <label className="form-label" htmlFor="shuffle-f1">Academic Session</label>
+              <input id="shuffle-f1"
                 className="form-input"
                 value={session}
                 onChange={e => setSession(e.target.value)}
@@ -174,8 +174,8 @@ export default function ShuffleModal({ isOpen, onClose, onSuccess, classes = [],
               />
             </div>
             <div className="form-group">
-              <label className="form-label">Select Class</label>
-              <select
+              <label className="form-label" htmlFor="shuffle-f2">Select Class</label>
+              <select id="shuffle-f2"
                 className="form-select"
                 value={className}
                 onChange={e => { setClassName(e.target.value); setSourceClassId(''); setPreviewData(null); }}
@@ -186,7 +186,7 @@ export default function ShuffleModal({ isOpen, onClose, onSuccess, classes = [],
               </select>
             </div>
             <div className="form-group">
-              <label className="form-label">Shuffle Mode</label>
+              <label className="form-label" htmlFor="shuffle-f3">Shuffle Mode</label>
               <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
                 <button
                   type="button"
@@ -223,8 +223,8 @@ export default function ShuffleModal({ isOpen, onClose, onSuccess, classes = [],
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div className="form-group">
-                  <label className="form-label">From Section (Source) *</label>
-                  <select
+                  <label className="form-label" htmlFor="shuffle-f4">From Section (Source) *</label>
+                  <select id="shuffle-f4"
                     className="form-select"
                     value={sourceClassId}
                     onChange={e => setSourceClassId(e.target.value)}
@@ -236,8 +236,8 @@ export default function ShuffleModal({ isOpen, onClose, onSuccess, classes = [],
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">To Section (Target) *</label>
-                  <input
+                  <label className="form-label" htmlFor="shuffle-f5">To Section (Target) *</label>
+                  <input id="shuffle-f5"
                     className="form-input"
                     value={targetSection}
                     onChange={e => setTargetSection(e.target.value.toUpperCase())}
@@ -305,8 +305,8 @@ export default function ShuffleModal({ isOpen, onClose, onSuccess, classes = [],
                 ⚡ <strong>Smart Shuffle Engine:</strong> Automatically redistributes all enrolled students in {className} across specified sections while balancing count, gender parity, and house diversity.
               </div>
               <div className="form-group">
-                <label className="form-label">Target Sections (Comma-separated) *</label>
-                <input
+                <label className="form-label" htmlFor="shuffle-f6">Target Sections (Comma-separated) *</label>
+                <input id="shuffle-f6"
                   className="form-input"
                   value={smartSectionsInput}
                   onChange={e => setSmartSectionsInput(e.target.value)}
