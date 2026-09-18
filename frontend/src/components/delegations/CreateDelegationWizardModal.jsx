@@ -292,7 +292,7 @@ export default function CreateDelegationWizardModal({ isOpen, onClose, onSuccess
                 {step > s.n ? '✓' : s.n}
               </span>
               <span>{s.label}</span>
-            </div>
+            </button>
           ))}
         </div>
 
@@ -518,7 +518,7 @@ export default function CreateDelegationWizardModal({ isOpen, onClose, onSuccess
                               {item.desc}
                             </div>
                           </div>
-                        </div>
+                        </label>
                       );
                     })}
                   </div>
