@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "EduERP",
+    "slug": "edu-erp-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0176d3"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.onep360.eduerp"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0176d3"
+      },
+      "package": "com.onep360.eduerp",
+      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-location"
+    ],
+    "extra": {
+      "apiUrl": "https://edu-erp-backend-xoas.onrender.com",
+      "appVersion": "1.0.0",
+      "buildNumber": "1"
+    }
+  }
+}
