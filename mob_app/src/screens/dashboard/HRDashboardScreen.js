@@ -15,7 +15,7 @@ export default function HRDashboardScreen() {
       const [e, lr, att] = await Promise.all([
         client.get('/hrms/employees', { params: { per_page: 20 } }).catch(() => ({ data: { employees: [] } })),
         client.get('/hrms/leaves/requests', { params: { status: 'PENDING', per_page: 5 } }).catch(() => ({ data: [] })),
-        client.get('/staff-attendance/summary').catch(() => ({ data: null })),
+        client.get('/staff-attendance/dashboard').catch(() => ({ data: null })),
       ]);
       setEmployees(e.data?.employees || e.data?.staff || []); setLeaveReqs(Array.isArray(lr.data) ? lr.data : []); setAttSummary(att.data);
     } finally { if (isRefresh) setRefreshing(false); else setLoading(false); }

@@ -22,8 +22,8 @@ export default function StudentDashboardScreen() {
     try {
       const [p, a, f] = await Promise.all([
         client.get('/student/profile').catch(() => ({ data: null })),
-        client.get('/student/attendance/summary').catch(() => ({ data: null })),
-        client.get('/student/fees/summary').catch(() => ({ data: null })),
+        client.get('/student/attendance').catch(() => ({ data: null })),
+        client.get('/student/fees').catch(() => ({ data: null })),
       ]);
       setProfile(p.data);
       setAttendance(a.data);
@@ -35,8 +35,11 @@ export default function StudentDashboardScreen() {
 
   useEffect(() => { load(); }, [load]);
 
-  const attPct = attendance
-    ? Math.round((attendance.present / (attendance.total || 1)) * 100) : null;
+  const attPct = attendance?.percentage != null
+    ? attendance.percentage
+    : attendance
+    ? Math.round((attendance.present / (attendance.total_days || attendance.total || 1)) * 100)
+    : null;
 
   if (loading) return (
     <SafeAreaView style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg }}>
@@ -111,7 +114,7 @@ export default function StudentDashboardScreen() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
               <Text style={styles.infoLabel}>Present: <Text style={styles.infoVal}>{attendance.present}</Text></Text>
               <Text style={styles.infoLabel}>Absent: <Text style={{ color: C.error, fontWeight: '700' }}>{attendance.absent}</Text></Text>
-              <Text style={styles.infoLabel}>Total: <Text style={styles.infoVal}>{attendance.total}</Text></Text>
+              <Text style={styles.infoLabel}>Total: <Text style={styles.infoVal}>{attendance.total_days ?? attendance.total}</Text></Text>
             </View>
           </View>
         )}

@@ -18,11 +18,10 @@ export default function AttendanceScreen() {
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     try {
-      // Different endpoint depending on role
-      let endpoint = '/student/attendance/summary';
-      if (user?.role === 'TEACHER') endpoint = '/staff-attendance/my-attendance';
-      else if (user?.role === 'PRINCIPAL' || user?.role === 'VICE_PRINCIPAL' || user?.role === 'DIRECTOR') endpoint = '/principal/attendance/today';
-      else if (user?.role === 'HR') endpoint = '/staff-attendance/summary';
+      // Role-aware endpoint mapping
+      let endpoint = '/student/attendance';
+      if (user?.role === 'TEACHER') endpoint = '/staff-attendance/my-status';
+      else if (['PRINCIPAL', 'VICE_PRINCIPAL', 'DIRECTOR', 'HR', 'ADMIN'].includes(user?.role)) endpoint = '/staff-attendance/dashboard';
 
       const r = await client.get(endpoint).catch(() => ({ data: null }));
       setData(r.data);
@@ -33,6 +32,9 @@ export default function AttendanceScreen() {
 
   if (loading) return <SafeAreaView style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg }}><ActivityIndicator size="large" color={C.primary} /></SafeAreaView>;
 
+  const records = Array.isArray(data?.records) ? data.records : [];
+  const entries = data ? Object.entries(data).filter(([k, v]) => v !== null && typeof v !== 'object') : [];
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
       <View style={styles.header}>
@@ -41,17 +43,31 @@ export default function AttendanceScreen() {
       </View>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} colors={[C.primary]} />}>
-        {data ? (
+        {entries.length > 0 && (
           <View style={styles.card}>
             <View style={styles.ch}><Ionicons name="clipboard-outline" size={16} color={C.primary} /><Text style={styles.ct}>Attendance Summary</Text></View>
-            {Object.entries(data).filter(([k, v]) => v !== null && typeof v !== 'object').slice(0, 8).map(([key, val]) => (
+            {entries.slice(0, 8).map(([key, val]) => (
               <View key={key} style={styles.row}>
                 <Text style={styles.rowL}>{key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</Text>
                 <Text style={styles.rowV}>{String(val)}</Text>
               </View>
             ))}
           </View>
-        ) : (
+        )}
+
+        {records.length > 0 && (
+          <View style={[styles.card, { marginTop: 14 }]}>
+            <View style={styles.ch}><Ionicons name="calendar-outline" size={16} color={C.primary} /><Text style={styles.ct}>Recent History</Text></View>
+            {records.slice(0, 15).map((rec, i) => (
+              <View key={i} style={styles.row}>
+                <Text style={styles.rowL}>{rec.date || rec.attendance_date}</Text>
+                <Text style={[styles.rowV, { color: (rec.status === 'PRESENT' || rec.status === 'Present') ? C.green : C.error }]}>{rec.status}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {!data && records.length === 0 && (
           <View style={{ alignItems: 'center', padding: 40 }}>
             <Ionicons name="clipboard-outline" size={48} color={C.muted} style={{ opacity: 0.4 }} />
             <Text style={{ color: C.muted, marginTop: 12, fontSize: 14 }}>No attendance data available</Text>

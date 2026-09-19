@@ -9,31 +9,43 @@ const C = { primary: '#16a34a', text: '#1e293b', muted: '#64748b', bg: '#f0f4f8'
 const fmt = v => v != null ? `₹${Number(v).toLocaleString('en-IN')}` : '₹—';
 
 export default function FeesScreen() {
+  const { user } = useAuth();
   const [fees, setFees] = useState(null); const [txns, setTxns] = useState([]); const [loading, setLoading] = useState(true); const [refreshing, setRefreshing] = useState(false);
+  const isStaff = ['PRINCIPAL', 'ACCOUNTANT', 'ADMIN'].includes(user?.role);
+
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     try {
-      const [f, t] = await Promise.all([
-        client.get('/student/fees/summary').catch(() => ({ data: null })),
-        client.get('/student/fees/transactions').catch(() => ({ data: [] })),
-      ]);
-      setFees(f.data); setTxns(Array.isArray(t.data) ? t.data : t.data?.transactions || []);
+      const endpoint = isStaff ? '/principal/fees/summary' : '/student/fees';
+      const f = await client.get(endpoint).catch(() => ({ data: null }));
+      setFees(f.data);
+      if (isStaff) {
+        const rRecent = await client.get('/principal/fees/recent-collections').catch(() => ({ data: [] }));
+        setTxns(Array.isArray(rRecent.data) ? rRecent.data : []);
+      } else {
+        setTxns(Array.isArray(f.data?.records) ? f.data.records : []);
+      }
     } finally { if (isRefresh) setRefreshing(false); else setLoading(false); }
-  }, []);
+  }, [isStaff]);
   useEffect(() => { load(); }, [load]);
   if (loading) return <SafeAreaView style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg }}><ActivityIndicator size="large" color={C.primary} /></SafeAreaView>;
+
+  const totalDemand = fees?.total_demand ?? fees?.total_due ?? fees?.gross_due;
+  const totalPaid = fees?.paid ?? fees?.collected ?? fees?.total_collected ?? fees?.total_paid;
+  const outstanding = fees?.outstanding ?? fees?.balance;
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
       <View style={{ backgroundColor: '#047857', padding: 20 }}>
-        <Text style={{ color: '#fff', fontSize: 20, fontWeight: '800' }}>My Fees</Text>
-        <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12, marginTop: 2 }}>Fee payments & receipts</Text>
+        <Text style={{ color: '#fff', fontSize: 20, fontWeight: '800' }}>Fees Portal</Text>
+        <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12, marginTop: 2 }}>Fee payments & records</Text>
       </View>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} colors={[C.primary]} />}>
         {fees && (
           <View style={styles.card}>
             <View style={styles.ch}><Ionicons name="receipt-outline" size={16} color={C.primary} /><Text style={styles.ct}>Fee Summary</Text></View>
-            {[['Total Demand', fees.total_demand], ['Paid', fees.paid || fees.collected], ['Outstanding', fees.outstanding]].map(([l, v]) => (
-              <View key={l} style={styles.row}><Text style={styles.rowL}>{l}</Text><Text style={[styles.rowV, l === 'Outstanding' && fees.outstanding > 0 && { color: C.warning }]}>{fmt(v)}</Text></View>
+            {[['Total Demand', totalDemand], ['Paid', totalPaid], ['Outstanding', outstanding]].map(([l, v]) => (
+              <View key={l} style={styles.row}><Text style={styles.rowL}>{l}</Text><Text style={[styles.rowV, l === 'Outstanding' && outstanding > 0 && { color: C.warning }]}>{fmt(v)}</Text></View>
             ))}
           </View>
         )}

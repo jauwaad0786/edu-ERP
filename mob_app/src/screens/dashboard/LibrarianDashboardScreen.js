@@ -17,9 +17,9 @@ export default function LibrarianDashboardScreen() {
     try {
       const [d, ov] = await Promise.all([
         client.get('/library/dashboard').catch(() => ({ data: null })),
-        client.get('/library/issue-return', { params: { status: 'OVERDUE', per_page: 5 } }).catch(() => ({ data: { transactions: [] } })),
+        client.get('/library/issues', { params: { status: 'OVERDUE', per_page: 5 } }).catch(() => ({ data: { issues: [] } })),
       ]);
-      setDash(d.data); setOverdue(ov.data?.transactions || []);
+      setDash(d.data); setOverdue(ov.data?.issues || ov.data?.transactions || []);
     } finally { if (isRefresh) setRefreshing(false); else setLoading(false); }
   }, []);
   useEffect(() => { load(); }, [load]);

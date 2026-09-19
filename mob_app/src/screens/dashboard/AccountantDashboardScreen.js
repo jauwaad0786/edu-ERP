@@ -16,7 +16,10 @@ export default function AccountantDashboardScreen() {
     finally { if (isRefresh) setRefreshing(false); else setLoading(false); }
   }, []);
   useEffect(() => { load(); }, [load]);
-  const collectRate = fees?.total_demand ? Math.round((fees.collected / fees.total_demand) * 100) : null;
+  const totalDemand = fees?.total_demand ?? fees?.total_due ?? fees?.gross_due;
+  const collected = fees?.collected ?? fees?.total_collected ?? fees?.total_paid;
+  const outstanding = fees?.outstanding ?? fees?.balance;
+  const collectRate = totalDemand ? Math.round(((collected || 0) / totalDemand) * 100) : null;
   if (loading) return <SafeAreaView style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg }}><ActivityIndicator size="large" color={C.primary} /></SafeAreaView>;
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
@@ -24,13 +27,13 @@ export default function AccountantDashboardScreen() {
         <View style={{ backgroundColor: '#047857', borderRadius: 18, padding: 22, marginBottom: 16 }}>
           <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 10, fontWeight: '700', letterSpacing: 1.5 }}>FINANCE OPERATIONS</Text>
           <Text style={{ color: '#fff', fontSize: 22, fontWeight: '800', marginTop: 4 }}>Financial Command Center</Text>
-          <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12, marginTop: 2 }}>Total Demand: {fmtK(fees?.total_demand)} · Collected: {fmtK(fees?.collected)}</Text>
+          <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12, marginTop: 2 }}>Total Demand: {fmtK(totalDemand)} · Collected: {fmtK(collected)}</Text>
         </View>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
           {[
-            { l: 'Total Demand', v: fmtK(fees?.total_demand), c: '#0176d3' },
-            { l: 'Collected', v: fmtK(fees?.collected), c: C.primary },
-            { l: 'Outstanding', v: fmtK(fees?.outstanding), c: fees?.outstanding > 0 ? C.warning : C.primary },
+            { l: 'Total Demand', v: fmtK(totalDemand), c: '#0176d3' },
+            { l: 'Collected', v: fmtK(collected), c: C.primary },
+            { l: 'Outstanding', v: fmtK(outstanding), c: outstanding > 0 ? C.warning : C.primary },
             { l: 'Collection Rate', v: collectRate != null ? `${collectRate}%` : '—', c: collectRate >= 80 ? C.primary : C.warning },
           ].map((k, i) => (
             <View key={i} style={{ width: '47%', backgroundColor: '#fff', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#e2e8f0', borderLeftWidth: 3, borderLeftColor: k.c, alignItems: 'center' }}>
