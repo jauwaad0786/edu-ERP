@@ -160,9 +160,9 @@ const ROLE_MENUS = {
         {
           icon: 'ti-currency-rupee', label: 'Finance & Fees', path: '/finance/dashboard',
           children: [
-            { icon: 'ti-layout-dashboard', label: 'Dashboard',         path: '/finance/dashboard' },
-            { icon: 'ti-calculator',       label: 'Fees Generate',     path: '/finance/generate-fees' },
-            { icon: 'ti-settings',         label: 'Fee Setup & Plans', path: '/finance/setup' },
+            { icon: 'ti-layout-dashboard', label: 'Dashboard',             path: '/finance/dashboard' },
+            { icon: 'ti-calculator',       label: 'Generate Monthly Fees', path: '/finance/generate-fees' },
+            { icon: 'ti-settings',         label: 'Fee Setup & Plans',     path: '/finance/setup' },
             { icon: 'ti-file-invoice',     label: 'Fee Bills & Demands',path: '/finance/bills' },
             { icon: 'ti-credit-card',      label: 'Collect Payment',   path: '/finance/payments/collect' },
             { icon: 'ti-receipt',          label: 'Payment Logs',      path: '/finance/payment-logs' },
@@ -361,9 +361,9 @@ const ROLE_MENUS = {
     {
       group: 'Finance & Fees',
       items: [
-        { icon: 'ti-layout-dashboard', label: 'Dashboard',         path: '/finance/dashboard' },
-        { icon: 'ti-calculator',       label: 'Fees Generate',     path: '/finance/generate-fees' },
-        { icon: 'ti-settings',         label: 'Fee Setup & Plans', path: '/finance/setup' },
+        { icon: 'ti-layout-dashboard', label: 'Dashboard',             path: '/finance/dashboard' },
+        { icon: 'ti-calculator',       label: 'Generate Monthly Fees', path: '/finance/generate-fees' },
+        { icon: 'ti-settings',         label: 'Fee Setup & Plans',     path: '/finance/setup' },
         { icon: 'ti-file-invoice',     label: 'Fee Bills & Demands',path: '/finance/bills' },
         { icon: 'ti-credit-card',      label: 'Collect Payment',   path: '/finance/payments/collect' },
         { icon: 'ti-receipt',          label: 'Payment Logs',      path: '/finance/payment-logs' },

@@ -301,6 +301,45 @@ export default function FeeServiceGenerationPage() {
             </div>
           </div>
 
+          {/* ══ NON-TECH FRIENDLY EXPLAINER BANNER ══ */}
+          <div style={{
+            background: 'linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%)',
+            border: '1px solid #bfdbfe',
+            borderRadius: '14px',
+            padding: '16px 20px',
+            marginBottom: '22px',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '14px',
+            boxShadow: '0 2px 8px rgba(37,99,235,0.04)'
+          }}>
+            <div style={{
+              background: '#2563eb', color: '#fff', borderRadius: '10px',
+              width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0, fontSize: '18px'
+            }}>
+              <i className="ti ti-info-circle" />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 800, color: '#1e3a8a' }}>
+                  Fees Generate Kya Hai Aur Kyu Jaruri Hai? (Monthly Student Billing Engine)
+                </h4>
+                <span style={{ fontSize: '11px', background: '#dbeafe', color: '#1e40af', padding: '2px 8px', borderRadius: '12px', fontWeight: 700 }}>
+                  Non-Tech Guide
+                </span>
+              </div>
+              <p style={{ margin: 0, fontSize: '13px', color: '#334155', lineHeight: '1.5' }}>
+                School me har mahine (jaise <strong>{data?.month_label || selectedMonth}</strong>) students ke naam par Tuition, Transport (Bus), aur Hostel fees ka <strong>Monthly Bill (Demand)</strong> create kiya jata hai.
+                Jab tak yahan se <strong>"Generate"</strong> nahi hota, tab tak student par koi due amount count nahi hota aur na hi parent portal par pending bill dikhta hai.
+                <br />
+                <span style={{ display: 'inline-block', marginTop: '4px', fontWeight: 600, color: '#0369a1' }}>
+                  👉 <strong>Kaise use karein?</strong> Pure school ke sabhi students ka bill 1-click me banane ke liye upar <strong>"Generate All Monthly Bills"</strong> dabayein, ya neeche kisi specific Service/Class ke aage <strong>"Generate"</strong> par click karein.
+                </span>
+              </p>
+            </div>
+          </div>
+
           {/* ══ 2. TOP METRICS SUMMARY STRIP (Clean & Non-Tech Friendly) ══ */}
           <div style={{
             display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',

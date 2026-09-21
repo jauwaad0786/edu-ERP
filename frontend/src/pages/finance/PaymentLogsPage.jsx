@@ -62,6 +62,12 @@ export default function PaymentLogsPage() {
     .filter((p) => p.direction === 'IN' && p.status === 'VALID')
     .reduce((sum, p) => sum + (p.total_paid || p.amount_paid || 0), 0);
 
+  const cashIn = payments
+    .filter((p) => p.direction === 'IN' && p.status === 'VALID' && (p.payment_mode || '').toUpperCase() === 'CASH')
+    .reduce((sum, p) => sum + (p.total_paid || p.amount_paid || 0), 0);
+
+  const onlineIn = totalIn - cashIn;
+
   const totalOut = payments
     .filter((p) => p.direction === 'OUT')
     .reduce((sum, p) => sum + (p.total_paid || p.amount_paid || 0), 0);
@@ -99,7 +105,8 @@ export default function PaymentLogsPage() {
               </p>
             </div>
 
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            {/* Actions & Filters */}
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <select
                 value={session}
                 onChange={(e) => setSession(e.target.value)}
@@ -121,13 +128,17 @@ export default function PaymentLogsPage() {
             <div className="stat-card" style={{ borderLeft: '4px solid #10b981' }}>
               <div className="stat-label">Total Money In (Collections)</div>
               <div className="stat-value" style={{ color: '#10b981' }}>+{fmt(totalIn)}</div>
-              <div className="stat-subtext">Tuition, Hostel, Transport, Library Fines</div>
+              <div className="stat-subtext" style={{ fontWeight: 600 }}>
+                Cash: {fmt(cashIn)} • Online/UPI: {fmt(onlineIn)}
+              </div>
             </div>
 
             <div className="stat-card" style={{ borderLeft: '4px solid #ef4444' }}>
               <div className="stat-label">Total Money Out (Expenses & Salaries)</div>
               <div className="stat-value" style={{ color: '#ef4444' }}>-{fmt(totalOut)}</div>
-              <div className="stat-subtext">Teacher/Staff Salaries, Utilities, Vendors</div>
+              <div className="stat-subtext">
+                {totalOut === 0 ? 'No expenses recorded yet' : 'Teacher/Staff Salaries, Utilities, Vendors'}
+              </div>
             </div>
 
             <div className="stat-card" style={{ borderLeft: `4px solid ${totalIn - totalOut >= 0 ? '#3b82f6' : '#f59e0b'}` }}>
@@ -135,7 +146,11 @@ export default function PaymentLogsPage() {
               <div className="stat-value" style={{ color: totalIn - totalOut >= 0 ? '#3b82f6' : '#f59e0b' }}>
                 {fmt(totalIn - totalOut)}
               </div>
-              <div className="stat-subtext">Net Surplus across selected records</div>
+              <div className="stat-subtext" style={{ fontWeight: 600 }}>
+                {totalOut === 0
+                  ? `Net Surplus: Total In (${fmt(totalIn)}) − Expenses (₹0)`
+                  : `Net Balance: Inflow minus Outflow`}
+              </div>
             </div>
 
             <div className="stat-card" style={{ borderLeft: '4px solid #8b5cf6' }}>

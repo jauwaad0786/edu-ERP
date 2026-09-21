@@ -37,10 +37,10 @@ export const PERMISSION_MENU_ITEMS = {
 
   'fees.structure.manage': [
     { group: 'Finance & Fees', item: { icon: 'ti-settings',         label: 'Fee Setup & Plans', path: '/finance/setup' } },
-    { group: 'Finance & Fees', item: { icon: 'ti-calculator',       label: 'Fees Generate',     path: '/finance/generate-fees' } },
+    { group: 'Finance & Fees', item: { icon: 'ti-calculator',       label: 'Generate Monthly Fees', path: '/finance/generate-fees' } },
   ],
   'fees.collect': [
-    { group: 'Finance & Fees', item: { icon: 'ti-calculator',       label: 'Fees Generate',     path: '/finance/generate-fees' } },
+    { group: 'Finance & Fees', item: { icon: 'ti-calculator',       label: 'Generate Monthly Fees', path: '/finance/generate-fees' } },
     { group: 'Finance & Fees', item: { icon: 'ti-credit-card',      label: 'Collect Payment',   path: '/finance/payments/collect' } },
     { group: 'Finance & Fees', item: { icon: 'ti-file-invoice',     label: 'Fee Bills & Demands',path: '/finance/bills' } },
     { group: 'Finance & Fees', item: { icon: 'ti-history',          label: 'Payment Logs',      path: '/finance/payment-logs' } },

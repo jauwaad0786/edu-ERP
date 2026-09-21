@@ -657,14 +657,6 @@ def get_services_generation_status(school_id, month=None, session=None, class_id
     for fh in fee_heads:
         norm_code = _normalize_service_code(fh.code)
 
-        # Determine target eligible students for this service
-        if norm_code == 'TRANSPORT':
-            eligible = max(transport_count, student_count)
-        elif norm_code == 'HOSTEL':
-            eligible = max(hostel_count, student_count)
-        else:
-            eligible = max(total_active_students, student_count)
-
         # Merge bill item data or fee record data
         b_data = bill_items_data.get(fh.id) or rec_data_by_key.get(norm_code)
         if not b_data and norm_code == 'TUITION':
@@ -675,6 +667,14 @@ def get_services_generation_status(school_id, month=None, session=None, class_id
         paid = b_data['paid'] if b_data else 0.0
         pending = b_data['pending'] if b_data else 0.0
         last_gen = b_data['last_generated'] if b_data else None
+
+        # Determine target eligible students for this service
+        if norm_code == 'TRANSPORT':
+            eligible = max(transport_count, student_count)
+        elif norm_code == 'HOSTEL':
+            eligible = max(hostel_count, student_count)
+        else:
+            eligible = max(total_active_students, student_count)
 
         batch_info = batches.get(norm_code)
 
