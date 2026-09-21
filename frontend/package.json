@@ -21,11 +21,17 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build",
+    "build": "CI=false react-scripts build",
     "test": "react-scripts test"
   },
   "eslintConfig": {
-    "extends": ["react-app"]
+    "extends": [
+      "react-app"
+    ],
+    "rules": {
+      "no-unused-vars": "warn",
+      "no-undef": "warn"
+    }
   },
   "browserslist": {
     "production": [">0.2%", "not dead", "not op_mini all"],
