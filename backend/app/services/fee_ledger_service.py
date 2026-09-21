@@ -398,8 +398,8 @@ def get_student_applicable_charges(student_id, session=None, bill_month=None):
             if not fh:
                 continue
 
-            # Don't duplicate transport/hostel/library if already handled dynamically below
-            if fh.category in ('TRANSPORT', 'HOSTEL', 'LIBRARY'):
+            # Don't duplicate transport & hostel - they are dynamically resolved per student based on active route/bed allocation
+            if fh.category in ('TRANSPORT', 'HOSTEL'):
                 continue
 
             # Check for student specific exemption / custom override
@@ -573,9 +573,10 @@ def get_student_applicable_charges(student_id, session=None, bill_month=None):
         from app.models.library import LibraryMember, FineTransaction
         lib_member = LibraryMember.query.filter_by(user_id=student.user_id, school_id=student.school_id).first()
         if lib_member and lib_member.status == 'ACTIVE':
-            # 4a. Library Facility Subscription
+            # 4a. Library Facility Subscription (only if not already included via class fee structure)
             lib_head = fee_heads.get('LIBRARY')
-            if lib_head:
+            existing_head_ids = {c['fee_head_id'] for c in charges}
+            if lib_head and lib_head.id not in existing_head_ids:
                 ca = custom_assignments.get(lib_head.id)
                 if not (ca and ca.is_exempt):
                     lib_amt = 150.0

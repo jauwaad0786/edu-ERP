@@ -179,7 +179,12 @@ export default function FeeSetupPage() {
   // ─── Fee Structure Handlers ──────────────────────────────────────────────
   const openAddStructure = (prefillClassId = null) => {
     setEditingStruct(null);
-    const initialItems = heads.map((h) => ({
+    // Class fee structures only cover class-wide academic & facility heads (Tuition, Exam, Admission, Library, etc.)
+    // Transport & Hostel are dynamic facility services resolved per student based on active route/bed allocations
+    const classHeads = heads.filter(
+      (h) => !['TRANSPORT', 'HOSTEL'].includes((h.category || '').toUpperCase())
+    );
+    const initialItems = classHeads.map((h) => ({
       fee_head_id: h.id,
       fee_head_name: h.name,
       amount: h.code === 'TUITION' ? 3000 : 0,
@@ -198,7 +203,10 @@ export default function FeeSetupPage() {
       itemMap[it.fee_head_id] = it.amount;
     });
 
-    const structItems = heads.map((h) => ({
+    const classHeads = heads.filter(
+      (h) => !['TRANSPORT', 'HOSTEL'].includes((h.category || '').toUpperCase())
+    );
+    const structItems = classHeads.map((h) => ({
       fee_head_id: h.id,
       fee_head_name: h.name,
       amount: itemMap[h.id] !== undefined ? itemMap[h.id] : 0,
@@ -790,12 +798,21 @@ export default function FeeSetupPage() {
                               <div style={{ fontSize: 10.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 4 }}>
                                 Itemized Rates:
                               </div>
-                              {s.items?.map((it, idx) => (
+                              {s.items?.filter(it => it.category !== 'TRANSPORT' && it.category !== 'HOSTEL' && it.fee_head_category !== 'TRANSPORT' && it.fee_head_category !== 'HOSTEL').map((it, idx) => (
                                 <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '2px 0', color: '#334155' }}>
                                   <span>{it.fee_head_name}</span>
                                   <span style={{ fontWeight: 700 }}>{fmt(it.amount)}</span>
                                 </div>
                               ))}
+                              <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px dashed #e2e8f0', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                                <span style={{ fontSize: 10, fontWeight: 700, color: '#64748b' }}>Dynamic Services:</span>
+                                <span style={{ fontSize: 10, background: '#eff6ff', color: '#0284c7', padding: '1px 6px', borderRadius: 6, fontWeight: 600 }}>
+                                  🚌 Bus (Route-based)
+                                </span>
+                                <span style={{ fontSize: 10, background: '#fef3c7', color: '#b45309', padding: '1px 6px', borderRadius: 6, fontWeight: 600 }}>
+                                  🏢 Hostel (Bed-based)
+                                </span>
+                              </div>
                             </div>
                           </div>
 
@@ -1941,7 +1958,7 @@ export default function FeeSetupPage() {
                     {/* Itemized Heads Pricing Table */}
                     <div className="form-group" style={{ marginTop: 10 }}>
                       <label className="form-label" style={{ fontWeight: 700, color: '#0B3B7B' }}>
-                        Itemized Rates by Fee Head (₹)
+                        Class Standard Fee Heads (Tuition, Exam, Admission, Library, Activities) (₹)
                       </label>
                       <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 12px' }}>
                         {structForm.items.map((item, idx) => (
@@ -1978,6 +1995,61 @@ export default function FeeSetupPage() {
                         <strong style={{ fontSize: 14, color: '#0B3B7B' }}>
                           {fmt(structForm.items.reduce((acc, it) => acc + (parseFloat(it.amount) || 0), 0))}
                         </strong>
+                      </div>
+                    </div>
+
+                    {/* Dynamic Facility Services Banner (Automated via Backend Modules) */}
+                    <div style={{
+                      marginTop: 14,
+                      padding: '12px 14px',
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: 10,
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                        <i className="ti ti-bolt" style={{ color: '#0284c7', fontSize: 16 }} />
+                        <span style={{ fontSize: 12.5, fontWeight: 800, color: '#0f172a' }}>
+                          Dynamic Optional Services (Automated via Backend Modules)
+                        </span>
+                      </div>
+                      <p style={{ margin: '0 0 10px', fontSize: 11.5, color: '#64748b', lineHeight: 1.4 }}>
+                        Transport (Bus) aur Hostel fees class-level par fixed nahi hoti hain. Ye student-specific hoti hain aur direct respective module se dynamically calculate hoti hain:
+                      </p>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                        <div style={{ background: '#ffffff', border: '1px solid #e0f2fe', borderRadius: 8, padding: '10px 12px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                            <span style={{ fontSize: 14 }}>🚌</span>
+                            <strong style={{ fontSize: 12, color: '#0369a1' }}>Bus / Transport Fee</strong>
+                          </div>
+                          <div style={{ fontSize: 11, color: '#475569' }}>
+                            Student ke assigned <strong>Route &amp; Stop Fare</strong> se auto-charge hoga. Non-bus students ko ₹0 charge hoga.
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => { setStructModal(false); setActiveTab('services'); setOptSubTab('transport'); }}
+                            style={{ marginTop: 6, background: 'none', border: 'none', padding: 0, fontSize: 11, fontWeight: 700, color: '#0284c7', cursor: 'pointer' }}
+                          >
+                            Configure Route Slabs →
+                          </button>
+                        </div>
+
+                        <div style={{ background: '#ffffff', border: '1px solid #fef3c7', borderRadius: 8, padding: '10px 12px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                            <span style={{ fontSize: 14 }}>🏢</span>
+                            <strong style={{ fontSize: 12, color: '#b45309' }}>Hostel &amp; Mess Fee</strong>
+                          </div>
+                          <div style={{ fontSize: 11, color: '#475569' }}>
+                            Student ke assigned <strong>Bed &amp; Room Type (AC/Non-AC)</strong> se auto-charge hoga. Day-scholars ko ₹0 charge hoga.
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => { setStructModal(false); setActiveTab('services'); setOptSubTab('hostel'); }}
+                            style={{ marginTop: 6, background: 'none', border: 'none', padding: 0, fontSize: 11, fontWeight: 700, color: '#d97706', cursor: 'pointer' }}
+                          >
+                            Configure Hostel Slabs →
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
