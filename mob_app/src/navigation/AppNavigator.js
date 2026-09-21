@@ -10,6 +10,7 @@ import { useAuth } from '../context/AuthContext';
 
 // ── Auth Screens ──────────────────────────────────────────────────────────
 import LoginScreen from '../screens/auth/LoginScreen';
+import LoggedOutSuccessScreen from '../screens/auth/LoggedOutSuccessScreen';
 
 // ── Role Navigators ────────────────────────────────────────────────────────
 import AdminNavigator       from './role/AdminNavigator';
@@ -91,7 +92,10 @@ export default function AppNavigator() {
             {() => <AuthenticatedNavigator user={user} />}
           </Stack.Screen>
         ) : (
-          <Stack.Screen name="Auth" component={LoginScreen} />
+          <>
+            <Stack.Screen name="Auth" component={LoginScreen} />
+            <Stack.Screen name="LoggedOutSuccess" component={LoggedOutSuccessScreen} />
+          </>
         )}
       </Stack.Navigator>
     </NavigationContainer>

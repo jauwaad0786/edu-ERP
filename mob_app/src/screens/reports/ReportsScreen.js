@@ -1,5 +1,5 @@
-// mob_app/src/screens/settings/SettingsScreen.js
-// Exact match to Screen 13 of mockup: Settings management hub
+// mob_app/src/screens/reports/ReportsScreen.js
+// Exact match to Screen 12 of mockup: Comprehensive ERP reports directory
 import React from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -8,73 +8,73 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../theme/colors';
 
-const SETTINGS_OPTIONS = [
+const REPORTS = [
   {
-    id: 'school_profile',
-    title: 'School Profile',
-    desc: 'Update school information',
-    icon: 'business',
-    color: '#0284c7',
-    bg: '#e0f2fe',
-    screen: 'Profile',
+    id: 'student',
+    title: 'Student Report',
+    desc: 'View student statistics',
+    icon: 'people',
+    color: '#16a34a',
+    bg: '#dcfce7',
+    screen: 'StudentReport',
   },
   {
-    id: 'session',
-    title: 'Academic Session',
-    desc: 'Manage current session',
+    id: 'attendance',
+    title: 'Attendance Report',
+    desc: 'Class-wise attendance',
     icon: 'calendar',
-    color: '#ea580c',
-    bg: '#ffedd5',
-    screen: 'AcademicSession',
-  },
-  {
-    id: 'notifications',
-    title: 'Notification Preferences',
-    desc: 'Manage alerts',
-    icon: 'notifications',
-    color: '#eab308',
-    bg: '#fef9c3',
-    screen: 'NotificationSettings',
-  },
-  {
-    id: 'change_password',
-    title: 'Change Password',
-    desc: null,
-    icon: 'lock-closed',
     color: '#0284c7',
     bg: '#e0f2fe',
-    screen: 'ChangePassword',
+    screen: 'AttendanceReport',
   },
   {
-    id: 'appearance',
-    title: 'App Appearance',
-    desc: null,
-    icon: 'color-palette',
-    color: '#0284c7',
-    bg: '#e0f2fe',
-    screen: 'AppearanceSettings',
+    id: 'fee',
+    title: 'Fee Collection Report',
+    desc: 'Payment status & dues',
+    icon: 'card',
+    color: '#dc2626',
+    bg: '#fee2e2',
+    screen: 'FeeReport',
   },
   {
-    id: 'language',
-    title: 'Language',
-    desc: 'English',
-    icon: 'globe',
+    id: 'exam',
+    title: 'Exam Report',
+    desc: 'Performance analysis',
+    icon: 'ribbon',
     color: '#7c3aed',
     bg: '#ede9fe',
-    screen: 'LanguageSettings',
+    screen: 'ExamReport',
   },
   {
-    id: 'help',
-    title: 'Help & Support',
-    desc: null,
-    icon: 'information-circle',
-    color: '#0284c7',
-    bg: '#e0f2fe',
-    screen: 'HelpSupport',
+    id: 'teacher',
+    title: 'Teacher Report',
+    desc: 'Teacher workload & performance',
+    icon: 'person',
+    color: '#059669',
+    bg: '#d1fae5',
+    screen: 'TeacherReport',
+  },
+  {
+    id: 'transport',
+    title: 'Transport Report',
+    desc: 'Transport utilization',
+    icon: 'bus',
+    color: '#ea580c',
+    bg: '#ffedd5',
+    screen: 'TransportReport',
+  },
+  {
+    id: 'custom',
+    title: 'Custom Report',
+    desc: 'Generate your own report',
+    icon: 'document-text',
+    color: '#c026d3',
+    bg: '#fae8ff',
+    screen: 'CustomReport',
   },
 ];
 
-export default function SettingsScreen({ navigation }) {
+export default function ReportsScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
@@ -86,30 +86,30 @@ export default function SettingsScreen({ navigation }) {
         >
           <Ionicons name="arrow-back" size={22} color="#ffffff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Settings</Text>
+        <Text style={styles.headerTitle}>Reports</Text>
         <View style={{ width: 36 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.cardList}>
-          {SETTINGS_OPTIONS.map((item, idx) => (
+          {REPORTS.map((r, i) => (
             <TouchableOpacity
-              key={item.id}
-              style={styles.settingRow}
+              key={r.id}
+              style={styles.reportRow}
               activeOpacity={0.7}
               onPress={() => {
                 if (navigation?.navigate) {
-                  navigation.navigate(item.screen);
+                  navigation.navigate(r.screen);
                 }
               }}
             >
-              <View style={[styles.iconBox, { backgroundColor: item.bg }]}>
-                <Ionicons name={item.icon} size={20} color={item.color} />
+              <View style={[styles.iconCircle, { backgroundColor: r.bg }]}>
+                <Ionicons name={r.icon} size={22} color={r.color} />
               </View>
 
               <View style={styles.infoCol}>
-                <Text style={styles.settingTitle}>{item.title}</Text>
-                {item.desc && <Text style={styles.settingDesc}>{item.desc}</Text>}
+                <Text style={styles.reportTitle}>{r.title}</Text>
+                <Text style={styles.reportDesc}>{r.desc}</Text>
               </View>
 
               <Ionicons name="chevron-forward" size={18} color="#cbd5e1" />
@@ -153,7 +153,7 @@ const styles = StyleSheet.create({
   cardList: {
     gap: 12,
   },
-  settingRow: {
+  reportRow: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#ffffff',
@@ -167,10 +167,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     elevation: 1,
   },
-  iconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
+  iconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 14,
@@ -178,15 +178,15 @@ const styles = StyleSheet.create({
   infoCol: {
     flex: 1,
   },
-  settingTitle: {
+  reportTitle: {
     fontSize: 14.5,
     fontWeight: '700',
     color: '#1e293b',
+    marginBottom: 3,
   },
-  settingDesc: {
+  reportDesc: {
     fontSize: 12,
     fontWeight: '500',
     color: '#64748b',
-    marginTop: 2,
   },
 });
