@@ -128,36 +128,44 @@ export default function PrincipalDashboard() {
     pending_count:   fees.filter(c => c.pending > 0).length,
   } : (fees || { total_due: 0, total_collected: 0, pending_count: 0 });
 
-  const totalFeeCollected = stats?.fee_collected ?? feeTotals.total_collected ?? 0;
-  const totalFeePending = stats?.fee_pending ?? (feeTotals.total_due - feeTotals.total_collected);
-  const collectionPct = (totalFeeCollected + totalFeePending) > 0
-    ? Math.round((totalFeeCollected / (totalFeeCollected + totalFeePending)) * 100)
-    : 0;
+  const totalFeeCollected = feesSummary?.total_paid != null
+    ? Number(feesSummary.total_paid)
+    : (stats?.fee_collected ?? feeTotals.total_collected ?? 0);
+
+  const totalFeePending = feesSummary?.outstanding != null
+    ? Number(feesSummary.outstanding)
+    : (stats?.fee_pending ?? (feeTotals.total_due - feeTotals.total_collected));
+
+  const collectionPct = feesSummary?.collection_rate != null
+    ? Number(feesSummary.collection_rate)
+    : ((totalFeeCollected + totalFeePending) > 0
+      ? Math.round((totalFeeCollected / (totalFeeCollected + totalFeePending)) * 100)
+      : 0);
 
   // Fee Intelligence (Month / Year / All Time)
   const feeIntel = stats?.fee_intelligence || {};
   const activeFeeGenerated = feePeriod === 'MONTH'
     ? (feeIntel.month_generated ?? (totalFeeCollected + totalFeePending))
     : feePeriod === 'YEAR'
-    ? (feeIntel.year_generated ?? (totalFeeCollected + totalFeePending))
+    ? (feesSummary?.total_due != null ? Number(feesSummary.total_due) : (feeIntel.year_generated ?? (totalFeeCollected + totalFeePending)))
     : (feeIntel.all_time_generated ?? (totalFeeCollected + totalFeePending));
 
   const activeFeeCollected = feePeriod === 'MONTH'
     ? (feeIntel.month_collected ?? totalFeeCollected)
     : feePeriod === 'YEAR'
-    ? (feeIntel.year_collected ?? totalFeeCollected)
+    ? (feesSummary?.total_paid != null ? Number(feesSummary.total_paid) : (feeIntel.year_collected ?? totalFeeCollected))
     : (feeIntel.all_time_collected ?? totalFeeCollected);
 
   const activeFeePending = feePeriod === 'MONTH'
     ? (feeIntel.month_pending ?? totalFeePending)
     : feePeriod === 'YEAR'
-    ? (feeIntel.year_pending ?? totalFeePending)
+    ? (feesSummary?.outstanding != null ? Number(feesSummary.outstanding) : (feeIntel.year_pending ?? totalFeePending))
     : (feeIntel.all_time_pending ?? totalFeePending);
 
   const activeCollectionPct = feePeriod === 'MONTH'
     ? (feeIntel.month_percentage ?? (activeFeeGenerated > 0 ? Math.round((activeFeeCollected / activeFeeGenerated) * 100) : 0))
     : feePeriod === 'YEAR'
-    ? (feeIntel.year_percentage ?? (activeFeeGenerated > 0 ? Math.round((activeFeeCollected / activeFeeGenerated) * 100) : 0))
+    ? (feesSummary?.collection_rate != null ? Number(feesSummary.collection_rate) : (feeIntel.year_percentage ?? (activeFeeGenerated > 0 ? Math.round((activeFeeCollected / activeFeeGenerated) * 100) : 0)))
     : (feeIntel.all_time_percentage ?? collectionPct);
 
   const activePeriodLabel = feePeriod === 'MONTH'

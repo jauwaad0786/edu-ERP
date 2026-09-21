@@ -5085,14 +5085,20 @@ def dashboard():
         )
     ).first()
 
-    if (bills_count > 0 or payments_count > 0) and ((month_bill_row and month_bill_row[0] is not None) or month_payments_collected > 0):
-        month_fees_generated = float(month_bill_row[0] or 0.0) if month_bill_row else 0.0
-        month_fees_collected = float(max(float(month_payments_collected), float(month_bill_row[1] or 0.0) if month_bill_row else 0.0))
-        month_fees_pending = float(month_bill_row[2] if month_bill_row and month_bill_row[2] is not None else max(0.0, month_fees_generated - month_fees_collected))
-    else:
-        month_fees_generated = float(month_fee_row[0] or 0.0) if month_fee_row else 0.0
-        month_fees_collected = float(month_tx_collected if (month_tx_collected and month_tx_collected > 0) else (month_fee_row[1] if month_fee_row else 0.0) or 0.0)
+    if month_bill_row and month_bill_row[0] is not None and float(month_bill_row[0]) > 0:
+        month_fees_generated = float(month_bill_row[0] or 0.0)
+        month_fees_collected = float(max(float(month_payments_collected), float(month_bill_row[1] or 0.0)))
+        month_fees_pending = float(month_bill_row[2] if month_bill_row[2] is not None else max(0.0, month_fees_generated - month_fees_collected))
+    elif month_fee_row and month_fee_row[0] is not None and float(month_fee_row[0]) > 0:
+        month_fees_generated = float(month_fee_row[0] or 0.0)
+        rec_paid = float(month_fee_row[1] or 0.0)
+        tx_paid = float(month_tx_collected) if month_tx_collected else 0.0
+        month_fees_collected = float(max(float(month_payments_collected), rec_paid, tx_paid))
         month_fees_pending = max(0.0, round(month_fees_generated - month_fees_collected, 2))
+    else:
+        month_fees_generated = 0.0
+        month_fees_collected = float(max(float(month_payments_collected), float(month_tx_collected or 0.0)))
+        month_fees_pending = 0.0
 
     month_col_pct = round((month_fees_collected / month_fees_generated * 100), 1) if month_fees_generated > 0 else 0.0
 
@@ -5127,14 +5133,18 @@ def dashboard():
             FeeRecord.created_at >= y_start
         ).first()
 
-    if (bills_count > 0 or payments_count > 0) and ((session_bill_row and session_bill_row[0] is not None) or session_payments_collected > 0):
-        year_fees_generated = float(session_bill_row[0] or 0.0) if session_bill_row else 0.0
-        year_fees_collected = float(max(float(session_payments_collected), float(session_bill_row[1] or 0.0) if session_bill_row else 0.0))
-        year_fees_pending = float(session_bill_row[2] if session_bill_row and session_bill_row[2] is not None else max(0.0, year_fees_generated - year_fees_collected))
-    else:
-        year_fees_generated = float(session_fee_row[0] or 0.0) if session_fee_row else 0.0
-        year_fees_collected = float(session_fee_row[1] or 0.0) if session_fee_row else 0.0
+    if session_bill_row and session_bill_row[0] is not None and float(session_bill_row[0]) > 0:
+        year_fees_generated = float(session_bill_row[0] or 0.0)
+        year_fees_collected = float(max(float(session_payments_collected), float(session_bill_row[1] or 0.0)))
+        year_fees_pending = float(session_bill_row[2] if session_bill_row[2] is not None else max(0.0, year_fees_generated - year_fees_collected))
+    elif session_fee_row and session_fee_row[0] is not None and float(session_fee_row[0]) > 0:
+        year_fees_generated = float(session_fee_row[0] or 0.0)
+        year_fees_collected = float(max(float(session_payments_collected), float(session_fee_row[1] or 0.0)))
         year_fees_pending = max(0.0, round(year_fees_generated - year_fees_collected, 2))
+    else:
+        year_fees_generated = 0.0
+        year_fees_collected = float(session_payments_collected)
+        year_fees_pending = 0.0
 
     year_col_pct = round((year_fees_collected / year_fees_generated * 100), 1) if year_fees_generated > 0 else 0.0
 
@@ -5158,14 +5168,18 @@ def dashboard():
         FeeRecord.status != 'DRAFT'
     ).first()
 
-    if (bills_count > 0 or payments_count > 0) and ((all_time_bill_row and all_time_bill_row[0] is not None) or all_time_payments_collected > 0):
-        all_time_generated = float(all_time_bill_row[0] or 0.0) if all_time_bill_row else 0.0
-        fee_collected_total = float(max(float(all_time_payments_collected), float(all_time_bill_row[1] or 0.0) if all_time_bill_row else 0.0))
-        fee_pending_total = float(all_time_bill_row[2] if all_time_bill_row and all_time_bill_row[2] is not None else max(0.0, all_time_generated - fee_collected_total))
-    else:
-        all_time_generated = float(all_time_row[0] or 0.0) if all_time_row else 0.0
-        fee_collected_total = float(all_time_row[1] or 0.0) if all_time_row else 0.0
+    if all_time_bill_row and all_time_bill_row[0] is not None and float(all_time_bill_row[0]) > 0:
+        all_time_generated = float(all_time_bill_row[0] or 0.0)
+        fee_collected_total = float(max(float(all_time_payments_collected), float(all_time_bill_row[1] or 0.0)))
+        fee_pending_total = float(all_time_bill_row[2] if all_time_bill_row[2] is not None else max(0.0, all_time_generated - fee_collected_total))
+    elif all_time_row and all_time_row[0] is not None and float(all_time_row[0]) > 0:
+        all_time_generated = float(all_time_row[0] or 0.0)
+        fee_collected_total = float(max(float(all_time_payments_collected), float(all_time_row[1] or 0.0)))
         fee_pending_total = max(0.0, round(all_time_generated - fee_collected_total, 2))
+    else:
+        all_time_generated = 0.0
+        fee_collected_total = float(all_time_payments_collected)
+        fee_pending_total = 0.0
 
     all_time_col_pct = round((fee_collected_total / all_time_generated * 100), 1) if all_time_generated > 0 else 0.0
 

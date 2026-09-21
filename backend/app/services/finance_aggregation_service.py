@@ -149,9 +149,10 @@ class FinanceAggregationService:
             func.coalesce(func.sum(case((FeeRecord.status == 'OVERDUE', 1), else_=0)), 0).label('overdue_count'),
         ).first()
 
-        use_modern = (bagg and bagg.total_count > 0) or (total_pay_collected > 0)
+        has_modern_bills = bool(bagg and bagg.total_count and bagg.total_count > 0)
+        has_legacy_records = bool(r_agg and r_agg.total_count and r_agg.total_count > 0)
 
-        if use_modern:
+        if has_modern_bills:
             gross_due = round_curr(bagg.gross_due if bagg else 0.0)
             total_discount = round_curr(bagg.total_discount if bagg else 0.0)
             total_fine = round_curr(bagg.total_fine if bagg else 0.0)
@@ -163,18 +164,30 @@ class FinanceAggregationService:
             partial_count = int(bagg.partial_count if bagg else 0)
             paid_count = int(bagg.paid_count if bagg else 0)
             overdue_count = int(bagg.overdue_count if bagg else 0)
-        else:
+        elif has_legacy_records:
             gross_due = round_curr(r_agg.gross_due if r_agg else 0.0)
             total_discount = round_curr(r_agg.total_discount if r_agg else 0.0)
             total_fine = round_curr(r_agg.total_fine if r_agg else 0.0)
             total_due = round_curr(r_agg.total_due if r_agg else 0.0)
-            total_paid = round_curr(r_agg.total_paid if r_agg else 0.0)
-            outstanding = round_curr(r_agg.outstanding if r_agg else 0.0)
+            total_paid = round_curr(max(float(r_agg.total_paid if r_agg else 0.0), float(total_pay_collected)))
+            outstanding = round_curr(max(0.0, total_due - total_paid))
             total_count = int(r_agg.total_count if r_agg else 0)
             pending_count = int(r_agg.pending_count if r_agg else 0)
             partial_count = int(r_agg.partial_count if r_agg else 0)
             paid_count = int(r_agg.paid_count if r_agg else 0)
             overdue_count = int(r_agg.overdue_count if r_agg else 0)
+        else:
+            gross_due = 0.0
+            total_discount = 0.0
+            total_fine = 0.0
+            total_due = 0.0
+            total_paid = round_curr(total_pay_collected)
+            outstanding = 0.0
+            total_count = 0
+            pending_count = 0
+            partial_count = 0
+            paid_count = 0
+            overdue_count = 0
 
         collection_rate = round(total_paid / total_due * 100, 1) if total_due > 0 else 0.0
 
