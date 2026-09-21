@@ -1,0 +1,22 @@
+{
+  "appId": "com.eduerp.app",
+  "appName": "Edu ERP",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1500,
+      "launchAutoHide": true,
+      "backgroundColor": "#0176d3",
+      "androidSplashResourceName": "splash",
+      "androidScaleType": "CENTER_CROP"
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#0176d3"
+    }
+  }
+}
