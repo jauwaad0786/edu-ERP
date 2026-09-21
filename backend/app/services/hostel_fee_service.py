@@ -8,6 +8,7 @@ from datetime import date, datetime
 from app.utils.timezone_util import utc_now
 import secrets
 import string
+from app.services.fee_ledger_service import get_current_academic_session
 
 
 def resolve_fee_structure(bed):
@@ -163,7 +164,7 @@ def generate_hostel_fee_record(
         amount_due = round((base_fee / total_month_days) * prorated_days, 2)
         remarks += f" (Prorated for {prorated_days}/{total_month_days} days)"
 
-    stu_session = getattr(allocation.student, 'session', '2026-27') if allocation.student else '2026-27'
+    stu_session = getattr(allocation.student, 'session', None) or get_current_academic_session(allocation.school_id)
     rec = FeeRecord(
         school_id         = allocation.school_id,
         student_id        = allocation.student_id,
@@ -301,7 +302,7 @@ def record_hostel_fee_payment(record, amount, payment_mode='CASH', remarks='', c
                 collected_by=collected_by_user,
                 department='HOSTEL',
                 remarks=remarks or f"Hostel payment collected by Warden",
-                session=getattr(record, 'session', '2026-27') or '2026-27',
+                session=getattr(record, 'session', None) or get_current_academic_session(record.school_id),
                 allocations=[],
                 skip_record_id=record.id
             )

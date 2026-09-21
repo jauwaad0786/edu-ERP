@@ -20,6 +20,7 @@ from app import db
 from app.models.financial import FeeRecord, FeeTransaction
 from app.models.fee_finance import FeeHead, FeePayment, FeePaymentAllocation, FeeBill, FeeBillItem
 from app.models.academic import Student, Class
+from app.services.fee_ledger_service import get_current_academic_session, reconcile_school_fee_balances
 
 
 def round_curr(val):
@@ -34,7 +35,7 @@ class FinanceAggregationService:
     @staticmethod
     def get_fee_summary(
         school_id,
-        session='2026-27',
+        session=None,
         month=None,
         class_id=None,
         source=None,
@@ -46,9 +47,10 @@ class FinanceAggregationService:
         Returns authoritative aggregated metrics for dashboard cards and summary widgets.
         Guaranteed to match the sum of items returned by the detail records endpoint with identical filters.
         """
+        if not session:
+            session = get_current_academic_session(school_id)
         try:
-            from app.services.fee_ledger_service import reconcile_school_fee_balances
-            reconcile_school_fee_balances(school_id, session=session or '2026-27')
+            reconcile_school_fee_balances(school_id, session=session)
         except Exception:
             pass
 
@@ -432,8 +434,10 @@ class FinanceAggregationService:
         }
 
     @staticmethod
-    def get_class_wise_summary(school_id, session='2026-27', month=None):
+    def get_class_wise_summary(school_id, session=None, month=None):
         """Returns class-wise fee realization matrix (combining FeeBill and FeeRecord)."""
+        if not session:
+            session = get_current_academic_session(school_id)
         classes = Class.query.filter_by(school_id=school_id).all()
         result = []
 
@@ -530,13 +534,15 @@ class FinanceAggregationService:
         return result
 
     @staticmethod
-    def audit_reconciliation(school_id, session='2026-27'):
+    def audit_reconciliation(school_id, session=None):
         """
         Comprehensive financial data integrity auditor:
         - Detects discrepancies between dashboard aggregates and detail records.
         - Checks for overpaid, negative balance, or inconsistent status records.
         - Identifies orphaned service charges or broken student references.
         """
+        if not session:
+            session = get_current_academic_session(school_id)
         anomalies = []
 
         # 1. Query all FeeRecords for the school and session

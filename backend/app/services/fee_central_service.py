@@ -24,6 +24,7 @@ from app.models.fee_finance import (
 )
 from app.models.academic import Student, Class
 from app.models.user import User
+from app.services.fee_ledger_service import get_current_academic_session
 
 
 def round_curr(val):
@@ -95,7 +96,7 @@ def sync_fee_record_to_bill(fee_record):
 
     school_id = fee_record.school_id
     student_id = fee_record.student_id
-    session = fee_record.session or '2026-27'
+    session = fee_record.session or get_current_academic_session(school_id)
     month = fee_record.month or date.today().strftime('%Y-%m')
 
     # Resolve category, department, and head code
@@ -239,7 +240,7 @@ def sync_bill_item_to_fee_record(bill_item, bill):
 
     school_id = bill.school_id
     student_id = bill.student_id
-    session = bill.session or '2026-27'
+    session = bill.session or get_current_academic_session(school_id)
     month = bill.bill_month or date.today().strftime('%Y-%m')
 
     head_code = bill_item.fee_head.code if bill_item.fee_head else 'TUITION'
@@ -327,7 +328,7 @@ class FeeCentralService:
         fee_type,
         amount_due,
         month,
-        session='2026-27',
+        session=None,
         due_date=None,
         source='ACADEMIC',
         discount=0.0,
@@ -345,6 +346,9 @@ class FeeCentralService:
         Creates or updates a FeeRecord with strict domain-specific idempotency,
         and atomically synchronizes it with FeeBill, FeeBillItem, and StudentLedger.
         """
+        if not session:
+            session = get_current_academic_session(school_id)
+
         student = Student.query.get(student_id)
         if not student:
             raise ValueError(f"Student #{student_id} not found.")
@@ -480,7 +484,7 @@ class FeeCentralService:
                     break
                 seq += 1
 
-        session = rec.session if rec else '2026-27'
+        session = (rec.session if rec and rec.session else None) or get_current_academic_session(school_id)
         dept = rec.source if rec else 'ACCOUNTS'
 
         # 1. Update target FeeRecord (if specified) or auto-distribute to oldest pending records

@@ -187,7 +187,7 @@ def generate_fee_bill_pdf(bill, school, student=None):
         ],
         [
             Paragraph("<b>Academic Session:</b>", ParagraphStyle('M13', fontName='Helvetica-Bold', fontSize=8, textColor=DARK_TEXT)),
-            Paragraph(bill.session or '2026-27', ParagraphStyle('M14', fontName='Helvetica', fontSize=8)),
+            Paragraph(bill.session or (bill.student.session if bill.student else '') or 'Active Session', ParagraphStyle('M14', fontName='Helvetica', fontSize=8)),
             Paragraph("<b>Parent / Guardian:</b>", ParagraphStyle('M15', fontName='Helvetica-Bold', fontSize=8, textColor=DARK_TEXT)),
             Paragraph(parent_name, ParagraphStyle('M16', fontName='Helvetica', fontSize=8)),
         ],

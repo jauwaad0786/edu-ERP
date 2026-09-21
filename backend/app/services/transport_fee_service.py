@@ -24,6 +24,7 @@ from app.models.transport_student import (
     TransportFeeTransaction, TransportFineRecord
 )
 from app.models.academic import Student
+from app.services.fee_ledger_service import get_current_academic_session
 
 _transport_payment_mutex = threading.Lock()
 
@@ -134,7 +135,7 @@ def generate_transport_fee_record(assignment, created_by_id=None, month=None, fe
             source_type='CHARGE',
             source_ref_id=assignment.id,
             description=remarks,
-            session=assignment.academic_year or '2026-27',
+            session=assignment.academic_year or get_current_academic_session(assignment.school_id),
             due_date=calc_due_date,
             billing_period=month_str,
             actor_user_id=created_by_id
@@ -250,7 +251,7 @@ def record_transport_fee_payment(record, amount, payment_mode='CASH', remarks=''
                 collected_by=collected_by_user,
                 department='TRANSPORT',
                 remarks=remarks or f"Transport payment collected at counter",
-                session=getattr(record, 'session', '2026-27') or '2026-27',
+                session=getattr(record, 'session', None) or get_current_academic_session(record.school_id),
                 allocations=[],
                 skip_record_id=record.id
             )

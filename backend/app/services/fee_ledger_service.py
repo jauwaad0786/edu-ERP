@@ -26,8 +26,42 @@ from app.models.fee_finance import (
     FeeCategory, FeeDepartment, FeeFrequency, BillStatus, PaymentMode, PaymentStatus
 )
 from app.models.academic import Student, Class
+from app.models.school import School
 from app.models.finance import Expense
 from app.models.user import User
+
+
+# ── Dynamic Academic Session Resolver ─────────────────────────────────────────
+
+def get_current_academic_session(school_id=None):
+    """
+    Dynamically resolves the current active academic session without any hardcoding:
+    1. Checks the School model's configured current_session in database.
+    2. Checks the most recent active session recorded in FeeBill.
+    3. Dynamically calculates based on current calendar date (April-March school cycle).
+    """
+    if school_id:
+        try:
+            school = School.query.get(school_id)
+            if school and school.current_session:
+                return school.current_session
+        except Exception:
+            pass
+
+    if school_id:
+        try:
+            latest_bill = FeeBill.query.filter_by(school_id=school_id).filter(
+                FeeBill.session.isnot(None), FeeBill.session != ''
+            ).order_by(FeeBill.id.desc()).first()
+            if latest_bill and latest_bill.session:
+                return latest_bill.session
+        except Exception:
+            pass
+
+    today = date.today()
+    start_yr = today.year if today.month >= 4 else today.year - 1
+    end_yr_short = str(start_yr + 1)[-2:]
+    return f"{start_yr}-{end_yr_short}"
 
 
 # ── Default Fee Heads Initializer ────────────────────────────────────────────
@@ -190,7 +224,7 @@ def get_student_ledger(student_id, session=None):
         'parent_phone':   parent_phone,
         'class_id':       student.class_id,
         'class_name':     class_name,
-        'session':        session or getattr(student, 'session', '2026-27'),
+        'session':        session or getattr(student, 'session', None) or get_current_academic_session(student.school_id),
         'services':       services_status,
         'total_billed':   round(total_billed, 2),
         'total_paid':     round(total_paid, 2),
@@ -309,7 +343,7 @@ def get_student_services_status(student_id):
 #  3. APPLICABLE CHARGES CALCULATOR (DYNAMIC MULTI-SERVICE ENGINE)
 # ═══════════════════════════════════════════════════════════════════════
 
-def get_student_applicable_charges(student_id, session='2026-27', bill_month=None):
+def get_student_applicable_charges(student_id, session=None, bill_month=None):
     """
     Evaluates applicable charges for a student across all departments:
     1. Class default fee structure (Tuition, Development, etc.)
@@ -321,6 +355,9 @@ def get_student_applicable_charges(student_id, session='2026-27', bill_month=Non
     student = Student.query.get(student_id)
     if not student:
         return []
+
+    if not session:
+        session = get_current_academic_session(student.school_id)
 
     ensure_default_fee_heads(student.school_id)
 
@@ -587,7 +624,7 @@ def register_or_sync_service_charge(
     school_id, student_id, amount, fee_head_code,
     department='ACCOUNTS', source_module='SCHOOL_FEES',
     source_type='CHARGE', source_ref_id=None,
-    description='', session='2026-27', due_date=None,
+    description='', session=None, due_date=None,
     billing_period=None, actor_user_id=None,
     billing_frequency='MONTHLY', period_start=None,
     period_end=None, coverage_label=None
@@ -598,6 +635,11 @@ def register_or_sync_service_charge(
     Guarantees instant visibility across Hostel, Library, Transport, Central Finance & Principal Dashboard.
     """
     student = Student.query.get(student_id)
+    if not student:
+        raise ValueError(f"Student with ID {student_id} not found.")
+
+    if not session:
+        session = get_current_academic_session(student.school_id)
     if not student:
         raise ValueError(f"Student #{student_id} not found.")
 
@@ -751,7 +793,7 @@ def register_or_sync_service_charge(
 #  3. ADVANCE DEMAND BILL GENERATOR
 # ═══════════════════════════════════════════════════════════════════════
 
-def generate_fee_bill(student_id, bill_month, due_date, actor_user, session='2026-27', force_regenerate=False):
+def generate_fee_bill(student_id, bill_month, due_date, actor_user, session=None, force_regenerate=False):
     """
     Generates an advance Fee Bill / Demand Notice for a student for a specific month.
     e.g., September 2026 bill generated on 25 August, due 5 September 2026.
@@ -759,6 +801,9 @@ def generate_fee_bill(student_id, bill_month, due_date, actor_user, session='202
     student = Student.query.get(student_id)
     if not student:
         raise ValueError(f"Student with ID {student_id} not found.")
+
+    if not session:
+        session = get_current_academic_session(student.school_id)
 
     st_display_name = student.user.name if (getattr(student, 'user', None) and student.user) else (student.admission_no or f"ID #{student.id}")
     if student.status == 'PROVISIONAL':
@@ -900,8 +945,10 @@ def generate_fee_bill(student_id, bill_month, due_date, actor_user, session='202
     return bill, True
 
 
-def bulk_generate_fee_bills(school_id, bill_month, due_date, class_id=None, section=None, student_ids=None, actor_user=None, session='2026-27', force_regenerate=False):
+def bulk_generate_fee_bills(school_id, bill_month, due_date, class_id=None, section=None, student_ids=None, actor_user=None, session=None, force_regenerate=False):
     """Bulk generates fee demand bills for selected or all confirmed ACTIVE students in a class/school."""
+    if not session:
+        session = get_current_academic_session(school_id)
     query = Student.query.filter_by(school_id=school_id, status='ACTIVE')
 
     if student_ids:
@@ -941,7 +988,7 @@ def bulk_generate_fee_bills(school_id, bill_month, due_date, class_id=None, sect
 #  3.5 AUTO-RECONCILIATION & BALANCE HEALING ENGINE
 # ═══════════════════════════════════════════════════════════════════════
 
-def reconcile_school_fee_balances(school_id, session='2026-27'):
+def reconcile_school_fee_balances(school_id, session=None):
     """
     Performs live auto-reconciliation across all fee bills, bill items, payments, and ledger balances.
     Guarantees:
@@ -952,6 +999,9 @@ def reconcile_school_fee_balances(school_id, session='2026-27'):
     """
     if not school_id:
         return
+
+    if not session:
+        session = get_current_academic_session(school_id)
 
     try:
         ensure_default_fee_heads(school_id)
@@ -1098,7 +1148,7 @@ def reconcile_school_fee_balances(school_id, session='2026-27'):
 def collect_fee_payment(
     student_id, amount_paid, payment_mode='CASH', transaction_ref='',
     allocations=None, collected_by=None, remarks=None,
-    department='ACCOUNTS', session='2026-27', skip_record_id=None
+    department='ACCOUNTS', session=None, skip_record_id=None
 ):
     """
     Collects student fee payment, generates unique receipt number,
@@ -1107,6 +1157,9 @@ def collect_fee_payment(
     student = Student.query.get(student_id)
     if not student:
         raise ValueError(f"Student with ID {student_id} not found.")
+
+    if not session:
+        session = get_current_academic_session(student.school_id)
 
     amount_paid = round(float(amount_paid), 2)
     if amount_paid <= 0:
@@ -1448,7 +1501,7 @@ def collect_fee_payment(
 def apply_concession_and_adjust_bills(
     school_id, student_id, fee_head_id=None,
     concession_type='WAIVER', discount_type='FIXED',
-    discount_value=0.0, reason='', session='2026-27',
+    discount_value=0.0, reason='', session=None,
     actor_user=None
 ):
     """
@@ -1458,6 +1511,9 @@ def apply_concession_and_adjust_bills(
     student = Student.query.get(student_id)
     if not student:
         raise ValueError("Student not found")
+
+    if not session:
+        session = get_current_academic_session(school_id)
 
     discount_value = float(discount_value)
     if discount_value <= 0:
@@ -1706,7 +1762,7 @@ def process_fee_refund(student_id, amount, refund_mode, reason, authorized_by, p
 #  6. EXECUTIVE FINANCE DASHBOARD & METRICS
 # ═══════════════════════════════════════════════════════════════════════
 
-def get_finance_dashboard_metrics(school_id, session='2026-27', month=None):
+def get_finance_dashboard_metrics(school_id, session=None, month=None):
     """
     Calculates executive financial metrics:
     - Total Billed, Total Collected, Outstanding, Expenses, Net Surplus
@@ -1715,6 +1771,8 @@ def get_finance_dashboard_metrics(school_id, session='2026-27', month=None):
     - Today's collection summary & payment mode distribution
     """
     ensure_default_fee_heads(school_id)
+    if not session:
+        session = get_current_academic_session(school_id)
     try:
         reconcile_school_fee_balances(school_id, session=session)
     except Exception:

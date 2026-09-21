@@ -16,7 +16,7 @@ from app.models.fee_finance import (
 from app.models.financial import FeeRecord, FeeGenerationBatch
 from app.models.academic import Student, Class
 from app.models.user import User
-from app.services.fee_ledger_service import ensure_default_fee_heads
+from app.services.fee_ledger_service import ensure_default_fee_heads, get_current_academic_session, reconcile_school_fee_balances
 
 
 def _parse_month(month_str=None):
@@ -56,11 +56,13 @@ def _normalize_service_code(val):
     return v or 'ACADEMIC'
 
 
-def get_academic_class_breakdown(school_id, month_code, session='2026-27'):
+def get_academic_class_breakdown(school_id, month_code, session=None):
     """
     Returns live class-wise fee generation and pending status.
     Accounts for class-specific tuition fees.
     """
+    if not session:
+        session = get_current_academic_session(school_id)
     classes = Class.query.filter_by(school_id=school_id).order_by(Class.name.asc(), Class.section.asc()).all()
     breakdown = []
     total_classes = len(classes)
@@ -178,11 +180,13 @@ def get_academic_class_breakdown(school_id, month_code, session='2026-27'):
     }
 
 
-def get_transport_route_breakdown(school_id, month_code, session='2026-27'):
+def get_transport_route_breakdown(school_id, month_code, session=None):
     """
     Returns live route-wise fee generation and pending status.
     Accounts for route-specific pricing slabs.
     """
+    if not session:
+        session = get_current_academic_session(school_id)
     from app.models.transport import Route
     from app.models.transport_student import StudentTransport, TransportFeeStructure
 
@@ -313,11 +317,13 @@ def get_transport_route_breakdown(school_id, month_code, session='2026-27'):
     }
 
 
-def get_hostel_room_type_breakdown(school_id, month_code, session='2026-27'):
+def get_hostel_room_type_breakdown(school_id, month_code, session=None):
     """
     Returns live room type / AC vs Non-AC fee generation and pending status.
     Accounts for room-type and AC vs Non-AC rate differences.
     """
+    if not session:
+        session = get_current_academic_session(school_id)
     from app.models.hostel import (
         HostelRoom, HostelBed, HostelBedAllocation, HostelFeeStructure
     )
@@ -469,8 +475,10 @@ def get_hostel_room_type_breakdown(school_id, month_code, session='2026-27'):
     }
 
 
-def get_service_detail_breakdown(school_id, service_code, month=None, session='2026-27'):
+def get_service_detail_breakdown(school_id, service_code, month=None, session=None):
     """Returns granular drill-down breakdown for a specific service."""
+    if not session:
+        session = get_current_academic_session(school_id)
     month_code, month_label, yr, mo = _parse_month(month)
     norm_code = _normalize_service_code(service_code)
     if norm_code == 'TUITION':
@@ -489,7 +497,7 @@ def get_service_detail_breakdown(school_id, service_code, month=None, session='2
         }
 
 
-def get_services_generation_status(school_id, month=None, session='2026-27', class_id=None, category=None):
+def get_services_generation_status(school_id, month=None, session=None, class_id=None, category=None):
     """
     Returns dynamic status of each service in the school for a given month:
     - Generated vs Not Generated vs Partially Generated
@@ -498,9 +506,10 @@ def get_services_generation_status(school_id, month=None, session='2026-27', cla
     - Billed, Collected, and Pending totals per service
     """
     ensure_default_fee_heads(school_id)
+    if not session:
+        session = get_current_academic_session(school_id)
     try:
-        from app.services.fee_ledger_service import reconcile_school_fee_balances
-        reconcile_school_fee_balances(school_id, session=session or '2026-27')
+        reconcile_school_fee_balances(school_id, session=session)
     except Exception:
         pass
     month_code, month_label, yr, mo = _parse_month(month)
@@ -793,7 +802,7 @@ def get_services_generation_status(school_id, month=None, session='2026-27', cla
 
 
 def get_services_collection_matrix(
-    school_id, month=None, session='2026-27', class_id=None,
+    school_id, month=None, session=None, class_id=None,
     status=None, service_code=None, search=None
 ):
     """
@@ -801,9 +810,10 @@ def get_services_collection_matrix(
     plus aggregated charts data (status ratios, service realization, class performance).
     """
     ensure_default_fee_heads(school_id)
+    if not session:
+        session = get_current_academic_session(school_id)
     try:
-        from app.services.fee_ledger_service import reconcile_school_fee_balances
-        reconcile_school_fee_balances(school_id, session=session or '2026-27')
+        reconcile_school_fee_balances(school_id, session=session)
     except Exception:
         pass
     month_code, month_label, yr, mo = _parse_month(month)

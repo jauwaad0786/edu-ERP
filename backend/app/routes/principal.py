@@ -1484,7 +1484,8 @@ def create_student():
 @permission_required('fees.reports.view')
 def fees_summary():
     sid = _school_id()
-    session_param = request.args.get('session') or '2026-27'
+    from app.services.fee_ledger_service import get_current_academic_session
+    session_param = request.args.get('session') or get_current_academic_session(sid)
     month_param   = request.args.get('month')
     class_id      = request.args.get('class_id', type=int)
     source_param  = request.args.get('source') or request.args.get('service')
@@ -2680,7 +2681,8 @@ def fees_monthly_trend():
     with canonical net due calculation.
     """
     sid = _school_id()
-    session = request.args.get('session') or '2026-27'
+    from app.services.fee_ledger_service import get_current_academic_session
+    session = request.args.get('session') or get_current_academic_session(sid)
     net_expr = FeeRecord.amount_due + func.coalesce(FeeRecord.fine, 0.0) - func.coalesce(FeeRecord.discount, 0.0)
     q = db.session.query(
         FeeRecord.month,
@@ -2713,7 +2715,8 @@ def fees_monthly_trend():
 @permission_required('fees.reports.view')
 def fees_class_summary():
     sid     = _school_id()
-    session = request.args.get('session') or '2026-27'
+    from app.services.fee_ledger_service import get_current_academic_session
+    session = request.args.get('session') or get_current_academic_session(sid)
     month   = request.args.get('month')
 
     from app.services.finance_aggregation_service import FinanceAggregationService
@@ -5030,7 +5033,8 @@ def dashboard():
     curr_month_str = today.strftime('%Y-%m')
     curr_month_name = today.strftime('%B %Y')
     school_obj = School.query.get(sid)
-    curr_session = (school_obj.current_session if (school_obj and school_obj.current_session) else getattr(school_obj, 'session', None)) or '2026-27'
+    from app.services.fee_ledger_service import get_current_academic_session
+    curr_session = (school_obj.current_session if (school_obj and school_obj.current_session) else getattr(school_obj, 'session', None)) or get_current_academic_session(sid)
 
     m_start = date(today.year, today.month, 1)
     if today.month == 12:

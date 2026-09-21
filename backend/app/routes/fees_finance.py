@@ -36,7 +36,7 @@ from app.services.fee_ledger_service import (
     collect_fee_payment, cancel_payment_receipt,
     process_fee_refund, get_finance_dashboard_metrics,
     ensure_default_fee_heads, apply_concession_and_adjust_bills,
-    reconcile_school_fee_balances
+    reconcile_school_fee_balances, get_current_academic_session
 )
 from app.services import payroll_engine as p_svc
 from app.utils.fee_pdf_generator import generate_fee_bill_pdf, generate_fee_receipt_pdf
@@ -75,7 +75,7 @@ def get_dashboard():
     if not user or not user.school_id:
         return jsonify({'error': 'Unauthorized'}), 401
 
-    session = request.args.get('session', '2026-27')
+    session = request.args.get('session') or get_current_academic_session(user.school_id)
     month   = request.args.get('month', None) # e.g. "2026-09"
 
     try:
@@ -223,7 +223,7 @@ def get_fee_structures():
     if not user or not user.school_id:
         return jsonify({'error': 'Unauthorized'}), 401
 
-    session = request.args.get('session', '2026-27')
+    session = request.args.get('session') or get_current_academic_session(user.school_id)
     class_id = request.args.get('class_id', None)
 
     try:
@@ -257,7 +257,7 @@ def create_fee_structure():
         return jsonify({'error': 'Structure name is required.'}), 400
 
     class_id = data.get('class_id')
-    session = data.get('session', '2026-27')
+    session = data.get('session') or get_current_academic_session(user.school_id)
 
     publish_status = data.get('publish_status', 'PUBLISHED')
     if publish_status not in ('PUBLISHED', 'DRAFT'):
@@ -412,7 +412,7 @@ def get_fee_setup_readiness():
     if not user or not user.school_id:
         return jsonify({'error': 'Unauthorized'}), 401
 
-    session = request.args.get('session', '2026-27')
+    session = request.args.get('session') or get_current_academic_session(user.school_id)
     try:
         classes = Class.query.filter_by(school_id=user.school_id).order_by(Class.name.asc(), Class.section.asc()).all()
 
@@ -825,7 +825,7 @@ def get_payment_plans():
     if not user or not user.school_id:
         return jsonify({'error': 'Unauthorized'}), 401
 
-    session = request.args.get('session', '2026-27')
+    session = request.args.get('session') or get_current_academic_session(user.school_id)
     _seed_default_payment_plans(user.school_id, session)
 
     plans = FeePaymentPlan.query.filter_by(
@@ -850,7 +850,7 @@ def create_payment_plan():
     if not name or not code:
         return jsonify({'error': 'Name and unique code are required.'}), 400
 
-    session = data.get('session', '2026-27')
+    session = data.get('session') or get_current_academic_session(user.school_id)
     cats = data.get('eligible_categories', ['ACADEMIC'])
     if not isinstance(cats, list):
         cats = ['ACADEMIC']
@@ -934,7 +934,7 @@ def get_admission_fee_plan():
         return jsonify({'error': 'Unauthorized'}), 401
 
     class_id = request.args.get('class_id', type=int)
-    session = request.args.get('session', '2026-27')
+    session = request.args.get('session') or get_current_academic_session(user.school_id)
 
     _seed_default_payment_plans(user.school_id, session)
 
@@ -1108,7 +1108,7 @@ def get_applicable_charges(student_id):
     if not user or not user.school_id:
         return jsonify({'error': 'Unauthorized'}), 401
 
-    session = request.args.get('session', '2026-27')
+    session = request.args.get('session') or get_current_academic_session(user.school_id)
     charges = get_student_applicable_charges(student_id, session=session)
     return jsonify(charges), 200
 
@@ -1127,7 +1127,7 @@ def generate_bills():
     data = request.get_json() or {}
     bill_month = data.get('bill_month') # e.g. "2026-09"
     due_date   = data.get('due_date')   # e.g. "2026-09-05"
-    session    = data.get('session', '2026-27')
+    session    = data.get('session') or get_current_academic_session(user.school_id)
     force_regen= data.get('force_regenerate', False)
 
     if not bill_month or not due_date:
@@ -1185,7 +1185,7 @@ def list_bills():
     department = request.args.get('department')
 
     try:
-        reconcile_school_fee_balances(user.school_id, session=session or '2026-27')
+        reconcile_school_fee_balances(user.school_id, session=session)
     except Exception:
         pass
 
@@ -1304,7 +1304,7 @@ def collect_payment():
     allocations = data.get('allocations', [])
     remarks = data.get('remarks', '')
     department = data.get('department', 'ACCOUNTS')
-    session = data.get('session', '2026-27')
+    session = data.get('session') or get_current_academic_session(user.school_id)
 
     if not student_id or amount is None or float(amount) <= 0:
         return jsonify({'error': 'Valid student_id and payment amount (> 0) are required.'}), 400
@@ -1340,7 +1340,7 @@ def list_payments():
     if not user or not user.school_id:
         return jsonify({'error': 'Unauthorized'}), 401
 
-    session = request.args.get('session', '2026-27')
+    session = request.args.get('session') or get_current_academic_session(user.school_id)
     search  = (request.args.get('search') or '').strip()
     status  = request.args.get('status')
     mode    = request.args.get('payment_mode')
@@ -1680,7 +1680,7 @@ def get_concessions():
     if not user or not user.school_id:
         return jsonify({'error': 'Unauthorized'}), 401
 
-    session = request.args.get('session', '2026-27')
+    session = request.args.get('session') or get_current_academic_session(user.school_id)
     concessions = StudentConcession.query.filter_by(school_id=user.school_id, session=session).all()
     return jsonify([c.to_dict() for c in concessions]), 200
 
@@ -1711,7 +1711,7 @@ def apply_concession():
             discount_type=d_type,
             discount_value=d_val,
             reason=reason,
-            session=data.get('session', '2026-27'),
+            session=data.get('session') or get_current_academic_session(user.school_id),
             actor_user=user
         )
         return jsonify(conc.to_dict()), 201
@@ -1774,7 +1774,7 @@ def get_outstanding():
         return jsonify({'error': 'Unauthorized'}), 401
 
     class_id = request.args.get('class_id')
-    session  = request.args.get('session', '2026-27')
+    session  = request.args.get('session') or get_current_academic_session(user.school_id)
     month    = request.args.get('month')
 
     # Auto-cleanup: cancel and zero-out any outstanding balances on bills belonging to deleted / former students
@@ -1900,7 +1900,7 @@ def get_service_generation_status_endpoint():
         return jsonify({'error': 'Unauthorized'}), 401
 
     month    = request.args.get('month')
-    session  = request.args.get('session', '2026-27')
+    session  = request.args.get('session') or get_current_academic_session(user.school_id)
     class_id = request.args.get('class_id')
     category = request.args.get('category')
 
@@ -1923,7 +1923,7 @@ def get_service_collection_matrix_endpoint():
         return jsonify({'error': 'Unauthorized'}), 401
 
     month        = request.args.get('month')
-    session      = request.args.get('session', '2026-27')
+    session      = request.args.get('session') or get_current_academic_session(user.school_id)
     class_id     = request.args.get('class_id')
     status       = request.args.get('status')
     service_code = request.args.get('service_code')
@@ -1951,7 +1951,7 @@ def get_service_breakdown_endpoint(service_code):
         return jsonify({'error': 'Unauthorized'}), 401
 
     month   = request.args.get('month')
-    session = request.args.get('session', '2026-27')
+    session = request.args.get('session') or get_current_academic_session(user.school_id)
 
     from app.services.fee_service_intelligence import get_service_detail_breakdown
     data = get_service_detail_breakdown(
@@ -1977,7 +1977,7 @@ def generate_service_fee_endpoint(service_code):
     data = request.get_json() or {}
     bill_month = data.get('bill_month') or data.get('month') or date.today().strftime('%Y-%m')
     due_date   = data.get('due_date') or f"{bill_month}-10"
-    session    = data.get('session', '2026-27')
+    session    = data.get('session') or get_current_academic_session(user.school_id)
     class_id   = data.get('class_id')
     route_id   = data.get('route_id')
     room_type  = data.get('room_type')
@@ -2100,7 +2100,7 @@ def reconcile_financial_data():
     if not user or not user.school_id:
         return jsonify({'error': 'Unauthorized'}), 401
 
-    session = request.args.get('session') or '2026-27'
+    session = request.args.get('session') or get_current_academic_session(user.school_id)
     from app.services.fee_central_service import FeeCentralService
     result = FeeCentralService.sync_all_existing_records(school_id=user.school_id, session=session)
     return jsonify({
@@ -2118,7 +2118,7 @@ def get_reconciliation_audit():
     if not user or not user.school_id:
         return jsonify({'error': 'Unauthorized'}), 401
 
-    session = request.args.get('session') or '2026-27'
+    session = request.args.get('session') or get_current_academic_session(user.school_id)
     from app.services.finance_aggregation_service import FinanceAggregationService
     audit_report = FinanceAggregationService.audit_reconciliation(school_id=user.school_id, session=session)
     return jsonify(audit_report), 200

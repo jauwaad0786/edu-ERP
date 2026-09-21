@@ -144,7 +144,7 @@ def record_library_fine_payment(fine_txn, payment_amount, payment_mode='CASH', c
     # ── Canonical Central Finance Payment Collection ──
     if student:
         try:
-            from app.services.fee_ledger_service import collect_fee_payment
+            from app.services.fee_ledger_service import collect_fee_payment, get_current_academic_session
             from app.models.user import User
             librarian_user = User.query.get(collected_by_user_id) if collected_by_user_id else None
             central_pmt = collect_fee_payment(
@@ -154,7 +154,7 @@ def record_library_fine_payment(fine_txn, payment_amount, payment_mode='CASH', c
                 collected_by=librarian_user,
                 department='LIBRARY',
                 remarks=remarks or f'Library Fine Payment — Fine #{fine_txn.id} ({fine_txn.reason})',
-                session=getattr(student, 'session', '2026-27') or '2026-27',
+                session=getattr(student, 'session', None) or get_current_academic_session(student.school_id),
                 allocations=[]
             )
             if central_pmt:
