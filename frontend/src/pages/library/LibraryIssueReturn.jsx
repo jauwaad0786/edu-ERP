@@ -249,6 +249,8 @@ export default function LibraryIssueReturn() {
     boxSizing: 'border-box',
   };
 
+  const textMuted = darkMode ? '#94a3b8' : '#64748b';
+
   return (
     <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
       <Sidebar darkMode={darkMode} />
