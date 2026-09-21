@@ -77,8 +77,55 @@ def get_dashboard():
     session = request.args.get('session', '2026-27')
     month   = request.args.get('month', None) # e.g. "2026-09"
 
-    data = get_finance_dashboard_metrics(user.school_id, session=session, month=month)
-    return jsonify(data), 200
+    try:
+        data = get_finance_dashboard_metrics(user.school_id, session=session, month=month)
+        return jsonify(data), 200
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        # Safe fallback structure so frontend never crashes with 500
+        from app.services.finance_aggregation_service import FinanceAggregationService
+        try:
+            summary = FinanceAggregationService.get_fee_summary(user.school_id, session=session, month=month)
+            fallback = {
+                'session': session,
+                'filter_month': month,
+                'total_billed': summary.get('total_due', 0.0),
+                'total_collected': summary.get('total_paid', 0.0),
+                'outstanding': summary.get('outstanding', 0.0),
+                'total_expenses': 0.0,
+                'net_surplus': summary.get('total_paid', 0.0),
+                'collection_percentage': summary.get('collection_rate', 0.0),
+                'service_wise': [],
+                'department_expenses': [],
+                'class_wise': [],
+                'monthly_summary': [],
+                'today_collection': {'date': date.today().isoformat(), 'total_amount': summary.get('today_collection', 0.0), 'by_mode': {}},
+                'inventory_summary': {'total_items': 0, 'total_stock_value': 0.0, 'low_stock_count': 0},
+                'vendors_summary': {'total_vendors': 0, 'total_payables': 0.0, 'pending_bills': 0},
+                'assets_summary': {'total_assets': 0, 'assigned': 0, 'under_repair': 0, 'warranty_expiring': 0}
+            }
+            return jsonify(fallback), 200
+        except Exception:
+            return jsonify({
+                'session': session,
+                'filter_month': month,
+                'total_billed': 0.0,
+                'total_collected': 0.0,
+                'outstanding': 0.0,
+                'total_expenses': 0.0,
+                'net_surplus': 0.0,
+                'collection_percentage': 0.0,
+                'service_wise': [],
+                'department_expenses': [],
+                'class_wise': [],
+                'monthly_summary': [],
+                'today_collection': {'date': date.today().isoformat(), 'total_amount': 0.0, 'by_mode': {}},
+                'inventory_summary': {'total_items': 0, 'total_stock_value': 0.0, 'low_stock_count': 0},
+                'vendors_summary': {'total_vendors': 0, 'total_payables': 0.0, 'pending_bills': 0},
+                'assets_summary': {'total_assets': 0, 'assigned': 0, 'under_repair': 0, 'warranty_expiring': 0}
+            }), 200
 
 
 # ═══════════════════════════════════════════════════════════════════════

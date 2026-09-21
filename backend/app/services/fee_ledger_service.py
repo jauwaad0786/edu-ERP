@@ -1185,6 +1185,40 @@ def collect_fee_payment(
         reason="Fee payment collection",
     )
     db.session.add(audit)
+
+    # System-wide Audit Log (for /api/audit/school/logs)
+    try:
+        from app.models.audit import log_school_action
+        student_user = student.user if student else None
+        student_name = student_user.name if student_user else f"Student #{student_id}"
+        cls = student.class_ref if student and hasattr(student, 'class_ref') and student.class_ref else None
+        class_name = f"{cls.name} - {cls.section}" if cls else ''
+        log_school_action(
+            school_id=student.school_id,
+            user=collected_by,
+            module='FINANCE',
+            submodule='FEES',
+            action='PAYMENT_COLLECTED',
+            entity_type='FeePayment',
+            entity_id=payment.id,
+            student_id=student_id,
+            class_id=student.class_id,
+            new_value={
+                'receipt_no': payment.receipt_no,
+                'total_paid': payment.total_paid,
+                'payment_mode': payment.payment_mode,
+                'department': department,
+                'student_name': student_name,
+                'class_name': class_name,
+                'admission_no': student.admission_no or ''
+            },
+            status='SUCCESS',
+            severity='INFO',
+            remarks=f"Fee Collected: ₹{payment.total_paid:.2f} via {payment.payment_mode} from {student_name} ({class_name or 'No Class'}) - Receipt #{payment.receipt_no}"
+        )
+    except Exception as audit_err:
+        print(f"[WARN] Error creating school audit log: {audit_err}")
+
     db.session.commit()
 
     return payment
@@ -1351,6 +1385,25 @@ def cancel_payment_receipt(payment_id, actor_user, cancel_reason):
         reason=cancel_reason,
     )
     db.session.add(audit)
+
+    try:
+        from app.models.audit import log_school_action
+        log_school_action(
+            school_id=payment.school_id,
+            user=actor_user,
+            module='FINANCE',
+            submodule='FEES',
+            action='RECEIPT_CANCELLED',
+            entity_type='FeePayment',
+            entity_id=payment.id,
+            student_id=payment.student_id,
+            status='WARNING',
+            severity='WARNING',
+            remarks=f"Receipt #{payment.receipt_no} Cancelled (₹{payment.total_paid:.2f}). Reason: {cancel_reason}"
+        )
+    except Exception as a_err:
+        print(f"[WARN] Error logging receipt cancellation: {a_err}")
+
     db.session.commit()
 
     return payment
@@ -1408,6 +1461,25 @@ def process_fee_refund(student_id, amount, refund_mode, reason, authorized_by, p
         reason=reason,
     )
     db.session.add(audit)
+
+    try:
+        from app.models.audit import log_school_action
+        log_school_action(
+            school_id=student.school_id,
+            user=authorized_by,
+            module='FINANCE',
+            submodule='FEES',
+            action='FEE_REFUNDED',
+            entity_type='FeeRefund',
+            entity_id=refund.id,
+            student_id=student_id,
+            status='SUCCESS',
+            severity='WARNING',
+            remarks=f"Refund of ₹{amount:.2f} issued to {student.user.name if student.user else 'Student'}. Reason: {reason}"
+        )
+    except Exception as a_err:
+        print(f"[WARN] Error logging refund action: {a_err}")
+
     db.session.commit()
 
     return refund
@@ -1445,11 +1517,13 @@ def get_finance_dashboard_metrics(school_id, session='2026-27', month=None):
     bills_in_session_count = bill_query.count()
     if bills_in_session_count == 0 and not month:
         try:
-            from app.services.fee_central_service import FeeCentralService
-            FeeCentralService.sync_all_existing_records(school_id, session=session)
-            bills_in_session_count = bill_query.count()
+            from app.models.financial import FeeRecord
+            if FeeRecord.query.filter_by(school_id=school_id, session=session).count() > 0:
+                from app.services.fee_central_service import FeeCentralService
+                FeeCentralService.sync_all_existing_records(school_id, session=session)
+                bills_in_session_count = bill_query.count()
         except Exception:
-            pass
+            db.session.rollback()
 
     total_billed = bill_query.with_entities(func.coalesce(func.sum(FeeBill.total_payable), 0.0)).scalar() or 0.0
     total_collected = pay_query.with_entities(func.coalesce(func.sum(FeePayment.total_paid), 0.0)).scalar() or 0.0

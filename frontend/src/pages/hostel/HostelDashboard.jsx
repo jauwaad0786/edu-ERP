@@ -53,10 +53,10 @@ export default function HostelDashboard() {
             position: 'relative', overflow: 'hidden',
             borderRadius: '20px', padding: '24px 28px', marginBottom: '22px',
             background: darkMode
-              ? 'linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%)'
-              : 'linear-gradient(135deg, #4f46e5 0%, #6366f1 50%, #818cf8 100%)',
+              ? 'linear-gradient(135deg, #021f44 0%, #032d60 50%, #0f172a 100%)'
+              : 'linear-gradient(135deg, #014486 0%, #0176d3 50%, #0284c7 100%)',
             color: '#ffffff',
-            boxShadow: '0 10px 30px -5px rgba(79, 70, 229, 0.35)'
+            boxShadow: '0 10px 30px -5px rgba(1, 118, 211, 0.35)'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
               <div>
@@ -84,7 +84,7 @@ export default function HostelDashboard() {
                 <button
                   onClick={() => navigate('/hostel/admission')}
                   style={{
-                    background: '#ffffff', color: '#4f46e5', border: 'none', borderRadius: '10px',
+                    background: '#ffffff', color: '#0176d3', border: 'none', borderRadius: '10px',
                     padding: '10px 16px', fontSize: '13px', fontWeight: 800, cursor: 'pointer',
                     boxShadow: '0 4px 14px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: '6px'
                   }}

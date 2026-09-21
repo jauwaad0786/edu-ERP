@@ -633,18 +633,59 @@ def issue_book():
     Issues a book copy to an active library member.
     Body: { member_id, barcode } OR { member_id, book_id }
     """
-    data      = request.get_json() or {}
-    member_id = data.get('member_id')
-    barcode   = data.get('barcode')
-    book_id   = data.get('book_id')
+    data       = request.get_json() or {}
+    member_id  = data.get('member_id')
+    user_id    = data.get('user_id')
+    student_id = data.get('student_id')
+    barcode    = data.get('barcode')
+    book_id    = data.get('book_id')
 
-    if not member_id or (not barcode and not book_id):
-        return jsonify({'error': 'member_id and (barcode or book_id) are required'}), 400
+    if not member_id and not user_id and not student_id:
+        return jsonify({'error': 'member_id, user_id, or student_id is required'}), 400
+    if not barcode and not book_id:
+        return jsonify({'error': 'barcode or book_id is required'}), 400
 
     sid    = _school_id()
-    member = LibraryMember.query.get_or_404(member_id)
-    if member.school_id != sid:
-        return jsonify({'error': 'Unauthorized'}), 403
+    member = None
+    if member_id:
+        member = LibraryMember.query.filter_by(id=member_id, school_id=sid).first()
+    if not member and user_id:
+        member = LibraryMember.query.filter_by(user_id=user_id, school_id=sid).first()
+    if not member and student_id:
+        st = Student.query.filter_by(id=student_id, school_id=sid).first()
+        if st and st.user_id:
+            member = LibraryMember.query.filter_by(user_id=st.user_id, school_id=sid).first()
+            if not member:
+                member = LibraryMember(
+                    school_id   = sid,
+                    user_id     = st.user_id,
+                    card_number = _gen_card_number(sid),
+                    member_type = 'STUDENT',
+                    status      = 'ACTIVE'
+                )
+                db.session.add(member)
+                db.session.flush()
+    if not member and member_id:
+        # Check if member_id was passed as a user_id
+        u = User.query.filter_by(id=member_id, school_id=sid).first()
+        if u:
+            member = LibraryMember.query.filter_by(user_id=u.id, school_id=sid).first()
+            if not member:
+                m_type = 'STUDENT' if u.role == UserRole.STUDENT else 'TEACHER'
+                member = LibraryMember(
+                    school_id   = sid,
+                    user_id     = u.id,
+                    card_number = _gen_card_number(sid),
+                    member_type = m_type,
+                    status      = 'ACTIVE'
+                )
+                db.session.add(member)
+                db.session.flush()
+
+    if not member:
+        return jsonify({'error': 'Library member not found or could not be enrolled'}), 404
+
+    member_id = member.id
 
     if member.status != 'ACTIVE':
         return jsonify({'error': f'Member account is {member.status} — cannot issue books'}), 400
@@ -691,9 +732,24 @@ def issue_book():
             'error': f'This book is currently reserved by {reserver_name} (position #1 in queue).'
         }), 409
 
-    # 5. Issue Book
+    # 5. Issue Book with custom return days / due date
     issue_date = date.today()
-    due_date   = date.fromordinal(issue_date.toordinal() + settings.issue_duration_days)
+    custom_days = data.get('days') or data.get('return_days') or data.get('duration_days')
+    custom_due_date = data.get('due_date')
+
+    if custom_due_date:
+        try:
+            due_date = datetime.strptime(str(custom_due_date)[:10], '%Y-%m-%d').date()
+        except Exception:
+            due_date = date.fromordinal(issue_date.toordinal() + settings.issue_duration_days)
+    elif custom_days is not None and str(custom_days).strip() != '':
+        try:
+            days_int = max(1, int(custom_days))
+            due_date = date.fromordinal(issue_date.toordinal() + days_int)
+        except Exception:
+            due_date = date.fromordinal(issue_date.toordinal() + settings.issue_duration_days)
+    else:
+        due_date = date.fromordinal(issue_date.toordinal() + settings.issue_duration_days)
 
     issue = BookIssue(
         school_id  = sid,

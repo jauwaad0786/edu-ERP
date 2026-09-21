@@ -68,12 +68,12 @@ export default function LibraryDashboard() {
             position: 'relative', overflow: 'hidden',
             borderRadius: '24px', padding: '28px 34px', marginBottom: '24px',
             background: darkMode
-              ? 'radial-gradient(circle at 85% 20%, rgba(168,85,247,0.25) 0%, transparent 60%), linear-gradient(135deg, #1e0938 0%, #3b0764 45%, #0f172a 100%)'
-              : 'radial-gradient(circle at 85% 20%, rgba(255,255,255,0.18) 0%, transparent 50%), linear-gradient(135deg, #3b0764 0%, #581c87 35%, #7c3aed 75%, #a855f7 100%)',
+              ? 'radial-gradient(circle at 85% 20%, rgba(1,118,211,0.25) 0%, transparent 60%), linear-gradient(135deg, #021f44 0%, #032d60 45%, #0f172a 100%)'
+              : 'radial-gradient(circle at 85% 20%, rgba(255,255,255,0.18) 0%, transparent 50%), linear-gradient(135deg, #014486 0%, #0176d3 45%, #0284c7 100%)',
             color: '#ffffff',
             boxShadow: darkMode
               ? '0 12px 35px -5px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1)'
-              : '0 15px 35px -5px rgba(124,58,237,0.35), inset 0 1px 0 rgba(255,255,255,0.3)',
+              : '0 15px 35px -5px rgba(1,118,211,0.35), inset 0 1px 0 rgba(255,255,255,0.3)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
@@ -88,7 +88,7 @@ export default function LibraryDashboard() {
             }} />
             <div style={{
               position: 'absolute', bottom: '-40px', left: '15%', width: '180px', height: '180px',
-              borderRadius: '50%', background: 'rgba(192,132,252,0.2)', pointerEvents: 'none', filter: 'blur(40px)'
+              borderRadius: '50%', background: 'rgba(1,118,211,0.25)', pointerEvents: 'none', filter: 'blur(40px)'
             }} />
 
             <div style={{ flex: 1, minWidth: '300px', zIndex: 2 }}>
@@ -103,7 +103,7 @@ export default function LibraryDashboard() {
                 </span>
                 <span style={{
                   padding: '4px 12px', borderRadius: '20px',
-                  background: 'rgba(255,255,255,0.12)', color: '#f3e8ff',
+                  background: 'rgba(255,255,255,0.15)', color: '#e0f2fe',
                   fontSize: '11.5px', fontWeight: 700, backdropFilter: 'blur(6px)'
                 }}>
                   Active Circulation Engine
@@ -129,7 +129,7 @@ export default function LibraryDashboard() {
                 <button
                   onClick={() => navigate('/library/issue-return')}
                   style={{
-                    background: '#ffffff', color: '#581c87', border: 'none', borderRadius: '12px',
+                    background: '#ffffff', color: '#0176d3', border: 'none', borderRadius: '12px',
                     padding: '11px 20px', fontSize: '13.5px', fontWeight: 800, cursor: 'pointer',
                     boxShadow: '0 6px 18px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: '8px',
                     transition: 'all 0.2s'
@@ -137,7 +137,7 @@ export default function LibraryDashboard() {
                   onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; }}
                   onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
                 >
-                  <i className="ti ti-arrows-exchange" style={{ color: '#7c3aed' }} /> Issue / Return Book
+                  <i className="ti ti-arrows-exchange" style={{ color: '#0176d3' }} /> Issue / Return Book
                 </button>
                 <button
                   onClick={() => navigate('/library/books')}

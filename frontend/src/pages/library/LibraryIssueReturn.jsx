@@ -30,17 +30,39 @@ export default function LibraryIssueReturn() {
   const [paymentMode, setPaymentMode]     = useState('CASH');
   const [returning, setReturning]         = useState(false);
 
-  // ── Settings ──
+  // ── Settings & Return Period Customization ──
   const [librarySettings, setLibrarySettings] = useState(null);
+  const [returnDays, setReturnDays] = useState(14);
+  const [customDueDate, setCustomDueDate] = useState('');
+
   useEffect(() => {
-    api.get('/library/settings').then(r => setLibrarySettings(r.data)).catch(() => {});
+    api.get('/library/settings').then(r => {
+      setLibrarySettings(r.data);
+      if (r.data?.issue_duration_days) {
+        setReturnDays(r.data.issue_duration_days);
+      }
+    }).catch(() => {});
   }, []);
 
   function previewDueDate() {
-    const days = librarySettings?.issue_duration_days || 14;
+    if (customDueDate) {
+      const d = new Date(customDueDate);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const diffTime = d.getTime() - today.getTime();
+      const diffDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+      return {
+        days: diffDays,
+        dateStr: d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+      };
+    }
+    const days = parseInt(returnDays) || librarySettings?.issue_duration_days || 14;
     const d = new Date();
     d.setDate(d.getDate() + days);
-    return { days, dateStr: d.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }) };
+    return {
+      days,
+      dateStr: d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+    };
   }
 
   // ── Currently Issued List ──
@@ -57,13 +79,43 @@ export default function LibraryIssueReturn() {
 
   useEffect(() => { loadCurrentlyIssued(); }, [loadCurrentlyIssued]);
 
-  // ── Search Member (Debounced) ──
+  // ── Search Member (Existing Members + All Eligible School Students) ──
   useEffect(() => {
     if (!memberSearch.trim()) { setMemberResults([]); return; }
-    const t = setTimeout(() => {
-      api.get('/library/members?search=' + encodeURIComponent(memberSearch.trim()))
-        .then(r => setMemberResults(r.data || []))
-        .catch(() => setMemberResults([]));
+    const t = setTimeout(async () => {
+      try {
+        const [memRes, eligibleRes] = await Promise.allSettled([
+          api.get('/library/members?search=' + encodeURIComponent(memberSearch.trim())),
+          api.get('/library/members/search-eligible?search=' + encodeURIComponent(memberSearch.trim()) + '&type=STUDENT')
+        ]);
+
+        const existingMembers = (memRes.status === 'fulfilled' && Array.isArray(memRes.value?.data))
+          ? memRes.value.data
+          : [];
+        const existingUserIds = new Set(existingMembers.map(m => m.user_id));
+
+        const eligibleStudents = ((eligibleRes.status === 'fulfilled' && Array.isArray(eligibleRes.value?.data))
+          ? eligibleRes.value.data
+          : [])
+          .filter(s => !existingUserIds.has(s.user_id))
+          .map(s => ({
+            id: null,
+            user_id: s.user_id,
+            student_id: s.student_id,
+            name: s.name,
+            card_number: 'Auto-Generate on Issue',
+            member_type: 'STUDENT',
+            current_issues: 0,
+            class_name: s.class_name,
+            roll_number: s.roll_number,
+            admission_no: s.admission_no,
+            is_new_student: true
+          }));
+
+        setMemberResults([...existingMembers, ...eligibleStudents]);
+      } catch (err) {
+        setMemberResults([]);
+      }
     }, 250);
     return () => clearTimeout(t);
   }, [memberSearch]);
@@ -103,10 +155,15 @@ export default function LibraryIssueReturn() {
 
     setIssuing(true);
     try {
-      const { data } = await api.post('/library/issue', {
-        member_id: selectedMember.id,
+      const payload = {
+        member_id: selectedMember.id || undefined,
+        user_id: selectedMember.user_id || undefined,
+        student_id: selectedMember.student_id || undefined,
         book_id: selectedBook.id,
-      });
+        days: returnDays,
+        due_date: customDueDate || undefined,
+      };
+      const { data } = await api.post('/library/issue', payload);
       toast.success(`Book issued: "${data.book_title}" to ${data.member_name} (Due: ${data.due_date})`);
       setSelectedBook(null);
       setBookSearch('');
@@ -301,14 +358,14 @@ export default function LibraryIssueReturn() {
 
                     {memberResults.length > 0 && (
                       <div style={{
-                        marginTop: '8px', maxHeight: '220px', overflowY: 'auto',
+                        marginTop: '8px', maxHeight: '240px', overflowY: 'auto',
                         background: darkMode ? '#1e293b' : '#ffffff',
-                        border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`,
-                        borderRadius: '10px', boxShadow: '0 8px 20px rgba(0,0,0,0.15)'
+                        border: `1.5px solid ${darkMode ? '#334155' : '#0176d3'}`,
+                        borderRadius: '10px', boxShadow: '0 8px 22px rgba(1,118,211,0.18)'
                       }}>
-                        {memberResults.map(m => (
+                        {memberResults.map((m, idx) => (
                           <div
-                            key={m.id}
+                            key={m.id || `eligible-${m.user_id}-${idx}`}
                             role="button"
                             tabIndex={0}
                             onClick={() => { setSelectedMember(m); setMemberResults([]); }}
@@ -322,18 +379,45 @@ export default function LibraryIssueReturn() {
                             style={{
                               padding: '10px 14px', cursor: 'pointer', fontSize: '13px',
                               borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}`,
-                              display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                              background: m.is_new_student ? (darkMode ? '#1e3a8a22' : '#f0f9ff') : 'transparent'
                             }}
-                            onMouseEnter={e => e.currentTarget.style.background = darkMode ? '#334155' : '#f1f5f9'}
-                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                            onMouseEnter={e => e.currentTarget.style.background = darkMode ? '#334155' : '#e0f2fe'}
+                            onMouseLeave={e => e.currentTarget.style.background = m.is_new_student ? (darkMode ? '#1e3a8a22' : '#f0f9ff') : 'transparent'}
                           >
                             <div>
-                              <strong style={{ color: darkMode ? '#f1f5f9' : '#0f172a' }}>{m.name}</strong>
-                              <span style={{ fontSize: '11.5px', color: '#94a3b8', marginLeft: '8px' }}>({m.member_type})</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <strong style={{ color: darkMode ? '#f1f5f9' : '#0f172a' }}>{m.name}</strong>
+                                {m.is_new_student ? (
+                                  <span style={{
+                                    fontSize: '10px', fontWeight: 800, padding: '2px 6px',
+                                    borderRadius: '6px', background: '#0284c7', color: '#ffffff'
+                                  }}>
+                                    Student (Auto-Enroll)
+                                  </span>
+                                ) : (
+                                  <span style={{
+                                    fontSize: '10.5px', fontWeight: 700, padding: '1px 6px',
+                                    borderRadius: '6px', background: 'rgba(1,118,211,0.12)', color: '#0176d3'
+                                  }}>
+                                    Member
+                                  </span>
+                                )}
+                              </div>
+                              {m.class_name && (
+                                <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
+                                  Class: {m.class_name} · Roll: {m.roll_number || '—'} · Adm: {m.admission_no || '—'}
+                                </div>
+                              )}
                             </div>
-                            <span style={{ fontSize: '11px', color: '#0176d3', fontFamily: 'monospace', fontWeight: 700 }}>
-                              {m.card_number}
-                            </span>
+                            <div style={{ textAlign: 'right' }}>
+                              <span style={{
+                                fontSize: '11px', color: m.is_new_student ? '#0284c7' : '#0176d3',
+                                fontFamily: 'monospace', fontWeight: 700
+                              }}>
+                                {m.is_new_student ? '+ Enroll on Issue' : m.card_number}
+                              </span>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -445,25 +529,109 @@ export default function LibraryIssueReturn() {
                 )}
               </div>
 
-              {/* Step 3: Confirm Issue Bar */}
-              <div style={{ ...cardStyle, gridColumn: 'span 2', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: darkMode ? '#1e293b' : '#f8fafc' }}>
-                <div style={{ fontSize: '13.5px', color: darkMode ? '#94a3b8' : '#475569' }}>
-                  📅 Issue Period: <strong style={{ color: darkMode ? '#fff' : '#0f172a' }}>{previewDueDate().days} Days</strong> · Return Due Date: <strong style={{ color: '#ef4444' }}>{previewDueDate().dateStr}</strong>
+              {/* Step 3: Interactive Return Period & Due Date Customization */}
+              <div style={{
+                ...cardStyle, gridColumn: 'span 2', background: darkMode ? '#1e293b' : '#f8fafc',
+                border: `1.5px solid ${darkMode ? '#334155' : '#cbd5e1'}`
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px', marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(1,118,211,0.15)', color: '#0176d3', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '15px' }}>
+                      3
+                    </div>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: '15.5px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                        Set Return Duration &amp; Due Date (वापस करने की अवधि)
+                      </h4>
+                      <div style={{ fontSize: '12px', color: textMuted, marginTop: '2px' }}>
+                        Specify allowed borrowing days or pick an exact return date before overdue fines begin
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Preset duration chips + custom inputs */}
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    {[7, 14, 21, 30].map(d => (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => { setReturnDays(d); setCustomDueDate(''); }}
+                        style={{
+                          padding: '6px 14px', borderRadius: '8px', fontSize: '12.5px', fontWeight: 700, cursor: 'pointer',
+                          border: (returnDays === d && !customDueDate) ? '1.5px solid #0176d3' : `1px solid ${darkMode ? '#475569' : '#cbd5e1'}`,
+                          background: (returnDays === d && !customDueDate) ? '#0176d3' : (darkMode ? '#0f172a' : '#ffffff'),
+                          color: (returnDays === d && !customDueDate) ? '#ffffff' : (darkMode ? '#e2e8f0' : '#334155'),
+                          boxShadow: (returnDays === d && !customDueDate) ? '0 2px 8px rgba(1,118,211,0.3)' : 'none',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        {d} Days
+                      </button>
+                    ))}
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '4px' }}>
+                      <span style={{ fontSize: '12px', color: textMuted, fontWeight: 600 }}>Custom:</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="180"
+                        value={customDueDate ? '' : returnDays}
+                        placeholder="Days"
+                        onChange={e => {
+                          const val = parseInt(e.target.value) || 1;
+                          setReturnDays(val);
+                          setCustomDueDate('');
+                        }}
+                        style={{
+                          width: '65px', padding: '6px 8px', borderRadius: '8px', fontSize: '12.5px',
+                          border: `1.5px solid ${darkMode ? '#475569' : '#cbd5e1'}`,
+                          background: darkMode ? '#0f172a' : '#ffffff',
+                          color: darkMode ? '#ffffff' : '#0f172a', textAlign: 'center', fontWeight: 700
+                        }}
+                      />
+                      <span style={{ fontSize: '12px', color: textMuted, fontWeight: 600 }}>or Exact Date:</span>
+                      <input
+                        type="date"
+                        min={new Date().toISOString().split('T')[0]}
+                        value={customDueDate}
+                        onChange={e => setCustomDueDate(e.target.value)}
+                        style={{
+                          padding: '5px 10px', borderRadius: '8px', fontSize: '12.5px',
+                          border: `1.5px solid ${darkMode ? '#475569' : '#cbd5e1'}`,
+                          background: darkMode ? '#0f172a' : '#ffffff',
+                          color: darkMode ? '#ffffff' : '#0f172a', fontWeight: 600
+                        }}
+                      />
+                    </div>
+                  </div>
                 </div>
-                <button
-                  onClick={handleIssue}
-                  disabled={issuing || !selectedMember || !selectedBook}
-                  style={{
-                    background: (!selectedMember || !selectedBook) ? (darkMode ? '#334155' : '#cbd5e1') : '#0176d3',
-                    color: '#ffffff', border: 'none', borderRadius: '12px',
-                    padding: '12px 32px', fontSize: '14.5px', fontWeight: 800,
-                    cursor: (!selectedMember || !selectedBook) ? 'not-allowed' : 'pointer',
-                    boxShadow: (selectedMember && selectedBook) ? '0 6px 18px rgba(1,118,211,0.35)' : 'none',
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  {issuing ? '⏳ Processing Issue...' : '✅ Confirm Issue'}
-                </button>
+
+                {/* Final summary bar with issue button */}
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px',
+                  borderTop: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, paddingTop: '14px'
+                }}>
+                  <div style={{ fontSize: '13.5px', color: darkMode ? '#cbd5e1' : '#475569' }}>
+                    📅 Allowed Period: <strong style={{ color: '#0176d3', fontSize: '15px' }}>{previewDueDate().days} Days</strong>
+                    &nbsp;&nbsp;·&nbsp;&nbsp;
+                    Due Date: <strong style={{ color: '#ef4444', fontSize: '15px' }}>{previewDueDate().dateStr}</strong>
+                  </div>
+
+                  <button
+                    onClick={handleIssue}
+                    disabled={issuing || !selectedMember || !selectedBook}
+                    style={{
+                      background: (!selectedMember || !selectedBook) ? (darkMode ? '#334155' : '#cbd5e1') : '#0176d3',
+                      color: '#ffffff', border: 'none', borderRadius: '12px',
+                      padding: '12px 34px', fontSize: '14.5px', fontWeight: 800,
+                      cursor: (!selectedMember || !selectedBook) ? 'not-allowed' : 'pointer',
+                      boxShadow: (selectedMember && selectedBook) ? '0 6px 18px rgba(1,118,211,0.35)' : 'none',
+                      transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '8px'
+                    }}
+                  >
+                    {issuing ? '⏳ Issuing...' : '✅ Confirm & Issue Book'}
+                  </button>
+                </div>
               </div>
             </div>
           )}
