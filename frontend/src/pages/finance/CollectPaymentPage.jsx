@@ -109,6 +109,29 @@ export default function CollectPaymentPage() {
             };
           }
         });
+
+        // If bill has previous dues that are not yet covered
+        const prevDuesAmount = (b.previous_dues || 0);
+        if (prevDuesAmount > 0) {
+          const itemsPaid = (b.items || []).reduce((acc, it) => acc + (it.paid_amount || 0), 0);
+          const totalPaidOnBill = (b.amount_paid || 0);
+          const prevDuesPaid = Math.max(0, totalPaidOnBill - itemsPaid);
+          const prevDuesBal = Math.max(0, prevDuesAmount - prevDuesPaid);
+          if (prevDuesBal > 0) {
+            initialSelection[`prev_dues_${b.id}`] = {
+              bill_id: b.id,
+              bill_no: b.bill_no,
+              bill_period: b.bill_period_label || b.bill_month,
+              bill_item_id: null,
+              fee_head_id: null,
+              fee_head_name: 'Previous Dues / Opening Balance',
+              department: 'ACCOUNTS',
+              amount: prevDuesBal,
+              max: prevDuesBal,
+              selected: true,
+            };
+          }
+        }
       });
 
       setSelectedItems(initialSelection);

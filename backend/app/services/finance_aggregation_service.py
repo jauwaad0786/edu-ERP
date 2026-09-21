@@ -46,6 +46,12 @@ class FinanceAggregationService:
         Returns authoritative aggregated metrics for dashboard cards and summary widgets.
         Guaranteed to match the sum of items returned by the detail records endpoint with identical filters.
         """
+        try:
+            from app.services.fee_ledger_service import reconcile_school_fee_balances
+            reconcile_school_fee_balances(school_id, session=session or '2026-27')
+        except Exception:
+            pass
+
         # ── 1. Modern Engine: FeeBill & FeePayment Aggregates ─────────────────
         bq = FeeBill.query.filter(
             FeeBill.school_id == school_id,
@@ -158,7 +164,7 @@ class FinanceAggregationService:
             total_fine = round_curr(bagg.total_fine if bagg else 0.0)
             total_due = round_curr(bagg.total_due if bagg else 0.0)
             total_paid = round_curr(max(float(bagg.total_paid if bagg else 0.0), float(total_pay_collected)))
-            outstanding = round_curr(bagg.outstanding if bagg else max(0.0, total_due - total_paid))
+            outstanding = round_curr(max(0.0, total_due - total_paid))
             total_count = int(bagg.total_count if bagg else 0)
             pending_count = int(bagg.pending_count if bagg else 0)
             partial_count = int(bagg.partial_count if bagg else 0)

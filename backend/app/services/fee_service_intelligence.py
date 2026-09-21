@@ -91,12 +91,32 @@ def get_academic_class_breakdown(school_id, month_code, session='2026-27'):
                 )
             ).all()
 
-        gen_stu_ids = {r.student_id for r in fee_records}
+        # Check FeeBillItems for this class & month
+        bi_stu_ids = set()
+        if stu_ids:
+            bi_rows = db.session.query(FeeBill.student_id, FeeBillItem.net_amount, FeeBillItem.paid_amount).join(FeeBillItem).filter(
+                FeeBill.student_id.in_(stu_ids),
+                FeeBill.bill_month == month_code,
+                FeeBill.status != BillStatus.CANCELLED.value,
+                FeeBillItem.department.in_(['ACCOUNTS', 'ACADEMIC', 'TUITION'])
+            ).all()
+            for row in bi_rows:
+                bi_stu_ids.add(row[0])
+                if not fee_records:
+                    billed += float(row[1] or 0.0)
+                    paid += float(row[2] or 0.0)
+
+        gen_stu_ids = {r.student_id for r in fee_records} | bi_stu_ids
         gen_count = len(gen_stu_ids)
         pending_count = max(0, stu_count - gen_count)
 
-        billed = sum(float(r.amount_due + (r.fine or 0.0) - (r.discount or 0.0)) for r in fee_records)
-        paid = sum(float(r.amount_paid or 0.0) for r in fee_records)
+        if not fee_records and not bi_stu_ids:
+            billed = 0.0
+            paid = 0.0
+        elif fee_records:
+            billed = sum(float(r.amount_due + (r.fine or 0.0) - (r.discount or 0.0)) for r in fee_records)
+            paid = sum(float(r.amount_paid or 0.0) for r in fee_records)
+
         pending_amt = max(0.0, billed - paid)
 
         # Rate determination: from FeeStructure or average billed
@@ -140,15 +160,19 @@ def get_academic_class_breakdown(school_id, month_code, session='2026-27'):
             'can_generate': st in ('NOT_GENERATED', 'PARTIALLY_GENERATED') and stu_count > 0
         })
 
+    active_classes_count = sum(1 for it in breakdown if it['total_students'] > 0)
+    real_generated = sum(1 for it in breakdown if it['status'] == 'GENERATED' and it['total_students'] > 0)
+    real_pending = sum(1 for it in breakdown if it['status'] in ('NOT_GENERATED', 'PARTIALLY_GENERATED') and it['total_students'] > 0)
+
     return {
         'type': 'CLASS_WISE',
         'unit_label': 'Classes',
         'title': 'Class-Wise Academic & Tuition Status',
         'description': 'Each class can have distinct fee structures and tuition rates.',
         'summary': {
-            'total_units': total_classes,
-            'generated_units': generated_classes,
-            'pending_units': pending_classes,
+            'total_units': active_classes_count if active_classes_count > 0 else total_classes,
+            'generated_units': real_generated,
+            'pending_units': real_pending,
         },
         'items': breakdown
     }
@@ -474,6 +498,11 @@ def get_services_generation_status(school_id, month=None, session='2026-27', cla
     - Billed, Collected, and Pending totals per service
     """
     ensure_default_fee_heads(school_id)
+    try:
+        from app.services.fee_ledger_service import reconcile_school_fee_balances
+        reconcile_school_fee_balances(school_id, session=session or '2026-27')
+    except Exception:
+        pass
     month_code, month_label, yr, mo = _parse_month(month)
 
     # 1. Fetch active fee heads for the school and deduplicate by canonical code
@@ -621,11 +650,11 @@ def get_services_generation_status(school_id, month=None, session='2026-27', cla
 
         # Determine target eligible students for this service
         if norm_code == 'TRANSPORT':
-            eligible = transport_count
+            eligible = max(transport_count, student_count)
         elif norm_code == 'HOSTEL':
-            eligible = hostel_count
+            eligible = max(hostel_count, student_count)
         else:
-            eligible = total_active_students
+            eligible = max(total_active_students, student_count)
 
         # Merge bill item data or fee record data
         b_data = bill_items_data.get(fh.id) or rec_data_by_key.get(norm_code)
@@ -722,9 +751,25 @@ def get_services_generation_status(school_id, month=None, session='2026-27', cla
             'breakdown':                breakdown,
         })
 
-    # Summary object
+    # Summary object matching canonical FeeBill records
     total_services = len(services_result)
-    total_pending_all = max(0.0, round(total_billed_all - total_collected_all, 2))
+
+    bills_this_month = FeeBill.query.filter(
+        FeeBill.school_id == school_id,
+        FeeBill.bill_month == month_code,
+        FeeBill.status != BillStatus.CANCELLED.value
+    )
+    if session:
+        bills_this_month = bills_this_month.filter(or_(FeeBill.session == session, FeeBill.session.is_(None)))
+    b_list = bills_this_month.all()
+
+    if b_list:
+        total_billed_all = round(sum(float(b.total_payable or 0.0) for b in b_list), 2)
+        total_collected_all = round(sum(float(b.amount_paid or 0.0) for b in b_list), 2)
+        total_pending_all = round(sum(float(b.balance_due or 0.0) for b in b_list), 2)
+    else:
+        total_pending_all = max(0.0, round(total_billed_all - total_collected_all, 2))
+
     overall_recovery_pct = round((total_collected_all / total_billed_all * 100), 1) if total_billed_all > 0 else 0.0
 
     return {
@@ -756,6 +801,11 @@ def get_services_collection_matrix(
     plus aggregated charts data (status ratios, service realization, class performance).
     """
     ensure_default_fee_heads(school_id)
+    try:
+        from app.services.fee_ledger_service import reconcile_school_fee_balances
+        reconcile_school_fee_balances(school_id, session=session or '2026-27')
+    except Exception:
+        pass
     month_code, month_label, yr, mo = _parse_month(month)
 
     # 1. Fetch active fee heads

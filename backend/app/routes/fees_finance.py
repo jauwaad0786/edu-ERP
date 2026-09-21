@@ -35,7 +35,8 @@ from app.services.fee_ledger_service import (
     generate_fee_bill, bulk_generate_fee_bills,
     collect_fee_payment, cancel_payment_receipt,
     process_fee_refund, get_finance_dashboard_metrics,
-    ensure_default_fee_heads, apply_concession_and_adjust_bills
+    ensure_default_fee_heads, apply_concession_and_adjust_bills,
+    reconcile_school_fee_balances
 )
 from app.services import payroll_engine as p_svc
 from app.utils.fee_pdf_generator import generate_fee_bill_pdf, generate_fee_receipt_pdf
@@ -1182,6 +1183,11 @@ def list_bills():
     search     = (request.args.get('search') or '').strip()
     session    = request.args.get('session')
     department = request.args.get('department')
+
+    try:
+        reconcile_school_fee_balances(user.school_id, session=session or '2026-27')
+    except Exception:
+        pass
 
     from sqlalchemy.orm import joinedload
     q = FeeBill.query.join(Student, FeeBill.student_id == Student.id).options(

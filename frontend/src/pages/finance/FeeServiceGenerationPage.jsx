@@ -301,95 +301,106 @@ export default function FeeServiceGenerationPage() {
             </div>
           </div>
 
-          {/* ══ 2. TOP METRICS SUMMARY STRIP ══ */}
+          {/* ══ 2. TOP METRICS SUMMARY STRIP (Clean & Non-Tech Friendly) ══ */}
           <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: '14px', marginBottom: '24px'
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: '16px', marginBottom: '24px'
           }}>
-            {/* Metric 1: Generated Services */}
+            {/* Metric 1: Total Demand Billed */}
             <div style={{
               background: '#ffffff', borderRadius: '16px', padding: '18px 20px',
-              border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+              border: '1px solid #dbeafe', boxShadow: '0 2px 10px rgba(37, 99, 235, 0.04)'
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>
-                  SERVICES GENERATED
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#1e40af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  TOTAL DEMAND BILLED
                 </span>
                 <span style={{
-                  background: '#ecfdf5', color: '#16a34a', borderRadius: '8px',
+                  background: '#eff6ff', color: '#1d4ed8', borderRadius: '8px',
                   padding: '3px 8px', fontSize: '11px', fontWeight: 800
                 }}>
-                  {summary.generated_services_count || 0} / {summary.total_services || 0}
+                  {data?.month_label || 'Month'}
                 </span>
               </div>
-              <div style={{ fontSize: '26px', fontWeight: 900, color: '#16a34a' }}>
-                {summary.generated_services_count || 0} <span style={{ fontSize: '14px', color: '#94a3b8', fontWeight: 600 }}>Active</span>
-              </div>
-              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-                Fees created for {data?.month_label || 'current month'}
-              </div>
-            </div>
-
-            {/* Metric 2: Not Generated Services */}
-            <div style={{
-              background: '#ffffff', borderRadius: '16px', padding: '18px 20px',
-              border: (summary.not_generated_count || 0) > 0 ? '1px solid #fecaca' : '1px solid #e2e8f0',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>
-                  NOT YET GENERATED
-                </span>
-                <span style={{
-                  background: (summary.not_generated_count || 0) > 0 ? '#fef2f2' : '#f8fafc',
-                  color: (summary.not_generated_count || 0) > 0 ? '#dc2626' : '#94a3b8',
-                  borderRadius: '8px', padding: '3px 8px', fontSize: '11px', fontWeight: 800
-                }}>
-                  {summary.not_generated_count || 0} Services Pending
-                </span>
-              </div>
-              <div style={{ fontSize: '26px', fontWeight: 900, color: (summary.not_generated_count || 0) > 0 ? '#dc2626' : '#0f172a' }}>
-                {summary.not_generated_count || 0}
-              </div>
-              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-                Awaiting fee generation trigger
-              </div>
-            </div>
-
-            {/* Metric 3: Total Billed */}
-            <div style={{
-              background: '#ffffff', borderRadius: '16px', padding: '18px 20px',
-              border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
-            }}>
-              <div style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>
-                TOTAL AMOUNT BILLED
-              </div>
-              <div style={{ fontSize: '26px', fontWeight: 900, color: '#2563eb' }}>
+              <div style={{ fontSize: '28px', fontWeight: 900, color: '#1e3a8a' }}>
                 ₹{fmt(summary.total_billed)}
               </div>
               <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-                Across all generated services
+                Total amount billed to students
               </div>
             </div>
 
-            {/* Metric 4: Total Collected */}
+            {/* Metric 2: Collected Revenue */}
+            <div style={{
+              background: '#ffffff', borderRadius: '16px', padding: '18px 20px',
+              border: '1px solid #dcfce7', boxShadow: '0 2px 10px rgba(22, 163, 74, 0.04)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#166534', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  COLLECTED REVENUE
+                </span>
+                <span style={{
+                  background: '#ecfdf5', color: '#15803d', borderRadius: '8px',
+                  padding: '3px 8px', fontSize: '11px', fontWeight: 800
+                }}>
+                  {summary.collection_percentage || 0}% Realized
+                </span>
+              </div>
+              <div style={{ fontSize: '28px', fontWeight: 900, color: '#15803d' }}>
+                ₹{fmt(summary.total_collected)}
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                Realized at counter &amp; online
+              </div>
+            </div>
+
+            {/* Metric 3: Outstanding / Pending Balance */}
+            <div style={{
+              background: '#ffffff', borderRadius: '16px', padding: '18px 20px',
+              border: (summary.total_pending || 0) > 0 ? '1px solid #fee2e2' : '1px solid #e2e8f0',
+              boxShadow: '0 2px 10px rgba(220, 38, 38, 0.04)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: (summary.total_pending || 0) > 0 ? '#991b1b' : '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  PENDING BALANCE
+                </span>
+                <span style={{
+                  background: (summary.total_pending || 0) > 0 ? '#fef2f2' : '#f8fafc',
+                  color: (summary.total_pending || 0) > 0 ? '#b91c1c' : '#64748b',
+                  borderRadius: '8px', padding: '3px 8px', fontSize: '11px', fontWeight: 800
+                }}>
+                  {(summary.total_pending || 0) > 0 ? 'Awaiting Payment' : 'All Clear ✅'}
+                </span>
+              </div>
+              <div style={{ fontSize: '28px', fontWeight: 900, color: (summary.total_pending || 0) > 0 ? '#b91c1c' : '#0f172a' }}>
+                ₹{fmt(summary.total_pending)}
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                Due across remaining students
+              </div>
+            </div>
+
+            {/* Metric 4: Services Status */}
             <div style={{
               background: '#ffffff', borderRadius: '16px', padding: '18px 20px',
               border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>
-                  COLLECTED REVENUE
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  FEE SERVICES ACTIVE
                 </span>
-                <span style={{ background: '#ecfdf5', color: '#059669', borderRadius: '8px', padding: '2px 6px', fontSize: '11px', fontWeight: 800 }}>
-                  {summary.collection_percentage || 0}%
+                <span style={{
+                  background: '#f1f5f9', color: '#475569',
+                  borderRadius: '8px', padding: '3px 8px', fontSize: '11px', fontWeight: 800
+                }}>
+                  {summary.generated_services_count || 0} of {summary.total_services || 0}
                 </span>
               </div>
-              <div style={{ fontSize: '26px', fontWeight: 900, color: '#059669' }}>
-                ₹{fmt(summary.total_collected)}
+              <div style={{ fontSize: '28px', fontWeight: 900, color: '#0f172a' }}>
+                {summary.generated_services_count || 0} <span style={{ fontSize: '15px', color: '#64748b', fontWeight: 600 }}>Active Heads</span>
               </div>
               <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-                Pending: <strong>₹{fmt(summary.total_pending)}</strong>
+                {summary.not_generated_count || 0} optional / unbilled services
               </div>
             </div>
           </div>
@@ -541,9 +552,15 @@ export default function FeeServiceGenerationPage() {
                 const isGen = svc.status === 'GENERATED';
                 const isPart = svc.status === 'PARTIALLY_GENERATED';
                 const isNotGen = svc.status === 'NOT_GENERATED';
-                const pct = svc.eligible_students_count > 0
-                  ? Math.round((svc.generated_students_count / svc.eligible_students_count) * 100)
-                  : (isGen ? 100 : 0);
+
+                // Robust percentage calculation (no division by zero)
+                const hasZeroEligible = (svc.eligible_students_count || 0) === 0;
+                const hasStudentsBilled = (svc.generated_students_count || 0) > 0;
+                const pct = hasZeroEligible
+                  ? (hasStudentsBilled ? 100 : 0)
+                  : Math.min(100, Math.max(0, Math.round(((svc.generated_students_count || 0) / svc.eligible_students_count) * 100)));
+
+                const bsum = svc.breakdown?.summary;
 
                 return (
                   <div
@@ -551,9 +568,9 @@ export default function FeeServiceGenerationPage() {
                     style={{
                       background: '#ffffff',
                       borderRadius: '16px',
-                      border: `1px solid ${isNotGen ? '#fed7aa' : isPart ? '#fde68a' : '#e2e8f0'}`,
+                      border: `1px solid ${isNotGen ? '#e2e8f0' : isPart ? '#fef08a' : '#dbeafe'}`,
                       padding: '20px',
-                      boxShadow: '0 2px 10px rgba(0,0,0,0.02)',
+                      boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
                       display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
                       transition: 'transform 0.15s ease, box-shadow 0.15s ease',
                       position: 'relative'
@@ -588,62 +605,72 @@ export default function FeeServiceGenerationPage() {
                         {/* Status Badge */}
                         <span style={{
                           padding: '4px 10px', borderRadius: '100px', fontSize: '11px', fontWeight: 800,
-                          background: isGen ? '#ecfdf5' : isPart ? '#fef3c7' : '#fef2f2',
-                          color: isGen ? '#059669' : isPart ? '#d97706' : '#dc2626',
-                          border: `1px solid ${isGen ? '#a7f3d0' : isPart ? '#fde68a' : '#fecaca'}`
+                          background: isGen ? '#ecfdf5' : isPart ? '#fef3c7' : '#f8fafc',
+                          color: isGen ? '#15803d' : isPart ? '#b45309' : '#64748b',
+                          border: `1px solid ${isGen ? '#bbf7d0' : isPart ? '#fde68a' : '#e2e8f0'}`
                         }}>
-                          {isGen ? '● GENERATED' : isPart ? '● PARTIAL' : '○ NOT GENERATED'}
+                          {isGen ? '● FULLY BILLED' : isPart ? '● PARTIAL' : '○ NOT BILLED'}
                         </span>
                       </div>
 
-                      {/* Coverage Progress */}
-                      <div style={{ marginBottom: '16px', background: '#f8fafc', padding: '12px', borderRadius: '12px' }}>
+                      {/* Coverage Progress (Non-Tech Friendly & Zero Division Safe) */}
+                      <div style={{ marginBottom: '16px', background: '#f8fafc', padding: '12px', borderRadius: '12px', border: '1px solid #f1f5f9' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', fontSize: '12px' }}>
-                          <span style={{ color: '#64748b', fontWeight: 700 }}>Students Covered:</span>
-                          <span style={{ fontWeight: 900, color: '#0f172a' }}>
-                            {svc.generated_students_count} / {svc.eligible_students_count} ({pct}%)
+                          <span style={{ color: '#475569', fontWeight: 700 }}>Students Covered:</span>
+                          <span style={{ fontWeight: 800, color: '#0f172a' }}>
+                            {hasZeroEligible && !hasStudentsBilled ? (
+                              <span style={{ color: '#94a3b8' }}>0 Enrolled (Optional)</span>
+                            ) : hasZeroEligible && hasStudentsBilled ? (
+                              <span>{svc.generated_students_count} Active (100%)</span>
+                            ) : (
+                              <span>{svc.generated_students_count} / {svc.eligible_students_count} ({pct}%)</span>
+                            )}
                           </span>
                         </div>
                         <div style={{ width: '100%', height: '7px', background: '#e2e8f0', borderRadius: '100px', overflow: 'hidden' }}>
                           <div style={{
-                            width: `${Math.min(100, Math.max(0, pct))}%`,
-                            background: isGen ? '#10b981' : isPart ? '#f59e0b' : '#ef4444',
+                            width: `${pct}%`,
+                            background: isGen ? '#10b981' : isPart ? '#f59e0b' : hasStudentsBilled ? '#10b981' : '#cbd5e1',
                             height: '100%', borderRadius: '100px', transition: 'width 0.3s ease'
                           }} />
                         </div>
                         {svc.missing_students_count > 0 && (
-                          <div style={{ fontSize: '11px', color: '#dc2626', fontWeight: 700, marginTop: '6px' }}>
-                            ⚠️ {svc.missing_students_count} eligible students missing bills for this month
+                          <div style={{ fontSize: '11px', color: '#b91c1c', fontWeight: 700, marginTop: '6px' }}>
+                            ⚠️ {svc.missing_students_count} student bills awaiting generation
                           </div>
                         )}
                       </div>
 
                       {/* Breakdown Status Badge (Class-wise / Route-wise / Room-type-wise) */}
-                      {svc.breakdown?.summary && (
+                      {bsum && (
                         <div
                           onClick={() => openBreakdown(svc)}
                           style={{
-                            marginBottom: '14px', padding: '8px 12px', borderRadius: '10px',
-                            background: (svc.breakdown.summary.pending_units || 0) > 0 ? '#fffbeb' : '#f0fdf4',
-                            border: `1px solid ${(svc.breakdown.summary.pending_units || 0) > 0 ? '#fde68a' : '#bbf7d0'}`,
-                            display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11.5px',
+                            marginBottom: '14px', padding: '9px 12px', borderRadius: '10px',
+                            background: (bsum.pending_units || 0) > 0 ? '#fffbeb' : '#f0fdf4',
+                            border: `1px solid ${(bsum.pending_units || 0) > 0 ? '#fef08a' : '#bbf7d0'}`,
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px',
                             cursor: 'pointer', transition: 'transform 0.1s ease'
                           }}
-                          title="Click to view live granular breakdown"
+                          title="Click to view detailed breakdown"
                         >
-                          <span style={{ fontWeight: 800, color: (svc.breakdown.summary.pending_units || 0) > 0 ? '#b45309' : '#15803d', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          <span style={{ fontWeight: 800, color: (bsum.pending_units || 0) > 0 ? '#b45309' : '#15803d', display: 'flex', alignItems: 'center', gap: '5px' }}>
                             <i className="ti ti-list-details" />
-                            {svc.breakdown.breakdown_type === 'CLASS_WISE' && 'Class Breakdown:'}
-                            {svc.breakdown.breakdown_type === 'ROUTE_WISE' && 'Route Breakdown:'}
-                            {svc.breakdown.breakdown_type === 'HOSTEL_ROOM_TYPE_WISE' && 'Room Type Breakdown:'}
-                            {svc.breakdown.breakdown_type === 'GENERIC' && 'Unit Breakdown:'}
+                            {svc.breakdown.breakdown_type === 'CLASS_WISE' && 'Class Coverage:'}
+                            {svc.breakdown.breakdown_type === 'ROUTE_WISE' && 'Route Coverage:'}
+                            {svc.breakdown.breakdown_type === 'HOSTEL_ROOM_TYPE_WISE' && 'Room Type Coverage:'}
+                            {svc.breakdown.breakdown_type === 'GENERIC' && 'Unit Coverage:'}
                           </span>
                           <span style={{ fontWeight: 800, color: '#0f172a' }}>
-                            {svc.breakdown.summary.generated_units} / {svc.breakdown.summary.total_units} Generated
-                            {(svc.breakdown.summary.pending_units || 0) > 0 ? (
-                              <span style={{ color: '#dc2626', marginLeft: '5px' }}>({svc.breakdown.summary.pending_units} pending)</span>
+                            {bsum.total_units === 0 ? (
+                              <span style={{ color: '#64748b' }}>No active units</span>
+                            ) : bsum.generated_units >= bsum.total_units ? (
+                              <span style={{ color: '#15803d' }}>{bsum.total_units} of {bsum.total_units} Active ✅</span>
                             ) : (
-                              <span style={{ color: '#16a34a', marginLeft: '5px' }}>✓</span>
+                              <span style={{ color: '#b45309' }}>
+                                {bsum.generated_units} / {bsum.total_units} Active
+                                <span style={{ color: '#b91c1c', marginLeft: '4px' }}>({bsum.pending_units} pending)</span>
+                              </span>
                             )}
                           </span>
                         </div>
@@ -654,21 +681,21 @@ export default function FeeServiceGenerationPage() {
                         display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
                         gap: '8px', marginBottom: '16px', textAlign: 'center'
                       }}>
-                        <div style={{ background: '#f8fafc', padding: '8px 10px', borderRadius: '10px' }}>
-                          <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#64748b' }}>BILLED</div>
+                        <div style={{ background: '#f8fafc', padding: '9px 8px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                          <div style={{ fontSize: '10.5px', fontWeight: 800, color: '#64748b' }}>BILLED</div>
                           <div style={{ fontSize: '15px', fontWeight: 900, color: '#0f172a', marginTop: '2px' }}>
                             ₹{fmt(svc.total_billed)}
                           </div>
                         </div>
-                        <div style={{ background: '#f0fdf4', padding: '8px 10px', borderRadius: '10px' }}>
-                          <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#16a34a' }}>COLLECTED</div>
-                          <div style={{ fontSize: '15px', fontWeight: 900, color: '#16a34a', marginTop: '2px' }}>
+                        <div style={{ background: '#f0fdf4', padding: '9px 8px', borderRadius: '10px', border: '1px solid #bbf7d0' }}>
+                          <div style={{ fontSize: '10.5px', fontWeight: 800, color: '#15803d' }}>COLLECTED</div>
+                          <div style={{ fontSize: '15px', fontWeight: 900, color: '#15803d', marginTop: '2px' }}>
                             ₹{fmt(svc.total_collected)}
                           </div>
                         </div>
-                        <div style={{ background: '#fef2f2', padding: '8px 10px', borderRadius: '10px' }}>
-                          <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#dc2626' }}>PENDING</div>
-                          <div style={{ fontSize: '15px', fontWeight: 900, color: '#dc2626', marginTop: '2px' }}>
+                        <div style={{ background: (svc.total_pending || 0) > 0 ? '#fef2f2' : '#f8fafc', padding: '9px 8px', borderRadius: '10px', border: `1px solid ${(svc.total_pending || 0) > 0 ? '#fecaca' : '#e2e8f0'}` }}>
+                          <div style={{ fontSize: '10.5px', fontWeight: 800, color: (svc.total_pending || 0) > 0 ? '#b91c1c' : '#64748b' }}>PENDING</div>
+                          <div style={{ fontSize: '15px', fontWeight: 900, color: (svc.total_pending || 0) > 0 ? '#b91c1c' : '#64748b', marginTop: '2px' }}>
                             ₹{fmt(svc.total_pending)}
                           </div>
                         </div>

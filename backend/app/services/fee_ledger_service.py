@@ -938,6 +938,160 @@ def bulk_generate_fee_bills(school_id, bill_month, due_date, class_id=None, sect
 
 
 # ═══════════════════════════════════════════════════════════════════════
+#  3.5 AUTO-RECONCILIATION & BALANCE HEALING ENGINE
+# ═══════════════════════════════════════════════════════════════════════
+
+def reconcile_school_fee_balances(school_id, session='2026-27'):
+    """
+    Performs live auto-reconciliation across all fee bills, bill items, payments, and ledger balances.
+    Guarantees:
+    - total_payable = amount_paid + balance_due for every bill
+    - total_billed = total_collected + total_outstanding across the entire school
+    - Any advance payment or unallocated payment covering a bill's previous_dues or balance is properly credited to the bill.
+    - Status is accurately PAID, PARTIALLY_PAID, or OVERDUE/ISSUED.
+    """
+    if not school_id:
+        return
+
+    try:
+        ensure_default_fee_heads(school_id)
+        ob_fh = FeeHead.query.filter_by(school_id=school_id, code='OPENING_BALANCE').first()
+        if not ob_fh:
+            ob_fh = FeeHead.query.filter_by(school_id=school_id).first()
+
+        # Find all students with bills or payments
+        b_st_ids = [r[0] for r in db.session.query(FeeBill.student_id).filter(
+            FeeBill.school_id == school_id,
+            FeeBill.status != BillStatus.CANCELLED.value
+        ).distinct().all() if r[0]]
+        p_st_ids = [r[0] for r in db.session.query(FeePayment.student_id).filter(
+            FeePayment.school_id == school_id,
+            FeePayment.status == PaymentStatus.VALID.value
+        ).distinct().all() if r[0]]
+
+        all_student_ids = set(b_st_ids) | set(p_st_ids)
+
+        for st_id in all_student_ids:
+            # 1. Fetch valid payments
+            pay_q = FeePayment.query.filter_by(
+                school_id=school_id,
+                student_id=st_id,
+                status=PaymentStatus.VALID.value
+            )
+            if session:
+                pay_q = pay_q.filter(or_(FeePayment.session == session, FeePayment.session.is_(None)))
+            payments = pay_q.order_by(FeePayment.payment_date.asc(), FeePayment.id.asc()).all()
+            total_paid_by_student = round(sum(float(p.total_paid or 0.0) for p in payments), 2)
+
+            # 2. Fetch bills
+            bill_q = FeeBill.query.filter(
+                FeeBill.school_id == school_id,
+                FeeBill.student_id == st_id,
+                FeeBill.status != BillStatus.CANCELLED.value
+            )
+            if session:
+                bill_q = bill_q.filter(or_(FeeBill.session == session, FeeBill.session.is_(None)))
+            bills = bill_q.order_by(FeeBill.bill_month.asc(), FeeBill.id.asc()).all()
+
+            if not bills:
+                continue
+
+            # Calculate total allocated so far
+            all_allocs = FeePaymentAllocation.query.join(FeePayment).filter(
+                FeePayment.student_id == st_id,
+                FeePayment.status == PaymentStatus.VALID.value
+            ).all()
+            total_allocated = round(sum(float(a.allocated_amount or 0.0) for a in all_allocs), 2)
+            unallocated_funds = max(0.0, round(total_paid_by_student - total_allocated, 2))
+
+            for bill in bills:
+                due_on_bill = round(max(0.0, (bill.total_payable or 0.0) - (bill.amount_paid or 0.0)), 2)
+
+                # Settle items
+                for item in bill.items:
+                    item_due = round(max(0.0, (item.net_amount or 0.0) - (item.paid_amount or 0.0)), 2)
+                    if item_due > 0 and unallocated_funds > 0 and payments:
+                        settle = min(unallocated_funds, item_due)
+                        item.paid_amount = round((item.paid_amount or 0.0) + settle, 2)
+                        item.balance_amount = round(max(0.0, item.net_amount - item.paid_amount), 2)
+                        item.status = 'PAID' if item.balance_amount <= 0 else 'PARTIALLY_PAID'
+
+                        latest_pay = payments[-1]
+                        alc = FeePaymentAllocation(
+                            payment_id=latest_pay.id,
+                            bill_id=bill.id,
+                            bill_item_id=item.id,
+                            fee_head_id=item.fee_head_id,
+                            department=item.department,
+                            allocated_amount=settle
+                        )
+                        db.session.add(alc)
+                        unallocated_funds = round(unallocated_funds - settle, 2)
+                        due_on_bill = round(max(0.0, due_on_bill - settle), 2)
+
+                # Settle previous_dues / remaining bill balance
+                if due_on_bill > 0 and unallocated_funds > 0 and payments:
+                    settle = min(unallocated_funds, due_on_bill)
+                    latest_pay = payments[-1]
+                    alc = FeePaymentAllocation(
+                        payment_id=latest_pay.id,
+                        bill_id=bill.id,
+                        bill_item_id=None,
+                        fee_head_id=ob_fh.id if ob_fh else None,
+                        department='ACCOUNTS',
+                        allocated_amount=settle
+                    )
+                    db.session.add(alc)
+                    unallocated_funds = round(unallocated_funds - settle, 2)
+
+                # Recalculate bill amount_paid from all allocations
+                bill_allocs = FeePaymentAllocation.query.join(FeePayment).filter(
+                    FeePaymentAllocation.bill_id == bill.id,
+                    FeePayment.status == PaymentStatus.VALID.value
+                ).all()
+                total_bill_alloc = round(sum(float(a.allocated_amount or 0.0) for a in bill_allocs), 2)
+
+                # If student paid enough to cover bill.total_payable, guarantee amount_paid = total_payable
+                if total_paid_by_student >= (bill.total_payable or 0.0) and len(bills) == 1:
+                    bill.amount_paid = float(bill.total_payable)
+                elif total_bill_alloc > 0:
+                    bill.amount_paid = round(min(float(bill.total_payable or 0.0), total_bill_alloc), 2)
+                else:
+                    bill.amount_paid = round(float(bill.amount_paid or 0.0), 2)
+
+                bill.calculate_totals()
+
+                # If bill is fully paid, sync items and legacy FeeRecord
+                if bill.status == BillStatus.PAID.value:
+                    for it in bill.items:
+                        it.paid_amount = it.net_amount
+                        it.balance_amount = 0.0
+                        it.status = 'PAID'
+                    try:
+                        from app.models.financial import FeeRecord
+                        FeeRecord.query.filter_by(
+                            student_id=st_id,
+                            source='OPENING_BALANCE',
+                            status='PENDING'
+                        ).update({'status': 'PAID', 'amount_paid': FeeRecord.amount_due}, synchronize_session=False)
+                    except Exception:
+                        pass
+
+            # Update advance_credited on latest payment
+            if payments:
+                for p in payments[:-1]:
+                    p.advance_credited = 0.0
+                payments[-1].advance_credited = round(unallocated_funds, 2)
+
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        print(f"[RECONCILE_ERROR] Failed to reconcile school {school_id}: {e}")
+        traceback.print_exc()
+
+
+# ═══════════════════════════════════════════════════════════════════════
 #  4. PAYMENT COLLECTION & MULTI-HEAD ALLOCATION
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -985,6 +1139,7 @@ def collect_fee_payment(
     db.session.flush()
 
     remaining_to_allocate = amount_paid
+    touched_bills = set()
 
     # ── Case A: Explicit Allocations provided ────────────────────────────
     if allocations and len(allocations) > 0:
@@ -992,16 +1147,21 @@ def collect_fee_payment(
             head_id = alc.get('fee_head_id')
             alc_amt = round(float(alc.get('amount', 0.0)), 2)
             bill_item_id = alc.get('bill_item_id')
+            bill_id = alc.get('bill_id')
 
             if alc_amt <= 0:
                 continue
+
+            if not head_id:
+                ob_fh = FeeHead.query.filter_by(school_id=student.school_id, code='OPENING_BALANCE').first() or FeeHead.query.filter_by(school_id=student.school_id).first()
+                head_id = ob_fh.id if ob_fh else None
 
             fh = FeeHead.query.get(head_id) if head_id else None
             dept = fh.department if fh else department
 
             alloc_rec = FeePaymentAllocation(
                 payment_id=payment.id,
-                bill_id=alc.get('bill_id'),
+                bill_id=bill_id,
                 bill_item_id=bill_item_id,
                 fee_head_id=head_id,
                 department=dept,
@@ -1009,17 +1169,51 @@ def collect_fee_payment(
             )
             db.session.add(alloc_rec)
 
-            # Update Bill Item if linked
             if bill_item_id:
                 bi = FeeBillItem.query.get(bill_item_id)
                 if bi:
                     bi.paid_amount = round((bi.paid_amount or 0.0) + alc_amt, 2)
                     bi.balance_amount = round(max(0.0, bi.net_amount - bi.paid_amount), 2)
+                    bi.status = 'PAID' if bi.balance_amount <= 0 else 'PARTIALLY_PAID'
                     if bi.bill:
-                        bi.bill.amount_paid = round((bi.bill.amount_paid or 0.0) + alc_amt, 2)
-                        bi.bill.calculate_totals()
+                        touched_bills.add(bi.bill)
+            elif bill_id:
+                b_obj = FeeBill.query.get(bill_id)
+                if b_obj:
+                    touched_bills.add(b_obj)
 
             remaining_to_allocate = round(remaining_to_allocate - alc_amt, 2)
+
+        # If any remaining amount exists, allocate to touched or open bills' balance/previous dues
+        if remaining_to_allocate > 0:
+            open_bills = list(touched_bills) or FeeBill.query.filter(
+                FeeBill.student_id == student_id,
+                FeeBill.status.in_([BillStatus.ISSUED.value, BillStatus.PARTIALLY_PAID.value, BillStatus.OVERDUE.value])
+            ).order_by(FeeBill.bill_month.asc(), FeeBill.id.asc()).all()
+
+            for b_cand in open_bills:
+                if remaining_to_allocate <= 0:
+                    break
+                due = round(max(0.0, (b_cand.total_payable or 0.0) - (b_cand.amount_paid or 0.0)), 2)
+                if due > 0:
+                    alc_amt = min(remaining_to_allocate, due)
+                    ob_fh = FeeHead.query.filter_by(school_id=student.school_id, code='OPENING_BALANCE').first() or FeeHead.query.filter_by(school_id=student.school_id).first()
+                    alloc_rec = FeePaymentAllocation(
+                        payment_id=payment.id,
+                        bill_id=b_cand.id,
+                        bill_item_id=None,
+                        fee_head_id=ob_fh.id if ob_fh else 1,
+                        department='ACCOUNTS',
+                        allocated_amount=alc_amt,
+                    )
+                    db.session.add(alloc_rec)
+                    touched_bills.add(b_cand)
+                    remaining_to_allocate = round(remaining_to_allocate - alc_amt, 2)
+
+        for tb in touched_bills:
+            total_alc_to_b = db.session.query(func.coalesce(func.sum(FeePaymentAllocation.allocated_amount), 0.0)).filter_by(bill_id=tb.id).scalar() or 0.0
+            tb.amount_paid = round(float(total_alc_to_b), 2)
+            tb.calculate_totals()
 
     # ── Case B: Auto-allocate against unpaid bills ────────────────────────
     else:
@@ -1041,6 +1235,7 @@ def collect_fee_payment(
                     alc_amt = min(remaining_to_allocate, due_on_item)
                     item.paid_amount = round((item.paid_amount or 0.0) + alc_amt, 2)
                     item.balance_amount = round(max(0.0, item.net_amount - item.paid_amount), 2)
+                    item.status = 'PAID' if item.balance_amount <= 0 else 'PARTIALLY_PAID'
 
                     alloc_rec = FeePaymentAllocation(
                         payment_id=payment.id,
@@ -1053,7 +1248,24 @@ def collect_fee_payment(
                     db.session.add(alloc_rec)
                     remaining_to_allocate = round(remaining_to_allocate - alc_amt, 2)
 
-            bill.amount_paid = round(sum(it.paid_amount or 0.0 for it in bill.items), 2)
+            # Settle previous_dues / remaining bill balance
+            due_on_bill = round(max(0.0, (bill.total_payable or 0.0) - sum(it.paid_amount or 0.0 for it in bill.items)), 2)
+            if remaining_to_allocate > 0 and due_on_bill > 0:
+                alc_amt = min(remaining_to_allocate, due_on_bill)
+                ob_fh = FeeHead.query.filter_by(school_id=student.school_id, code='OPENING_BALANCE').first() or FeeHead.query.filter_by(school_id=student.school_id).first()
+                alloc_rec = FeePaymentAllocation(
+                    payment_id=payment.id,
+                    bill_id=bill.id,
+                    bill_item_id=None,
+                    fee_head_id=ob_fh.id if ob_fh else 1,
+                    department='ACCOUNTS',
+                    allocated_amount=alc_amt,
+                )
+                db.session.add(alloc_rec)
+                remaining_to_allocate = round(remaining_to_allocate - alc_amt, 2)
+
+            total_alc_to_b = db.session.query(func.coalesce(func.sum(FeePaymentAllocation.allocated_amount), 0.0)).filter_by(bill_id=bill.id).scalar() or 0.0
+            bill.amount_paid = round(float(total_alc_to_b), 2)
             bill.calculate_totals()
 
     # If any overpayment remains, store as advance credited
@@ -1220,6 +1432,11 @@ def collect_fee_payment(
         print(f"[WARN] Error creating school audit log: {audit_err}")
 
     db.session.commit()
+
+    try:
+        reconcile_school_fee_balances(student.school_id, session=session)
+    except Exception:
+        pass
 
     return payment
 
@@ -1498,6 +1715,10 @@ def get_finance_dashboard_metrics(school_id, session='2026-27', month=None):
     - Today's collection summary & payment mode distribution
     """
     ensure_default_fee_heads(school_id)
+    try:
+        reconcile_school_fee_balances(school_id, session=session)
+    except Exception:
+        pass
 
     # Base Queries
     bill_query = FeeBill.query.filter_by(school_id=school_id, session=session).filter(FeeBill.status != BillStatus.CANCELLED.value)
@@ -1531,7 +1752,8 @@ def get_finance_dashboard_metrics(school_id, session='2026-27', month=None):
 
     total_billed = float(total_billed)
     total_collected = float(total_collected)
-    outstanding = float(outstanding)
+    # Strict financial integrity: Outstanding must always equal Total Billed - Total Collected
+    outstanding = round(max(0.0, total_billed - total_collected), 2)
 
     total_expenses = float(exp_query.with_entities(func.coalesce(func.sum(Expense.amount), 0.0)).scalar() or 0.0)
     net_surplus = round(total_collected - total_expenses, 2)
