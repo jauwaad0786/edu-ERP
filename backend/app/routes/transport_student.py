@@ -44,7 +44,8 @@ def _active_assignment(student_id, sid):
 # ═══════════════════════════════════════════════════════════════════════════
 
 @transport_student_bp.route('/students', methods=['GET'])
-@role_required('PRINCIPAL', 'TRANSPORT')
+@transport_student_bp.route('/students/browse', methods=['GET'])
+@role_required('PRINCIPAL', 'TRANSPORT', 'ADMIN', 'TEACHER', 'ACCOUNTANT', 'SUPER_ADMIN')
 def browse_students():
     """
     Filters: academic_year, class_id, section, search (name/admission_no),
@@ -77,12 +78,13 @@ def browse_students():
     search = request.args.get('search', '').strip()
     if search:
         like = f'%{search}%'
-        q = q.filter(db.or_(Student.admission_no.ilike(like), Student.father_name.ilike(like)))
-        # name lives on User; join only when actually searching, keeps the common path light
+        search_conds = [Student.admission_no.ilike(like), Student.father_name.ilike(like)]
+        if search.isdigit():
+            search_conds.append(Student.id == int(search))
         from app.models.user import User
-        q = q.outerjoin(User, Student.user_id == User.id).filter(
-            db.or_(Student.admission_no.ilike(like), User.name.ilike(like))
-        )
+        q = q.outerjoin(User, Student.user_id == User.id)
+        search_conds.append(User.name.ilike(like))
+        q = q.filter(db.or_(*search_conds))
 
     transport_status = request.args.get('transport_status', 'ALL').upper()
     vehicle_id = request.args.get('vehicle_id', type=int)

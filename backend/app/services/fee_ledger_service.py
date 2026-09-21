@@ -1647,7 +1647,7 @@ def get_finance_dashboard_metrics(school_id, session='2026-27', month=None):
     classes = Class.query.filter_by(school_id=school_id).all()
     student_counts = dict(
         db.session.query(Student.class_id, func.count(Student.id))
-        .filter(Student.school_id == school_id)
+        .filter(Student.school_id == school_id, Student.is_deleted == False)
         .group_by(Student.class_id).all()
     )
 
@@ -1658,9 +1658,10 @@ def get_finance_dashboard_metrics(school_id, session='2026-27', month=None):
     ).join(FeeBill, Student.id == FeeBill.student_id
     ).filter(
         FeeBill.school_id == school_id,
-        FeeBill.status != BillStatus.CANCELLED.value
+        FeeBill.status != BillStatus.CANCELLED.value,
+        Student.is_deleted == False
     )
-    if not use_fallback:
+    if session:
         class_bill_query = class_bill_query.filter(FeeBill.session == session)
     if month:
         class_bill_query = class_bill_query.filter(FeeBill.bill_month == month)
@@ -1676,9 +1677,10 @@ def get_finance_dashboard_metrics(school_id, session='2026-27', month=None):
     ).join(FeePayment, Student.id == FeePayment.student_id
     ).filter(
         FeePayment.school_id == school_id,
-        FeePayment.status == PaymentStatus.VALID.value
+        FeePayment.status == PaymentStatus.VALID.value,
+        Student.is_deleted == False
     )
-    if not use_fallback:
+    if session:
         class_pay_query = class_pay_query.filter(FeePayment.session == session)
     if month:
         try:

@@ -179,9 +179,9 @@ export default function ExpensesPage() {
 
           {/* Banner */}
           <div style={{
-            background: 'linear-gradient(135deg, #e11d48 0%, #be123c 100%)',
+            background: 'linear-gradient(135deg, #0176d3 0%, #032d60 100%)',
             borderRadius: 14, padding: '22px 26px', color: '#fff', marginBottom: 20,
-            boxShadow: '0 4px 20px rgba(225, 29, 72, 0.25)',
+            boxShadow: '0 4px 20px rgba(1, 118, 211, 0.25)',
             display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16
           }}>
             <div>
@@ -200,7 +200,7 @@ export default function ExpensesPage() {
             <button
               onClick={openAdd}
               style={{
-                background: '#fff', color: '#be123c', border: 'none', borderRadius: 10,
+                background: '#fff', color: '#0176d3', border: 'none', borderRadius: 10,
                 padding: '10px 20px', fontSize: 13, fontWeight: 800, cursor: 'pointer',
                 boxShadow: '0 4px 14px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: 8
               }}
@@ -248,7 +248,7 @@ export default function ExpensesPage() {
             </select>
 
             <div style={{ marginLeft: 'auto', alignSelf: 'center', fontSize: 14, fontWeight: 800 }}>
-              Total: <span style={{ color: '#e11d48' }}>{fmt(summary?.total_expense)}</span>
+              Total: <span style={{ color: '#0176d3' }}>{fmt(summary?.total_expense)}</span>
             </div>
           </div>
 

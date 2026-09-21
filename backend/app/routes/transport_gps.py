@@ -901,14 +901,18 @@ def parent_child_trip(student_id):
 
 
 @transport_gps_bp.route('/parent/child/<int:student_id>/history', methods=['GET'])
-@role_required('PARENT', 'STUDENT')
+@transport_gps_bp.route('/gps/parent/child/<int:student_id>/history', methods=['GET'])
+@role_required('PARENT', 'STUDENT', 'PRINCIPAL', 'ADMIN', 'TRANSPORT', 'TEACHER', 'SUPER_ADMIN')
 def parent_child_history(student_id):
     """
     Returns student's historical transport trip attendance records:
     Date, Bus, Route, Pickup/Drop Event, Recorded Time, Stop.
     """
-    if student_id not in _own_student_ids():
-        return jsonify({'success': False, 'message': 'Not authorized for this student'}), 403
+    curr_user = get_current_user()
+    role_name = getattr(curr_user.role, 'value', str(curr_user.role)).upper()
+    if role_name in ('PARENT', 'STUDENT'):
+        if student_id not in _own_student_ids():
+            return jsonify({'success': False, 'message': 'Not authorized for this student'}), 403
 
     sid = _school_id()
     events = TripStudentAttendance.query.filter_by(student_id=student_id, school_id=sid)\
@@ -928,7 +932,7 @@ def parent_child_history(student_id):
             'driver_name':    trip.driver.name if (trip and trip.driver) else '',
         })
 
-    return jsonify({'success': True, 'data': history})
+    return jsonify({'success': True, 'data': {'events': history, 'history': history}})
 
 
 def _resolve_next_stop(trip, student_stop_id):

@@ -47,6 +47,8 @@ export default function OutstandingPage() {
   }, [selectedClass, selectedMonth]);
 
   const filteredBills = bills.filter((b) => {
+    const name = (b.student_name || '').toLowerCase();
+    if (name.includes('former student') || b.is_former || b.is_deleted) return false;
     if (!search) return true;
     const s = search.toLowerCase();
     return (
@@ -55,6 +57,28 @@ export default function OutstandingPage() {
       b.bill_no?.toLowerCase().includes(s)
     );
   });
+
+  const purgeFormerStudents = async () => {
+    if (!window.confirm('Clean up and delete all outstanding bills belonging to former, withdrawn, or deleted students?')) return;
+    try {
+      const res = await api.post('/fees-finance/outstanding/purge-former');
+      toast.success(res.data?.message || 'Purged former student records');
+      fetchOutstanding();
+    } catch (e) {
+      toast.error('Failed to purge former student records');
+    }
+  };
+
+  const deleteBill = async (billId, billNo) => {
+    if (!window.confirm(`Are you sure you want to delete bill ${billNo}?`)) return;
+    try {
+      await api.delete(`/fees-finance/bills/${billId}`);
+      toast.success(`Fee Bill ${billNo} deleted`);
+      fetchOutstanding();
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Failed to delete fee bill');
+    }
+  };
 
   const totalOutstanding = filteredBills.reduce((sum, b) => sum + (b.balance_due || 0), 0);
 
@@ -72,24 +96,47 @@ export default function OutstandingPage() {
         <Navbar title="Outstanding Fees & Defaulters" />
         <div className="page-body">
 
-          {/* Page Header */}
-          <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+          {/* Salesforce Blue Hero Banner */}
+          <div style={{
+            background: 'linear-gradient(135deg, #0176d3 0%, #032d60 100%)',
+            borderRadius: 14, padding: '22px 26px', color: '#fff', marginBottom: 20,
+            boxShadow: '0 4px 20px rgba(1, 118, 211, 0.25)',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16
+          }}>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <span className="badge badge-warning">Defaulter Tracking</span>
-                <span className="text-xs text-muted">Unpaid Student Arrears</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{ background: 'rgba(255,255,255,0.2)', padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 800 }}>
+                  DEFAULTER INTELLIGENCE
+                </span>
+                <span style={{ fontSize: 12, opacity: 0.9 }}>Active Student Arrears &bull; Instant WhatsApp Notices &bull; Ledger Deep-Link</span>
               </div>
-              <h2 className="page-title">Outstanding Fees & Defaulters</h2>
-              <p className="page-subtitle">
-                Track pending balances by class, fee period, and send instant WhatsApp payment reminders.
+              <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>Outstanding Fees &amp; Defaulters</h1>
+              <p style={{ margin: '4px 0 0', fontSize: 13, opacity: 0.9, maxWidth: 680 }}>
+                Live roster of unpaid student arrears. Former and inactive students are strictly excluded to keep auditor records accurate.
               </p>
             </div>
 
-            <div className="stat-card" style={{ padding: '8px 16px', borderLeft: '4px solid #dd7a01', minWidth: 180 }}>
-              <div className="stat-label" style={{ margin: 0 }}>Total Unpaid Dues</div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#dd7a01' }}>
-                {fmt(totalOutstanding)}
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{
+                background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(8px)',
+                borderRadius: 10, padding: '8px 16px', textAlign: 'right', border: '1px solid rgba(255,255,255,0.2)'
+              }}>
+                <div style={{ fontSize: 11, opacity: 0.85, fontWeight: 700 }}>Total Active Dues</div>
+                <div style={{ fontSize: 20, fontWeight: 900, color: '#fcd34d' }}>{fmt(totalOutstanding)}</div>
               </div>
+
+              <button
+                onClick={purgeFormerStudents}
+                style={{
+                  background: 'rgba(239, 68, 68, 0.2)', color: '#fee2e2', border: '1px solid rgba(239,68,68,0.4)',
+                  borderRadius: 10, padding: '10px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 6
+                }}
+                title="Purge lingering bills belonging to former or withdrawn students"
+              >
+                <i className="ti ti-user-x" />
+                Purge Former Student Dues
+              </button>
             </div>
           </div>
 
@@ -144,10 +191,10 @@ export default function OutstandingPage() {
 
           {/* Table */}
           <div className="card">
-            <div className="card-header">
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>Defaulters List</h3>
-                <p className="text-xs text-muted" style={{ margin: 0 }}>Showing {filteredBills.length} pending accounts</p>
+                <p className="text-xs text-muted" style={{ margin: 0 }}>Showing {filteredBills.length} active students with unpaid fee balances</p>
               </div>
             </div>
 
@@ -158,16 +205,16 @@ export default function OutstandingPage() {
               </div>
             ) : filteredBills.length === 0 ? (
               <div className="empty-state">
-                <i className="ti ti-check" style={{ fontSize: 36, color: '#2e844a' }}></i>
+                <i className="ti ti-circle-check" style={{ fontSize: 36, color: '#0176d3' }}></i>
                 <h4 style={{ marginTop: 12 }}>No Defaulters Found!</h4>
-                <p className="text-xs text-muted">All student dues are clear for the selected filter.</p>
+                <p className="text-xs text-muted">All active student dues are completely settled for the selected criteria.</p>
               </div>
             ) : (
               <div className="table-container" style={{ border: 'none' }}>
                 <table className="table">
                   <thead>
                     <tr>
-                      <th>Student & Class</th>
+                      <th>Student &amp; Class</th>
                       <th>Bill No</th>
                       <th>Period</th>
                       <th style={{ textAlign: 'right' }}>Total Payable</th>
@@ -182,14 +229,14 @@ export default function OutstandingPage() {
                       <tr key={b.id}>
                         <td>
                           <div style={{ fontWeight: 700, color: 'var(--neutral-9)' }}>{b.student_name}</div>
-                          <div className="text-xs text-muted">{b.admission_no} • {b.class_name}</div>
+                          <div className="text-xs text-muted">{b.admission_no} &bull; {b.class_name}</div>
                         </td>
-                        <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--neutral-9)' }}>{b.bill_no}</td>
+                        <td style={{ fontFamily: 'monospace', fontWeight: 700, color: '#0176d3' }}>{b.bill_no}</td>
                         <td style={{ fontWeight: 600 }}>{b.bill_period_label}</td>
                         <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(b.total_payable)}</td>
                         <td style={{ textAlign: 'right', fontWeight: 600, color: '#2e844a' }}>{fmt(b.amount_paid)}</td>
                         <td style={{ textAlign: 'right', fontWeight: 800, color: '#dd7a01' }}>{fmt(b.balance_due)}</td>
-                        <td style={{ color: '#ba0517', fontWeight: 600 }}>{b.due_date}</td>
+                        <td style={{ color: '#0176d3', fontWeight: 600 }}>{b.due_date}</td>
                         <td style={{ textAlign: 'center' }}>
                           <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
                             <button
@@ -211,6 +258,14 @@ export default function OutstandingPage() {
                               className="btn btn-primary btn-sm"
                             >
                               Pay
+                            </button>
+                            <button
+                              onClick={() => deleteBill(b.id, b.bill_no)}
+                              className="btn btn-neutral btn-sm"
+                              title="Delete Fee Bill"
+                              style={{ color: '#ba0517' }}
+                            >
+                              <i className="ti ti-trash"></i>
                             </button>
                           </div>
                         </td>

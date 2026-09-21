@@ -1724,18 +1724,101 @@ def get_outstanding():
     session  = request.args.get('session', '2026-27')
     month    = request.args.get('month')
 
-    q = FeeBill.query.filter_by(school_id=user.school_id, session=session).filter(
-        FeeBill.balance_due > 0,
-        FeeBill.status.in_([BillStatus.ISSUED.value, BillStatus.PARTIALLY_PAID.value, BillStatus.OVERDUE.value])
-    )
+    # Auto-cleanup: cancel and zero-out any outstanding balances on bills belonging to deleted / former students
+    try:
+        former_stu_ids = [
+            r[0] for r in db.session.query(Student.id).outerjoin(User, Student.user_id == User.id).filter(
+                Student.school_id == user.school_id,
+                db.or_(
+                    Student.is_deleted == True,
+                    Student.is_anonymized == True,
+                    Student.status.in_(['FORMER', 'ALUMNI', 'WITHDRAWN', 'LEFT', 'GRADUATED', 'ARCHIVED', 'INACTIVE']),
+                    User.is_deleted == True,
+                    User.name.ilike('%Former Student%')
+                )
+            ).all()
+        ]
+        if former_stu_ids:
+            FeeBill.query.filter(
+                FeeBill.school_id == user.school_id,
+                FeeBill.student_id.in_(former_stu_ids),
+                FeeBill.status != BillStatus.CANCELLED.value
+            ).update({'status': BillStatus.CANCELLED.value, 'balance_due': 0.0}, synchronize_session=False)
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+    q = FeeBill.query.join(Student, FeeBill.student_id == Student.id)\
+        .join(User, Student.user_id == User.id)\
+        .filter(
+            FeeBill.school_id == user.school_id,
+            FeeBill.session == session,
+            FeeBill.balance_due > 0,
+            FeeBill.status.in_([BillStatus.ISSUED.value, BillStatus.PARTIALLY_PAID.value, BillStatus.OVERDUE.value]),
+            Student.is_deleted == False,
+            User.is_deleted == False,
+            ~User.name.ilike('%Former Student%'),
+            ~Student.status.in_(['FORMER', 'ALUMNI', 'WITHDRAWN', 'LEFT', 'GRADUATED', 'ARCHIVED', 'INACTIVE'])
+        )
 
     if month:
-        q = q.filter_by(bill_month=month)
+        q = q.filter(FeeBill.bill_month == month)
     if class_id:
-        q = q.join(Student).filter(Student.class_id == class_id)
+        q = q.filter(Student.class_id == class_id)
 
     bills = q.order_by(FeeBill.balance_due.desc()).all()
     return jsonify([b.to_dict() for b in bills]), 200
+
+
+@fees_finance_bp.route('/outstanding/purge-former', methods=['POST', 'DELETE'])
+@jwt_required()
+def purge_former_student_bills():
+    """Explicitly purges any remaining fee bills for former/deleted students."""
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        former_stu_ids = [
+            r[0] for r in db.session.query(Student.id).outerjoin(User, Student.user_id == User.id).filter(
+                Student.school_id == user.school_id,
+                db.or_(
+                    Student.is_deleted == True,
+                    Student.is_anonymized == True,
+                    Student.status.in_(['FORMER', 'ALUMNI', 'WITHDRAWN', 'LEFT', 'GRADUATED', 'ARCHIVED', 'INACTIVE']),
+                    User.is_deleted == True,
+                    User.name.ilike('%Former Student%')
+                )
+            ).all()
+        ]
+        count = 0
+        if former_stu_ids:
+            count = FeeBill.query.filter(
+                FeeBill.school_id == user.school_id,
+                FeeBill.student_id.in_(former_stu_ids)
+            ).delete(synchronize_session=False)
+            db.session.commit()
+        return jsonify({'success': True, 'purged_count': count, 'message': f'Successfully purged {count} fee bills for former students.'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@fees_finance_bp.route('/bills/<int:bill_id>', methods=['DELETE'])
+@jwt_required()
+def delete_fee_bill(bill_id):
+    """Deletes an unpaid fee bill directly."""
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    bill = FeeBill.query.filter_by(id=bill_id, school_id=user.school_id).first_or_404()
+    if bill.amount_paid and bill.amount_paid > 0:
+        return jsonify({'error': 'Cannot delete bill with existing payments. Cancel payment first.'}), 400
+
+    db.session.delete(bill)
+    db.session.commit()
+    return jsonify({'success': True, 'message': f'Fee Bill {bill.bill_no} deleted successfully.'}), 200
 
 
 # ═══════════════════════════════════════════════════════════════════════

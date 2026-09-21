@@ -220,7 +220,8 @@ function TransportTab({ studentId }) {
         setTransportInfo(stRes.value.data.data[0]);
       }
       if (histRes.status === 'fulfilled') {
-        setHistory(histRes.value?.data?.data?.events || []);
+        const hData = histRes.value?.data?.data;
+        setHistory(Array.isArray(hData) ? hData : (hData?.events || hData?.history || []));
       }
     }).finally(() => setLoading(false));
   }, [studentId]);
