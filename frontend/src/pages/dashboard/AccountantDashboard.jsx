@@ -143,13 +143,17 @@ export default function AccountantDashboard() {
 
   useEffect(() => { load(); }, [load]);
 
-  const collectRate = feesSummary
-    ? Math.round(((feesSummary.collected || 0) / (feesSummary.total_demand || 1)) * 100)
+  const totalDemand = feesSummary?.total_demand ?? feesSummary?.total_due ?? feesSummary?.gross_due ?? 0;
+  const collected = feesSummary?.collected ?? feesSummary?.total_collected ?? feesSummary?.total_paid ?? 0;
+  const outstanding = feesSummary?.outstanding ?? feesSummary?.balance ?? Math.max(0, totalDemand - collected);
+
+  const collectRate = totalDemand > 0
+    ? Math.round((collected / totalDemand) * 100)
     : null;
 
-  const pieData = feesSummary ? [
-    { name: 'Collected', value: feesSummary.collected || 0 },
-    { name: 'Outstanding', value: feesSummary.outstanding || 0 },
+  const pieData = (totalDemand > 0 || collected > 0) ? [
+    { name: 'Collected', value: collected },
+    { name: 'Outstanding', value: outstanding },
   ] : [];
 
   const todayStr = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -164,9 +168,9 @@ export default function AccountantDashboard() {
           {/* ── Hero ── */}
           <div style={{
             borderRadius: 18, padding: '26px 32px', marginBottom: 24,
-            background: 'linear-gradient(135deg, #064e3b 0%, #065f46 40%, #047857 80%, #059669 100%)',
+            background: 'linear-gradient(135deg, #014486 0%, #0176d3 50%, #032d60 100%)',
             color: '#fff', position: 'relative', overflow: 'hidden',
-            boxShadow: '0 8px 30px rgba(5,150,105,0.35)',
+            boxShadow: '0 8px 30px rgba(1,118,211,0.35)',
           }}>
             <div style={{ position: 'absolute', top: -50, right: -30, width: 180, height: 180, borderRadius: '50%', background: 'rgba(255,255,255,0.06)' }} />
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
@@ -178,13 +182,13 @@ export default function AccountantDashboard() {
                   Financial Command Center
                 </h1>
                 <p style={{ margin: '8px 0 0', opacity: 0.8, fontSize: 14 }}>
-                  {feesSummary ? `Total demand: ${fmtK(feesSummary.total_demand)} · Collected: ${fmtK(feesSummary.collected)}` : 'Loading financial summary…'}
+                  {feesSummary ? `Total demand: ${fmtK(totalDemand)} · Collected: ${fmtK(collected)}` : 'Loading financial summary…'}
                 </p>
               </div>
               <div style={{ display: 'flex', gap: 10 }}>
                 <button onClick={() => goTo('/finance/payments/collect')} style={{
                   padding: '10px 20px', borderRadius: 10, border: 'none',
-                  background: '#fff', color: '#047857', fontWeight: 700, cursor: 'pointer', fontSize: 13,
+                  background: '#fff', color: '#0176d3', fontWeight: 700, cursor: 'pointer', fontSize: 13,
                   display: 'flex', alignItems: 'center', gap: 6,
                 }}>
                   <i className="ti ti-credit-card" /> Collect Payment
@@ -209,20 +213,20 @@ export default function AccountantDashboard() {
             <>
               {/* ── KPIs ── */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 20 }}>
-                <KPI icon="ti-currency-rupee" label="Total Fee Demand" value={fmtK(feesSummary?.total_demand)}
+                <KPI icon="ti-currency-rupee" label="Total Fee Demand" value={fmtK(totalDemand)}
                      color={C.primary} onClick={() => goTo('/finance/bills')} />
-                <KPI icon="ti-receipt" label="Total Collected" value={fmtK(feesSummary?.collected)}
+                <KPI icon="ti-receipt" label="Total Collected" value={fmtK(collected)}
                      color={C.green} onClick={() => goTo('/finance/payment-logs')} />
-                <KPI icon="ti-alert-circle" label="Outstanding Dues" value={fmtK(feesSummary?.outstanding)}
-                     color={feesSummary?.outstanding > 0 ? C.warning : C.green}
-                     badge={feesSummary?.outstanding > 0 ? { text: 'PENDING', color: C.warning } : { text: 'CLEAR', color: C.green }}
+                <KPI icon="ti-alert-circle" label="Outstanding Dues" value={fmtK(outstanding)}
+                     color={outstanding > 0 ? C.warning : C.green}
+                     badge={outstanding > 0 ? { text: 'PENDING', color: C.warning } : { text: 'CLEAR', color: C.green }}
                      onClick={() => goTo('/finance/outstanding')} />
                 <KPI icon="ti-chart-pie" label="Collection Rate" value={collectRate != null ? `${collectRate}%` : '—'}
                      color={collectRate >= 80 ? C.green : C.warning}
                      badge={collectRate != null ? { text: collectRate >= 80 ? 'HEALTHY' : 'LOW', color: collectRate >= 80 ? C.green : C.warning } : null} />
-                <KPI icon="ti-trending-up" label="This Month Income" value={fmtK(profitSummary?.total_income)}
+                <KPI icon="ti-trending-up" label="This Month Income" value={fmtK(profitSummary?.total_income ?? profitSummary?.revenue)}
                      color={C.purple} onClick={() => goTo('/finance/reports')} />
-                <KPI icon="ti-trending-down" label="This Month Expense" value={fmtK(profitSummary?.total_expense)}
+                <KPI icon="ti-trending-down" label="This Month Expense" value={fmtK(profitSummary?.total_expense ?? profitSummary?.expenses)}
                      color={C.error} onClick={() => goTo('/finance/expenses')} />
               </div>
 

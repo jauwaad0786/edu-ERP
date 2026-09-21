@@ -977,13 +977,25 @@ def profit_summary():
         return jsonify({'error': 'month format must be like "July 2026"'}), 400
     year, month_num = bounds
 
-    revenue = db.session.query(func.sum(FeeRecord.amount_paid))\
+    from app.models.fee_finance import FeeBill, FeePayment
+
+    fee_rec_revenue = db.session.query(func.sum(FeeRecord.amount_paid))\
         .filter(
             FeeRecord.school_id == sid,
             FeeRecord.paid_date.isnot(None),
             extract('year',  FeeRecord.paid_date) == year,
             extract('month', FeeRecord.paid_date) == month_num,
         ).scalar() or 0.0
+
+    fee_pay_revenue = db.session.query(func.sum(FeePayment.total_paid))\
+        .filter(
+            FeePayment.school_id == sid,
+            FeePayment.status == 'VALID',
+            extract('year',  FeePayment.payment_date) == year,
+            extract('month', FeePayment.payment_date) == month_num,
+        ).scalar() or 0.0
+
+    revenue = round(float(fee_rec_revenue) + float(fee_pay_revenue), 2)
 
     expenses = db.session.query(func.sum(Expense.amount))\
         .filter(Expense.school_id == sid, Expense.month == month, Expense.status.in_(['APPROVED', 'PAID'])).scalar() or 0.0
@@ -1000,7 +1012,9 @@ def profit_summary():
     return jsonify({
         'month':           month,
         'revenue':         round(revenue, 2),
+        'total_income':    round(revenue, 2),
         'expenses':        round(expenses, 2),
+        'total_expense':   round(expenses, 2),
         'salary_expense':  round(salary_expense, 2),
         'profit':          profit,
         'profit_margin_pct': round(profit / revenue * 100, 1) if revenue else 0.0,
@@ -1028,25 +1042,77 @@ def monthly_trend():
     sid = _school_id()
     months_count = request.args.get('months', default=6, type=int)
 
-    fee_agg = db.session.query(
-        FeeRecord.month,
-        func.sum(FeeRecord.amount_due).label('expected'),
-        func.sum(FeeRecord.amount_paid).label('collected')
-    ).filter(
-        FeeRecord.school_id == sid,
-        FeeRecord.month.isnot(None)
-    ).group_by(FeeRecord.month).order_by(FeeRecord.month.desc()).limit(months_count).all()
+    from app.models.fee_finance import FeeBill, FeePayment
+
+    today = date.today()
+    month_list = []
+    for i in range(months_count - 1, -1, -1):
+        y = today.year
+        m = today.month - i
+        while m <= 0:
+            m += 12
+            y -= 1
+        month_str = f"{y}-{m:02d}"
+        month_list.append((y, m, month_str))
+
+    # Pre-query FeeBill by bill_month
+    bill_map = {
+        r[0]: (float(r[1] or 0.0), float(r[2] or 0.0))
+        for r in db.session.query(
+            FeeBill.bill_month,
+            func.sum(FeeBill.total_payable),
+            func.sum(FeeBill.amount_paid)
+        ).filter(FeeBill.school_id == sid, FeeBill.status != 'CANCELLED').group_by(FeeBill.bill_month).all()
+        if r[0]
+    }
+
+    # Pre-query FeePayment grouped by year/month
+    payment_map = {}
+    for r in db.session.query(
+        extract('year', FeePayment.payment_date),
+        extract('month', FeePayment.payment_date),
+        func.sum(FeePayment.total_paid)
+    ).filter(FeePayment.school_id == sid, FeePayment.status == 'VALID').group_by(
+        extract('year', FeePayment.payment_date),
+        extract('month', FeePayment.payment_date)
+    ).all():
+        if r[0] and r[1]:
+            payment_map[(int(r[0]), int(r[1]))] = float(r[2] or 0.0)
+
+    # Pre-query FeeRecord by month
+    record_map = {
+        r[0]: (float(r[1] or 0.0), float(r[2] or 0.0))
+        for r in db.session.query(
+            FeeRecord.month,
+            func.sum(FeeRecord.amount_due),
+            func.sum(FeeRecord.amount_paid)
+        ).filter(FeeRecord.school_id == sid, FeeRecord.status.notin_(['DRAFT', 'CANCELLED'])).group_by(FeeRecord.month).all()
+        if r[0]
+    }
 
     result = []
-    for r in reversed(fee_agg):
-        exp = float(r.expected or 0)
-        col = float(r.collected or 0)
+    for y, m, m_str in month_list:
+        month_label = date(y, m, 1).strftime('%b %Y')
+        b_exp, b_col = bill_map.get(m_str, (0.0, 0.0))
+        p_col = payment_map.get((y, m), 0.0)
+        r_exp, r_col = record_map.get(m_str, record_map.get(month_label, (0.0, 0.0)))
+
+        exp = max(b_exp, r_exp)
+        col = max(p_col, b_col, r_col)
+        if b_exp > 0 and p_col > 0:
+            col = max(b_col, p_col)
+
+        pending = max(0.0, round(exp - col, 2))
+        pct = round((col / exp * 100), 1) if exp > 0 else 0.0
+
         result.append({
-            'month': r.month,
-            'expected': exp,
-            'collected': col,
-            'pending': max(0.0, exp - col),
-            'collection_pct': round((col / exp * 100), 1) if exp > 0 else 0.0
+            'month': month_label,
+            'month_code': m_str,
+            'expected': round(exp, 2),
+            'collected': round(col, 2),
+            'pending': round(pending, 2),
+            'outstanding': round(pending, 2),
+            'collection_pct': pct
         })
 
     return jsonify(result), 200

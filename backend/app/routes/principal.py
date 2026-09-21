@@ -1500,30 +1500,7 @@ def fees_summary():
         status=status_param
     )
 
-    return jsonify({
-        'total_due':              summary['total_due'],
-        'total_collected':        summary['total_collected'],
-        'total_paid':             summary['total_paid'],
-        'outstanding':            summary['outstanding'],
-        'gross_due':              summary['gross_due'],
-        'total_discount':         summary['total_discount'],
-        'total_fine':             summary['total_fine'],
-        'pending_count':          summary['pending_count'],
-        'partial_count':          summary['partial_count'],
-        'paid_count':             summary['paid_count'],
-        'overdue_count':          summary['overdue_count'],
-        'collection_rate':        summary['collection_rate'],
-        'today_collection':       summary['today_collection'],
-        'today_breakdown':        summary['today_breakdown'],
-        'this_month':             summary['this_month'],
-        'this_month_collection':  summary['this_month_collection'],
-        'cash_collection':        summary['cash_collection'],
-        'upi_collection':         summary['upi_collection'],
-        'online_collection':      summary['online_collection'],
-        'cheque_collection':      summary['cheque_collection'],
-        'services':               summary['services'],
-        'service_breakdown':      summary['service_breakdown']
-    }), 200
+    return jsonify(summary), 200
 
 
 @principal_bp.route('/fees/recent-collections', methods=['GET'])
@@ -4839,6 +4816,7 @@ def dashboard():
         })
 
     # ── Fee collection trend — last 6 weeks in 1 single grouped query ──────────
+    from app.models.fee_finance import FeeBill, FeePayment
     fee_trend = []
     week_start = today - timedelta(days=today.weekday())  # is week ka Monday
     six_weeks_ago = week_start - timedelta(weeks=5)
@@ -4852,7 +4830,22 @@ def dashboard():
         .group_by(FeeRecord.paid_date)
         .all()
     )
-    paid_by_date = {dt: float(amt or 0) for dt, amt in fee_records_trend}
+    paid_by_date = {dt: float(amt or 0) for dt, amt in fee_records_trend if dt}
+
+    fee_payments_trend = (
+        db.session.query(FeePayment.payment_date, func.sum(FeePayment.total_paid))
+        .filter(
+            FeePayment.school_id == sid,
+            FeePayment.status == 'VALID',
+            FeePayment.payment_date >= six_weeks_ago,
+            FeePayment.payment_date <= today
+        )
+        .group_by(FeePayment.payment_date)
+        .all()
+    )
+    for dt, amt in fee_payments_trend:
+        if dt:
+            paid_by_date[dt] = paid_by_date.get(dt, 0.0) + float(amt or 0.0)
 
     for i in range(5, -1, -1):
         w_start = week_start - timedelta(weeks=i)
@@ -5048,7 +5041,38 @@ def dashboard():
     fee_due_expr = func.sum(FeeRecord.amount_due + func.coalesce(FeeRecord.fine, 0) - func.coalesce(FeeRecord.discount, 0))
     fee_paid_expr = func.sum(FeeRecord.amount_paid)
 
+    # Check if modern FeeBill or FeePayment records exist
+    bills_count = FeeBill.query.filter(FeeBill.school_id == sid, FeeBill.status != 'CANCELLED').count()
+    payments_count = FeePayment.query.filter(FeePayment.school_id == sid, FeePayment.status == 'VALID').count()
+
     # 1. Current Month Aggregates
+    month_bill_row = db.session.query(
+        func.sum(FeeBill.total_payable),
+        func.sum(FeeBill.amount_paid),
+        func.sum(FeeBill.balance_due)
+    ).filter(
+        FeeBill.school_id == sid,
+        FeeBill.status != 'CANCELLED',
+        db.or_(
+            FeeBill.bill_month == curr_month_str,
+            FeeBill.bill_period_label == curr_month_name,
+            db.and_(FeeBill.due_date >= m_start, FeeBill.due_date <= m_end)
+        )
+    ).first()
+
+    month_payments_collected = db.session.query(func.sum(FeePayment.total_paid)).filter(
+        FeePayment.school_id == sid,
+        FeePayment.status == 'VALID',
+        FeePayment.payment_date >= m_start,
+        FeePayment.payment_date <= m_end
+    ).scalar() or 0.0
+
+    month_tx_collected = db.session.query(func.sum(FeeTransaction.amount)).filter(
+        FeeTransaction.school_id == sid,
+        FeeTransaction.transaction_date >= m_start,
+        FeeTransaction.transaction_date <= m_end
+    ).scalar() or 0.0
+
     month_fee_row = db.session.query(fee_due_expr, fee_paid_expr).filter(
         FeeRecord.school_id == sid,
         FeeRecord.status != 'DRAFT',
@@ -5061,22 +5085,34 @@ def dashboard():
         )
     ).first()
 
-    month_fees_generated = float(month_fee_row[0] or 0.0) if month_fee_row else 0.0
-    month_tx_collected = db.session.query(func.sum(FeeTransaction.amount)).filter(
-        FeeTransaction.school_id == sid,
-        FeeTransaction.transaction_date >= m_start,
-        FeeTransaction.transaction_date <= m_end
-    ).scalar()
-
-    if month_tx_collected is not None and month_tx_collected > 0:
-        month_fees_collected = float(month_tx_collected)
+    if (bills_count > 0 or payments_count > 0) and ((month_bill_row and month_bill_row[0] is not None) or month_payments_collected > 0):
+        month_fees_generated = float(month_bill_row[0] or 0.0) if month_bill_row else 0.0
+        month_fees_collected = float(max(float(month_payments_collected), float(month_bill_row[1] or 0.0) if month_bill_row else 0.0))
+        month_fees_pending = float(month_bill_row[2] if month_bill_row and month_bill_row[2] is not None else max(0.0, month_fees_generated - month_fees_collected))
     else:
-        month_fees_collected = float(month_fee_row[1] or 0.0) if month_fee_row else 0.0
+        month_fees_generated = float(month_fee_row[0] or 0.0) if month_fee_row else 0.0
+        month_fees_collected = float(month_tx_collected if (month_tx_collected and month_tx_collected > 0) else (month_fee_row[1] if month_fee_row else 0.0) or 0.0)
+        month_fees_pending = max(0.0, round(month_fees_generated - month_fees_collected, 2))
 
-    month_fees_pending = max(0.0, round(month_fees_generated - month_fees_collected, 2))
     month_col_pct = round((month_fees_collected / month_fees_generated * 100), 1) if month_fees_generated > 0 else 0.0
 
     # 2. Session / Year Aggregates
+    session_bill_row = db.session.query(
+        func.sum(FeeBill.total_payable),
+        func.sum(FeeBill.amount_paid),
+        func.sum(FeeBill.balance_due)
+    ).filter(
+        FeeBill.school_id == sid,
+        FeeBill.status != 'CANCELLED',
+        FeeBill.session == curr_session
+    ).first()
+
+    session_payments_collected = db.session.query(func.sum(FeePayment.total_paid)).filter(
+        FeePayment.school_id == sid,
+        FeePayment.status == 'VALID',
+        FeePayment.session == curr_session
+    ).scalar() or 0.0
+
     session_fee_row = db.session.query(fee_due_expr, fee_paid_expr).filter(
         FeeRecord.school_id == sid,
         FeeRecord.status != 'DRAFT',
@@ -5091,20 +5127,46 @@ def dashboard():
             FeeRecord.created_at >= y_start
         ).first()
 
-    year_fees_generated = float(session_fee_row[0] or 0.0) if session_fee_row else 0.0
-    year_fees_collected = float(session_fee_row[1] or 0.0) if session_fee_row else 0.0
-    year_fees_pending = max(0.0, round(year_fees_generated - year_fees_collected, 2))
+    if (bills_count > 0 or payments_count > 0) and ((session_bill_row and session_bill_row[0] is not None) or session_payments_collected > 0):
+        year_fees_generated = float(session_bill_row[0] or 0.0) if session_bill_row else 0.0
+        year_fees_collected = float(max(float(session_payments_collected), float(session_bill_row[1] or 0.0) if session_bill_row else 0.0))
+        year_fees_pending = float(session_bill_row[2] if session_bill_row and session_bill_row[2] is not None else max(0.0, year_fees_generated - year_fees_collected))
+    else:
+        year_fees_generated = float(session_fee_row[0] or 0.0) if session_fee_row else 0.0
+        year_fees_collected = float(session_fee_row[1] or 0.0) if session_fee_row else 0.0
+        year_fees_pending = max(0.0, round(year_fees_generated - year_fees_collected, 2))
+
     year_col_pct = round((year_fees_collected / year_fees_generated * 100), 1) if year_fees_generated > 0 else 0.0
 
     # 3. All-Time Aggregates
+    all_time_bill_row = db.session.query(
+        func.sum(FeeBill.total_payable),
+        func.sum(FeeBill.amount_paid),
+        func.sum(FeeBill.balance_due)
+    ).filter(
+        FeeBill.school_id == sid,
+        FeeBill.status != 'CANCELLED'
+    ).first()
+
+    all_time_payments_collected = db.session.query(func.sum(FeePayment.total_paid)).filter(
+        FeePayment.school_id == sid,
+        FeePayment.status == 'VALID'
+    ).scalar() or 0.0
+
     all_time_row = db.session.query(fee_due_expr, fee_paid_expr).filter(
         FeeRecord.school_id == sid,
         FeeRecord.status != 'DRAFT'
     ).first()
 
-    all_time_generated = float(all_time_row[0] or 0.0) if all_time_row else 0.0
-    fee_collected_total = float(all_time_row[1] or 0.0) if all_time_row else 0.0
-    fee_pending_total = max(0.0, round(all_time_generated - fee_collected_total, 2))
+    if (bills_count > 0 or payments_count > 0) and ((all_time_bill_row and all_time_bill_row[0] is not None) or all_time_payments_collected > 0):
+        all_time_generated = float(all_time_bill_row[0] or 0.0) if all_time_bill_row else 0.0
+        fee_collected_total = float(max(float(all_time_payments_collected), float(all_time_bill_row[1] or 0.0) if all_time_bill_row else 0.0))
+        fee_pending_total = float(all_time_bill_row[2] if all_time_bill_row and all_time_bill_row[2] is not None else max(0.0, all_time_generated - fee_collected_total))
+    else:
+        all_time_generated = float(all_time_row[0] or 0.0) if all_time_row else 0.0
+        fee_collected_total = float(all_time_row[1] or 0.0) if all_time_row else 0.0
+        fee_pending_total = max(0.0, round(all_time_generated - fee_collected_total, 2))
+
     all_time_col_pct = round((fee_collected_total / all_time_generated * 100), 1) if all_time_generated > 0 else 0.0
 
     # 4. Opening Balance / Migrated Dues Reconciliation
