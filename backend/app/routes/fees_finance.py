@@ -1791,6 +1791,13 @@ def get_outstanding():
                 FeeBill.student_id.in_(former_stu_ids),
                 FeeBill.status != BillStatus.CANCELLED.value
             ).update({'status': BillStatus.CANCELLED.value, 'balance_due': 0.0}, synchronize_session=False)
+
+            FeeRecord.query.filter(
+                FeeRecord.school_id == user.school_id,
+                FeeRecord.student_id.in_(former_stu_ids),
+                FeeRecord.status != 'PAID'
+            ).update({'status': 'CANCELLED', 'amount_due': 0.0}, synchronize_session=False)
+
             db.session.commit()
     except Exception:
         db.session.rollback()
@@ -1820,7 +1827,7 @@ def get_outstanding():
 @fees_finance_bp.route('/outstanding/purge-former', methods=['POST', 'DELETE'])
 @jwt_required()
 def purge_former_student_bills():
-    """Explicitly purges any remaining fee bills for former/deleted students."""
+    """Explicitly purges any remaining fee bills and legacy records for former/deleted students."""
     user = _get_current_user()
     if not user or not user.school_id:
         return jsonify({'error': 'Unauthorized'}), 401
@@ -1844,8 +1851,15 @@ def purge_former_student_bills():
                 FeeBill.school_id == user.school_id,
                 FeeBill.student_id.in_(former_stu_ids)
             ).delete(synchronize_session=False)
+
+            FeeRecord.query.filter(
+                FeeRecord.school_id == user.school_id,
+                FeeRecord.student_id.in_(former_stu_ids),
+                FeeRecord.status != 'PAID'
+            ).delete(synchronize_session=False)
+
             db.session.commit()
-        return jsonify({'success': True, 'purged_count': count, 'message': f'Successfully purged {count} fee bills for former students.'}), 200
+        return jsonify({'success': True, 'purged_count': count, 'message': f'Successfully purged fee dues for former students.'}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
