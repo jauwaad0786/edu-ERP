@@ -1,19 +1,26 @@
 // mob_app/src/screens/dashboard/PrincipalDashboardScreen.js
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
+import {
+  View, Text, StyleSheet, ScrollView, RefreshControl,
+  ActivityIndicator, TouchableOpacity, Alert,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import client from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
+import { colors } from '../../theme/colors';
+import GradientHero from '../../components/common/GradientHero';
+import KPICard from '../../components/common/KPICard';
+import Card from '../../components/common/Card';
+import Badge from '../../components/common/Badge';
+import Button from '../../components/common/Button';
 
-const C = { primary: '#0176d3', green: '#16a34a', warning: '#d97706', error: '#dc2626', text: '#1e293b', muted: '#64748b', bg: '#f0f4f8', surface: '#fff', border: '#e2e8f0' };
-
-export default function PrincipalDashboardScreen() {
+export default function PrincipalDashboardScreen({ navigation }) {
   const { user, logout } = useAuth();
-  const [stats,    setStats]    = useState(null);
-  const [fees,     setFees]     = useState(null);
-  const [loading,  setLoading]  = useState(true);
-  const [refresh,  setRefresh]  = useState(false);
+  const [stats, setStats] = useState(null);
+  const [fees, setFees] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [refresh, setRefresh] = useState(false);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefresh(true); else setLoading(true);
@@ -33,74 +40,270 @@ export default function PrincipalDashboardScreen() {
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
-  const presentPct = stats?.total_students ? Math.round((stats.students_present / stats.total_students) * 100) : null;
-  const collectRate = fees?.total_demand ? Math.round((fees.collected / fees.total_demand) * 100) : null;
+  const presentPct = stats?.total_students
+    ? Math.round((stats.students_present / stats.total_students) * 100)
+    : null;
+  const collectRate = fees?.total_demand
+    ? Math.round((fees.collected / fees.total_demand) * 100)
+    : null;
 
-  if (loading) return <SafeAreaView style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg }}><ActivityIndicator size="large" color={C.primary} /></SafeAreaView>;
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.centerContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.loadingText}>Loading Executive Portal...</Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
-        refreshControl={<RefreshControl refreshing={refresh} onRefresh={() => load(true)} colors={[C.primary]} />}>
+    <SafeAreaView style={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refresh}
+            onRefresh={() => load(true)}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Executive Hero */}
+        <GradientHero
+          tagline="EXECUTIVE DASHBOARD"
+          title={`${greeting}, ${user?.name || 'Principal'}`}
+          subtitle={`${user?.school?.name || 'School ERP'} · Academic Leadership`}
+          avatarText={user?.name || 'P'}
+          gradientColors={colors.primaryGradient}
+        />
 
-        <View style={[styles.hero, { backgroundColor: C.primary }]}>
-          <Text style={styles.hGreet}>{greeting.toUpperCase()}</Text>
-          <Text style={styles.hName}>{user?.name || 'Principal'}</Text>
-          <Text style={styles.hSub}>{user?.school?.name || 'Your School'} · Executive Dashboard</Text>
+        {/* 4-Stat Metric Grid */}
+        <View style={styles.gridRow}>
+          <KPICard
+            label="Total Students"
+            value={stats?.total_students ? Number(stats.total_students).toLocaleString() : '—'}
+            sublabel="Enrolled"
+            icon="people-outline"
+            accentColor={colors.primary}
+            onPress={() => navigation?.navigate('Students')}
+          />
+          <KPICard
+            label="Student Att."
+            value={presentPct != null ? `${presentPct}%` : '—'}
+            sublabel="Present today"
+            icon="clipboard-outline"
+            accentColor={presentPct >= 80 ? colors.success : colors.warning}
+            badgeText={presentPct >= 80 ? 'Healthy' : 'Monitor'}
+            onPress={() => navigation?.navigate('Attendance')}
+          />
         </View>
 
-        {/* KPI Grid */}
-        <View style={styles.grid}>
-          {[
-            { icon: 'people-outline', label: 'Students', value: stats?.total_students?.toLocaleString(), color: C.primary },
-            { icon: 'clipboard-outline', label: 'Student Att.', value: presentPct != null ? `${presentPct}%` : '—', color: presentPct >= 85 ? C.green : C.warning },
-            { icon: 'person-circle-outline', label: 'Teachers', value: stats?.total_teachers?.toLocaleString(), color: '#7c3aed' },
-            { icon: 'receipt-outline', label: 'Collection Rate', value: collectRate != null ? `${collectRate}%` : '—', color: collectRate >= 80 ? C.green : C.warning },
-          ].map((k, i) => (
-            <View key={i} style={[styles.kpi, { borderLeftColor: k.color }]}>
-              <Ionicons name={k.icon} size={20} color={k.color} style={{ marginBottom: 4 }} />
-              <Text style={styles.kpiVal}>{k.value ?? '—'}</Text>
-              <Text style={styles.kpiLab}>{k.label}</Text>
+        <View style={styles.gridRow}>
+          <KPICard
+            label="Faculty & Staff"
+            value={stats?.total_teachers ? Number(stats.total_teachers).toLocaleString() : '—'}
+            sublabel="Active staff"
+            icon="person-circle-outline"
+            accentColor="#7c3aed"
+            onPress={() => navigation?.navigate('Staff')}
+          />
+          <KPICard
+            label="Collection Rate"
+            value={collectRate != null ? `${collectRate}%` : '—'}
+            sublabel="Fiscal target"
+            icon="receipt-outline"
+            accentColor={collectRate >= 75 ? colors.success : colors.warning}
+            badgeText={collectRate >= 75 ? 'On Track' : 'Pending'}
+            onPress={() => navigation?.navigate('Fees')}
+          />
+        </View>
+
+        {/* Quick Operations Actions */}
+        <Card padding={16}>
+          <View style={styles.cardHeaderRow}>
+            <View style={[styles.iconBox, { backgroundColor: colors.primaryLight }]}>
+              <Ionicons name="flash-outline" size={18} color={colors.primary} />
             </View>
-          ))}
-        </View>
+            <Text style={styles.cardTitle}>Executive Actions</Text>
+          </View>
 
-        {/* Fee Summary */}
+          <View style={styles.actionGrid}>
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={() => navigation?.navigate('Attendance')}
+              activeOpacity={0.75}
+            >
+              <View style={[styles.actionIconCircle, { backgroundColor: colors.successBg }]}>
+                <Ionicons name="checkmark-done" size={20} color={colors.success} />
+              </View>
+              <Text style={styles.actionLabel}>Daily Attendance</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={() => navigation?.navigate('Fees')}
+              activeOpacity={0.75}
+            >
+              <View style={[styles.actionIconCircle, { backgroundColor: colors.warningBg }]}>
+                <Ionicons name="cash" size={20} color={colors.warning} />
+              </View>
+              <Text style={styles.actionLabel}>Fee Ledger</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={() => navigation?.navigate('Students')}
+              activeOpacity={0.75}
+            >
+              <View style={[styles.actionIconCircle, { backgroundColor: colors.primaryLight }]}>
+                <Ionicons name="school" size={20} color={colors.primary} />
+              </View>
+              <Text style={styles.actionLabel}>Students</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={() => navigation?.navigate('Staff')}
+              activeOpacity={0.75}
+            >
+              <View style={[styles.actionIconCircle, { backgroundColor: '#f3e8ff' }]}>
+                <Ionicons name="people" size={20} color="#7c3aed" />
+              </View>
+              <Text style={styles.actionLabel}>Teachers</Text>
+            </TouchableOpacity>
+          </View>
+        </Card>
+
+        {/* Financial Overview */}
         {fees && (
-          <View style={styles.card}>
-            <View style={styles.ch}><Ionicons name="cash-outline" size={16} color={C.green} /><Text style={styles.ct}>Fee Summary</Text></View>
-            {[['Total Demand', fees.total_demand], ['Collected', fees.collected], ['Outstanding', fees.outstanding]].map(([l, v]) => (
-              <View key={l} style={styles.infoRow}>
-                <Text style={styles.infoL}>{l}</Text>
-                <Text style={[styles.infoV, l === 'Outstanding' && fees.outstanding > 0 && { color: C.warning }]}>₹{Number(v || 0).toLocaleString('en-IN')}</Text>
+          <Card padding={16}>
+            <View style={styles.cardHeaderRow}>
+              <View style={[styles.iconBox, { backgroundColor: colors.successBg }]}>
+                <Ionicons name="wallet-outline" size={18} color={colors.success} />
+              </View>
+              <Text style={styles.cardTitle}>Institutional Fee Performance</Text>
+            </View>
+
+            {[
+              ['Total Demand', `₹${Number(fees.total_demand || 0).toLocaleString('en-IN')}`, colors.text],
+              ['Total Collected', `₹${Number(fees.collected || 0).toLocaleString('en-IN')}`, colors.success],
+              ['Total Outstanding', `₹${Number(fees.outstanding || 0).toLocaleString('en-IN')}`, colors.warning],
+            ].map(([lbl, val, col], i, arr) => (
+              <View
+                key={lbl}
+                style={[
+                  styles.infoRow,
+                  i === arr.length - 1 && { borderBottomWidth: 0 },
+                ]}
+              >
+                <Text style={styles.infoLabel}>{lbl}</Text>
+                <Text style={[styles.infoVal, { color: col }]}>{val}</Text>
               </View>
             ))}
-          </View>
+          </Card>
         )}
 
-        <TouchableOpacity style={styles.lgBtn} onPress={() => Alert.alert('Logout', 'Sure?', [{ text: 'Cancel', style: 'cancel' }, { text: 'Logout', style: 'destructive', onPress: logout }])}>
-          <Ionicons name="log-out-outline" size={16} color={C.error} /><Text style={styles.lgTxt}>Logout</Text>
-        </TouchableOpacity>
+        {/* Sign Out */}
+        <Button
+          title="Sign Out from Executive Portal"
+          variant="secondary"
+          icon="log-out-outline"
+          onPress={() =>
+            Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Sign Out', style: 'destructive', onPress: logout },
+            ])
+          }
+          style={{ marginTop: 8 }}
+        />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  hero: { borderRadius: 18, padding: 22, marginBottom: 16, shadowColor: C.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 6 },
-  hGreet: { color: 'rgba(255,255,255,0.75)', fontSize: 10, fontWeight: '700', letterSpacing: 1.5, marginBottom: 4 },
-  hName: { color: '#fff', fontSize: 22, fontWeight: '800', marginBottom: 4 },
-  hSub: { color: 'rgba(255,255,255,0.75)', fontSize: 12 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
-  kpi: { width: '47%', backgroundColor: '#fff', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#e2e8f0', borderLeftWidth: 3, alignItems: 'center' },
-  kpiVal: { fontSize: 20, fontWeight: '800', color: '#1e293b', marginBottom: 2 },
-  kpiLab: { fontSize: 10, color: '#64748b', fontWeight: '600', textAlign: 'center' },
-  card: { backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: '#e2e8f0' },
-  ch: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
-  ct: { fontWeight: '700', fontSize: 14, color: '#1e293b' },
-  infoRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
-  infoL: { fontSize: 13, color: '#64748b' },
-  infoV: { fontSize: 13, fontWeight: '700', color: '#1e293b' },
-  lgBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, marginTop: 8, borderRadius: 12, borderWidth: 1.5, borderColor: '#fecaca', backgroundColor: '#fef2f2' },
-  lgTxt: { color: '#dc2626', fontWeight: '700', fontSize: 14 },
+  container: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
+  centerContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.bg,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 13,
+    color: colors.muted,
+    fontWeight: '600',
+  },
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 32,
+  },
+  gridRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  iconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  actionGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  actionBtn: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  actionIconCircle: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  actionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 9,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+  },
+  infoLabel: {
+    fontSize: 13,
+    color: colors.muted,
+    fontWeight: '500',
+  },
+  infoVal: {
+    fontSize: 13.5,
+    fontWeight: '800',
+  },
 });

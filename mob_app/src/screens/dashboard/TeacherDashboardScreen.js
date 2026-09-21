@@ -1,84 +1,66 @@
 // mob_app/src/screens/dashboard/TeacherDashboardScreen.js
-// Teacher Dashboard — GPS check-in, class attendance, marks, schedule
-
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  RefreshControl, ActivityIndicator, Alert,
+  View, Text, StyleSheet, ScrollView, RefreshControl,
+  ActivityIndicator, Alert, TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import client from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
+import { colors } from '../../theme/colors';
+import GradientHero from '../../components/common/GradientHero';
+import KPICard from '../../components/common/KPICard';
+import Card from '../../components/common/Card';
+import Badge from '../../components/common/Badge';
+import Button from '../../components/common/Button';
 
-const C = {
-  primary: '#0176d3', green: '#16a34a', warning: '#d97706',
-  error: '#dc2626', text: '#1e293b', muted: '#64748b',
-  bg: '#f0f4f8', surface: '#fff', border: '#e2e8f0',
-};
-
-function KPICard({ icon, label, value, color = C.primary, onPress }) {
-  return (
-    <TouchableOpacity style={[styles.kpiCard, { borderLeftColor: color }]} onPress={onPress} activeOpacity={0.8}>
-      <Ionicons name={icon} size={22} color={color} style={{ marginBottom: 6 }} />
-      <Text style={styles.kpiValue}>{value ?? '—'}</Text>
-      <Text style={styles.kpiLabel}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
-function SectionCard({ title, icon, children }) {
-  return (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <Ionicons name={icon} size={16} color={C.primary} />
-        <Text style={styles.cardTitle}>{title}</Text>
-      </View>
-      {children}
-    </View>
-  );
-}
-
-export default function TeacherDashboardScreen() {
+export default function TeacherDashboardScreen({ navigation }) {
   const { user, logout } = useAuth();
-  const [assignments,  setAssignments]  = useState([]);
-  const [myStatus,     setMyStatus]     = useState(null);
-  const [holidays,     setHolidays]     = useState([]);
-  const [loading,      setLoading]      = useState(true);
-  const [refreshing,   setRefreshing]   = useState(false);
-  const [checkingIn,   setCheckingIn]   = useState(false);
-
-  const today = new Date().toISOString().split('T')[0];
-  const hour  = new Date().getHours();
-  const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
+  const [classes, setClasses] = useState([]);
+  const [assignments, setAssignments] = useState([]);
+  const [holidays, setHolidays] = useState([]);
+  const [myStatus, setMyStatus] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [checkingIn, setCheckingIn] = useState(false);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     try {
-      const [asgn, status, hols] = await Promise.all([
-        client.get('/principal/teacher/my-assignments').catch(() => ({ data: [] })),
-        client.get('/staff-attendance/my-status', { params: { date: today } }).catch(() => ({ data: null })),
-        client.get('/principal/holidays', { params: { applies_to: 'TEACHER' } }).catch(() => ({ data: [] })),
+      const [cRes, aRes, hRes, sRes] = await Promise.all([
+        client.get('/teacher/classes').catch(() => ({ data: [] })),
+        client.get('/teacher/assignments').catch(() => ({ data: [] })),
+        client.get('/teacher/holidays').catch(() => ({ data: [] })),
+        client.get('/attendance/my-status').catch(() => ({ data: null })),
       ]);
-      setAssignments(asgn.data || []);
-      setMyStatus(status.data);
-      setHolidays(hols.data || []);
+      setClasses(Array.isArray(cRes.data) ? cRes.data : []);
+      setAssignments(Array.isArray(aRes.data) ? aRes.data : []);
+      setHolidays(Array.isArray(hRes.data) ? hRes.data : []);
+      setMyStatus(sRes.data);
     } finally {
       if (isRefresh) setRefreshing(false); else setLoading(false);
     }
-  }, [today]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
   const handleCheckIn = async () => {
     setCheckingIn(true);
     try {
-      await client.post('/staff-attendance/check-in', {});
-      Alert.alert('✅ Checked In', 'Your attendance has been recorded.');
+      let lat = null, lng = null;
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        lat = loc.coords.latitude;
+        lng = loc.coords.longitude;
+      }
+      await client.post('/attendance/check-in', { latitude: lat, longitude: lng });
+      Alert.alert('Success', 'Check-in recorded successfully!');
       load(true);
     } catch (err) {
-      Alert.alert('Check-In Failed', err.response?.data?.error || 'Please try again.');
+      Alert.alert('Check-in Failed', err.response?.data?.error || err.message || 'Could not record check-in.');
     } finally {
       setCheckingIn(false);
     }
@@ -87,198 +69,370 @@ export default function TeacherDashboardScreen() {
   const handleCheckOut = async () => {
     setCheckingIn(true);
     try {
-      await client.post('/staff-attendance/check-out', {});
-      Alert.alert('✅ Checked Out', 'Your check-out has been recorded.');
+      let lat = null, lng = null;
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        lat = loc.coords.latitude;
+        lng = loc.coords.longitude;
+      }
+      await client.post('/attendance/check-out', { latitude: lat, longitude: lng });
+      Alert.alert('Success', 'Check-out recorded successfully!');
       load(true);
     } catch (err) {
-      Alert.alert('Check-Out Failed', err.response?.data?.error || 'Please try again.');
+      Alert.alert('Check-out Failed', err.response?.data?.error || err.message || 'Could not record check-out.');
     } finally {
       setCheckingIn(false);
     }
   };
 
-  // unique classes from assignments
-  const classes = [];
-  const seen = new Set();
-  assignments.forEach(a => {
-    if (!seen.has(a.class_id)) {
-      seen.add(a.class_id);
-      classes.push({ id: a.class_id, name: a.class_name, section: a.section });
-    }
-  });
+  const isCheckedIn = !!myStatus?.check_in;
+  const isCheckedOut = !!myStatus?.check_out;
 
-  const todayHols = holidays.filter(h => h.date === today);
-  const isCheckedIn  = myStatus?.check_in  && !myStatus?.check_out;
-  const isCheckedOut = myStatus?.check_in  &&  myStatus?.check_out;
-  const isAbsent     = !myStatus?.check_in;
+  const now = new Date();
+  const hour = now.getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+
+  const todayStr = now.toISOString().slice(0, 10);
+  const todayHols = holidays.filter(h => h.date === todayStr);
+  const upcomingHols = holidays.filter(h => new Date(h.date) >= now).slice(0, 3);
+  const distinctSubjects = [...new Set(assignments.map(a => a.subject_id || a.subject_name))].length;
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.center}>
-        <ActivityIndicator size="large" color={C.primary} />
-        <Text style={{ color: C.muted, marginTop: 12 }}>Loading your dashboard…</Text>
+      <SafeAreaView style={styles.centerContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.loadingText}>Loading Teacher Portal...</Text>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
-      <StatusBar style="dark" />
+    <SafeAreaView style={styles.container}>
       <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} colors={[C.primary]} />}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => load(true)}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
+        showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
-        <View style={styles.heroCard}>
-          <Text style={styles.heroGreeting}>{greeting},</Text>
-          <Text style={styles.heroName}>{user?.name || 'Teacher'}</Text>
-          <Text style={styles.heroSub}>
-            {classes.length} class{classes.length !== 1 ? 'es' : ''} · {assignments.length} assignment{assignments.length !== 1 ? 's' : ''} today
-          </Text>
+        {/* Modern Gradient Hero */}
+        <GradientHero
+          tagline="FACULTY PORTAL"
+          title={`${greeting}, ${user?.name || 'Teacher'}`}
+          subtitle={`${classes.length} assigned classes · ${assignments.length} assignments scheduled`}
+          avatarText={user?.name || 'T'}
+          gradientColors={colors.teacherGradient}
+        >
           {todayHols.length > 0 && (
-            <View style={styles.holBanner}>
-              <Ionicons name="calendar" size={13} color="#92400e" />
-              <Text style={styles.holText}> {todayHols[0].name} — Holiday today</Text>
+            <View style={styles.holidayBadge}>
+              <Ionicons name="sparkles" size={13} color="#f59e0b" style={{ marginRight: 6 }} />
+              <Text style={styles.holidayBadgeText}>
+                {todayHols[0].name} — Holiday Today!
+              </Text>
             </View>
           )}
-        </View>
+        </GradientHero>
 
-        {/* Attendance Status */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Ionicons name="finger-print-outline" size={16} color={C.primary} />
-            <Text style={styles.cardTitle}>My Attendance Status</Text>
+        {/* GPS Attendance Check-In Widget */}
+        <Card padding={16} leftAccentColor={isCheckedOut ? colors.success : isCheckedIn ? colors.warning : colors.error}>
+          <View style={styles.cardHeaderRow}>
+            <View style={[styles.iconBox, { backgroundColor: colors.primaryLight }]}>
+              <Ionicons name="finger-print" size={18} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardTitle}>Daily Attendance Check-In</Text>
+              <Text style={styles.cardSubtitle}>Geo-fenced mobile verification</Text>
+            </View>
+            <Badge
+              label={isCheckedOut ? 'Checked Out' : isCheckedIn ? 'Checked In' : 'Pending'}
+              variant={isCheckedOut ? 'success' : isCheckedIn ? 'warning' : 'error'}
+              showDot
+            />
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-            <View style={[styles.statusDot, {
-              backgroundColor: isCheckedOut ? C.green : isCheckedIn ? C.warning : C.error,
-            }]} />
-            <Text style={{ fontWeight: '700', color: C.text, fontSize: 14 }}>
-              {isCheckedOut ? 'Checked Out' : isCheckedIn ? 'Checked In' : 'Not Yet Checked In'}
-            </Text>
+
+          <View style={styles.timeRow}>
+            {myStatus?.check_in && (
+              <View style={styles.timeCol}>
+                <Text style={styles.timeLabel}>In Time</Text>
+                <Text style={styles.timeVal}>
+                  {new Date(myStatus.check_in).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                </Text>
+              </View>
+            )}
+            {myStatus?.check_out && (
+              <View style={styles.timeCol}>
+                <Text style={styles.timeLabel}>Out Time</Text>
+                <Text style={styles.timeVal}>
+                  {new Date(myStatus.check_out).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                </Text>
+              </View>
+            )}
           </View>
-          {myStatus?.check_in && (
-            <Text style={styles.attTime}>In: {new Date(myStatus.check_in).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</Text>
-          )}
-          {myStatus?.check_out && (
-            <Text style={styles.attTime}>Out: {new Date(myStatus.check_out).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</Text>
-          )}
 
           {!isCheckedOut && (
-            <TouchableOpacity
-              style={[styles.checkBtn, { backgroundColor: isCheckedIn ? C.error : C.green }]}
+            <Button
+              title={isCheckedIn ? 'Complete Check-Out' : 'Record GPS Check-In'}
+              icon={isCheckedIn ? 'log-out-outline' : 'location-outline'}
+              variant={isCheckedIn ? 'danger' : 'success'}
               onPress={isCheckedIn ? handleCheckOut : handleCheckIn}
-              disabled={checkingIn}
-              activeOpacity={0.85}
-            >
-              {checkingIn
-                ? <ActivityIndicator color="#fff" />
-                : <Text style={styles.checkBtnText}>{isCheckedIn ? 'Check Out' : 'Check In'}</Text>
-              }
-            </TouchableOpacity>
+              loading={checkingIn}
+              fullWidth
+              style={{ marginTop: 12 }}
+            />
           )}
+        </Card>
+
+        {/* Overview KPIs */}
+        <View style={styles.kpiRow}>
+          <KPICard
+            label="My Classes"
+            value={classes.length}
+            sublabel="Active batches"
+            icon="people-outline"
+            accentColor={colors.primary}
+            onPress={() => navigation?.navigate('Classes')}
+          />
+          <KPICard
+            label="Subjects"
+            value={distinctSubjects || classes.length}
+            sublabel="Assigned courses"
+            icon="book-outline"
+            accentColor="#7c3aed"
+          />
+          <KPICard
+            label="Upcoming Hols"
+            value={upcomingHols.length}
+            sublabel="Next 30 days"
+            icon="calendar-outline"
+            accentColor={colors.warning}
+          />
         </View>
 
-        {/* KPIs */}
-        <Text style={styles.sectionLabel}>Overview</Text>
-        <View style={styles.kpiGrid}>
-          <KPICard icon="library-outline"  label="My Classes"   value={classes.length}      color={C.primary} />
-          <KPICard icon="book-outline"     label="Subjects"     value={[...new Set(assignments.map(a => a.subject_id))].length} color="#7c3aed" />
-          <KPICard icon="calendar-outline" label="Holidays"     value={holidays.filter(h => new Date(h.date) >= new Date()).length} color={C.warning} />
-        </View>
+        {/* Assigned Classes */}
+        <Card padding={16}>
+          <View style={styles.cardHeaderRow}>
+            <View style={[styles.iconBox, { backgroundColor: colors.primaryLight }]}>
+              <Ionicons name="school-outline" size={18} color={colors.primary} />
+            </View>
+            <Text style={styles.cardTitle}>Assigned Classes ({classes.length})</Text>
+          </View>
 
-        {/* My Classes */}
-        <SectionCard title={`My Classes (${classes.length})`} icon="library-outline">
           {classes.length === 0 ? (
-            <Text style={styles.emptyText}>No classes assigned</Text>
+            <Text style={styles.emptyText}>No classes currently assigned</Text>
           ) : (
-            classes.map((cls, i) => (
-              <View key={i} style={styles.listRow}>
-                <View style={[styles.classBadge, { backgroundColor: `${C.primary}15` }]}>
-                  <Ionicons name="people-outline" size={16} color={C.primary} />
+            classes.map((cls, idx) => (
+              <TouchableOpacity
+                key={cls.id || idx}
+                style={[
+                  styles.classRow,
+                  idx === classes.length - 1 && { borderBottomWidth: 0 },
+                ]}
+                onPress={() => navigation?.navigate('Attendance', { classId: cls.id })}
+                activeOpacity={0.7}
+              >
+                <View style={styles.classAvatar}>
+                  <Ionicons name="people" size={16} color={colors.primary} />
                 </View>
-                <View style={{ flex: 1, marginLeft: 10 }}>
-                  <Text style={styles.listTitle}>{cls.name}</Text>
-                  {cls.section && <Text style={styles.listSub}>Section {cls.section}</Text>}
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.className}>{cls.name || `Class ${cls.grade || ''}`}</Text>
+                  <Text style={styles.classSub}>
+                    Section {cls.section || 'A'} • {cls.students_count ? `${cls.students_count} students` : 'Active'}
+                  </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={16} color={C.muted} />
-              </View>
+                <Badge label="Mark Attendance" variant="primary" size="sm" />
+                <Ionicons name="chevron-forward" size={16} color={colors.muted} style={{ marginLeft: 6 }} />
+              </TouchableOpacity>
             ))
           )}
-        </SectionCard>
+        </Card>
 
         {/* Upcoming Holidays */}
-        {holidays.filter(h => new Date(h.date) >= new Date()).length > 0 && (
-          <SectionCard title="Upcoming Holidays" icon="calendar-outline">
-            {holidays.filter(h => new Date(h.date) >= new Date()).slice(0, 4).map((h, i) => (
-              <View key={i} style={[styles.listRow, { borderLeftWidth: 3, borderLeftColor: C.warning, paddingLeft: 10, marginBottom: 8 }]}>
+        {upcomingHols.length > 0 && (
+          <Card padding={16}>
+            <View style={styles.cardHeaderRow}>
+              <View style={[styles.iconBox, { backgroundColor: colors.warningBg }]}>
+                <Ionicons name="calendar" size={18} color={colors.warning} />
+              </View>
+              <Text style={styles.cardTitle}>Upcoming Holidays</Text>
+            </View>
+
+            {upcomingHols.map((h, i) => (
+              <View
+                key={h.id || i}
+                style={[
+                  styles.holidayRow,
+                  i === upcomingHols.length - 1 && { borderBottomWidth: 0 },
+                ]}
+              >
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.listTitle}>{h.name}</Text>
-                  <Text style={styles.listSub}>{new Date(h.date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</Text>
+                  <Text style={styles.holidayName}>{h.name}</Text>
+                  <Text style={styles.holidayDate}>
+                    {new Date(h.date).toLocaleDateString('en-IN', {
+                      weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+                    })}
+                  </Text>
                 </View>
+                <Badge label="Official Off" variant="warning" size="sm" />
               </View>
             ))}
-          </SectionCard>
+          </Card>
         )}
 
-        {/* Logout */}
-        <TouchableOpacity
-          style={styles.logoutBtn}
-          onPress={() => Alert.alert('Logout', 'Are you sure you want to logout?', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Logout', style: 'destructive', onPress: logout },
-          ])}
-        >
-          <Ionicons name="log-out-outline" size={16} color={C.error} />
-          <Text style={styles.logoutText}>Logout</Text>
-        </TouchableOpacity>
+        {/* Sign Out Button */}
+        <Button
+          title="Sign Out from Faculty Portal"
+          variant="secondary"
+          icon="log-out-outline"
+          onPress={() =>
+            Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Sign Out', style: 'destructive', onPress: logout },
+            ])
+          }
+          style={{ marginTop: 8 }}
+        />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg },
-  heroCard: {
-    backgroundColor: C.primary, borderRadius: 18, padding: 22, marginBottom: 16,
-    shadowColor: C.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 6,
+  container: {
+    flex: 1,
+    backgroundColor: colors.bg,
   },
-  heroGreeting: { color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: '600', letterSpacing: 1 },
-  heroName:     { color: '#fff', fontSize: 22, fontWeight: '800', marginBottom: 4 },
-  heroSub:      { color: 'rgba(255,255,255,0.75)', fontSize: 13 },
-  holBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fef3c7', borderRadius: 8, padding: 8, marginTop: 12 },
-  holText: { fontSize: 12, color: '#92400e', fontWeight: '600' },
-
-  card: { backgroundColor: C.surface, borderRadius: 14, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: C.border },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
-  cardTitle: { fontWeight: '700', fontSize: 14, color: C.text },
-
-  statusDot: { width: 12, height: 12, borderRadius: 6 },
-  attTime: { fontSize: 12, color: C.muted, marginBottom: 2 },
-  checkBtn: { borderRadius: 10, paddingVertical: 12, alignItems: 'center', marginTop: 12 },
-  checkBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-
-  sectionLabel: { fontSize: 12, fontWeight: '700', color: C.muted, letterSpacing: 0.8, marginBottom: 8, marginTop: 4 },
-  kpiGrid: { flexDirection: 'row', gap: 10, marginBottom: 14 },
-  kpiCard: {
-    flex: 1, backgroundColor: C.surface, borderRadius: 12, padding: 14,
-    borderWidth: 1, borderColor: C.border, borderLeftWidth: 3,
+  centerContainer: {
+    flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.bg,
   },
-  kpiValue: { fontSize: 20, fontWeight: '800', color: C.text, marginBottom: 2 },
-  kpiLabel: { fontSize: 10, color: C.muted, textAlign: 'center', fontWeight: '600' },
-
-  listRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
-  classBadge: { width: 34, height: 34, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  listTitle: { fontSize: 13, fontWeight: '600', color: C.text },
-  listSub: { fontSize: 11, color: C.muted, marginTop: 1 },
-  emptyText: { textAlign: 'center', color: C.muted, fontSize: 13, paddingVertical: 16 },
-
-  logoutBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    paddingVertical: 14, marginTop: 8, borderRadius: 12,
-    borderWidth: 1.5, borderColor: '#fecaca', backgroundColor: '#fef2f2',
+  loadingText: {
+    marginTop: 12,
+    fontSize: 13,
+    color: colors.muted,
+    fontWeight: '600',
   },
-  logoutText: { color: C.error, fontWeight: '700', fontSize: 14 },
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 32,
+  },
+  holidayBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 99,
+    alignSelf: 'flex-start',
+    marginTop: 10,
+  },
+  holidayBadgeText: {
+    fontSize: 11.5,
+    color: '#ffffff',
+    fontWeight: '700',
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  iconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  cardSubtitle: {
+    fontSize: 11.5,
+    color: colors.muted,
+  },
+  timeRow: {
+    flexDirection: 'row',
+    gap: 20,
+    marginVertical: 6,
+    paddingHorizontal: 4,
+  },
+  timeCol: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  timeLabel: {
+    fontSize: 12,
+    color: colors.muted,
+    fontWeight: '600',
+  },
+  timeVal: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  kpiRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+  classRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+  },
+  classAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  className: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  classSub: {
+    fontSize: 11.5,
+    color: colors.muted,
+    marginTop: 1,
+  },
+  emptyText: {
+    textAlign: 'center',
+    color: colors.muted,
+    fontSize: 13,
+    paddingVertical: 20,
+  },
+  holidayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+  },
+  holidayName: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  holidayDate: {
+    fontSize: 11.5,
+    color: colors.muted,
+    marginTop: 2,
+  },
 });

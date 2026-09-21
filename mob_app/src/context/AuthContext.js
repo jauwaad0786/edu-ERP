@@ -31,13 +31,27 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  // ── Login ────────────────────────────────────────────────────────────────
+  // ── Unified Login ────────────────────────────────────────────────────────
   const login = useCallback(async ({ identifier, password, school_slug }) => {
     const res = await client.post('/auth/login', {
       identifier,
       password,
       school_slug: school_slug || undefined,
     });
+    const { access_token, refresh_token, user: userData } = res.data;
+    await SecureStore.setItemAsync('access_token', access_token);
+    if (refresh_token) {
+      await SecureStore.setItemAsync('refresh_token', refresh_token);
+    }
+    setUser(userData);
+    return userData;
+  }, []);
+
+  // ── Student Direct Portal Login ──────────────────────────────────────────
+  const studentLogin = useCallback(async ({ phone, name, password, father_name }) => {
+    const payload = { phone, name, password };
+    if (father_name) payload.father_name = father_name;
+    const res = await client.post('/auth/student-login', payload);
     const { access_token, refresh_token, user: userData } = res.data;
     await SecureStore.setItemAsync('access_token', access_token);
     if (refresh_token) {
@@ -64,8 +78,10 @@ export function AuthProvider({ children }) {
 
   const value = {
     user,
+    role: user?.role ? String(user.role).toUpperCase() : null,
     loading,
     login,
+    studentLogin,
     logout,
     fetchMe,
     isAuthenticated: !!user,

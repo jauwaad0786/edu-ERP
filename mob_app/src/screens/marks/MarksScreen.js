@@ -1,11 +1,16 @@
 // mob_app/src/screens/marks/MarksScreen.js
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
+import {
+  View, Text, StyleSheet, ScrollView, RefreshControl, ActivityIndicator, TouchableOpacity,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import client from '../../api/client';
-
-const C = { primary: '#0176d3', green: '#16a34a', warning: '#d97706', error: '#dc2626', text: '#1e293b', muted: '#64748b', bg: '#f0f4f8', surface: '#fff', border: '#e2e8f0' };
+import { colors } from '../../theme/colors';
+import GradientHero from '../../components/common/GradientHero';
+import Card from '../../components/common/Card';
+import Badge from '../../components/common/Badge';
+import EmptyState from '../../components/common/EmptyState';
 
 export default function MarksScreen() {
   const [classes, setClasses] = useState([]);
@@ -42,64 +47,113 @@ export default function MarksScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg }}>
-        <ActivityIndicator size="large" color={C.primary} />
+      <SafeAreaView style={styles.centerContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.loadingText}>Fetching Assessment Rosters...</Text>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Marks & Assessment</Text>
-        <Text style={styles.headerSub}>Student Marks & Class Rosters</Text>
-      </View>
-
+    <SafeAreaView style={styles.container}>
       <ScrollView
-        contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} colors={[C.primary]} />}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => load(true)}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
+        showsVerticalScrollIndicator={false}
       >
-        {/* Class selector */}
+        <GradientHero
+          tagline="ACADEMIC EVALUATION"
+          title="Marks & Grades"
+          subtitle="Score entry, term evaluation, and performance grade sheets"
+          avatarText="M"
+          gradientColors={['#1e1b4b', '#4338ca', '#3b82f6']}
+        />
+
+        {/* Class Selector Pills */}
         {classes.length > 0 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
-            {classes.map((cls) => (
-              <TouchableOpacity
-                key={cls.id}
-                style={[styles.chip, selectedClass === cls.id && styles.chipActive]}
-                onPress={() => setSelectedClass(cls.id)}
-              >
-                <Text style={[styles.chipText, selectedClass === cls.id && styles.chipTextActive]}>
-                  {cls.name} {cls.section ? `- ${cls.section}` : ''}
-                </Text>
-              </TouchableOpacity>
-            ))}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.classSelector}
+          >
+            {classes.map(c => {
+              const isSelected = selectedClass === c.id;
+              return (
+                <TouchableOpacity
+                  key={c.id}
+                  style={[styles.classPill, isSelected && styles.classPillActive]}
+                  onPress={() => setSelectedClass(c.id)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.classPillText, isSelected && styles.classPillTextActive]}>
+                    {c.name || `Class ${c.grade || ''} ${c.section || ''}`}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
         )}
 
-        {/* Student Marks Roster */}
+        {/* Roster Cards */}
         {roster.length > 0 ? (
-          <View style={styles.card}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' }}>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: C.muted }}>STUDENT</Text>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: C.muted }}>MARKS</Text>
-            </View>
-            {roster.map((stu, i) => (
-              <View key={i} style={styles.row}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontWeight: '700', fontSize: 13, color: C.text }}>{stu.name || stu.student_name || `Student #${i+1}`}</Text>
-                  <Text style={{ fontSize: 11, color: C.muted }}>Roll: {stu.roll_no || '—'} · Adm: {stu.admission_no || '—'}</Text>
-                </View>
-                <Text style={{ fontSize: 14, fontWeight: '800', color: C.primary }}>
-                  {stu.marks_obtained != null ? `${stu.marks_obtained}/${stu.max_marks || 100}` : 'Entered'}
-                </Text>
+          <Card padding={16}>
+            <View style={styles.cardHeaderRow}>
+              <View style={[styles.iconBox, { backgroundColor: colors.primaryLight }]}>
+                <Ionicons name="ribbon-outline" size={18} color={colors.primary} />
               </View>
-            ))}
-          </View>
+              <Text style={styles.cardTitle}>Student Grades ({roster.length})</Text>
+            </View>
+
+            {roster.map((s, i) => {
+              const score = s.total_marks ?? s.marks ?? s.score ?? '—';
+              const maxScore = s.max_marks ?? 100;
+              const grade = s.grade || (typeof score === 'number' ? (score >= 90 ? 'A+' : score >= 80 ? 'A' : score >= 70 ? 'B' : score >= 60 ? 'C' : 'D') : 'Pass');
+
+              return (
+                <View
+                  key={s.id || s.student_id || i}
+                  style={[
+                    styles.studentRow,
+                    i === roster.length - 1 && { borderBottomWidth: 0 },
+                  ]}
+                >
+                  <View style={styles.avatarCircle}>
+                    <Text style={styles.avatarInitial}>
+                      {(s.name || s.student_name || 'S').charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={styles.nameText}>{s.name || s.student_name || 'Student'}</Text>
+                    <Text style={styles.subText}>Roll #{s.roll_no || i + 1}</Text>
+                  </View>
+
+                  <View style={styles.scoreCol}>
+                    <Text style={styles.scoreVal}>{score} <Text style={{ fontSize: 11, color: colors.muted }}>/ {maxScore}</Text></Text>
+                    <Badge
+                      label={grade}
+                      variant={grade.startsWith('A') ? 'success' : grade.startsWith('B') ? 'primary' : 'warning'}
+                      size="sm"
+                      style={{ alignSelf: 'flex-end', marginTop: 2 }}
+                    />
+                  </View>
+                </View>
+              );
+            })}
+          </Card>
         ) : (
-          <View style={{ alignItems: 'center', padding: 40 }}>
-            <Ionicons name="pencil-outline" size={48} color={C.muted} style={{ opacity: 0.4 }} />
-            <Text style={{ color: C.muted, marginTop: 12, fontSize: 14 }}>No marks roster found for this class</Text>
-          </View>
+          <EmptyState
+            icon="school-outline"
+            title="No Marks Records"
+            description="No student roster or evaluation records found for this class."
+          />
         )}
       </ScrollView>
     </SafeAreaView>
@@ -107,13 +161,111 @@ export default function MarksScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: { backgroundColor: '#0176d3', padding: 20, paddingTop: 16 },
-  headerTitle: { color: '#fff', fontSize: 20, fontWeight: '800' },
-  headerSub: { color: 'rgba(255,255,255,0.75)', fontSize: 12, marginTop: 2 },
-  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#fff', marginRight: 8, borderWidth: 1, borderColor: C.border },
-  chipActive: { backgroundColor: '#0176d3', borderColor: '#0176d3' },
-  chipText: { fontSize: 12, fontWeight: '600', color: C.muted },
-  chipTextActive: { color: '#fff' },
-  card: { backgroundColor: '#fff', borderRadius: 14, padding: 16, borderWidth: 1, borderColor: C.border },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  container: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
+  centerContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.bg,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 13,
+    color: colors.muted,
+    fontWeight: '600',
+  },
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 32,
+  },
+  classSelector: {
+    gap: 8,
+    marginBottom: 16,
+    paddingHorizontal: 2,
+  },
+  classPill: {
+    backgroundColor: colors.surface,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 99,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+  },
+  classPillActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  classPillText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: colors.muted,
+  },
+  classPillTextActive: {
+    color: '#ffffff',
+    fontWeight: '800',
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  iconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  studentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 11,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+  },
+  avatarCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitial: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.primary,
+  },
+  nameText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  subText: {
+    fontSize: 11.5,
+    color: colors.muted,
+    marginTop: 1,
+  },
+  scoreCol: {
+    alignItems: 'flex-end',
+  },
+  scoreVal: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.text,
+  },
 });

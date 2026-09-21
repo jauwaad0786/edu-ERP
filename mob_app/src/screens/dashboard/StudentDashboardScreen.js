@@ -1,21 +1,29 @@
 // mob_app/src/screens/dashboard/StudentDashboardScreen.js
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Alert } from 'react-native';
+import {
+  View, Text, StyleSheet, ScrollView, RefreshControl,
+  ActivityIndicator, Alert, TouchableOpacity,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import client from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
+import { colors } from '../../theme/colors';
+import GradientHero from '../../components/common/GradientHero';
+import KPICard from '../../components/common/KPICard';
+import Card from '../../components/common/Card';
+import Badge from '../../components/common/Badge';
+import Button from '../../components/common/Button';
 
-const C = { primary: '#7c3aed', green: '#16a34a', warning: '#d97706', error: '#dc2626', text: '#1e293b', muted: '#64748b', bg: '#f0f4f8', surface: '#fff', border: '#e2e8f0' };
-
-export default function StudentDashboardScreen() {
+export default function StudentDashboardScreen({ navigation }) {
   const { user, logout } = useAuth();
   const [profile, setProfile] = useState(null);
   const [attendance, setAttendance] = useState(null);
   const [fees, setFees] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const role = user?.role;
+
+  const role = user?.role ? String(user.role).toUpperCase() : 'STUDENT';
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
@@ -36,117 +44,349 @@ export default function StudentDashboardScreen() {
   useEffect(() => { load(); }, [load]);
 
   const attPct = attendance?.percentage != null
-    ? attendance.percentage
+    ? Math.round(attendance.percentage)
     : attendance
     ? Math.round((attendance.present / (attendance.total_days || attendance.total || 1)) * 100)
     : null;
 
-  if (loading) return (
-    <SafeAreaView style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg }}>
-      <ActivityIndicator size="large" color={C.primary} />
-    </SafeAreaView>
-  );
+  const dueAmount = Number(fees?.outstanding ?? fees?.balance ?? 0);
+  const paidAmount = Number(fees?.total_paid ?? fees?.paid ?? 0);
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.centerContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.loadingText}>Loading Student Dashboard...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  const studentName = profile?.name || user?.name || (role === 'PARENT' ? 'Parent' : 'Student');
+  const classDisplay = profile?.class_name
+    ? `Class ${profile.class_name}${profile.section ? ` · Sec ${profile.section}` : ''}`
+    : 'Enrolled';
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} colors={[C.primary]} />}>
+    <SafeAreaView style={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => load(true)}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Modern Gradient Hero */}
+        <GradientHero
+          tagline={role === 'PARENT' ? 'PARENT PORTAL' : 'STUDENT PORTAL'}
+          title={studentName}
+          subtitle={`${classDisplay} • Roll #${profile?.roll_no || '—'}`}
+          avatarText={studentName}
+          gradientColors={colors.studentGradient}
+        />
 
-        {/* Hero */}
-        <View style={[styles.hero, { backgroundColor: C.primary }]}>
-          <Text style={styles.heroGreeting}>{role === 'PARENT' ? 'Parent Portal' : 'Student Portal'}</Text>
-          <Text style={styles.heroName}>{profile?.name || user?.name || (role === 'PARENT' ? 'Parent' : 'Student')}</Text>
-          {profile?.class_name && <Text style={styles.heroSub}>Class {profile.class_name} {profile.section ? `· Section ${profile.section}` : ''}</Text>}
-          {profile?.roll_no && <Text style={styles.heroSub}>Roll No: {profile.roll_no}</Text>}
-        </View>
-
-        {/* KPIs */}
+        {/* High-Impact KPI Stat Cards */}
         <View style={styles.kpiRow}>
-          <View style={[styles.kpiCard, { borderLeftColor: C.green }]}>
-            <Text style={styles.kpiValue}>{attPct != null ? `${attPct}%` : '—'}</Text>
-            <Text style={styles.kpiLabel}>Attendance</Text>
-            <Text style={{ fontSize: 10, color: attPct >= 75 ? C.green : C.error, fontWeight: '700' }}>
-              {attPct != null ? (attPct >= 75 ? 'GOOD' : 'LOW') : ''}
-            </Text>
-          </View>
-          <View style={[styles.kpiCard, { borderLeftColor: fees?.outstanding > 0 ? C.warning : C.green }]}>
-            <Text style={styles.kpiValue}>
-              {fees?.outstanding != null ? `₹${Number(fees.outstanding).toLocaleString('en-IN')}` : '—'}
-            </Text>
-            <Text style={styles.kpiLabel}>Pending Fees</Text>
-            <Text style={{ fontSize: 10, color: fees?.outstanding > 0 ? C.warning : C.green, fontWeight: '700' }}>
-              {fees?.outstanding > 0 ? 'DUE' : 'CLEAR'}
-            </Text>
-          </View>
+          <KPICard
+            label="Attendance"
+            value={attPct != null ? `${attPct}%` : '—'}
+            sublabel={`Present: ${attendance?.present ?? 0} days`}
+            icon="clipboard-outline"
+            accentColor={attPct >= 75 ? colors.success : colors.error}
+            badgeText={attPct != null ? (attPct >= 75 ? 'Good' : 'Attention') : null}
+            onPress={() => navigation?.navigate('Attendance')}
+          />
+
+          <KPICard
+            label="Fee Dues"
+            value={`₹${dueAmount.toLocaleString('en-IN')}`}
+            sublabel={`Paid: ₹${paidAmount.toLocaleString('en-IN')}`}
+            icon="receipt-outline"
+            accentColor={dueAmount > 0 ? colors.warning : colors.success}
+            badgeText={dueAmount > 0 ? 'Due' : 'Cleared'}
+            onPress={() => navigation?.navigate('Fees')}
+          />
         </View>
 
-        {/* Profile Summary */}
-        {profile && (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Ionicons name="person-outline" size={16} color={C.primary} />
-              <Text style={styles.cardTitle}>Profile</Text>
+        {/* Quick Academic Hub */}
+        <Card padding={16}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.iconCircle}>
+              <Ionicons name="grid-outline" size={16} color={colors.primary} />
             </View>
+            <Text style={styles.sectionTitle}>Academic Hub</Text>
+          </View>
+
+          <View style={styles.quickGrid}>
+            <TouchableOpacity
+              style={styles.quickItem}
+              onPress={() => navigation?.navigate('Attendance')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.quickIcon, { backgroundColor: colors.successBg }]}>
+                <Ionicons name="calendar-outline" size={22} color={colors.success} />
+              </View>
+              <Text style={styles.quickLabel}>Attendance</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.quickItem}
+              onPress={() => navigation?.navigate('Fees')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.quickIcon, { backgroundColor: colors.warningBg }]}>
+                <Ionicons name="card-outline" size={22} color={colors.warning} />
+              </View>
+              <Text style={styles.quickLabel}>Fee Receipts</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.quickItem}
+              onPress={() => navigation?.navigate('Result')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.quickIcon, { backgroundColor: colors.primaryLight }]}>
+                <Ionicons name="ribbon-outline" size={22} color={colors.primary} />
+              </View>
+              <Text style={styles.quickLabel}>Report Card</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.quickItem}
+              onPress={() => navigation?.navigate('Notes')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.quickIcon, { backgroundColor: '#f3e8ff' }]}>
+                <Ionicons name="document-text-outline" size={22} color="#7c3aed" />
+              </View>
+              <Text style={styles.quickLabel}>Study Notes</Text>
+            </TouchableOpacity>
+          </View>
+        </Card>
+
+        {/* Attendance Breakdown Card */}
+        {attendance ? (
+          <Card padding={16}>
+            <View style={styles.sectionHeader}>
+              <View style={[styles.iconCircle, { backgroundColor: colors.successBg }]}>
+                <Ionicons name="stats-chart-outline" size={16} color={colors.success} />
+              </View>
+              <Text style={styles.sectionTitle}>Attendance Overview</Text>
+              <Badge
+                label={attPct >= 75 ? 'Above 75%' : 'Low Attendance'}
+                variant={attPct >= 75 ? 'success' : 'error'}
+                style={{ marginLeft: 'auto' }}
+              />
+            </View>
+
+            <View style={styles.progressTrack}>
+              <View
+                style={[
+                  styles.progressFill,
+                  {
+                    width: `${Math.min(attPct || 0, 100)}%`,
+                    backgroundColor: attPct >= 75 ? colors.success : colors.error,
+                  },
+                ]}
+              />
+            </View>
+
+            <View style={styles.statsRow}>
+              <View style={styles.statCol}>
+                <Text style={styles.statLabel}>Present</Text>
+                <Text style={[styles.statValue, { color: colors.success }]}>
+                  {attendance.present ?? 0}
+                </Text>
+              </View>
+
+              <View style={styles.statCol}>
+                <Text style={styles.statLabel}>Absent</Text>
+                <Text style={[styles.statValue, { color: colors.error }]}>
+                  {attendance.absent ?? 0}
+                </Text>
+              </View>
+
+              <View style={styles.statCol}>
+                <Text style={styles.statLabel}>Total Days</Text>
+                <Text style={styles.statValue}>
+                  {attendance.total_days ?? attendance.total ?? 0}
+                </Text>
+              </View>
+            </View>
+          </Card>
+        ) : null}
+
+        {/* Profile Card */}
+        {profile ? (
+          <Card padding={16}>
+            <View style={styles.sectionHeader}>
+              <View style={[styles.iconCircle, { backgroundColor: colors.primaryLight }]}>
+                <Ionicons name="person-outline" size={16} color={colors.primary} />
+              </View>
+              <Text style={styles.sectionTitle}>Student Details</Text>
+            </View>
+
             {[
               ['Admission No', profile.admission_no],
               ['Date of Birth', profile.dob],
-              ['Guardian', profile.guardian_name || profile.father_name],
-              ['Phone', profile.guardian_phone || profile.phone],
-            ].filter(([,v]) => v).map(([label, val]) => (
-              <View key={label} style={styles.infoRow}>
-                <Text style={styles.infoLabel}>{label}</Text>
-                <Text style={styles.infoVal}>{val}</Text>
+              ['Guardian / Father', profile.guardian_name || profile.father_name],
+              ['Contact Phone', profile.guardian_phone || profile.phone],
+            ].filter(([, v]) => v).map(([lbl, val], idx, arr) => (
+              <View
+                key={lbl}
+                style={[
+                  styles.profileRow,
+                  idx === arr.length - 1 && { borderBottomWidth: 0 },
+                ]}
+              >
+                <Text style={styles.profileLabel}>{lbl}</Text>
+                <Text style={styles.profileVal}>{val}</Text>
               </View>
             ))}
-          </View>
-        )}
+          </Card>
+        ) : null}
 
-        {/* Attendance Card */}
-        {attendance && (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Ionicons name="clipboard-outline" size={16} color={C.green} />
-              <Text style={styles.cardTitle}>Attendance Summary</Text>
-            </View>
-            <View style={styles.attBar}>
-              <View style={[styles.attFill, { width: `${attPct}%`, backgroundColor: attPct >= 75 ? C.green : C.error }]} />
-            </View>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
-              <Text style={styles.infoLabel}>Present: <Text style={styles.infoVal}>{attendance.present}</Text></Text>
-              <Text style={styles.infoLabel}>Absent: <Text style={{ color: C.error, fontWeight: '700' }}>{attendance.absent}</Text></Text>
-              <Text style={styles.infoLabel}>Total: <Text style={styles.infoVal}>{attendance.total_days ?? attendance.total}</Text></Text>
-            </View>
-          </View>
-        )}
-
-        <TouchableOpacity style={styles.logoutBtn} onPress={() =>
-          Alert.alert('Logout', 'Are you sure?', [{ text: 'Cancel', style: 'cancel' }, { text: 'Logout', style: 'destructive', onPress: logout }])
-        }>
-          <Ionicons name="log-out-outline" size={16} color={C.error} />
-          <Text style={styles.logoutText}>Logout</Text>
-        </TouchableOpacity>
+        {/* Logout Button */}
+        <Button
+          title="Sign Out from Portal"
+          variant="danger"
+          icon="log-out-outline"
+          onPress={() =>
+            Alert.alert(
+              'Sign Out',
+              'Are you sure you want to sign out from the student portal?',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Sign Out', style: 'destructive', onPress: logout },
+              ]
+            )
+          }
+          style={{ marginTop: 8 }}
+        />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  hero: { borderRadius: 18, padding: 22, marginBottom: 16, shadowColor: '#7c3aed', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 6 },
-  heroGreeting: { color: 'rgba(255,255,255,0.75)', fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 4 },
-  heroName: { color: '#fff', fontSize: 22, fontWeight: '800', marginBottom: 4 },
-  heroSub: { color: 'rgba(255,255,255,0.75)', fontSize: 13 },
-  kpiRow: { flexDirection: 'row', gap: 12, marginBottom: 14 },
-  kpiCard: { flex: 1, backgroundColor: '#fff', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#e2e8f0', borderLeftWidth: 3, alignItems: 'center' },
-  kpiValue: { fontSize: 20, fontWeight: '800', color: '#1e293b', marginBottom: 2 },
-  kpiLabel: { fontSize: 10, color: '#64748b', fontWeight: '600', marginBottom: 2 },
-  card: { backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: '#e2e8f0' },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
-  cardTitle: { fontWeight: '700', fontSize: 14, color: '#1e293b' },
-  infoRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
-  infoLabel: { fontSize: 12, color: '#64748b' },
-  infoVal: { fontSize: 12, fontWeight: '600', color: '#1e293b' },
-  attBar: { height: 10, backgroundColor: '#f1f5f9', borderRadius: 99, overflow: 'hidden', marginTop: 4 },
-  attFill: { height: '100%', borderRadius: 99 },
-  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, marginTop: 8, borderRadius: 12, borderWidth: 1.5, borderColor: '#fecaca', backgroundColor: '#fef2f2' },
-  logoutText: { color: '#dc2626', fontWeight: '700', fontSize: 14 },
+  container: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
+  centerContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.bg,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 13,
+    color: colors.muted,
+    fontWeight: '600',
+  },
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 32,
+  },
+  kpiRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  iconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  quickGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  quickItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  quickIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  quickLabel: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  progressTrack: {
+    height: 10,
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: 99,
+    overflow: 'hidden',
+    marginBottom: 14,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 99,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    borderTopWidth: 1,
+    borderTopColor: colors.borderLight,
+    paddingTop: 12,
+  },
+  statCol: {
+    alignItems: 'center',
+  },
+  statLabel: {
+    fontSize: 11.5,
+    color: colors.muted,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  statValue: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  profileRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+  },
+  profileLabel: {
+    fontSize: 12.5,
+    color: colors.muted,
+    fontWeight: '500',
+  },
+  profileVal: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: colors.text,
+  },
 });

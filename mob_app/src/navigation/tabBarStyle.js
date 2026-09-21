@@ -1,15 +1,30 @@
 // mob_app/src/navigation/tabBarStyle.js
-// Shared tab bar visual style for all role navigators
+import { Platform } from 'react-native';
+import { colors } from '../theme/colors';
+
 export const TAB_BAR_STYLE = {
   backgroundColor: '#ffffff',
-  borderTopColor: '#e2e8f0',
+  borderTopColor: colors.border,
   borderTopWidth: 1,
-  paddingBottom: 6,
-  paddingTop: 6,
-  height: 62,
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: -2 },
-  shadowOpacity: 0.06,
-  shadowRadius: 8,
-  elevation: 8,
+  paddingBottom: Platform.OS === 'ios' ? 20 : 8,
+  paddingTop: 8,
+  height: Platform.OS === 'ios' ? 84 : 64,
+  shadowColor: colors.shadowColor,
+  shadowOffset: { width: 0, height: -4 },
+  shadowOpacity: 0.08,
+  shadowRadius: 12,
+  elevation: 10,
+};
+
+export const TAB_BAR_OPTIONS = {
+  tabBarActiveTintColor: colors.primary,
+  tabBarInactiveTintColor: colors.muted,
+  tabBarLabelStyle: {
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: -2,
+    marginBottom: 4,
+  },
+  tabBarStyle: TAB_BAR_STYLE,
+  headerShown: false,
 };
