@@ -14,11 +14,13 @@ Core Workflows:
 
 from datetime import datetime, date
 from app.utils.timezone_util import utc_now
-from app.utils.timezone_util import utc_now
 import calendar
-from sqlalchemy import func, case
+import logging
+from sqlalchemy import func, case, or_
 from sqlalchemy.orm import joinedload
 from app import db
+
+logger = logging.getLogger('fee_ledger')
 from app.models.fee_finance import (
     FeeHead, FeeStructureV2, FeeStructureItemV2, StudentFeeAssignment,
     StudentConcession, FeeBill, FeeBillItem, StudentLedger, FeePayment,
@@ -168,25 +170,42 @@ def get_student_ledger(student_id, session=None):
 
     if session:
         bills_session = bill_query.filter_by(session=session).order_by(FeeBill.bill_month.desc(), FeeBill.id.desc()).all()
-        bills = bills_session if bills_session else bill_query.order_by(FeeBill.bill_month.desc(), FeeBill.id.desc()).all()
-
         pays_session = pay_query.filter_by(session=session).order_by(FeePayment.payment_date.desc(), FeePayment.id.desc()).all()
-        payments = pays_session if pays_session else pay_query.order_by(FeePayment.payment_date.desc(), FeePayment.id.desc()).all()
-
         ledg_session = ledger_query.filter_by(session=session).order_by(StudentLedger.entry_date.desc(), StudentLedger.id.desc()).all()
-        ledger_entries = ledg_session if ledg_session else ledger_query.order_by(StudentLedger.entry_date.desc(), StudentLedger.id.desc()).all()
-
-        concessions = concessions_query.filter_by(session=session).all() or concessions_query.all()
+        conc_session = concessions_query.filter_by(session=session).all()
+        if bills_session or pays_session or ledg_session or conc_session:
+            bills = bills_session
+            payments = pays_session
+            ledger_entries = ledg_session
+            concessions = conc_session
+        else:
+            bills = bill_query.order_by(FeeBill.bill_month.desc(), FeeBill.id.desc()).all()
+            payments = pay_query.order_by(FeePayment.payment_date.desc(), FeePayment.id.desc()).all()
+            ledger_entries = ledger_query.order_by(StudentLedger.entry_date.desc(), StudentLedger.id.desc()).all()
+            concessions = concessions_query.all()
     else:
         bills = bill_query.order_by(FeeBill.bill_month.desc(), FeeBill.id.desc()).all()
         payments = pay_query.order_by(FeePayment.payment_date.desc(), FeePayment.id.desc()).all()
         ledger_entries = ledger_query.order_by(StudentLedger.entry_date.desc(), StudentLedger.id.desc()).all()
         concessions = concessions_query.all()
 
-    total_billed = sum(b.total_payable for b in bills)
-    total_paid   = sum(p.total_paid for p in payments)
-    outstanding  = sum(b.balance_due for b in bills)
-    advance_credit = max(0.0, total_paid - total_billed) if total_paid > total_billed else 0.0
+    # Calculate accurate non-duplicated totals across bills
+    chrono_bills = sorted(bills, key=lambda b: (b.bill_month or '', b.id or 0))
+    initial_dues = float(chrono_bills[0].previous_dues or 0.0) if chrono_bills else 0.0
+    net_charges = sum(
+        sum(float(it.net_amount or 0.0) for it in b.items) if (b.items and len(b.items) > 0)
+        else (float(b.total_current_charges or 0.0) - float(b.total_discount or 0.0) + float(b.total_late_fine or 0.0))
+        for b in chrono_bills
+    )
+    if any((float(b.previous_dues or 0.0)) > 0 for b in chrono_bills[1:]):
+        total_billed = round(initial_dues + net_charges, 2)
+        total_paid   = round(sum(float(p.total_paid or 0.0) for p in payments), 2)
+        outstanding  = round(max(0.0, total_billed - total_paid), 2)
+    else:
+        total_billed = round(sum(float(b.total_payable or 0.0) for b in bills), 2)
+        total_paid   = round(sum(float(p.total_paid or 0.0) for p in payments), 2)
+        outstanding  = round(sum(float(b.balance_due or 0.0) for b in bills), 2)
+    advance_credit = round(max(0.0, total_paid - total_billed), 2)
 
     class_name = f"{student.class_ref.name} {student.class_ref.section or ''}".strip() if student.class_ref else '—'
     father_name = student.father_name or student.parent_name or ''
@@ -640,9 +659,7 @@ def register_or_sync_service_charge(
         raise ValueError(f"Student with ID {student_id} not found.")
 
     if not session:
-        session = get_current_academic_session(student.school_id)
-    if not student:
-        raise ValueError(f"Student #{student_id} not found.")
+        session = getattr(student, 'session', None) or get_current_academic_session(student.school_id)
 
     amount = round(float(amount), 2)
     if amount <= 0:
@@ -1321,6 +1338,21 @@ def collect_fee_payment(
             total_alc_to_b = db.session.query(func.coalesce(func.sum(FeePaymentAllocation.allocated_amount), 0.0)).filter_by(bill_id=bill.id).scalar() or 0.0
             bill.amount_paid = round(float(total_alc_to_b), 2)
             bill.calculate_totals()
+
+    # Re-synchronize previous_dues and totals on subsequent bills for this student
+    try:
+        student_bills = FeeBill.query.filter(
+            FeeBill.student_id == student_id,
+            FeeBill.status != BillStatus.CANCELLED.value
+        ).order_by(FeeBill.bill_month.asc(), FeeBill.id.asc()).all()
+        for idx, b_sub in enumerate(student_bills):
+            if idx > 0:
+                p_dues = sum(float(pb.balance_due or 0.0) for pb in student_bills[:idx])
+                if abs(float(b_sub.previous_dues or 0.0) - p_dues) > 0.001:
+                    b_sub.previous_dues = round(p_dues, 2)
+                    b_sub.calculate_totals()
+    except Exception as sync_err:
+        logger.warning(f"Error re-synchronizing subsequent bill previous dues: {sync_err}")
 
     # If any overpayment remains, store as advance credited
     if remaining_to_allocate > 0:
@@ -2106,9 +2138,9 @@ def get_finance_dashboard_metrics(school_id, session=None, month=None):
         soon_limit = today_val + timedelta(days=30)
         warranty_expiring_assets = SchoolAsset.query.filter(
             SchoolAsset.school_id == school_id,
-            SchoolAsset.warranty_expiry.isnot(None),
-            SchoolAsset.warranty_expiry >= today_val,
-            SchoolAsset.warranty_expiry <= soon_limit
+            SchoolAsset.warranty_end.isnot(None),
+            SchoolAsset.warranty_end >= today_val,
+            SchoolAsset.warranty_end <= soon_limit
         ).count()
     except Exception:
         total_inv_items = 0

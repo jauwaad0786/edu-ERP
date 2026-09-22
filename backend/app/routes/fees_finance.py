@@ -23,6 +23,7 @@ from app.models.user import User
 from app.models.school import School
 from app.models.academic import Student, Class
 from app.models.finance import Expense
+from app.models.financial import FeeRecord
 from app.models.hrms import PayrollRun, PayrollSlip, PayrollRunStatus
 from app.models.fee_finance import (
     FeeHead, FeeStructureV2, FeeStructureItemV2, StudentFeeAssignment,

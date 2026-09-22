@@ -12,7 +12,7 @@ Tests:
 """
 
 import unittest
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from app import create_app, db
 from app.models.user import User
 from app.models.school import School
@@ -154,11 +154,12 @@ class FeeFinanceTestCase(unittest.TestCase):
         self.assertEqual(tuition_charge['net_amount'], 2500.0)
 
     def test_03_advance_fee_bill_generation_and_duplicate_prevention(self):
-        """Verify pre-due demand bill generation for September 2026 with duplicate prevention."""
+        """Verify pre-due demand bill generation for advance billing with duplicate prevention."""
+        future_due_date = date.today() + timedelta(days=15)
         bill, created = generate_fee_bill(
             student_id=self.student.id,
             bill_month='2026-09',
-            due_date=date(2026, 9, 5),
+            due_date=future_due_date,
             actor_user=self.admin,
             session='2026-27'
         )
@@ -172,7 +173,7 @@ class FeeFinanceTestCase(unittest.TestCase):
         duplicate_bill, created_again = generate_fee_bill(
             student_id=self.student.id,
             bill_month='2026-09',
-            due_date=date(2026, 9, 5),
+            due_date=future_due_date,
             actor_user=self.admin,
             session='2026-27',
             force_regenerate=False

@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
 from datetime import date, datetime
+from sqlalchemy import or_
 from app import db
 from app.utils.decorators import role_required, get_current_user
 from app.models.academic import Teacher, Class, Subject

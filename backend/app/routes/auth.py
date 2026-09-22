@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from app import limiter, db, bcrypt
 from flask_jwt_extended import (
     create_access_token,
@@ -392,9 +392,9 @@ def login():
             if c.check_password(password):
                 matched_user = c
                 break
-            elif password == '12345' and (c.check_password('Staff@123') or c.check_password('Teacher@123') or c.check_password('Student@123')):
-                # Automatically migrate legacy default password to requested 12345
-                c.set_password('12345', store_plain=True)
+            elif (current_app.config.get('TESTING') or current_app.config.get('DEBUG')) and password == '12345' and (c.check_password('Staff@123') or c.check_password('Teacher@123') or c.check_password('Student@123')):
+                # Automatically migrate legacy default password to requested 12345 in test/dev
+                c.set_password('12345', store_plain=False)
                 try:
                     db.session.commit()
                 except Exception as ex:
@@ -402,7 +402,7 @@ def login():
                     logger.warning(f"Failed to auto-migrate password to 12345: {ex}")
                 matched_user = c
                 break
-            elif password in ('Staff@123', 'Teacher@123', 'Student@123') and c.check_password('12345'):
+            elif (current_app.config.get('TESTING') or current_app.config.get('DEBUG')) and password in ('Staff@123', 'Teacher@123', 'Student@123') and c.check_password('12345'):
                 matched_user = c
                 break
 

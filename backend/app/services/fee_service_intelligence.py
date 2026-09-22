@@ -94,6 +94,8 @@ def get_academic_class_breakdown(school_id, month_code, session=None):
             ).all()
 
         # Check FeeBillItems for this class & month
+        billed = 0.0
+        paid = 0.0
         bi_stu_ids = set()
         if stu_ids:
             bi_rows = db.session.query(FeeBill.student_id, FeeBillItem.net_amount, FeeBillItem.paid_amount).join(FeeBillItem).filter(

@@ -10,7 +10,6 @@ Tests:
 7. End-to-End process_chat Execution
 """
 import sys
-import sys
 import io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
@@ -59,7 +58,7 @@ with app.app_context():
     safe_dict = cfg.to_dict_safe()
     print(f"  ✓ Saved to DB: Provider={safe_dict['provider']}, Model={safe_dict['model']}, Active={safe_dict['is_active']}")
     print(f"  ✓ Masked Key displayed: '{safe_dict['masked_key']}' (No plaintext leak)")
-    assert safe_dict['masked_key'].startswith('gsk_'), "Masked key formatting invalid!"
+    assert safe_dict['masked_key'] == 'Configured ✓', "Masked key formatting invalid!"
 
     # ── Test 3: Intent Router Classification ──
     print("\n[TEST 3] Testing Intent Router Classification:")

@@ -67,20 +67,8 @@ def get_library_summary(school_id: int) -> dict:
     """Book copies status and outstanding fines."""
     from app.models.library import BookCopy, BookIssue, FineTransaction
 
-    total = BookCopy.query.join(
-        db.Model.metadata.tables['books'],
-        BookCopy.book_id == db.Model.metadata.tables['books'].c.id
-    ).filter(
-        db.Model.metadata.tables['books'].c.school_id == school_id
-    ).count()
-
-    issued = BookCopy.query.join(
-        db.Model.metadata.tables['books'],
-        BookCopy.book_id == db.Model.metadata.tables['books'].c.id
-    ).filter(
-        db.Model.metadata.tables['books'].c.school_id == school_id,
-        BookCopy.status == 'ISSUED'
-    ).count()
+    total = BookCopy.query.filter_by(school_id=school_id).count()
+    issued = BookCopy.query.filter_by(school_id=school_id, status='ISSUED').count()
 
     overdue = BookIssue.query.filter(
         BookIssue.school_id == school_id,
@@ -157,7 +145,7 @@ def get_school_summary(school_id: int) -> dict:
     active_students = stu_q.join(User, Student.user_id == User.id).filter(User.is_active == True).count()
     total_teachers  = tea_q.join(User, Teacher.user_id == User.id).filter(User.is_active == True).count()
     total_classes   = cls_q.count()
-    total_staff     = usr_q.filter(User.is_active == True).count()
+    total_staff     = usr_q.filter(User.is_active == True, ~User.role.in_(['STUDENT', 'PARENT'])).count()
 
     return {
         'total_students':   total_students,

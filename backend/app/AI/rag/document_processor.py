@@ -108,9 +108,10 @@ def chunk_text(text: str, chunk_size: int = MAX_CHUNK_CHARS,
             })
             idx += 1
 
-        start = end - overlap
-        if start <= 0 and idx > 0:
-            break  # avoid infinite loop
+        prev_start = start
+        start = max(start + 1, end - overlap)
+        if start <= prev_start:
+            start = end
 
     return chunks
 
