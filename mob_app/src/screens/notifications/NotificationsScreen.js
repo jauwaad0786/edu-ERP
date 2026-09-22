@@ -19,7 +19,10 @@ export default function NotificationsScreen({ navigation }) {
   const loadNotifications = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     try {
-      const res = await client.get('/support/notifications').catch(() => null);
+      let res = await client.get('/notifications').catch(() => null);
+      if (!res || !res.data) {
+        res = await client.get('/support/notifications').catch(() => null);
+      }
       const list = Array.isArray(res?.data)
         ? res.data
         : res?.data?.notifications || res?.data?.data || [];
@@ -35,87 +38,54 @@ export default function NotificationsScreen({ navigation }) {
     loadNotifications();
   }, [loadNotifications]);
 
-  const defaultNotifications = useMemo(() => [
-    {
-      id: 1,
-      category: 'Academic',
-      title: 'New Admission',
-      desc: 'Aarav Kumar has been admitted to Class 5 - A',
-      time: '10:30 AM',
-      icon: 'person-add',
-      color: '#16a34a',
-      bg: '#dcfce7',
-    },
-    {
-      id: 2,
-      category: 'Finance',
-      title: 'Fee Due Alert',
-      desc: '23 students have pending fees for September 2025',
-      time: '09:15 AM',
-      icon: 'receipt',
-      color: '#dc2626',
-      bg: '#fee2e2',
-    },
-    {
-      id: 3,
-      category: 'Academic',
-      title: 'Leave Request',
-      desc: 'Priya Verma has applied for leave (16 Sep 2025)',
-      time: '08:45 AM',
-      icon: 'time',
-      color: '#0284c7',
-      bg: '#e0f2fe',
-    },
-    {
-      id: 4,
-      category: 'Academic',
-      title: 'Exam Reminder',
-      desc: 'Half Yearly Exam starts from 20 Sep 2025',
-      time: 'Yesterday',
-      icon: 'calendar',
-      color: '#7c3aed',
-      bg: '#ede9fe',
-    },
-    {
-      id: 5,
-      category: 'Others',
-      title: 'System Update',
-      desc: 'New transport module is now live',
-      time: 'Yesterday',
-      icon: 'shield-checkmark',
-      color: '#0f172a',
-      bg: '#f1f5f9',
-    },
-    {
-      id: 6,
-      category: 'Others',
-      title: 'Parent Query',
-      desc: 'New message from Rahul Singh (Parent of Class 3)',
-      time: 'Yesterday',
-      icon: 'chatbubble-ellipses',
-      color: '#0284c7',
-      bg: '#e0f2fe',
-    },
-  ], []);
-
   const displayList = useMemo(() => {
-    if (notifications.length > 0) {
-      return notifications.map((n, i) => {
-        const cat = n.category || (i % 2 === 0 ? 'Academic' : 'Finance');
-        return {
-          id: n.id || i,
-          category: cat,
-          title: n.title || 'Notification',
-          desc: n.message || n.body || n.content || 'Update available',
-          time: n.created_at ? new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recent',
-          icon: cat === 'Finance' ? 'receipt' : 'notifications',
-          color: cat === 'Finance' ? '#dc2626' : '#0284c7',
-          bg: cat === 'Finance' ? '#fee2e2' : '#e0f2fe',
-        };
-      });
-    }
-    return defaultNotifications;
-  }, [notifications, defaultNotifications]);
+    return notifications.map((n, i) => {
+      const rawCat = (n.category || n.type || '').toUpperCase();
+      let category = 'Others';
+      let icon = 'notifications';
+      let color = '#0284c7';
+      let bg = '#e0f2fe';
+
+      if (rawCat.includes('FEE') || rawCat.includes('FINANCE') || rawCat.includes('DUE') || rawCat.includes('PAYMENT')) {
+        category = 'Finance';
+        icon = 'receipt';
+        color = '#dc2626';
+        bg = '#fee2e2';
+      } else if (rawCat.includes('EXAM') || rawCat.includes('TEST') || rawCat.includes('MARK') || rawCat.includes('RESULT')) {
+        category = 'Academic';
+        icon = 'calendar';
+        color = '#7c3aed';
+        bg = '#ede9fe';
+      } else if (rawCat.includes('ADMISSION') || rawCat.includes('STUDENT') || rawCat.includes('ENROLL')) {
+        category = 'Academic';
+        icon = 'person-add';
+        color = '#16a34a';
+        bg = '#dcfce7';
+      } else if (rawCat.includes('LEAVE') || rawCat.includes('ATTENDANCE') || rawCat.includes('STAFF')) {
+        category = 'Academic';
+        icon = 'time';
+        color = '#0284c7';
+        bg = '#e0f2fe';
+      } else if (rawCat.includes('QUERY') || rawCat.includes('MESSAGE') || rawCat.includes('CHAT')) {
+        category = 'Others';
+        icon = 'chatbubble-ellipses';
+        color = '#ea580c';
+        bg = '#ffedd5';
+      }
+
+      return {
+        id: n.id || i,
+        category: category,
+        title: n.title || 'Institutional Notification',
+        desc: n.message || n.body || n.content || n.description || 'Details available in portal.',
+        time: n.created_at ? new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recent',
+        icon,
+        color,
+        bg,
+        isRead: Boolean(n.is_read || n.read),
+      };
+    });
+  }, [notifications]);
 
   const counts = useMemo(() => {
     const all = displayList.length;

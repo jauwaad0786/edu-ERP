@@ -19,7 +19,7 @@ export default function PrincipalDashboardScreen({ navigation }) {
   const [stats, setStats] = useState(null);
   const [fees, setFees] = useState(null);
   const [school, setSchool] = useState(null);
-  const [unreadCount, setUnreadCount] = useState(5);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [todaySchedule, setTodaySchedule] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -31,24 +31,34 @@ export default function PrincipalDashboardScreen({ navigation }) {
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     try {
-      const [statsRes, feesRes, schoolRes, notifRes, holsRes] = await Promise.all([
+      const [statsRes, feesRes, schoolRes, notifCountRes, meetingsRes] = await Promise.all([
         client.get('/principal/dashboard').catch(() => ({ data: null })),
         client.get('/principal/fees/summary').catch(() => ({ data: null })),
         client.get('/principal/school/profile').catch(() => ({ data: null })),
-        client.get('/support/notifications').catch(() => client.get('/notifications').catch(() => ({ data: [] }))),
-        client.get('/teacher/holidays').catch(() => ({ data: [] })),
+        client.get('/notifications/unread-count').catch(() =>
+          client.get('/support/notifications').catch(() => ({ data: [] }))
+        ),
+        client.get('/support/meetings').catch(() => ({ data: [] })),
       ]);
 
       setStats(statsRes.data);
       setFees(feesRes.data);
       setSchool(schoolRes.data);
 
-      const notifs = Array.isArray(notifRes.data) ? notifRes.data : notifRes.data?.notifications || [];
-      const unread = notifs.filter(n => !n.is_read && !n.read).length;
-      setUnreadCount(unread > 0 ? unread : 5);
+      if (typeof notifCountRes?.data?.unread_count === 'number') {
+        setUnreadCount(notifCountRes.data.unread_count);
+      } else {
+        const notifs = Array.isArray(notifCountRes.data)
+          ? notifCountRes.data
+          : notifCountRes.data?.notifications || [];
+        const unread = notifs.filter(n => !n.is_read && !n.read).length;
+        setUnreadCount(unread);
+      }
 
-      const hols = Array.isArray(holsRes.data) ? holsRes.data : [];
-      setTodaySchedule(hols);
+      const meets = Array.isArray(meetingsRes.data)
+        ? meetingsRes.data
+        : meetingsRes.data?.meetings || meetingsRes.data?.data || [];
+      setTodaySchedule(meets);
     } finally {
       if (isRefresh) setRefreshing(false); else setLoading(false);
     }
@@ -66,25 +76,34 @@ export default function PrincipalDashboardScreen({ navigation }) {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
 
-  const principalName = user?.name || 'Dr. Rajesh Sharma';
-  const schoolName = school?.name || user?.school?.name || 'Greenwood International School';
-  const academicYear = school?.academic_year || '2024-25';
+  const principalName = user?.name || user?.email?.split('@')[0] || 'Principal';
+  const schoolName = school?.name || user?.school?.name || user?.school_name || 'EduERP Institution';
+  const academicYear = school?.current_session || user?.school?.current_session || school?.academic_year || '2024-25';
 
-  // Dynamic Metrics
-  const totalStudents = stats?.total_students ?? 324;
-  const totalTeachers = stats?.total_teachers ?? 28;
-  const totalClasses = stats?.total_classes ?? 12;
-  const attendanceRate = stats?.attendance_percentage ?? (stats?.students_present && stats?.total_students
-    ? Math.round((stats.students_present / stats.total_students) * 100)
-    : 92);
+  // Dynamic Metrics strictly from Backend API (No hardcoded values)
+  const totalStudents = stats?.total_students ?? 0;
+  const totalTeachers = stats?.total_teachers ?? 0;
+  const totalClasses = stats?.total_classes ?? 0;
+  const attendanceRate = stats?.attendance_percentage != null
+    ? Math.round(Number(stats.attendance_percentage))
+    : (stats?.students_present && stats?.total_students
+        ? Math.round((stats.students_present / stats.total_students) * 100)
+        : 0);
 
-  // Dynamic Fees
-  const totalCollected = Number(fees?.collected ?? fees?.total_collected ?? 1080000);
-  const totalDemand = Number(fees?.total_demand ?? fees?.gross_due ?? 1250000);
-  const totalDue = Number(fees?.outstanding ?? fees?.total_due ?? 120000);
-  const overdueAmount = Number(fees?.overdue ?? 50000);
-  const thisMonthAmount = Number(fees?.this_month ?? 200);
-  const feeRate = totalDemand > 0 ? Math.round((totalCollected / totalDemand) * 100) : 86;
+  // Dynamic Fees strictly from Backend API (No hardcoded values)
+  const feeIntel = stats?.fee_intelligence || {};
+  const totalCollected = Number(
+    fees?.total_paid ?? fees?.collected ?? fees?.total_collected ?? feeIntel.all_time_collected ?? 0
+  );
+  const totalDemand = Number(
+    fees?.total_due ?? fees?.total_demand ?? fees?.gross_due ?? feeIntel.all_time_generated ?? 0
+  );
+  const totalDue = Number(
+    fees?.outstanding ?? fees?.total_due ?? feeIntel.all_time_pending ?? 0
+  );
+  const overdueAmount = Number(fees?.overdue ?? 0);
+  const thisMonthAmount = Number(fees?.this_month ?? feeIntel.month_collected ?? 0);
+  const feeRate = totalDemand > 0 ? Math.min(100, Math.round((totalCollected / totalDemand) * 100)) : 0;
 
   if (loading) {
     return (
@@ -173,44 +192,67 @@ export default function PrincipalDashboardScreen({ navigation }) {
           </View>
         </View>
 
-        {/* 4 KPI Stat Counters Row */}
+        {/* 4 KPI Stat Counters Row - Interactive Cards */}
         <View style={styles.kpiRow}>
-          <View style={styles.kpiBox}>
+          <TouchableOpacity
+            style={styles.kpiBox}
+            activeOpacity={0.8}
+            onPress={() => navigation?.navigate('Students')}
+          >
             <View style={[styles.kpiIcon, { backgroundColor: '#e0f2fe' }]}>
               <Ionicons name="school" size={18} color="#0284c7" />
             </View>
             <Text style={styles.kpiValue}>{Number(totalStudents).toLocaleString()}</Text>
             <Text style={styles.kpiLabel}>Students</Text>
-          </View>
+          </TouchableOpacity>
 
-          <View style={styles.kpiBox}>
+          <TouchableOpacity
+            style={styles.kpiBox}
+            activeOpacity={0.8}
+            onPress={() => navigation?.navigate('Teachers')}
+          >
             <View style={[styles.kpiIcon, { backgroundColor: '#f3e8ff' }]}>
               <Ionicons name="people" size={18} color="#7c3aed" />
             </View>
             <Text style={styles.kpiValue}>{Number(totalTeachers).toLocaleString()}</Text>
             <Text style={styles.kpiLabel}>Teachers</Text>
-          </View>
+          </TouchableOpacity>
 
-          <View style={styles.kpiBox}>
+          <TouchableOpacity
+            style={styles.kpiBox}
+            activeOpacity={0.8}
+            onPress={() => navigation?.navigate('Students')}
+          >
             <View style={[styles.kpiIcon, { backgroundColor: '#ccfbf1' }]}>
               <Ionicons name="book" size={18} color="#0d9488" />
             </View>
             <Text style={styles.kpiValue}>{Number(totalClasses).toLocaleString()}</Text>
             <Text style={styles.kpiLabel}>Classes</Text>
-          </View>
+          </TouchableOpacity>
 
-          <View style={styles.kpiBox}>
+          <TouchableOpacity
+            style={styles.kpiBox}
+            activeOpacity={0.8}
+            onPress={() => navigation?.navigate('Reports')}
+          >
             <View style={[styles.kpiIcon, { backgroundColor: '#dcfce7' }]}>
               <Ionicons name="checkmark-done" size={18} color="#16a34a" />
             </View>
             <Text style={styles.kpiValue}>{attendanceRate}%</Text>
             <Text style={styles.kpiLabel}>Attendance</Text>
-          </View>
+          </TouchableOpacity>
         </View>
 
-        {/* Fee Collection Card with Circular Ring */}
-        <View style={styles.feeCard}>
-          <Text style={styles.feeCardTitle}>Fee Collection</Text>
+        {/* Fee Collection Card with Circular Ring - Interactive */}
+        <TouchableOpacity
+          style={styles.feeCard}
+          activeOpacity={0.9}
+          onPress={() => navigation?.navigate('Fees')}
+        >
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={styles.feeCardTitle}>Fee Collection</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.textSubtle} />
+          </View>
 
           <View style={styles.feeContentRow}>
             <View style={{ flex: 1 }}>
@@ -255,7 +297,7 @@ export default function PrincipalDashboardScreen({ navigation }) {
               </Text>
             </View>
           </View>
-        </View>
+        </TouchableOpacity>
 
         {/* Quick Actions Grid */}
         <View style={styles.quickActionsSection}>
@@ -286,7 +328,7 @@ export default function PrincipalDashboardScreen({ navigation }) {
 
             <TouchableOpacity
               style={styles.actionItem}
-              onPress={() => navigation?.navigate('Attendance')}
+              onPress={() => navigation?.navigate('Reports')}
               activeOpacity={0.75}
             >
               <View style={[styles.actionIconBox, { backgroundColor: '#dcfce7' }]}>
@@ -317,17 +359,34 @@ export default function PrincipalDashboardScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.scheduleCard}>
-            <View style={styles.scheduleIconCircle}>
-              <Ionicons name="time" size={20} color="#7c3aed" />
+          {todaySchedule.length > 0 ? (
+            todaySchedule.slice(0, 3).map((item, idx) => (
+              <View key={item.id || idx} style={styles.scheduleCard}>
+                <View style={styles.scheduleIconCircle}>
+                  <Ionicons name="time" size={20} color="#7c3aed" />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.scheduleTime}>
+                    {item.meeting_time || item.time || (item.start_time ? item.start_time.slice(0, 5) : 'Today')}
+                  </Text>
+                  <Text style={styles.scheduleTitle}>
+                    {item.title || item.name || item.purpose || 'Institutional Schedule'}
+                  </Text>
+                  <Text style={styles.scheduleRoom}>
+                    {item.location || item.room || item.status || 'Campus'}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.textSubtle} />
+              </View>
+            ))
+          ) : (
+            <View style={[styles.scheduleCard, { justifyContent: 'center', paddingVertical: 18 }]}>
+              <Ionicons name="calendar-outline" size={24} color="#94a3b8" style={{ marginRight: 10 }} />
+              <Text style={{ fontSize: 13, color: '#64748b', fontWeight: '500' }}>
+                No meetings or schedule items for today
+              </Text>
             </View>
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={styles.scheduleTime}>10:00 AM</Text>
-              <Text style={styles.scheduleTitle}>Staff Meeting</Text>
-              <Text style={styles.scheduleRoom}>Conference Hall</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color={colors.textSubtle} />
-          </View>
+          )}
         </View>
       </ScrollView>
 

@@ -19,15 +19,18 @@ export default function ExaminationsScreen({ navigation }) {
   const loadExams = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     try {
-      // Try /results/terms or /examinations/exams
-      let res = await client.get('/results/terms').catch(() => null);
+      // Primary: /principal/exams, fallback: /results/terms or /marks/exams
+      let res = await client.get('/principal/exams').catch(() => null);
+      if (!res || !res.data) {
+        res = await client.get('/results/terms').catch(() => null);
+      }
       if (!res || !res.data) {
         res = await client.get('/marks/exams').catch(() => null);
       }
 
       const list = Array.isArray(res?.data)
         ? res.data
-        : res?.data?.terms || res?.data?.exams || res?.data?.data || [];
+        : res?.data?.exams || res?.data?.terms || res?.data?.data || [];
       setExams(list);
     } catch (err) {
       console.warn('Failed to fetch exams:', err?.message);
@@ -40,54 +43,22 @@ export default function ExaminationsScreen({ navigation }) {
     loadExams();
   }, [loadExams]);
 
-  const defaultMockExams = useMemo(() => [
-    {
-      id: 1,
-      title: 'Half Yearly Exam 2025',
-      dates: '20 Sep - 30 Sep 2025',
-      classes: 'Classes: 1 - 10',
-      status: 'Upcoming',
-      icon: 'calendar',
-      color: '#0284c7',
-      bg: '#e0f2fe',
-    },
-    {
-      id: 2,
-      title: 'Unit Test 2',
-      dates: '01 Nov - 05 Nov 2025',
-      classes: 'Classes: 1 - 8',
-      status: 'Ongoing',
-      icon: 'document-text',
-      color: '#16a34a',
-      bg: '#dcfce7',
-    },
-    {
-      id: 3,
-      title: 'Annual Exam 2025',
-      dates: '15 Feb - 28 Feb 2026',
-      classes: 'Classes: 1 - 10',
-      status: 'Completed',
-      icon: 'ribbon',
-      color: '#7c3aed',
-      bg: '#ede9fe',
-    },
-  ], []);
-
   const displayList = useMemo(() => {
-    if (exams.length > 0) {
-      return exams.map((e, i) => ({
+    return exams.map((e, i) => {
+      const rawStatus = (e.status || 'Upcoming').toLowerCase();
+      const status = rawStatus === 'ongoing' ? 'Ongoing' : rawStatus === 'completed' || rawStatus === 'archived' ? 'Completed' : 'Upcoming';
+      return {
         id: e.id || i,
-        title: e.name || e.title || e.term_name || `Term Exam ${i + 1}`,
-        dates: e.start_date ? `${e.start_date} - ${e.end_date || ''}` : 'Scheduled',
-        classes: e.classes ? `Classes: ${e.classes}` : 'Classes: 1 - 10',
-        status: e.status ? (e.status.charAt(0).toUpperCase() + e.status.slice(1).toLowerCase()) : (i === 0 ? 'Upcoming' : i === 1 ? 'Ongoing' : 'Completed'),
-        icon: i % 3 === 0 ? 'calendar' : i % 3 === 1 ? 'document-text' : 'ribbon',
-        color: i % 3 === 0 ? '#0284c7' : i % 3 === 1 ? '#16a34a' : '#7c3aed',
-        bg: i % 3 === 0 ? '#e0f2fe' : i % 3 === 1 ? '#dcfce7' : '#ede9fe',
-      }));
-    }
-    return defaultMockExams;
-  }, [exams, defaultMockExams]);
+        title: e.name || e.title || e.term_name || `Exam ${i + 1}`,
+        dates: e.start_date ? `${e.start_date}${e.end_date ? ' - ' + e.end_date : ''}` : 'Scheduled',
+        classes: e.classes ? `Classes: ${Array.isArray(e.classes) ? e.classes.join(', ') : e.classes}` : 'Classes: 1 - 10',
+        status: status,
+        icon: status === 'Upcoming' ? 'calendar' : status === 'Ongoing' ? 'document-text' : 'ribbon',
+        color: status === 'Upcoming' ? '#0284c7' : status === 'Ongoing' ? '#16a34a' : '#7c3aed',
+        bg: status === 'Upcoming' ? '#e0f2fe' : status === 'Ongoing' ? '#dcfce7' : '#ede9fe',
+      };
+    });
+  }, [exams]);
 
   const filteredExams = useMemo(() => {
     return displayList.filter(e => e.status.toLowerCase() === activeTab.toLowerCase());

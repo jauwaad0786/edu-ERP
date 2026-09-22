@@ -29,13 +29,13 @@ export default function ProfileScreen({ navigation }) {
     });
   }, [user]);
 
-  const userName = profile?.name || user?.name || 'Dr. Rajesh Sharma';
+  const userName = profile?.name || user?.name || user?.email?.split('@')[0] || 'User Profile';
   const userRole = profile?.role || user?.role || 'Principal';
-  const userEmail = profile?.email || user?.email || 'principal@greenwood.edu';
-  const userPhone = profile?.phone || user?.phone || '+91 98765 43210';
-  const schoolName = school?.name || user?.school?.name || user?.school_name || 'Greenwood International School';
-  const schoolCode = school?.code || school?.school_code || 'SCH001';
-  const academicSession = school?.current_session || user?.school?.current_session || '2024-25';
+  const userEmail = profile?.email || user?.email || '—';
+  const userPhone = profile?.phone || user?.phone || '—';
+  const schoolName = school?.name || user?.school?.name || user?.school_name || 'EduERP Institution';
+  const schoolCode = school?.code || school?.school_code || '—';
+  const academicSession = school?.current_session || user?.school?.current_session || school?.academic_year || 'Current Session';
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>

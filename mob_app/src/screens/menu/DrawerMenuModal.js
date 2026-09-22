@@ -38,9 +38,9 @@ export default function DrawerMenuModal({
     }
   };
 
-  const userName = user?.name || 'Dr. Rajesh Sharma';
+  const userName = user?.name || user?.email?.split('@')[0] || 'Institutional User';
   const userRole = user?.role || 'Principal';
-  const schoolName = user?.school?.name || user?.school_name || 'Greenwood International School';
+  const schoolName = user?.school?.name || user?.school_name || 'EduERP Institution';
 
   return (
     <Modal

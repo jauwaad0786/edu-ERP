@@ -9,7 +9,8 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../context/AuthContext';
 
 // ── Auth Screens ──────────────────────────────────────────────────────────
-import LoginScreen from '../screens/auth/LoginScreen';
+import SplashScreen         from '../screens/auth/SplashScreen';
+import LoginScreen          from '../screens/auth/LoginScreen';
 import LoggedOutSuccessScreen from '../screens/auth/LoggedOutSuccessScreen';
 
 // ── Role Navigators ────────────────────────────────────────────────────────
@@ -77,11 +78,7 @@ export default function AppNavigator() {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return (
-      <View style={styles.centerScreen}>
-        <ActivityIndicator size="large" color="#0176d3" />
-      </View>
-    );
+    return <SplashScreen navigation={{ replace: () => {} }} />;
   }
 
   return (
@@ -93,6 +90,7 @@ export default function AppNavigator() {
           </Stack.Screen>
         ) : (
           <>
+            <Stack.Screen name="Splash" component={SplashScreen} />
             <Stack.Screen name="Auth" component={LoginScreen} />
             <Stack.Screen name="LoggedOutSuccess" component={LoggedOutSuccessScreen} />
           </>

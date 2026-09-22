@@ -86,6 +86,43 @@ export default function StaffScreen({ navigation }) {
   const AVATAR_BG_COLORS = ['#ede9fe', '#dbeafe', '#fef3c7', '#dcfce7', '#fce7f3', '#e0f2fe'];
   const AVATAR_TEXT_COLORS = ['#7c3aed', '#0b57d0', '#b45309', '#15803d', '#be185d', '#0284c7'];
 
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [submittingTeacher, setSubmittingTeacher] = useState(false);
+  const [newTeacher, setNewTeacher] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    employee_id: '',
+    department: '',
+    designation: 'Teacher',
+  });
+
+  const handleAddTeacher = async () => {
+    if (!newTeacher.name.trim() || !newTeacher.email.trim()) {
+      alert('Please enter Teacher name and email address.');
+      return;
+    }
+    setSubmittingTeacher(true);
+    try {
+      await client.post('/principal/teachers', {
+        name: newTeacher.name.trim(),
+        email: newTeacher.email.trim(),
+        phone: newTeacher.phone.trim() || undefined,
+        employee_id: newTeacher.employee_id.trim() || undefined,
+        department: newTeacher.department.trim() || undefined,
+        designation: newTeacher.designation.trim() || 'Teacher',
+      });
+      alert(`Teacher ${newTeacher.name} successfully registered.`);
+      setShowAddModal(false);
+      setNewTeacher({ name: '', email: '', phone: '', employee_id: '', department: '', designation: 'Teacher' });
+      loadData(true);
+    } catch (err) {
+      alert(err.response?.data?.message || err.response?.data?.error || 'Failed to add teacher.');
+    } finally {
+      setSubmittingTeacher(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Top Header */}
@@ -100,10 +137,7 @@ export default function StaffScreen({ navigation }) {
         <Text style={styles.headerTitle}>Teachers</Text>
         <TouchableOpacity
           style={styles.addBtn}
-          onPress={() => {
-            // Can open an Add Teacher sheet / alert
-            alert('Add Teacher form can be opened here.');
-          }}
+          onPress={() => setShowAddModal(true)}
           activeOpacity={0.8}
         >
           <Ionicons name="add" size={16} color="#ffffff" />
@@ -240,6 +274,83 @@ export default function StaffScreen({ navigation }) {
             })}
           </View>
         </TouchableOpacity>
+      </Modal>
+
+      {/* Add Teacher Modal */}
+      <Modal visible={showAddModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: 520, paddingBottom: 20 }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <Text style={styles.modalHeader}>Add New Teacher</Text>
+              <TouchableOpacity onPress={() => setShowAddModal(false)}>
+                <Ionicons name="close" size={24} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.inputLabel}>Full Name *</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="e.g. Dr. Ramesh Kumar"
+                placeholderTextColor="#94a3b8"
+                value={newTeacher.name}
+                onChangeText={v => setNewTeacher(p => ({ ...p, name: v }))}
+              />
+
+              <Text style={styles.inputLabel}>Email Address *</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="teacher@school.com"
+                placeholderTextColor="#94a3b8"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                value={newTeacher.email}
+                onChangeText={v => setNewTeacher(p => ({ ...p, email: v }))}
+              />
+
+              <Text style={styles.inputLabel}>Phone Number</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="+91 98765 43210"
+                placeholderTextColor="#94a3b8"
+                keyboardType="phone-pad"
+                value={newTeacher.phone}
+                onChangeText={v => setNewTeacher(p => ({ ...p, phone: v }))}
+              />
+
+              <Text style={styles.inputLabel}>Employee ID</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="e.g. EMP012"
+                placeholderTextColor="#94a3b8"
+                value={newTeacher.employee_id}
+                onChangeText={v => setNewTeacher(p => ({ ...p, employee_id: v }))}
+              />
+
+              <Text style={styles.inputLabel}>Department</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="e.g. Mathematics, Science"
+                placeholderTextColor="#94a3b8"
+                value={newTeacher.department}
+                onChangeText={v => setNewTeacher(p => ({ ...p, department: v }))}
+              />
+
+              <TouchableOpacity
+                style={styles.submitTeacherBtn}
+                onPress={handleAddTeacher}
+                disabled={submittingTeacher}
+                activeOpacity={0.85}
+              >
+                {submittingTeacher ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text style={styles.submitTeacherBtnText}>Register Teacher</Text>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -451,6 +562,37 @@ const styles = StyleSheet.create({
   },
   modalItemTextActive: {
     color: colors.primary,
+    fontWeight: '700',
+  },
+  inputLabel: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#334155',
+    marginBottom: 6,
+    marginTop: 10,
+  },
+  modalInput: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#1e293b',
+  },
+  submitTeacherBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20,
+    marginBottom: 10,
+  },
+  submitTeacherBtnText: {
+    color: '#ffffff',
+    fontSize: 14.5,
     fontWeight: '700',
   },
 });

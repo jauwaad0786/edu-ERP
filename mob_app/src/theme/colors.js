@@ -8,9 +8,9 @@ export const colors = {
   primaryDeep: '#052975',
   primaryLight: '#e8f0fe',
   primaryLighter: '#d2e3fc',
-  primaryGradient: ['#083ca8', '#0b57d0', '#1a73e8'],
-  buttonGradient: ['#1d4ed8', '#2563eb', '#3b82f6'],
-  heroGradient: ['#0f172a', '#083ca8', '#0b57d0'],
+  primaryGradient: ['#2563eb', '#4f46e5', '#7c3aed'],
+  buttonGradient: ['#2563eb', '#7c3aed'],
+  heroGradient: ['#0f172a', '#1e3a8a', '#2563eb'],
 
   // Semantic
   success: '#16a34a',

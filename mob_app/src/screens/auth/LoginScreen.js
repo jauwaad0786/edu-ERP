@@ -20,8 +20,8 @@ try {
 export default function LoginScreen({ navigation }) {
   const { login, studentLogin } = useAuth();
 
-  // Exactly 3 roles as requested by user: 'Staff' | 'Student' | 'Parents'
-  const [role, setRole] = useState('Staff');
+  // 4 Roles matching Screen 2 of Reference: Principal, Teacher, Student, Parent
+  const [role, setRole] = useState('Principal');
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -53,21 +53,28 @@ export default function LoginScreen({ navigation }) {
       }
 
       if (role === 'Student') {
-        // Direct Student Authentication
-        await studentLogin({
-          phone: identifier.trim(),
-          name: identifier.trim(),
-          password: password.trim(),
-        });
+        // Direct Student Authentication fallback to standard login
+        try {
+          await studentLogin({
+            phone: identifier.trim(),
+            name: identifier.trim(),
+            password: password.trim(),
+          });
+        } catch {
+          await login({
+            identifier: identifier.trim(),
+            password: password.trim(),
+          });
+        }
       } else {
-        // Staff & Parents Unified Authentication
+        // Staff, Principal, Teacher & Parent Authentication
         await login({
           identifier: identifier.trim(),
           password: password.trim(),
         });
       }
     } catch (err) {
-      const msg = err.response?.data?.error || err.response?.data?.message || err.message || 'Login failed. Please check credentials.';
+      const msg = err.response?.data?.error || err.response?.data?.message || err.message || 'Login failed. Please check your credentials.';
       setError(msg);
     } finally {
       setLoading(false);
@@ -90,15 +97,15 @@ export default function LoginScreen({ navigation }) {
         {/* Top Logo Icon */}
         <View style={styles.header}>
           <View style={styles.logoCircle}>
-            <Ionicons name="school" size={40} color={colors.primary} />
+            <Ionicons name="school" size={38} color="#2563eb" />
           </View>
           <Text style={styles.title}>Welcome Back</Text>
           <Text style={styles.subtitle}>Sign in to continue</Text>
         </View>
 
-        {/* 3-Pill Role Selector: Staff, Student, Parents */}
+        {/* 4-Pill Role Selector: Principal, Teacher, Student, Parent */}
         <View style={styles.roleTabsWrapper}>
-          {['Staff', 'Student', 'Parents'].map(r => {
+          {['Principal', 'Teacher', 'Student', 'Parent'].map(r => {
             const isActive = role === r;
             return (
               <TouchableOpacity
@@ -134,7 +141,7 @@ export default function LoginScreen({ navigation }) {
             />
             <TextInput
               style={styles.input}
-              placeholder={role === 'Student' ? 'Registered Mobile Number' : 'Email or Phone'}
+              placeholder={role === 'Principal' ? 'principal@school.com' : role === 'Student' ? 'Mobile Number or ID' : 'Email or Phone'}
               placeholderTextColor={colors.textSubtle}
               value={identifier}
               onChangeText={setIdentifier}

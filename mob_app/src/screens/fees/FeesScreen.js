@@ -81,15 +81,15 @@ export default function FeesScreen({ navigation }) {
     );
   };
 
-  const totalCollected = feeSummary?.paid ?? feeSummary?.collected ?? feeSummary?.total_collected ?? 1080000;
-  const grossDemand = feeSummary?.total_demand ?? feeSummary?.gross_due ?? feeSummary?.total_due ?? 1250000;
-  const totalDue = feeSummary?.outstanding ?? feeSummary?.balance ?? feeSummary?.total_due ?? 120000;
-  const overdue = feeSummary?.overdue ?? 50000;
-  const thisMonth = feeSummary?.this_month ?? 200;
+  const totalCollected = Number(feeSummary?.total_paid ?? feeSummary?.paid ?? feeSummary?.collected ?? feeSummary?.total_collected ?? 0);
+  const grossDemand = Number(feeSummary?.total_due ?? feeSummary?.total_demand ?? feeSummary?.gross_due ?? 0);
+  const totalDue = Number(feeSummary?.outstanding ?? feeSummary?.balance ?? (grossDemand > totalCollected ? grossDemand - totalCollected : 0));
+  const overdue = Number(feeSummary?.overdue ?? feeSummary?.overdue_amount ?? 0);
+  const thisMonth = Number(feeSummary?.this_month ?? 0);
 
   const collectionPercent = grossDemand > 0
     ? Math.min(100, Math.round((totalCollected / grossDemand) * 100))
-    : 86;
+    : 0;
 
   const TABS = ['Overview', 'Collection', 'Dues', 'Records'];
 
@@ -276,20 +276,24 @@ export default function FeesScreen({ navigation }) {
           </View>
 
           <View style={styles.duesCard}>
-            {(classDues.length > 0 ? classDues.slice(0, 6) : [
-              { class_name: 'Class 1', amount: 120000 },
-              { class_name: 'Class 2', amount: 95000 },
-              { class_name: 'Class 3', amount: 110000 },
-              { class_name: 'Class 4', amount: 85000 },
-            ]).map((d, i, arr) => (
-              <View key={i}>
-                <View style={styles.dueItemRow}>
-                  <Text style={styles.dueClassName}>{d.class_name || d.name || `Class ${i + 1}`}</Text>
-                  <Text style={styles.dueAmountText}>{fmt(d.amount ?? d.total_due ?? d.due_amount)}</Text>
+            {classDues.length > 0 ? (
+              classDues.slice(0, 8).map((d, i, arr) => (
+                <View key={d.class_id || d.id || i}>
+                  <View style={styles.dueItemRow}>
+                    <Text style={styles.dueClassName}>{d.class_name || d.name || `Class ${i + 1}`}</Text>
+                    <Text style={styles.dueAmountText}>{fmt(d.amount ?? d.total_due ?? d.due_amount ?? d.balance)}</Text>
+                  </View>
+                  {i < Math.min(classDues.length, 8) - 1 && <View style={styles.dueDivider} />}
                 </View>
-                {i < arr.length - 1 && <View style={styles.dueDivider} />}
+              ))
+            ) : (
+              <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+                <Ionicons name="checkmark-circle-outline" size={28} color="#16a34a" style={{ marginBottom: 6 }} />
+                <Text style={{ fontSize: 13, color: '#64748b', fontWeight: '500' }}>
+                  All class dues are settled or up to date.
+                </Text>
               </View>
-            ))}
+            )}
           </View>
         </ScrollView>
       )}

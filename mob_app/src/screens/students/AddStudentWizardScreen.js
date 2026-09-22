@@ -40,16 +40,20 @@ export default function AddStudentWizardScreen({ navigation }) {
   const [showSectionPicker, setShowSectionPicker] = useState(false);
 
   useEffect(() => {
-    client.get('/principal/classes')
-      .then(res => {
-        const clsList = Array.isArray(res.data) ? res.data : res.data?.classes || [];
-        setClasses(clsList);
-        if (clsList.length > 0 && !selectedClass) {
-          const first = clsList[0];
-          setSelectedClass(first.name || first.class_name || 'Class 5');
-        }
-      })
-      .catch(() => {});
+    Promise.all([
+      client.get('/principal/classes').catch(() => ({ data: [] })),
+      client.get('/principal/students/next-admission-no').catch(() => null),
+    ]).then(([clsRes, admRes]) => {
+      const clsList = Array.isArray(clsRes.data) ? clsRes.data : clsRes.data?.classes || [];
+      setClasses(clsList);
+      if (clsList.length > 0 && !selectedClass) {
+        const first = clsList[0];
+        setSelectedClass(first.name || first.class_name || '');
+      }
+      if (admRes?.data?.next_admission_no) {
+        setAdmissionNo(admRes.data.next_admission_no);
+      }
+    });
   }, []);
 
   const handleNext = async () => {
