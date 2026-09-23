@@ -15,7 +15,8 @@ export default function NotesScreen() {
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     try {
-      const res = await client.get('/academic/notes').catch(() => ({ data: [] }));
+      // Correct endpoint: /api/teacher/notes (registered at /api/teacher/ prefix)
+      const res = await client.get('/teacher/notes').catch(() => ({ data: [] }));
       const list = Array.isArray(res.data) ? res.data : res.data?.notes || [];
       setNotes(list);
     } finally {

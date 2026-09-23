@@ -146,7 +146,11 @@ export default function ProfileScreen({ navigation }) {
             <TouchableOpacity
               style={styles.actionRow}
               activeOpacity={0.7}
-              onPress={() => navigation?.navigate?.('EditProfile')}
+              onPress={() => Alert.alert(
+                'Edit Profile',
+                'Profile editing is available on the web portal. Mobile editing will be available in the next update.',
+                [{ text: 'OK' }]
+              )}
             >
               <View style={[styles.actionIconCircle, { backgroundColor: '#eff6ff' }]}>
                 <Ionicons name="create-outline" size={18} color="#0284c7" />
@@ -174,7 +178,11 @@ export default function ProfileScreen({ navigation }) {
             <TouchableOpacity
               style={styles.actionRow}
               activeOpacity={0.7}
-              onPress={() => navigation?.navigate?.('NotificationSettings')}
+              onPress={() => Alert.alert(
+                'Notification Preferences',
+                'Notification settings will be available in the next update.',
+                [{ text: 'OK' }]
+              )}
             >
               <View style={[styles.actionIconCircle, { backgroundColor: '#eff6ff' }]}>
                 <Ionicons name="notifications-outline" size={18} color="#0284c7" />
@@ -188,7 +196,11 @@ export default function ProfileScreen({ navigation }) {
             <TouchableOpacity
               style={styles.actionRow}
               activeOpacity={0.7}
-              onPress={() => navigation?.navigate?.('AppearanceSettings')}
+              onPress={() => Alert.alert(
+                'App Appearance',
+                'Appearance customization will be available in the next update.',
+                [{ text: 'OK' }]
+              )}
             >
               <View style={[styles.actionIconCircle, { backgroundColor: '#eff6ff' }]}>
                 <Ionicons name="color-palette-outline" size={18} color="#0284c7" />
@@ -202,7 +214,11 @@ export default function ProfileScreen({ navigation }) {
             <TouchableOpacity
               style={styles.actionRow}
               activeOpacity={0.7}
-              onPress={() => navigation?.navigate?.('HelpSupport')}
+              onPress={() => Alert.alert(
+                'Help & Support',
+                'For support, please contact your school administrator or email: support@eduerp.in',
+                [{ text: 'OK' }]
+              )}
             >
               <View style={[styles.actionIconCircle, { backgroundColor: '#eff6ff' }]}>
                 <Ionicons name="headset-outline" size={18} color="#0284c7" />

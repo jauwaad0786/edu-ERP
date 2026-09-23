@@ -2,7 +2,7 @@
 // Exact match to Screen 13 of mockup: Settings management hub
 import React from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -75,6 +75,21 @@ const SETTINGS_OPTIONS = [
 ];
 
 export default function SettingsScreen({ navigation }) {
+  const handleSettingPress = (item) => {
+    // Screens that are fully implemented and registered in the navigator
+    const implementedScreens = ['Profile', 'ChangePassword'];
+    if (implementedScreens.includes(item.screen) && navigation?.navigate) {
+      navigation.navigate(item.screen);
+    } else {
+      // Graceful fallback for screens not yet implemented in the mobile app
+      Alert.alert(
+        item.title,
+        `${item.title} settings will be available in the next update.\n\nPlease use the web portal to manage these settings.`,
+        [{ text: 'OK', style: 'default' }]
+      );
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
@@ -97,11 +112,7 @@ export default function SettingsScreen({ navigation }) {
               key={item.id}
               style={styles.settingRow}
               activeOpacity={0.7}
-              onPress={() => {
-                if (navigation?.navigate) {
-                  navigation.navigate(item.screen);
-                }
-              }}
+              onPress={() => handleSettingPress(item)}
             >
               <View style={[styles.iconBox, { backgroundColor: item.bg }]}>
                 <Ionicons name={item.icon} size={20} color={item.color} />

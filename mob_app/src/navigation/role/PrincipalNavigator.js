@@ -5,18 +5,21 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 
-import PrincipalDashboardScreen from '../../screens/dashboard/PrincipalDashboardScreen';
-import StudentsScreen from '../../screens/students/StudentsScreen';
-import AddStudentWizardScreen from '../../screens/students/AddStudentWizardScreen';
-import StaffScreen from '../../screens/staff/StaffScreen';
-import FeesScreen from '../../screens/fees/FeesScreen';
-import SettingsScreen from '../../screens/settings/SettingsScreen';
-import ExaminationsScreen from '../../screens/examinations/ExaminationsScreen';
-import ReportsScreen from '../../screens/reports/ReportsScreen';
-import NotificationsScreen from '../../screens/notifications/NotificationsScreen';
-import ProfileScreen from '../../screens/profile/ProfileScreen';
-import ChangePasswordScreen from '../../screens/profile/ChangePasswordScreen';
-import { TAB_BAR_STYLE } from '../tabBarStyle';
+import PrincipalDashboardScreen    from '../../screens/dashboard/PrincipalDashboardScreen';
+import StudentsScreen              from '../../screens/students/StudentsScreen';
+import AddStudentWizardScreen      from '../../screens/students/AddStudentWizardScreen';
+import StudentDetailScreen         from '../../screens/students/StudentDetailScreen';
+import StaffScreen                 from '../../screens/staff/StaffScreen';
+import FeesScreen                  from '../../screens/fees/FeesScreen';
+import CollectPaymentScreen        from '../../screens/fees/CollectPaymentScreen';
+import OutstandingScreen           from '../../screens/fees/OutstandingScreen';
+import SettingsScreen              from '../../screens/settings/SettingsScreen';
+import ExaminationsScreen          from '../../screens/examinations/ExaminationsScreen';
+import ReportsScreen               from '../../screens/reports/ReportsScreen';
+import NotificationsScreen         from '../../screens/notifications/NotificationsScreen';
+import ProfileScreen               from '../../screens/profile/ProfileScreen';
+import ChangePasswordScreen        from '../../screens/profile/ChangePasswordScreen';
+import { TAB_BAR_STYLE }           from '../tabBarStyle';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -45,10 +48,10 @@ function PrincipalTabs() {
         },
       })}
     >
-      <Tab.Screen name="Home" component={PrincipalDashboardScreen} />
+      <Tab.Screen name="Home"     component={PrincipalDashboardScreen} />
       <Tab.Screen name="Students" component={StudentsScreen} />
       <Tab.Screen name="Teachers" component={StaffScreen} />
-      <Tab.Screen name="Fees" component={FeesScreen} />
+      <Tab.Screen name="Fees"     component={FeesScreen} />
       <Tab.Screen name="Settings" component={SettingsScreen} />
     </Tab.Navigator>
   );
@@ -57,14 +60,24 @@ function PrincipalTabs() {
 export default function PrincipalNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="PrincipalTabs" component={PrincipalTabs} />
-      <Stack.Screen name="AddStudent" component={AddStudentWizardScreen} />
+      <Stack.Screen name="PrincipalTabs"    component={PrincipalTabs} />
+
+      {/* Student screens */}
+      <Stack.Screen name="AddStudent"       component={AddStudentWizardScreen} />
       <Stack.Screen name="AddStudentWizard" component={AddStudentWizardScreen} />
-      <Stack.Screen name="Examinations" component={ExaminationsScreen} />
-      <Stack.Screen name="Reports" component={ReportsScreen} />
-      <Stack.Screen name="Notifications" component={NotificationsScreen} />
-      <Stack.Screen name="Profile" component={ProfileScreen} />
-      <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
+      <Stack.Screen name="StudentDetail"    component={StudentDetailScreen} />
+
+      {/* Fee screens — registered so FeesScreen quick-action buttons work */}
+      <Stack.Screen name="FeeCollect"       component={CollectPaymentScreen} />
+      <Stack.Screen name="FeeRecords"       component={OutstandingScreen} />
+      {/* FeeStructure & DueReports — gracefully handled inside FeesScreen with Alert */}
+
+      {/* Misc screens */}
+      <Stack.Screen name="Examinations"     component={ExaminationsScreen} />
+      <Stack.Screen name="Reports"          component={ReportsScreen} />
+      <Stack.Screen name="Notifications"    component={NotificationsScreen} />
+      <Stack.Screen name="Profile"          component={ProfileScreen} />
+      <Stack.Screen name="ChangePassword"   component={ChangePasswordScreen} />
     </Stack.Navigator>
   );
 }

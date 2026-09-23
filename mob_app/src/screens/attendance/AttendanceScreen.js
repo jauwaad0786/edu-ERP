@@ -27,8 +27,10 @@ export default function AttendanceScreen() {
     try {
       let endpoint = '/student/attendance';
       if (role === 'TEACHER') {
+        // Teacher's own staff attendance record for today
         endpoint = '/staff-attendance/my-status';
       } else if (['PRINCIPAL', 'VICE_PRINCIPAL', 'DIRECTOR', 'HR', 'ADMIN', 'SUPER_ADMIN'].includes(role)) {
+        // Admin/Principal: staff attendance overview dashboard
         endpoint = '/staff-attendance/dashboard';
       }
 

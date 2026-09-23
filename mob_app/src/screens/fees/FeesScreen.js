@@ -194,7 +194,7 @@ export default function FeesScreen({ navigation }) {
             <TouchableOpacity
               style={styles.actionRow}
               activeOpacity={0.7}
-              onPress={() => navigation?.navigate?.('FeeCollect')}
+              onPress={() => navigation?.navigate?.('FeeCollect') ?? null}
             >
               <View style={[styles.actionIconBox, { backgroundColor: '#eff6ff' }]}>
                 <Ionicons name="card-outline" size={18} color="#0284c7" />
@@ -222,7 +222,7 @@ export default function FeesScreen({ navigation }) {
             <TouchableOpacity
               style={styles.actionRow}
               activeOpacity={0.7}
-              onPress={() => navigation?.navigate?.('FeeStructure')}
+              onPress={() => Alert.alert('Fee Structure', 'Fee structure management is available on the web portal.', [{ text: 'OK' }])}
             >
               <View style={[styles.actionIconBox, { backgroundColor: '#ede9fe' }]}>
                 <Ionicons name="file-tray-full-outline" size={18} color="#7c3aed" />
@@ -236,7 +236,7 @@ export default function FeesScreen({ navigation }) {
             <TouchableOpacity
               style={styles.actionRow}
               activeOpacity={0.7}
-              onPress={() => navigation?.navigate?.('DueReports')}
+              onPress={() => Alert.alert('Due Reports', 'Detailed due reports are available on the web portal.', [{ text: 'OK' }])}
             >
               <View style={[styles.actionIconBox, { backgroundColor: '#fee2e2' }]}>
                 <Ionicons name="alert-circle-outline" size={18} color="#dc2626" />
@@ -270,7 +270,7 @@ export default function FeesScreen({ navigation }) {
           {/* Class-wise Dues Section */}
           <View style={styles.sectionHeaderRow}>
             <Text style={styles.sectionHeading}>Class-wise Dues</Text>
-            <TouchableOpacity onPress={() => navigation?.navigate?.('AllClassDues')}>
+            <TouchableOpacity onPress={() => Alert.alert('All Class Dues', 'Full class-wise dues report is available on the web portal.', [{ text: 'OK' }])}>
               <Text style={styles.viewAllText}>View All</Text>
             </TouchableOpacity>
           </View>

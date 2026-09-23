@@ -1,22 +1,36 @@
 // mob_app/src/navigation/role/ParentNavigator.js
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import StudentDashboardScreen from '../../screens/dashboard/StudentDashboardScreen';
 import AttendanceScreen       from '../../screens/attendance/AttendanceScreen';
 import FeesScreen             from '../../screens/fees/FeesScreen';
 import TransportTrackScreen   from '../../screens/transport/TransportTrackScreen';
 import SettingsScreen         from '../../screens/settings/SettingsScreen';
+import ProfileScreen          from '../../screens/profile/ProfileScreen';
+import ChangePasswordScreen   from '../../screens/profile/ChangePasswordScreen';
+import NotificationsScreen    from '../../screens/notifications/NotificationsScreen';
 import { TAB_BAR_STYLE } from '../tabBarStyle';
+
 const Tab = createBottomTabNavigator();
-export default function ParentNavigator() {
+const Stack = createNativeStackNavigator();
+
+function ParentTabs() {
   return (
     <Tab.Navigator screenOptions={({ route }) => ({
       headerShown: false, tabBarStyle: TAB_BAR_STYLE,
       tabBarActiveTintColor: '#7c3aed', tabBarInactiveTintColor: '#94a3b8',
-      tabBarIcon: ({ color, size }) => {
-        const icons = { 'My Child': 'person-outline', Attendance: 'clipboard-outline', Fees: 'receipt-outline', Transport: 'bus-outline', Settings: 'settings-outline' };
-        return <Ionicons name={icons[route.name]} size={size} color={color} />;
+      tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+      tabBarIcon: ({ color, size, focused }) => {
+        const icons = {
+          'My Child':  focused ? 'person' : 'person-outline',
+          Attendance:  focused ? 'clipboard' : 'clipboard-outline',
+          Fees:        focused ? 'receipt' : 'receipt-outline',
+          Transport:   focused ? 'bus' : 'bus-outline',
+          Settings:    focused ? 'settings' : 'settings-outline',
+        };
+        return <Ionicons name={icons[route.name] || 'grid-outline'} size={size} color={color} />;
       },
     })}>
       <Tab.Screen name="My Child"   component={StudentDashboardScreen} />
@@ -25,5 +39,16 @@ export default function ParentNavigator() {
       <Tab.Screen name="Transport"  component={TransportTrackScreen} />
       <Tab.Screen name="Settings"   component={SettingsScreen} />
     </Tab.Navigator>
+  );
+}
+
+export default function ParentNavigator() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="ParentTabs"     component={ParentTabs} />
+      <Stack.Screen name="Profile"        component={ProfileScreen} />
+      <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
+      <Stack.Screen name="Notifications"  component={NotificationsScreen} />
+    </Stack.Navigator>
   );
 }

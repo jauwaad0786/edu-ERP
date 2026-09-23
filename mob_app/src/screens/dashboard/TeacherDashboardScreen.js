@@ -29,15 +29,34 @@ export default function TeacherDashboardScreen({ navigation }) {
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     try {
-      const [cRes, aRes, hRes, sRes] = await Promise.all([
-        client.get('/teacher/classes').catch(() => ({ data: [] })),
-        client.get('/teacher/assignments').catch(() => ({ data: [] })),
-        client.get('/teacher/holidays').catch(() => ({ data: [] })),
-        client.get('/attendance/my-status').catch(() => ({ data: null })),
+      const [cRes, aRes, hRes, sRes] = await Promise.all([\
+        // /api/principal/classes returns all classes for this school (teacher-scoped via JWT)
+        client.get('/principal/classes').catch(() => ({ data: [] })),
+        // /api/teacher/notes returns uploaded study materials/notes as content assignments
+        client.get('/teacher/notes').catch(() => ({ data: [] })),
+        // /api/support/announcements for school-wide holiday & event notices
+        client.get('/support/announcements').catch(() => ({ data: [] })),
+        // /api/staff-attendance/my-status returns today's check-in/out status for this staff
+        client.get('/staff-attendance/my-status').catch(() => ({ data: null })),
       ]);
-      setClasses(Array.isArray(cRes.data) ? cRes.data : []);
-      setAssignments(Array.isArray(aRes.data) ? aRes.data : []);
-      setHolidays(Array.isArray(hRes.data) ? hRes.data : []);
+
+      const clsList = Array.isArray(cRes.data) ? cRes.data : cRes.data?.classes || [];
+      setClasses(clsList);
+
+      const notesList = Array.isArray(aRes.data) ? aRes.data : aRes.data?.notes || [];
+      setAssignments(notesList);
+
+      // Filter announcements that look like holidays
+      const allAnnouncements = Array.isArray(hRes.data)
+        ? hRes.data
+        : hRes.data?.announcements || hRes.data?.data || [];
+      const holsList = allAnnouncements.filter(a =>
+        (a.title || a.name || '').toLowerCase().includes('holiday') ||
+        (a.category || a.type || '').toLowerCase().includes('holiday') ||
+        a.is_holiday
+      );
+      setHolidays(holsList);
+
       setMyStatus(sRes.data);
     } finally {
       if (isRefresh) setRefreshing(false); else setLoading(false);
@@ -56,7 +75,8 @@ export default function TeacherDashboardScreen({ navigation }) {
         lat = loc.coords.latitude;
         lng = loc.coords.longitude;
       }
-      await client.post('/attendance/check-in', { latitude: lat, longitude: lng });
+      // Correct endpoint: /api/staff-attendance/check-in
+      await client.post('/staff-attendance/check-in', { latitude: lat, longitude: lng });
       Alert.alert('Success', 'Check-in recorded successfully!');
       load(true);
     } catch (err) {
@@ -76,7 +96,8 @@ export default function TeacherDashboardScreen({ navigation }) {
         lat = loc.coords.latitude;
         lng = loc.coords.longitude;
       }
-      await client.post('/attendance/check-out', { latitude: lat, longitude: lng });
+      // Correct endpoint: /api/staff-attendance/check-out
+      await client.post('/staff-attendance/check-out', { latitude: lat, longitude: lng });
       Alert.alert('Success', 'Check-out recorded successfully!');
       load(true);
     } catch (err) {
