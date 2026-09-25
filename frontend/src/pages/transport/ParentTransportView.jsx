@@ -13,7 +13,7 @@ const TRIP_STATUS_LABEL = {
   PAUSED:      'Bus is currently stopped',
   SOS:         'Emergency — SOS active',
   BREAKDOWN:   'Vehicle breakdown',
-  COMPLETED:   'Today's trip has concluded',
+  COMPLETED:   "Today's trip has concluded",
 };
 
 /**
