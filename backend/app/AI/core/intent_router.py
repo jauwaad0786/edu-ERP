@@ -17,27 +17,36 @@ class Intent:
     # Financial
     FEE_COLLECTION       = 'FEE_COLLECTION'
     FEE_OUTSTANDING      = 'FEE_OUTSTANDING'
+    FEE_CLASSWISE        = 'FEE_CLASSWISE'         # NEW: class-wise fee breakdown
     FEE_COMPARISON       = 'FEE_COMPARISON'
     FEE_PENDING_STUDENTS = 'FEE_PENDING_STUDENTS'
     STUDENT_FEE_STATUS   = 'STUDENT_FEE_STATUS'
+    LATE_PAYMENTS        = 'LATE_PAYMENTS'          # NEW: who paid after due date
+    ONTIME_PAYMENTS      = 'ONTIME_PAYMENTS'        # NEW: who paid on/before due date
     EXPENSE_SUMMARY      = 'EXPENSE_SUMMARY'
     STAFF_SALARY_STATUS  = 'STAFF_SALARY_STATUS'
     TRANSPORT_FEE        = 'TRANSPORT_FEE'
+    TRANSPORT_PENDING    = 'TRANSPORT_PENDING'      # NEW: transport users with pending fees
     HOSTEL_FEE           = 'HOSTEL_FEE'
     LIBRARY_FINES        = 'LIBRARY_FINES'
 
-
     # Attendance
-    ATTENDANCE_TODAY     = 'ATTENDANCE_TODAY'
-    ATTENDANCE_CLASSWISE = 'ATTENDANCE_CLASSWISE'
-    ATTENDANCE_TREND     = 'ATTENDANCE_TREND'
+    ATTENDANCE_TODAY        = 'ATTENDANCE_TODAY'
+    ATTENDANCE_CLASSWISE    = 'ATTENDANCE_CLASSWISE'
+    ATTENDANCE_TREND        = 'ATTENDANCE_TREND'
     LOW_ATTENDANCE_STUDENTS = 'LOW_ATTENDANCE_STUDENTS'
 
     # Academic
-    TOP_STUDENTS         = 'TOP_STUDENTS'
-    WEAK_STUDENTS        = 'WEAK_STUDENTS'
-    CLASS_PERFORMANCE    = 'CLASS_PERFORMANCE'
-    EXAM_RESULTS         = 'EXAM_RESULTS'
+    TOP_STUDENTS          = 'TOP_STUDENTS'
+    WEAK_STUDENTS         = 'WEAK_STUDENTS'
+    CLASS_PERFORMANCE     = 'CLASS_PERFORMANCE'
+    SUBJECT_PERFORMANCE   = 'SUBJECT_PERFORMANCE'  # NEW: subject-wise marks
+    FAILING_STUDENTS      = 'FAILING_STUDENTS'      # NEW: students failing a subject
+    EXAM_RESULTS          = 'EXAM_RESULTS'
+    NEW_ADMISSIONS        = 'NEW_ADMISSIONS'        # NEW: new student registrations
+
+    # Cross-domain
+    CROSS_DOMAIN_ALERT    = 'CROSS_DOMAIN_ALERT'   # NEW: low att + pending fees
 
     # Infrastructure
     TRANSPORT_SUMMARY    = 'TRANSPORT_SUMMARY'
@@ -45,7 +54,6 @@ class Intent:
     HOSTEL_VISITORS      = 'HOSTEL_VISITORS'
     LIBRARY_SUMMARY      = 'LIBRARY_SUMMARY'
     ASSIGNMENTS_SUMMARY  = 'ASSIGNMENTS_SUMMARY'
-
 
     # School Overview
     SCHOOL_SUMMARY       = 'SCHOOL_SUMMARY'
@@ -66,6 +74,7 @@ class Intent:
 
     GENERAL              = 'GENERAL'
     CLARIFICATION_NEEDED = 'CLARIFICATION_NEEDED'
+
 
 
 
@@ -91,21 +100,37 @@ CURRENT_SESSION  = f"{CURRENT_YEAR}-{str(CURRENT_YEAR+1)[-2:]}"
 
 
 def _normalize(text: str) -> str:
-    """Lowercase, strip punctuation/apostrophes, normalize Hindi shortcuts."""
+    """Lowercase, strip punctuation/apostrophes, normalize Hindi shortcuts,
+    then apply semantic glossary to synonym-expand key ERP terms."""
     t = text.lower().strip()
-    t = t.replace("’", "'").replace("'", "").replace("-", " ")
+    t = t.replace("'", "'").replace("'", "").replace("-", " ")
     t = re.sub(r'[^\w\s]', ' ', t)
     t = re.sub(r'\s+', ' ', t).strip()
-    # Common Hindi/Hinglish shortcuts
-    t = t.replace('kitna', 'how much').replace('kitni', 'how many')
-    t = t.replace('hua', 'today').replace('hai', 'is')
+    # Hinglish normalization
+    t = t.replace('kitna', 'how much').replace('kitni', 'how many').replace('kitne', 'how many')
+    t = t.replace('hua', 'happened').replace('hai', 'is').replace('hain', 'are')
     t = t.replace('aaj', 'today').replace('kal', 'yesterday')
-    t = t.replace('pichle', 'last').replace('mahine', 'month')
+    t = t.replace('pichle', 'last').replace('mahine', 'month').replace('mahina', 'month')
     t = t.replace('is month', 'this month').replace('is mahine', 'this month')
-    t = t.replace('sabse', 'most').replace('zyada', 'more')
-    t = t.replace('kam', 'low').replace('jyada', 'high')
+    t = t.replace('sabse zyada', 'highest').replace('sabse jyada', 'highest')
+    t = t.replace('sabse kam', 'lowest')
+    t = t.replace('sabse', 'most').replace('zyada', 'high').replace('jyada', 'high')
+    t = t.replace('kam', 'low')
+    # Semantic glossary — map synonyms to canonical ERP terms
+    t = t.replace('baki', 'outstanding').replace('baaki', 'outstanding')
+    t = t.replace('unpaid', 'pending fee')
+    t = t.replace('fee dues', 'pending fee').replace('due fees', 'pending fee')
+    t = t.replace('fee baki', 'outstanding').replace('overdue', 'pending fee')
+    t = t.replace('fees jama', 'fee collected').replace('fee jama', 'fee collected')
+    t = t.replace('collection hua', 'fee collected').replace('paise aaye', 'fee collected')
+    t = t.replace('naye student', 'new admission').replace('naye bacche', 'new admission')
+    t = t.replace('new students', 'new admission')
+    t = t.replace('haaziri', 'attendance').replace('upasthiti', 'attendance')
+    t = t.replace('bacche', 'students').replace('learners', 'students')
+    t = t.replace('faculty', 'teacher').replace('shikshak', 'teacher')
+    t = t.replace('fail ho gaye', 'failing').replace('fail kiye', 'failing')
+    t = t.replace('top performers', 'top students')
     return t
-
 
 def _extract_month(text: str) -> tuple:
     """
@@ -247,6 +272,156 @@ def classify_intent(message: str) -> dict:
     if any(p in low for p in ['visitor arrive', 'hostel visitor', 'who visited the hostel', 'hostel me visitor']):
         return _result(Intent.HOSTEL_VISITORS, {}, 0.96, norm)
 
+
+    # ── 5.5. CROSS DOMAIN ALERT: Low Attendance + Pending Fees ──
+    if any(p in low for p in [
+        'low attendance pending', 'attendance aur fees baki', 'absent aur fees due',
+        'at risk students', 'problem students', 'double problem', 'absent bhi baki bhi',
+        'attendance low hai aur fees bhi'
+    ]):
+        return _result(Intent.CROSS_DOMAIN_ALERT, {'month': month, 'year': year}, 0.94, norm)
+
+    # ── 5.6. FEE CLASSWISE (class-wise fee breakdown) ──
+    if any(p in low for p in [
+        'class wise fee', 'classwise fee', 'class fee collection', 'class wise collection',
+        'class wise pending', 'class wise outstanding', 'which class has highest pending',
+        'kis class me highest fee', 'class ki fees', 'class me fee', 'class me outstanding',
+        'highest pending class', 'lowest collection class', 'class fee status',
+        'class wise fees', 'classwise fees', 'fee by class', 'fees by class',
+    ]):
+        return _result(Intent.FEE_CLASSWISE, {'month': month, 'year': year}, 0.95, norm)
+
+    # ── 5.7. NEW ADMISSIONS ──
+    if any(p in low for p in [
+        'new admission', 'naye admission', 'new admissions', 'kitne naye',
+        'this session admission', 'is session me kitne', 'admitted this year',
+        'new student joined', 'new enrollment', 'new enrolment', 'new students joined',
+        'fresh admission', 'naya dakhila',
+    ]):
+        return _result(Intent.NEW_ADMISSIONS, {'session': params.get('session')}, 0.94, norm)
+
+    # ── 5.8. LATE PAYMENTS ──
+    if any(p in low for p in [
+        'late payment', 'paid late', 'who paid late', 'late fee payers', 'after due date',
+        'late se bhara', 'due date ke baad', 'overdue payment', 'delayed payment',
+        'kitne ne late pay kiya', 'paid after deadline'
+    ]):
+        return _result(Intent.LATE_PAYMENTS, {'month': month, 'year': year}, 0.94, norm)
+
+    # ── 5.9. ON-TIME PAYMENTS ──
+    if any(p in low for p in [
+        'on time payment', 'paid on time', 'who paid on time', 'timely payment',
+        'time pe bhara', 'time par bhara', 'early payment', 'before due date',
+        'due date se pehle', 'kitne ne time pe pay kiya',
+    ]):
+        return _result(Intent.ONTIME_PAYMENTS, {'month': month, 'year': year}, 0.94, norm)
+
+    # ── 5.10. TRANSPORT PENDING ──
+    if any(p in low for p in [
+        'transport fee pending', 'bus fee pending', 'transport wale pending',
+        'transport students fee due', 'who has transport fee pending',
+        'bus wale bacche fee nahi diye', 'transport pending fee',
+    ]):
+        return _result(Intent.TRANSPORT_PENDING, {'month': month, 'year': year}, 0.93, norm)
+
+    # ── 5.11. SUBJECT PERFORMANCE ──
+    if any(p in low for p in [
+        'subject wise', 'subjectwise', 'which subject', 'lowest marks subject',
+        'highest marks subject', 'subject performance', 'subject average',
+        'worst subject', 'best subject', 'kis subject me',
+    ]):
+        return _result(Intent.SUBJECT_PERFORMANCE, {'class': class_filter}, 0.93, norm)
+
+    # ── 5.12. FAILING STUDENTS (subject-specific) ──
+    if any(p in low for p in [
+        'students failing', 'fail students', 'failing in', 'failed in subject',
+        'who failed', 'kaun fail hua', 'failing students', 'subject me fail',
+        'math fail', 'science fail', 'hindi fail', 'english fail',
+    ]):
+        # Try to extract subject name
+        subject = None
+        for subj in ['math', 'mathematics', 'science', 'english', 'hindi', 'social', 'physics',
+                     'chemistry', 'biology', 'history', 'geography', 'economics', 'computer']:
+            if subj in low:
+                subject = subj
+                break
+        return _result(Intent.FAILING_STUDENTS, {'subject': subject, 'class': class_filter}, 0.92, norm)
+
+
+    # ── 5.5. CROSS DOMAIN ALERT: Low Attendance + Pending Fees ──
+    if any(p in low for p in [
+        'low attendance pending', 'attendance aur fees baki', 'absent aur fees due',
+        'at risk students', 'problem students', 'double problem', 'absent bhi baki bhi',
+        'attendance low hai aur fees bhi'
+    ]):
+        return _result(Intent.CROSS_DOMAIN_ALERT, {'month': month, 'year': year}, 0.94, norm)
+
+    # ── 5.6. FEE CLASSWISE (class-wise fee breakdown) ──
+    if any(p in low for p in [
+        'class wise fee', 'classwise fee', 'class fee collection', 'class wise collection',
+        'class wise pending', 'class wise outstanding', 'which class has highest pending',
+        'kis class me highest fee', 'class ki fees', 'class me fee', 'class me outstanding',
+        'highest pending class', 'lowest collection class', 'class fee status',
+        'class wise fees', 'classwise fees', 'fee by class', 'fees by class',
+    ]):
+        return _result(Intent.FEE_CLASSWISE, {'month': month, 'year': year}, 0.95, norm)
+
+    # ── 5.7. NEW ADMISSIONS ──
+    if any(p in low for p in [
+        'new admission', 'naye admission', 'new admissions', 'kitne naye',
+        'this session admission', 'is session me kitne', 'admitted this year',
+        'new student joined', 'new enrollment', 'new enrolment', 'new students joined',
+        'fresh admission', 'naya dakhila',
+    ]):
+        return _result(Intent.NEW_ADMISSIONS, {'session': params.get('session')}, 0.94, norm)
+
+    # ── 5.8. LATE PAYMENTS ──
+    if any(p in low for p in [
+        'late payment', 'paid late', 'who paid late', 'late fee payers', 'after due date',
+        'late se bhara', 'due date ke baad', 'overdue payment', 'delayed payment',
+        'kitne ne late pay kiya', 'paid after deadline'
+    ]):
+        return _result(Intent.LATE_PAYMENTS, {'month': month, 'year': year}, 0.94, norm)
+
+    # ── 5.9. ON-TIME PAYMENTS ──
+    if any(p in low for p in [
+        'on time payment', 'paid on time', 'who paid on time', 'timely payment',
+        'time pe bhara', 'time par bhara', 'early payment', 'before due date',
+        'due date se pehle', 'kitne ne time pe pay kiya',
+    ]):
+        return _result(Intent.ONTIME_PAYMENTS, {'month': month, 'year': year}, 0.94, norm)
+
+    # ── 5.10. TRANSPORT PENDING ──
+    if any(p in low for p in [
+        'transport fee pending', 'bus fee pending', 'transport wale pending',
+        'transport students fee due', 'who has transport fee pending',
+        'bus wale bacche fee nahi diye', 'transport pending fee',
+    ]):
+        return _result(Intent.TRANSPORT_PENDING, {'month': month, 'year': year}, 0.93, norm)
+
+    # ── 5.11. SUBJECT PERFORMANCE ──
+    if any(p in low for p in [
+        'subject wise', 'subjectwise', 'which subject', 'lowest marks subject',
+        'highest marks subject', 'subject performance', 'subject average',
+        'worst subject', 'best subject', 'kis subject me',
+    ]):
+        return _result(Intent.SUBJECT_PERFORMANCE, {'class': class_filter}, 0.93, norm)
+
+    # ── 5.12. FAILING STUDENTS (subject-specific) ──
+    if any(p in low for p in [
+        'students failing', 'fail students', 'failing in', 'failed in subject',
+        'who failed', 'kaun fail hua', 'failing students', 'subject me fail',
+        'math fail', 'science fail', 'hindi fail', 'english fail',
+    ]):
+        # Try to extract subject name
+        subject = None
+        for subj in ['math', 'mathematics', 'science', 'english', 'hindi', 'social', 'physics',
+                     'chemistry', 'biology', 'history', 'geography', 'economics', 'computer']:
+            if subj in low:
+                subject = subj
+                break
+        return _result(Intent.FAILING_STUDENTS, {'subject': subject, 'class': class_filter}, 0.92, norm)
+
     # ── 6. TRANSPORT DOMAIN ──
     if any(p in low for p in ['transport', 'bus', 'vehicle', 'van', 'driver', 'route']):
         if any(p in low for p in ['fee', 'collection', 'paise']):
@@ -344,6 +519,7 @@ def classify_intent(message: str) -> dict:
 
     # ── Fallback to GENERAL (LLM will handle) ──
     return _result(Intent.GENERAL, {'month': month, 'year': year, 'class': class_filter}, 0.0, norm)
+
 
 
 

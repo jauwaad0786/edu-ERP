@@ -215,3 +215,116 @@ def get_school_student_count(school_id: int) -> dict:
             'count': r.count,
         } for r in classes],
     }
+
+
+def get_subject_performance(school_id: int, class_id: int = None,
+                            exam_id: int = None) -> list:
+    """
+    Subject-wise average marks. Ordered by average ascending (worst first).
+    Canonical: AVG(marks_obtained * 100 / max_marks)
+    """
+    from app.models.academic import Marks, Student, Subject, Class
+    from app.models.financial import ExamSchedule
+
+    if not exam_id:
+        latest = ExamSchedule.query.filter(
+            ExamSchedule.school_id == school_id,
+            ExamSchedule.is_published == True,
+        ).order_by(ExamSchedule.created_at.desc()).first()
+        exam_id = latest.id if latest else None
+
+    q = db.session.query(
+        Subject.id.label('subject_id'),
+        Subject.name.label('subject_name'),
+        func.count(Marks.id).label('entries'),
+        func.avg(
+            Marks.marks_obtained * 100.0 / func.nullif(Marks.max_marks, 0)
+        ).label('avg_pct'),
+        func.min(
+            Marks.marks_obtained * 100.0 / func.nullif(Marks.max_marks, 0)
+        ).label('min_pct'),
+        func.max(
+            Marks.marks_obtained * 100.0 / func.nullif(Marks.max_marks, 0)
+        ).label('max_pct'),
+    ).join(Student, Student.id == Marks.student_id)\
+     .join(Subject, Subject.id == Marks.subject_id)\
+     .filter(
+        Student.school_id == school_id,
+        Marks.is_absent   == False,
+    )
+
+    if class_id:
+        q = q.filter(Marks.class_id == class_id)
+    if exam_id:
+        q = q.filter(Marks.exam_id == exam_id)
+
+    rows = q.group_by(Subject.id, Subject.name)\
+            .order_by(func.avg(
+                Marks.marks_obtained * 100.0 / func.nullif(Marks.max_marks, 0)
+            )).all()
+
+    return [{
+        'subject_id':   r.subject_id,
+        'subject':      r.subject_name,
+        'entries':      r.entries,
+        'avg_pct':      round(float(r.avg_pct or 0), 1),
+        'min_pct':      round(float(r.min_pct or 0), 1),
+        'max_pct':      round(float(r.max_pct or 0), 1),
+    } for r in rows]
+
+
+def get_failing_students_by_subject(school_id: int, subject_name: str,
+                                    class_id: int = None, exam_id: int = None,
+                                    limit: int = 20) -> dict:
+    """
+    Students who failed a specific subject.
+    Canonical fail condition: marks_obtained < Subject.pass_marks (or < 33% default).
+    """
+    from app.models.academic import Marks, Student, Class, Subject
+    from app.models.user import User
+    from app.models.financial import ExamSchedule
+
+    if not exam_id:
+        latest = ExamSchedule.query.filter(
+            ExamSchedule.school_id == school_id,
+            ExamSchedule.is_published == True,
+        ).order_by(ExamSchedule.created_at.desc()).first()
+        exam_id = latest.id if latest else None
+
+    q = db.session.query(
+        Student.id,
+        User.name,
+        Class.name.label('class_name'),
+        Class.section,
+        Marks.marks_obtained,
+        Marks.max_marks,
+        Subject.name.label('subj_name'),
+    ).join(User,    User.id   == Student.user_id)\
+     .join(Class,   Class.id  == Student.class_id, isouter=True)\
+     .join(Marks,   Marks.student_id == Student.id)\
+     .join(Subject, Subject.id == Marks.subject_id)\
+     .filter(
+        Student.school_id == school_id,
+        Marks.is_absent   == False,
+        Subject.name.ilike(f'%{subject_name}%'),
+        Marks.marks_obtained < func.coalesce(Subject.pass_marks, Marks.max_marks * 0.33),
+    )
+
+    if class_id:
+        q = q.filter(Student.class_id == class_id)
+    if exam_id:
+        q = q.filter(Marks.exam_id == exam_id)
+
+    rows = q.order_by(Marks.marks_obtained).limit(limit).all()
+
+    return {
+        'subject':  subject_name,
+        'count':    len(rows),
+        'students': [{
+            'student_id': r.id,
+            'name':       r.name,
+            'class':      f"{r.class_name or ''} {r.section or ''}".strip(),
+            'obtained':   round(float(r.marks_obtained or 0), 1),
+            'max_marks':  round(float(r.max_marks or 0), 1),
+        } for r in rows],
+    }

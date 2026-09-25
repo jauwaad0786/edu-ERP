@@ -230,15 +230,21 @@ def format_deterministic_response(intent: str, data: dict, user_msg: str) -> str
     # ── 10. ATTENDANCE TODAY ──
     if intent in ('ATTENDANCE_TODAY', 'Intent.ATTENDANCE_TODAY'):
         att = data.get('attendance', {})
-        pres = att.get('present_count', 0)
-        tot = att.get('total_students', 0)
-        absent = att.get('absent_count', max(0, tot - pres))
-        pct = att.get('attendance_percentage', 0.0)
+        # Keys from attendance_analytics.get_attendance_today():
+        # 'present', 'absent', 'late', 'attendance_pct', 'total_students'
+        pres   = att.get('present', att.get('present_count', 0))
+        late   = att.get('late', 0)
+        tot    = att.get('total_students', 0)
+        absent = att.get('absent', att.get('absent_count', max(0, tot - pres - late)))
+        pct    = att.get('attendance_pct', att.get('attendance_percentage', 0.0))
+        marked = att.get('marked', pres + absent + late)
+        not_marked = att.get('not_marked', max(0, tot - marked))
+
         if lang == 'hinglish':
-            return f"Aaj ki attendance: {pres}/{tot} students present hain ({pct}%). Absent: {absent}."
+            return f"Aaj ki attendance: {pres}/{tot} students present hain ({pct}%). Absent: {absent}, Late: {late}."
         elif lang == 'hi':
-            return f"आज की उपस्थिति: {pres}/{tot} छात्र उपस्थित हैं ({pct}%। अनुपस्थित: {absent}।"
-        return f"Today's Attendance: {pres}/{tot} students present ({pct}%). Absent: {absent}."
+            return f"\u0906\u091c \u0915\u0940 \u0909\u092a\u0938\u094d\u0925\u093f\u0924\u093f: {pres}/{tot} \u091b\u093e\u0924\u094d\u0930 \u0909\u092a\u0938\u094d\u0925\u093f\u0924 \u0939\u0948\u0902 ({pct}%)\u0964 \u0905\u0928\u0941\u092a\u0938\u094d\u0925\u093f\u0924: {absent}\u0964"
+        return f"Today's Attendance: {pres} present out of {tot} students ({pct}%). Absent: {absent}, Late: {late}, Not marked: {not_marked}."
 
     # ── 11. HOSTEL OCCUPANCY ──
     if intent in ('HOSTEL_SUMMARY', 'Intent.HOSTEL_SUMMARY'):
@@ -327,6 +333,100 @@ def format_deterministic_response(intent: str, data: dict, user_msg: str) -> str
         sc = data.get('schools', {}).get('total_schools', 0)
         us = data.get('users', {}).get('total_users', 0)
         return f"Platform System Status: ONLINE\n• Total Schools: {sc}\n• Registered Users: {us}\n• Database & AI services operating normally."
+
+    # ── 17. FEE CLASSWISE ──
+    if intent in ('FEE_CLASSWISE', 'Intent.FEE_CLASSWISE'):
+        classes = data.get('classwise_fees', [])
+        if not classes:
+            return "No class-wise fee data available for this period."
+        lines = []
+        for c in classes[:6]:
+            cl   = c.get('class_name', 'N/A')
+            coll = format_inr(c.get('collected', 0))
+            out  = format_inr(c.get('outstanding', 0))
+            rate = c.get('rate', 0)
+            lines.append(f"\u2022 {cl}: Collected {coll} | Outstanding {out} | Rate {rate}%")
+        header = "Class-wise Fee Collection:" if lang == 'en' else "Class-wise fee collection status:"
+        return header + "\n" + "\n".join(lines)
+
+    # ── 18. NEW ADMISSIONS ──
+    if intent in ('NEW_ADMISSIONS', 'Intent.NEW_ADMISSIONS'):
+        adm = data.get('admissions', {})
+        total = adm.get('total_admissions', 0)
+        session = adm.get('session', 'Current Session')
+        classes = adm.get('top_classes', [])
+        if lang == 'hinglish':
+            msg = f"{session} session me total {total} naye admissions hue hain."
+        elif lang == 'hi':
+            msg = f"{session} \u0938\u0924\u094d\u0930 \u092e\u0947\u0902 \u0915\u0941\u0932 {total} \u0928\u090f \u092a\u094d\u0930\u0935\u0947\u0936 \u0939\u0941\u090f \u0939\u0948\u0902\u0964"
+        else:
+            msg = f"{total} new admissions recorded for the {session} session."
+        if classes:
+            top_lines = [f"\u2022 {c['class']}: {c['count']} students" for c in classes[:3]]
+            msg += "\nTop classes: " + "; ".join(top_lines)
+        return msg
+
+    # ── 19. LATE PAYMENTS ──
+    if intent in ('LATE_PAYMENTS', 'Intent.LATE_PAYMENTS'):
+        payers = data.get('late_payers', [])
+        count  = data.get('count', len(payers))
+        if count == 0:
+            return "No late payments were recorded for this period."
+        lines = [f"\u2022 {p['name']} ({p['class']}): Paid {format_inr(p['amount_paid'])} on {p['paid_date']} (Due: {p['due_date']})" for p in payers[:5]]
+        return f"{count} students paid their fees after the due date:\n" + "\n".join(lines)
+
+    # ── 20. ONTIME PAYMENTS ──
+    if intent in ('ONTIME_PAYMENTS', 'Intent.ONTIME_PAYMENTS'):
+        payers = data.get('ontime_payers', [])
+        count  = data.get('count', len(payers))
+        if count == 0:
+            return "No on-time payments were recorded for this period."
+        lines = [f"\u2022 {p['name']} ({p['class']}): Paid {format_inr(p['amount_paid'])} on {p['paid_date']}" for p in payers[:5]]
+        return f"{count} students paid their fees on or before the due date:\n" + "\n".join(lines)
+
+    # ── 21. TRANSPORT PENDING FEES ──
+    if intent in ('TRANSPORT_PENDING', 'Intent.TRANSPORT_PENDING'):
+        tp = data.get('transport_pending', {})
+        total_t = tp.get('total_transport_students', 0)
+        pending = tp.get('pending_count', 0)
+        students = tp.get('students', [])
+        if pending == 0:
+            return f"All {total_t} transport-enrolled students have cleared their transport fees."
+        lines = [f"\u2022 {s['name']} ({s['class']}): Outstanding {format_inr(s['outstanding'])}" for s in students[:5]]
+        return f"{pending} out of {total_t} transport students have pending fees:\n" + "\n".join(lines)
+
+    # ── 22. SUBJECT PERFORMANCE ──
+    if intent in ('SUBJECT_PERFORMANCE', 'Intent.SUBJECT_PERFORMANCE'):
+        subjects = data.get('subjects', [])
+        if not subjects:
+            return "No subject-wise marks data available for the most recent exam."
+        lines = ["Subject Performance (Lowest to Highest Average):\n"]
+        for s in subjects[:8]:
+            lines.append(f"\u2022 {s['subject']}: Avg {s['avg_pct']}% | Min {s['min_pct']}% | Max {s['max_pct']}%")
+        return "\n".join(lines)
+
+    # ── 23. FAILING STUDENTS ──
+    if intent in ('FAILING_STUDENTS', 'Intent.FAILING_STUDENTS'):
+        fail = data.get('failing', {})
+        subj = fail.get('subject', 'the subject')
+        count = fail.get('count', 0)
+        students = fail.get('students', [])
+        if count == 0:
+            return f"No failing students found for {subj} in the most recent exam."
+        lines = [f"\u2022 {s['name']} ({s['class']}): {s['obtained']}/{s['max_marks']} marks" for s in students[:6]]
+        return f"{count} students are failing in {subj}:\n" + "\n".join(lines)
+
+    # ── 24. CROSS-DOMAIN ALERT ──
+    if intent in ('CROSS_DOMAIN_ALERT', 'Intent.CROSS_DOMAIN_ALERT'):
+        cd = data.get('cross_domain', {})
+        count = cd.get('total_at_risk', 0)
+        thresh = cd.get('att_threshold', 75)
+        students = cd.get('students', [])
+        if count == 0:
+            return f"No students currently have both low attendance (below {thresh}%) and pending fees."
+        lines = [f"\u2022 {s['name']} ({s['class']}): Outstanding {format_inr(s['outstanding'])}" for s in students[:5]]
+        return f"{count} students have both low attendance (below {thresh}%) and pending fees - immediate attention required:\n" + "\n".join(lines)
+
 
     return None
 

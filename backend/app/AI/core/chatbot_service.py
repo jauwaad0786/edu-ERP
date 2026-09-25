@@ -51,9 +51,13 @@ def _get_analytics_data(intent: str, params: dict, school_id: int,
     financial_intents = {
         Intent.FEE_COLLECTION,
         Intent.FEE_OUTSTANDING,
+        Intent.FEE_CLASSWISE,
         Intent.FEE_COMPARISON,
         Intent.FEE_PENDING_STUDENTS,
         Intent.STUDENT_FEE_STATUS,
+        Intent.LATE_PAYMENTS,
+        Intent.ONTIME_PAYMENTS,
+        Intent.TRANSPORT_PENDING,
         Intent.EXPENSE_SUMMARY,
         Intent.STAFF_SALARY_STATUS,
         Intent.TRANSPORT_FEE,
@@ -100,10 +104,13 @@ def _get_analytics_data(intent: str, params: dict, school_id: int,
             from app.AI.school_data.fee_analytics import get_fee_month_comparison
             return {'month_comparison': get_fee_month_comparison(school_id, month, year)}
 
+        elif intent == Intent.FEE_CLASSWISE:
+            from app.AI.school_data.extended_analytics import get_classwise_fee_summary
+            return {'classwise_fees': get_classwise_fee_summary(school_id, month, year)}
+
         elif intent in (Intent.SCHOOL_SUMMARY, Intent.STUDENT_COUNT, Intent.TEACHER_COUNT):
             from app.AI.school_data.infra_analytics import get_school_summary
             return {'school_overview': get_school_summary(school_id)}
-
 
         elif intent == Intent.FEE_PENDING_STUDENTS:
             from app.AI.school_data.fee_analytics import get_pending_fee_students
@@ -120,6 +127,28 @@ def _get_analytics_data(intent: str, params: dict, school_id: int,
         elif intent == Intent.LIBRARY_FINES:
             from app.AI.school_data.infra_analytics import get_library_summary
             return {'library': get_library_summary(school_id)}
+
+        elif intent == Intent.LATE_PAYMENTS:
+            from app.AI.school_data.extended_analytics import get_late_payers
+            data = get_late_payers(school_id, month, year)
+            return {'late_payers': data, 'count': len(data), 'month': f"{year or ''}-{month or ''}"}
+
+        elif intent == Intent.ONTIME_PAYMENTS:
+            from app.AI.school_data.extended_analytics import get_ontime_payers
+            data = get_ontime_payers(school_id, month, year)
+            return {'ontime_payers': data, 'count': len(data), 'month': f"{year or ''}-{month or ''}"}
+
+        elif intent == Intent.TRANSPORT_PENDING:
+            from app.AI.school_data.extended_analytics import get_transport_pending_students
+            return {'transport_pending': get_transport_pending_students(school_id, month, year)}
+
+        elif intent == Intent.NEW_ADMISSIONS:
+            from app.AI.school_data.extended_analytics import get_new_admissions
+            return {'admissions': get_new_admissions(school_id)}
+
+        elif intent == Intent.CROSS_DOMAIN_ALERT:
+            from app.AI.school_data.extended_analytics import get_low_attendance_pending_fees
+            return {'cross_domain': get_low_attendance_pending_fees(school_id, month=month, year=year)}
 
         elif intent == Intent.ATTENDANCE_TODAY:
             from app.AI.school_data.attendance_analytics import get_attendance_today
@@ -149,6 +178,15 @@ def _get_analytics_data(intent: str, params: dict, school_id: int,
             from app.AI.school_data.academic_analytics import get_class_performance
             return {'classes': get_class_performance(school_id)}
 
+        elif intent == Intent.SUBJECT_PERFORMANCE:
+            from app.AI.school_data.academic_analytics import get_subject_performance
+            return {'subjects': get_subject_performance(school_id, class_id=class_id)}
+
+        elif intent == Intent.FAILING_STUDENTS:
+            from app.AI.school_data.academic_analytics import get_failing_students_by_subject
+            subject = params.get('subject') or ''
+            return {'failing': get_failing_students_by_subject(school_id, subject, class_id=class_id)}
+
         elif intent == Intent.TRANSPORT_SUMMARY:
             from app.AI.school_data.infra_analytics import get_transport_summary
             return {'transport': get_transport_summary(school_id)}
@@ -170,7 +208,6 @@ def _get_analytics_data(intent: str, params: dict, school_id: int,
             total_asns = Assignment.query.filter_by(school_id=school_id).count()
             active_asns = Assignment.query.filter_by(school_id=school_id, status='ACTIVE').count()
             return {'assignments': {'total_assignments': total_asns, 'active_assignments': active_asns}}
-
 
         elif intent == Intent.STUDENT_FEE_STATUS:
             from app.AI.school_data.fee_analytics import get_student_fee_status
@@ -204,11 +241,22 @@ def _get_analytics_data(intent: str, params: dict, school_id: int,
                 'system_status': 'ONLINE',
             }
 
+        elif intent == Intent.GENERAL:
+            # Inject school overview so LLM has minimum context and cannot hallucinate counts
+            if school_id and school_id > 0:
+                try:
+                    from app.AI.school_data.infra_analytics import get_school_summary
+                    return {'school_overview': get_school_summary(school_id), '_context_only': True}
+                except Exception:
+                    pass
+            return {}
+
     except Exception as e:
 
         return {'error': str(type(e).__name__), 'data_unavailable': True}
 
     return {}
+
 
 
 def _build_context_message(intent: str, analytics_data: dict,
@@ -371,8 +419,8 @@ def process_chat(user_id: int, role: str, school_id: int,
         db_ms  = int((time.monotonic() - t_db) * 1000)
         source = 'DOCUMENT'
 
-    elif intent not in (Intent.TEACHER_LESSON_PLAN, Intent.TEACHER_PRACTICE_QA, Intent.GENERAL):
-        # Fetch ERP analytics
+    elif intent not in (Intent.TEACHER_LESSON_PLAN, Intent.TEACHER_PRACTICE_QA):
+        # Fetch ERP analytics — even GENERAL now gets school_overview for grounding
         t_db = time.monotonic()
         analytics_data = _get_analytics_data(intent, params, school_id, user_id, role)
         db_ms = int((time.monotonic() - t_db) * 1000)
@@ -394,8 +442,11 @@ def process_chat(user_id: int, role: str, school_id: int,
             }
 
         # ── Deterministic Response Fast-Path (Guarantees zero hallucination and 100% accurate currency/numbers) ──
-        from app.AI.core.deterministic_responder import format_deterministic_response, validate_and_sanitize_response
-        det_answer = format_deterministic_response(intent, analytics_data, message)
+        # GENERAL intent with only _context_only school overview should NOT take the deterministic path
+        det_answer = None
+        if not analytics_data.get('_context_only'):
+            from app.AI.core.deterministic_responder import format_deterministic_response, validate_and_sanitize_response
+            det_answer = format_deterministic_response(intent, analytics_data, message)
         if det_answer:
             total_ms = int((time.monotonic() - t_total_start) * 1000)
             quota    = check_quota(user_id, role, school_id)
@@ -563,12 +614,22 @@ def _generate_followups(intent: str, params: dict) -> list:
     FOLLOWUPS = {
         Intent.FEE_COLLECTION:       ['What is the outstanding fee amount?', 'Compare collection with last month', 'List students with pending fees'],
         Intent.FEE_OUTSTANDING:      ['Show class-wise outstanding fees', 'List students with pending fees', 'Show fee collection summary'],
+        Intent.FEE_CLASSWISE:        ['Which class has the most students?', 'Show overall fee collection summary', 'List students with pending fees'],
+        Intent.LATE_PAYMENTS:        ['Who paid on time?', 'Show this month fee collection', 'List students with pending fees'],
+        Intent.ONTIME_PAYMENTS:      ['Who paid fees late?', 'Show overall fee collection', 'Show outstanding fee summary'],
+        Intent.TRANSPORT_PENDING:    ['Show transport fee collection summary', 'List all transport enrolled students'],
+        Intent.NEW_ADMISSIONS:       ['Show total student count', 'Show class-wise student breakdown', 'Show school overview'],
+        Intent.CROSS_DOMAIN_ALERT:   ['Show low attendance students', 'Show students with pending fees', 'Show class-wise attendance'],
         Intent.ATTENDANCE_TODAY:     ['Show class-wise attendance', 'Show last 7 days attendance trend', 'List students with low attendance'],
         Intent.ATTENDANCE_CLASSWISE: ['Show overall school attendance', 'List students with low attendance'],
+        Intent.ATTENDANCE_TREND:     ['Show today\'s attendance', 'Show class-wise attendance breakdown'],
+        Intent.LOW_ATTENDANCE_STUDENTS: ['Show today\'s attendance', 'Show students with pending fees and low attendance'],
         Intent.TOP_STUDENTS:         ['Show students needing academic support', 'Show class performance averages'],
         Intent.WEAK_STUDENTS:        ['Show top performing students', 'Compare performance by class'],
         Intent.CLASS_PERFORMANCE:    ['Show top performing students', 'Show subject-wise average marks'],
-        Intent.TRANSPORT_SUMMARY:    ['Show transport fee collection', 'Show vehicle & route details'],
+        Intent.SUBJECT_PERFORMANCE:  ['Show which students are failing in the worst subject', 'Show top students', 'Show class performance'],
+        Intent.FAILING_STUDENTS:     ['Show subject-wise performance overview', 'Show weak students list', 'Show class performance'],
+        Intent.TRANSPORT_SUMMARY:    ['Show transport fee collection', 'Show students with pending transport fees'],
         Intent.HOSTEL_SUMMARY:       ['Show hostel fee collection', 'What is the hostel occupancy rate?'],
         Intent.LIBRARY_SUMMARY:      ['Show outstanding library fines', 'List overdue issued books'],
         Intent.PLATFORM_SCHOOLS_COUNT: ['Show schools with active paid plans', 'Show platform active users by role'],
