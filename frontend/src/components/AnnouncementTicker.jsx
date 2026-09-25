@@ -5,7 +5,7 @@ import api from '../api/axios';
 // alerts, product updates) ko school/teacher/student dashboards ke top pe
 // ek scrolling news-ticker ki tarah dikhata hai — normal announcement card
 // ki jagah, taaki maintenance jaisi cheezein turant nazar aayein.
-// Kahin bhi drop karo: <AnnouncementTicker />
+// Drop anywhere: <AnnouncementTicker />
 
 const PRIORITY_STYLE = {
   CRITICAL: { bg: '#dc2626', fg: '#fff' },

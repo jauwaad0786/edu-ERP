@@ -4,8 +4,8 @@ import api from '../api/axios';
 // NEW — Payroll "acknowledgement" feature. Principal payroll payment
 // record karta hai, is-agar us payment ko is-agar staff/teacher khud
 // "Yes, maine paisa receive kiya" confirm kar sake — bina kisi dashboard
-// par nirbhar hue (Teacher/Accountant/Hostel Warden/etc. sab alag-alag
-// pages par land karte hain), isliye ye bell Navbar mein hai jo har
+// depending on role (Teacher/Accountant/Hostel Warden/etc. all land on
+// different pages), so this bell is in the Navbar which is present across all
 // authenticated page par dikhta hai.
 export default function SalaryAckBell({ darkMode }) {
   const [records, setRecords] = useState([]);

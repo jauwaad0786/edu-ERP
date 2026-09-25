@@ -38,10 +38,10 @@ export function AuthProvider({ children }) {
   }, []);
 
   // Fix: Principal ne Staff Access page se kisi ka permission grant/revoke
-  // kiya, lekin us staff member ka tab pehle se khula hua tha -- user
-  // object sirf mount pe fetch hota tha, isliye naya access dikhne ke liye
-  // pehle full logout/login karna padta tha. Ab tab pe wapas aane par
-  // silently /auth/me refetch ho jaata hai taaki permissions (aur unse
+  // was updated while the staff member tab was already open -- the user
+  // object was only fetched on mount, so to see new access
+  // previously required a full logout/login. Now on tab focus
+  // silently refetches /auth/me so permissions (and resulting menus)
   // dynamic bana Sidebar) khud-ba-khud sync ho jaayein.
   useEffect(() => {
     const onFocus = () => {

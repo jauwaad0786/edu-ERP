@@ -556,15 +556,15 @@ const ROLE_LABELS = {
 //  DYNAMIC PERMISSION-DRIVEN MENU ITEMS  (the actual bug fix)
 // ═══════════════════════════════════════════════════════════════════════════
 // Purani problem: ROLE_MENUS[user.role] hamesha ek FIXED, hardcoded list
-// tha. Principal ne Staff Access page se kisi Teacher/Warden ko baad me
+// Originally, if Principal updated a Teacher/Warden from the Staff Access page,
 // extra permission (UserPermissionOverride, e.g. 'fees.collect') diya bhi
-// to sidebar kabhi nahi badalta tha, kyunki neeche wala `groups` sirf
+// the sidebar would not refresh, because the groups below were only
 // `user.role` string dekh raha tha -- `user.permissions` (jo /auth/me se
-// fresh aata hai, see auth.py _serialize_user) ko kabhi use hi nahi kiya
+// fetched fresh (see auth.py _serialize_user) and not referenced reactively
 // ja raha tha.
 //
-// PERMISSION_MENU_ITEMS ab yaha define nahi hota -- utils/permissionMenuMap.js
-// se import hota hai. Wahi file ROUTE_PERMISSIONS bhi export karti hai jo
+// PERMISSION_MENU_ITEMS is now imported from utils/permissionMenuMap.js
+// which also exports ROUTE_PERMISSIONS.
 // ProtectedRoute (App.jsx) use karta hai, taaki "sidebar me item dikhna"
 // aur "us route par actually jaane dena" hamesha ek hi mapping se decide
 // ho -- dono kabhi ek-dusre se out-of-sync na ho paayein (yahi wo bug tha
@@ -575,8 +575,8 @@ const ROLE_LABELS = {
  * Role ke static base menu ko user ke ACTUAL resolved permissions
  * (role-default + per-user override, dono already merged in user.permissions
  * by resolve_platform_permissions()) ke saath merge karta hai. Path-level
- * dedupe hai isliye already-visible item dobara nahi judta, aur naya group
- * chahiye ho to end me apne aap ban jaata hai.
+ * Deduplicated so already-visible items are not added again, and new groups
+ * are automatically created at the end as needed.
  */
 function buildDynamicGroups(baseGroups, permissions) {
   if (!permissions || !permissions.length) return baseGroups;
