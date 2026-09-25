@@ -5,6 +5,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+def _normalize_db_url(url):
+    if not url:
+        return 'sqlite:///eduErp.db'
+    # Ensure psycopg2 driver is explicitly used for PostgreSQL URLs
+    if url.startswith('postgres://'):
+        return url.replace('postgres://', 'postgresql+psycopg2://', 1)
+    if url.startswith('postgresql://') and not url.startswith('postgresql+'):
+        return url.replace('postgresql://', 'postgresql+psycopg2://', 1)
+    return url
+
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
     JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY') or secrets.token_hex(32)
@@ -12,7 +22,7 @@ class Config:
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
     JWT_BLOCKLIST_ENABLED = True
     JWT_BLOCKLIST_TOKEN_CHECKS = ['access', 'refresh']
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'sqlite:///eduErp.db')
+    SQLALCHEMY_DATABASE_URI = _normalize_db_url(os.environ.get('DATABASE_URL', 'sqlite:///eduErp.db'))
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {
         'pool_pre_ping': True,   # test connection before using it; reconnect if dead
