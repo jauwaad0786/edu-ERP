@@ -29,7 +29,7 @@ export default function TeacherDashboardScreen({ navigation }) {
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     try {
-      const [cRes, aRes, hRes, sRes] = await Promise.all([\
+      const [cRes, aRes, hRes, sRes] = await Promise.all([
         // /api/principal/classes returns all classes for this school (teacher-scoped via JWT)
         client.get('/principal/classes').catch(() => ({ data: [] })),
         // /api/teacher/notes returns uploaded study materials/notes as content assignments
