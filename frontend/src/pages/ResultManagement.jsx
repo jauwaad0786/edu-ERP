@@ -77,7 +77,7 @@ function HistoryModal({ studentId, subjectId, examId, studentName, rollNo, subje
   useEffect(() => {
     api.get(`/results/history?student_id=${studentId}&subject_id=${subjectId}&exam_id=${examId}`)
       .then(r => setLogs(r.data || []))
-      .catch(() => toast.error('History load nahi hui'));
+      .catch(() => toast.error('Failed to load History'));
   }, [studentId, subjectId, examId]);
 
   return (
@@ -208,19 +208,19 @@ function ExamAnalyticsView() {
     if (session)  params.set('session', session);
     api.get(`/results/analytics/overview?${params.toString()}`)
       .then(r => setData(r.data))
-      .catch(() => toast.error('Analytics load nahi hui'))
+      .catch(() => toast.error('Failed to load Analytics'))
       .finally(() => setLoading(false));
   }, [examType, year, session]);
 
   useEffect(() => { load(); }, [load]);
 
   function openDrill(row, bucket, label) {
-    if (!row.published) { toast.error('Is class ka result abhi publish nahi hua'); return; }
+    if (!row.published) { toast.error('Results for this class have not been published yet'); return; }
     setDrill({ class_id: row.class_id, exam_id: row.exam_id, bucket, label: `${row.class_name} - ${row.section} · ${label}` });
     setDrillData(null);
     api.get(`/results/analytics/class-students?class_id=${row.class_id}&exam_id=${row.exam_id}&bucket=${bucket}`)
       .then(r => setDrillData(r.data))
-      .catch(err => toast.error(err?.response?.data?.error || 'List load nahi hui'));
+      .catch(err => toast.error(err?.response?.data?.error || 'Failed to load List'));
   }
 
   const s = data?.summary;
@@ -269,7 +269,7 @@ function ExamAnalyticsView() {
         <div className="card"><div className="card-body">Loading…</div></div>
       ) : s.total_appeared === 0 && data.exams.length === 0 ? (
         <div className="card"><div className="card-body" style={{ textAlign: 'center', color: 'var(--neutral-6)', padding: 40 }}>
-          Koi exam nahi mila in filters ke saath.
+          No examinations found with the selected filters.
         </div></div>
       ) : (
         <>
@@ -420,7 +420,7 @@ function ExamAnalyticsView() {
           {!drillData ? (
             <div style={{ fontSize: 13, color: 'var(--neutral-6)' }}>Loading…</div>
           ) : drillData.students.length === 0 ? (
-            <div style={{ fontSize: 13, color: 'var(--neutral-6)', textAlign: 'center', padding: '20px 0' }}>Koi student nahi mila.</div>
+            <div style={{ fontSize: 13, color: 'var(--neutral-6)', textAlign: 'center', padding: '20px 0' }}>No students found.</div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
               <thead><tr style={{ color: 'var(--neutral-6)', textAlign: 'left' }}>
@@ -467,7 +467,7 @@ function TeacherMarkEntry({ user }) {
   const [historyFor, setHistoryFor] = useState(null);
 
   useEffect(() => {
-    api.get('/results/my-assignments').then(r => setAssignments(r.data || [])).catch(() => toast.error('Assignments load nahi hue'));
+    api.get('/results/my-assignments').then(r => setAssignments(r.data || [])).catch(() => toast.error('Failed to load Assignments'));
     api.get('/principal/exams').then(r => setExams(r.data || [])).catch(() => {});
   }, []);
 
@@ -493,7 +493,7 @@ function TeacherMarkEntry({ user }) {
         setCells(c);
         setReason('');
       })
-      .catch(() => toast.error('Roster load nahi hua'))
+      .catch(() => toast.error('Failed to load Roster'))
       .finally(() => setLoading(false));
   }, [classId, examId, subjectId]);
 
@@ -522,7 +522,7 @@ function TeacherMarkEntry({ user }) {
     if (!data) return;
     const needsReason = ['SUBMITTED', 'RESUBMITTED'].includes(data.status?.status);
     if (needsReason && !reason.trim()) {
-      toast.error('Already-submitted marks ko correct karne ke liye reason likhna zaroori hai');
+      toast.error('A valid reason is required to correct previously submitted marks');
       return;
     }
     setSaving(true);
@@ -534,20 +534,20 @@ function TeacherMarkEntry({ user }) {
       toast.success(res.data.message || 'Saved');
       loadRoster();
     } catch (err) {
-      toast.error(err?.response?.data?.error || 'Save nahi hua');
+      toast.error(err?.response?.data?.error || 'Failed to save');
     }
     setSaving(false);
   }
 
   async function handleSubmit() {
-    if (!window.confirm('Submit karne ke baad aap freely edit nahi kar sakenge jab tak Principal return na kare. Continue?')) return;
+    if (!window.confirm('Once submitted, you cannot edit marks until returned by the Principal. Continue?')) return;
     setSubmitting(true);
     try {
       const res = await api.post('/results/submit', { class_id: classId, exam_id: examId, subject_id: subjectId });
       toast.success(res.data.message || 'Submitted');
       loadRoster();
     } catch (err) {
-      toast.error(err?.response?.data?.error || 'Submit nahi hua');
+      toast.error(err?.response?.data?.error || 'Failed to submit');
     }
     setSubmitting(false);
   }
@@ -783,7 +783,7 @@ function PrincipalResultManagement({ user, embedded = false }) {
       api.get(`/results/principal/dashboard?class_id=${classId}&exam_id=${examId}`),
       api.get(`/results/activity?class_id=${classId}&exam_id=${examId}&limit=15`),
     ]).then(([d, a]) => { setDash(d.data); setActivity(a.data || []); })
-      .catch(() => toast.error('Dashboard load nahi hua'))
+      .catch(() => toast.error('Failed to load Dashboard'))
       .finally(() => setLoadingDash(false));
   }, [classId, examId]);
 
@@ -801,7 +801,7 @@ function PrincipalResultManagement({ user, embedded = false }) {
         });
         setCells(c);
       })
-      .catch(() => toast.error('Roster load nahi hua'))
+      .catch(() => toast.error('Failed to load Roster'))
       .finally(() => setLoadingRoster(false));
   }, [classId, examId, reviewSubjectId]);
 
@@ -835,7 +835,7 @@ function PrincipalResultManagement({ user, embedded = false }) {
       toast.success('Marks updated');
       loadReview();
     } catch (err) {
-      toast.error(err?.response?.data?.error || 'Save nahi hua');
+      toast.error(err?.response?.data?.error || 'Failed to save');
     }
     setSaving(false);
   }
@@ -846,7 +846,7 @@ function PrincipalResultManagement({ user, embedded = false }) {
       toast.success('Subject approved');
       loadReview(); loadDashboard();
     } catch (err) {
-      toast.error(err?.response?.data?.error || 'Approve nahi hua');
+      toast.error(err?.response?.data?.error || 'Failed to approve');
     }
   }
 
@@ -861,7 +861,7 @@ function PrincipalResultManagement({ user, embedded = false }) {
       setReturnModal(false); setReturnReason(''); setReturnStudentIds([]); setReturnScope('ALL');
       loadReview(); loadDashboard();
     } catch (err) {
-      toast.error(err?.response?.data?.error || 'Return nahi hua');
+      toast.error(err?.response?.data?.error || 'Failed to return');
     }
   }
 
@@ -869,7 +869,7 @@ function PrincipalResultManagement({ user, embedded = false }) {
     try {
       const r = await api.get(`/results/publish/preview?class_id=${classId}&exam_id=${examId}`);
       setPreview(r.data); setShowPreview(true);
-    } catch { toast.error('Preview load nahi hua'); }
+    } catch { toast.error('Failed to load Preview'); }
   }
 
   async function handlePublish() {
@@ -880,7 +880,7 @@ function PrincipalResultManagement({ user, embedded = false }) {
       setShowPublishConfirm(false); setShowPreview(false);
       loadDashboard();
     } catch (err) {
-      toast.error(err?.response?.data?.error || 'Publish nahi hua');
+      toast.error(err?.response?.data?.error || 'Failed to publish');
     }
     setPublishing(false);
   }
@@ -892,7 +892,7 @@ function PrincipalResultManagement({ user, embedded = false }) {
       toast.success('Result reopened');
       setShowReopen(false); setReopenReason('');
       loadDashboard();
-    } catch (err) { toast.error(err?.response?.data?.error || 'Reopen nahi hua'); }
+    } catch (err) { toast.error(err?.response?.data?.error || 'Failed to reopen'); }
   }
 
   async function handleRepublish() {
@@ -900,7 +900,7 @@ function PrincipalResultManagement({ user, embedded = false }) {
       await api.post('/results/republish', { class_id: classId, exam_id: examId });
       toast.success('Result republished');
       loadDashboard();
-    } catch (err) { toast.error(err?.response?.data?.error || 'Republish nahi hua'); }
+    } catch (err) { toast.error(err?.response?.data?.error || 'Failed to republish'); }
   }
 
   const counts = dash?.counts;
@@ -1013,7 +1013,7 @@ function PrincipalResultManagement({ user, embedded = false }) {
                                           toast.success(`${s.subject_name} approved!`);
                                           loadDashboard();
                                         } catch (err) {
-                                          toast.error(err?.response?.data?.error || 'Approve nahi hua');
+                                          toast.error(err?.response?.data?.error || 'Failed to approve');
                                         }
                                       }}
                                     >

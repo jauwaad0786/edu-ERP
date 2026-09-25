@@ -789,7 +789,7 @@ export default function AdminDashboard() {
 
               {/* Plan presets */}
               <p style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>
-                Quick-fill ek plan ke hisab se, fir neeche manually har service ko alag se on/off bhi kar sakte ho.
+                Quick-fill based on a tier plan, or toggle individual services below.
               </p>
               <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
                 {['BASIC', 'PROFESSIONAL', 'ENTERPRISE'].map(p => (

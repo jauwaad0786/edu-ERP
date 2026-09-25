@@ -178,7 +178,7 @@ export default function TransportReports() {
           setTotal(r.data.total || (r.data.data || []).length);
         }
       })
-      .catch(() => toast.error('Report load nahi hua'))
+      .catch(() => toast.error('Failed to load Report'))
       .finally(() => setLoading(false));
   }, [report, page, statusFilter, fromDate, toDate]);
 
@@ -196,7 +196,7 @@ export default function TransportReports() {
       toast('Collection report ke liye vehicle-wise / route-wise section me dekho', { icon: 'ℹ️' });
       return;
     }
-    if (!rows.length) { toast.error('Export karne ke liye koi data nahi hai'); return; }
+    if (!rows.length) { toast.error('No data available to export'); return; }
     exportCsv(activeKey, report.columns, rows);
   }
 
@@ -283,7 +283,7 @@ export default function TransportReports() {
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, color: darkMode ? '#f1f5f9' : '#0f172a' }}>Vehicle Wise</div>
                   {(collectionData?.vehicle_wise || []).length === 0 ? (
-                    <div style={{ fontSize: 12, color: '#94a3b8' }}>Koi data nahi</div>
+                    <div style={{ fontSize: 12, color: '#94a3b8' }}>No data available</div>
                   ) : collectionData.vehicle_wise.map((v, i) => (
                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13, borderBottom: '1px solid #f1f5f9' }}>
                       <span>{v.vehicle_number}</span>
@@ -294,7 +294,7 @@ export default function TransportReports() {
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, color: darkMode ? '#f1f5f9' : '#0f172a' }}>Route Wise</div>
                   {(collectionData?.route_wise || []).length === 0 ? (
-                    <div style={{ fontSize: 12, color: '#94a3b8' }}>Koi data nahi</div>
+                    <div style={{ fontSize: 12, color: '#94a3b8' }}>No data available</div>
                   ) : collectionData.route_wise.map((r, i) => (
                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13, borderBottom: '1px solid #f1f5f9' }}>
                       <span>{r.route_name}</span>
@@ -304,7 +304,7 @@ export default function TransportReports() {
                 </div>
               </div>
             ) : rows.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Koi data nahi mila</div>
+              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>No data found</div>
             ) : (
               <>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>

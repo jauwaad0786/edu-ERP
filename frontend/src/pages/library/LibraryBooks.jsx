@@ -46,7 +46,7 @@ export default function LibraryBooks() {
         setBooks(r.data.data || []);
         setPages(r.data.pages || 1);
       })
-      .catch(() => toast.error('Books load nahi ho paye'))
+      .catch(() => toast.error('Failed to load books'))
       .finally(() => setLoading(false));
   }, [search, categoryFilter, page]);
 
@@ -78,7 +78,7 @@ export default function LibraryBooks() {
   }
 
   async function handleSave() {
-    if (!form.title.trim()) { toast.error('Title required hai'); return; }
+    if (!form.title.trim()) { toast.error('Book title is required'); return; }
     setSaving(true);
     try {
       if (editingId) {
@@ -91,7 +91,7 @@ export default function LibraryBooks() {
       setShowModal(false);
       load();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Save nahi ho paya');
+      toast.error(err.response?.data?.error || 'Failed to save');
     }
     setSaving(false);
   }
@@ -105,7 +105,7 @@ export default function LibraryBooks() {
       setAddCopiesCount(1);
       load();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Copies add nahi ho payi');
+      toast.error(err.response?.data?.error || 'Failed to add copies');
     }
   }
 
@@ -149,7 +149,7 @@ export default function LibraryBooks() {
           {loading ? (
             <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>Loading...</div>
           ) : books.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>Koi book nahi mili</div>
+            <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>No books found</div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 14 }}>
               {books.map(b => (
@@ -286,7 +286,7 @@ export default function LibraryBooks() {
             </div>
             <div className="modal-body">
               <p style={{ fontSize: 13, color: '#64748b', marginBottom: 12 }}>
-                <strong>{addCopiesTarget.title}</strong> mein kitni nayi copies add karni hain?
+                <strong>{addCopiesTarget.title}</strong> — how many new copies would you like to add?
               </p>
               <input type="number" min="1" value={addCopiesCount}
                 onChange={e => setAddCopiesCount(Number(e.target.value))} className="form-input" />

@@ -75,7 +75,7 @@ export default function StudentTravelHistoryWidget({ darkMode = false, title = "
       }
     } catch (err) {
       console.error('Failed to load travel history:', err);
-      toast.error('Travel history load nahi ho saki');
+      toast.error('Failed to load travel history');
     } finally {
       setLoading(false);
     }
@@ -110,7 +110,7 @@ export default function StudentTravelHistoryWidget({ darkMode = false, title = "
   // CSV Export
   const exportToCSV = () => {
     if (!historyData || historyData.length === 0) {
-      toast.error('Export karne ke liye koi data nahi hai');
+      toast.error('No data available to export');
       return;
     }
     const headers = [
@@ -455,7 +455,7 @@ export default function StudentTravelHistoryWidget({ darkMode = false, title = "
             color: darkMode ? '#ffffff' : '#0f172a'
           }}
         >
-          <option value="">All Vehicles / Sabhi Gaadiyan</option>
+          <option value="">All Vehicles</option>
           {vehiclesList.map(v => (
             <option key={v.id} value={v.id}>{v.vehicle_number} ({v.vehicle_type})</option>
           ))}
@@ -472,7 +472,7 @@ export default function StudentTravelHistoryWidget({ darkMode = false, title = "
             color: darkMode ? '#ffffff' : '#0f172a'
           }}
         >
-          <option value="ALL">All Status / Sabhi Status</option>
+          <option value="ALL">All Statuses</option>
           <option value="DROPPED">Safely Dropped (ड्रॉप हो गए)</option>
           <option value="IN_TRANSIT">In-Transit / Boarded (गाड़ी में सवार)</option>
           <option value="ABSENT">Absent (अनुपस्थित)</option>
@@ -498,10 +498,10 @@ export default function StudentTravelHistoryWidget({ darkMode = false, title = "
         }}>
           <div style={{ fontSize: '42px', marginBottom: '8px' }}>🚌</div>
           <h4 style={{ margin: '0 0 6px', fontSize: '16px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
-            Koi Travel Record Nahi Mila
+            No Travel Records Found
           </h4>
           <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#94a3b8' }}>
-            {viewMode === 'DATE' ? `Date ${selectedDate} ke liye koi travel ya trip history nahi hai.` : `Month ${selectedMonth} ke liye koi travel records nahi hain.`}
+            {viewMode === 'DATE' ? `No travel or trip history found for Date ${selectedDate}.` : `No travel records found for Month ${selectedMonth}.`}
           </p>
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
             <button

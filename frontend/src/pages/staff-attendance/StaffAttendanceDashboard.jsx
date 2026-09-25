@@ -35,7 +35,7 @@ export default function StaffAttendanceDashboard() {
         setApproved(a.data.items);
         setRegularizations(r.data);
       })
-      .catch(() => toast.error('Dashboard load nahi hua'))
+      .catch(() => toast.error('Failed to load Dashboard'))
       .finally(() => setLoadingDash(false));
   }, [date]);
 
@@ -51,7 +51,7 @@ export default function StaffAttendanceDashboard() {
       toast.success('Approved');
       loadAll();
     } catch {
-      toast.error('Approve fail ho gaya');
+      toast.error('Approval failed');
     }
   };
 
@@ -62,7 +62,7 @@ export default function StaffAttendanceDashboard() {
       toast.success('Rejected');
       loadAll();
     } catch {
-      toast.error('Reject fail ho gaya');
+      toast.error('Rejection failed');
     }
   };
 
@@ -71,11 +71,11 @@ export default function StaffAttendanceDashboard() {
     try {
       const ids = selected.length ? selected : undefined;
       await api.post(`/staff-attendance/${type}-bulk`, { ids, date });
-      toast.success(type === 'approve' ? 'Sab approve ho gaye' : 'Sab reject ho gaye');
+      toast.success(type === 'approve' ? 'All requests approved successfully' : 'All requests rejected successfully');
       setSelected([]);
       loadAll();
     } catch {
-      toast.error('Action fail ho gaya');
+      toast.error('Action failed');
     } finally {
       setBusy(false);
     }
@@ -87,7 +87,7 @@ export default function StaffAttendanceDashboard() {
       toast.success(approve ? 'Regularization approved' : 'Regularization rejected');
       loadAll();
     } catch {
-      toast.error('Action fail ho gaya');
+      toast.error('Action failed');
     }
   };
 
@@ -180,7 +180,7 @@ export default function StaffAttendanceDashboard() {
                     </thead>
                     <tbody>
                       {pending.length === 0 && (
-                        <tr><td style={td} colSpan={7}>Koi pending request nahi hai.</td></tr>
+                        <tr><td style={td} colSpan={7}>No pending requests found.</td></tr>
                       )}
                       {pending.map((r) => (
                         <tr key={r.id}>
@@ -238,7 +238,7 @@ export default function StaffAttendanceDashboard() {
                       </thead>
                       <tbody>
                         {filteredApproved.length === 0 && (
-                          <tr><td style={td} colSpan={6}>Koi approved record nahi mila.</td></tr>
+                          <tr><td style={td} colSpan={6}>No approved records found.</td></tr>
                         )}
                         {filteredApproved.map((r) => (
                           <tr key={r.id}>
@@ -268,7 +268,7 @@ export default function StaffAttendanceDashboard() {
                 <div style={card}>
                   <h3 style={{ margin: '0 0 12px', color: text, fontSize: 16 }}>Regularization Requests</h3>
                   <div style={{ maxHeight: 420, overflowY: 'auto' }}>
-                    {regularizations.length === 0 && <div style={{ color: muted, fontSize: 13 }}>Koi pending regularization nahi hai.</div>}
+                    {regularizations.length === 0 && <div style={{ color: muted, fontSize: 13 }}>No pending regularizations found.</div>}
                     {regularizations.map((r) => (
                       <div key={r.id} style={{ padding: '10px 0', borderBottom: `1px solid ${border}` }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>

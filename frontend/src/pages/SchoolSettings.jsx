@@ -119,7 +119,7 @@ export default function SchoolSettings() {
       })
       .catch(err => {
         console.log("SETTINGS ERROR:", err);
-        toast.error('School data load nahi hua');
+        toast.error('Failed to load School data');
       })
       .finally(() => {
         setLoading(false);
@@ -137,9 +137,9 @@ export default function SchoolSettings() {
     try {
       const r = await api.patch('/principal/school/settings', form);
       setSchool(r.data);
-      toast.success('✅ School info save ho gayi!');
+      toast.success('✅ School information saved successfully!');
     } catch {
-      toast.error('Save nahi hua — dobara try karo');
+      toast.error('Failed to save — please try again');
     }
     setSaving(false);
   };
@@ -156,22 +156,22 @@ export default function SchoolSettings() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setSchool(s => ({ ...s, ...r.data }));
-      toast.success('✅ Upload ho gaya!');
+      toast.success('✅ Upload completed successfully!');
     } catch {
-      toast.error('Upload fail hua — file size check karo (max 5MB)');
+      toast.error('Upload failed — please check file size (max 5MB)');
     }
     setUploading(u => ({ ...u, [field]: false }));
   };
 
   // ── Generic image delete ──
   const handleDelete = async (endpoint, key) => {
-    if (!window.confirm('Delete karna chahte ho?')) return;
+    if (!window.confirm('Are you sure you want to delete this?')) return;
     try {
       await api.delete(endpoint);
       setSchool(s => ({ ...s, [key]: null }));
       toast.success('Deleted!');
     } catch {
-      toast.error('Delete nahi hua');
+      toast.error('Failed to delete');
     }
   };
 
@@ -195,7 +195,7 @@ export default function SchoolSettings() {
     if (pFilterRole) params.set('role', pFilterRole);
     api.get('/principal/users?' + params.toString())
       .then(r => setPUsers(r.data.users || []))
-      .catch(() => toast.error('Users load nahi hue'))
+      .catch(() => toast.error('Failed to load Users'))
       .finally(() => setPUsersLoading(false));
   };
 
@@ -282,7 +282,7 @@ export default function SchoolSettings() {
             <div>
               <h2 className="page-title">⚙️ School Settings</h2>
               <p className="page-subtitle">
-                School ki information, logo aur signatures manage karo
+                Manage school information, institutional logo, and authorized signatures
               </p>
             </div>
             {/* Quick preview badges */}
@@ -330,7 +330,7 @@ export default function SchoolSettings() {
                 <div className="card-header">
                   <h4 style={{ margin: 0 }}>🏫 School Information</h4>
                   <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b' }}>
-                    Yeh information ID cards, PDFs aur reports mein use hoti hai
+                    This information appears on ID cards, generated PDFs, and official reports
                   </p>
                 </div>
                 <div className="card-body" style={{ padding: '24px' }}>
@@ -482,10 +482,10 @@ export default function SchoolSettings() {
                 borderRadius: 10, padding: '12px 18px', marginBottom: 24,
                 fontSize: 12, color: '#1e40af', lineHeight: 1.7,
               }}>
-                <strong>📌 Signature upload kaise karein:</strong><br />
-                Principal/Director white paper pe signature karein → phone se photo lein →
-                sirf signature area crop karein → upload karein.
-                PDF mein white background automatically transparent ho jaata hai.
+                <strong>📌 How to upload authorized signatures:</strong><br />
+                Sign on clean white paper → capture a clear photo →
+                crop the signature area cleanly → upload image.
+                White background is automatically rendered transparent on PDF reports.
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
@@ -493,7 +493,7 @@ export default function SchoolSettings() {
                 {/* Logo */}
                 <UploadBox
                   label="School Logo"
-                  sublabel="PNG/JPG — white/transparent bg best hai"
+                  sublabel="PNG/JPG — PNG/JPG — white or transparent background recommended"
                   currentUrl={school?.logo_url}
                   uploading={uploading.logo}
                   onUpload={file => handleUpload(file, '/principal/school/logo', 'logo')}
@@ -503,7 +503,7 @@ export default function SchoolSettings() {
                 {/* Principal Signature */}
                 <UploadBox
                   label="Principal Signature"
-                  sublabel="White paper pe sign karo, crop karke upload karo"
+                  sublabel="Sign on clean white paper, crop, and upload signature"
                   currentUrl={school?.principal_signature_url}
                   uploading={uploading.principal_sig}
                   onUpload={file => handleUpload(file, '/principal/school/principal-signature', 'principal_sig')}
@@ -527,7 +527,7 @@ export default function SchoolSettings() {
                 borderRadius: 10, padding: '14px 18px', marginTop: 24,
                 fontSize: 12, color: '#166534',
               }}>
-                <strong>✅ Yeh images automatically use hoti hain:</strong>
+                <strong>✅ These images are automatically applied across official documents:</strong>
                 <ul style={{ margin: '8px 0 0', paddingLeft: 18, lineHeight: 1.9 }}>
                   <li>Student ID Cards — school logo (front) + principal signature (back)</li>
                   <li>Employee ID Cards — school logo (front)</li>

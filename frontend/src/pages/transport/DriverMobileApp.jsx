@@ -71,7 +71,7 @@ export default function DriverMobileApp() {
       })
       .catch(err => {
         console.error('Failed to load driver home:', err);
-        toast.error(err.response?.data?.message || 'Data load nahi hua — dobara try karo');
+        toast.error(err.response?.data?.message || 'Failed to load data — please try again');
       })
       .finally(() => setLoading(false));
   }, []);
@@ -172,7 +172,7 @@ export default function DriverMobileApp() {
           longitude: pos.coords.longitude,
           speed: pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0,
         }),
-        () => toast.error('Location access nahi mila — GPS on karo'),
+        () => toast.error('Location access denied — please enable GPS'),
         { enableHighAccuracy: true, maximumAge: 4000 }
       );
 
@@ -223,10 +223,10 @@ export default function DriverMobileApp() {
 
   function getCurrentPosition() {
     return new Promise((resolve, reject) => {
-      if (!navigator.geolocation) { reject(new Error('GPS available nahi hai')); return; }
+      if (!navigator.geolocation) { reject(new Error('GPS is not available on this device')); return; }
       navigator.geolocation.getCurrentPosition(
         pos => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
-        () => reject(new Error('Location nahi mili — GPS on karo')),
+        () => reject(new Error('Unable to get location — please enable GPS')),
         { enableHighAccuracy: true, timeout: 10000 }
       );
     });
@@ -240,9 +240,9 @@ export default function DriverMobileApp() {
       const newTrip = r.data.data;
       setTrip(newTrip);
       await loadTripStops(newTrip.id);
-      toast.success('Trip shuru ho gayi 🚌');
+      toast.success('Trip started successfully 🚌');
     } catch (err) {
-      toast.error(err.response?.data?.message || err.message || 'Trip start nahi hui');
+      toast.error(err.response?.data?.message || err.message || 'Failed to start trip');
     }
     setBusy(false);
   }
@@ -252,9 +252,9 @@ export default function DriverMobileApp() {
     try {
       const r = await transportApi.driver.pauseTrip(trip.id);
       setTrip(r.data.data);
-      toast.success('Trip pause ho gayi');
+      toast.success('Trip pause completed successfully');
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Nahi hua');
+      toast.error(err.response?.data?.message || 'Action failed');
     }
     setBusy(false);
   }
@@ -264,26 +264,26 @@ export default function DriverMobileApp() {
     try {
       const r = await transportApi.driver.resumeTrip(trip.id);
       setTrip(r.data.data);
-      toast.success('Trip fir se shuru');
+      toast.success('Trip resumed successfully');
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Nahi hua');
+      toast.error(err.response?.data?.message || 'Action failed');
     }
     setBusy(false);
   }
 
   async function handleEnd() {
-    if (!window.confirm('Trip khatam karni hai? / Complete Journey?')) return;
+    if (!window.confirm('Are you sure you want to end this trip and complete journey?')) return;
     setBusy(true);
     try {
       const pos = await getCurrentPosition().catch(() => ({ latitude: null, longitude: null }));
       await transportApi.driver.endTrip(trip.id, pos);
-      toast.success('Trip khatam ✅');
+      toast.success('Trip Completed Successfully ✅');
       setTrip(null);
       setElapsed(0);
       setStops([]);
       loadHome();
     } catch (err) {
-      toast.error(err.response?.data?.message || err.message || 'Nahi hua');
+      toast.error(err.response?.data?.message || err.message || 'Action failed');
     }
     setBusy(false);
   }
@@ -294,9 +294,9 @@ export default function DriverMobileApp() {
     try {
       const r = await transportApi.driver.sos(trip.id);
       setTrip(r.data.data);
-      toast.success('🚨 SOS alert bhej diya gaya — madad aa rahi hai');
+      toast.success('🚨 SOS emergency alert broadcasted — assistance is en route');
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Nahi hua');
+      toast.error(err.response?.data?.message || 'Action failed');
     }
     setBusy(false);
   }
@@ -308,9 +308,9 @@ export default function DriverMobileApp() {
       setTrip(r.data.data);
       setShowBreakdown(false);
       setBreakdownRemarks('');
-      toast.success('Breakdown report ho gayi');
+      toast.success('Breakdown report completed successfully');
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Nahi hua');
+      toast.error(err.response?.data?.message || 'Action failed');
     }
     setBusy(false);
   }
@@ -344,7 +344,7 @@ export default function DriverMobileApp() {
       const label = eventType === 'PICKED_UP' ? 'Picked Up 🟢' : eventType === 'DROPPED_OFF' ? 'Dropped Off 🔵' : 'Marked Absent 🔴';
       toast.success(label);
     } catch (err) {
-      toast.error('Record nahi hua — retry karo');
+      toast.error('Failed to record — please retry');
     }
   };
 
@@ -423,7 +423,7 @@ export default function DriverMobileApp() {
             }}>
               <div style={{ fontSize: '64px', marginBottom: '16px' }}>🚌</div>
               <h2 style={{ fontSize: '24px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', margin: '0 0 8px' }}>
-                Koi Vehicle Assign Nahi Hai
+                No Vehicle Currently Assigned
               </h2>
               <p style={{ fontSize: '15px', color: darkMode ? '#94a3b8' : '#64748b', margin: '0 0 20px' }}>
                 No vehicle assigned to your profile. Please contact School Transport Manager or Admin.
@@ -752,7 +752,7 @@ export default function DriverMobileApp() {
               <div style={{
                 display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', marginBottom: '20px'
               }}>
-                {/* 1. Onboard / Bus Mein Hain */}
+                {/* 1. Onboard */}
                 <div
                   role="button"
                   tabIndex={0}
@@ -772,7 +772,7 @@ export default function DriverMobileApp() {
                   }}
                 >
                   <div style={{ fontSize: '11px', fontWeight: 800, color: '#10b981', letterSpacing: '0.04em' }}>
-                    🟢 BUS MEIN HAIN
+                    🟢 ONBOARD BUS
                   </div>
                   <div style={{ fontSize: '26px', fontWeight: 900, color: '#10b981', marginTop: '2px' }}>
                     {pickedUpCount}
@@ -812,7 +812,7 @@ export default function DriverMobileApp() {
                   </div>
                 </div>
 
-                {/* 3. Absent / Nahi Aaye */}
+                {/* 3. Absent */}
                 <div
                   role="button"
                   tabIndex={0}
@@ -837,11 +837,11 @@ export default function DriverMobileApp() {
                     {absentCount}
                   </div>
                   <div style={{ fontSize: '10.5px', color: darkMode ? '#94a3b8' : '#dc2626', fontWeight: 600 }}>
-                    Ghar Pe Hain
+                    At Home
                   </div>
                 </div>
 
-                {/* 4. Pending / Baki Hain */}
+                {/* 4. Pending */}
                 <div
                   role="button"
                   tabIndex={0}
@@ -860,7 +860,7 @@ export default function DriverMobileApp() {
                   }}
                 >
                   <div style={{ fontSize: '11px', fontWeight: 800, color: '#f59e0b', letterSpacing: '0.04em' }}>
-                    ⏳ BAKI HAIN
+                    ⏳ PENDING PICKUP
                   </div>
                   <div style={{ fontSize: '26px', fontWeight: 900, color: '#f59e0b', marginTop: '2px' }}>
                     {pendingCount}
@@ -976,7 +976,7 @@ export default function DriverMobileApp() {
                         color: manifestFilter === 'ONBOARD' ? '#ffffff' : (darkMode ? '#94a3b8' : '#475569')
                       }}
                     >
-                      🟢 Bus Mein Kaun Hain ({pickedUpCount})
+                      🟢 Onboard Passenger List ({pickedUpCount})
                     </button>
 
                     <button
@@ -998,7 +998,7 @@ export default function DriverMobileApp() {
                         color: manifestFilter === 'ALL' ? '#ffffff' : (darkMode ? '#94a3b8' : '#475569')
                       }}
                     >
-                      👥 Sabhi Passengers ({allStudents.length})
+                      👥 All Passengers ({allStudents.length})
                     </button>
                   </div>
 
@@ -1027,16 +1027,16 @@ export default function DriverMobileApp() {
                     </div>
                     <div style={{ fontSize: '16px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
                       {manifestFilter === 'ONBOARD'
-                        ? 'Abhi Bus Mein Koi Baccha Nahi Hai'
+                        ? 'No students currently onboard'
                         : manifestFilter === 'DROPPED'
-                        ? 'Abhi Tak Koi Baccha Drop Nahi Hua Hai'
+                        ? 'No students deboarded yet'
                         : manifestFilter === 'CURRENT_STOP'
-                        ? 'Is Stop Pe Koi Baccha Assigned Nahi Hai'
-                        : 'Koi Record Nahi Mila'}
+                        ? 'No students assigned to this stop'
+                        : 'No records found'}
                     </div>
                     <p style={{ fontSize: '13px', margin: '4px 0 0' }}>
                       {manifestFilter === 'ONBOARD'
-                        ? 'Bacchon ko board karne ke liye "🟢 Bus Mein Liya" button dabayein.'
+                        ? 'To board students, click "🟢 Board Bus".'
                         : 'Check other tabs or proceed with journey.'}
                     </p>
                   </div>
@@ -1088,7 +1088,7 @@ export default function DriverMobileApp() {
                                   background: isOnboard ? '#10b98120' : isDropped ? '#3b82f620' : isAbsent ? '#ef444420' : '#f1f5f9',
                                   color: isOnboard ? '#10b981' : isDropped ? '#3b82f6' : isAbsent ? '#ef4444' : '#64748b'
                                 }}>
-                                  {isOnboard ? '🟢 Bus Mein Hai' : isDropped ? '🔵 Drop Ho Gaya' : isAbsent ? '🔴 Absent' : '⏳ Baki Hai'}
+                                  {isOnboard ? '🟢 Onboard' : isDropped ? '🔵 Deboarded' : isAbsent ? '🔴 Absent' : '⏳ Pending'}
                                 </span>
                               </div>
                               <div style={{ fontSize: '13px', color: darkMode ? '#94a3b8' : '#64748b', fontWeight: 600 }}>
@@ -1121,7 +1121,7 @@ export default function DriverMobileApp() {
                                 boxShadow: isOnboard ? '0 4px 12px rgba(16,185,129,0.4)' : 'none'
                               }}
                             >
-                              <span>🟢 Bus Mein Liya</span>
+                              <span>🟢 Boarded Bus</span>
                             </button>
 
                             <button
@@ -1251,7 +1251,7 @@ export default function DriverMobileApp() {
                         Change Password
                       </h3>
                       <p style={{ margin: '2px 0 0', fontSize: '12px', color: darkMode ? '#94a3b8' : '#64748b' }}>
-                        Apna naya password set karein (Default: 12345)
+                        Set your new password (Default: 12345)
                       </p>
                     </div>
                   </div>
@@ -1269,15 +1269,15 @@ export default function DriverMobileApp() {
                 <form onSubmit={async (e) => {
                   e.preventDefault();
                   if (!pwForm.old_password || !pwForm.new_password) {
-                    toast.error('Purana aur naya password dono bharein');
+                    toast.error('Please enter both current and new password');
                     return;
                   }
                   if (pwForm.new_password.length < 6) {
-                    toast.error('Naya password kam se kam 6 characters ka hona chahiye');
+                    toast.error('New password must be at least 6 characters long');
                     return;
                   }
                   if (pwForm.new_password !== pwForm.confirm_password) {
-                    toast.error('Dono naye password match nahi kar rahe');
+                    toast.error('New passwords do not match');
                     return;
                   }
                   setPwSaving(true);
@@ -1286,11 +1286,11 @@ export default function DriverMobileApp() {
                       old_password: pwForm.old_password,
                       new_password: pwForm.new_password,
                     });
-                    toast.success('🎉 Password safaltapoorvak badal gaya!');
+                    toast.success('🎉 Password updated successfully!');
                     setShowChangePwModal(false);
                     setPwForm({ old_password: '', new_password: '', confirm_password: '' });
                   } catch (err) {
-                    toast.error(err.response?.data?.error || err.response?.data?.message || 'Password update nahi ho saka');
+                    toast.error(err.response?.data?.error || err.response?.data?.message || 'Failed to update Password');
                   } finally {
                     setPwSaving(false);
                   }
@@ -1338,7 +1338,7 @@ export default function DriverMobileApp() {
 
                     <div>
                       <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: darkMode ? '#cbd5e1' : '#475569', marginBottom: '6px' }}>
-                        Confirm New Password (Naya Password Dobara Dalein) *
+                        Confirm New Password *
                       </label>
                       <input
                         type={pwShowText ? 'text' : 'password'}

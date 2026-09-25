@@ -105,7 +105,7 @@ export default function MarksPage() {
   useEffect(() => {
     Promise.all([api.get('/principal/classes'), api.get('/principal/exams')])
       .then(([c, e]) => { setClasses(c.data||[]); setExams(e.data||[]); })
-      .catch(() => toast.error('Load nahi hua'));
+      .catch(() => toast.error('Failed to load marks'));
   }, []);
 
   /* ── toppers ── */
@@ -143,7 +143,7 @@ export default function MarksPage() {
         });
         setCells(c);
       })
-      .catch(() => toast.error('Grid load nahi hua'))
+      .catch(() => toast.error('Failed to load Grid'))
       .finally(() => setLoadingGrid(false));
   }, [classId, examId]);
 
@@ -186,21 +186,21 @@ export default function MarksPage() {
       loadGrid();
       fetchToppers();
     } catch {
-      toast.error('Save nahi hua');
+      toast.error('Failed to save');
     }
     setSaving(false);
   }
 
   /* ── publish ── */
   async function handlePublish() {
-    if (!window.confirm('Results publish karne ke baad students/parents dekh sakenge. Confirm?')) return;
+    if (!window.confirm('Publishing results will make them visible to students and parents. Confirm?')) return;
     setPublishing(true);
     try {
       await api.post('/marks/publish', { exam_id: examId, class_id: classId || undefined });
       toast.success('🎉 Results published!');
       loadGrid();
     } catch (err) {
-      toast.error(err?.response?.data?.error || 'Publish nahi hua');
+      toast.error(err?.response?.data?.error || 'Failed to publish');
     }
     setPublishing(false);
   }
@@ -392,7 +392,7 @@ export default function MarksPage() {
             <div className="card-body" style={{ padding:0 }}>
               {(!classId || !examId) ? (
                 <div style={{ padding:'48px 20px', textAlign:'center', color:'var(--neutral-6)', fontSize:13 }}>
-                  ☝️ Class aur Exam select karo — saare subjects ka grid dikhega
+                  ☝️ Select Class and Examination to view the subject grade matrix
                 </div>
               ) : loadingGrid ? (
                 <div style={{ padding:16 }}>
@@ -404,13 +404,13 @@ export default function MarksPage() {
                 </div>
               ) : !grid?.subjects?.length ? (
                 <div style={{ padding:'48px 20px', textAlign:'center', color:'var(--neutral-6)', fontSize:13 }}>
-                  ⚠️ Is class mein koi subject nahi — pehle{' '}
+                  ⚠️ No subjects assigned to this class — please add subjects in{' '}
                   <a href="/subjects" style={{ color:'#0176d3', fontWeight:600 }}>Subjects page</a>{' '}
-                  se subjects add karo
+                  Curriculum first
                 </div>
               ) : filteredRows.length === 0 ? (
                 <div style={{ padding:'48px 20px', textAlign:'center', color:'var(--neutral-6)', fontSize:13 }}>
-                  Koi student nahi mila
+                  No students found
                 </div>
               ) : (
                 <div style={{ overflowX:'auto', maxHeight:560, overflowY:'auto' }}>
@@ -432,7 +432,7 @@ export default function MarksPage() {
                                   type="number"
                                   value={maxEdits[subj.id] ?? subj.max_marks}
                                   onChange={e => setMaxEdits(prev => ({ ...prev, [subj.id]: e.target.value }))}
-                                  title="Max marks change karo"
+                                  title="Edit maximum marks"
                                 />
                               ) : (
                                 <span style={{ fontSize:11, fontWeight:700, color:'#0176d3' }}>{subj.max_marks}</span>

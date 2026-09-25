@@ -34,7 +34,7 @@ export default function Drivers() {
     if (statusFilter) params.set('status', statusFilter);
     api.get('/transport/drivers?' + params.toString())
       .then(r => { setDrivers(r.data.data || []); setPages(r.data.pages || 1); })
-      .catch(() => toast.error('Drivers load nahi hue'))
+      .catch(() => toast.error('Failed to load drivers'))
       .finally(() => setLoading(false));
   }, [page, search, statusFilter]);
 
@@ -66,7 +66,7 @@ export default function Drivers() {
   async function handleSave(e) {
     e.preventDefault();
     if (!form.name.trim() || !form.mobile_number.trim()) {
-      toast.error('Name aur mobile number required hain');
+      toast.error('Name and mobile phone number are required');
       return;
     }
 
@@ -101,19 +101,19 @@ export default function Drivers() {
       setShowForm(false);
       load();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Save nahi hua');
+      toast.error(err.response?.data?.message || 'Failed to save');
     }
     setSaving(false);
   }
 
   async function handleDelete(d) {
-    if (!window.confirm(`${d.name} ko delete karna hai?`)) return;
+    if (!window.confirm(`${d.name} Are you sure you want to delete this?`)) return;
     try {
       await api.delete(`/transport/drivers/${d.id}`);
       toast.success('Driver deleted');
       load();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Delete nahi hua');
+      toast.error(err.response?.data?.message || 'Failed to delete');
     }
   }
 
@@ -124,7 +124,7 @@ export default function Drivers() {
       toast.success(`Driver ${newStatus.toLowerCase()}`);
       load();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Update nahi hua');
+      toast.error(err.response?.data?.message || 'Failed to update');
     }
   }
 
@@ -170,7 +170,7 @@ export default function Drivers() {
             {loading ? (
               <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Loading...</div>
             ) : drivers.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Koi driver nahi mila</div>
+              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>No drivers found</div>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>

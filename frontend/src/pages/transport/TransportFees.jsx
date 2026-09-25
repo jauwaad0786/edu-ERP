@@ -76,7 +76,7 @@ export default function TransportFees() {
     setLoadingFines(true);
     transportApi.fines.list()
       .then(r => setFines(r.data.data || []))
-      .catch(() => toast.error('Fines load nahi hue'))
+      .catch(() => toast.error('Failed to load Fines'))
       .finally(() => setLoadingFines(false));
   }, []);
 
@@ -84,7 +84,7 @@ export default function TransportFees() {
     setLoadingStructures(true);
     transportApi.fees.listStructures()
       .then(r => setStructures(r.data.data || []))
-      .catch(() => toast.error('Fee structures load nahi hui'))
+      .catch(() => toast.error('Failed to load fee structures'))
       .finally(() => setLoadingStructures(false));
   }, []);
 
@@ -96,7 +96,7 @@ export default function TransportFees() {
     if (routeFilter) params.route_id = routeFilter;
     transportApi.fees.listRecords(params)
       .then(r => { setRecords(r.data.data || []); setTotal(r.data.total || 0); })
-      .catch(() => toast.error('Fee records load nahi hue'))
+      .catch(() => toast.error('Failed to load Fee records'))
       .finally(() => setLoadingRecords(false));
   }, [page, statusFilter, periodFilter, routeFilter]);
 
@@ -124,8 +124,8 @@ export default function TransportFees() {
   }
   async function handleSaveStruct(e) {
     e.preventDefault();
-    if (!structForm.name.trim()) { toast.error('Name required hai'); return; }
-    if (!structForm.amount || Number(structForm.amount) <= 0) { toast.error('Amount valid hona chahiye'); return; }
+    if (!structForm.name.trim()) { toast.error('Name is required'); return; }
+    if (!structForm.amount || Number(structForm.amount) <= 0) { toast.error('Please enter a valid amount'); return; }
 
     setSavingStruct(true);
     const payload = {
@@ -146,26 +146,26 @@ export default function TransportFees() {
       setShowStructForm(false);
       loadStructures();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Save nahi hua');
+      toast.error(err.response?.data?.message || 'Failed to save');
     }
     setSavingStruct(false);
   }
   async function handleDeleteStruct(s) {
-    if (!window.confirm(`"${s.name}" ko delete karna hai?`)) return;
+    if (!window.confirm(`"${s.name}" Are you sure you want to delete this?`)) return;
     try {
       await transportApi.fees.removeStructure(s.id);
       toast.success('Structure deleted');
       loadStructures();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Delete nahi hua');
+      toast.error(err.response?.data?.message || 'Failed to delete');
     }
   }
 
   // ── Fine Actions ──
   async function handleSaveFine(e) {
     e.preventDefault();
-    if (!fineForm.student_id) { toast.error('Student select karein'); return; }
-    if (!fineForm.amount || Number(fineForm.amount) <= 0) { toast.error('Valid fine amount enter karein'); return; }
+    if (!fineForm.student_id) { toast.error('Please select a student'); return; }
+    if (!fineForm.amount || Number(fineForm.amount) <= 0) { toast.error('Please enter a valid fine amount'); return; }
 
     setSavingFine(true);
     try {
@@ -180,7 +180,7 @@ export default function TransportFees() {
       setFineForm({ student_id: '', amount: '', fine_type: 'LATE_PAYMENT', reason: '' });
       loadFines();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Fine create nahi hua');
+      toast.error(err.response?.data?.message || 'Failed to assess fine');
     }
     setSavingFine(false);
   }
@@ -188,7 +188,7 @@ export default function TransportFees() {
   async function handleCollectFine(e) {
     e.preventDefault();
     if (!collectFineForm.amount_paid || Number(collectFineForm.amount_paid) <= 0) {
-      toast.error('Valid amount enter karein'); return;
+      toast.error('Please enter a valid amount'); return;
     }
     try {
       await transportApi.fines.collect(collectFineRecord.id, {
@@ -201,14 +201,14 @@ export default function TransportFees() {
       loadFines();
       loadRecords();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Payment collect nahi hua');
+      toast.error(err.response?.data?.message || 'Failed to collect payment');
     }
   }
 
   async function handleWaiveFine(e) {
     e.preventDefault();
     if (!waiveFineForm.waiver_amount || Number(waiveFineForm.waiver_amount) <= 0) {
-      toast.error('Valid waiver amount enter karein'); return;
+      toast.error('Please enter a valid waiver amount'); return;
     }
     try {
       await transportApi.fines.waive(waiveFineRecord.id, {
@@ -220,7 +220,7 @@ export default function TransportFees() {
       loadFines();
       loadRecords();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Waive nahi hua — sirf Principal kar sakte hain');
+      toast.error(err.response?.data?.message || 'Waiver failed — permission restricted to Principal');
     }
   }
 
@@ -232,8 +232,8 @@ export default function TransportFees() {
 
   async function handleGenerate(e) {
     e.preventDefault();
-    if (!generateForm.fee_structure_id) { toast.error('Fee structure select karein'); return; }
-    if (!generateForm.period_label.trim()) { toast.error('Period label required hai (e.g. "April 2026")'); return; }
+    if (!generateForm.fee_structure_id) { toast.error('Please select a fee structure'); return; }
+    if (!generateForm.period_label.trim()) { toast.error('Period label is required (e.g., "April 2026")'); return; }
 
     setGenerating(true);
     try {
@@ -243,7 +243,7 @@ export default function TransportFees() {
       setGenerateForm(EMPTY_GENERATE);
       loadRecords();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Generate nahi hua');
+      toast.error(err.response?.data?.message || 'Bill generation failed');
     }
     setGenerating(false);
   }
@@ -258,7 +258,7 @@ export default function TransportFees() {
   }
   async function handleCollect(e) {
     e.preventDefault();
-    if (!collectForm.amount_paid || Number(collectForm.amount_paid) <= 0) { toast.error('Amount paid required hai'); return; }
+    if (!collectForm.amount_paid || Number(collectForm.amount_paid) <= 0) { toast.error('Amount paid is required'); return; }
     setCollecting(true);
     try {
       await transportApi.fees.collect(collectRecord.id, {
@@ -272,7 +272,7 @@ export default function TransportFees() {
       setCollectRecord(null);
       loadRecords();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Payment collect nahi hua');
+      toast.error(err.response?.data?.message || 'Failed to collect payment');
     }
     setCollecting(false);
   }
@@ -284,7 +284,7 @@ export default function TransportFees() {
   }
   async function handleWaive(e) {
     e.preventDefault();
-    if (waiveForm.waiver === '' || Number(waiveForm.waiver) < 0) { toast.error('Waiver amount valid hona chahiye'); return; }
+    if (waiveForm.waiver === '' || Number(waiveForm.waiver) < 0) { toast.error('Waiver amount must be valid'); return; }
     setWaiving(true);
     try {
       await transportApi.fees.waive(waiveRecord.id, { waiver: Number(waiveForm.waiver), remarks: waiveForm.remarks });
@@ -292,7 +292,7 @@ export default function TransportFees() {
       setWaiveRecord(null);
       loadRecords();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Waive nahi hua — sirf Principal kar sakte hain');
+      toast.error(err.response?.data?.message || 'Waiver failed — permission restricted to Principal');
     }
     setWaiving(false);
   }
@@ -304,7 +304,7 @@ export default function TransportFees() {
       const r = await transportApi.fees.transactions(record.id);
       setTxns(r.data.data || []);
     } catch {
-      toast.error('Transactions load nahi hui');
+      toast.error('Failed to load Transactions');
     }
   }
 
@@ -374,7 +374,7 @@ export default function TransportFees() {
               {loadingStructures ? (
                 <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Loading...</div>
               ) : structures.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Koi fee structure nahi mila</div>
+                <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>No fee structures found</div>
               ) : (
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead>
@@ -443,7 +443,7 @@ export default function TransportFees() {
                 {loadingRecords ? (
                   <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Loading...</div>
                 ) : records.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Koi fee record nahi mila</div>
+                  <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>No fee records found</div>
                 ) : (
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead>
@@ -846,7 +846,7 @@ export default function TransportFees() {
                   {routes.map(r => <option key={r.id} value={r.id}>Route: {r.name}</option>)}
                 </select>
                 <div style={{ fontSize: 11, color: '#64748b', marginTop: 3 }}>
-                  Specific route select karne se New Admission aur Generate Fees me yehi rate auto-apply hoga.
+                  Selecting route auto-applies this fee structure during admission and fee generation.
                 </div>
               </div>
               <div style={{ marginTop: 12 }}>
@@ -915,8 +915,8 @@ export default function TransportFees() {
                   onChange={e => setGenerateForm(f => ({ ...f, due_date: e.target.value }))} />
               </div>
               <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 10 }}>
-                Ye is route ke sabhi ACTIVE transport students ke liye fees generate karega.
-                Jo already billed hain unhe safe skip kiya jayega.
+                Generates transport fee bills for all active students on this route.
+                Students with generated bills for this period will be skipped.
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
                 <button type="button" onClick={() => setShowGenerate(false)} style={{
@@ -1001,7 +1001,7 @@ export default function TransportFees() {
             </div>
             <form onSubmit={handleWaive} className="modal-body">
               <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 10 }}>
-                Sirf Principal waiver apply kar sakte hain.
+                Only the Principal is authorized to grant fee waivers.
               </div>
               <div>
                 <label style={{ fontSize: 12, fontWeight: 600 }}>Waiver Amount (₹) *</label>
@@ -1039,7 +1039,7 @@ export default function TransportFees() {
             </div>
             <div className="modal-body">
               {txns.length === 0 ? (
-                <p style={{ fontSize: 12, color: '#94a3b8' }}>Koi payment nahi hua abhi tak</p>
+                <p style={{ fontSize: 12, color: '#94a3b8' }}>No payments recorded yet</p>
               ) : txns.map(t => (
                 <div key={t.id} style={{ fontSize: 12, padding: '10px 0', borderBottom: '1px solid #f1f5f9' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>

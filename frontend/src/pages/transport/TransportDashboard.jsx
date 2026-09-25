@@ -46,7 +46,7 @@ export default function TransportDashboard() {
         setRecentActivities(ra.data.data);
         setUpcomingMaintenance(um.data.data);
       })
-      .catch(() => toast.error('Transport Dashboard load nahi hua'))
+      .catch(() => toast.error('Failed to load Transport Dashboard'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -204,7 +204,7 @@ export default function TransportDashboard() {
               <div style={{ fontSize: '20px', fontWeight: 700 }}>Loading Fleet Telemetry &amp; Routes...</div>
             </div>
           ) : !data ? (
-            <div style={{ textAlign: 'center', padding: '60px', color: '#94a3b8' }}>Data load nahi ho payi</div>
+            <div style={{ textAlign: 'center', padding: '60px', color: '#94a3b8' }}>Failed to load data</div>
           ) : (
             <>
               {/* ══ Bento Stat Cards Grid ══ */}
@@ -352,7 +352,7 @@ export default function TransportDashboard() {
                   </h4>
                   {recentActivities.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '30px', color: '#94a3b8', fontSize: '13px' }}>
-                      Koi recent transfer activity nahi hui
+                      No recent transfer activity
                     </div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -385,7 +385,7 @@ export default function TransportDashboard() {
                   </h4>
                   {upcomingMaintenance.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '30px', color: '#94a3b8', fontSize: '13px' }}>
-                      Koi open maintenance issue nahi hai 🎉
+                      No open vehicle maintenance issues 🎉
                     </div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>

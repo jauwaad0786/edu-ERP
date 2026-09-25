@@ -227,7 +227,7 @@ function EditStudentModal({ student, onClose, onSaved }) {
       toast.success('Student updated!');
       onSaved();
     } catch (e) {
-      toast.error(e.response?.data?.error || 'Save nahi hua');
+      toast.error(e.response?.data?.error || 'Failed to save');
     }
     setSaving(false);
   }
@@ -241,8 +241,8 @@ function EditStudentModal({ student, onClose, onSaved }) {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       setPhotoUrl(res.data.photo_url);
-      toast.success('Photo upload ho gayi!');
-    } catch { toast.error('Photo upload nahi hui'); }
+      toast.success('Photo uploaded successfully!');
+    } catch { toast.error('Failed to upload photo'); }
     setPhotoUploading(false);
   }
 
@@ -250,8 +250,8 @@ function EditStudentModal({ student, onClose, onSaved }) {
     try {
       await api.delete('/principal/students/' + student.id + '/photo');
       setPhotoUrl(null);
-      toast.success('Photo delete ho gayi');
-    } catch { toast.error('Photo delete nahi hui'); }
+      toast.success('Photo delete completed successfully');
+    } catch { toast.error('Failed to delete photo'); }
   }
 
   function f(field, val) { setForm(p => ({ ...p, [field]: val })); }
@@ -350,7 +350,7 @@ function EditEmployeeModal({ employee, onClose, onSaved }) {
       toast.success('Employee updated!');
       onSaved();
     } catch (e) {
-      toast.error(e.response?.data?.error || 'Save nahi hua');
+      toast.error(e.response?.data?.error || 'Failed to save');
     }
     setSaving(false);
   }
@@ -364,8 +364,8 @@ function EditEmployeeModal({ employee, onClose, onSaved }) {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       setPhotoUrl(res.data.photo_url);
-      toast.success('Photo upload ho gayi!');
-    } catch { toast.error('Photo upload nahi hui'); }
+      toast.success('Photo uploaded successfully!');
+    } catch { toast.error('Failed to upload photo'); }
     setPhotoUploading(false);
   }
 
@@ -373,8 +373,8 @@ function EditEmployeeModal({ employee, onClose, onSaved }) {
     try {
       await api.delete('/principal/teachers/' + employee.id + '/photo');
       setPhotoUrl(null);
-      toast.success('Photo delete ho gayi');
-    } catch { toast.error('Photo delete nahi hui'); }
+      toast.success('Photo delete completed successfully');
+    } catch { toast.error('Failed to delete photo'); }
   }
 
   function f(field, val) { setForm(p => ({ ...p, [field]: val })); }
@@ -486,7 +486,7 @@ export default function IDCardPage() {
         setSelId('');
         setPreview(null);
       }).catch(function() {
-        toast.error('Staff load nahi hue');
+        toast.error('Failed to load Staff');
       }).finally(function() { setLoading(false); });
       return;
     }
@@ -499,7 +499,7 @@ export default function IDCardPage() {
         setSelId('');
         setPreview(null);
       }).catch(function() {
-        toast.error('Employees load nahi hue');
+        toast.error('Failed to load Employees');
       }).finally(function() { setLoading(false); });
     } else {
       if (!selClass) { setItems([]); setSelId(''); setPreview(null); return; }
@@ -511,7 +511,7 @@ export default function IDCardPage() {
           setItems(list);
           setSelId('');
           setPreview(null);
-        }).catch(function() { toast.error('Students load nahi hue'); })
+        }).catch(function() { toast.error('Failed to load students'); })
         .finally(function() { setLoading(false); });
     }
   }, [selClass, isEmployee, isStaff]);
@@ -526,7 +526,7 @@ export default function IDCardPage() {
       ]).then(function(results) {
         var u = (results[0].data || []).find(function(x) { return String(x.id) === String(id); });
         setPreview({ student: { ...u, session: new Date().getFullYear() + '-' + (new Date().getFullYear()+1) }, school: results[1].data || {}, isEmployee: true });
-      }).catch(function() { toast.error('Preview load nahi hua'); });
+      }).catch(function() { toast.error('Failed to load Preview'); });
       return;
     }
     if (itemType === 'employee') {
@@ -551,17 +551,17 @@ export default function IDCardPage() {
           school: school,
           isEmployee: true,
         });
-      }).catch(function() { toast.error('Preview load nahi hua'); });
+      }).catch(function() { toast.error('Failed to load Preview'); });
     } else {
       api.get('/principal/id-cards/preview/' + id).then(function(r) {
         setPreview({ ...r.data, isEmployee: false });
-      }).catch(function() { toast.error('Preview load nahi hua'); });
+      }).catch(function() { toast.error('Failed to load Preview'); });
     }
   }, []);
 
   // Download single
   function downloadSingle(id, name) {
-    toast.loading('PDF ban raha hai...', { id: 'dl' });
+    toast.loading('Generating PDF...', { id: 'dl' });
     var endpoint = isEmployee
       ? '/principal/teachers/' + id + '/id-card'
       : '/principal/students/' + id + '/id-card';
@@ -573,15 +573,15 @@ export default function IDCardPage() {
       document.body.appendChild(link); link.click();
       link.parentNode.removeChild(link);
       window.URL.revokeObjectURL(url);
-      toast.success('ID Card download ho gayi!', { id: 'dl' });
+      toast.success('ID Card downloaded successfully!', { id: 'dl' });
     }).catch(function() { toast.error('Download failed', { id: 'dl' }); });
   }
 
   // Bulk download
   function downloadBulk() {
-    if (!isEmployee && !selClass) { toast.error('Pehle class select karo'); return; }
+    if (!isEmployee && !selClass) { toast.error('Please select a class first'); return; }
     setBulkLoading(true);
-    toast.loading('ZIP ban raha hai...', { id: 'bulk' });
+    toast.loading('Generating ZIP archive...', { id: 'bulk' });
     var endpoint = isEmployee
       ? '/principal/id-cards/bulk?type=employee'
       : '/principal/id-cards/bulk?class_id=' + selClass;
@@ -594,7 +594,7 @@ export default function IDCardPage() {
       document.body.appendChild(link); link.click();
       link.parentNode.removeChild(link);
       window.URL.revokeObjectURL(url);
-      toast.success('ZIP download ho gaya!', { id: 'bulk' });
+      toast.success('ZIP downloaded successfully!', { id: 'bulk' });
     }).catch(function() { toast.error('Bulk download failed', { id: 'bulk' }); })
     .finally(function() { setBulkLoading(false); });
   }
@@ -611,7 +611,7 @@ export default function IDCardPage() {
       setItems(prev => prev.filter(x => x.id !== id));
       if (String(selId) === String(id)) { setSelId(''); setPreview(null); }
     } catch (e) {
-      toast.error(e.response?.data?.error || 'Delete nahi hua');
+      toast.error(e.response?.data?.error || 'Failed to delete');
     }
     setDeleteConfirm(null);
   }
@@ -640,7 +640,7 @@ export default function IDCardPage() {
             <div>
               <h2 className="page-title">{pageTitle}</h2>
               <p className="page-subtitle">
-                {isEmployee ? 'Employee ID cards generate karo' : 'Student ID cards generate, preview aur download karo'}
+                {isEmployee ? 'Generate Employee ID cards' : 'Generate, preview, and download Student ID cards'}
               </p>
             </div>
           </div>
@@ -678,9 +678,9 @@ export default function IDCardPage() {
                 {/* Class Select — only for students */}
                 {!isEmployee && (
                   <div className="form-group" style={{ flex: 1, minWidth: 180, marginBottom: 0 }}>
-                    <label className="form-label" htmlFor="idcard-class-select">📚 Class Select Karo</label>
+                    <label className="form-label" htmlFor="idcard-class-select">📚 Select Class</label>
                     <select id="idcard-class-select" className="form-select" value={selClass} onChange={function(e) { setSelClass(e.target.value); }}>
-                      <option value="">— Class Choose Karo —</option>
+                      <option value="">— Select Class —</option>
                       {classes.map(function(c) {
                         return <option key={c.id} value={c.id}>{c.name} — {c.section}</option>;
                       })}
@@ -730,12 +730,12 @@ export default function IDCardPage() {
                 ) : !isEmployee && !selClass ? (
                   <div className="empty-state">
                     <div className="empty-state-icon">📚</div>
-                    <p>Pehle upar se class select karo</p>
+                    <p>Please select a class from the dropdown above</p>
                   </div>
                 ) : filtered.length === 0 ? (
                   <div className="empty-state">
                     <div className="empty-state-icon">{isEmployee ? '👔' : '🎒'}</div>
-                    <p>Koi {isEmployee ? 'employee' : 'student'} nahi mila</p>
+                    <p>No {isEmployee ? 'employees' : 'students'} found</p>
                   </div>
                 ) : (
                   <table>
@@ -844,9 +844,9 @@ export default function IDCardPage() {
                     <div style={{ padding: '32px 16px', textAlign: 'center', color: '#94a3b8' }}>
                       <div style={{ fontSize: 36, marginBottom: 10 }}>🪪</div>
                       <div style={{ fontWeight: 600, color: '#475569', fontSize: 13 }}>
-                        {isEmployee ? 'Employee' : 'Student'} select karo
+                        Select {isEmployee ? 'Employee' : 'Student'}
                       </div>
-                      <div style={{ fontSize: 12, marginTop: 4 }}>Table mein kisi bhi row pe click karo</div>
+                      <div style={{ fontSize: 12, marginTop: 4 }}>Click any row in the table to select</div>
                     </div>
                   ) : (
                     <>
@@ -888,7 +888,7 @@ export default function IDCardPage() {
           <div style={{ background: '#fff', borderRadius: 16, padding: '28px 28px', width: 380, boxShadow: '0 24px 64px rgba(0,0,0,0.2)' }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', marginBottom: 10 }}>🗑 Delete Confirm</div>
             <p style={{ fontSize: 13, color: '#475569', marginBottom: 20 }}>
-              Kya aap sure hain? Yeh action undo nahi ho sakta.
+              Are you sure? This action cannot be undone.
             </p>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button onClick={function() { setDeleteConfirm(null); }}
@@ -897,7 +897,7 @@ export default function IDCardPage() {
               </button>
               <button onClick={function() { doDelete(deleteConfirm); }}
                 style={{ padding: '9px 20px', borderRadius: 8, border: 'none', background: '#dc2626', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
-                Haan, Delete Karo
+                Yes, Delete
               </button>
             </div>
           </div>

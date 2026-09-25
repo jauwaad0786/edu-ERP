@@ -44,7 +44,7 @@ export default function VehicleMaintenance() {
     if (statusFilter) params.status = statusFilter;
     transportApi.maintenance.list(params)
       .then(r => { setRecords(r.data.data || []); setTotal(r.data.total || 0); })
-      .catch(() => toast.error('Maintenance records load nahi hue'))
+      .catch(() => toast.error('Failed to load Maintenance records'))
       .finally(() => setLoading(false));
   }, [page, vehicleFilter, statusFilter]);
 
@@ -60,8 +60,8 @@ export default function VehicleMaintenance() {
 
   async function handleSave(e) {
     e.preventDefault();
-    if (!form.vehicle_id) { toast.error('Vehicle select karo'); return; }
-    if (!form.problem.trim()) { toast.error('Problem describe karo'); return; }
+    if (!form.vehicle_id) { toast.error('Please select Vehicle'); return; }
+    if (!form.problem.trim()) { toast.error('Please describe the maintenance issue'); return; }
 
     setSaving(true);
     try {
@@ -74,11 +74,11 @@ export default function VehicleMaintenance() {
         remarks: form.remarks,
         photo_url: form.photo_url,
       });
-      toast.success('Maintenance reported — vehicle status Maintenance ho gaya');
+      toast.success('Maintenance reported — vehicle status set to Under Maintenance');
       setShowForm(false);
       load();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Save nahi hua');
+      toast.error(err.response?.data?.message || 'Failed to save');
     }
     setSaving(false);
   }
@@ -101,23 +101,23 @@ export default function VehicleMaintenance() {
         expected_completion: editForm.expected_completion || null,
         remarks: editForm.remarks,
       });
-      toast.success(editForm.status === 'COMPLETED' ? 'Marked completed — vehicle wapas Active ho gaya (agar aur koi open issue nahi hai)' : 'Updated');
+      toast.success(editForm.status === 'COMPLETED' ? 'Marked completed — vehicle status restored to Active' : 'Updated');
       setEditingRecord(null);
       load();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Update nahi hua');
+      toast.error(err.response?.data?.message || 'Failed to update');
     }
     setUpdating(false);
   }
 
   async function handleDelete(record) {
-    if (!window.confirm('Ye maintenance record delete karna hai?')) return;
+    if (!window.confirm('Are you sure you want to delete this maintenance record?')) return;
     try {
       await transportApi.maintenance.remove(record.id);
       toast.success('Deleted');
       load();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Delete nahi hua');
+      toast.error(err.response?.data?.message || 'Failed to delete');
     }
   }
 
@@ -169,7 +169,7 @@ export default function VehicleMaintenance() {
             {loading ? (
               <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Loading...</div>
             ) : records.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Koi maintenance record nahi mila</div>
+              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>No maintenance records found</div>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
@@ -335,7 +335,7 @@ export default function VehicleMaintenance() {
               </div>
               {editForm.status === 'COMPLETED' && (
                 <div style={{ fontSize: 11, color: '#16a34a', marginTop: 10 }}>
-                  Completed mark karne pe vehicle wapas "Active" ho jayega (agar isi vehicle ka koi aur open issue nahi hai).
+                  Marking completed restores vehicle to Active status provided no other open issues exist.
                 </div>
               )}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>

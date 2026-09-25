@@ -251,7 +251,7 @@ export default function LiveTracking() {
         }
       }
     } catch (err) {
-      toast.error('Live fleet tracking data load nahi hui');
+      toast.error('Failed to load Live fleet tracking data');
     }
     setLoading(false);
   }, []);
@@ -305,7 +305,7 @@ export default function LiveTracking() {
       });
 
       map.fitBounds(latlngs, { padding: [70, 70], maxZoom: 16 });
-    }).catch(() => toast.error('Vehicle live route trail load nahi hua'));
+    }).catch(() => toast.error('Failed to load Vehicle live route trail'));
   }, [selectedTripId]);
 
   function focusVehicle(t) {
@@ -488,7 +488,7 @@ export default function LiveTracking() {
               ) : filtered.length === 0 ? (
                 <div style={{ padding: 40, textAlign: 'center', color: textMuted }}>
                   <div style={{ fontSize: 24, marginBottom: 8 }}>🚌</div>
-                  {search ? 'Koi matching vehicle nahi mila' : 'Abhi koi vehicle active trip pe nahi hai'}
+                  {search ? 'No matching vehicles found' : 'No vehicles currently on active trips'}
                   <div style={{ fontSize: 12, marginTop: 8, color: '#0176d3' }}>
                     Map currently centered at School Campus (Muzaffarpur)
                   </div>

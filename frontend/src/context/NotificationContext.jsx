@@ -10,7 +10,7 @@ export function NotificationProvider({ children }) {
 
   const fetchCounts = useCallback(async () => {
   const token = localStorage.getItem('access_token');
-  if (!token) return;                          // token nahi → skip
+  if (!token) return;                          // skip if no token
   try {
     const [notifRes, chatRes] = await Promise.all([
       api.get('/support/notifications/unread-count'),

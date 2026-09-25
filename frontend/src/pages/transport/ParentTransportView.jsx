@@ -8,12 +8,12 @@ import toast from 'react-hot-toast';
 const POLL_MS = 10000; // refresh live location every 10s while a trip is running
 
 const TRIP_STATUS_LABEL = {
-  NOT_STARTED: 'Trip abhi shuru nahi hui',
-  RUNNING:     'Bus chal rahi hai',
-  PAUSED:      'Bus rukhi hui hai',
+  NOT_STARTED: 'Trip not yet started',
+  RUNNING:     'Bus is in transit',
+  PAUSED:      'Bus is currently stopped',
   SOS:         'Emergency — SOS active',
   BREAKDOWN:   'Vehicle breakdown',
-  COMPLETED:   'Aaj ki trip khatam ho chuki hai',
+  COMPLETED:   'Today's trip has concluded',
 };
 
 /**
@@ -41,7 +41,7 @@ export default function ParentTransportView() {
         setStudentId(r.data.id);
         setStudentName(r.data.name || '');
       })
-      .catch(() => setError('Student profile nahi mila'));
+      .catch(() => setError('Student profile not found'));
   }, []);
 
   // ── Step 2: fetch live transport status for that student ──
@@ -49,7 +49,7 @@ export default function ParentTransportView() {
     if (!studentId) return;
     transportApi.parent.childTrip(studentId)
       .then(r => { setTrip(r.data.data); setError(''); })
-      .catch(() => setError('Transport status load nahi hua'))
+      .catch(() => setError('Failed to load Transport status'))
       .finally(() => setLoading(false));
   }, [studentId]);
 
@@ -65,7 +65,7 @@ export default function ParentTransportView() {
   }, [trip, load]);
 
   function callDriver(mobile) {
-    if (!mobile) { toast.error('Driver ka number available nahi hai'); return; }
+    if (!mobile) { toast.error('Driver contact number is not available'); return; }
     window.location.href = `tel:${mobile}`;
   }
 
@@ -95,10 +95,10 @@ export default function ParentTransportView() {
             <div style={{ ...cardStyle, textAlign: 'center' }}>
               <div style={{ fontSize: 40, marginBottom: 10 }}>🚌</div>
               <div style={{ fontSize: 15, fontWeight: 700, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
-                {studentName ? `${studentName} ` : ''}Transport se abhi assigned nahi hai
+                {studentName ? `${studentName} ` : ''}is not currently enrolled in school transport
               </div>
               <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 6 }}>
-                School office se contact karo agar transport chahiye
+                Please contact school administration for transport enrollment
               </div>
             </div>
           ) : (
@@ -151,14 +151,14 @@ export default function ParentTransportView() {
               {trip.trip_status === 'SOS' && (
                 <div style={{ ...cardStyle, background: '#fef2f2', border: '1px solid #dc2626', textAlign: 'center' }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#dc2626' }}>
-                    🚨 Driver ne SOS emergency alert bheja hai. School inform ho chuki hai.
+                    🚨 Driver dispatched an SOS alert. Emergency services and administration are notified.
                   </div>
                 </div>
               )}
               {trip.trip_status === 'BREAKDOWN' && (
                 <div style={{ ...cardStyle, background: '#fffbeb', border: '1px solid #d97706', textAlign: 'center' }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#d97706' }}>
-                    🔧 Vehicle breakdown ho gayi hai. School alternate arrangement kar rahi hai.
+                    🔧 Vehicle breakdown reported. The school is arranging alternate transit.
                   </div>
                 </div>
               )}

@@ -24,7 +24,7 @@ export default function HostelRoomMap() {
         setHostels(r.data || []);
         if (r.data?.length) setSelectedHostel(r.data[0].id);
       })
-      .catch(() => toast.error('Hostels load nahi ho paye'));
+      .catch(() => toast.error('Failed to load hostels'));
   }, []);
 
   const loadMap = useCallback(() => {
@@ -41,7 +41,7 @@ export default function HostelRoomMap() {
           }
         }
       })
-      .catch(() => toast.error('Room map load nahi hua'))
+      .catch(() => toast.error('Failed to load Room map'))
       .finally(() => setLoading(false));
   }, [selectedHostel]);
 
@@ -120,7 +120,7 @@ export default function HostelRoomMap() {
             <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>Loading room map...</div>
           ) : mapData.length === 0 ? (
             <div style={{ ...cardStyle, textAlign: 'center', padding: 60, color: '#94a3b8' }}>
-              Is hostel mein koi building/room nahi bani abhi
+              No buildings or rooms configured in this hostel yet
             </div>
           ) : (
             mapData.map(building => (
@@ -258,7 +258,7 @@ export default function HostelRoomMap() {
                   👤 {selectedBed.student_name}
                 </div>
               ) : (
-                <div style={{ fontSize: 13, color: '#94a3b8' }}>Koi student allocated nahi hai</div>
+                <div style={{ fontSize: 13, color: '#94a3b8' }}>No student allocated to this room</div>
               )}
               {selectedBed.status === 'VACANT' && (
                 <button

@@ -18,7 +18,7 @@ export default function HostelDashboard() {
   useEffect(() => {
     api.get('/hostel/dashboard')
       .then(r => setData(r.data))
-      .catch(() => toast.error('Hostel Dashboard load nahi hua'))
+      .catch(() => toast.error('Failed to load Hostel Dashboard'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -120,7 +120,7 @@ export default function HostelDashboard() {
               <div style={{ fontSize: '20px', fontWeight: 700 }}>Loading Hostel Occupancy &amp; Data...</div>
             </div>
           ) : !data ? (
-            <div style={{ textAlign: 'center', padding: '60px', color: '#94a3b8' }}>Data load nahi ho payi</div>
+            <div style={{ textAlign: 'center', padding: '60px', color: '#94a3b8' }}>Failed to load data</div>
           ) : (
             <>
               {/* ══ Occupancy Progress Gauge Card ══ */}
@@ -233,7 +233,7 @@ export default function HostelDashboard() {
                 </h4>
                 {data.hostel_breakdown.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '36px', color: '#94a3b8', fontSize: '13px' }}>
-                    Koi hostel configure nahi hua abhi
+                    No hostels configured yet
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>

@@ -1513,7 +1513,7 @@ export default function NewAdmissionPage() {
                                             type="button"
                                             onClick={() => {
                                               if (!newCustomItem.name.trim() || !newCustomItem.amount) {
-                                                toast.error('Item name aur amount enter karein');
+                                                toast.error('Please enter item name and amount');
                                                 return;
                                               }
                                               setCustomFeeList(prev => [...prev, { ...newCustomItem, id: Date.now() }]);
@@ -2819,7 +2819,7 @@ export default function NewAdmissionPage() {
                     }}>
                       <div>
                         <strong style={{ fontSize: 14, color: form.is_first_school ? '#166534' : '#0B3B7B', display: 'block', marginBottom: 3 }}>
-                          Is this the student's 1st School? (Kya yeh student ka pehla school hai?)
+                          Is this the student's 1st School?
                         </strong>
                         <span style={{ fontSize: 12, color: '#475569' }}>
                           If Yes, previous school details and TC will be completely omitted from records and the 2-page admission form.
@@ -3176,13 +3176,13 @@ export default function NewAdmissionPage() {
                                   })}
                                 </select>
                                 <div style={{ fontSize: 11, color: '#64748b', marginTop: 3 }}>
-                                  Stop abhi select karein ya Transport Manager baad me Transport module se set/change karega.
+                                  Select pickup stop now or configure via Transport module later.
                                 </div>
                               </div>
                             )}
 
                             <div style={{ fontSize: 11.5, color: '#0369a1', background: '#e0f2fe', padding: '9px 12px', borderRadius: 8, lineHeight: 1.4 }}>
-                              ⚡ <strong>Centralized Sync:</strong> Student automatically Transport roster me enroll hoga, aur ₹{selectedRoute?.fare || selectedRoute?.fee_amount || 0} Step 7 (Fee Schedule) me add ho gaya hai.
+                              ⚡ <strong>Centralized Sync:</strong> Student is automatically enrolled in Transport roster, and ₹{selectedRoute?.fare || selectedRoute?.fee_amount || 0} has been added to Step 7 (Fee Schedule).
                             </div>
                           </div>
                         ) : (
@@ -3314,7 +3314,7 @@ export default function NewAdmissionPage() {
 
                             {hostelMonthlyRate > 0 && (
                               <div style={{ fontSize: 11.5, color: '#0369a1', background: '#e0f2fe', padding: '9px 12px', borderRadius: 8, lineHeight: 1.4 }}>
-                                ⚡ <strong>Centralized Hostel Sync:</strong> Monthly Accommodation ₹{hostelMonthlyRate.toLocaleString('en-IN')}/mo {hostelDeposit > 0 ? `+ Security Deposit ₹${hostelDeposit.toLocaleString('en-IN')} (One-time)` : ''} Step 7 (Fee Schedule) me auto-add ho gaya hai.
+                                ⚡ <strong>Centralized Hostel Sync:</strong> Monthly Accommodation ₹{hostelMonthlyRate.toLocaleString('en-IN')}/mo {hostelDeposit > 0 ? `+ Security Deposit ₹${hostelDeposit.toLocaleString('en-IN')} (One-time)` : ''} automatically added to Step 7 (Fee Schedule).
                               </div>
                             )}
 
@@ -3806,7 +3806,7 @@ export default function NewAdmissionPage() {
                                             type="button"
                                             onClick={() => {
                                               if (!newCustomItem.name.trim() || !newCustomItem.amount) {
-                                                toast.error('Item name aur amount enter karein');
+                                                toast.error('Please enter item name and amount');
                                                 return;
                                               }
                                               setCustomFeeList(prev => [...prev, { ...newCustomItem, id: Date.now() }]);

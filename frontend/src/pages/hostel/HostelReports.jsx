@@ -60,12 +60,12 @@ function OccupancyReport({ darkMode, cardStyle }) {
     setLoading(true);
     api.get('/hostel/reports/occupancy')
       .then(r => setData(r.data))
-      .catch(() => toast.error('Occupancy report load nahi hua'))
+      .catch(() => toast.error('Failed to load Occupancy report'))
       .finally(() => setLoading(false));
   }, []);
 
   if (loading) return <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>Loading...</div>;
-  if (!data) return <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>Data nahi mila</div>;
+  if (!data) return <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>No data found</div>;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -73,7 +73,7 @@ function OccupancyReport({ darkMode, cardStyle }) {
       <div style={cardStyle}>
         <h4 style={{ margin: '0 0 14px', fontSize: 14, color: darkMode ? '#f1f5f9' : '#0f172a' }}>Hostel-wise Occupancy</h4>
         {data.hostel_breakdown.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 20, color: '#94a3b8', fontSize: 13 }}>Koi hostel nahi bana</div>
+          <div style={{ textAlign: 'center', padding: 20, color: '#94a3b8', fontSize: 13 }}>No hostels found</div>
         ) : data.hostel_breakdown.map(h => (
           <div key={h.id} style={{ marginBottom: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 13 }}>
@@ -105,7 +105,7 @@ function OccupancyReport({ darkMode, cardStyle }) {
           </thead>
           <tbody>
             {data.building_breakdown.length === 0 ? (
-              <tr><td colSpan={4} style={{ textAlign: 'center', padding: 20, color: '#94a3b8' }}>Koi building nahi bani</td></tr>
+              <tr><td colSpan={4} style={{ textAlign: 'center', padding: 20, color: '#94a3b8' }}>No buildings configured</td></tr>
             ) : data.building_breakdown.map(b => (
               <tr key={b.id} style={{ borderBottom: `1px solid ${darkMode ? '#334155' : '#f1f5f9'}` }}>
                 <td style={{ padding: '9px 6px' }}>{b.hostel_name}</td>
@@ -327,7 +327,7 @@ function HistoryReport({ darkMode, cardStyle }) {
     const params = action !== 'ALL' ? `?action=${action}` : '';
     api.get('/hostel/reports/history' + params)
       .then(r => setData(r.data || []))
-      .catch(() => toast.error('History load nahi hui'))
+      .catch(() => toast.error('Failed to load History'))
       .finally(() => setLoading(false));
   }, [action]);
 
@@ -348,7 +348,7 @@ function HistoryReport({ darkMode, cardStyle }) {
         {loading ? (
           <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Loading...</div>
         ) : data.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Koi record nahi mila</div>
+          <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>No records found</div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>

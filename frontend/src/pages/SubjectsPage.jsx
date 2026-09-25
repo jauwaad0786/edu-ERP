@@ -64,7 +64,7 @@ export default function SubjectsPage() {
       }
     } catch (err) {
       console.error("fetchInitialData error:", err);
-      toast.error("Data load nahi hua — " + (err.response?.data?.error || err.message));
+      toast.error("Failed to load data — " + (err.response?.data?.error || err.message));
     }
     setLoading(false);
   }
@@ -88,7 +88,7 @@ export default function SubjectsPage() {
     e.preventDefault();
 
     if (!form.name || !form.class_id) {
-      toast.error("Subject name aur Class select karna zaroori hai");
+      toast.error("Subject name and Class selection are required");
       return;
     }
 
@@ -123,14 +123,14 @@ export default function SubjectsPage() {
         status: "Active",
       }));
     } catch (err) {
-      toast.error(err.response?.data?.error || "Subject create nahi hua");
+      toast.error(err.response?.data?.error || "Failed to create subject");
     }
 
     setLoading(false);
   }
 
   async function handleDeleteSubject(subjId, subjName) {
-    if (!window.confirm(`Kya aap subject '${subjName}' delete karna chahte hain?`)) return;
+    if (!window.confirm(`Are you sure you want to delete subject '${subjName}'?`)) return;
     setDeletingId(subjId);
     try {
       await api.delete(`/principal/subjects/${subjId}`);
@@ -192,7 +192,7 @@ export default function SubjectsPage() {
             <div>
               <h2 className="page-title">📚 Subjects Management</h2>
               <p className="page-subtitle">
-                Class-wise academic subjects configure karein, teachers assign karein aur curriculum manage karein
+                Configure class-wise academic subjects, assign faculty, and manage curriculum
               </p>
             </div>
 

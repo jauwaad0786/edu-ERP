@@ -72,7 +72,7 @@ export default function HostelTransfers() {
         });
         setAllocations(rows);
       })
-      .catch(() => toast.error('Allocations load nahi hue'))
+      .catch(() => toast.error('Failed to load Allocations'))
       .finally(() => setLoading(false));
   }, [hostelFilter, hostels]);
 
@@ -91,7 +91,7 @@ export default function HostelTransfers() {
   // detail on-demand when user clicks Transfer/Vacate.
   function openTransfer(row) {
     if (!row.allocation_id) {
-      toast.error('Allocation ID nahi mila — page refresh karke dobara try karo');
+      toast.error('Allocation ID not found — please refresh page and try again');
       return;
     }
     setTransferTarget(row);
@@ -132,10 +132,10 @@ export default function HostelTransfers() {
 
   async function confirmTransfer() {
     if (!transferTarget?.allocation_id) {
-      toast.error('Allocation ID missing — pehle student profile se transfer karo');
+      toast.error('Allocation ID missing — please initiate transfer from student profile');
       return;
     }
-    if (!tBedId) { toast.error('Naya bed select karo'); return; }
+    if (!tBedId) { toast.error('Please select Naya bed'); return; }
     setSubmitting(true);
     try {
       await api.post(`/hostel/admission/${transferTarget.allocation_id}/transfer`, {
@@ -145,7 +145,7 @@ export default function HostelTransfers() {
       setTransferTarget(null);
       loadAllocations();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Transfer fail hua');
+      toast.error(err.response?.data?.error || 'Transfer failed');
     }
     setSubmitting(false);
   }
@@ -161,7 +161,7 @@ export default function HostelTransfers() {
       setVacateTarget(null);
       loadAllocations();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Vacate fail hua');
+      toast.error(err.response?.data?.error || 'Vacate operation failed');
     }
   }
 
@@ -197,7 +197,7 @@ export default function HostelTransfers() {
             {loading ? (
               <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Loading...</div>
             ) : filteredAllocations.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Koi active allocation nahi mila</div>
+              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>No active allocations found</div>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>

@@ -119,7 +119,7 @@ export default function StudentsPage() {
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch {
-      toast.error('Admission card generate nahi hua');
+      toast.error('Failed to generate admission card');
     }
     setDownloading(null);
   }
@@ -208,7 +208,7 @@ export default function StudentsPage() {
       setStudents(prev => prev.filter(s => s.id !== deleteTarget.id));
       setDeleteTarget(null);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Delete nahi ho paya');
+      toast.error(err.response?.data?.error || 'Failed to delete student');
     }
     setDeleting(false);
   }
@@ -1070,7 +1070,7 @@ export default function StudentsPage() {
                         Collect Admission Fee &amp; Auto-Confirm
                       </div>
                       <div style={{ fontSize: 11.5, color: '#166534', marginTop: 2 }}>
-                        Fee collect hote hi status automatically <strong>CONFIRMED (ACTIVE)</strong> ho jayega aur receipt issue hogi.
+                        Upon fee collection, admission status updates to <strong>CONFIRMED (ACTIVE)</strong> and an official receipt is issued.
                       </div>
                     </div>
                   </div>
@@ -1103,7 +1103,7 @@ export default function StudentsPage() {
                         Complete Full Profile &amp; KYC Documents
                       </div>
                       <div style={{ fontSize: 11.5, color: '#1d4ed8', marginTop: 2 }}>
-                        Student photo, Aadhar documents, address, aur academic history fill / update karein.
+                        Update student photograph, national ID documents, address, and academic records.
                       </div>
                     </div>
                   </div>

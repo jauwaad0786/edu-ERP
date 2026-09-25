@@ -57,7 +57,7 @@ export default function HolidaysPage() {
       const res = await api.get('/principal/holidays');
       setHolidays(res.data || []);
     } catch {
-      flash('❌ Holidays load nahi hue', 'error');
+      flash('❌ Failed to load holidays', 'error');
     } finally {
       setLoading(false);
     }
@@ -87,33 +87,33 @@ export default function HolidaysPage() {
   async function saveHoliday(e) {
     e.preventDefault();
     if (!form.title || !form.date) {
-      flash('❌ Title aur date zaroori hain', 'error'); return;
+      flash('❌ Title and date are required', 'error'); return;
     }
     setSaving(true);
     try {
       if (editItem) {
         await api.put(`/principal/holidays/${editItem.id}`, form);
-        flash('✅ Holiday update ho gayi');
+        flash('✅ Holiday updated successfully');
       } else {
         await api.post('/principal/holidays', form);
-        flash('✅ Holiday add ho gayi');
+        flash('✅ Holiday added successfully');
       }
       setShowModal(false);
       load();
     } catch (err) {
-      flash(err.response?.data?.error || '❌ Save nahi hua', 'error');
+      flash(err.response?.data?.error || '❌ Failed to save', 'error');
     }
     setSaving(false);
   }
 
   async function deleteHoliday(id) {
-    if (!window.confirm('Yeh holiday delete karein?')) return;
+    if (!window.confirm('Are you sure you want to delete this holiday?')) return;
     try {
       await api.delete(`/principal/holidays/${id}`);
-      flash('✅ Holiday delete ho gayi');
+      flash('✅ Holiday deleted successfully');
       load();
     } catch {
-      flash('❌ Delete nahi hua', 'error');
+      flash('❌ Failed to delete', 'error');
     }
   }
 
@@ -157,7 +157,7 @@ export default function HolidaysPage() {
           <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <h2 className="page-title">Holiday Calendar</h2>
-              <p className="page-subtitle">School holidays, festivals aur events manage karo</p>
+              <p className="page-subtitle">Manage school holidays, academic calendar, and events</p>
             </div>
             <button className="btn btn-primary" onClick={openCreate}>
               + Add Holiday
@@ -226,9 +226,9 @@ export default function HolidaysPage() {
             <div className="card">
               <div className="empty-state">
                 <div className="empty-state-icon">📅</div>
-                <p>Koi holiday nahi mili</p>
+                <p>No holidays found</p>
                 <button className="btn btn-primary btn-sm" style={{ marginTop: 16 }} onClick={openCreate}>
-                  + Pehli Holiday Add Karo
+                  + Add First Holiday
                 </button>
               </div>
             </div>
@@ -425,7 +425,7 @@ export default function HolidaysPage() {
                 <div className="form-group">
                   <label className="form-label" htmlFor="hol-desc">Description (optional)</label>
                   <textarea id="hol-desc" className="form-textarea" rows={2}
-                    placeholder="Koi additional detail..."
+                    placeholder="Additional details..."
                     value={form.description}
                     onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                     style={{ width: '100%' }} />

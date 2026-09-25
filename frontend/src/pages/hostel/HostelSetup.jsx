@@ -36,7 +36,7 @@ export default function HostelSetup() {
   const loadHostels = useCallback(() => {
     setLoading(true);
     api.get('/hostel/hostels').then(r => setHostels(r.data || []))
-      .catch(() => toast.error('Hostels load nahi hue'))
+      .catch(() => toast.error('Failed to load Hostels'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -82,18 +82,18 @@ export default function HostelSetup() {
       setHostelModal(null);
       loadHostels();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Save fail hua');
+      toast.error(err.response?.data?.error || 'Failed to save');
     }
   }
 
   async function deleteHostel(id) {
-    if (!window.confirm('Ye hostel delete karna hai?')) return;
+    if (!window.confirm('Are you sure you want to delete this hostel?')) return;
     try {
       await api.delete(`/hostel/hostels/${id}`);
       toast.success('Hostel deleted');
       loadHostels();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Delete fail hua');
+      toast.error(err.response?.data?.error || 'Failed to delete');
     }
   }
 
@@ -106,18 +106,18 @@ export default function HostelSetup() {
       api.get(`/hostel/hostels/${hostelId}/buildings`).then(r => setBuildings(prev => ({ ...prev, [hostelId]: r.data || [] })));
       loadHostels();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Save fail hua');
+      toast.error(err.response?.data?.error || 'Failed to save');
     }
   }
 
   async function deleteBuilding(hostelId, id) {
-    if (!window.confirm('Ye building delete karni hai?')) return;
+    if (!window.confirm('Are you sure you want to delete this building?')) return;
     try {
       await api.delete(`/hostel/buildings/${id}`);
       toast.success('Building deleted');
       api.get(`/hostel/hostels/${hostelId}/buildings`).then(r => setBuildings(prev => ({ ...prev, [hostelId]: r.data || [] })));
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Delete fail hua');
+      toast.error(err.response?.data?.error || 'Failed to delete');
     }
   }
 
@@ -129,18 +129,18 @@ export default function HostelSetup() {
       setFloorModal(null);
       api.get(`/hostel/buildings/${buildingId}/floors`).then(r => setFloors(prev => ({ ...prev, [buildingId]: r.data || [] })));
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Save fail hua');
+      toast.error(err.response?.data?.error || 'Failed to save');
     }
   }
 
   async function deleteFloor(buildingId, id) {
-    if (!window.confirm('Ye floor delete karni hai?')) return;
+    if (!window.confirm('Are you sure you want to delete this floor?')) return;
     try {
       await api.delete(`/hostel/floors/${id}`);
       toast.success('Floor deleted');
       api.get(`/hostel/buildings/${buildingId}/floors`).then(r => setFloors(prev => ({ ...prev, [buildingId]: r.data || [] })));
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Delete fail hua');
+      toast.error(err.response?.data?.error || 'Failed to delete');
     }
   }
 
@@ -152,18 +152,18 @@ export default function HostelSetup() {
       setWingModal(null);
       api.get(`/hostel/floors/${floorId}/wings`).then(r => setWings(prev => ({ ...prev, [floorId]: r.data || [] })));
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Save fail hua');
+      toast.error(err.response?.data?.error || 'Failed to save');
     }
   }
 
   async function deleteWing(floorId, id) {
-    if (!window.confirm('Ye wing delete karni hai?')) return;
+    if (!window.confirm('Are you sure you want to delete this wing?')) return;
     try {
       await api.delete(`/hostel/wings/${id}`);
       toast.success('Wing deleted');
       api.get(`/hostel/floors/${floorId}/wings`).then(r => setWings(prev => ({ ...prev, [floorId]: r.data || [] })));
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Delete fail hua');
+      toast.error(err.response?.data?.error || 'Failed to delete');
     }
   }
 
@@ -175,19 +175,19 @@ export default function HostelSetup() {
       setRoomModal(null);
       api.get(`/hostel/floors/${floorId}/rooms`).then(r => setRooms(prev => ({ ...prev, [floorId]: r.data || [] })));
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Save fail hua');
+      toast.error(err.response?.data?.error || 'Failed to save');
     }
   }
 
   // NEW
   async function deleteRoom(floorId, id) {
-    if (!window.confirm('Ye room delete karna hai? (Sabhi beds bhi delete ho jayengi)')) return;
+    if (!window.confirm('Are you sure you want to delete this room? (All assigned beds will also be removed)')) return;
     try {
       await api.delete(`/hostel/rooms/${id}`);
       toast.success('Room deleted');
       api.get(`/hostel/floors/${floorId}/rooms`).then(r => setRooms(prev => ({ ...prev, [floorId]: r.data || [] })));
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Delete fail hua');
+      toast.error(err.response?.data?.error || 'Failed to delete');
     }
   }
 
@@ -195,11 +195,11 @@ export default function HostelSetup() {
   async function saveBulkFloors(buildingId, floorsList) {
     try {
       const { data } = await api.post(`/hostel/buildings/${buildingId}/floors/bulk`, { floors: floorsList });
-      toast.success(`${data.length} floors ban gayi`);
+      toast.success(`${data.length} floors created successfully`);
       setBulkFloorModal(null);
       api.get(`/hostel/buildings/${buildingId}/floors`).then(r => setFloors(prev => ({ ...prev, [buildingId]: r.data || [] })));
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Save fail hua');
+      toast.error(err.response?.data?.error || 'Failed to save');
     }
   }
 
@@ -211,7 +211,7 @@ export default function HostelSetup() {
       setBulkRoomModal(null);
       api.get(`/hostel/floors/${floorId}/rooms`).then(r => setRooms(prev => ({ ...prev, [floorId]: r.data || [] })));
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Save fail hua');
+      toast.error(err.response?.data?.error || 'Failed to save');
     }
   }
 
@@ -223,7 +223,7 @@ export default function HostelSetup() {
       setEditRoomModal(null);
       api.get(`/hostel/floors/${floorId}/rooms`).then(r => setRooms(prev => ({ ...prev, [floorId]: r.data || [] })));
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Update fail hua');
+      toast.error(err.response?.data?.error || 'Failed to update');
     }
   }
 
@@ -261,7 +261,7 @@ export default function HostelSetup() {
             <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>Loading...</div>
           ) : hostels.length === 0 ? (
             <div style={{ ...cardStyle, textAlign: 'center', padding: 50, color: '#94a3b8' }}>
-              Koi hostel nahi bana abhi — "+ New Hostel" se shuru karo
+              No hostels configured yet — click "+ New Hostel" to begin
             </div>
           ) : hostels.map(h => (
             <div key={h.id} style={{ ...cardStyle, marginBottom: 12 }}>

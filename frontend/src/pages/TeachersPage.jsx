@@ -31,11 +31,11 @@ export default function TeachersPage() {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
     load();
-    toast.success('Photo upload ho gayi!');
-    setMsg('✅ Photo upload ho gayi!');
+    toast.success('Photo uploaded successfully!');
+    setMsg('✅ Photo uploaded successfully!');
   } catch {
-    setMsg('❌ Photo upload nahi hui');
-    toast.error('Photo upload nahi hui');
+    setMsg('❌ Failed to upload photo');
+    toast.error('Failed to upload photo');
   }
   setPhotoUploading(null);
 }
@@ -44,9 +44,9 @@ async function deleteTeacherPhoto(teacherId) {
   try {
     await api.delete(`/principal/teachers/${teacherId}/photo`);
     load();
-    setMsg('✅ Photo delete ho gayi');
+    setMsg('✅ Photo deleted successfully');
   } catch {
-    setMsg('❌ Delete nahi hua');
+    setMsg('❌ Failed to delete');
   }
 }
 
@@ -167,7 +167,7 @@ async function deleteTeacherPhoto(teacherId) {
                         <div
                           style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
                           onClick={() => navigate(`/teachers/${t.id}`)}
-                          title="Profile dekhne ke liye click karein">
+                          title="Click to view profile">
                           <div style={{ position: 'relative', width: 32, height: 32 }}>
                             {t.photo_url
                               ? <img src={t.photo_url} alt={t.name}
@@ -375,7 +375,7 @@ async function deleteTeacherPhoto(teacherId) {
                   </div>
                 ))}
                 <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
-                  💡 Class teacher assign karna ho toh Classes page se kar sakte ho
+                  💡 Class teachers can be assigned via the Classes module
                 </div>
               </div>
               </div>
@@ -444,7 +444,7 @@ async function deleteTeacherPhoto(teacherId) {
                 borderRadius: 10, padding: '16px 20px', marginBottom: 14,
               }}>
                 <p style={{ fontSize: 12, color: '#166534', fontWeight: 600, marginBottom: 12 }}>
-                  📋 Teacher ko ye credentials share karein:
+                  📋 Share these credentials with the teacher:
                 </p>
                 {[
                   ['👤 Name',        createdCreds.name],

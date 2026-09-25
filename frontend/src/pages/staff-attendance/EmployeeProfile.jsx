@@ -26,7 +26,7 @@ export default function EmployeeProfile() {
     if (toDate) params.set('to_date', toDate);
     api.get(`/staff-attendance/employee/${userId}/history?${params.toString()}`)
       .then((r) => setData(r.data))
-      .catch(() => toast.error('Profile load nahi hui'))
+      .catch(() => toast.error('Failed to load Profile'))
       .finally(() => setLoading(false));
   }, [userId, fromDate, toDate]);
 
@@ -131,7 +131,7 @@ export default function EmployeeProfile() {
                     </thead>
                     <tbody>
                       {data.daily_history.length === 0 && (
-                        <tr><td style={td} colSpan={9}>Is range me koi record nahi mila.</td></tr>
+                        <tr><td style={td} colSpan={9}>No records found in this range.</td></tr>
                       )}
                       {data.daily_history.map((r) => (
                         <tr key={r.id}>
@@ -168,7 +168,7 @@ export default function EmployeeProfile() {
                     </thead>
                     <tbody>
                       {data.regularization_history.length === 0 && (
-                        <tr><td style={td} colSpan={7}>Koi regularization request nahi mili.</td></tr>
+                        <tr><td style={td} colSpan={7}>No regularization requests found.</td></tr>
                       )}
                       {data.regularization_history.map((r) => (
                         <tr key={r.id}>

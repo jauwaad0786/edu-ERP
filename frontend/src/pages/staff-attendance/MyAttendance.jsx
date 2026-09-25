@@ -27,7 +27,7 @@ export default function MyAttendance() {
     setLoading(true);
     api.get('/staff-attendance/my-status')
       .then((r) => setStatus(r.data))
-      .catch(() => toast.error('Status load nahi hua'))
+      .catch(() => toast.error('Failed to load Status'))
       .finally(() => setLoading(false));
   };
 
@@ -56,10 +56,10 @@ export default function MyAttendance() {
         accuracy: coords.accuracy,
         device: navigator.userAgent,
       });
-      toast.success('Check-in request bhej di gayi');
+      toast.success('Check-in request submitted successfully');
       load();
     } catch (err) {
-      toast.error(err?.response?.data?.error || err.message || 'Check-in fail ho gaya');
+      toast.error(err?.response?.data?.error || err.message || 'Check-in failed');
     } finally {
       setWorking(false);
     }
@@ -73,10 +73,10 @@ export default function MyAttendance() {
       await api.post('/staff-attendance/check-out', {
         latitude: coords.latitude, longitude: coords.longitude,
       });
-      toast.success('Check-out ho gaya');
+      toast.success('Check-out completed successfully');
       load();
     } catch (err) {
-      toast.error(err?.response?.data?.error || 'Check-out fail ho gaya');
+      toast.error(err?.response?.data?.error || 'Check-out failed');
     } finally {
       setWorking(false);
     }
@@ -93,11 +93,11 @@ export default function MyAttendance() {
           ? new Date(regForm.requested_check_out).toISOString()
           : null,
       });
-      toast.success('Regularization request bhej di gayi');
+      toast.success('Regularization request submitted successfully');
       setShowRegularize(false);
       load();
     } catch (err) {
-      toast.error(err?.response?.data?.error || 'Request fail ho gayi');
+      toast.error(err?.response?.data?.error || 'Request failed');
     } finally {
       setWorking(false);
     }
@@ -188,7 +188,7 @@ export default function MyAttendance() {
               )}
 
               {status?.check_in_time && status?.check_out_time && (
-                <div style={{ textAlign: 'center', color: muted, fontSize: 13 }}>Aaj ka attendance complete ho chuka hai. ✅</div>
+                <div style={{ textAlign: 'center', color: muted, fontSize: 13 }}>Today's attendance check-in and check-out are complete. ✅</div>
               )}
 
               {(status?.status === 'MISSING_CHECKOUT' || status?.check_in_time) && (

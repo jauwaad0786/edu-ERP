@@ -65,7 +65,7 @@ export default function LibraryReports() {
     setLoading(true);
     api.get('/library/reports/overdue')
       .then(r => setOverdue(r.data || []))
-      .catch(() => toast.error('Overdue report load nahi ho paya'))
+      .catch(() => toast.error('Failed to load overdue report'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -79,7 +79,7 @@ export default function LibraryReports() {
         setFines(r.data.data || []);
         setFineSummary(prev => ({ ...prev, total_collected: r.data.total_collected || 0 }));
       })
-      .catch(() => toast.error('Fine report load nahi ho payi'))
+      .catch(() => toast.error('Failed to load fine report'))
       .finally(() => setLoading(false));
   }, [fineFrom, fineTo]);
 
@@ -101,7 +101,7 @@ export default function LibraryReports() {
     setLoading(true);
     api.get('/library/reports/popular-books')
       .then(r => setPopular(r.data || []))
-      .catch(() => toast.error('Popular books report load nahi ho paya'))
+      .catch(() => toast.error('Failed to load popular books report'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -109,7 +109,7 @@ export default function LibraryReports() {
     setLoading(true);
     api.get('/library/reports/activity-log?limit=50')
       .then(r => setActivity(r.data || []))
-      .catch(() => toast.error('Activity log load nahi ho paya'))
+      .catch(() => toast.error('Failed to load activity log'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -129,7 +129,7 @@ export default function LibraryReports() {
     if (historyMonth) params.set('month', historyMonth);
     api.get('/library/issues?' + params.toString())
       .then(r => setHistoryData(r.data?.data || []))
-      .catch(() => toast.error('History load nahi ho payi'))
+      .catch(() => toast.error('Failed to load issue history'))
       .finally(() => setHistoryLoading(false));
   }, [historyClass, historyMonth, historyStatus]);
 
@@ -151,12 +151,12 @@ export default function LibraryReports() {
       await api.post(`/library/reports/overdue/${issueId}/remind`);
       toast.success('Reminder sent');
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Reminder nahi bheja ja saka');
+      toast.error(err.response?.data?.error || 'Failed to send reminder');
     }
   }
 
   function exportCSV(rows, filename, headers) {
-    if (!rows.length) { toast.error('Export karne ke liye data nahi hai'); return; }
+    if (!rows.length) { toast.error('No data available to export'); return; }
     const csvRows = [
       headers.map(h => h.label).join(','),
       ...rows.map(row => headers.map(h => `"${(row[h.key] ?? '').toString().replace(/"/g, '""')}"`).join(',')),
@@ -177,15 +177,15 @@ export default function LibraryReports() {
 
   async function collectPendingFine(fine) {
     const amt = parseFloat(getEditAmount(fine));
-    if (isNaN(amt) || amt <= 0) { toast.error('Sahi amount daalo'); return; }
+    if (isNaN(amt) || amt <= 0) { toast.error('Please enter a valid amount'); return; }
     setActingFineId(fine.id);
     try {
       await api.post(`/library/fines/${fine.id}/collect`, { amount: amt });
-      toast.success(`₹${amt} collect ho gaya — Fees Management mein bhi update ho gaya`);
+      toast.success(`₹${amt} collected successfully — updated in Fees Management`);
       loadPendingFines();
       loadFines();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Collect nahi ho paya');
+      toast.error(err.response?.data?.error || 'Failed to collect payment');
     }
     setActingFineId(null);
   }
@@ -199,7 +199,7 @@ export default function LibraryReports() {
       toast.success('Fine waived');
       loadPendingFines();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Waive nahi ho paya');
+      toast.error(err.response?.data?.error || 'Failed to waive fine');
     }
     setActingFineId(null);
   }
@@ -212,11 +212,11 @@ export default function LibraryReports() {
         add_replacement_copy: addCopy,
         remarks: addCopy ? 'Student ne naya copy la kar diya' : 'Replacement bina naye copy ke resolve kiya',
       });
-      toast.success(addCopy ? 'Fine resolved + naya copy library stock mein add ho gaya' : 'Fine resolved');
+      toast.success(addCopy ? 'Fine resolved and replacement copy added to library catalog' : 'Fine resolved');
       setReplaceModal(null);
       loadPendingFines();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Resolve nahi ho paya');
+      toast.error(err.response?.data?.error || 'Failed to resolve fine');
     }
     setActingFineId(null);
   }
@@ -233,9 +233,9 @@ export default function LibraryReports() {
   }, [manualMemberSearch]);
 
   async function submitManualFine() {
-    if (!manualSelectedMember) { toast.error('Member select karo'); return; }
+    if (!manualSelectedMember) { toast.error('Please select Member'); return; }
     const amt = parseFloat(manualAmount);
-    if (isNaN(amt) || amt <= 0) { toast.error('Sahi amount daalo'); return; }
+    if (isNaN(amt) || amt <= 0) { toast.error('Please enter a valid amount'); return; }
     setManualSaving(true);
     try {
       await api.post('/library/fines/manual', {
@@ -243,14 +243,14 @@ export default function LibraryReports() {
         reason: manualReason,
         amount: amt,
       });
-      toast.success('Fine add ho gayi — Fees Management mein bhi dikh jayegi');
+      toast.success('Fine added successfully — reflected in Fees Management');
       setManualModal(false);
       setManualSelectedMember(null);
       setManualAmount('');
       setManualReason('LATE_SUBMISSION');
       loadPendingFines();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Fine add nahi ho payi');
+      toast.error(err.response?.data?.error || 'Failed to add fine');
     }
     setManualSaving(false);
   }
@@ -308,7 +308,7 @@ export default function LibraryReports() {
               {loading ? (
                 <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Loading...</div>
               ) : overdue.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Koi overdue book nahi hai 🎉</div>
+                <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>No overdue books found 🎉</div>
               ) : (
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead>
@@ -371,7 +371,7 @@ export default function LibraryReports() {
                   background: '#0176d3', color: '#fff', border: 'none', borderRadius: 8,
                   padding: '9px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
                 }}>
-                  + Manual Fine Add Karo
+                  + Add Manual Fine
                 </button>
               </div>
 
@@ -394,11 +394,11 @@ export default function LibraryReports() {
                   ⏳ Pending Fines — Action Needed ({pendingFines.length})
                 </h4>
                 <p style={{ fontSize: 11, color: '#94a3b8', margin: '0 0 12px' }}>
-                  Amount edit karke Collect kar sakte ho (partial recovery), Waive kar sakte ho, ya LOST book ke liye "Replaced with Book" use karo.
+                  Collect fines (partial recovery), waive fines, or record replacement copies for lost books.
                 </p>
                 {pendingFines.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: 20, color: '#94a3b8', fontSize: 13 }}>
-                    Koi pending fine nahi hai 🎉
+                    No pending fines found 🎉
                   </div>
                 ) : (
                   pendingFines.map(f => (
@@ -490,7 +490,7 @@ export default function LibraryReports() {
                 {loading ? (
                   <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Loading...</div>
                 ) : fines.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Is range mein koi transaction nahi hai</div>
+                  <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>No transactions found within this date range</div>
                 ) : (
                   fines.map(f => (
                     <div key={f.id} style={{
@@ -570,7 +570,7 @@ export default function LibraryReports() {
               {historyLoading ? (
                 <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Loading...</div>
               ) : historyData.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Is filter ke liye koi record nahi mila</div>
+                <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>No records found matching this filter</div>
               ) : (
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -627,7 +627,7 @@ export default function LibraryReports() {
               {loading ? (
                 <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Loading...</div>
               ) : popular.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Abhi data nahi hai</div>
+                <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>No data available at this time</div>
               ) : (
                 popular.map((p, idx) => (
                   <div key={p.book_id} style={{
@@ -667,7 +667,7 @@ export default function LibraryReports() {
               {loading ? (
                 <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Loading...</div>
               ) : activity.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Koi activity nahi hai</div>
+                <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>No activity recorded yet</div>
               ) : (
                 activity.map(a => (
                   <div key={a.id} style={{
@@ -711,7 +711,7 @@ export default function LibraryReports() {
             background: darkMode ? '#1e293b' : '#fff', borderRadius: 12, padding: 20, width: 420,
           }}>
             <h3 style={{ margin: '0 0 16px', fontSize: 16, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
-              + Manual Fine Add Karo
+              + Add Manual Fine
             </h3>
 
             <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>Member</label>
@@ -803,12 +803,12 @@ export default function LibraryReports() {
             background: darkMode ? '#1e293b' : '#fff', borderRadius: 12, padding: 20, width: 420,
           }}>
             <h3 style={{ margin: '0 0 10px', fontSize: 16, color: darkMode ? '#f1f5f9' : '#0f172a' }}>
-              📚 Book Replace Karke Fine Resolve Karo
+              📚 Resolve Fine by Book Replacement
             </h3>
             <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>
               <strong>{replaceModal.member_name}</strong> ne <strong>{replaceModal.book_title}</strong> khoyi thi
               (₹{fmt(replaceModal.book_mrp)} ki fine thi). Agar student ne cash ki jagah naya physical copy la kar
-              diya hai, to yahan se fine waive ho jayegi.
+              provided, the fine will be waived.
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -819,9 +819,9 @@ export default function LibraryReports() {
                   background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: 8,
                   padding: '10px', fontSize: 13, fontWeight: 700, cursor: 'pointer', textAlign: 'left',
                 }}>
-                ✅ Naya copy library stock mein add karo + Fine waive karo<br/>
+                ✅ Add replacement copy to stock and waive outstanding fine<br/>
                 <span style={{ fontWeight: 400, fontSize: 11, color: '#64748b' }}>
-                  (Student ne fizikal copy di hai — library ke inventory mein wo copy AVAILABLE ho jayegi)
+                  (Student provided a physical copy — it will be added as Available in inventory)
                 </span>
               </button>
               <button
@@ -831,7 +831,7 @@ export default function LibraryReports() {
                   background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0', borderRadius: 8,
                   padding: '10px', fontSize: 13, fontWeight: 700, cursor: 'pointer', textAlign: 'left',
                 }}>
-                ✕ Sirf fine waive karo (koi naya copy add nahi)
+                ✕ Waive fine only without adding inventory copy
               </button>
             </div>
 

@@ -73,7 +73,7 @@ export default function AttendancePage() {
       return Object.assign({}, s, { status: 'PRESENT' });
     }));
   } catch {
-    flash('❌ Students load nahi hue', 'error');
+    flash('❌ Failed to load students', 'error');
   }
 }
 
@@ -96,8 +96,8 @@ export default function AttendancePage() {
 
   /* ── submit attendance ── */
   async function submitAttendance() {
-    if (!markClass) { flash('❌ Class select karo', 'error'); return; }
-    if (!markStudents.length) { flash('❌ Koi student nahi', 'error'); return; }
+    if (!markClass) { flash('❌ Please select a class', 'error'); return; }
+    if (!markStudents.length) { flash('❌ No students found', 'error'); return; }
     setSaving(true);
     try {
       await api.post('/principal/attendance/mark', {
@@ -108,11 +108,11 @@ export default function AttendancePage() {
           status:     s.status,
         })),
       });
-      toast.success(`${markStudents.length} students ki attendance save ho gayi`);
-      flash(`✅ ${markStudents.length} students ki attendance save ho gayi`);
+      toast.success(`${markStudents.length} students ki attendance save completed successfully`);
+      flash(`✅ ${markStudents.length} students attendance saved successfully`);
       loadOverview();
     } catch {
-      flash('❌ Attendance save nahi hui', 'error');
+      flash('❌ Failed to save attendance', 'error');
     }
     setSaving(false);
   }
@@ -141,7 +141,7 @@ export default function AttendancePage() {
           }}>
             <div>
               <h2 className="page-title">Attendance Dashboard</h2>
-              <p className="page-subtitle">School-wide aur class-wise attendance track karo</p>
+              <p className="page-subtitle">Track school-wide and class-wise attendance</p>
             </div>
           </div>
 
@@ -430,7 +430,7 @@ export default function AttendancePage() {
                             <td colSpan={9}>
                               <div className="empty-state">
                                 <div className="empty-state-icon">📋</div>
-                                <p>Aaj ki attendance mark nahi hui</p>
+                                <p>Attendance not marked today</p>
                               </div>
                             </td>
                           </tr>
@@ -447,14 +447,14 @@ export default function AttendancePage() {
           {tab === 'mark' && (
             <div className="card">
               <div className="card-header">
-                <h4>✏️ Attendance Mark Karo</h4>
+                <h4>✏️ Mark Attendance</h4>
               </div>
               <div className="card-body" style={{ padding: '20px 24px' }}>
 
                 {/* class + date select */}
                 <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 24 }}>
                   <div className="form-group" style={{ flex: 1, minWidth: 200 }}>
-                    <label className="form-label" htmlFor="attendancepa-f1">Class Select Karo *</label>
+                    <label className="form-label" htmlFor="attendancepa-f1">Select Class *</label>
                     <select id="attendancepa-f1"
                       className="form-select"
                       value={markClass}
@@ -462,7 +462,7 @@ export default function AttendancePage() {
                         setMarkClass(e.target.value);
                         loadMarkStudents(e.target.value);
                       }}>
-                      <option value="">— Class Choose Karo —</option>
+                      <option value="">— Select Class —</option>
                       {classes.map(c => (
                         <option key={c.class_id} value={c.class_id}>
                           {c.class_name} — Section {c.section}
@@ -489,7 +489,7 @@ export default function AttendancePage() {
                       alignItems: 'center', flexWrap: 'wrap',
                     }}>
                       <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--neutral-6)' }}>
-                        Sab ko mark karo:
+                        Mark all as:
                       </span>
                       {['PRESENT', 'ABSENT', 'LATE'].map(s => (
                         <button key={s}
@@ -606,13 +606,13 @@ export default function AttendancePage() {
                 {!markStudents.length && markClass && (
                   <div className="empty-state">
                     <div className="empty-state-icon">🎒</div>
-                    <p>Is class mein koi student nahi hai</p>
+                    <p>No students found in this class</p>
                   </div>
                 )}
                 {!markClass && (
                   <div className="empty-state">
                     <div className="empty-state-icon">📋</div>
-                    <p>Pehle upar se class select karo</p>
+                    <p>Please select a class from the dropdown above</p>
                   </div>
                 )}
               </div>

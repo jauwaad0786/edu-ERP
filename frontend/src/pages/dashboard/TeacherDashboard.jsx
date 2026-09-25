@@ -227,7 +227,7 @@ export default function TeacherDashboard() {
       }
 
       if (!entries.length) {
-        toast.error('Kripya pehle students ke marks enter karein');
+        toast.error('Please enter student marks first');
         setSaving(false);
         return;
       }
@@ -247,7 +247,7 @@ export default function TeacherDashboard() {
   function getGpsLocation() {
     return new Promise((resolve, reject) => {
       if (!navigator.geolocation) {
-        reject(new Error('Is browser me GPS support nahi hai'));
+        reject(new Error('GPS geolocation is not supported in this browser'));
         return;
       }
       navigator.geolocation.getCurrentPosition(
@@ -256,7 +256,7 @@ export default function TeacherDashboard() {
           longitude: pos.coords.longitude,
           accuracy:  pos.coords.accuracy,
         }),
-        () => reject(new Error('Location permission denied ya GPS off hai')),
+        () => reject(new Error('Location permission denied or GPS is disabled')),
         { enableHighAccuracy: true, timeout: 10000 }
       );
     });
@@ -283,7 +283,7 @@ export default function TeacherDashboard() {
       setMyStatus(r.data);
       toast.success('Check-in successful! 📍');
     } catch(e) {
-      toast.error((e.response && e.response.data && e.response.data.error) || e.message || 'Check-in fail ho gaya');
+      toast.error((e.response && e.response.data && e.response.data.error) || e.message || 'Check-in failed');
     }
     setCheckingIn(false);
   }
@@ -299,7 +299,7 @@ export default function TeacherDashboard() {
       setMyStatus(r.data);
       toast.success('Check-out successful! 📍');
     } catch(e) {
-      toast.error((e.response && e.response.data && e.response.data.error) || e.message || 'Check-out fail ho gaya');
+      toast.error((e.response && e.response.data && e.response.data.error) || e.message || 'Check-out failed');
     }
     setCheckingOut(false);
   }
@@ -315,11 +315,11 @@ export default function TeacherDashboard() {
       if (regForm.requested_check_in)  payload.requested_check_in  = today + 'T' + regForm.requested_check_in + ':00';
       if (regForm.requested_check_out) payload.requested_check_out = today + 'T' + regForm.requested_check_out + ':00';
       await api.post('/staff-attendance/regularization', payload);
-      toast.success('Regularization request bhej di gayi');
+      toast.success('Regularization request submitted successfully');
       setShowRegularize(false);
       setRegForm({ reason_type:'FORGOT_CHECKOUT', reason_text:'', requested_check_in:'', requested_check_out:'' });
     } catch(e) {
-      toast.error((e.response && e.response.data && e.response.data.error) || 'Request fail ho gaya');
+      toast.error((e.response && e.response.data && e.response.data.error) || 'Request failed');
     }
     setRegSaving(false);
   }
@@ -870,7 +870,7 @@ export default function TeacherDashboard() {
               ) : students.length === 0 ? (
                 <div style={{ padding: '60px 20px', textAlign: 'center', color: '#94a3b8' }}>
                   <i className="ti ti-users" style={{ fontSize: '36px', opacity: 0.5, display: 'block', marginBottom: '8px' }} />
-                  <p>Is class mein koi student enrolled nahi hai</p>
+                  <p>No students enrolled in this class</p>
                 </div>
               ) : (
                 <div className="table-container" style={{ border: 'none', overflowX: 'auto' }}>
@@ -1030,7 +1030,7 @@ export default function TeacherDashboard() {
                 </div>
               ) : students.length === 0 ? (
                 <div style={{ padding: '60px 20px', textAlign: 'center', color: '#94a3b8' }}>
-                  <p>Is class mein koi student enrolled nahi hai</p>
+                  <p>No students enrolled in this class</p>
                 </div>
               ) : (
                 <div className="table-container" style={{ border: 'none', overflowX: 'auto' }}>
@@ -1317,7 +1317,7 @@ export default function TeacherDashboard() {
               </div>
               {holidays.length === 0 ? (
                 <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
-                  Koi holiday scheduled nahi hai abhi
+                  No holidays scheduled at this time
                 </div>
               ) : (
                 <div>
@@ -1590,7 +1590,7 @@ function NotesUpload({ selectedClass, classes, assignments, darkMode }) {
           ) : notes.length === 0 ? (
             <div style={{ padding: '40px 0', textAlign: 'center', color: '#94a3b8' }}>
               <i className="ti ti-file-text" style={{ fontSize: '36px', opacity: 0.5, display: 'block', marginBottom: '8px' }} />
-              <p>Is class ke liye abhi koi note upload nahi hua hai</p>
+              <p>No study notes uploaded for this class yet</p>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>

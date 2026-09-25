@@ -184,7 +184,7 @@ export default function FeesPage() {
 
   async function submitPayment() {
     if (!payAmt || Number.isNaN(Number(payAmt)) || Number(payAmt) <= 0) {
-      flash(' Sahi amount daalo', 'error'); return;
+      flash('Please enter a valid amount', 'error'); return;
     }
     setSaving(true);
     try {
@@ -195,7 +195,7 @@ export default function FeesPage() {
         remarks,
       });
       setModal(false);
-      flash(` Receipt ${res.data.receipt_no} — ₹${fmt(payAmt)} collect hua`);
+      flash(` Receipt ${res.data.receipt_no} — ₹${fmt(payAmt)} collected successfully`);
       load();
       setReceiptRec(res.data);
     } catch (e) {
@@ -224,7 +224,7 @@ export default function FeesPage() {
   }
 
   async function publishBatch(batchId) {
-    if (!window.confirm('Publish karne ke baad parents ko ye fees dikhengi. Confirm?')) return;
+    if (!window.confirm('Published fees will become visible to parents. Confirm?')) return;
     try {
       await api.post(`/principal/fees/batches/${batchId}/publish`);
       flash('✅ Batch published');
@@ -232,7 +232,7 @@ export default function FeesPage() {
       loadBatches();
       load();
     } catch (e) {
-      flash(e.response?.data?.error || '❌ Publish fail hua', 'error');
+      flash(e.response?.data?.error || '❌ Failed to publish', 'error');
     }
   }
 
@@ -245,7 +245,7 @@ export default function FeesPage() {
 
   async function saveRecordAmount(recId) {
     if (!editAmt || Number.isNaN(Number(editAmt)) || Number(editAmt) <= 0) {
-      flash('❌ Sahi amount daalo', 'error'); return;
+      flash('❌ Please enter a valid amount', 'error'); return;
     }
     try {
       await api.patch(`/principal/fees/records/${recId}`, { amount_due: Number.parseFloat(editAmt) });
@@ -253,7 +253,7 @@ export default function FeesPage() {
       setEditingRecId(null);
       openBatchReview(batchRecords.batch.id);
     } catch (e) {
-      flash(e.response?.data?.error || '❌ Update fail hua', 'error');
+      flash(e.response?.data?.error || '❌ Failed to update', 'error');
     }
   }
 
@@ -263,34 +263,34 @@ export default function FeesPage() {
       await api.post(`/principal/fees/batches/${batchRecords.batch.id}/add-student`, {
         student_id: addStudentId,
       });
-      flash('✅ Student add hua');
+      flash('✅ Student added successfully');
       setAddStudentId('');
       openBatchReview(batchRecords.batch.id);
     } catch (e) {
-      flash(e.response?.data?.error || '❌ Add fail hua', 'error');
+      flash(e.response?.data?.error || '❌ Failed to add', 'error');
     }
   }
 
   async function deleteBatch(batchId) {
-    if (!window.confirm('Ye poori draft batch delete karni hai?')) return;
+    if (!window.confirm('Are you sure you want to delete this entire draft batch?')) return;
     try {
       await api.delete(`/principal/fees/batches/${batchId}`);
       flash('✅ Draft batch deleted');
       setBatchRecords(null);
       loadBatches();
     } catch (e) {
-      flash(e.response?.data?.error || '❌ Delete fail hua', 'error');
+      flash(e.response?.data?.error || '❌ Failed to delete', 'error');
     }
   }
 
   /* ── generate fees ── */
   async function generateFees() {
     if (!genClass || !genMonth || !genFeeType) {
-      flash('❌ Class, Month aur Fee Type zaroori hai', 'error');
+      flash('❌ Class, Month, and Fee Type are required', 'error');
       return;
     }
     if (genWindowStart && genWindowEnd && genWindowStart > genWindowEnd) {
-      flash('❌ Collection start date, end date se pehle honi chahiye', 'error');
+      flash('Collection start date must be before end date', 'error');
       return;
     }
     try {
@@ -302,7 +302,7 @@ export default function FeesPage() {
         window_end: genWindowEnd || undefined,
       });
       const dueMsg = res.data.window_end ? ` — Due Date: ${res.data.due_date}` : '';
-      flash(`✅ ${res.data.created} records DRAFT mein bane${dueMsg} — Batches tab se review + publish karo`);
+      flash(`✅ ${res.data.created} records created in DRAFT${dueMsg} — Review and publish from Batches tab`);
       setGenModal(false);
       setGenClass('');
       setGenMonth('');
@@ -312,11 +312,11 @@ export default function FeesPage() {
       load();
     } catch (e) {
       if (e.response?.data?.error === 'no_fee_structure') {
-        flash('❌ Is class/fee-type ke liye pehle Fee Structure banao', 'error');
+        flash('❌ Please create a Fee Structure for this class and fee-type first', 'error');
       } else if (e.response?.data?.error === 'already_generated') {
         flash(`❌ ${e.response.data.message}`, 'error');
       } else {
-        flash(e.response?.data?.error || '❌ Fee generate nahi hua', 'error');
+        flash(e.response?.data?.error || '❌ Failed to generate fee bills', 'error');
       }
     }
   }
@@ -339,13 +339,13 @@ export default function FeesPage() {
 
   function openMultiCollect() {
     if (selectedIds.length < 2) {
-      flash('❌ Kam se kam 2 records select karo combine/separate collect ke liye', 'error');
+      flash('Please select at least 2 records for combined or separate collection', 'error');
       return;
     }
     const recs = filtered.filter(r => selectedIds.includes(r.id));
     const firstStudent = recs[0]?.student_id;
     if (recs.some(r => r.student_id !== firstStudent)) {
-      flash('❌ Combined payment sirf ek student ke records ke liye ho sakti hai', 'error');
+      flash('Combined payment can only be processed for a single student', 'error');
       return;
     }
     setCollectMode('COMBINED');
@@ -366,7 +366,7 @@ export default function FeesPage() {
       });
       setMultiCollectModal(false);
       setSelectedIds([]);
-      flash(`✅ ${res.data.receipts.length} receipt(s) generate hui`);
+      flash(`✅ ${res.data.receipts.length} receipt(s) generated successfully`);
       setReceiptGroup(res.data);
       load();
     } catch (e) {
@@ -377,7 +377,7 @@ export default function FeesPage() {
 
   /* ── bulk class notice ── */
   async function downloadBulkNotice() {
-    if (!bulkNoticeClass) { flash('❌ Class select karo', 'error'); return; }
+    if (!bulkNoticeClass) { flash('❌ Please select a class', 'error'); return; }
     const month = bulkNoticeMonth || new Date().toISOString().slice(0, 7);
     try {
       const res = await api.get(
@@ -394,13 +394,13 @@ export default function FeesPage() {
       window.URL.revokeObjectURL(url);
       setBulkNoticeModal(false);
     } catch (e) {
-      flash('❌ PDF download fail hua', 'error');
+      flash('❌ Failed to download PDF', 'error');
     }
   }
   // NEW — receipt PDF ko axios ke through fetch karo (blob), taaki auth token bhi jaye
   async function downloadReceipt(receiptNo) {
     if (!receiptNo) {
-      flash('❌ Receipt number missing hai', 'error');
+      flash('❌ Receipt number is missing', 'error');
       return;
     }
     try {
@@ -412,7 +412,7 @@ export default function FeesPage() {
       // Optional cleanup after a delay so the new tab has time to load it
       setTimeout(() => window.URL.revokeObjectURL(url), 10000);
     } catch (e) {
-      flash(e.response?.status === 404 ? '❌ Receipt nahi mila' : '❌ PDF download fail hua', 'error');
+      flash(e.response?.status === 404 ? '❌ Receipt not found' : '❌ Failed to download PDF', 'error');
     }
   }
 
@@ -432,7 +432,7 @@ export default function FeesPage() {
             <div>
               <h2 className="page-title">Fee Management</h2>
               <p className="page-subtitle">
-                Student-wise fees collect, track aur report karo
+                Collect, track, and report student-wise fees
               </p>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -478,7 +478,7 @@ export default function FeesPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
             <div>
               <h4 style={{ margin: 0 }}>🗓️ Collection Snapshot</h4>
-              <span style={{ fontSize: 11, color: 'var(--neutral-6)' }}>Cards + Class-wise Due neeche — dono isi filter se refresh honge</span>
+              <span style={{ fontSize: 11, color: 'var(--neutral-6)' }}>Cards and Class-wise dues update dynamically with this filter</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 12, color: 'var(--neutral-6)' }}>Month/Year:</span>
@@ -526,7 +526,7 @@ export default function FeesPage() {
                 <span style={{ fontSize: 11, color: 'var(--neutral-6)' }}>
                   {snapshotMonth
                     ? `Showing: ${new Date(snapshotMonth + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}`
-                    : 'Showing: All Time — upar month select karo'}
+                    : 'Showing: All Time — select month above to filter'}
                 </span>
               </div>
               <div className="table-container">
@@ -542,7 +542,7 @@ export default function FeesPage() {
                       <tr key={c.class_id}>
                         <td
                           style={{ fontWeight: 600, color: '#0176d3', cursor: 'pointer', textDecoration: 'underline dashed' }}
-                          title="Is class ke students dekhne ke liye click karein"
+                          title="Click to view students enrolled in this class"
                           onClick={() => navigate(`/students?class_id=${c.class_id}`)}
                         >
                           {c.class_name} - {c.section}
@@ -709,7 +709,7 @@ export default function FeesPage() {
                       const balance = (r.effective_due ?? r.amount_due ?? 0) - (r.amount_paid || 0);
                       return (
                         <tr key={r.id}>
-                          {/* select checkbox — DRAFT/PAID select nahi ho sakte */}
+                          {/* select checkbox — DRAFT/PAID cannot be selected */}
                           <td>
                             {r.status !== 'PAID' && r.status !== 'DRAFT' && (
                               <input type="checkbox"
@@ -729,7 +729,7 @@ export default function FeesPage() {
                               style={{ fontWeight: 600, fontSize: 13, color: '#0176d3', cursor: r.student_id ? 'pointer' : 'default', textDecoration: r.student_id ? 'underline dashed' : 'none' }}
                               onClick={() => r.student_id && navigate(`/students/${r.student_id}`)}
                               onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && r.student_id && navigate(`/students/${r.student_id}`)}
-                              title={r.student_id ? 'Profile dekhne ke liye click karein' : ''}
+                              title={r.student_id ? 'Click to view profile' : ''}
                             >
                               {r.student_name || '—'}
                             </div>
@@ -824,7 +824,7 @@ export default function FeesPage() {
                         <td colSpan={14}>
                           <div className="empty-state">
                             <div className="empty-state-icon">💰</div>
-                            <p>Koi fee record nahi mila</p>
+                            <p>No fee records found</p>
                           </div>
                         </td>
                       </tr>
@@ -887,7 +887,7 @@ export default function FeesPage() {
         >
           <div className="modal" style={{ width: 460 }}>
             <div className="modal-header">
-              <h3>💸 Fee Collect Karo</h3>
+              <h3>💸 Collect Fees</h3>
               <button className="modal-close" onClick={() => setModal(false)}>✕</button>
             </div>
 
@@ -935,7 +935,7 @@ export default function FeesPage() {
                   max={selRec.amount_due - selRec.amount_paid}
                   value={payAmt}
                   onChange={e => setPayAmt(e.target.value)}
-                  placeholder="Amount daalo"
+                  placeholder="Enter amount"
                 />
               </div>
 
@@ -966,7 +966,7 @@ export default function FeesPage() {
                   className="form-input"
                   value={remarks}
                   onChange={e => setRemarks(e.target.value)}
-                  placeholder="Koi note..."
+                  placeholder="Add a note..."
                 />
               </div>
             </div>
@@ -995,7 +995,7 @@ export default function FeesPage() {
         >
           <div className="modal" style={{ width: 460 }}>
             <div className="modal-header">
-              <h3>💸 {selectedIds.length} Records Collect Karo</h3>
+              <h3>💸 {selectedIds.length} Records to Collect</h3>
               <button className="modal-close" onClick={() => setMultiCollectModal(false)}>✕</button>
             </div>
             <div className="modal-body">
@@ -1009,7 +1009,7 @@ export default function FeesPage() {
               </div>
 
               <div className="form-group">
-                <span className="form-label">Kaise Collect Karein? *</span>
+                <span className="form-label">Payment Method *</span>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button onClick={() => setCollectMode('COMBINED')}
                     style={{
@@ -1149,7 +1149,7 @@ export default function FeesPage() {
             </div>
             <div className="modal-body">
               <p style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>
-                Ek hi PDF mein poori class — roll-number order — har student ka page (tuition+hostel+library+sports+exam sab consolidated).
+                Single PDF containing full class in roll-number order with consolidated fee schedules.
               </p>
               <div className="form-group">
                 <label className="form-label" htmlFor="bulk-notice-class">Class *</label>
@@ -1221,7 +1221,7 @@ export default function FeesPage() {
                 </div>
               ))}
               {reviewTab === 'PENDING' && !batches.length && (
-                <p style={{ color: '#94a3b8', textAlign: 'center', padding: 20 }}>Sab review ho chuka hai ✅</p>
+                <p style={{ color: '#94a3b8', textAlign: 'center', padding: 20 }}>All reviews completed ✅</p>
               )}
 
               {reviewTab === 'REVIEWED' && publishedBatches.map(b => (
@@ -1239,7 +1239,7 @@ export default function FeesPage() {
                 </div>
               ))}
               {reviewTab === 'REVIEWED' && !publishedBatches.length && (
-                <p style={{ color: '#94a3b8', textAlign: 'center', padding: 20 }}>Abhi tak koi batch review/publish nahi hui</p>
+                <p style={{ color: '#94a3b8', textAlign: 'center', padding: 20 }}>No fee batches ready for review or publishing yet</p>
               )}
             </div>
           </div>
@@ -1297,7 +1297,7 @@ export default function FeesPage() {
               {missingStudents.length > 0 && (
                 <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px dashed #e2e8f0' }}>
                   <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
-                    + Missed Student Add Karo ({missingStudents.length} available)
+                    + Add Missed Student ({missingStudents.length} available)
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <select className="form-select" style={{ flex: 1, fontSize: 12 }}

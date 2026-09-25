@@ -85,7 +85,7 @@ export default function HostelAdmission() {
     setMapLoading(true);
     api.get(`/hostel/hostels/${hostelId}/room-map`)
       .then(r => setRoomMap(r.data || []))
-      .catch(() => toast.error('Room map load nahi hua'))
+      .catch(() => toast.error('Failed to load Room map'))
       .finally(() => setMapLoading(false));
   }, [hostelId]);
 
@@ -95,7 +95,7 @@ export default function HostelAdmission() {
     const params = tableSearch ? `?search=${encodeURIComponent(tableSearch)}` : '';
     api.get('/hostel/admissions' + params)
       .then(r => setAdmissions(r.data || []))
-      .catch(() => toast.error('Admission list load nahi hui'))
+      .catch(() => toast.error('Failed to load Admission list'))
       .finally(() => setAdmissionsLoading(false));
   }, [tableSearch]);
 
@@ -115,40 +115,40 @@ export default function HostelAdmission() {
 
   async function handleCreateNewStudent() {
     if (!newForm.name.trim() || !newForm.email.trim()) {
-      toast.error('Name aur Email zaroori hai');
+      toast.error('Name and Email are required');
       return;
     }
     setCreating(true);
     try {
       const { data } = await api.post('/hostel/students/quick-create', newForm);
-      toast.success(`${data.name} enrolled — ab bed allocate karo`);
+      toast.success(`${data.name} enrolled — please allocate a bed`);
       setSelectedStudent({
         student_id: data.id, name: newForm.name,
         gender: newForm.gender, roll_number: newForm.roll_number,
       });
       setTab('EXISTING');
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Student create nahi hua');
+      toast.error(err.response?.data?.error || 'Failed to create student');
     }
     setCreating(false);
   }
 
   async function handleAdmit() {
-    if (!selectedStudent) { toast.error('Pehle student select/create karo'); return; }
-    if (!bedId) { toast.error('Bed select karo'); return; }
+    if (!selectedStudent) { toast.error('Please select or register a student first'); return; }
+    if (!bedId) { toast.error('Please select Bed'); return; }
     setSubmitting(true);
     try {
       await api.post('/hostel/admission', {
         student_id: selectedStudent.student_id,
         bed_id: bedId,
       });
-      toast.success(`${selectedStudent.name} hostel mein admit ho gaya`);
+      toast.success(`${selectedStudent.name} hostel mein admit completed successfully`);
       loadAdmissions();
       setSelectedStudent(null);
       setBedId('');
       setSelectedBedInfo(null);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Admission fail hua');
+      toast.error(err.response?.data?.error || 'Admission failed');
     }
     setSubmitting(false);
   }
@@ -257,7 +257,7 @@ export default function HostelAdmission() {
                       <div style={{ maxHeight: 420, overflowY: 'auto', marginTop: 8 }}>
                         {results.length === 0 ? (
                           <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', padding: 20 }}>
-                            {classFilter || search ? 'Koi eligible student nahi mila' : 'Class select karein ya naam/roll search karein'}
+                            {classFilter || search ? 'No eligible students found' : 'Select class or search by name / admission number'}
                           </div>
                         ) : results.map(s => (
                           <div key={s.student_id}
@@ -373,7 +373,7 @@ export default function HostelAdmission() {
 
               {!hostelId && (
                 <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', padding: '40px 0' }}>
-                  Pehle hostel select karo — building/floor/room niche dikhega
+                  Please select hostel first — buildings, floors, and rooms will appear below
                 </div>
               )}
 
@@ -383,7 +383,7 @@ export default function HostelAdmission() {
 
               {hostelId && !mapLoading && roomMap.length === 0 && (
                 <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', padding: '40px 0' }}>
-                  Is hostel mein koi building/room nahi bani — pehle Hostel Setup se banao
+                  No buildings or rooms configured in this hostel — configure in Hostel Setup first
                 </div>
               )}
 
@@ -449,7 +449,7 @@ export default function HostelAdmission() {
                             {building.floors.filter(f => f.id === expandedFloor).map(floor => (
                               <div key={floor.id} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                                 {floor.rooms.length === 0 ? (
-                                  <div style={{ fontSize: 12, color: '#94a3b8' }}>Is floor pe koi room nahi hai</div>
+                                  <div style={{ fontSize: 12, color: '#94a3b8' }}>No rooms configured on this floor</div>
                                 ) : floor.rooms.map(room => (
                                   <div key={room.id} style={{
                                     border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: 8, padding: 10,
@@ -547,7 +547,7 @@ export default function HostelAdmission() {
               <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8', fontSize: 13 }}>Loading...</div>
             ) : admissions.length === 0 ? (
               <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8', fontSize: 13 }}>
-                Koi admission nahi hui abhi
+                No hostel admissions recorded yet
               </div>
             ) : (
               <div style={{ overflowX: 'auto' }}>

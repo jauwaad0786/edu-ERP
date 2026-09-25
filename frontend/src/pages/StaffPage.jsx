@@ -55,7 +55,7 @@ export default function StaffPage() {
       })
       .catch(err => {
         if (err?.response?.status === 403) {
-          toast.error('Staff list dekhne ki permission nahi hai');
+          toast.error('You do not have permission to view the staff list');
         }
       });
   };
@@ -67,7 +67,7 @@ export default function StaffPage() {
       let creds;
       if (form.role === DRIVER_ROLE) {
         if (!(form.mobile_number || '').trim()) {
-          toast.error('Driver ka mobile number required hai');
+          toast.error('Driver mobile phone number is required');
           setSaving(false); return;
         }
         const res = await api.post('/transport/drivers', {
@@ -230,7 +230,7 @@ export default function StaffPage() {
                           style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
                           onClick={() => navigate(`/staff/${u.id}`)}
                           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/staff/${u.id}`); } }}
-                          title="Profile dekhne ke liye click karein">
+                          title="Click to view profile">
                           <div style={{
                             width: 32, height: 32, borderRadius: '50%',
                             background: '#f3f0ff', color: '#5867e8',
@@ -479,7 +479,7 @@ export default function StaffPage() {
                 borderRadius: 10, padding: '16px 20px', marginBottom: 14,
               }}>
                 <p style={{ fontSize: 12, color: '#166534', fontWeight: 600, marginBottom: 12 }}>
-                  📋 Staff ko ye credentials share karein:
+                  📋 Share these credentials with the staff member:
                 </p>
                 {[
                   ['👤 Name',     createdCreds.name],

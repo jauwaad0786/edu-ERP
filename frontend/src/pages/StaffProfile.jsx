@@ -91,7 +91,7 @@ export default function StaffProfile() {
   if (!user) return (
     <div className="app-shell"><Sidebar />
       <div className="main-content"><Navbar title="Staff Profile" />
-        <div className="page-body"><div className="empty-state"><p>Staff member nahi mila.</p></div></div>
+        <div className="page-body"><div className="empty-state"><p>Staff member not found.</p></div></div>
       </div>
     </div>
   );

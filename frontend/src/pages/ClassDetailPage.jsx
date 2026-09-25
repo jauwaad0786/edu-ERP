@@ -47,7 +47,7 @@ export default function ClassDetailPage() {
       toast.success('✅ Class teacher assigned successfully!');
       loadData();
     } catch {
-      toast.error('Teacher assign nahi hua, dobara try karo');
+      toast.error('Failed to assign teacher, please try again');
     }
     setAssigning(false);
   };
@@ -73,7 +73,7 @@ export default function ClassDetailPage() {
       setSubForm({ name: '', code: '', teacher_id: '', max_marks: 100, pass_marks: 33 });
       loadData();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Subject add nahi hua');
+      toast.error(err.response?.data?.error || 'Failed to add subject');
     }
     setSubSaving(false);
   };
@@ -110,7 +110,7 @@ export default function ClassDetailPage() {
   if (!data) return (
     <div className="app-shell"><Sidebar />
       <div className="main-content"><Navbar title="Class Detail" />
-        <div className="page-body"><div className="empty-state"><p>Class nahi mili.</p></div></div>
+        <div className="page-body"><div className="empty-state"><p>Class not found.</p></div></div>
       </div>
     </div>
   );
@@ -395,7 +395,7 @@ export default function ClassDetailPage() {
                   </div>
                 ) : (
                   <div style={{ padding:'20px', textAlign:'center', color:'var(--neutral-4)', fontSize:13 }}>
-                    Koi exam marks data nahi abhi
+                    No examination marks data available yet
                   </div>
                 )}
               </div>

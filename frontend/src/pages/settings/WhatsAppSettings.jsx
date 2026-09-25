@@ -32,11 +32,11 @@ export default function WhatsAppSettings() {
           verify_token: r.data.verify_token,
           app_id: r.data.app_id,
           api_version: r.data.api_version,
-          access_token: '', // masked value kabhi input mein nahi daalte
+          access_token: '', // never populate masked value in input
           app_secret: '',
         }));
       })
-      .catch(() => toast.error('Settings load nahi hui'))
+      .catch(() => toast.error('Failed to load Settings'))
       .finally(() => setLoading(false));
   };
 
@@ -56,7 +56,7 @@ export default function WhatsAppSettings() {
       setForm(f => ({ ...f, access_token: '', app_secret: '' }));
       toast.success('✅ Configuration saved!');
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Save nahi hua');
+      toast.error(err.response?.data?.error || 'Failed to save');
     }
     setSaving(false);
   }
@@ -68,21 +68,21 @@ export default function WhatsAppSettings() {
       toast.success(r.data.message || 'Connected!');
       load();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Verification fail hua');
+      toast.error(err.response?.data?.error || 'Verification failed');
       load();
     }
     setVerifying(false);
   }
 
   async function handleDisconnect() {
-    if (!window.confirm('WhatsApp disconnect karna chahte ho? Saved token clear ho jayega.')) return;
+    if (!window.confirm('Disconnect WhatsApp? The saved access token will be cleared.')) return;
     setDisconnecting(true);
     try {
       await api.delete('/principal/whatsapp/settings');
       toast.success('Disconnected');
       load();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Disconnect nahi hua');
+      toast.error(err.response?.data?.error || 'Failed to disconnect');
     }
     setDisconnecting(false);
   }
@@ -128,7 +128,7 @@ export default function WhatsAppSettings() {
             <div>
               <h2 className="page-title">💬 WhatsApp Cloud API</h2>
               <p className="page-subtitle">
-                Apna Meta WhatsApp Business Account connect karo — fee reminders, attendance alerts, aur announcements bhejne ke liye
+                Connect your Meta WhatsApp Business API account for fee reminders, attendance alerts, and broadcast announcements.
               </p>
             </div>
             <span style={{
@@ -210,10 +210,10 @@ export default function WhatsAppSettings() {
                     <label className="form-label">Permanent Access Token *</label>
                     <input className="form-input" type="password" value={form.access_token}
                       onChange={e => setForm(f => ({ ...f, access_token: e.target.value }))}
-                      placeholder={settings?.access_token_masked ? settings.access_token_masked : 'Meta se generated access token paste karo'} />
+                      placeholder={settings?.access_token_masked ? settings.access_token_masked : 'Paste generated Meta system user access token'} />
                     {settings?.has_access_token && (
                       <div style={{ fontSize: 11, color: '#16a34a', marginTop: 4 }}>
-                        ✓ Token saved ({settings.access_token_masked}) — nayi value type karo sirf change karne ke liye
+                        ✓ Token saved ({settings.access_token_masked}) — enter a new token only to replace existing credentials
                       </div>
                     )}
                   </div>
@@ -223,7 +223,7 @@ export default function WhatsAppSettings() {
                       <label className="form-label">Webhook Verify Token</label>
                       <input className="form-input" value={form.verify_token}
                         onChange={e => setForm(f => ({ ...f, verify_token: e.target.value }))}
-                        placeholder="apna custom verify token banao" />
+                        placeholder="Enter your custom webhook verify token" />
                     </div>
                     <div className="form-group">
                       <label className="form-label">App ID</label>
@@ -249,7 +249,7 @@ export default function WhatsAppSettings() {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">Webhook URL <span style={{ color: '#94a3b8', fontWeight: 400 }}>(read-only — Meta dashboard mein paste karo)</span></label>
+                    <label className="form-label">Webhook URL <span style={{ color: '#94a3b8', fontWeight: 400 }}>(read-only — copy into Meta App Dashboard)</span></label>
                     <div style={{ display: 'flex', gap: 8 }}>
                       <input className="form-input" readOnly value={settings?.webhook_url || ''}
                         style={{ background: '#f8fafc', color: '#64748b' }} />
@@ -295,8 +295,8 @@ export default function WhatsAppSettings() {
               padding: '14px 18px', fontSize: 12, color: '#1e40af', lineHeight: 1.7,
             }}>
               <strong>📌 Setup steps:</strong> Meta Business Suite → WhatsApp → API Setup se Phone Number ID
-              aur Permanent Access Token le lo → yahan paste karo → <strong>Save Configuration</strong> →
-              phir <strong>Test Connection</strong> click karo. Webhook URL upar se copy karke Meta ke
+              generate a Permanent System User Token → paste here → <strong>Save Configuration</strong> →
+              then click <strong>Test Connection</strong>. Copy Webhook URL into Meta Dashboard.
               Webhook config mein daal do.
             </div>
           </div>

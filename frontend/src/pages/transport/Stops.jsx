@@ -113,7 +113,7 @@ export default function Stops() {
 
     const lat = Number(place.lat), lon = Number(place.lon);
     if (mapInstanceRef.current) mapInstanceRef.current.setView([lat, lon], 11);
-    toast.success(`${label} lock ho gaya`);
+    toast.success(`${label} lock completed successfully`);
   }
   function handleDistrictKeyDown(e) {
     if (e.key !== 'Enter') return;
@@ -259,7 +259,7 @@ export default function Stops() {
 
       setLocSuggestions(results);
       if (results.length === 0) {
-        setLocError(lastErr ? `Search error: ${lastErr.message}` : 'Koi result nahi mila');
+        setLocError(lastErr ? `Search error: ${lastErr.message}` : 'No results found');
       }
       setSearchingLoc(false);
     }, 500);
@@ -281,7 +281,7 @@ export default function Stops() {
       name = place.display_name.split(',').slice(0, 2).join(',').trim();
     }
 
-    if (lat == null || lon == null) { toast.error('Coordinates nahi mile'); return; }
+    if (lat == null || lon == null) { toast.error('Coordinates not found'); return; }
 
     setForm(f => ({ ...f, name, latitude: Number(lat).toFixed(6), longitude: Number(lon).toFixed(6) }));
 
@@ -319,7 +319,7 @@ export default function Stops() {
     if (search) params.set('search', search);
     api.get('/transport/stops?' + params.toString())
       .then(r => setStops(r.data.data || []))
-      .catch(() => toast.error('Stops load nahi hue'))
+      .catch(() => toast.error('Failed to load stops'))
       .finally(() => setLoading(false));
   }, [search]);
 
@@ -356,7 +356,7 @@ export default function Stops() {
 
   async function handleSave(e) {
     e.preventDefault();
-    if (!form.name.trim()) { toast.error('Stop name required hai'); return; }
+    if (!form.name.trim()) { toast.error('Stop name is required'); return; }
 
     setSaving(true);
     const payload = {
@@ -377,19 +377,19 @@ export default function Stops() {
       setShowForm(false);
       load();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Save nahi hua');
+      toast.error(err.response?.data?.message || 'Failed to save');
     }
     setSaving(false);
   }
 
   async function handleDelete(s) {
-    if (!window.confirm(`"${s.name}" stop delete karni hai?`)) return;
+    if (!window.confirm(`"${s.name}" Are you sure you want to delete this stop?`)) return;
     try {
       await api.delete(`/transport/stops/${s.id}`);
       toast.success('Stop deleted');
       load();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Delete nahi hua');
+      toast.error(err.response?.data?.message || 'Failed to delete');
     }
   }
 
@@ -424,7 +424,7 @@ export default function Stops() {
           {loading ? (
             <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Loading...</div>
           ) : stops.length === 0 ? (
-            <div style={{ ...cardStyle, textAlign: 'center', padding: 40, color: '#94a3b8' }}>Koi stop nahi mila</div>
+            <div style={{ ...cardStyle, textAlign: 'center', padding: 40, color: '#94a3b8' }}>No stops found</div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14 }}>
               {stops.map(s => (
@@ -481,7 +481,7 @@ export default function Stops() {
                   fontSize: 11, color: '#92400e', background: '#fffbeb',
                   border: '1px solid #fde68a', borderRadius: 6, padding: '6px 10px', marginBottom: 10,
                 }}>
-                  ⚠️ Google Places key set nahi hai — sirf OSM (basic) search chal rahi hai.
+                  ⚠️ Google Places key not configured — fallback OpenStreetMap search active.
                 </div>
               )}
 
@@ -504,11 +504,11 @@ export default function Stops() {
                     onKeyDown={handleDistrictKeyDown}
                     onFocus={() => setShowDistrictSuggestions(true)}
                     onBlur={() => setTimeout(() => setShowDistrictSuggestions(false), 200)}
-                    placeholder={schoolState ? 'District type karo...' : 'Pehle state choose karo'}
+                    placeholder={schoolState ? 'Type district name...' : 'Select state first'}
                     style={{ padding: '12px 14px', fontSize: 14, minHeight: 44 }} />
                   {searchingLoc && (
                     <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
-                      Searching... {GOOGLE_PLACES_KEY ? '(Google + OSM)' : '(OSM only — Google key set nahi)'}
+                      Searching... {GOOGLE_PLACES_KEY ? '(Google + OSM)' : '(OSM only — Google API key not configured)'}
                     </div>
                   )}
                   {showDistrictSuggestions && districtSuggestions.length > 0 && (
@@ -536,7 +536,7 @@ export default function Stops() {
                 </div>
               </div>
               {districtBBox && (
-                <div style={{ fontSize: 11, color: '#16a34a', marginTop: 4 }}>✓ {district} lock ho gaya</div>
+                <div style={{ fontSize: 11, color: '#16a34a', marginTop: 4 }}>✓ {district} locked</div>
               )}
 
               <div style={{ position: 'relative', marginTop: 14 }}>
@@ -580,11 +580,11 @@ export default function Stops() {
                 )}
                 {locError && !searchingLoc && (
                   <div style={{ fontSize: 12, color: '#dc2626', marginTop: 4, fontWeight: 600 }}>
-                    ⚠️ {locError} — neeche map pe seedha click karke pin lagao.
+                    ⚠️ {locError} — click directly on map to drop pin.
                   </div>
                 )}
                 <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
-                  Town/pincode/village likho aur list se pick karo, ya neeche map pe seedha click karo
+                  Search town/pin code or click directly on map location
                 </div>
               </div>
 
@@ -594,7 +594,7 @@ export default function Stops() {
                   border: '1px solid #e2e8f0', overflow: 'hidden',
                 }} />
                 <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
-                  Map zoom/pan karke exact chowk/gali pe click karo — pin us jagah drag bhi ho sakta hai
+                  Zoom/pan map and drop pin at exact location
                 </div>
               </div>
 

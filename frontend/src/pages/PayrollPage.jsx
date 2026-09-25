@@ -80,7 +80,7 @@ export default function PayrollPage() {
       .catch(err => {
         setRecords([]);
         if (err?.response?.status === 403) {
-          toast.error('Payroll history dekhne ki permission nahi hai');
+          toast.error('You do not have permission to view payroll history');
         }
       })
       .finally(() => setLoading(false));
@@ -110,7 +110,7 @@ export default function PayrollPage() {
   };
 
   const submit = async () => {
-    if (!selected) { toast.error('Teacher ya Staff select karo'); return; }
+    if (!selected) { toast.error('Please select Teacher ya Staff'); return; }
     if (!form.amount || Number(form.amount) <= 0) { toast.error('Amount sahi bharo'); return; }
 
     setSaving(true);
@@ -126,11 +126,11 @@ export default function PayrollPage() {
         payment_date: form.payment_date,
         note: form.note,
       });
-      toast.success('Salary payment record ho gaya!');
+      toast.success('Salary disbursement recorded successfully!');
       setForm(f => ({ ...EMPTY_FORM, month: f.month }));
       loadRecords();
     } catch (err) {
-      toast.error(err?.response?.data?.error || 'Payment record nahi hua');
+      toast.error(err?.response?.data?.error || 'Failed to record payment');
     }
     setSaving(false);
   };
@@ -157,7 +157,7 @@ export default function PayrollPage() {
           <div className="page-header flex justify-between items-center">
             <div>
               <h2 className="page-title">Payroll</h2>
-              <p className="page-subtitle">Teacher ya Staff select karke salary payment record karo</p>
+              <p className="page-subtitle">Select teacher or staff member to record salary disbursement</p>
             </div>
             <button className="btn btn-neutral btn-sm" onClick={() => navigate('/finance/expenses')}>
               View in Expenses
@@ -202,7 +202,7 @@ export default function PayrollPage() {
                   </select>
                   {selected && (
                     <div style={{ fontSize: 11, color: darkMode ? '#64748b' : '#94a3b8', marginTop: 4 }}>
-                      {selected.salary ? `Base salary: ₹${fmt(selected.salary)} / month` : 'Base salary set nahi hai — amount manually daalo'}
+                      {selected.salary ? `Base salary: ₹${fmt(selected.salary)} / month` : 'Base salary not configured — please enter amount manually'}
                     </div>
                   )}
                 </div>
@@ -280,7 +280,7 @@ export default function PayrollPage() {
                     {loading ? (
                       <tr><td colSpan={8} style={{ textAlign: 'center', padding: 24, color: 'var(--neutral-4)' }}>Loading...</td></tr>
                     ) : filteredRecords.length === 0 ? (
-                      <tr><td colSpan={8} style={{ textAlign: 'center', padding: 24, color: 'var(--neutral-4)' }}>Koi payment record nahi</td></tr>
+                      <tr><td colSpan={8} style={{ textAlign: 'center', padding: 24, color: 'var(--neutral-4)' }}>No payment records found</td></tr>
                     ) : filteredRecords.map(r => (
                       <tr key={`${r.type}-${r.id}`}>
                         <td>

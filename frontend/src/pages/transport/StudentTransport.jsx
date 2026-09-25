@@ -62,7 +62,7 @@ export default function StudentTransport() {
 
     api.get('/transport/students?' + params.toString())
       .then(r => { setStudents(r.data.data || []); setTotal(r.data.total || 0); })
-      .catch(() => toast.error('Students load nahi hue'))
+      .catch(() => toast.error('Failed to load students'))
       .finally(() => setLoading(false));
   }, [page, search, classId, transportStatus, vehicleFilter, routeFilter, stopFilter, feeStatusFilter]);
 
@@ -92,9 +92,9 @@ export default function StudentTransport() {
   }
 
   async function handleBulkAssign() {
-    if (selected.size === 0) { toast.error('Kam se kam ek student select karo'); return; }
+    if (selected.size === 0) { toast.error('Please select Kam se kam ek student'); return; }
     if (!assignVehicle && !assignRoute && !assignStop) {
-      toast.error('Vehicle, route ya stop me se kam se kam ek select karo');
+      toast.error('Please select at least one vehicle, route, or stop');
       return;
     }
 
@@ -111,7 +111,7 @@ export default function StudentTransport() {
       setAssignVehicle(''); setAssignRoute(''); setAssignStop('');
       load();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Assign nahi hua');
+      toast.error(err.response?.data?.message || 'Assignment failed');
     }
     setAssigning(false);
   }
@@ -144,20 +144,20 @@ export default function StudentTransport() {
       setTransferStudent(null);
       load();
     } catch (err) {
-      toast.error(err.response?.data?.message || (transferStudent.has_transport ? 'Transfer nahi hua' : 'Assign nahi hua'));
+      toast.error(err.response?.data?.message || (transferStudent.has_transport ? 'Transfer failed' : 'Assignment failed'));
     }
     setTransferring(false);
   }
 
   async function handleRemove(student) {
-    if (!window.confirm(`${student.name} ko transport se remove karna hai?`)) return;
+    if (!window.confirm(`${student.name} Are you sure you want to remove this student from transport?`)) return;
     const remarks = window.prompt('Removal ka reason (optional):', '') || '';
     try {
       await api.post(`/transport/students/${student.student_id}/remove`, { remarks });
       toast.success('Removed from transport');
       load();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Remove nahi hua');
+      toast.error(err.response?.data?.message || 'Failed to remove');
     }
   }
 
@@ -167,7 +167,7 @@ export default function StudentTransport() {
       const r = await api.get(`/transport/students/${student.student_id}/history`);
       setHistoryRows(r.data.data || []);
     } catch {
-      toast.error('History load nahi hui');
+      toast.error('Failed to load History');
     }
   }
 
@@ -273,7 +273,7 @@ export default function StudentTransport() {
             {loading ? (
               <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Loading...</div>
             ) : students.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Koi student nahi mila</div>
+              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>No students found</div>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
@@ -454,7 +454,7 @@ export default function StudentTransport() {
             </div>
             <div className="modal-body">
               {historyRows.length === 0 ? (
-                <p style={{ fontSize: 12, color: '#94a3b8' }}>Koi history nahi hai</p>
+                <p style={{ fontSize: 12, color: '#94a3b8' }}>No transit history found</p>
               ) : historyRows.map(h => (
                 <div key={h.id} style={{ fontSize: 12, padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>

@@ -17,7 +17,7 @@ export default function HostelRoomDetail() {
     setLoading(true);
     api.get(`/hostel/rooms/${roomId}/detail`)
       .then(r => setRoom(r.data))
-      .catch(() => toast.error('Room detail load nahi hua'))
+      .catch(() => toast.error('Failed to load Room detail'))
       .finally(() => setLoading(false));
   }, [roomId]);
 
@@ -50,7 +50,7 @@ export default function HostelRoomDetail() {
           {loading ? (
             <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>Loading...</div>
           ) : !room ? (
-            <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>Room nahi mila</div>
+            <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>Room not found</div>
           ) : (
             <>
               {/* Header card */}

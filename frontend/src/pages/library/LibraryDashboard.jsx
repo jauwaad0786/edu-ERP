@@ -51,7 +51,7 @@ export default function LibraryDashboard() {
         setPopular(Array.isArray(popRes.data) ? popRes.data : []);
         if (attRes?.data) setLiveAttendance(attRes.data);
       })
-      .catch(() => toast.error('Dashboard load nahi ho paya'))
+      .catch(() => toast.error('Failed to load Dashboard'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -273,7 +273,7 @@ export default function LibraryDashboard() {
                   {overdue.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '36px 12px', fontSize: '13px', color: '#94a3b8' }}>
                       <i className="ti ti-circle-check" style={{ fontSize: '32px', color: '#10b981', display: 'block', marginBottom: '6px' }} />
-                      Koi overdue book pending nahi hai 🎉
+                      No overdue books pending 🎉
                     </div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -321,7 +321,7 @@ export default function LibraryDashboard() {
 
                   {popular.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '36px 12px', fontSize: '13px', color: '#94a3b8' }}>
-                      Abhi tak koi circulation frequency record nahi hua
+                      No book circulation frequency recorded yet
                     </div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>

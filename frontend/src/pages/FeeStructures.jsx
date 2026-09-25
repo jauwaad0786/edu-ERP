@@ -73,7 +73,7 @@ export default function FeeStructures() {
   /* ── Rate Card effects ── */
   useEffect(() => {
     api.get('/principal/classes').then(r => setClasses(r.data || []))
-      .catch(() => toast.error('Classes load nahi hui'));
+      .catch(() => toast.error('Failed to load classes'));
   }, []);
 
   const load = useCallback(() => {
@@ -89,7 +89,7 @@ export default function FeeStructures() {
         setEditable(r.data?.editable !== false);
         setManageUrl(r.data?.manage_url || null);
       })
-      .catch(() => toast.error('Fee structures load nahi hui'))
+      .catch(() => toast.error('Failed to load fee structures'))
       .finally(() => setLoading(false));
   }, [source, classFilter]);
 
@@ -121,12 +121,12 @@ export default function FeeStructures() {
 
   async function handleSave() {
     if (!form.fee_type || !form.amount) {
-      toast.error('Fee type aur amount zaroori hai');
+      toast.error('Fee type and amount are required');
       return;
     }
     // NEW — ONE_TIME (jaise Admission) mein class optional hai — school-wide bhi ho sakta hai
     if (form.frequency !== 'ONE_TIME' && !form.class_id) {
-      toast.error('Class select karo (ya One-Time frequency chuno school-wide ke liye)');
+      toast.error('Select class (or choose One-Time frequency for school-wide application)');
       return;
     }
     setSaving(true);
@@ -142,19 +142,19 @@ export default function FeeStructures() {
       setShowModal(false);
       load();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Save nahi ho paya');
+      toast.error(err.response?.data?.error || 'Failed to save');
     }
     setSaving(false);
   }
 
   async function handleDelete(id) {
-    if (!window.confirm('Ye fee structure delete karni hai?')) return;
+    if (!window.confirm('Are you sure you want to delete this fee structure?')) return;
     try {
       await api.delete(`/principal/fee-structures/${id}`);
       toast.success('Deleted');
       load();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Delete fail hua (shayad already use ho chuki hai)');
+      toast.error(err.response?.data?.error || 'Delete failed (record may already be in use)');
     }
   }
 
@@ -178,7 +178,7 @@ export default function FeeStructures() {
       const { data } = await api.get(`/principal/fees/student-records/${s.id}`);
       setStudentRecords(data.records || []);
     } catch {
-      toast.error('Records load nahi hue');
+      toast.error('Failed to load records');
     }
   }
 
@@ -190,11 +190,11 @@ export default function FeeStructures() {
 
   async function submitAdjustment() {
     if (!adjAmount || Number.isNaN(Number(adjAmount)) || Number(adjAmount) <= 0) {
-      toast.error('Sahi amount daalo');
+      toast.error('Please enter a valid amount');
       return;
     }
     if (!adjReason.trim()) {
-      toast.error('Reason zaroori hai');
+      toast.error('Reason is required');
       return;
     }
     setAdjSaving(true);
@@ -202,25 +202,25 @@ export default function FeeStructures() {
       await api.post(`/principal/fees/records/${adjustModal.record.id}/adjust`, {
         type: adjustModal.type, amount: Number.parseFloat(adjAmount), reason: adjReason.trim(),
       });
-      toast.success(adjustModal.type === 'FINE' ? 'Fine lag gaya' : 'Waiver apply ho gaya');
+      toast.success(adjustModal.type === 'FINE' ? 'Fine applied successfully' : 'Waiver applied successfully');
       setAdjustModal(null);
       selectStudent(selStudent);
       loadLedger();   // ← NEW — ledger table turant refresh ho
     } catch (e) {
-      toast.error(e.response?.data?.error || 'Save nahi hua');
+      toast.error(e.response?.data?.error || 'Failed to save');
     }
     setAdjSaving(false);
   }
 
   async function removeAdjustment(record, field) {
-    if (!window.confirm(`${field === 'fine' ? 'Fine' : 'Waiver'} remove karna hai?`)) return;
+    if (!window.confirm(`Are you sure you want to remove this ${field === 'fine' ? 'fine' : 'waiver'}?`)) return;
     try {
       await api.delete(`/principal/fees/records/${record.id}/adjust/${field}`);
       toast.success('Removed');
       selectStudent(selStudent);
       loadLedger();   // ← NEW
     } catch (e) {
-      toast.error(e.response?.data?.error || 'Remove fail hua');
+      toast.error(e.response?.data?.error || 'Failed to remove');
     }
   }
 
@@ -239,8 +239,8 @@ export default function FeeStructures() {
               <h2 className="page-title">Fees — Structures &amp; Adjustments</h2>
               <p className="page-subtitle">
                 {activeTab === 'rates'
-                  ? 'Sabhi fee categories ek jagah — Academic, Hostel, Library'
-                  : 'Fine lagao ya fees maaf karo — kisi bhi student ke kisi bhi record pe'}
+                  ? 'All fee categories in one place — Academic, Hostel, Library'
+                  : 'Apply fines or fee waivers across student records'}
               </p>
             </div>
             {activeTab === 'rates' && editable && (
@@ -304,7 +304,7 @@ export default function FeeStructures() {
                   padding: '12px 16px', marginBottom: 16, display: 'flex',
                   justifyContent: 'space-between', alignItems: 'center', fontSize: 13,
                 }}>
-                  <span>ℹ️ Ye {source === 'HOSTEL' ? 'Hostel' : 'Library'} module se manage hoti hai — yahan sirf overview hai.</span>
+                  <span>ℹ️ Managed via {source === 'HOSTEL' ? 'Hostel' : 'Library'} module — overview displayed here.</span>
                   {manageUrl && (
                     <a href={manageUrl} style={{
                       background: '#0176d3', color: '#fff', textDecoration: 'none',
@@ -338,13 +338,13 @@ export default function FeeStructures() {
                   ))}
                   {!structures.length && (
                     <div style={{ gridColumn: '1/-1', textAlign: 'center', color: '#94a3b8', padding: 30 }}>
-                      Koi hostel fee structure nahi bani abhi
+                      No hostel fee structures configured yet
                     </div>
                   )}
                 </div>
               ) : source === 'LIBRARY' ? (
                 <div style={{ textAlign: 'center', color: '#94a3b8', padding: 30 }}>
-                  Library fee structure abhi setup nahi hui.
+                  Library fee structure is not setup yet.
                 </div>
               ) : (
                 /* Academic — existing editable table */
@@ -381,7 +381,7 @@ export default function FeeStructures() {
                           </tr>
                         ))}
                         {!structures.length && (
-                          <tr><td colSpan={7}><div className="empty-state"><p>Koi fee structure nahi bani abhi</p></div></td></tr>
+                          <tr><td colSpan={7}><div className="empty-state"><p>No fee structures configured yet</p></div></td></tr>
                         )}
                       </tbody>
                     </table>
@@ -405,9 +405,9 @@ export default function FeeStructures() {
                     </select>
                     <input type="month" className="form-input" style={{ width: 150 }} value={ledgerMonth} onChange={e => setLedgerMonth(e.target.value)} />
                     <select className="form-select" style={{ width: 130 }} value={ledgerType} onChange={e => setLedgerType(e.target.value)}>
-                      <option value="ALL">Sab</option>
-                      <option value="FINE">Sirf Fine</option>
-                      <option value="DISCOUNT">Sirf Discount</option>
+                      <option value="ALL">All</option>
+                      <option value="FINE">Fine Only</option>
+                      <option value="DISCOUNT">Discount Only</option>
                     </select>
                     {(ledgerClass || ledgerMonth || ledgerType !== 'ALL') && (
                       <button onClick={() => { setLedgerClass(''); setLedgerMonth(''); setLedgerType('ALL'); }}
@@ -435,7 +435,7 @@ export default function FeeStructures() {
                         </tr>
                       ))}
                       {!ledger.length && (
-                        <tr><td colSpan={7}><div className="empty-state"><p>Koi adjustment nahi mila is filter mein</p></div></td></tr>
+                        <tr><td colSpan={7}><div className="empty-state"><p>No adjustments found for this filter</p></div></td></tr>
                       )}
                     </tbody>
                   </table>
@@ -479,7 +479,7 @@ export default function FeeStructures() {
                     ))}
                     {!adjStudents.length && (
                       <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12, padding: 20 }}>
-                        Class select karo ya search karo
+                        Please select a class or search
                       </div>
                     )}
                   </div>
@@ -537,20 +537,20 @@ export default function FeeStructures() {
                                   </button>
                                   <button onClick={() => openAdjust(r, 'DISCOUNT')}
                                     style={{ fontSize: 10, background: '#eaf5ea', color: '#2e844a', border: 'none', borderRadius: 4, padding: '4px 8px', cursor: 'pointer', fontWeight: 700 }}>
-                                    Maaf Karo
+                                    Grant Waiver
                                   </button>
                                 </div>
                               )}
                               {r.status === 'DRAFT' && (
                                 <div style={{ fontSize: 10, color: '#5867e8', marginTop: 4 }}>
-                                  ⚠️ Abhi Draft hai — Fees → Batches se publish karo
+                                  ⚠️ Currently in Draft — publish from Fees → Batches
                                 </div>
                               )}
                             </td>
                           </tr>
                         ))}
                        {!studentRecords.length && (
-                          <tr><td colSpan={9}><div className="empty-state"><p>Is student ka koi fee record nahi hai</p></div></td></tr>
+                          <tr><td colSpan={9}><div className="empty-state"><p>No fee records found for this student</p></div></td></tr>
                         )}
                       </tbody>
                     </table>
@@ -593,7 +593,7 @@ export default function FeeStructures() {
               </select>
 
               <label htmlFor="fs-class-id" style={labelStyle}>
-                Class {form.frequency === 'ONE_TIME' ? '(optional — khali chodo to sab classes)' : '*'}
+                Class {form.frequency === 'ONE_TIME' ? '(optional — leave blank for all classes)' : '*'}
               </label>
               <select id="fs-class-id" style={inputStyle} value={form.class_id} disabled={!!editingId}
                 onChange={e => setForm({ ...form, class_id: e.target.value })}>
@@ -635,7 +635,7 @@ export default function FeeStructures() {
         >
           <div className="modal" style={{ maxWidth: 400 }}>
             <div className="modal-header">
-              <h3>{adjustModal.type === 'FINE' ? '⚠️ Fine Lagao' : '✅ Fees Maaf Karo'}</h3>
+              <h3>{adjustModal.type === 'FINE' ? '⚠️ Apply Fine' : '✅ Grant Fee Waiver'}</h3>
               <button className="modal-close" onClick={() => setAdjustModal(null)}>✕</button>
             </div>
             <div className="modal-body">

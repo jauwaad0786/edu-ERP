@@ -323,18 +323,18 @@ export default function FeeServiceGenerationPage() {
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
                 <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 800, color: '#1e3a8a' }}>
-                  Fees Generate Kya Hai Aur Kyu Jaruri Hai? (Monthly Student Billing Engine)
+                  Monthly Fee Bill Generation Engine
                 </h4>
                 <span style={{ fontSize: '11px', background: '#dbeafe', color: '#1e40af', padding: '2px 8px', borderRadius: '12px', fontWeight: 700 }}>
                   Non-Tech Guide
                 </span>
               </div>
               <p style={{ margin: 0, fontSize: '13px', color: '#334155', lineHeight: '1.5' }}>
-                School me har mahine (jaise <strong>{data?.month_label || selectedMonth}</strong>) students ke naam par Tuition, Transport (Bus), aur Hostel fees ka <strong>Monthly Bill (Demand)</strong> create kiya jata hai.
-                Jab tak yahan se <strong>"Generate"</strong> nahi hota, tab tak student par koi due amount count nahi hota aur na hi parent portal par pending bill dikhta hai.
+                Each month (such as <strong>{data?.month_label || selectedMonth}</strong>), consolidated monthly demand bills are generated across Tuition, Transport, and Hostel fees.
+                Fee demand bills must be generated to reflect outstanding balances on student ledgers and parent portals.
                 <br />
                 <span style={{ display: 'inline-block', marginTop: '4px', fontWeight: 600, color: '#0369a1' }}>
-                  👉 <strong>Kaise use karein?</strong> Pure school ke sabhi students ka bill 1-click me banane ke liye upar <strong>"Generate All Monthly Bills"</strong> dabayein, ya neeche kisi specific Service/Class ke aage <strong>"Generate"</strong> par click karein.
+                  👉 <strong>Usage:</strong> Click <strong>"Generate All Monthly Bills"</strong> above to process school-wide billing, or click <strong>"Generate"</strong> for a specific class or service.
                 </span>
               </p>
             </div>

@@ -48,7 +48,7 @@ export default function Vehicles() {
     if (statusFilter) params.set('status', statusFilter);
     api.get('/transport/vehicles?' + params.toString())
       .then(r => { setVehicles(r.data.data || []); setPages(r.data.pages || 1); })
-      .catch(() => toast.error('Vehicles load nahi hue'))
+      .catch(() => toast.error('Failed to load vehicles'))
       .finally(() => setLoading(false));
   }, [page, search, typeFilter, statusFilter]);
 
@@ -93,7 +93,7 @@ export default function Vehicles() {
 
   async function handleSave(e) {
     e.preventDefault();
-    if (!form.vehicle_number.trim()) { toast.error('Vehicle number required hai'); return; }
+    if (!form.vehicle_number.trim()) { toast.error('Vehicle registration number is required'); return; }
 
     setSaving(true);
     const payload = {
@@ -115,19 +115,19 @@ export default function Vehicles() {
       setShowForm(false);
       load();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Save nahi hua');
+      toast.error(err.response?.data?.message || 'Failed to save');
     }
     setSaving(false);
   }
 
   async function handleDelete(v) {
-    if (!window.confirm(`${v.vehicle_number} delete karni hai?`)) return;
+    if (!window.confirm(`${v.vehicle_number} Are you sure you want to delete this?`)) return;
     try {
       await api.delete(`/transport/vehicles/${v.id}`);
       toast.success('Vehicle deleted');
       load();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Delete nahi hua');
+      toast.error(err.response?.data?.message || 'Failed to delete');
     }
   }
 
@@ -137,7 +137,7 @@ export default function Vehicles() {
       toast.success(`Status set to ${status}`);
       load();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Update nahi hua');
+      toast.error(err.response?.data?.message || 'Failed to update');
     }
   }
 
@@ -187,7 +187,7 @@ export default function Vehicles() {
             {loading ? (
               <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Loading...</div>
             ) : vehicles.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Koi vehicle nahi mila</div>
+              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>No vehicles found</div>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>

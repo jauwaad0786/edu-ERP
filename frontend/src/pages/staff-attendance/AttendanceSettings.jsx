@@ -91,7 +91,7 @@ export default function AttendanceSettings() {
   useEffect(() => {
     api.get('/staff-attendance/settings')
       .then((r) => setSettings(r.data))
-      .catch(() => toast.error('Settings load nahi hue'))
+      .catch(() => toast.error('Failed to load Settings'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -116,9 +116,9 @@ export default function AttendanceSettings() {
       (pos) => {
         set('latitude', pos.coords.latitude);
         set('longitude', pos.coords.longitude);
-        toast.success('Current location capture ho gayi');
+        toast.success('Current location capture completed successfully');
       },
-      () => toast.error('Location fetch nahi ho payi')
+      () => toast.error('Failed to fetch geolocation')
     );
   };
 
@@ -129,7 +129,7 @@ export default function AttendanceSettings() {
       setSettings(data);
       toast.success('Settings saved');
     } catch {
-      toast.error('Save fail ho gaya');
+      toast.error('Failed to save settings');
     } finally {
       setSaving(false);
     }

@@ -27,7 +27,7 @@ export default function LibraryReservations() {
     setLoading(true);
     api.get('/library/reservations?status=' + statusFilter)
       .then(r => setReservations(r.data || []))
-      .catch(() => toast.error('Reservations load nahi ho payi'))
+      .catch(() => toast.error('Failed to load Reservations'))
       .finally(() => setLoading(false));
   }, [statusFilter]);
 
@@ -56,7 +56,7 @@ export default function LibraryReservations() {
 
   async function handleCreateReservation() {
     if (!selectedBook || !selectedMember) {
-      toast.error('Book aur Member dono select karo');
+      toast.error('Please select both Book and Member');
       return;
     }
     setCreating(true);
@@ -70,7 +70,7 @@ export default function LibraryReservations() {
       setSelectedMember(null);
       load();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Reservation nahi ho payi');
+      toast.error(err.response?.data?.error || 'Failed to place reservation');
     }
     setCreating(false);
   }
@@ -81,7 +81,7 @@ export default function LibraryReservations() {
       toast.success('Reservation cancelled');
       load();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Cancel nahi ho paya');
+      toast.error(err.response?.data?.error || 'Failed to cancel reservation');
     }
   }
 
@@ -234,7 +234,7 @@ export default function LibraryReservations() {
             {loading ? (
               <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Loading...</div>
             ) : reservations.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Koi reservation nahi hai</div>
+              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>No active reservations found</div>
             ) : (
               reservations.map(r => (
                 <div key={r.id} style={{

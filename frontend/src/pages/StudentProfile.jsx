@@ -36,7 +36,7 @@ function MarksTab({ studentId, exams }) {
     <div className="card" style={{ margin: 0 }}>
       <div className="empty-state" style={{ padding: 48 }}>
         <div className="empty-state-icon">📝</div>
-        <p>Koi marks record nahi mila</p>
+        <p>No examination marks records found</p>
       </div>
     </div>
   );
@@ -144,7 +144,7 @@ function HostelTab({ studentId }) {
     <div className="card" style={{ margin: 0 }}>
       <div className="empty-state" style={{ padding: 48 }}>
         <div className="empty-state-icon">🏨</div>
-        <p>Ye student kisi hostel mein allocated nahi hai</p>
+        <p>This student is not allocated to any hostel facility</p>
       </div>
     </div>
   );
@@ -1205,7 +1205,7 @@ export default function StudentProfile() {
     setDocsLoading(true);
     api.get(`/principal/students/${id}/documents`)
       .then(r => setDocsData(r.data))
-      .catch(() => toast.error('Documents load nahi hue'))
+      .catch(() => toast.error('Failed to load Documents'))
       .finally(() => setDocsLoading(false));
   };
 
@@ -1220,11 +1220,11 @@ export default function StudentProfile() {
   }
 
   async function submitDocUpload(kind) {
-    if (!docForm.doc_type) { toast.error('Document type select karo'); return; }
+    if (!docForm.doc_type) { toast.error('Please select Document type'); return; }
     if (docForm.doc_type === 'OTHER' && !docForm.custom_label.trim()) {
       toast.error('Document ka naam likho'); return;
     }
-    if (!docForm.file) { toast.error('File select karo'); return; }
+    if (!docForm.file) { toast.error('Please select File'); return; }
 
     setDocSaving(true);
     const fd = new FormData();
@@ -1238,12 +1238,12 @@ export default function StudentProfile() {
 
     try {
       await api.post(url, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-      toast.success('Document upload ho gaya');
+      toast.success('Document uploaded successfully');
       setShowIssueModal(false);
       setShowUploadModal(false);
       loadDocuments();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Upload nahi hua');
+      toast.error(err.response?.data?.error || 'Failed to upload');
     }
     setDocSaving(false);
   }
@@ -1259,7 +1259,7 @@ export default function StudentProfile() {
       setDeleteDocTarget(null);
       loadDocuments();
     } catch {
-      toast.error('Delete nahi hua');
+      toast.error('Failed to delete');
     }
   }
 
@@ -1280,9 +1280,9 @@ export default function StudentProfile() {
       link.href = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
       link.download = `${type}_card_${data?.info?.name}.pdf`;
       link.click();
-      toast.success('PDF download ho raha hai!');
+      toast.success('Downloading PDF...');
     } catch (err) {
-      toast.error(err.response?.data?.error || 'PDF generate nahi hua');
+      toast.error(err.response?.data?.error || 'Failed to generate PDF');
     }
     setDlLoading(false);
   };
@@ -1293,7 +1293,7 @@ export default function StudentProfile() {
   };
 
   const confirmExamPicker = () => {
-    if (!pickedExamId) { toast.error('Pehle exam select karo'); return; }
+    if (!pickedExamId) { toast.error('Please select an examination first'); return; }
     downloadCard(examPickerType, pickedExamId);
     setExamPickerType(null);
   };
@@ -1335,7 +1335,7 @@ export default function StudentProfile() {
       <div className="main-content">
         <Navbar title="Student Profile" />
         <div className="page-body">
-          <div className="empty-state"><p>Student nahi mila.</p></div>
+          <div className="empty-state"><p>Student not found.</p></div>
         </div>
       </div>
     </div>
@@ -1694,7 +1694,7 @@ export default function StudentProfile() {
                     <tbody>
                       {(att.monthly || []).length === 0 ? (
                         <tr><td colSpan={6} style={{ textAlign:'center', padding:24, color:'var(--neutral-4)' }}>
-                          Koi attendance record nahi
+                          No attendance records found
                         </td></tr>
                       ) : (att.monthly || []).map((m, i) => {
                         const pct = m.total > 0 ? Math.round(m.present/m.total*100) : 0;
@@ -1808,7 +1808,7 @@ export default function StudentProfile() {
                     <tbody>
                       {(feeData.records || []).length === 0 ? (
                         <tr><td colSpan={8} style={{ textAlign:'center', padding:24, color:'var(--neutral-4)' }}>
-                          Koi fee record nahi
+                          No fee records found
                         </td></tr>
                       ) : (feeData.records || []).map((r, i) => (
                         <tr key={i}>
@@ -1911,7 +1911,7 @@ export default function StudentProfile() {
                         <tbody>
                           {(docsData.issued_documents || []).length === 0 ? (
                             <tr><td colSpan={4} style={{ textAlign:'center', padding:24, color:'var(--neutral-4)' }}>
-                              Koi document issue nahi hua abhi tak
+                              No documents issued yet
                             </td></tr>
                           ) : docsData.issued_documents.map(d => (
                             <tr key={d.id}>
@@ -1956,7 +1956,7 @@ export default function StudentProfile() {
                         <tbody>
                           {(docsData.student_documents || []).length === 0 ? (
                             <tr><td colSpan={4} style={{ textAlign:'center', padding:24, color:'var(--neutral-4)' }}>
-                              Koi document upload nahi hua abhi tak
+                              No documents uploaded yet
                             </td></tr>
                           ) : docsData.student_documents.map(d => (
                             <tr key={d.id}>
@@ -2119,7 +2119,7 @@ export default function StudentProfile() {
             </div>
             <div className="modal-body">
               <div style={{ background:'#fef2f2', border:'1px solid #fecaca', borderRadius:8, padding:'12px 16px', fontSize:13, color:'#991b1b' }}>
-                ⚠️ Ye document permanently delete ho jayega. Confirm karo.
+                ⚠️ This document will be permanently deleted. Confirm?
               </div>
             </div>
             <div className="modal-footer">
@@ -2151,10 +2151,10 @@ export default function StudentProfile() {
             </div>
             <div className="modal-body">
               <div className="form-group">
-                <label className="form-label">Exam Select Karo *</label>
+                <label className="form-label">Please select Exam *</label>
                 {publishedExams.length === 0 ? (
                   <div style={{ padding:'12px 16px', background:'#fffbeb', border:'1px solid #fcd34d', borderRadius:8, fontSize:13, color:'#92400e' }}>
-                    ⚠️ Koi published exam nahi mila. Principal se exam publish karwao.
+                    ⚠️ No published examinations found. Please contact the Principal to publish exam results.
                   </div>
                 ) : (
                   <select className="form-input" value={pickedExamId} onChange={e => setPickedExamId(e.target.value)}>

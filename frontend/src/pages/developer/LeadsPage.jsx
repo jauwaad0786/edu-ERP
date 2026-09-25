@@ -46,7 +46,7 @@ export default function LeadsPage() {
       fetchLeads();
       setShowModal(false);
     } catch (err) {
-      alert('Status update fail ho gaya');
+      alert('Failed to update status');
     } finally {
       setUpdating(false);
     }
@@ -89,7 +89,7 @@ export default function LeadsPage() {
               <div className="loading-spinner">Loading leads...</div>
             ) : leads.length === 0 ? (
               <div className="card" style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>
-                Abhi tak koi demo request ya message nahi aaya.
+                No demo requests or messages received yet.
               </div>
             ) : (
               <div style={{ display: 'grid', gap: 10 }}>

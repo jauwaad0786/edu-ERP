@@ -31,7 +31,7 @@ export default function Conductors() {
     if (statusFilter) params.set('status', statusFilter);
     api.get('/transport/conductors?' + params.toString())
       .then(r => { setConductors(r.data.data || []); setPages(r.data.pages || 1); })
-      .catch(() => toast.error('Conductors load nahi hue'))
+      .catch(() => toast.error('Failed to load Conductors'))
       .finally(() => setLoading(false));
   }, [page, search, statusFilter]);
 
@@ -56,7 +56,7 @@ export default function Conductors() {
   async function handleSave(e) {
     e.preventDefault();
     if (!form.name.trim() || !form.mobile_number.trim()) {
-      toast.error('Name aur mobile number required hain');
+      toast.error('Name and mobile phone number are required');
       return;
     }
 
@@ -73,19 +73,19 @@ export default function Conductors() {
       setShowForm(false);
       load();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Save nahi hua');
+      toast.error(err.response?.data?.message || 'Failed to save');
     }
     setSaving(false);
   }
 
   async function handleDelete(c) {
-    if (!window.confirm(`${c.name} ko delete karna hai?`)) return;
+    if (!window.confirm(`${c.name} Are you sure you want to delete this?`)) return;
     try {
       await api.delete(`/transport/conductors/${c.id}`);
       toast.success('Conductor deleted');
       load();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Delete nahi hua');
+      toast.error(err.response?.data?.message || 'Failed to delete');
     }
   }
 
@@ -96,7 +96,7 @@ export default function Conductors() {
       toast.success(`Conductor ${newStatus.toLowerCase()}`);
       load();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Update nahi hua');
+      toast.error(err.response?.data?.message || 'Failed to update');
     }
   }
 
@@ -143,7 +143,7 @@ export default function Conductors() {
               <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Loading...</div>
             ) : conductors.length === 0 ? (
               <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
-                Koi conductor nahi mila — ye role optional hai, sab vehicles pe conductor hona zaroori nahi
+                No conductors found — this role is optional for vehicles.
               </div>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>

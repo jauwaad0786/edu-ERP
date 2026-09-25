@@ -642,7 +642,7 @@ function TimetableGrid({ timetable, subjects, teachers, onUpdate, schoolName = '
           {/* PUBLISHED state buttons */}
           {isPublished && (
             <>
-              {/* Unpublish → Edit mode mein le jaata hai */}
+              {/* Unpublish → switches to edit mode */}
               <button
                 onClick={doUnpublish}
                 title="Unpublish to edit timetable"
@@ -677,7 +677,7 @@ function TimetableGrid({ timetable, subjects, teachers, onUpdate, schoolName = '
                 📢 <span>Re-publish</span>
               </button>
 
-              {/* Delete — published pe bhi allow karo */}
+              {/* Delete — allowed on published */}
               <button
                 onClick={doDelete}
                 title="Delete this timetable"
@@ -909,7 +909,7 @@ function CreateTimetableModal({ classes, onClose, onCreated }) {
   const [err, setErr] = useState('');
 
   const submit = async () => {
-    if (!form.class_id) { setErr('Class select karo'); return; }
+    if (!form.class_id) { setErr('Please select a class'); return; }
     setSaving(true); setErr('');
     try {
       const res = await api.post('/principal/timetables', {

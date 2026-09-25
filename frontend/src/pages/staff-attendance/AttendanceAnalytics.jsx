@@ -27,7 +27,7 @@ export default function AttendanceAnalytics() {
     const params = new URLSearchParams({ range, month, year, role });
     api.get(`/staff-attendance/analytics?${params.toString()}`)
       .then((r) => setData(r.data))
-      .catch(() => toast.error('Analytics load nahi hui'))
+      .catch(() => toast.error('Failed to load Analytics'))
       .finally(() => setLoading(false));
   }, [range, month, year, role]);
 
@@ -46,7 +46,7 @@ export default function AttendanceAnalytics() {
       link.click();
       link.remove();
     } catch {
-      toast.error('Export fail ho gaya');
+      toast.error('Export failed');
     } finally {
       setExporting(false);
     }
@@ -94,7 +94,7 @@ export default function AttendanceAnalytics() {
   const RankList = ({ title, items, valueKey, valueSuffix, color }) => (
     <div style={card}>
       <div style={sectionTitle}>{title}</div>
-      {(!items || items.length === 0) && <div style={{ fontSize: 12, color: muted }}>Data nahi mila.</div>}
+      {(!items || items.length === 0) && <div style={{ fontSize: 12, color: muted }}>No data found.</div>}
       {items && items.map((it, i) => (
         <div key={it.user_id || i} style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',

@@ -2013,7 +2013,7 @@ export default function FeeSetupPage() {
                         </span>
                       </div>
                       <p style={{ margin: '0 0 10px', fontSize: 11.5, color: '#64748b', lineHeight: 1.4 }}>
-                        Transport (Bus) aur Hostel fees class-level par fixed nahi hoti hain. Ye student-specific hoti hain aur direct respective module se dynamically calculate hoti hain:
+                        Transport and Hostel fees are student-specific and calculated dynamically from their respective modules:
                       </p>
 
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>

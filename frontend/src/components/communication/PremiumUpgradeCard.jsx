@@ -39,7 +39,7 @@ export default function PremiumUpgradeCard({ darkMode, variant = 'full', reason 
           subject:  'Premium Support Upgrade Request',
           category: 'GENERAL',
           priority: 'MEDIUM',
-          description: 'Hum Premium Support plan (₹299/month) activate karwana chahte hain. Please contact karo.',
+          description: 'We would like to activate the Premium Support plan (₹299/month). Please contact our office.',
         },
       },
     });
@@ -56,7 +56,7 @@ export default function PremiumUpgradeCard({ darkMode, variant = 'full', reason 
       }}>
         <i className="ti ti-rocket" style={{ fontSize: 18, color: '#d97706', flexShrink: 0 }} aria-hidden="true" />
         <div style={{ flex: 1, fontSize: 12.5, color: darkMode ? '#fcd34d' : '#92400e' }}>
-          {reason || `Aapne is hafte ${used}/${limit} support request use kar liye hain.`}{' '}
+          {reason || `You have utilized ${used}/${limit} support requests this week.`}{' '}
           <strong>Premium Support — ₹299/month</strong> se unlimited assistance milegi.
         </div>
         <button onClick={requestUpgrade} style={{

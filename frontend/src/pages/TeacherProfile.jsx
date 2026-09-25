@@ -34,7 +34,7 @@ export default function TeacherProfile() {
       await load();
       setEditSalary(false);
     } catch {
-      toast.error('Salary update nahi hui');
+      toast.error('Failed to update salary');
     }
     setSaving(false);
   };
@@ -64,7 +64,7 @@ export default function TeacherProfile() {
   if (!data) return (
     <div className="app-shell"><Sidebar />
       <div className="main-content"><Navbar title="Teacher Profile" />
-        <div className="page-body"><div className="empty-state"><p>Teacher nahi mila.</p></div></div>
+        <div className="page-body"><div className="empty-state"><p>Teacher not found.</p></div></div>
       </div>
     </div>
   );
@@ -114,10 +114,10 @@ export default function TeacherProfile() {
                       await api.post(`/principal/teachers/${id}/photo`, fd, {
                         headers: { 'Content-Type': 'multipart/form-data' }
                       });
-                      toast.success('Photo upload ho gayi!');
+                      toast.success('Photo uploaded successfully!');
                       load();
                     } catch {
-                      toast.error('Photo upload nahi hui');
+                      toast.error('Failed to upload photo');
                     }
                   }} />
               </label>
@@ -241,7 +241,7 @@ export default function TeacherProfile() {
                 <div className="card" style={{ margin:0 }}>
                   <div className="empty-state" style={{ padding:48 }}>
                     <div className="empty-state-icon">🏛</div>
-                    <p>Koi class assign nahi</p>
+                    <p>No classes assigned</p>
                   </div>
                 </div>
               ) : (
@@ -323,7 +323,7 @@ export default function TeacherProfile() {
                     <tbody>
                       {(attendance?.monthly || []).length === 0 ? (
                         <tr><td colSpan={6} style={{ textAlign:'center', padding:24, color:'var(--neutral-4)' }}>
-                          Koi attendance record nahi
+                          No attendance records found
                         </td></tr>
                       ) : (attendance?.monthly || []).map((m, i) => {
                         const total = m.present + m.absent + m.half_day + m.on_leave;
@@ -445,7 +445,7 @@ export default function TeacherProfile() {
                     <tbody>
                       {(salary_history || []).length === 0 ? (
                         <tr><td colSpan={5} style={{ textAlign:'center', padding:24, color:'var(--neutral-4)' }}>
-                          Koi salary record nahi — Principal se manually add karein
+                          No salary records found — contact administration to add record
                         </td></tr>
                       ) : (salary_history || []).map((s, i) => (
                         <tr key={i}>

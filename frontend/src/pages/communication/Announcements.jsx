@@ -73,7 +73,7 @@ export default function Announcements({ initialShowForm }) {
       setForm({ title: '', body: '', audience: 'ALL', priority: 'MEDIUM', is_pinned: false, target_school_id: 'ALL' });
       fetchList();
     } catch (err) {
-      alert(err.response?.data?.error || 'Announcement create nahi hua');
+      alert(err.response?.data?.error || 'Failed to create announcement');
     }
   };
 
@@ -83,7 +83,7 @@ export default function Announcements({ initialShowForm }) {
   };
 
   const remove = async (id) => {
-    if (!window.confirm('Yeh announcement remove karna hai?')) return;
+    if (!window.confirm('Are you sure you want to remove this announcement?')) return;
     await api.delete(`/support/announcements/${id}`).catch(() => {});
     fetchList();
   };
@@ -108,7 +108,7 @@ export default function Announcements({ initialShowForm }) {
           <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
               <h2 className="page-title">Announcements</h2>
-              <p className="page-subtitle">School-wide updates aur notices</p>
+              <p className="page-subtitle">School-wide updates and announcements</p>
             </div>
             {canCreate && (
               <button className="btn btn-primary btn-sm" onClick={() => setShowForm(s => !s)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -153,7 +153,7 @@ export default function Announcements({ initialShowForm }) {
           ) : list.length === 0 ? (
             <div className="card" style={{ ...cardBg, padding: 40, textAlign: 'center' }}>
               <i className="ti ti-speakerphone-off" style={{ fontSize: 32, color: darkMode ? '#475569' : '#cbd5e1', display: 'block', marginBottom: 10 }} aria-hidden="true" />
-              <div style={{ fontSize: 13, color: darkMode ? '#94a3b8' : '#64748b' }}>Koi announcement nahi hai abhi</div>
+              <div style={{ fontSize: 13, color: darkMode ? '#94a3b8' : '#64748b' }}>No announcements currently available</div>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

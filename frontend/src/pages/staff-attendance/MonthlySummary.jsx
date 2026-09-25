@@ -27,7 +27,7 @@ export default function MonthlySummary() {
     setLoading(true);
     api.get(`/staff-attendance/monthly-summary?month=${month}&year=${year}`)
       .then((r) => setRows(r.data))
-      .catch(() => toast.error('Monthly summary load nahi hui'))
+      .catch(() => toast.error('Failed to load Monthly summary'))
       .finally(() => setLoading(false));
   }, [month, year]);
 
@@ -145,7 +145,7 @@ export default function MonthlySummary() {
                 </thead>
                 <tbody>
                   {filtered.length === 0 && (
-                    <tr><td style={td} colSpan={16}>Koi record nahi mila.</td></tr>
+                    <tr><td style={td} colSpan={16}>No records found.</td></tr>
                   )}
                   {filtered.map((r) => (
                     <tr key={r.user_id}>

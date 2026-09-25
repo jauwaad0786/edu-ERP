@@ -37,7 +37,7 @@ export default function LibraryMembers() {
     if (typeFilter) params.set('member_type', typeFilter);
     api.get('/library/members?' + params.toString())
       .then(r => setMembers(r.data || []))
-      .catch(() => toast.error('Members load nahi ho paye'))
+      .catch(() => toast.error('Failed to load library members'))
       .finally(() => setLoading(false));
   }, [search, typeFilter]);
 
@@ -65,7 +65,7 @@ export default function LibraryMembers() {
   }, [enrollSearch, enrollClassId, enrollType]);
 
   async function handleEnroll(userItem) {
-    if (userItem.is_member) { toast.error('Already library member hai'); return; }
+    if (userItem.is_member) { toast.error('User is already an enrolled library member'); return; }
     setEnrolling(true);
     try {
       await api.post('/library/members', { user_id: userItem.user_id, member_type: enrollType });
@@ -75,7 +75,7 @@ export default function LibraryMembers() {
       setShowEnroll(false);
       load();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Enroll nahi ho paya');
+      toast.error(err.response?.data?.error || 'Failed to enroll member');
     }
     setEnrolling(false);
   }
@@ -87,7 +87,7 @@ export default function LibraryMembers() {
       toast.success(`Member ${newStatus.toLowerCase()}`);
       load();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Update nahi ho paya');
+      toast.error(err.response?.data?.error || 'Failed to update member');
     }
   }
 
@@ -96,7 +96,7 @@ export default function LibraryMembers() {
       const r = await api.get(`/library/members/${member.id}/history`);
       setDetail(r.data);
     } catch {
-      toast.error('History load nahi ho payi');
+      toast.error('Failed to load issue history');
     }
   }
 
@@ -148,7 +148,7 @@ export default function LibraryMembers() {
             {loading ? (
               <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Loading...</div>
             ) : members.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Koi member nahi mila</div>
+              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>No library members found</div>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
@@ -258,7 +258,7 @@ export default function LibraryMembers() {
               <div style={{ marginTop: 10, maxHeight: 280, overflowY: 'auto' }}>
                 {enrollResults.length === 0 ? (
                   <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', padding: 24 }}>
-                    {enrollClassId || enrollSearch ? 'Koi eligible record nahi mila' : 'Class chunein ya naam/roll search karein'}
+                    {enrollClassId || enrollSearch ? 'No eligible records found' : 'Select class or search by name / admission number'}
                   </div>
                 ) : enrollResults.map(u => (
                   <div key={u.user_id} style={{
@@ -304,7 +304,7 @@ export default function LibraryMembers() {
             <div className="modal-body">
               <h5 style={{ fontSize: 13, margin: '0 0 8px' }}>📚 Issue History</h5>
               {detail.issues.length === 0 ? (
-                <p style={{ fontSize: 12, color: '#94a3b8' }}>Koi issue history nahi hai</p>
+                <p style={{ fontSize: 12, color: '#94a3b8' }}>No issue history found</p>
               ) : (
                 detail.issues.map(i => (
                   <div key={i.id} style={{ fontSize: 12, padding: '6px 0', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between' }}>
@@ -318,7 +318,7 @@ export default function LibraryMembers() {
 
               <h5 style={{ fontSize: 13, margin: '16px 0 8px' }}>💰 Fine History</h5>
               {detail.fines.length === 0 ? (
-                <p style={{ fontSize: 12, color: '#94a3b8' }}>Koi fine history nahi hai</p>
+                <p style={{ fontSize: 12, color: '#94a3b8' }}>No fine history found</p>
               ) : (
                 detail.fines.map(f => (
                   <div key={f.id} style={{ fontSize: 12, padding: '6px 0', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between' }}>

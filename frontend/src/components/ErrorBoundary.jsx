@@ -42,9 +42,9 @@ class ErrorBoundary extends React.Component {
           justifyContent: 'center', minHeight: '100vh', padding: 24,
           textAlign: 'center', fontFamily: 'sans-serif',
         }}>
-          <h2 style={{ marginBottom: 8 }}>Kuch galat ho gaya</h2>
+          <h2 style={{ marginBottom: 8 }}>Something went wrong</h2>
           <p style={{ color: '#666', marginBottom: 16 }}>
-            Ye error humare development team ko report ho chuka hai.
+            This error has been reported to the technical support team.
           </p>
           <button
             onClick={() => window.location.reload()}
@@ -53,7 +53,7 @@ class ErrorBoundary extends React.Component {
               background: '#3b82f6', color: '#fff', cursor: 'pointer',
             }}
           >
-            Page Reload Karein
+            Reload Page
           </button>
         </div>
       );

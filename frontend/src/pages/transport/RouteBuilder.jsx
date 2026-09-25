@@ -26,7 +26,7 @@ export default function RouteBuilder() {
     setLoading(true);
     api.get('/transport/routes?include_stops=true')
       .then(r => setRoutes(r.data.data || []))
-      .catch(() => toast.error('Routes load nahi hue'))
+      .catch(() => toast.error('Failed to load routes'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -60,7 +60,7 @@ export default function RouteBuilder() {
     const stop = allStops.find(s => String(s.id) === String(addStopId));
     if (!stop) return;
     if (stops.some(s => s.stop_id === stop.id)) {
-      toast.error('Ye stop already route me hai');
+      toast.error('This stop is already added to the route');
       return;
     }
     setStops(s => [...s, { stop_id: stop.id, stop_name: stop.name, estimated_time: '' }]);
@@ -96,8 +96,8 @@ export default function RouteBuilder() {
   }
 
   async function handleSave() {
-    if (!name.trim()) { toast.error('Route name required hai'); return; }
-    if (stops.length === 0) { toast.error('Kam se kam ek stop add karo'); return; }
+    if (!name.trim()) { toast.error('Route name is required'); return; }
+    if (stops.length === 0) { toast.error('Please add at least one stop to the route'); return; }
 
     setSaving(true);
     const stopsPayload = stops.map(s => ({ stop_id: s.stop_id, estimated_time: s.estimated_time }));
@@ -118,20 +118,20 @@ export default function RouteBuilder() {
       }
       loadRoutes();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Save nahi hua');
+      toast.error(err.response?.data?.message || 'Failed to save');
     }
     setSaving(false);
   }
 
   async function handleDeleteRoute(route) {
-    if (!window.confirm(`"${route.name}" route delete karni hai?`)) return;
+    if (!window.confirm(`"${route.name}" Are you sure you want to delete this route?`)) return;
     try {
       await api.delete(`/transport/routes/${route.id}`);
       toast.success('Route deleted');
       if (selectedRouteId === route.id) newRoute();
       loadRoutes();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Delete nahi hua');
+      toast.error(err.response?.data?.message || 'Failed to delete');
     }
   }
 
@@ -165,7 +165,7 @@ export default function RouteBuilder() {
             {loading ? (
               <div style={{ textAlign: 'center', padding: 20, color: '#94a3b8', fontSize: 13 }}>Loading...</div>
             ) : routes.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 20, color: '#94a3b8', fontSize: 13 }}>Koi route nahi hai</div>
+              <div style={{ textAlign: 'center', padding: 20, color: '#94a3b8', fontSize: 13 }}>No routes configured yet</div>
             ) : routes.map(r => (
               <div
                 key={r.id}
@@ -243,7 +243,7 @@ export default function RouteBuilder() {
               <Connector darkMode={darkMode} />
 
               {stops.length === 0 ? (
-                <div style={{ fontSize: 12, color: '#94a3b8', padding: '12px 0' }}>Koi stop add nahi hua abhi</div>
+                <div style={{ fontSize: 12, color: '#94a3b8', padding: '12px 0' }}>No stops added to this route yet</div>
               ) : stops.map((s, idx) => (
                 <React.Fragment key={s.stop_id}>
                   <div

@@ -889,8 +889,8 @@ function ExamDetailPanel({ exam, onClose, onUpdate }) {
           background:'#fffbeb', border:'1px solid #fcd34d',
           fontSize:12, color:'#92400e', flexShrink:0,
         }}>
-          ⚠️ <strong>Timetable empty hai!</strong> Admit cards mein koi subject nahi dikhega.
-          Pehle &quot;📋 Timetable & Papers&quot; tab mein class-wise subjects add karo.
+          ⚠️ <strong>Timetable is empty!</strong> No subjects will appear on admit cards.
+          Please add class-wise subjects in &quot;📋 Timetable & Papers&quot; tab first.
         </div>
       )}
 
