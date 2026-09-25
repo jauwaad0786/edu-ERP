@@ -23,8 +23,8 @@ export default function AdminDashboardScreen({ navigation }) {
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     try {
-      const r = await client.get('/admin/platform-dashboard')
-        .catch(() => client.get('/admin/dashboard').catch(() => ({ data: null })));
+      const r = await client.get('/admin/stats')
+        .catch(() => client.get('/admin/platform-dashboard').catch(() => client.get('/admin/dashboard').catch(() => ({ data: null }))));
       setStats(r.data);
     } finally {
       if (isRefresh) setRefreshing(false); else setLoading(false);

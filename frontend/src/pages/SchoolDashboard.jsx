@@ -1,25 +1,54 @@
-import { useState } from 'react';
-
-const classData = [
-  { cls: 'Class 1', students: 42, feesCollected: 210000, feesPending: 42000 },
-  { cls: 'Class 2', students: 38, feesCollected: 190000, feesPending: 38000 },
-  { cls: 'Class 3', students: 45, feesCollected: 225000, feesPending: 22500 },
-  { cls: 'Class 4', students: 40, feesCollected: 200000, feesPending: 40000 },
-  { cls: 'Class 5', students: 36, feesCollected: 180000, feesPending: 36000 },
-];
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import api from '../api/axios';
 
 export default function SchoolDashboard({ school }) {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
+  const [classes, setClasses] = useState([]);
+  const [dashboardStats, setDashboardStats] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const totalStudents = classData.reduce((a, c) => a + c.students, 0);
-  const totalFeesCollected = classData.reduce((a, c) => a + c.feesCollected, 0);
-  const totalFeesPending = classData.reduce((a, c) => a + c.feesPending, 0);
+  useEffect(() => {
+    Promise.all([
+      api.get('/principal/classes').catch(() => ({ data: [] })),
+      api.get('/principal/dashboard').catch(() => ({ data: null })),
+      api.get('/principal/fees/class-summary').catch(() => ({ data: [] })),
+    ]).then(([clsRes, dashRes, feeRes]) => {
+      const cList = Array.isArray(clsRes.data) ? clsRes.data : clsRes.data?.classes || [];
+      const feeList = Array.isArray(feeRes.data) ? feeRes.data : feeRes.data?.classes || [];
+      
+      const merged = cList.map(c => {
+        const feeInfo = feeList.find(f => f.class_id === c.id || f.name === c.name) || {};
+        const count = c.student_count ?? c.students_count ?? 0;
+        return {
+          id: c.id,
+          cls: `Class ${c.name}${c.section ? ` (${c.section})` : ''}`,
+          students: count,
+          boys: Math.floor(count * 0.52),
+          girls: count - Math.floor(count * 0.52),
+          teacher: c.class_teacher_name || c.teacher_name || 'Not assigned',
+          feesCollected: Number(feeInfo.collected ?? feeInfo.paid ?? 0),
+          feesPending: Number(feeInfo.pending ?? feeInfo.total_due ?? feeInfo.balance ?? 0),
+        };
+      });
+      setClasses(merged);
+      setDashboardStats(dashRes.data);
+    }).finally(() => {
+      setLoading(false);
+    });
+  }, []);
+
+  const totalStudents = dashboardStats?.total_students ?? classes.reduce((a, c) => a + c.students, 0);
+  const totalTeachers = dashboardStats?.total_teachers ?? 0;
+  const totalFeesCollected = classes.reduce((a, c) => a + c.feesCollected, 0);
+  const totalFeesPending = classes.reduce((a, c) => a + c.feesPending, 0);
 
   const stats = [
-    { label: 'Total Students', value: totalStudents, icon: <i className="ti ti-school" style={{ fontSize: 22 }} />, color: '#2563eb' },
-    { label: 'Total Teachers', value: 28, icon: <i className="ti ti-users" style={{ fontSize: 22 }} />, color: '#7c3aed' },
-    { label: 'Fees Collected', value: `₹${(totalFeesCollected/100000).toFixed(1)}L`, icon: <i className="ti ti-currency-rupee" style={{ fontSize: 22 }} />, color: '#059669' },
-    { label: 'Fees Pending', value: `₹${(totalFeesPending/100000).toFixed(1)}L`, icon: <i className="ti ti-trending-down" style={{ fontSize: 22 }} />, color: '#dc2626' },
+    { label: 'Total Students', value: totalStudents.toLocaleString(), icon: <i className="ti ti-school" style={{ fontSize: 22 }} />, color: '#2563eb' },
+    { label: 'Total Teachers', value: totalTeachers.toLocaleString(), icon: <i className="ti ti-users" style={{ fontSize: 22 }} />, color: '#7c3aed' },
+    { label: 'Fees Collected', value: totalFeesCollected > 0 ? `₹${(totalFeesCollected/100000).toFixed(1)}L` : '₹0', icon: <i className="ti ti-currency-rupee" style={{ fontSize: 22 }} />, color: '#059669' },
+    { label: 'Fees Pending', value: totalFeesPending > 0 ? `₹${(totalFeesPending/100000).toFixed(1)}L` : '₹0', icon: <i className="ti ti-trending-down" style={{ fontSize: 22 }} />, color: '#dc2626' },
   ];
 
   return (
@@ -81,8 +110,8 @@ export default function SchoolDashboard({ school }) {
               </tr>
             </thead>
             <tbody>
-              {classData.map((row, i) => (
-                <tr key={row.cls} style={{ borderTop: '1px solid #f1f5f9',
+              {classes.map((row, i) => (
+                <tr key={row.id || row.cls} style={{ borderTop: '1px solid #f1f5f9',
                   backgroundColor: i % 2 === 0 ? 'white' : '#fafafa' }}>
                   <td style={{ padding: '14px 16px', fontWeight: 600, color: '#0f172a', fontSize: '14px' }}>
                     {row.cls}
@@ -94,17 +123,22 @@ export default function SchoolDashboard({ school }) {
                     </span>
                   </td>
                   <td style={{ padding: '14px 16px', color: '#475569', fontSize: '13px' }}>
-                    {Math.floor(row.students * 0.52)}
+                    {row.boys}
                   </td>
                   <td style={{ padding: '14px 16px', color: '#475569', fontSize: '13px' }}>
-                    {row.students - Math.floor(row.students * 0.52)}
+                    {row.girls}
                   </td>
                   <td style={{ padding: '14px 16px', color: '#475569', fontSize: '13px' }}>
-                    Assign Teacher
+                    {row.teacher}
                   </td>
                   <td style={{ padding: '14px 16px' }}>
-                    <button style={{ fontSize: '12px', padding: '5px 12px', borderRadius: '6px',
-                      border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', color: '#475569' }}>
+                    <button
+                      onClick={() => navigate('/students')}
+                      style={{
+                        fontSize: '12px', padding: '5px 12px', borderRadius: '6px',
+                        border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', color: '#475569',
+                      }}
+                    >
                       View Students
                     </button>
                   </td>
@@ -130,11 +164,11 @@ export default function SchoolDashboard({ school }) {
               </tr>
             </thead>
             <tbody>
-              {classData.map((row, i) => {
+              {classes.map((row, i) => {
                 const total = row.feesCollected + row.feesPending;
-                const pct = Math.round((row.feesCollected / total) * 100);
+                const pct = total > 0 ? Math.round((row.feesCollected / total) * 100) : 0;
                 return (
-                  <tr key={row.cls} style={{ borderTop: '1px solid #f1f5f9',
+                  <tr key={row.id || row.cls} style={{ borderTop: '1px solid #f1f5f9',
                     backgroundColor: i % 2 === 0 ? 'white' : '#fafafa' }}>
                     <td style={{ padding: '14px 16px', fontWeight: 600, color: '#0f172a', fontSize: '14px' }}>{row.cls}</td>
                     <td style={{ padding: '14px 16px', color: '#475569', fontSize: '13px' }}>{row.students}</td>

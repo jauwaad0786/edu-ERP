@@ -2046,6 +2046,7 @@ def update_complaint_status(complaint_id):
 #  OUT PASS & GATE PASS
 # ═══════════════════════════════════════════════════════════════════════════
 
+@hostel_bp.route('/out-pass', methods=['GET'])
 @hostel_bp.route('/out-passes', methods=['GET'])
 @role_required('PRINCIPAL', 'HOSTEL', 'STUDENT')
 def list_out_passes():

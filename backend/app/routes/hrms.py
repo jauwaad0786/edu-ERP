@@ -871,15 +871,25 @@ def calculate_monthly_payroll():
     }), 201
 
 
+@hrms_bp.route('/payroll', methods=['GET'])
 @hrms_bp.route('/payroll/runs', methods=['GET'])
 @role_required('PRINCIPAL', 'HR', 'SUPER_ADMIN', 'ACCOUNTANT')
 def list_payroll_runs():
     sid = _school_id()
     year = request.args.get('year')
+    month = request.args.get('month')
     q = PayrollRun.query.filter_by(school_id=sid)
     if year:
         q = q.filter_by(year=int(year))
+    if month:
+        if '-' in str(month):
+            parts = str(month).split('-')
+            q = q.filter_by(year=int(parts[0]), month=int(parts[1]))
+        else:
+            q = q.filter_by(month=int(month))
     runs = q.order_by(PayrollRun.year.desc(), PayrollRun.month.desc()).all()
+    if request.path.endswith('/payroll') and month and runs:
+        return jsonify(runs[0].to_dict()), 200
     return jsonify([r.to_dict() for r in runs]), 200
 
 

@@ -1426,6 +1426,7 @@ def _enrich_issue_dict(issue, settings):
     return d
 
 
+@library_bp.route('/issue-return', methods=['GET'])
 @library_bp.route('/issues', methods=['GET'])
 @role_required(*LIBRARY_ROLES)
 def list_issues():
@@ -2033,4 +2034,12 @@ def library_attendance_reports():
         'average_duration_mins': avg_duration,
         'hourly_footfall':       [{'hour': k, 'visits': v} for k, v in hourly.items()],
     }), 200
+
+
+@library_bp.route('/classes', methods=['GET'])
+@role_required(*LIBRARY_ROLES)
+def library_get_classes():
+    sid = _school_id()
+    classes = Class.query.filter_by(school_id=sid).order_by(Class.name.asc()).all()
+    return jsonify([c.to_dict() for c in classes]), 200
 

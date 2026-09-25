@@ -414,7 +414,13 @@ export default function CollectPaymentPage() {
                               {fmt(s.outstanding)}
                             </td>
                             <td style={{ textAlign: 'center' }}>
-                              <button className="btn btn-primary btn-sm">
+                              <button
+                                className="btn btn-primary btn-sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  loadStudentLedger(s.id);
+                                }}
+                              >
                                 Collect Fees
                               </button>
                             </td>

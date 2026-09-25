@@ -110,14 +110,20 @@ export default function HRDashboard() {
     Promise.all([
       api.get('/hrms/employees', { params: { per_page: 20 } }).catch(() => ({ data: { employees: [] } })),
       api.get('/hrms/leaves/requests', { params: { status: 'PENDING', per_page: 10 } }).catch(() => ({ data: [] })),
-      api.get('/hrms/payroll', { params: { month } }).catch(() => ({ data: null })),
-      api.get('/staff-attendance/summary').catch(() => ({ data: null })),
-    ]).then(([emp, lr, pay, att]) => {
+      api.get('/hrms/dashboard').catch(() =>
+        api.get('/hrms/payroll', { params: { month } }).catch(() => ({ data: null }))
+      ),
+      api.get('/staff-attendance/summary').catch(() =>
+        api.get('/staff-attendance/dashboard').catch(() => ({ data: null }))
+      ),
+    ]).then(([emp, lr, hrmsDashOrPay, att]) => {
       const empList = emp.data?.employees || emp.data?.staff || [];
       setEmployees(empList);
       setLeaveReqs(Array.isArray(lr.data) ? lr.data : lr.data?.requests || []);
-      setPayrollSumm(pay.data);
-      setAttSummary(att.data);
+      const payData = hrmsDashOrPay.data?.payroll_summary || hrmsDashOrPay.data;
+      setPayrollSumm(payData);
+      const attData = att.data || hrmsDashOrPay.data?.metrics;
+      setAttSummary(attData);
     }).finally(() => setLoading(false));
   }, []);
 

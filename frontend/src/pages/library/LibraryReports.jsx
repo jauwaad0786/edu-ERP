@@ -114,7 +114,10 @@ export default function LibraryReports() {
   }, []);
 
   const loadClasses = useCallback(() => {
-    api.get('/library/classes').then(r => setClasses(r.data || [])).catch(() => setClasses([]));
+    api.get('/principal/classes')
+      .catch(() => api.get('/library/classes'))
+      .then(r => setClasses(r.data || []))
+      .catch(() => setClasses([]));
   }, []);
 
   const loadHistory = useCallback(() => {

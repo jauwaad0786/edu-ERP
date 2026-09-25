@@ -2124,3 +2124,22 @@ def get_reconciliation_audit():
     audit_report = FinanceAggregationService.audit_reconciliation(school_id=user.school_id, session=session)
     return jsonify(audit_report), 200
 
+
+@fees_finance_bp.route('/dues/class-wise', methods=['GET'])
+@jwt_required()
+def get_class_wise_dues():
+    """Class-wise fee dues summary for mobile and dashboard."""
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    session = request.args.get('session') or get_current_academic_session(user.school_id)
+    month = request.args.get('month')
+    from app.services.finance_aggregation_service import FinanceAggregationService
+    result = FinanceAggregationService.get_class_wise_summary(
+        school_id=user.school_id,
+        session=session,
+        month=month
+    )
+    return jsonify(result), 200
+

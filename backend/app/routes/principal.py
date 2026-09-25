@@ -6062,7 +6062,8 @@ import cloudinary.uploader  # already imported hai principal.py mein — skip ka
 
 
 @principal_bp.route('/school/settings', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@principal_bp.route('/school/profile', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER', 'SUPER_ADMIN', 'STUDENT', 'PARENT', 'ACCOUNTANT', 'WARDEN', 'LIBRARIAN')
 def get_school_settings():
     """
     Apni school ki settings fetch karo.

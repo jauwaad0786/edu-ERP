@@ -1,13 +1,12 @@
-// mob_app/src/screens/classes/ClassesScreen.js
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import client from '../../api/client';
 
 const C = { primary: '#7c3aed', green: '#16a34a', warning: '#d97706', error: '#dc2626', text: '#1e293b', muted: '#64748b', bg: '#f0f4f8', surface: '#fff', border: '#e2e8f0' };
 
-export default function ClassesScreen() {
+export default function ClassesScreen({ navigation }) {
   const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -35,9 +34,16 @@ export default function ClassesScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Classes & Sections</Text>
-        <Text style={styles.headerSub}>{classes.length} Academic Batches</Text>
+      <View style={[styles.header, { flexDirection: 'row', alignItems: 'center' }]}>
+        {navigation?.canGoBack?.() && (
+          <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginRight: 12 }}>
+            <Ionicons name="arrow-back" size={24} color="#fff" />
+          </TouchableOpacity>
+        )}
+        <View style={{ flex: 1 }}>
+          <Text style={styles.headerTitle}>Classes & Sections</Text>
+          <Text style={styles.headerSub}>{classes.length} Academic Batches</Text>
+        </View>
       </View>
 
       <ScrollView

@@ -165,6 +165,17 @@ export default function StudentDashboardScreen({ navigation }) {
               </View>
               <Text style={styles.quickLabel}>Study Notes</Text>
             </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.quickItem}
+              onPress={() => navigation?.navigate('AIChat')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.quickIcon, { backgroundColor: '#eff6ff' }]}>
+                <Ionicons name="sparkles" size={22} color="#2563eb" />
+              </View>
+              <Text style={styles.quickLabel}>AI Copilot</Text>
+            </TouchableOpacity>
           </View>
         </Card>
 

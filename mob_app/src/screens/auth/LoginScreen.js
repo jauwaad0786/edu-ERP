@@ -246,15 +246,27 @@ export default function LoginScreen({ navigation }) {
 
         {/* Social SSO Buttons */}
         <View style={styles.socialRow}>
-          <TouchableOpacity style={styles.socialBtn} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={styles.socialBtn}
+            activeOpacity={0.8}
+            onPress={() => Alert.alert('Google SSO', 'Institutional Google Workspace Single Sign-On is being configured. Please use your standard ERP credentials to sign in.')}
+          >
             <FontAwesome5 name="google" size={19} color="#ea4335" />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.socialBtn} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={styles.socialBtn}
+            activeOpacity={0.8}
+            onPress={() => Alert.alert('Microsoft SSO', 'Institutional Microsoft 365 Single Sign-On is being configured. Please use your standard ERP credentials to sign in.')}
+          >
             <FontAwesome5 name="microsoft" size={19} color="#00a4ef" />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.socialBtn} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={styles.socialBtn}
+            activeOpacity={0.8}
+            onPress={() => Alert.alert('Apple ID', 'Institutional Apple ID Sign-In is being configured. Please use your standard ERP credentials to sign in.')}
+          >
             <Ionicons name="logo-apple" size={22} color="#000000" />
           </TouchableOpacity>
         </View>

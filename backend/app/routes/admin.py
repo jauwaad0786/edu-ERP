@@ -1100,6 +1100,8 @@ def assign_role(user_id):
 # ─── Stats ────────────────────────────────────────────────────────────────────
 
 @admin_bp.route('/stats', methods=['GET'])
+@admin_bp.route('/platform-dashboard', methods=['GET'])
+@admin_bp.route('/dashboard', methods=['GET'])
 @role_required('SUPER_ADMIN')
 def admin_stats():
     return jsonify({

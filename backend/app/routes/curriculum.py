@@ -362,6 +362,7 @@ def get_today_schedule():
     return jsonify(schedule_data), 200
 
 
+@curriculum_bp.route('/curriculum/teaching-diary/entry', methods=['POST'])
 @curriculum_bp.route('/teaching-diary/entry', methods=['POST'])
 @role_required('TEACHER', 'PRINCIPAL', 'SUPER_ADMIN', 'ADMIN', 'VICE_PRINCIPAL')
 def save_teaching_log_endpoint():

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, RefreshControl,
-  ActivityIndicator, TouchableOpacity, Alert,
+  ActivityIndicator, TouchableOpacity, Alert, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,7 +29,9 @@ export default function FeesScreen({ navigation }) {
     try {
       const [sumRes, duesRes] = await Promise.all([
         client.get('/principal/fees/summary').catch(() => ({ data: null })),
-        client.get('/fees-finance/dues/class-wise').catch(() => ({ data: [] })),
+        client.get('/principal/fees/class-summary').catch(() =>
+          client.get('/fees-finance/dues/class-wise').catch(() => ({ data: [] }))
+        ),
       ]);
 
       setFeeSummary(sumRes.data);
@@ -52,11 +54,22 @@ export default function FeesScreen({ navigation }) {
   const handleSendWhatsAppReminders = () => {
     Alert.alert(
       'Send WhatsApp Fee Reminders',
-      'Do you want to send automated fee due alerts to all parents with pending dues?',
+      'Choose an action to notify parents with pending dues:',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Send Reminders',
+          text: 'Open WhatsApp',
+          onPress: () => {
+            const msg = 'Dear Parent, this is a reminder from the School Accounts Office regarding pending institutional fees. Kindly clear outstanding dues at your earliest convenience.';
+            Linking.openURL(`whatsapp://send?text=${encodeURIComponent(msg)}`).catch(() => {
+              Linking.openURL(`https://wa.me/?text=${encodeURIComponent(msg)}`).catch(() => {
+                Alert.alert('Error', 'Could not open WhatsApp on this device.');
+              });
+            });
+          }
+        },
+        {
+          text: 'Queue Broadcast',
           onPress: async () => {
             setSendingWhatsapp(true);
             try {
@@ -222,12 +235,12 @@ export default function FeesScreen({ navigation }) {
             <TouchableOpacity
               style={styles.actionRow}
               activeOpacity={0.7}
-              onPress={() => Alert.alert('Fee Structure', 'Fee structure management is available on the web portal.', [{ text: 'OK' }])}
+              onPress={() => setActiveTab('Dues')}
             >
               <View style={[styles.actionIconBox, { backgroundColor: '#ede9fe' }]}>
                 <Ionicons name="file-tray-full-outline" size={18} color="#7c3aed" />
               </View>
-              <Text style={styles.actionLabel}>Fee Structure</Text>
+              <Text style={styles.actionLabel}>Class Fee Dues</Text>
               <Ionicons name="chevron-forward" size={18} color="#cbd5e1" />
             </TouchableOpacity>
 
@@ -236,12 +249,12 @@ export default function FeesScreen({ navigation }) {
             <TouchableOpacity
               style={styles.actionRow}
               activeOpacity={0.7}
-              onPress={() => Alert.alert('Due Reports', 'Detailed due reports are available on the web portal.', [{ text: 'OK' }])}
+              onPress={() => navigation?.navigate?.('FeeRecords')}
             >
               <View style={[styles.actionIconBox, { backgroundColor: '#fee2e2' }]}>
                 <Ionicons name="alert-circle-outline" size={18} color="#dc2626" />
               </View>
-              <Text style={styles.actionLabel}>Due Reports</Text>
+              <Text style={styles.actionLabel}>Due Reports (Outstanding)</Text>
               <Ionicons name="chevron-forward" size={18} color="#cbd5e1" />
             </TouchableOpacity>
 
@@ -270,7 +283,7 @@ export default function FeesScreen({ navigation }) {
           {/* Class-wise Dues Section */}
           <View style={styles.sectionHeaderRow}>
             <Text style={styles.sectionHeading}>Class-wise Dues</Text>
-            <TouchableOpacity onPress={() => Alert.alert('All Class Dues', 'Full class-wise dues report is available on the web portal.', [{ text: 'OK' }])}>
+            <TouchableOpacity onPress={() => navigation?.navigate?.('FeeRecords')}>
               <Text style={styles.viewAllText}>View All</Text>
             </TouchableOpacity>
           </View>

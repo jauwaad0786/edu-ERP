@@ -458,6 +458,7 @@ def my_today_status():
 # ═══════════════════════════════════════════════════════════════════════
 
 @staff_attendance_bp.route('/dashboard', methods=['GET'])
+@staff_attendance_bp.route('/summary', methods=['GET'])
 @role_required('PRINCIPAL', 'HR')
 def dashboard():
     user = _current_user()

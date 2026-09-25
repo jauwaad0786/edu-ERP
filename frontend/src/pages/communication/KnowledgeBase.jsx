@@ -128,6 +128,7 @@ function ArticleCard({ article, darkMode, onClick }) {
 // ─── Article Detail Modal ─────────────────────────────────────────────────────
 
 function ArticleModal({ article, darkMode, onClose }) {
+  const [feedback, setFeedback] = useState(null);
   const cfg    = TYPE_CONFIG[article.article_type] || TYPE_CONFIG.ARTICLE;
   const bg     = darkMode ? '#141b2d' : '#ffffff';
   const border = darkMode ? '#1e293b' : '#e2e8f0';
@@ -268,21 +269,38 @@ function ArticleModal({ article, darkMode, onClose }) {
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
           <span style={{ fontSize: 12, color: textSec }}>
-            Was this helpful?
+            {feedback ? 'Thank you for your feedback!' : 'Was this helpful?'}
           </span>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button style={{
-              padding: '6px 14px', borderRadius: 8,
-              border: `1px solid ${border}`, background: 'none',
-              color: '#16a34a', cursor: 'pointer', fontSize: 12, fontWeight: 600,
-            }}>
+            <button
+              onClick={() => {
+                setFeedback('yes');
+                toast.success('Glad this was helpful!');
+              }}
+              disabled={!!feedback}
+              style={{
+                padding: '6px 14px', borderRadius: 8,
+                border: `1px solid ${feedback === 'yes' ? '#16a34a' : border}`,
+                background: feedback === 'yes' ? (darkMode ? '#064e3b' : '#dcfce7') : 'none',
+                color: '#16a34a', cursor: feedback ? 'default' : 'pointer', fontSize: 12, fontWeight: 600,
+              }}
+            >
               👍 Yes
             </button>
-            <button style={{
-              padding: '6px 14px', borderRadius: 8,
-              border: `1px solid ${border}`, background: 'none',
-              color: textSec, cursor: 'pointer', fontSize: 12, fontWeight: 600,
-            }}>
+            <button
+              onClick={() => {
+                setFeedback('no');
+                toast('Feedback recorded. We will improve this article.', { icon: '📝' });
+              }}
+              disabled={!!feedback}
+              style={{
+                padding: '6px 14px', borderRadius: 8,
+                border: `1px solid ${feedback === 'no' ? '#dc2626' : border}`,
+                background: feedback === 'no' ? (darkMode ? '#7f1d1d' : '#fee2e2') : 'none',
+                color: feedback === 'no' ? '#dc2626' : textSec,
+                cursor: feedback ? 'default' : 'pointer', fontSize: 12, fontWeight: 600,
+              }}
+            >
               👎 No
             </button>
           </div>

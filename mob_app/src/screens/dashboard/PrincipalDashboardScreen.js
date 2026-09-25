@@ -149,6 +149,15 @@ export default function PrincipalDashboardScreen({ navigation }) {
               </Text>
             </View>
 
+            {/* AI Copilot Sparkle Button */}
+            <TouchableOpacity
+              style={[styles.bellBtn, { marginRight: 8, backgroundColor: 'rgba(255, 255, 255, 0.25)' }]}
+              onPress={() => navigation?.navigate('AIChat')}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="sparkles" size={18} color="#ffffff" />
+            </TouchableOpacity>
+
             {/* Notification Bell */}
             <TouchableOpacity
               style={styles.bellBtn}
@@ -185,8 +194,21 @@ export default function PrincipalDashboardScreen({ navigation }) {
               value={searchQuery}
               onChangeText={setSearchQuery}
               returnKeyType="search"
+              onSubmitEditing={() => {
+                if (searchQuery.trim()) {
+                  navigation?.navigate('Students', { query: searchQuery.trim() });
+                }
+              }}
             />
-            <TouchableOpacity style={styles.searchActionBtn} activeOpacity={0.8}>
+            <TouchableOpacity
+              style={styles.searchActionBtn}
+              activeOpacity={0.8}
+              onPress={() => {
+                if (searchQuery.trim()) {
+                  navigation?.navigate('Students', { query: searchQuery.trim() });
+                }
+              }}
+            >
               <Ionicons name="search" size={16} color="#ffffff" />
             </TouchableOpacity>
           </View>
@@ -221,7 +243,7 @@ export default function PrincipalDashboardScreen({ navigation }) {
           <TouchableOpacity
             style={styles.kpiBox}
             activeOpacity={0.8}
-            onPress={() => navigation?.navigate('Students')}
+            onPress={() => navigation?.navigate('Classes')}
           >
             <View style={[styles.kpiIcon, { backgroundColor: '#ccfbf1' }]}>
               <Ionicons name="book" size={18} color="#0d9488" />
@@ -233,7 +255,7 @@ export default function PrincipalDashboardScreen({ navigation }) {
           <TouchableOpacity
             style={styles.kpiBox}
             activeOpacity={0.8}
-            onPress={() => navigation?.navigate('Reports')}
+            onPress={() => navigation?.navigate('Attendance')}
           >
             <View style={[styles.kpiIcon, { backgroundColor: '#dcfce7' }]}>
               <Ionicons name="checkmark-done" size={18} color="#16a34a" />
@@ -328,13 +350,13 @@ export default function PrincipalDashboardScreen({ navigation }) {
 
             <TouchableOpacity
               style={styles.actionItem}
-              onPress={() => navigation?.navigate('Reports')}
+              onPress={() => navigation?.navigate('Attendance')}
               activeOpacity={0.75}
             >
               <View style={[styles.actionIconBox, { backgroundColor: '#dcfce7' }]}>
                 <Ionicons name="checkbox" size={20} color="#16a34a" />
               </View>
-              <Text style={styles.actionItemLabel}>Take Attendance</Text>
+              <Text style={styles.actionItemLabel}>Attendance</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -346,6 +368,17 @@ export default function PrincipalDashboardScreen({ navigation }) {
                 <Ionicons name="document-text" size={20} color="#db2777" />
               </View>
               <Text style={styles.actionItemLabel}>View Reports</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionItem}
+              onPress={() => navigation?.navigate('AIChat')}
+              activeOpacity={0.75}
+            >
+              <View style={[styles.actionIconBox, { backgroundColor: '#eff6ff' }]}>
+                <Ionicons name="sparkles" size={20} color="#2563eb" />
+              </View>
+              <Text style={styles.actionItemLabel}>ERP Copilot</Text>
             </TouchableOpacity>
           </View>
         </View>

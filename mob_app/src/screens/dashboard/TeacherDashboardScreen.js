@@ -160,6 +160,22 @@ export default function TeacherDashboardScreen({ navigation }) {
           )}
         </GradientHero>
 
+        {/* Copilot Assistant Banner */}
+        <TouchableOpacity
+          style={styles.copilotBanner}
+          onPress={() => navigation?.navigate('AIChat')}
+          activeOpacity={0.8}
+        >
+          <View style={styles.copilotIconCircle}>
+            <Ionicons name="sparkles" size={18} color="#2563eb" />
+          </View>
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={styles.copilotTitle}>ERP Copilot Assistant</Text>
+            <Text style={styles.copilotSubtitle}>Ask questions, check attendance or manage marks</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#94a3b8" />
+        </TouchableOpacity>
+
         {/* GPS Attendance Check-In Widget */}
         <Card padding={16} leftAccentColor={isCheckedOut ? colors.success : isCheckedIn ? colors.warning : colors.error}>
           <View style={styles.cardHeaderRow}>
@@ -455,5 +471,40 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     color: colors.muted,
     marginTop: 2,
+  },
+  copilotBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#2563eb',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  copilotIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: '#eff6ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  copilotTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  copilotSubtitle: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 1,
   },
 });

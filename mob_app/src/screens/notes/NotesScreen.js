@@ -7,7 +7,7 @@ import client from '../../api/client';
 
 const C = { primary: '#0176d3', green: '#16a34a', warning: '#d97706', error: '#dc2626', text: '#1e293b', muted: '#64748b', bg: '#f0f4f8', surface: '#fff', border: '#e2e8f0' };
 
-export default function NotesScreen() {
+export default function NotesScreen({ navigation }) {
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -36,9 +36,16 @@ export default function NotesScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Study Notes & Resources</Text>
-        <Text style={styles.headerSub}>Curriculum Material & Lecture Notes</Text>
+      <View style={[styles.header, { flexDirection: 'row', alignItems: 'center' }]}>
+        {navigation?.canGoBack?.() && (
+          <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginRight: 12 }}>
+            <Ionicons name="arrow-back" size={24} color="#fff" />
+          </TouchableOpacity>
+        )}
+        <View style={{ flex: 1 }}>
+          <Text style={styles.headerTitle}>Study Notes & Resources</Text>
+          <Text style={styles.headerSub}>Curriculum Material & Lecture Notes</Text>
+        </View>
       </View>
 
       <ScrollView

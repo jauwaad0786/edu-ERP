@@ -177,7 +177,11 @@ export default function AddStudentWizardScreen({ navigation }) {
           <View>
             {/* Camera Upload Circle */}
             <View style={styles.avatarUploadWrapper}>
-              <TouchableOpacity style={styles.avatarCircleBtn} activeOpacity={0.8}>
+              <TouchableOpacity
+                style={styles.avatarCircleBtn}
+                activeOpacity={0.8}
+                onPress={() => Alert.alert('Upload Photo', 'Student profile photo upload from device camera / gallery is enabled upon saving student record.')}
+              >
                 <Ionicons name="camera" size={26} color="#0b57d0" />
               </TouchableOpacity>
             </View>

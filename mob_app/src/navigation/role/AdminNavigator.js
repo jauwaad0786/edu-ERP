@@ -11,6 +11,7 @@ import SettingsScreen        from '../../screens/settings/SettingsScreen';
 import ProfileScreen         from '../../screens/profile/ProfileScreen';
 import ChangePasswordScreen  from '../../screens/profile/ChangePasswordScreen';
 import NotificationsScreen   from '../../screens/notifications/NotificationsScreen';
+import AIChatScreen          from '../../screens/ai/AIChatScreen';
 import { TAB_BAR_STYLE } from '../tabBarStyle';
 
 const Tab = createBottomTabNavigator();
@@ -46,6 +47,7 @@ export default function AdminNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="AdminTabs"      component={AdminTabs} />
+      <Stack.Screen name="AIChat"         component={AIChatScreen} />
       <Stack.Screen name="Profile"        component={ProfileScreen} />
       <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
       <Stack.Screen name="Notifications"  component={NotificationsScreen} />

@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Image,
+  ActivityIndicator, Image, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,7 +20,9 @@ export default function ProfileScreen({ navigation }) {
   useEffect(() => {
     Promise.all([
       client.get('/auth/me').catch(() => ({ data: user })),
-      client.get('/principal/school/profile').catch(() => ({ data: null })),
+      client.get('/principal/school/settings').catch(() =>
+        client.get('/principal/school/profile').catch(() => ({ data: null }))
+      ),
     ]).then(([uRes, sRes]) => {
       setProfile(uRes.data?.user || uRes.data || user);
       setSchool(sRes.data?.school || sRes.data);
@@ -71,7 +73,11 @@ export default function ProfileScreen({ navigation }) {
                   {userName.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase()}
                 </Text>
               </View>
-              <TouchableOpacity style={styles.editAvatarBadge} activeOpacity={0.8}>
+              <TouchableOpacity
+                style={styles.editAvatarBadge}
+                activeOpacity={0.8}
+                onPress={() => Alert.alert('Update Photo', 'To update your profile avatar, please upload a new photo from the Web portal or contact school administration.')}
+              >
                 <Ionicons name="pencil" size={12} color="#ffffff" />
               </TouchableOpacity>
             </View>
