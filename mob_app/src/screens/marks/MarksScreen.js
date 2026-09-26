@@ -1,49 +1,127 @@
 // mob_app/src/screens/marks/MarksScreen.js
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, RefreshControl, ActivityIndicator, TouchableOpacity,
+  View, Text, StyleSheet, ScrollView, RefreshControl,
+  ActivityIndicator, TouchableOpacity, TextInput, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import client from '../../api/client';
 import { colors } from '../../theme/colors';
-import GradientHero from '../../components/common/GradientHero';
-import Card from '../../components/common/Card';
-import Badge from '../../components/common/Badge';
-import EmptyState from '../../components/common/EmptyState';
 
-export default function MarksScreen() {
+export default function MarksScreen({ navigation }) {
   const [classes, setClasses] = useState([]);
+  const [exams, setExams] = useState([]);
+  const [subjects, setSubjects] = useState([]);
   const [selectedClass, setSelectedClass] = useState(null);
+  const [selectedExam, setSelectedExam] = useState(null);
+  const [selectedSubject, setSelectedSubject] = useState(null);
   const [roster, setRoster] = useState([]);
+  const [scores, setScores] = useState({});
   const [loading, setLoading] = useState(true);
+  const [loadingRoster, setLoadingRoster] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(async (isRefresh = false) => {
+  // Load initial dropdowns (classes, exams, subjects)
+  const loadInitialData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     try {
-      const clsRes = await client.get('/principal/classes').catch(() => ({ data: [] }));
+      const [clsRes, examRes, subRes] = await Promise.all([
+        client.get('/principal/classes').catch(() => ({ data: [] })),
+        client.get('/principal/exams').catch(() => ({ data: [] })),
+        client.get('/principal/subjects').catch(() => ({ data: [] })),
+      ]);
+
       const clsList = Array.isArray(clsRes.data) ? clsRes.data : clsRes.data?.classes || [];
+      const exList = Array.isArray(examRes.data) ? examRes.data : examRes.data?.exams || [];
+      const subList = Array.isArray(subRes.data) ? subRes.data : subRes.data?.subjects || [];
+
       setClasses(clsList);
-      if (clsList.length > 0 && !selectedClass) {
-        setSelectedClass(clsList[0].id);
-      }
+      setExams(exList);
+      setSubjects(subList);
+
+      if (clsList.length > 0 && !selectedClass) setSelectedClass(clsList[0].id);
+      if (exList.length > 0 && !selectedExam) setSelectedExam(exList[0].id);
+      if (subList.length > 0 && !selectedSubject) setSelectedSubject(subList[0].id);
     } finally {
       if (isRefresh) setRefreshing(false); else setLoading(false);
     }
-  }, [selectedClass]);
-
-  useEffect(() => { load(); }, [load]);
+  }, [selectedClass, selectedExam, selectedSubject]);
 
   useEffect(() => {
+    loadInitialData();
+  }, [loadInitialData]);
+
+  // Fetch roster when class, exam, and subject are chosen
+  const loadRoster = useCallback(async () => {
     if (!selectedClass) return;
-    client.get('/marks/roster', { params: { class_id: selectedClass } })
-      .then(res => {
-        const rows = Array.isArray(res.data) ? res.data : res.data?.students || res.data?.roster || [];
-        setRoster(rows);
-      })
-      .catch(() => setRoster([]));
-  }, [selectedClass]);
+    setLoadingRoster(true);
+    try {
+      const params = { class_id: selectedClass };
+      if (selectedExam) params.exam_id = selectedExam;
+      if (selectedSubject) params.subject_id = selectedSubject;
+
+      const res = await client.get('/marks/roster', { params }).catch(() => null);
+      const rows = Array.isArray(res?.data)
+        ? res.data
+        : res?.data?.students || res?.data?.roster || [];
+
+      setRoster(rows);
+      const initialScores = {};
+      rows.forEach(r => {
+        const sid = r.student_id || r.id;
+        initialScores[sid] = r.marks_obtained != null ? String(r.marks_obtained) : '';
+      });
+      setScores(initialScores);
+    } catch {
+      setRoster([]);
+    } finally {
+      setLoadingRoster(false);
+    }
+  }, [selectedClass, selectedExam, selectedSubject]);
+
+  useEffect(() => {
+    loadRoster();
+  }, [loadRoster]);
+
+  const handleScoreChange = (studentId, val) => {
+    setScores(prev => ({ ...prev, [studentId]: val }));
+  };
+
+  const handleSaveMarks = async () => {
+    if (!selectedClass || !selectedExam || !selectedSubject) {
+      Alert.alert('Selection Required', 'Please select a Class, Exam, and Subject to record marks.');
+      return;
+    }
+
+    const entries = roster.map(s => {
+      const sid = s.student_id || s.id;
+      const rawScore = scores[sid];
+      return {
+        student_id: sid,
+        marks_obtained: rawScore !== '' && rawScore != null ? Number(rawScore) : 0,
+        is_absent: rawScore === 'AB' || rawScore === 'A',
+        remarks: 'Recorded via Mobile ERP',
+      };
+    });
+
+    setSaving(true);
+    try {
+      await client.post('/marks/save', {
+        class_id: selectedClass,
+        exam_id: selectedExam,
+        subject_id: selectedSubject,
+        entries,
+      });
+      Alert.alert('Marks Saved', `Successfully updated scores for ${entries.length} students.`);
+      loadRoster();
+    } catch (err) {
+      Alert.alert('Save Failed', err.response?.data?.message || err.response?.data?.error || 'Failed to save marks.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -55,105 +133,195 @@ export default function MarksScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => load(true)}
-            colors={[colors.primary]}
-            tintColor={colors.primary}
-          />
-        }
-        showsVerticalScrollIndicator={false}
-      >
-        <GradientHero
-          tagline="ACADEMIC EVALUATION"
-          title="Marks & Grades"
-          subtitle="Score entry, term evaluation, and performance grade sheets"
-          avatarText="M"
-          gradientColors={['#1e1b4b', '#4338ca', '#3b82f6']}
-        />
+    <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Top Header */}
+      <View style={styles.header}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {navigation?.canGoBack?.() && (
+              <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginRight: 12 }}>
+                <Ionicons name="arrow-back" size={24} color="#fff" />
+              </TouchableOpacity>
+            )}
+            <View>
+              <Text style={styles.headerTitle}>Marks & Evaluation</Text>
+              <Text style={styles.headerSub}>Roster grading & score submissions</Text>
+            </View>
+          </View>
+          {roster.length > 0 && (
+            <TouchableOpacity
+              style={styles.saveHeaderBtn}
+              onPress={handleSaveMarks}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="cloud-upload" size={16} color="#fff" />
+                  <Text style={styles.saveHeaderBtnText}>Save</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
 
-        {/* Class Selector Pills */}
-        {classes.length > 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.classSelector}
-          >
+        {/* Filters Carousel */}
+        <View style={styles.filterSection}>
+          {/* Class Selector */}
+          <Text style={styles.filterLabel}>Class:</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 6 }}>
             {classes.map(c => {
-              const isSelected = selectedClass === c.id;
+              const active = selectedClass === c.id;
               return (
                 <TouchableOpacity
                   key={c.id}
-                  style={[styles.classPill, isSelected && styles.classPillActive]}
+                  style={[styles.pill, active && styles.pillActive]}
                   onPress={() => setSelectedClass(c.id)}
-                  activeOpacity={0.8}
                 >
-                  <Text style={[styles.classPillText, isSelected && styles.classPillTextActive]}>
-                    {c.name || `Class ${c.grade || ''} ${c.section || ''}`}
+                  <Text style={[styles.pillText, active && styles.pillTextActive]}>
+                    Class {c.name} {c.section ? `(${c.section})` : ''}
                   </Text>
                 </TouchableOpacity>
               );
             })}
           </ScrollView>
-        )}
 
-        {/* Roster Cards */}
-        {roster.length > 0 ? (
-          <Card padding={16}>
+          {/* Exam Selector */}
+          {exams.length > 0 && (
+            <>
+              <Text style={styles.filterLabel}>Exam Term:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 6 }}>
+                {exams.map(e => {
+                  const active = selectedExam === e.id;
+                  return (
+                    <TouchableOpacity
+                      key={e.id}
+                      style={[styles.pill, active && styles.pillActive]}
+                      onPress={() => setSelectedExam(e.id)}
+                    >
+                      <Text style={[styles.pillText, active && styles.pillTextActive]}>
+                        {e.name || e.title || `Term ${e.id}`}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </>
+          )}
+
+          {/* Subject Selector */}
+          {subjects.length > 0 && (
+            <>
+              <Text style={styles.filterLabel}>Subject:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {subjects.map(sub => {
+                  const active = selectedSubject === sub.id;
+                  return (
+                    <TouchableOpacity
+                      key={sub.id}
+                      style={[styles.pill, active && styles.pillActive]}
+                      onPress={() => setSelectedSubject(sub.id)}
+                    >
+                      <Text style={[styles.pillText, active && styles.pillTextActive]}>
+                        {sub.name || sub.subject_name || `Subject ${sub.id}`}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </>
+          )}
+        </View>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => loadInitialData(true)}
+            colors={[colors.primary]}
+          />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        {loadingRoster ? (
+          <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={{ marginTop: 10, color: '#64748b', fontSize: 13 }}>Loading class roster...</Text>
+          </View>
+        ) : roster.length > 0 ? (
+          <View style={styles.rosterCard}>
             <View style={styles.cardHeaderRow}>
-              <View style={[styles.iconBox, { backgroundColor: colors.primaryLight }]}>
-                <Ionicons name="ribbon-outline" size={18} color={colors.primary} />
+              <View style={[styles.iconBox, { backgroundColor: '#e0e7ff' }]}>
+                <Ionicons name="school-outline" size={18} color="#4338ca" />
               </View>
-              <Text style={styles.cardTitle}>Student Grades ({roster.length})</Text>
+              <Text style={styles.cardTitle}>Student Mark Roster ({roster.length})</Text>
             </View>
 
             {roster.map((s, i) => {
-              const score = s.total_marks ?? s.marks ?? s.score ?? '—';
-              const maxScore = s.max_marks ?? 100;
-              const grade = s.grade || (typeof score === 'number' ? (score >= 90 ? 'A+' : score >= 80 ? 'A' : score >= 70 ? 'B' : score >= 60 ? 'C' : 'D') : 'Pass');
+              const sid = s.student_id || s.id;
+              const sName = s.name || s.student_name || 'Student';
+              const sRoll = s.roll_number || s.roll_no || i + 1;
+              const maxScore = s.max_marks || 100;
+              const currentScore = scores[sid] ?? '';
 
               return (
                 <View
-                  key={s.id || s.student_id || i}
+                  key={sid}
                   style={[
                     styles.studentRow,
                     i === roster.length - 1 && { borderBottomWidth: 0 },
                   ]}
                 >
                   <View style={styles.avatarCircle}>
-                    <Text style={styles.avatarInitial}>
-                      {(s.name || s.student_name || 'S').charAt(0).toUpperCase()}
-                    </Text>
+                    <Text style={styles.avatarInitial}>{sName.charAt(0).toUpperCase()}</Text>
                   </View>
 
                   <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={styles.nameText}>{s.name || s.student_name || 'Student'}</Text>
-                    <Text style={styles.subText}>Roll #{s.roll_no || i + 1}</Text>
+                    <Text style={styles.nameText} numberOfLines={1}>{sName}</Text>
+                    <Text style={styles.subText}>Roll #{sRoll}  • Max: {maxScore}</Text>
                   </View>
 
-                  <View style={styles.scoreCol}>
-                    <Text style={styles.scoreVal}>{score} <Text style={{ fontSize: 11, color: colors.muted }}>/ {maxScore}</Text></Text>
-                    <Badge
-                      label={grade}
-                      variant={grade.startsWith('A') ? 'success' : grade.startsWith('B') ? 'primary' : 'warning'}
-                      size="sm"
-                      style={{ alignSelf: 'flex-end', marginTop: 2 }}
+                  <View style={styles.scoreInputWrapper}>
+                    <TextInput
+                      style={styles.scoreInput}
+                      keyboardType="numeric"
+                      placeholder="0"
+                      placeholderTextColor="#94a3b8"
+                      value={currentScore}
+                      onChangeText={(val) => handleScoreChange(sid, val)}
                     />
+                    <Text style={styles.maxMarkText}>/{maxScore}</Text>
                   </View>
                 </View>
               );
             })}
-          </Card>
+
+            <TouchableOpacity
+              style={styles.saveBottomBtn}
+              onPress={handleSaveMarks}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-done" size={18} color="#fff" style={{ marginRight: 6 }} />
+                  <Text style={styles.saveBottomBtnText}>Save All Marks</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
         ) : (
-          <EmptyState
-            icon="school-outline"
-            title="No Marks Records"
-            description="No student roster or evaluation records found for this class."
-          />
+          <View style={styles.emptyContainer}>
+            <Ionicons name="document-text-outline" size={48} color="#94a3b8" />
+            <Text style={styles.emptyTitle}>No Roster Records</Text>
+            <Text style={styles.emptyDesc}>
+              Please select a valid Class, Exam, and Subject to view and enter marks.
+            </Text>
+          </View>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -161,111 +329,103 @@ export default function MarksScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  centerContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.bg,
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 13,
-    color: colors.muted,
-    fontWeight: '600',
-  },
-  scrollContent: {
+  container: { flex: 1, backgroundColor: '#f8fafc' },
+  centerContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc' },
+  loadingText: { marginTop: 12, fontSize: 13, color: '#64748b', fontWeight: '600' },
+  header: {
+    backgroundColor: '#312e81',
     padding: 16,
-    paddingBottom: 32,
+    paddingTop: 12,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
   },
-  classSelector: {
-    gap: 8,
-    marginBottom: 16,
-    paddingHorizontal: 2,
-  },
-  classPill: {
-    backgroundColor: colors.surface,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: 99,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-  },
-  classPillActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  classPillText: {
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: colors.muted,
-  },
-  classPillTextActive: {
-    color: '#ffffff',
-    fontWeight: '800',
-  },
-  cardHeaderRow: {
+  headerTitle: { color: '#ffffff', fontSize: 20, fontWeight: '800' },
+  headerSub: { color: 'rgba(255,255,255,0.75)', fontSize: 12, marginTop: 2 },
+  saveHeaderBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 14,
+    backgroundColor: '#16a34a',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
   },
-  iconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
+  saveHeaderBtnText: { color: '#ffffff', fontWeight: '700', fontSize: 13, marginLeft: 4 },
+  filterSection: { marginTop: 12 },
+  filterLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '700', marginBottom: 4 },
+  pill: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    marginRight: 8,
   },
-  cardTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: colors.text,
+  pillActive: { backgroundColor: '#ffffff' },
+  pillText: { color: '#ffffff', fontSize: 12, fontWeight: '600' },
+  pillTextActive: { color: '#312e81', fontWeight: '800' },
+  scrollContent: { padding: 16, paddingBottom: 40 },
+  rosterCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
+  cardHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  iconBox: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  cardTitle: { fontSize: 16, fontWeight: '800', color: '#1e293b' },
   studentRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 11,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
+    borderBottomColor: '#f1f5f9',
   },
   avatarCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: colors.primaryLight,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#ede9fe',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarInitial: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: colors.primary,
+  avatarInitial: { color: '#6366f1', fontWeight: '800', fontSize: 15 },
+  nameText: { fontSize: 14, fontWeight: '700', color: '#1e293b' },
+  subText: { fontSize: 11, color: '#64748b', marginTop: 2 },
+  scoreInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f1f5f9',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
-  nameText: {
+  scoreInput: {
+    width: 44,
+    textAlign: 'center',
     fontSize: 14,
     fontWeight: '700',
-    color: colors.text,
+    color: '#1e293b',
+    padding: 2,
   },
-  subText: {
-    fontSize: 11.5,
-    color: colors.muted,
-    marginTop: 1,
+  maxMarkText: { fontSize: 11, color: '#94a3b8', fontWeight: '600' },
+  saveBottomBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#16a34a',
+    borderRadius: 12,
+    paddingVertical: 14,
+    marginTop: 18,
   },
-  scoreCol: {
-    alignItems: 'flex-end',
-  },
-  scoreVal: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: colors.text,
-  },
+  saveBottomBtnText: { color: '#ffffff', fontWeight: '800', fontSize: 15 },
+  emptyContainer: { alignItems: 'center', padding: 40, marginTop: 20 },
+  emptyTitle: { fontSize: 16, fontWeight: '800', color: '#1e293b', marginTop: 12 },
+  emptyDesc: { fontSize: 13, color: '#64748b', textAlign: 'center', marginTop: 6, lineHeight: 18 },
 });
