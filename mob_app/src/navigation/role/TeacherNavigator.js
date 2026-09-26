@@ -63,6 +63,8 @@ export default function TeacherNavigator() {
       <Stack.Screen name="AIChat" component={AIChatScreen} />
       <Stack.Screen name="Classes" component={ClassesScreen} />
       <Stack.Screen name="Examinations" component={ExaminationsScreen} />
+      <Stack.Screen name="ExamSchedule" component={ExaminationsScreen} />
+      <Stack.Screen name="MarksEntry" component={MarksScreen} />
       <Stack.Screen name="Students" component={StudentsScreen} />
       <Stack.Screen name="StudentDetail" component={StudentDetailScreen} />
       <Stack.Screen name="StaffDetail" component={StaffDetailScreen} />

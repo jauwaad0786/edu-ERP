@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, ActivityIndicator,
-  TouchableOpacity, Alert,
+  TouchableOpacity, Alert, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -136,27 +136,87 @@ export default function StudentDetailScreen({ route, navigation }) {
               </Text>
             </View>
           )}
+
+          {/* Quick Action Buttons */}
+          <View style={styles.actionRow}>
+            {Boolean(student.parent_phone || student.father_phone || student.phone) && (
+              <TouchableOpacity
+                style={[styles.actionBtn, { backgroundColor: '#eff6ff' }]}
+                onPress={() => Linking.openURL(`tel:${student.parent_phone || student.father_phone || student.phone}`)}
+              >
+                <Ionicons name="call" size={16} color="#0b57d0" />
+                <Text style={[styles.actionBtnText, { color: '#0b57d0' }]}>Call</Text>
+              </TouchableOpacity>
+            )}
+
+            {Boolean(student.parent_phone || student.father_phone || student.phone) && (
+              <TouchableOpacity
+                style={[styles.actionBtn, { backgroundColor: '#dcfce7' }]}
+                onPress={() => {
+                  const num = String(student.parent_phone || student.father_phone || student.phone).replace(/\D/g, '');
+                  const intlNum = num.length === 10 ? `91${num}` : num;
+                  Linking.openURL(`https://wa.me/${intlNum}?text=Hello%20Parent%2C%20regarding%20${encodeURIComponent(name)}`).catch(() => {});
+                }}
+              >
+                <Ionicons name="logo-whatsapp" size={16} color="#16a34a" />
+                <Text style={[styles.actionBtnText, { color: '#16a34a' }]}>WhatsApp</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={[styles.actionBtn, { backgroundColor: '#fef3c7' }]}
+              onPress={() => {
+                try {
+                  navigation?.navigate('FeeCollect', { student });
+                } catch {
+                  try {
+                    navigation?.navigate('Collect', { student });
+                  } catch {
+                    Alert.alert('Fee Collection', 'Please open Collect Fee from the finance menu.');
+                  }
+                }
+              }}
+            >
+              <Ionicons name="cash" size={16} color="#d97706" />
+              <Text style={[styles.actionBtnText, { color: '#d97706' }]}>Collect Fee</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Personal Info Card */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Personal Information</Text>
+          <Text style={styles.cardTitle}>Personal Dossier</Text>
           <InfoRow icon="person-outline" label="Full Name" value={name} />
           <View style={styles.divider} />
           <InfoRow icon="people-outline" label="Class / Section"
-            value={`Class ${student.class_name || student.grade || '—'} - ${student.section || '—'}`} />
+            value={`Class ${student.class_name || student.grade || student.class?.name || '—'} - ${student.section || '—'}`} />
           <View style={styles.divider} />
           <InfoRow icon="document-text-outline" label="Roll Number"
             value={student.roll_no || student.roll_number} />
           <View style={styles.divider} />
-          <InfoRow icon="call-outline" label="Parent Phone"
-            value={student.parent_phone || student.father_phone || student.mother_phone} />
-          <View style={styles.divider} />
-          <InfoRow icon="mail-outline" label="Parent Email"
-            value={student.parent_email || student.father_email} />
+          <InfoRow icon="male-female-outline" label="Gender"
+            value={student.gender ? String(student.gender).toUpperCase() : null} />
           <View style={styles.divider} />
           <InfoRow icon="calendar-outline" label="Date of Birth"
             value={student.dob ? new Date(student.dob).toLocaleDateString('en-IN') : null} />
+          <View style={styles.divider} />
+          <InfoRow icon="medkit-outline" label="Blood Group"
+            value={student.blood_group} />
+          <View style={styles.divider} />
+          <InfoRow icon="pricetag-outline" label="Category"
+            value={student.category} />
+          <View style={styles.divider} />
+          <InfoRow icon="person-circle-outline" label="Father / Guardian"
+            value={student.father_name || student.guardian_name} />
+          <View style={styles.divider} />
+          <InfoRow icon="person-circle-outline" label="Mother Name"
+            value={student.mother_name} />
+          <View style={styles.divider} />
+          <InfoRow icon="call-outline" label="Parent Phone"
+            value={student.parent_phone || student.father_phone || student.mother_phone} />
+          <View style={styles.divider} />
+          <InfoRow icon="home-outline" label="Address"
+            value={student.address || student.current_address} />
         </View>
 
         {/* Attendance Summary Card */}
@@ -301,4 +361,7 @@ const styles = StyleSheet.create({
   feeMeta: { fontSize: 11.5, color: '#64748b', marginTop: 2 },
   feeStatusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99 },
   feeStatusText: { fontSize: 11, fontWeight: '700' },
+  actionRow: { flexDirection: 'row', gap: 10, marginTop: 14, width: '100%', justifyContent: 'center' },
+  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },
+  actionBtnText: { fontSize: 12, fontWeight: '700' },
 });
