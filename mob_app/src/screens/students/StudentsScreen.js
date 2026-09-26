@@ -131,6 +131,56 @@ export default function StudentsScreen({ navigation }) {
         </View>
       </View>
 
+      {/* Quick Action Shortcuts */}
+      <View style={styles.quickActionsWrapper}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickActionsScroll}>
+          <TouchableOpacity
+            style={styles.quickActionChip}
+            onPress={() => navigation?.navigate ? navigation.navigate('AddStudentWizard') : null}
+            activeOpacity={0.75}
+          >
+            <Ionicons name="person-add" size={14} color="#0b57d0" />
+            <Text style={styles.quickActionText}>Admission</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.quickActionChip}
+            onPress={() => navigation?.navigate ? navigation.navigate('Provisional') : null}
+            activeOpacity={0.75}
+          >
+            <Ionicons name="document-text" size={14} color="#0284c7" />
+            <Text style={styles.quickActionText}>Provisional</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.quickActionChip}
+            onPress={() => navigation?.navigate ? navigation.navigate('SectionShuffle') : null}
+            activeOpacity={0.75}
+          >
+            <Ionicons name="swap-horizontal" size={14} color="#7c3aed" />
+            <Text style={styles.quickActionText}>Shuffle</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.quickActionChip}
+            onPress={() => navigation?.navigate ? navigation.navigate('Promotion') : null}
+            activeOpacity={0.75}
+          >
+            <Ionicons name="trending-up" size={14} color="#16a34a" />
+            <Text style={styles.quickActionText}>Promotion</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.quickActionChip}
+            onPress={() => navigation?.navigate ? navigation.navigate('BulkEdit') : null}
+            activeOpacity={0.75}
+          >
+            <Ionicons name="create-outline" size={14} color="#d97706" />
+            <Text style={styles.quickActionText}>Bulk Edit</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+
       {/* Filter Pills */}
       <View style={styles.filterRow}>
         <TouchableOpacity
@@ -380,6 +430,35 @@ const styles = StyleSheet.create({
   },
   filterPillText: {
     fontSize: 12.5,
+    fontWeight: '600',
+    color: '#334155',
+  },
+  quickActionsWrapper: {
+    paddingVertical: 4,
+    marginBottom: 4,
+  },
+  quickActionsScroll: {
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  quickActionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    gap: 5,
+    shadowColor: '#000',
+    shadowOpacity: 0.02,
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  quickActionText: {
+    fontSize: 12,
     fontWeight: '600',
     color: '#334155',
   },

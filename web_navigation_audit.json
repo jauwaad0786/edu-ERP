@@ -1,0 +1,537 @@
+{
+  "routes": [
+    {
+      "path": "/",
+      "component": "Landing"
+    },
+    {
+      "path": "/login",
+      "component": "Login"
+    },
+    {
+      "path": "/admin/dashboard",
+      "component": "ProtectedRoute"
+    },
+    {
+      "path": "/admin/schools",
+      "component": "ProtectedRoute"
+    },
+    {
+      "path": "/admin/schools/:id",
+      "component": "ProtectedRoute"
+    },
+    {
+      "path": "/admin/users",
+      "component": "ProtectedRoute"
+    },
+    {
+      "path": "/developer/support",
+      "component": "ProtectedRoute"
+    },
+    {
+      "path": "/developer/errors",
+      "component": "ProtectedRoute"
+    },
+    {
+      "path": "/developer/issues",
+      "component": "ProtectedRoute"
+    },
+    {
+      "path": "/developer/system-health",
+      "component": "ProtectedRoute"
+    },
+    {
+      "path": "/developer/leads",
+      "component": "ProtectedRoute"
+    },
+    {
+      "path": "/developer/ai",
+      "component": "ProtectedRoute"
+    },
+    {
+      "path": "/audit/company/logs",
+      "component": "ProtectedRoute"
+    },
+    {
+      "path": "/:schoolSlug/:role",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/:schoolSlug/:role/index.html",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/:schoolSlug/:role/students/provisional",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/:schoolSlug/:role/admissions/new",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/:schoolSlug/:role/admissions",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/:schoolSlug/:role/school-profile",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/:schoolSlug/:role/support/announcements",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/:schoolSlug/:role/hrms/attendance",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/:schoolSlug/:role/support/tickets",
+      "component": "TenantProtectedRoute"
+    },
+    {
+      "path": "/:schoolSlug/:role/support/tickets/new",
+      "component": "TenantProtectedRoute"
+    },
+    {
+      "path": "/:schoolSlug/:role/support/tickets/:id",
+      "component": "TenantProtectedRoute"
+    },
+    {
+      "path": "/:schoolSlug/:role/support/meetings",
+      "component": "TenantProtectedRoute"
+    },
+    {
+      "path": "/:schoolSlug/:role/support/meetings/new",
+      "component": "TenantProtectedRoute"
+    },
+    {
+      "path": "/:schoolSlug/:role/announcements",
+      "component": "TenantProtectedRoute"
+    },
+    {
+      "path": "/:schoolSlug/:role/announcements/create",
+      "component": "TenantProtectedRoute"
+    },
+    {
+      "path": "/:schoolSlug/:role/messages",
+      "component": "TenantProtectedRoute"
+    },
+    {
+      "path": "/:schoolSlug/:role/support/chat",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/:schoolSlug/:role/help-center",
+      "component": "TenantProtectedRoute"
+    },
+    {
+      "path": "/:schoolSlug/:role/support/help",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/dashboard",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/students",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/students/:id",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/students/bulk-edit",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/students/section-shuffle",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/students/promotion",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/students/annual-register",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/students/import",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/teachers",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/classes",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/subjects",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/admission",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/attendance",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/marks",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/mark-entry",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/result-management",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/exams",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/fees",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/fees/structures",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/fees/service-generation",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/fees/collection-analytics",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/finance",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/finance/dashboard",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/finance/service-generation",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/finance/collection-analytics",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/finance/bills",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/finance/payments/collect",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/finance/receipts",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/finance/setup",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/finance/outstanding",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/finance/reports",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/finance/payment-logs",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/finance/expenses",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/finance/inventory",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/finance/payroll",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/finance/vendors",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/finance/purchases",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/finance/assets",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/documents",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/issue-documents",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/notes",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/assignments",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/internal-marks",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/holidays",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/timetable",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/curriculum",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/curriculum/setup",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/curriculum/diary",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/curriculum/coverage",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/curriculum/dashboard",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/admit-card",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/admit-cards",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/result-card",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/result-cards",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/results",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/id-cards",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/id-cards/:type",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/school-settings",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/settings/whatsapp",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/settings",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/my-services",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/my-hr",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/delegations",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/library",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/hostel",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/transport",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/announcements",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/messages",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/support/tickets",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/support/tickets/new",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/support/meetings",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/help-center",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/rbac/roles",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/rbac/permissions",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/rbac/delegations",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/rbac/staff-access",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/audit/school/logs",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/ai/chat",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/principal/deleted-items",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/admissions",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/admissions/new",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/admissions/provisional",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/school-profile",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/support/announcements",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/announcements/create",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/hrms",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/hrms/employees",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/hrms/employees/:userId",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/hrms/payroll",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/hrms/attendance",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/hrms/leaves",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/staff",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/staff/attendance",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/staff/attendance/analytics",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/staff/attendance/settings",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/staff/attendance/employee/:userId",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/transport/reports",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/index.html",
+      "component": "LegacyRedirect"
+    },
+    {
+      "path": "/403",
+      "component": "AccessDeniedPage"
+    },
+    {
+      "path": "/404",
+      "component": "NotFoundPage"
+    },
+    {
+      "path": "*",
+      "component": "NotFoundPage"
+    }
+  ],
+  "sidebar_links": []
+}

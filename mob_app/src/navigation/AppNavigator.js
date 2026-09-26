@@ -25,6 +25,7 @@ import LibrarianNavigator   from './role/LibrarianNavigator';
 import WardenNavigator      from './role/WardenNavigator';
 import TransportNavigator   from './role/TransportNavigator';
 import HRNavigator          from './role/HRNavigator';
+import DriverNavigator      from './role/DriverNavigator';
 
 const Stack = createNativeStackNavigator();
 
@@ -60,6 +61,8 @@ function AuthenticatedNavigator({ user }) {
       return <WardenNavigator />;
     case 'TRANSPORT':
       return <TransportNavigator />;
+    case 'DRIVER':
+      return <DriverNavigator />;
     case 'HR':
       return <HRNavigator />;
     default:

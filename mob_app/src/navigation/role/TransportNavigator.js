@@ -7,6 +7,7 @@ import TransportDashboardScreen from '../../screens/dashboard/TransportDashboard
 import VehiclesScreen           from '../../screens/transport/VehiclesScreen';
 import RoutesScreen             from '../../screens/transport/RoutesScreen';
 import LiveTrackingScreen       from '../../screens/transport/LiveTrackingScreen';
+import DriverConsoleScreen     from '../../screens/transport/DriverConsoleScreen';
 import SettingsScreen           from '../../screens/settings/SettingsScreen';
 import ProfileScreen            from '../../screens/profile/ProfileScreen';
 import ChangePasswordScreen     from '../../screens/profile/ChangePasswordScreen';
@@ -46,6 +47,8 @@ export default function TransportNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="TransportTabs"  component={TransportTabs} />
+      <Stack.Screen name="DriverConsole"  component={DriverConsoleScreen} />
+      <Stack.Screen name="DriverApp"      component={DriverConsoleScreen} />
       <Stack.Screen name="Profile"        component={ProfileScreen} />
       <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
       <Stack.Screen name="Notifications"  component={NotificationsScreen} />

@@ -7,6 +7,7 @@ import WardenDashboardScreen from '../../screens/dashboard/WardenDashboardScreen
 import RollCallScreen        from '../../screens/hostel/RollCallScreen';
 import OutPassScreen         from '../../screens/hostel/OutPassScreen';
 import ComplaintsScreen      from '../../screens/hostel/ComplaintsScreen';
+import RoomMapScreen        from '../../screens/hostel/RoomMapScreen';
 import SettingsScreen        from '../../screens/settings/SettingsScreen';
 import ProfileScreen         from '../../screens/profile/ProfileScreen';
 import ChangePasswordScreen  from '../../screens/profile/ChangePasswordScreen';
@@ -25,6 +26,7 @@ function WardenTabs() {
       tabBarIcon: ({ color, size, focused }) => {
         const icons = {
           Dashboard: focused ? 'grid' : 'grid-outline',
+          'Room Map': focused ? 'bed' : 'bed-outline',
           'Roll Call': focused ? 'clipboard' : 'clipboard-outline',
           'Out Pass': focused ? 'exit' : 'exit-outline',
           Complaints: focused ? 'warning' : 'warning-outline',
@@ -34,6 +36,7 @@ function WardenTabs() {
       },
     })}>
       <Tab.Screen name="Dashboard"  component={WardenDashboardScreen} />
+      <Tab.Screen name="Room Map"   component={RoomMapScreen} />
       <Tab.Screen name="Roll Call"  component={RollCallScreen} />
       <Tab.Screen name="Out Pass"   component={OutPassScreen} />
       <Tab.Screen name="Complaints" component={ComplaintsScreen} />
@@ -46,6 +49,8 @@ export default function WardenNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="WardenTabs"     component={WardenTabs} />
+      <Stack.Screen name="RoomMap"        component={RoomMapScreen} />
+      <Stack.Screen name="HostelRoomMap"  component={RoomMapScreen} />
       <Stack.Screen name="Profile"        component={ProfileScreen} />
       <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
       <Stack.Screen name="Notifications"  component={NotificationsScreen} />

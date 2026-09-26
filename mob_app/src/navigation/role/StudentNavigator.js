@@ -19,6 +19,8 @@ import ProfileScreen from '../../screens/profile/ProfileScreen';
 import ChangePasswordScreen from '../../screens/profile/ChangePasswordScreen';
 import NotificationsScreen from '../../screens/notifications/NotificationsScreen';
 import ExaminationsScreen from '../../screens/examinations/ExaminationsScreen';
+import TimetableScreen from '../../screens/timetable/TimetableScreen';
+import CurriculumScreen from '../../screens/curriculum/CurriculumScreen';
 import AIChatScreen from '../../screens/ai/AIChatScreen';
 import { TAB_BAR_STYLE } from '../tabBarStyle';
 
@@ -60,6 +62,8 @@ export default function StudentNavigator() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="StudentTabs" component={StudentTabs} />
       <Stack.Screen name="AIChat" component={AIChatScreen} />
+      <Stack.Screen name="Timetable" component={TimetableScreen} />
+      <Stack.Screen name="Curriculum" component={CurriculumScreen} />
       <Stack.Screen name="Examinations" component={ExaminationsScreen} />
       <Stack.Screen name="Result" component={ResultScreen} />
       <Stack.Screen name="Results" component={ResultScreen} />

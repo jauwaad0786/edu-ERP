@@ -41,6 +41,16 @@ import ProfileScreen from '../../screens/profile/ProfileScreen';
 import ChangePasswordScreen from '../../screens/profile/ChangePasswordScreen';
 import SettingsScreen from '../../screens/settings/SettingsScreen';
 import AIChatScreen from '../../screens/ai/AIChatScreen';
+import TimetableScreen from '../../screens/timetable/TimetableScreen';
+import CurriculumScreen from '../../screens/curriculum/CurriculumScreen';
+import RoomMapScreen from '../../screens/hostel/RoomMapScreen';
+import ProvisionalScreen from '../../screens/students/ProvisionalScreen';
+import SectionShuffleScreen from '../../screens/students/SectionShuffleScreen';
+import PromotionScreen from '../../screens/students/PromotionScreen';
+import BulkEditScreen from '../../screens/students/BulkEditScreen';
+import ReceiptsScreen from '../../screens/fees/ReceiptsScreen';
+import SubjectsScreen from '../../screens/classes/SubjectsScreen';
+import DriverConsoleScreen from '../../screens/transport/DriverConsoleScreen';
 import { TAB_BAR_STYLE } from '../tabBarStyle';
 
 const Tab = createBottomTabNavigator();
@@ -92,13 +102,20 @@ export default function PrincipalNavigator() {
       <Stack.Screen name="AddStudent" component={AddStudentWizardScreen} />
       <Stack.Screen name="AddStudentWizard" component={AddStudentWizardScreen} />
       <Stack.Screen name="StudentDetail" component={StudentDetailScreen} />
+      <Stack.Screen name="Provisional" component={ProvisionalScreen} />
+      <Stack.Screen name="SectionShuffle" component={SectionShuffleScreen} />
+      <Stack.Screen name="Promotion" component={PromotionScreen} />
+      <Stack.Screen name="BulkEdit" component={BulkEditScreen} />
 
       {/* Academics & Staff */}
       <Stack.Screen name="Teachers" component={StaffScreen} />
       <Stack.Screen name="StaffDetail" component={StaffDetailScreen} />
       <Stack.Screen name="TeacherDetail" component={StaffDetailScreen} />
       <Stack.Screen name="Classes" component={ClassesScreen} />
+      <Stack.Screen name="Subjects" component={SubjectsScreen} />
       <Stack.Screen name="Attendance" component={AttendanceScreen} />
+      <Stack.Screen name="Timetable" component={TimetableScreen} />
+      <Stack.Screen name="Curriculum" component={CurriculumScreen} />
       <Stack.Screen name="Examinations" component={ExaminationsScreen} />
       <Stack.Screen name="ExamSchedule" component={ExaminationsScreen} />
       <Stack.Screen name="Marks" component={MarksScreen} />
@@ -111,6 +128,8 @@ export default function PrincipalNavigator() {
       <Stack.Screen name="Fees" component={FeesScreen} />
       <Stack.Screen name="FeeCollect" component={CollectPaymentScreen} />
       <Stack.Screen name="CollectPayment" component={CollectPaymentScreen} />
+      <Stack.Screen name="Receipts" component={ReceiptsScreen} />
+      <Stack.Screen name="ReceiptsAudit" component={ReceiptsScreen} />
       <Stack.Screen name="FeeRecords" component={OutstandingScreen} />
       <Stack.Screen name="Expenses" component={ExpensesScreen} />
 
@@ -119,8 +138,12 @@ export default function PrincipalNavigator() {
       <Stack.Screen name="Transport" component={LiveTrackingScreen} />
       <Stack.Screen name="Vehicles" component={VehiclesScreen} />
       <Stack.Screen name="Routes" component={RoutesScreen} />
+      <Stack.Screen name="DriverConsole" component={DriverConsoleScreen} />
+      <Stack.Screen name="DriverApp" component={DriverConsoleScreen} />
       <Stack.Screen name="RollCall" component={RollCallScreen} />
       <Stack.Screen name="Hostel" component={RollCallScreen} />
+      <Stack.Screen name="RoomMap" component={RoomMapScreen} />
+      <Stack.Screen name="HostelRoomMap" component={RoomMapScreen} />
       <Stack.Screen name="OutPass" component={OutPassScreen} />
       <Stack.Screen name="Complaints" component={ComplaintsScreen} />
       <Stack.Screen name="Books" component={BooksScreen} />

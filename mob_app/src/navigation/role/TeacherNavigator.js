@@ -21,6 +21,9 @@ import StudentsScreen from '../../screens/students/StudentsScreen';
 import StudentDetailScreen from '../../screens/students/StudentDetailScreen';
 import StaffDetailScreen from '../../screens/staff/StaffDetailScreen';
 import AIChatScreen from '../../screens/ai/AIChatScreen';
+import TimetableScreen from '../../screens/timetable/TimetableScreen';
+import CurriculumScreen from '../../screens/curriculum/CurriculumScreen';
+import SubjectsScreen from '../../screens/classes/SubjectsScreen';
 import { TAB_BAR_STYLE } from '../tabBarStyle';
 
 const Tab = createBottomTabNavigator();
@@ -62,6 +65,9 @@ export default function TeacherNavigator() {
       <Stack.Screen name="TeacherTabs" component={TeacherTabs} />
       <Stack.Screen name="AIChat" component={AIChatScreen} />
       <Stack.Screen name="Classes" component={ClassesScreen} />
+      <Stack.Screen name="Subjects" component={SubjectsScreen} />
+      <Stack.Screen name="Timetable" component={TimetableScreen} />
+      <Stack.Screen name="Curriculum" component={CurriculumScreen} />
       <Stack.Screen name="Examinations" component={ExaminationsScreen} />
       <Stack.Screen name="ExamSchedule" component={ExaminationsScreen} />
       <Stack.Screen name="MarksEntry" component={MarksScreen} />
