@@ -178,6 +178,33 @@ export default function StudentsScreen({ navigation }) {
             <Ionicons name="create-outline" size={14} color="#d97706" />
             <Text style={styles.quickActionText}>Bulk Edit</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.quickActionChip}
+            onPress={() => navigation?.navigate ? navigation.navigate('AnnualRegister') : null}
+            activeOpacity={0.75}
+          >
+            <Ionicons name="repeat-outline" size={14} color="#0b57d0" />
+            <Text style={styles.quickActionText}>Annual Register</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.quickActionChip}
+            onPress={() => navigation?.navigate ? navigation.navigate('IDCard') : null}
+            activeOpacity={0.75}
+          >
+            <Ionicons name="card-outline" size={14} color="#0284c7" />
+            <Text style={styles.quickActionText}>ID Cards</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.quickActionChip}
+            onPress={() => navigation?.navigate ? navigation.navigate('StudentImport') : null}
+            activeOpacity={0.75}
+          >
+            <Ionicons name="cloud-upload-outline" size={14} color="#16a34a" />
+            <Text style={styles.quickActionText}>Import CSV</Text>
+          </TouchableOpacity>
         </ScrollView>
       </View>
 

@@ -25,7 +25,7 @@ const SUBJECT_COLORS = [
   '#0284c7', '#ea580c', '#65a30d', '#db2777', '#4f46e5',
 ];
 
-export default function TimetableScreen({ navigation }) {
+export default function TimetableScreen({ navigation, route }) {
   const { user } = useAuth();
   const role = user?.role ? String(user.role).toUpperCase() : 'STUDENT';
   const isStaff = ['PRINCIPAL', 'VICE_PRINCIPAL', 'DIRECTOR', 'TEACHER', 'ADMIN', 'SUPER_ADMIN'].includes(role);
@@ -37,7 +37,13 @@ export default function TimetableScreen({ navigation }) {
 
   // Class Selection (Staff)
   const [classes, setClasses] = useState([]);
-  const [selectedClassId, setSelectedClassId] = useState(null);
+  const [selectedClassId, setSelectedClassId] = useState(route?.params?.selectedClassId || null);
+
+  useEffect(() => {
+    if (route?.params?.selectedClassId) {
+      setSelectedClassId(route.params.selectedClassId);
+    }
+  }, [route?.params?.selectedClassId]);
 
   // Timetable & Periods State
   const [timetable, setTimetable] = useState(null);
@@ -221,17 +227,57 @@ export default function TimetableScreen({ navigation }) {
     }
   };
 
+  const handleTogglePublish = async () => {
+    if (!timetable?.id) return;
+    const isPub = timetable.status === 'PUBLISHED';
+    try {
+      if (isPub) {
+        await client.post(`/principal/timetables/${timetable.id}/unpublish`);
+        setTimetable(prev => ({ ...prev, status: 'DRAFT' }));
+        Alert.alert('Unpublished', 'Timetable marked as DRAFT.');
+      } else {
+        await client.post(`/principal/timetables/${timetable.id}/publish`);
+        setTimetable(prev => ({ ...prev, status: 'PUBLISHED' }));
+        Alert.alert('Published', 'Timetable published! Visible to all students and teachers.');
+      }
+    } catch {
+      Alert.alert('Error', 'Failed to update timetable status.');
+    }
+  };
+
+  const handleDeletePeriod = (periodId) => {
+    Alert.alert(
+      'Remove Period',
+      'Are you sure you want to remove this period slot?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await client.delete(`/principal/timetables/periods/${periodId}`);
+              loadTimetable();
+            } catch {
+              Alert.alert('Error', 'Failed to delete period.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
           {navigation?.canGoBack() && (
             <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Ionicons name="arrow-back" size={22} color="#ffffff" />
             </TouchableOpacity>
           )}
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={styles.headerTitle}>Weekly Timetable</Text>
             <Text style={styles.headerSub}>
               {DAY_LABELS[selectedDay]} Schedule {timetable?.status ? `· ${timetable.status}` : ''}
@@ -239,15 +285,37 @@ export default function TimetableScreen({ navigation }) {
           </View>
         </View>
 
-        {isStaff && (
-          <TouchableOpacity
-            style={styles.addPeriodBtn}
-            onPress={() => openEditSlot(dayPeriods.length + 1 <= 8 ? dayPeriods.length + 1 : 1)}
-          >
-            <Ionicons name="add" size={18} color="#fff" />
-            <Text style={styles.addPeriodText}>Add Slot</Text>
-          </TouchableOpacity>
-        )}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {isStaff && timetable?.id && (
+            <TouchableOpacity
+              onPress={handleTogglePublish}
+              style={{
+                backgroundColor: timetable.status === 'PUBLISHED' ? '#dcfce7' : '#fef3c7',
+                paddingHorizontal: 8,
+                paddingVertical: 5,
+                borderRadius: 8,
+              }}
+            >
+              <Text style={{
+                fontSize: 10.5,
+                fontWeight: '700',
+                color: timetable.status === 'PUBLISHED' ? '#15803d' : '#b45309'
+              }}>
+                {timetable.status === 'PUBLISHED' ? '● PUBLISHED' : '○ DRAFT'}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {isStaff && (
+            <TouchableOpacity
+              style={styles.addPeriodBtn}
+              onPress={() => openEditSlot(dayPeriods.length + 1 <= 8 ? dayPeriods.length + 1 : 1)}
+            >
+              <Ionicons name="add" size={18} color="#fff" />
+              <Text style={styles.addPeriodText}>Add Slot</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* Class Selector Bar (Staff Only) */}
@@ -335,7 +403,17 @@ export default function TimetableScreen({ navigation }) {
                   </View>
 
                   {isStaff && (
-                    <Ionicons name="pencil-outline" size={16} color="#94a3b8" />
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <Ionicons name="pencil-outline" size={16} color="#94a3b8" />
+                      {slot.id ? (
+                        <TouchableOpacity
+                          onPress={() => handleDeletePeriod(slot.id)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Ionicons name="trash-outline" size={16} color="#dc2626" />
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
                   )}
                 </TouchableOpacity>
               );

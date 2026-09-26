@@ -164,18 +164,20 @@ def upload_note():
     if not sid:
         return jsonify({'error': 'School context not found'}), 400
 
-    title       = (request.form.get('title') or '').strip()
-    description = (request.form.get('description') or '').strip()
-    class_id    = request.form.get('class_id', type=int)
-    subject_id  = request.form.get('subject_id', type=int)
-    teacher_id_req = request.form.get('teacher_id', type=int)
-    academic_yr = (request.form.get('academic_year') or '2026').strip()
+    json_data   = request.get_json(silent=True) or {}
+    title       = (request.form.get('title') or json_data.get('title') or '').strip()
+    description = (request.form.get('description') or json_data.get('description') or '').strip()
+    class_id    = request.form.get('class_id', type=int) or (int(json_data['class_id']) if json_data.get('class_id') else None)
+    subject_id  = request.form.get('subject_id', type=int) or (int(json_data['subject_id']) if json_data.get('subject_id') else None)
+    teacher_id_req = request.form.get('teacher_id', type=int) or (int(json_data['teacher_id']) if json_data.get('teacher_id') else None)
+    academic_yr = (request.form.get('academic_year') or json_data.get('academic_year') or '2026').strip()
+    file_url_input = json_data.get('file_url') or request.form.get('file_url')
     file        = request.files.get('file')
 
     if not title:
         return jsonify({'error': 'Title is required'}), 400
-    if not file or not _allowed_file(file.filename):
-        return jsonify({'error': 'Valid file (PDF, DOCX, PPT, Image, etc.) is required'}), 400
+    if not file and not file_url_input:
+        return jsonify({'error': 'Valid file (PDF, DOCX, PPT, Image, etc.) or resource URL is required'}), 400
 
     teacher = Teacher.query.filter_by(user_id=curr.id).first()
     teacher_id = teacher.id if teacher else None
@@ -192,11 +194,15 @@ def upload_note():
         if sub and sub.teacher_id:
             teacher_id = sub.teacher_id
 
-    try:
-        folder = f"eduerp/schools/{sid}/notes"
-        file_url, file_name, file_size, file_type = _upload_to_storage(file, folder)
-    except Exception as ex:
-        return jsonify({'error': f"Upload failed: {str(ex)}"}), 400
+    file_url, file_name, file_size, file_type = file_url_input, title, 0, 'link'
+    if file and file.filename:
+        if not _allowed_file(file.filename):
+            return jsonify({'error': 'Valid file (PDF, DOCX, PPT, Image, etc.) is required'}), 400
+        try:
+            folder = f"eduerp/schools/{sid}/notes"
+            file_url, file_name, file_size, file_type = _upload_to_storage(file, folder)
+        except Exception as ex:
+            return jsonify({'error': f"Upload failed: {str(ex)}"}), 400
 
     note = Note(
         school_id     = sid,
@@ -331,13 +337,14 @@ def create_assignment():
     if not sid:
         return jsonify({'error': 'School context not found'}), 400
 
-    title         = (request.form.get('title') or '').strip()
-    description   = (request.form.get('description') or '').strip()
-    class_id      = request.form.get('class_id', type=int)
-    subject_id    = request.form.get('subject_id', type=int)
-    max_marks_raw = request.form.get('max_marks', '20')
-    due_date_str  = request.form.get('due_date')
-    academic_yr   = (request.form.get('academic_year') or '2026').strip()
+    json_data     = request.get_json(silent=True) or {}
+    title         = (request.form.get('title') or json_data.get('title') or '').strip()
+    description   = (request.form.get('description') or json_data.get('description') or '').strip()
+    class_id      = request.form.get('class_id', type=int) or (int(json_data['class_id']) if json_data.get('class_id') else None)
+    subject_id    = request.form.get('subject_id', type=int) or (int(json_data['subject_id']) if json_data.get('subject_id') else None)
+    max_marks_raw = request.form.get('max_marks') or json_data.get('max_marks', '20')
+    due_date_str  = request.form.get('due_date') or json_data.get('due_date')
+    academic_yr   = (request.form.get('academic_year') or json_data.get('academic_year') or '2026').strip()
     file          = request.files.get('attachment')
 
     if not title or not class_id or not subject_id or not due_date_str:
@@ -530,17 +537,26 @@ def submit_assignment(assignment_id):
     if assignment.school_id != sid or assignment.class_id != student.class_id:
         return jsonify({'error': 'Assignment does not belong to your class'}), 403
 
+    json_data = request.get_json(silent=True) or {}
     file = request.files.get('file')
-    comment = (request.form.get('student_comment') or '').strip()
+    comment = (request.form.get('student_comment') or json_data.get('student_comment') or '').strip()
 
-    if not file or not _allowed_file(file.filename):
-        return jsonify({'error': 'Valid assignment submission file (PDF, DOCX, Image, etc.) is required'}), 400
+    if not file and not comment:
+        return jsonify({'error': 'Either a file attachment or written answer is required to submit'}), 400
 
-    try:
-        folder = f"eduerp/schools/{sid}/students/{student.id}/assignments/{assignment_id}"
-        file_url, file_name, file_size, file_type = _upload_to_storage(file, folder)
-    except Exception as ex:
-        return jsonify({'error': f"Submission upload failed: {str(ex)}"}), 400
+    file_url, file_name, file_size, file_type = None, None, None, None
+    if file and file.filename:
+        if not _allowed_file(file.filename):
+            return jsonify({'error': 'Valid assignment submission file (PDF, DOCX, Image, etc.) is required'}), 400
+
+        try:
+            folder = f"eduerp/schools/{sid}/students/{student.id}/assignments/{assignment_id}"
+            file_url, file_name, file_size, file_type = _upload_to_storage(file, folder)
+        except Exception as ex:
+            return jsonify({'error': f"Submission upload failed: {str(ex)}"}), 400
+    else:
+        file_name = 'Written Response'
+        file_type = 'text'
 
     # Determine status: SUBMITTED or LATE
     status = 'LATE' if assignment.due_date and utc_now() > assignment.due_date else 'SUBMITTED'

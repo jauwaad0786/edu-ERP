@@ -1,5 +1,4 @@
-// mob_app/src/screens/fees/CollectPaymentScreen.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TextInput,
   TouchableOpacity, ActivityIndicator, Alert, Share, Linking,
@@ -44,6 +43,12 @@ export default function CollectPaymentScreen({ navigation, route }) {
   const [loadingLedger, setLoadingLedger] = useState(false);
   const [collecting, setCollecting] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
+
+  useEffect(() => {
+    if (route?.params?.student) {
+      selectStudent(route.params.student);
+    }
+  }, [route?.params?.student]);
 
   const searchStudent = async () => {
     if (!query.trim()) return;

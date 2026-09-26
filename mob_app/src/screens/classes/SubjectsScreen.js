@@ -26,15 +26,20 @@ export default function SubjectsScreen({ navigation }) {
   const [subjectType, setSubjectType] = useState('THEORY');
   const [creditHours, setCreditHours] = useState('4');
   const [targetClassId, setTargetClassId] = useState('');
+  const [teachers, setTeachers] = useState([]);
+  const [targetTeacherId, setTargetTeacherId] = useState('');
+  const [maxMarks, setMaxMarks] = useState('100');
+  const [passMarks, setPassMarks] = useState('33');
   const [saving, setSaving] = useState(false);
 
   // Load Data
   const loadData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     try {
-      const [subRes, clsRes] = await Promise.all([
+      const [subRes, clsRes, tchRes] = await Promise.all([
         client.get('/principal/subjects').catch(() => ({ data: [] })),
         client.get('/principal/classes').catch(() => ({ data: [] })),
+        client.get('/principal/teachers').catch(() => ({ data: [] })),
       ]);
 
       const subList = Array.isArray(subRes.data)
@@ -49,6 +54,9 @@ export default function SubjectsScreen({ navigation }) {
       if (clsList.length > 0 && !targetClassId) {
         setTargetClassId(String(clsList[0].id));
       }
+
+      const tList = Array.isArray(tchRes.data) ? tchRes.data : tchRes.data?.teachers || [];
+      setTeachers(tList);
     } catch {
       setSubjects([]);
     } finally {
@@ -91,18 +99,45 @@ export default function SubjectsScreen({ navigation }) {
         subject_type: subjectType,
         credit_hours: parseInt(creditHours, 10) || 3,
         class_id: targetClassId ? parseInt(targetClassId, 10) : null,
+        teacher_id: targetTeacherId ? parseInt(targetTeacherId, 10) : null,
+        max_marks: parseInt(maxMarks, 10) || 100,
+        pass_marks: parseInt(passMarks, 10) || 33,
       });
 
       Alert.alert('Subject Added', `Subject "${subjectName.trim()}" successfully created!`);
       setModalVisible(false);
       setSubjectName('');
       setSubjectCode('');
-      loadData();
+      setTargetTeacherId('');
+      loadData(true);
     } catch (err) {
       Alert.alert('Error', err?.response?.data?.error || 'Failed to create subject.');
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleDeleteSubject = (sub) => {
+    Alert.alert(
+      'Delete Subject',
+      `Are you sure you want to delete "${sub.name}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await client.delete(`/principal/subjects/${sub.id}`);
+              Alert.alert('Deleted', 'Subject deleted successfully.');
+              loadData(true);
+            } catch (err) {
+              Alert.alert('Error', 'Failed to delete subject.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -205,10 +240,19 @@ export default function SubjectsScreen({ navigation }) {
                       <Ionicons name="bookmark" size={18} color="#0b57d0" />
                       <Text style={styles.subjectName}>{sub.name}</Text>
                     </View>
-                    <View style={[styles.typeBadge, isPractical && styles.practicalBadge, isBoth && styles.bothBadge]}>
-                      <Text style={[styles.typeText, isPractical && { color: '#d97706' }, isBoth && { color: '#7c3aed' }]}>
-                        {sub.subject_type || 'THEORY'}
-                      </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <View style={[styles.typeBadge, isPractical && styles.practicalBadge, isBoth && styles.bothBadge]}>
+                        <Text style={[styles.typeText, isPractical && { color: '#d97706' }, isBoth && { color: '#7c3aed' }]}>
+                          {sub.subject_type || 'THEORY'}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => handleDeleteSubject(sub)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        style={{ padding: 4 }}
+                      >
+                        <Ionicons name="trash-outline" size={16} color="#dc2626" />
+                      </TouchableOpacity>
                     </View>
                   </View>
 
@@ -216,6 +260,12 @@ export default function SubjectsScreen({ navigation }) {
                     <Text style={styles.metaItem}>Code: <Text style={styles.metaVal}>{sub.code || '—'}</Text></Text>
                     <Text style={styles.metaItem}>Credits: <Text style={styles.metaVal}>{sub.credit_hours || 3} hrs</Text></Text>
                     <Text style={styles.metaItem}>Class: <Text style={styles.metaVal}>{sub.class_name || 'All'}</Text></Text>
+                  </View>
+
+                  <View style={{ marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: '#f1f5f9' }}>
+                    <Text style={styles.metaItem}>
+                      Faculty Teacher: <Text style={{ fontWeight: '700', color: '#1e293b' }}>{sub.teacher_name || 'Not assigned'}</Text>
+                    </Text>
                   </View>
                 </View>
               );
@@ -240,7 +290,7 @@ export default function SubjectsScreen({ navigation }) {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={{ maxHeight: 420 }}>
+            <ScrollView style={{ maxHeight: 440 }}>
               <Text style={styles.fieldLabel}>Subject Name *</Text>
               <TextInput
                 style={styles.input}
@@ -287,6 +337,46 @@ export default function SubjectsScreen({ navigation }) {
                   </TouchableOpacity>
                 ))}
               </ScrollView>
+
+              <Text style={styles.fieldLabel}>Assign Subject Faculty Teacher</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+                {teachers.map(t => (
+                  <TouchableOpacity
+                    key={t.id}
+                    style={[styles.classPill, String(targetTeacherId) === String(t.id) && styles.classPillActive]}
+                    onPress={() => setTargetTeacherId(String(t.id))}
+                  >
+                    <Text style={[styles.classPillText, String(targetTeacherId) === String(t.id) && styles.classPillTextActive]}>
+                      {t.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Max Marks</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="100"
+                    placeholderTextColor="#94a3b8"
+                    value={maxMarks}
+                    onChangeText={setMaxMarks}
+                    keyboardType="numeric"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Pass Marks</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="33"
+                    placeholderTextColor="#94a3b8"
+                    value={passMarks}
+                    onChangeText={setPassMarks}
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
 
               <Text style={styles.fieldLabel}>Credit / Teaching Hours per Week</Text>
               <TextInput

@@ -29,12 +29,14 @@ export default function DrawerMenuModal({
       case 'PRINCIPAL':
       case 'DIRECTOR':
       case 'VICE_PRINCIPAL':
+      case 'ADMIN':
         return [
           {
             title: 'Overview & Intelligence',
             items: [
               { label: 'Dashboard', icon: 'grid-outline', screen: 'Home', color: '#0b57d0' },
               { label: 'ERP Copilot (AI)', icon: 'sparkles', screen: 'AIChat', color: '#7c3aed', badge: 'AI' },
+              { label: 'Notice Board & Circulars', icon: 'megaphone-outline', screen: 'NoticeBoard', color: '#ea580c' },
             ],
           },
           {
@@ -42,18 +44,28 @@ export default function DrawerMenuModal({
             items: [
               { label: 'Students Directory', icon: 'people-outline', screen: 'Students', color: '#2563eb' },
               { label: 'New Admission', icon: 'person-add-outline', screen: 'AddStudentWizard', color: '#0284c7' },
-              { label: 'Classes & Sections', icon: 'school-outline', screen: 'Classes', color: '#0d9488' },
+              { label: 'Inquiries & Leads', icon: 'megaphone-outline', screen: 'Leads', color: '#ea580c' },
+              { label: 'Provisional Admissions', icon: 'time-outline', screen: 'Provisional', color: '#d97706' },
+              { label: 'Student ID Cards', icon: 'card-outline', screen: 'IDCard', color: '#7c3aed' },
+              { label: 'Annual Re-Registration', icon: 'repeat-outline', screen: 'AnnualRegister', color: '#059669' },
+              { label: 'Bulk Student Import', icon: 'cloud-upload-outline', screen: 'StudentImport', color: '#0891b2' },
             ],
           },
           {
             title: 'Academics & Evaluation',
             items: [
-              { label: 'Teachers Directory', icon: 'person-outline', screen: 'Teachers', color: '#7c3aed' },
+              { label: 'Classes & Sections', icon: 'school-outline', screen: 'Classes', color: '#0d9488' },
+              { label: 'Curriculum Subjects', icon: 'book-outline', screen: 'Subjects', color: '#0284c7' },
+              { label: 'Weekly Timetable', icon: 'calendar-outline', screen: 'Timetable', color: '#7c3aed' },
+              { label: 'Curriculum Coverage', icon: 'analytics-outline', screen: 'Curriculum', color: '#059669' },
+              { label: 'Teachers Directory', icon: 'person-outline', screen: 'Teachers', color: '#4f46e5' },
               { label: 'Attendance Registry', icon: 'clipboard-outline', screen: 'Attendance', color: '#16a34a' },
-              { label: 'Examinations', icon: 'calendar-outline', screen: 'Examinations', color: '#ea580c' },
+              { label: 'Examinations & Datesheets', icon: 'calendar-outline', screen: 'Examinations', color: '#ea580c' },
+              { label: 'Admit Cards (Hall Tickets)', icon: 'card-outline', screen: 'AdmitCard', color: '#059669' },
               { label: 'Marks & Evaluations', icon: 'pencil-outline', screen: 'Marks', color: '#4338ca' },
-              { label: 'Results & Cards', icon: 'ribbon-outline', screen: 'Result', color: '#be185d' },
-              { label: 'Notes & Study Material', icon: 'book-outline', screen: 'Notes', color: '#0891b2' },
+              { label: 'Results & RMS Cards', icon: 'ribbon-outline', screen: 'Result', color: '#be185d' },
+              { label: 'Homework & Assignments', icon: 'clipboard-outline', screen: 'Assignments', color: '#6366f1' },
+              { label: 'Notes & Study Material', icon: 'document-text-outline', screen: 'Notes', color: '#0891b2' },
             ],
           },
           {
@@ -61,7 +73,9 @@ export default function DrawerMenuModal({
             items: [
               { label: 'Fees Command Center', icon: 'card-outline', screen: 'Fees', color: '#16a34a' },
               { label: 'Collect Payment (POS)', icon: 'cash-outline', screen: 'FeeCollect', color: '#0284c7' },
-              { label: 'Outstanding Dues', icon: 'receipt-outline', screen: 'FeeRecords', color: '#d97706' },
+              { label: 'Fee Setup & Plans', icon: 'layers-outline', screen: 'FeeSetup', color: '#7c3aed' },
+              { label: 'Generate Monthly Fees', icon: 'flash-outline', screen: 'FeeGeneration', color: '#d97706' },
+              { label: 'Outstanding Dues', icon: 'receipt-outline', screen: 'FeeRecords', color: '#ea580c' },
               { label: 'Operating Expenses', icon: 'wallet-outline', screen: 'Expenses', color: '#dc2626' },
             ],
           },
@@ -70,9 +84,23 @@ export default function DrawerMenuModal({
             items: [
               { label: 'Live Transport GPS', icon: 'bus-outline', screen: 'LiveTracking', color: '#ea580c' },
               { label: 'Hostel Roll Call', icon: 'bed-outline', screen: 'RollCall', color: '#0284c7' },
-              { label: 'Library Catalog', icon: 'library-outline', screen: 'Books', color: '#0891b2' },
-              { label: 'Staff HR & Payroll', icon: 'briefcase-outline', screen: 'Employees', color: '#4f46e5' },
+              { label: 'Hostel Room Map', icon: 'business-outline', screen: 'RoomMap', color: '#6366f1' },
+              { label: 'Student Out-Passes', icon: 'exit-outline', screen: 'OutPass', color: '#10b981' },
+              { label: 'Visitor Gate Pass', icon: 'shield-checkmark-outline', screen: 'Visitors', color: '#059669' },
+              { label: 'Hostel Complaints', icon: 'construct-outline', screen: 'Complaints', color: '#f59e0b' },
+              { label: 'Faculty & Staff Directory', icon: 'people-outline', screen: 'Teachers', color: '#4f46e5' },
+              { label: 'Staff Attendance & Punch', icon: 'finger-print-outline', screen: 'StaffAttendance', color: '#0284c7' },
+              { label: 'Staff Leave Approvals', icon: 'calendar-outline', screen: 'Leaves', color: '#ea580c' },
+              { label: 'Teacher Delegations', icon: 'swap-horizontal-outline', screen: 'Delegations', color: '#4338ca' },
+              { label: 'Payroll & Salary Runs', icon: 'cash-outline', screen: 'Payroll', color: '#16a34a' },
+              { label: 'Finance Command Center', icon: 'trending-up-outline', screen: 'FinanceHub', color: '#0369a1' },
+              { label: 'Purchase Orders & GRN', icon: 'cart-outline', screen: 'Purchases', color: '#7c3aed' },
+              { label: 'Vendor Management', icon: 'business-outline', screen: 'Vendors', color: '#ea580c' },
               { label: 'Comprehensive Reports', icon: 'bar-chart-outline', screen: 'Reports', color: '#c026d3' },
+              { label: 'Audit Trail & Logs', icon: 'shield-checkmark-outline', screen: 'AuditLogs', color: '#dc2626' },
+              { label: 'WhatsApp Gateway', icon: 'logo-whatsapp', screen: 'WhatsApp', color: '#16a34a' },
+              { label: 'Roles & Permissions', icon: 'key-outline', screen: 'Roles', color: '#4338ca' },
+              { label: 'Virtual Meetings & PTM', icon: 'videocam-outline', screen: 'Meetings', color: '#0284c7' },
               { label: 'Support & Help Desk', icon: 'headset-outline', screen: 'Support', color: '#059669' },
               { label: 'Settings & Profile', icon: 'settings-outline', screen: 'Settings', color: '#64748b' },
             ],
@@ -86,6 +114,7 @@ export default function DrawerMenuModal({
             items: [
               { label: 'Teacher Dashboard', icon: 'grid-outline', screen: 'Dashboard', color: '#0176d3' },
               { label: 'ERP Copilot (AI)', icon: 'sparkles', screen: 'AIChat', color: '#7c3aed', badge: 'AI' },
+              { label: 'Notice Board & Circulars', icon: 'megaphone-outline', screen: 'NoticeBoard', color: '#ea580c' },
             ],
           },
           {
@@ -94,8 +123,14 @@ export default function DrawerMenuModal({
               { label: 'Student Attendance', icon: 'clipboard-outline', screen: 'Attendance', color: '#16a34a' },
               { label: 'Assigned Classes', icon: 'school-outline', screen: 'Classes', color: '#0d9488' },
               { label: 'Exam Marks Entry', icon: 'pencil-outline', screen: 'Marks', color: '#4338ca' },
-              { label: 'Study Notes Upload', icon: 'book-outline', screen: 'Notes', color: '#0284c7' },
+              { label: 'Admit Cards (Hall Tickets)', icon: 'card-outline', screen: 'AdmitCard', color: '#059669' },
+              { label: 'My Punch Attendance', icon: 'finger-print-outline', screen: 'StaffAttendance', color: '#0284c7' },
               { label: 'Leave Applications', icon: 'calendar-outline', screen: 'Leaves', color: '#ea580c' },
+              { label: 'My Salary Payslips', icon: 'cash-outline', screen: 'Payroll', color: '#16a34a' },
+              { label: 'Homework & Assignments', icon: 'clipboard-outline', screen: 'Assignments', color: '#6366f1' },
+              { label: 'Study Notes Upload', icon: 'book-outline', screen: 'Notes', color: '#0284c7' },
+              { label: 'Substitute Duties', icon: 'swap-horizontal-outline', screen: 'Delegations', color: '#0369a1' },
+              { label: 'PTM & Conferences', icon: 'videocam-outline', screen: 'Meetings', color: '#0284c7' },
             ],
           },
           {
@@ -114,17 +149,23 @@ export default function DrawerMenuModal({
             items: [
               { label: 'Student Dashboard', icon: 'grid-outline', screen: 'Dashboard', color: '#7c3aed' },
               { label: 'ERP Copilot (AI)', icon: 'sparkles', screen: 'AIChat', color: '#0b57d0', badge: 'AI' },
+              { label: 'Notice Board & Circulars', icon: 'megaphone-outline', screen: 'NoticeBoard', color: '#ea580c' },
             ],
           },
           {
             title: 'My Academics',
             items: [
               { label: 'My Attendance', icon: 'clipboard-outline', screen: 'Attendance', color: '#16a34a' },
+              { label: 'Exam Schedule & Datesheet', icon: 'calendar-outline', screen: 'Examinations', color: '#ea580c' },
+              { label: 'Exam Admit Card', icon: 'card-outline', screen: 'AdmitCard', color: '#059669' },
               { label: 'Exam Report Card', icon: 'ribbon-outline', screen: 'Result', color: '#7c3aed' },
+              { label: 'Homework & Assignments', icon: 'clipboard-outline', screen: 'Assignments', color: '#6366f1' },
               { label: 'Study Notes & PDFs', icon: 'book-outline', screen: 'Notes', color: '#0284c7' },
               { label: 'Fee Dues & Receipts', icon: 'receipt-outline', screen: 'Fees', color: '#d97706' },
               { label: 'Library Books', icon: 'library-outline', screen: 'Books', color: '#0891b2' },
               { label: 'Transport Live Bus', icon: 'bus-outline', screen: 'Transport', color: '#ea580c' },
+              { label: 'Hostel Out-Pass', icon: 'exit-outline', screen: 'OutPass', color: '#10b981' },
+              { label: 'Room Complaints', icon: 'construct-outline', screen: 'Complaints', color: '#f59e0b' },
             ],
           },
           {
@@ -144,6 +185,7 @@ export default function DrawerMenuModal({
             items: [
               { label: 'Child Dashboard', icon: 'grid-outline', screen: 'My Child', color: '#7c3aed' },
               { label: 'ERP Copilot (AI)', icon: 'sparkles', screen: 'AIChat', color: '#0b57d0', badge: 'AI' },
+              { label: 'Notice Board & Circulars', icon: 'megaphone-outline', screen: 'NoticeBoard', color: '#ea580c' },
             ],
           },
           {
@@ -151,9 +193,16 @@ export default function DrawerMenuModal({
             items: [
               { label: 'Attendance Records', icon: 'clipboard-outline', screen: 'Attendance', color: '#16a34a' },
               { label: 'Fee Dues & Receipts', icon: 'receipt-outline', screen: 'Fees', color: '#d97706' },
+              { label: 'Exam Datesheets', icon: 'calendar-outline', screen: 'Examinations', color: '#ea580c' },
+              { label: 'Child Admit Card', icon: 'card-outline', screen: 'AdmitCard', color: '#059669' },
               { label: 'Report Card & Marks', icon: 'ribbon-outline', screen: 'Result', color: '#7c3aed' },
+              { label: 'Homework & Tasks', icon: 'clipboard-outline', screen: 'Assignments', color: '#6366f1' },
               { label: 'Live Bus Tracking', icon: 'bus-outline', screen: 'Transport', color: '#ea580c' },
+              { label: 'Library Books & Dues', icon: 'library-outline', screen: 'Books', color: '#0891b2' },
               { label: 'Study Materials', icon: 'book-outline', screen: 'Notes', color: '#0284c7' },
+              { label: 'Hostel Out-Pass', icon: 'exit-outline', screen: 'OutPass', color: '#10b981' },
+              { label: 'Hostel Complaints', icon: 'construct-outline', screen: 'Complaints', color: '#f59e0b' },
+              { label: 'PTM & Virtual Meetings', icon: 'videocam-outline', screen: 'Meetings', color: '#0284c7' },
             ],
           },
           {
@@ -162,6 +211,35 @@ export default function DrawerMenuModal({
               { label: 'Support & Inquiries', icon: 'headset-outline', screen: 'Support', color: '#059669' },
               { label: 'Account Profile', icon: 'person-outline', screen: 'Profile', color: '#2563eb' },
               { label: 'Settings', icon: 'settings-outline', screen: 'Settings', color: '#64748b' },
+            ],
+          },
+        ];
+
+      case 'HOSTEL':
+      case 'WARDEN':
+        return [
+          {
+            title: 'Overview',
+            items: [
+              { label: 'Hostel Dashboard', icon: 'grid-outline', screen: 'Dashboard', color: '#4338ca' },
+              { label: 'ERP Copilot (AI)', icon: 'sparkles', screen: 'AIChat', color: '#7c3aed', badge: 'AI' },
+            ],
+          },
+          {
+            title: 'Hostel Management',
+            items: [
+              { label: 'Room & Bed Map', icon: 'bed-outline', screen: 'RoomMap', color: '#4338ca' },
+              { label: 'Night Roll Call', icon: 'clipboard-outline', screen: 'RollCall', color: '#0284c7' },
+              { label: 'Gate Out-Passes', icon: 'exit-outline', screen: 'OutPass', color: '#16a34a' },
+              { label: 'Visitor Gate Pass', icon: 'shield-checkmark-outline', screen: 'Visitors', color: '#059669' },
+              { label: 'Maintenance & Grievances', icon: 'construct-outline', screen: 'Complaints', color: '#ea580c' },
+            ],
+          },
+          {
+            title: 'Account & Settings',
+            items: [
+              { label: 'My Profile', icon: 'person-outline', screen: 'Profile', color: '#2563eb' },
+              { label: 'Account Settings', icon: 'settings-outline', screen: 'Settings', color: '#64748b' },
             ],
           },
         ];
@@ -181,7 +259,16 @@ export default function DrawerMenuModal({
             items: [
               { label: 'Tenant Schools', icon: 'school-outline', screen: 'Schools', color: '#0284c7' },
               { label: 'Platform Users', icon: 'people-outline', screen: 'Users', color: '#7c3aed' },
+              { label: 'Demo Leads & Inquiries', icon: 'person-add-outline', screen: 'Leads', color: '#ea580c' },
+              { label: 'Security & Audit Logs', icon: 'shield-checkmark-outline', screen: 'AuditLogs', color: '#dc2626' },
+              { label: 'WhatsApp Gateway', icon: 'logo-whatsapp', screen: 'WhatsApp', color: '#16a34a' },
+              { label: 'Roles & Permissions', icon: 'key-outline', screen: 'Roles', color: '#4338ca' },
               { label: 'Support Tickets', icon: 'headset-outline', screen: 'Support', color: '#16a34a' },
+              { label: 'Developer Center', icon: 'bug-outline', screen: 'DeveloperCenter', color: '#7c3aed' },
+              { label: 'System Health', icon: 'pulse-outline', screen: 'SystemHealth', color: '#0284c7' },
+              { label: 'Finance Command Center', icon: 'trending-up-outline', screen: 'FinanceHub', color: '#0369a1' },
+              { label: 'Purchase Orders & GRN', icon: 'cart-outline', screen: 'Purchases', color: '#7c3aed' },
+              { label: 'Vendor Management', icon: 'business-outline', screen: 'Vendors', color: '#ea580c' },
               { label: 'Security & Settings', icon: 'settings-outline', screen: 'Settings', color: '#64748b' },
             ],
           },

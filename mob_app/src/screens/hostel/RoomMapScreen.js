@@ -127,12 +127,21 @@ export default function RoomMapScreen({ navigation }) {
     if (!studentSearch.trim()) return;
     setSearchingStudents(true);
     try {
-      const res = await client.get('/principal/students', {
-        params: { search: studentSearch.trim(), per_page: 10 },
+      const res = await client.get('/hostel/students/search-eligible', {
+        params: { q: studentSearch.trim() },
       }).catch(() => null);
 
-      const list = Array.isArray(res?.data) ? res.data : (res?.data?.students || res?.data?.data || []);
-      setStudentResults(list);
+      const list = Array.isArray(res?.data) ? res.data : (res?.data?.data || res?.data?.students || []);
+      if (list.length > 0) {
+        setStudentResults(list);
+      } else {
+        // Fallback to principal student search
+        const fallback = await client.get('/principal/students', {
+          params: { search: studentSearch.trim(), per_page: 10 },
+        }).catch(() => null);
+        const fbList = Array.isArray(fallback?.data) ? fallback.data : (fallback?.data?.students || fallback?.data?.data || []);
+        setStudentResults(fbList);
+      }
     } catch {
       setStudentResults([]);
     } finally {
@@ -173,17 +182,16 @@ export default function RoomMapScreen({ navigation }) {
 
     setAllocating(true);
     try {
-      await client.post('/hostel/allocations', {
+      await client.post('/hostel/admission', {
         student_id: selectedStudent.id,
         bed_id: targetBed.id,
-        check_in_date: new Date().toISOString().split('T')[0],
       });
 
       Alert.alert('Bed Allocated', `${selectedStudent.name} assigned to Bed ${targetBed.bed_number} (Room ${targetBed.room_number}).`);
       setAllocateModalVisible(false);
       loadRoomMap();
     } catch (err) {
-      Alert.alert('Allocation Failed', err.response?.data?.error || 'Could not allocate bed.');
+      Alert.alert('Allocation Failed', err.response?.data?.error || err.response?.data?.message || 'Could not allocate bed.');
     } finally {
       setAllocating(false);
     }
@@ -192,13 +200,11 @@ export default function RoomMapScreen({ navigation }) {
   // Confirm Vacate
   const confirmVacate = async (allocId) => {
     try {
-      await client.post(`/hostel/allocations/${allocId}/vacate`, {
-        vacate_date: new Date().toISOString().split('T')[0],
-      });
+      await client.post(`/hostel/admission/${allocId}/vacate`, {});
       Alert.alert('Vacated', 'Bed has been marked vacant.');
       loadRoomMap();
     } catch (err) {
-      Alert.alert('Error', err.response?.data?.error || 'Could not vacate bed.');
+      Alert.alert('Error', err.response?.data?.error || err.response?.data?.message || 'Could not vacate bed.');
     }
   };
 

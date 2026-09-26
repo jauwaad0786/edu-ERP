@@ -129,6 +129,33 @@ export default function ClassesScreen({ navigation }) {
             </TouchableOpacity>
           )}
         </View>
+
+        {/* Quick Academic Navigation Chips */}
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+          <TouchableOpacity
+            style={styles.chipBtn}
+            onPress={() => navigation?.navigate?.('Subjects')}
+          >
+            <Ionicons name="book-outline" size={14} color="#ffffff" />
+            <Text style={styles.chipBtnText}>Subjects</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.chipBtn}
+            onPress={() => navigation?.navigate?.('Timetable')}
+          >
+            <Ionicons name="calendar-outline" size={14} color="#ffffff" />
+            <Text style={styles.chipBtnText}>Timetable</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.chipBtn}
+            onPress={() => navigation?.navigate?.('Curriculum')}
+          >
+            <Ionicons name="analytics-outline" size={14} color="#ffffff" />
+            <Text style={styles.chipBtnText}>Coverage</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -144,7 +171,7 @@ export default function ClassesScreen({ navigation }) {
               activeOpacity={0.7}
               onPress={() => {
                 if (navigation?.navigate) {
-                  navigation.navigate('Students', { selectedClass: cls.name });
+                  navigation.navigate('ClassDetail', { classId: cls.id, className: cls.name });
                 }
               }}
             >
@@ -155,7 +182,7 @@ export default function ClassesScreen({ navigation }) {
                   </View>
                   <View style={{ marginLeft: 12 }}>
                     <Text style={styles.className}>Class {cls.name} {cls.section ? `(${cls.section})` : ''}</Text>
-                    <Text style={styles.sessionText}>Session: {cls.session || '2024-25'}</Text>
+                    <Text style={styles.sessionText}>Session: {cls.session || '2026-27'}</Text>
                   </View>
                 </View>
 
@@ -175,10 +202,13 @@ export default function ClassesScreen({ navigation }) {
                     Class Teacher: <Text style={{ fontWeight: '700', color: C.text }}>{cls.class_teacher_name || cls.teacher_name || 'Not assigned'}</Text>
                   </Text>
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 8 }}>
-                  <Text style={styles.viewStudentsText}>View Students</Text>
+                <TouchableOpacity
+                  style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 8 }}
+                  onPress={() => navigation?.navigate?.('Students', { selectedClass: cls.name })}
+                >
+                  <Text style={styles.viewStudentsText}>Students</Text>
                   <Ionicons name="chevron-forward" size={14} color={C.primary} />
-                </View>
+                </TouchableOpacity>
               </View>
             </TouchableOpacity>
           ))
@@ -353,5 +383,19 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  chipBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 4,
+  },
+  chipBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

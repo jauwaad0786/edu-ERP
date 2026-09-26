@@ -8,7 +8,11 @@ import CollectPaymentScreen      from '../../screens/fees/CollectPaymentScreen';
 import OutstandingScreen         from '../../screens/fees/OutstandingScreen';
 import ReceiptsScreen            from '../../screens/fees/ReceiptsScreen';
 import FeesScreen                from '../../screens/fees/FeesScreen';
+import FeeSetupScreen            from '../../screens/fees/FeeSetupScreen';
+import FeeServiceGenerationScreen from '../../screens/fees/FeeServiceGenerationScreen';
 import ExpensesScreen            from '../../screens/finance/ExpensesScreen';
+import FinanceHubScreen          from '../../screens/finance/FinanceHubScreen';
+import PayrollScreen             from '../../screens/hr/PayrollScreen';
 import SettingsScreen            from '../../screens/settings/SettingsScreen';
 import ProfileScreen             from '../../screens/profile/ProfileScreen';
 import ChangePasswordScreen      from '../../screens/profile/ChangePasswordScreen';
@@ -51,8 +55,16 @@ export default function AccountantNavigator() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="AccountantTabs" component={AccountantTabs} />
       <Stack.Screen name="CollectPayment" component={CollectPaymentScreen} />
+      <Stack.Screen name="FeeCollect"     component={CollectPaymentScreen} />
       <Stack.Screen name="Receipts"       component={ReceiptsScreen} />
       <Stack.Screen name="Fees"           component={FeesScreen} />
+      <Stack.Screen name="FeeSetup"       component={FeeSetupScreen} />
+      <Stack.Screen name="FeeGeneration"  component={FeeServiceGenerationScreen} />
+      <Stack.Screen name="Payroll"        component={PayrollScreen} />
+      <Stack.Screen name="FinanceHub"     component={FinanceHubScreen} />
+      <Stack.Screen name="Purchases"      component={FinanceHubScreen} />
+      <Stack.Screen name="Vendors"        component={FinanceHubScreen} />
+      <Stack.Screen name="FinanceDash"    component={FinanceHubScreen} />
       <Stack.Screen name="Profile"        component={ProfileScreen} />
       <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
       <Stack.Screen name="Notifications"  component={NotificationsScreen} />

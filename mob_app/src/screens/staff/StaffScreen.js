@@ -1,43 +1,87 @@
 // mob_app/src/screens/staff/StaffScreen.js
-// Exact match to Screen 9 of mockup: Teachers directory with department filter and 100% backend data
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, RefreshControl,
-  ActivityIndicator, TextInput, TouchableOpacity, Modal,
+  ActivityIndicator, TextInput, TouchableOpacity, Modal, Alert, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import client from '../../api/client';
 import { colors } from '../../theme/colors';
+import { useAuth } from '../../context/AuthContext';
+
+const ROLE_CATEGORIES = ['All', 'Teaching', 'Admin', 'Support'];
 
 export default function StaffScreen({ navigation }) {
-  const [teachers, setTeachers] = useState([]);
+  const { user } = useAuth();
+  const role = typeof user?.role === 'object' ? user.role?.value : String(user?.role || '');
+  const isPrincipalOrAdmin = ['PRINCIPAL', 'DIRECTOR', 'VICE_PRINCIPAL', 'SUPER_ADMIN', 'HR'].includes(role);
+
+  const [staffList, setStaffList] = useState([]);
   const [departments, setDepartments] = useState([]);
-  const [search, setSearch] = useState('');
+  const [activeCategory, setActiveCategory] = useState('All');
   const [selectedDept, setSelectedDept] = useState('All');
-  const [showDeptModal, setShowDeptModal] = useState(false);
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Add Staff Modal
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [newStaff, setNewStaff] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    employee_id: '',
+    department: '',
+    designation: 'Teacher',
+  });
 
   const loadData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     try {
-      const [teaRes, deptRes] = await Promise.all([
+      const [teaRes, empRes, deptRes] = await Promise.all([
         client.get('/principal/teachers').catch(() => ({ data: [] })),
+        client.get('/hrms/employees').catch(() => ({ data: [] })),
         client.get('/hrms/departments').catch(() => ({ data: [] })),
       ]);
 
       const teaList = Array.isArray(teaRes.data)
         ? teaRes.data
         : teaRes.data?.teachers || teaRes.data?.data || [];
-      setTeachers(teaList);
+
+      const empList = Array.isArray(empRes.data)
+        ? empRes.data
+        : empRes.data?.employees || empRes.data?.staff || [];
+
+      // Combine teachers and employees, avoiding duplicates by id/email
+      const map = new Map();
+      teaList.forEach(t => {
+        map.set(t.id || t.email, {
+          ...t,
+          category: 'Teaching',
+          designation: t.designation || 'Teacher',
+        });
+      });
+
+      empList.forEach(e => {
+        const key = e.id || e.email;
+        if (!map.has(key)) {
+          const des = (e.designation || e.role || '').toLowerCase();
+          const cat = des.includes('teacher') || des.includes('faculty') ? 'Teaching' :
+                      des.includes('admin') || des.includes('account') || des.includes('clerk') ? 'Admin' : 'Support';
+          map.set(key, { ...e, category: cat });
+        }
+      });
+
+      setStaffList(Array.from(map.values()));
 
       const dList = Array.isArray(deptRes.data)
         ? deptRes.data
         : deptRes.data?.departments || deptRes.data?.data || [];
       setDepartments(dList);
     } catch (err) {
-      console.warn('Failed to load teachers:', err?.message);
+      console.warn('Failed to load staff directory:', err?.message);
     } finally {
       if (isRefresh) setRefreshing(false); else setLoading(false);
     }
@@ -47,102 +91,144 @@ export default function StaffScreen({ navigation }) {
     loadData();
   }, [loadData]);
 
-  // Derived departments if HRMS is empty
+  // Derived departments list
   const departmentOptions = useMemo(() => {
     const dSet = new Set();
-    teachers.forEach(t => {
-      const d = t.department || t.dept_name;
+    staffList.forEach(s => {
+      const d = s.department || s.dept_name;
       if (d) dSet.add(d);
     });
-    if (departments.length > 0) {
-      departments.forEach(d => dSet.add(typeof d === 'string' ? d : d.name));
-    }
-    return Array.from(dSet);
-  }, [teachers, departments]);
+    departments.forEach(d => {
+      const name = typeof d === 'string' ? d : d.name;
+      if (name) dSet.add(name);
+    });
+    return ['All', ...Array.from(dSet)];
+  }, [staffList, departments]);
 
-  const filteredTeachers = useMemo(() => {
-    return teachers.filter(t => {
-      const tName = (t.name || t.user_name || '').toLowerCase();
-      const tSub = (Array.isArray(t.subjects) ? t.subjects.join(' ') : (t.subject || t.department || '')).toLowerCase();
-      const tEmp = (t.employee_id || t.emp_id || t.code || '').toLowerCase();
-      const tDept = t.department || t.dept_name || '';
+  const filteredStaff = useMemo(() => {
+    return staffList.filter(s => {
+      const name = (s.name || s.user_name || '').toLowerCase();
+      const sub = (Array.isArray(s.subjects) ? s.subjects.join(' ') : (s.subject || '')).toLowerCase();
+      const empId = (s.employee_id || s.emp_id || '').toLowerCase();
+      const dept = s.department || s.dept_name || '';
 
       const matchesSearch = !search ||
-        tName.includes(search.toLowerCase()) ||
-        tSub.includes(search.toLowerCase()) ||
-        tEmp.includes(search.toLowerCase());
+        name.includes(search.toLowerCase()) ||
+        sub.includes(search.toLowerCase()) ||
+        empId.includes(search.toLowerCase());
 
-      const matchesDept = selectedDept === 'All' || tDept.toLowerCase() === selectedDept.toLowerCase();
+      const matchesCat = activeCategory === 'All' || s.category === activeCategory;
+      const matchesDept = selectedDept === 'All' || dept.toLowerCase() === selectedDept.toLowerCase();
 
-      return matchesSearch && matchesDept;
+      return matchesSearch && matchesCat && matchesDept;
     });
-  }, [teachers, search, selectedDept]);
+  }, [staffList, search, activeCategory, selectedDept]);
 
-  const getInitials = (name) => {
-    if (!name) return 'T';
-    return name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase();
+  const stats = useMemo(() => {
+    const total = staffList.length;
+    const teaching = staffList.filter(s => s.category === 'Teaching').length;
+    const admin = staffList.filter(s => s.category === 'Admin').length;
+    const support = total - teaching - admin;
+    return { total, teaching, admin, support };
+  }, [staffList]);
+
+  const handleAddStaff = async () => {
+    if (!newStaff.name.trim() || !newStaff.email.trim()) {
+      Alert.alert('Validation Error', 'Please enter staff name and email address.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await client.post('/principal/teachers', {
+        name: newStaff.name.trim(),
+        email: newStaff.email.trim(),
+        phone: newStaff.phone.trim() || undefined,
+        employee_id: newStaff.employee_id.trim() || undefined,
+        department: newStaff.department.trim() || undefined,
+        designation: newStaff.designation.trim() || 'Teacher',
+      });
+
+      Alert.alert('Success', `Staff member ${newStaff.name} registered successfully.`);
+      setShowAddModal(false);
+      setNewStaff({ name: '', email: '', phone: '', employee_id: '', department: '', designation: 'Teacher' });
+      loadData(true);
+    } catch (err) {
+      Alert.alert('Registration Failed', err.response?.data?.error || err.response?.data?.message || 'Could not add staff member.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDownloadIdCard = (s) => {
+    const url = `${client.defaults.baseURL}/principal/teachers/${s.id}/id-card`;
+    Linking.openURL(url).catch(() => {
+      Alert.alert('Download Error', 'Could not open ID card download link on this device.');
+    });
   };
 
   const AVATAR_BG_COLORS = ['#ede9fe', '#dbeafe', '#fef3c7', '#dcfce7', '#fce7f3', '#e0f2fe'];
   const AVATAR_TEXT_COLORS = ['#7c3aed', '#0b57d0', '#b45309', '#15803d', '#be185d', '#0284c7'];
 
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [submittingTeacher, setSubmittingTeacher] = useState(false);
-  const [newTeacher, setNewTeacher] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    employee_id: '',
-    department: '',
-    designation: 'Teacher',
-  });
-
-  const handleAddTeacher = async () => {
-    if (!newTeacher.name.trim() || !newTeacher.email.trim()) {
-      alert('Please enter Teacher name and email address.');
-      return;
-    }
-    setSubmittingTeacher(true);
-    try {
-      await client.post('/principal/teachers', {
-        name: newTeacher.name.trim(),
-        email: newTeacher.email.trim(),
-        phone: newTeacher.phone.trim() || undefined,
-        employee_id: newTeacher.employee_id.trim() || undefined,
-        department: newTeacher.department.trim() || undefined,
-        designation: newTeacher.designation.trim() || 'Teacher',
-      });
-      alert(`Teacher ${newTeacher.name} successfully registered.`);
-      setShowAddModal(false);
-      setNewTeacher({ name: '', email: '', phone: '', employee_id: '', department: '', designation: 'Teacher' });
-      loadData(true);
-    } catch (err) {
-      alert(err.response?.data?.message || err.response?.data?.error || 'Failed to add teacher.');
-    } finally {
-      setSubmittingTeacher(false);
-    }
-  };
-
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Top Header */}
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation?.goBack ? navigation.goBack() : null}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          style={styles.headerBackBtn}
-        >
-          <Ionicons name="arrow-back" size={22} color="#ffffff" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Teachers</Text>
-        <TouchableOpacity
-          style={styles.addBtn}
-          onPress={() => setShowAddModal(true)}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="add" size={16} color="#ffffff" />
-          <Text style={styles.addBtnText}>Add</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          {navigation?.canGoBack?.() && (
+            <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 4 }}>
+              <Ionicons name="arrow-back" size={22} color="#ffffff" />
+            </TouchableOpacity>
+          )}
+          <View>
+            <Text style={styles.headerTitle}>Faculty & Staff Directory</Text>
+            <Text style={styles.headerSubtitle}>{staffList.length} Registered Team Members</Text>
+          </View>
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TouchableOpacity
+            style={styles.attendanceNavBtn}
+            onPress={() => navigation?.navigate?.('StaffAttendance')}
+          >
+            <Ionicons name="finger-print-outline" size={16} color="#fff" />
+            <Text style={styles.attendanceNavBtnText}>Attendance</Text>
+          </TouchableOpacity>
+
+          {isPrincipalOrAdmin && (
+            <TouchableOpacity
+              style={styles.addBtn}
+              onPress={() => setShowAddModal(true)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="add" size={16} color="#ffffff" />
+              <Text style={styles.addBtnText}>Add</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      {/* KPI Stats Ribbon */}
+      <View style={styles.statsRibbon}>
+        <View style={styles.statBox}>
+          <Text style={styles.statVal}>{stats.total}</Text>
+          <Text style={styles.statLbl}>Total Staff</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statBox}>
+          <Text style={[styles.statVal, { color: '#0284c7' }]}>{stats.teaching}</Text>
+          <Text style={styles.statLbl}>Teaching</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statBox}>
+          <Text style={[styles.statVal, { color: '#7c3aed' }]}>{stats.admin}</Text>
+          <Text style={styles.statLbl}>Admin</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statBox}>
+          <Text style={[styles.statVal, { color: '#16a34a' }]}>{stats.support}</Text>
+          <Text style={styles.statLbl}>Support</Text>
+        </View>
       </View>
 
       {/* Search Bar */}
@@ -151,7 +237,7 @@ export default function StaffScreen({ navigation }) {
           <Ionicons name="search" size={18} color="#94a3b8" />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search teachers..."
+            placeholder="Search by name, subject, or employee ID..."
             placeholderTextColor="#94a3b8"
             value={search}
             onChangeText={setSearch}
@@ -164,191 +250,215 @@ export default function StaffScreen({ navigation }) {
         </View>
       </View>
 
-      {/* Department Filter Pill */}
-      <View style={styles.filterRow}>
-        <TouchableOpacity
-          style={styles.filterPill}
-          onPress={() => setShowDeptModal(true)}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.filterPillText}>
-            {selectedDept === 'All' ? 'All Departments' : selectedDept}
-          </Text>
-          <Ionicons name="chevron-down" size={14} color="#64748b" />
-        </TouchableOpacity>
+      {/* Category Tabs */}
+      <View style={styles.categoryRow}>
+        {ROLE_CATEGORIES.map(cat => {
+          const sel = activeCategory === cat;
+          return (
+            <TouchableOpacity
+              key={cat}
+              style={[styles.categoryBtn, sel && styles.categoryBtnActive]}
+              onPress={() => setActiveCategory(cat)}
+            >
+              <Text style={[styles.categoryBtnText, sel && styles.categoryBtnTextActive]}>
+                {cat}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
-      {/* Teachers List */}
+      {/* Department Filter Chips */}
+      {departmentOptions.length > 1 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.deptScroll}
+        >
+          {departmentOptions.map(d => {
+            const sel = selectedDept === d;
+            return (
+              <TouchableOpacity
+                key={d}
+                style={[styles.deptChip, sel && styles.deptChipActive]}
+                onPress={() => setSelectedDept(d)}
+              >
+                <Text style={[styles.deptChipText, sel && styles.deptChipTextActive]}>{d}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
+
+      {/* Staff List */}
       {loading ? (
         <View style={styles.centerBox}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Fetching faculty list...</Text>
+          <Text style={styles.loadingText}>Fetching staff records...</Text>
         </View>
       ) : (
         <ScrollView
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={styles.scrollContent}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
               onRefresh={() => loadData(true)}
               colors={[colors.primary]}
-              tintColor={colors.primary}
             />
           }
           showsVerticalScrollIndicator={false}
         >
-          {filteredTeachers.length > 0 ? (
-            filteredTeachers.map((t, idx) => {
-              const bg = AVATAR_BG_COLORS[idx % AVATAR_BG_COLORS.length];
-              const fg = AVATAR_TEXT_COLORS[idx % AVATAR_TEXT_COLORS.length];
-              const tName = t.name || t.user_name || 'Teacher';
-              const tSub = Array.isArray(t.subjects) ? t.subjects[0] : (t.subject || t.designation || 'Faculty');
-              const tEmp = t.employee_id || t.emp_id || `EMP00${idx + 1}`;
+          {filteredStaff.length > 0 ? (
+            <View style={{ gap: 10 }}>
+              {filteredStaff.map((s, idx) => {
+                const name = s.name || s.user_name || 'Staff Member';
+                const designation = s.designation || s.subject || 'Faculty';
+                const empId = s.employee_id || s.emp_id || `EMP${s.id}`;
+                const dept = s.department || s.dept_name || 'General';
+                const initials = name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase();
+                const colorIdx = idx % AVATAR_BG_COLORS.length;
 
-              return (
-                <TouchableOpacity
-                  key={t.id || idx}
-                  style={styles.teacherCard}
-                  activeOpacity={0.75}
-                  onPress={() => {
-                    if (navigation?.navigate) {
-                      navigation.navigate('StaffDetail', { teacher: t });
-                    }
-                  }}
-                >
-                  <View style={[styles.avatarCircle, { backgroundColor: bg }]}>
-                    <Text style={[styles.avatarText, { color: fg }]}>{getInitials(tName)}</Text>
-                  </View>
+                return (
+                  <TouchableOpacity
+                    key={s.id || idx}
+                    style={styles.staffCard}
+                    activeOpacity={0.7}
+                    onPress={() => navigation?.navigate?.('StaffDetail', { teacher: s, teacher_id: s.id })}
+                  >
+                    <View style={[styles.avatarCircle, { backgroundColor: AVATAR_BG_COLORS[colorIdx] }]}>
+                      <Text style={[styles.avatarText, { color: AVATAR_TEXT_COLORS[colorIdx] }]}>
+                        {initials}
+                      </Text>
+                    </View>
 
-                  <View style={styles.infoCol}>
-                    <Text style={styles.teacherName} numberOfLines={1}>{tName}</Text>
-                    <Text style={styles.teacherSubject}>{tSub}</Text>
-                    <Text style={styles.teacherEmp}>{tEmp}</Text>
-                  </View>
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={styles.staffName} numberOfLines={1}>{name}</Text>
+                        <View style={styles.catBadge}>
+                          <Text style={styles.catBadgeText}>{s.category || 'Staff'}</Text>
+                        </View>
+                      </View>
+                      <Text style={styles.staffDesignation}>{designation} • {dept}</Text>
+                      <Text style={styles.staffEmpId}>ID: {empId}</Text>
+                    </View>
 
-                  <Ionicons name="chevron-forward" size={18} color="#cbd5e1" />
-                </TouchableOpacity>
-              );
-            })
+                    <View style={styles.cardActions}>
+                      <TouchableOpacity
+                        style={styles.idCardIconBtn}
+                        onPress={() => handleDownloadIdCard(s)}
+                      >
+                        <Ionicons name="card-outline" size={16} color="#059669" />
+                      </TouchableOpacity>
+                      <Ionicons name="chevron-forward" size={18} color="#cbd5e1" />
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           ) : (
-            <View style={styles.emptyContainer}>
-              <Ionicons name="school-outline" size={48} color="#94a3b8" />
-              <Text style={styles.emptyTitle}>No teachers found</Text>
-              <Text style={styles.emptySub}>Try searching with another keyword or resetting department.</Text>
+            <View style={styles.emptyCard}>
+              <Ionicons name="people-outline" size={44} color="#94a3b8" />
+              <Text style={styles.emptyCardTitle}>No Staff Members Found</Text>
+              <Text style={styles.emptyCardText}>Try clearing search filters or add a new faculty member.</Text>
             </View>
           )}
         </ScrollView>
       )}
 
-      {/* Department Picker Modal */}
-      <Modal visible={showDeptModal} transparent animationType="fade">
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setShowDeptModal(false)}
-        >
-          <View style={styles.modalContent}>
-            <Text style={styles.modalHeader}>Select Department</Text>
-            <TouchableOpacity
-              style={[styles.modalItem, selectedDept === 'All' && styles.modalItemActive]}
-              onPress={() => { setSelectedDept('All'); setShowDeptModal(false); }}
-            >
-              <Text style={[styles.modalItemText, selectedDept === 'All' && styles.modalItemTextActive]}>
-                All Departments
-              </Text>
-              {selectedDept === 'All' && <Ionicons name="checkmark" size={18} color={colors.primary} />}
-            </TouchableOpacity>
-
-            {departmentOptions.map((dept, i) => {
-              const isSel = selectedDept === dept;
-              return (
-                <TouchableOpacity
-                  key={i}
-                  style={[styles.modalItem, isSel && styles.modalItemActive]}
-                  onPress={() => { setSelectedDept(dept); setShowDeptModal(false); }}
-                >
-                  <Text style={[styles.modalItemText, isSel && styles.modalItemTextActive]}>{dept}</Text>
-                  {isSel && <Ionicons name="checkmark" size={18} color={colors.primary} />}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* Add Teacher Modal */}
-      <Modal visible={showAddModal} transparent animationType="slide">
+      {/* Add Staff Modal */}
+      <Modal
+        visible={showAddModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowAddModal(false)}
+      >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { maxHeight: 520, paddingBottom: 20 }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <Text style={styles.modalHeader}>Add New Teacher</Text>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Register Faculty / Staff</Text>
               <TouchableOpacity onPress={() => setShowAddModal(false)}>
                 <Ionicons name="close" size={24} color="#64748b" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 440 }}>
               <Text style={styles.inputLabel}>Full Name *</Text>
               <TextInput
-                style={styles.modalInput}
-                placeholder="e.g. Dr. Ramesh Kumar"
+                style={styles.textInput}
+                placeholder="e.g. Dr. Rajesh Kumar"
                 placeholderTextColor="#94a3b8"
-                value={newTeacher.name}
-                onChangeText={v => setNewTeacher(p => ({ ...p, name: v }))}
+                value={newStaff.name}
+                onChangeText={v => setNewStaff(p => ({ ...p, name: v }))}
               />
 
               <Text style={styles.inputLabel}>Email Address *</Text>
               <TextInput
-                style={styles.modalInput}
-                placeholder="teacher@school.com"
+                style={styles.textInput}
+                placeholder="rajesh@school.edu"
                 placeholderTextColor="#94a3b8"
                 keyboardType="email-address"
                 autoCapitalize="none"
-                value={newTeacher.email}
-                onChangeText={v => setNewTeacher(p => ({ ...p, email: v }))}
+                value={newStaff.email}
+                onChangeText={v => setNewStaff(p => ({ ...p, email: v }))}
               />
 
-              <Text style={styles.inputLabel}>Phone Number</Text>
+              <Text style={styles.inputLabel}>Mobile Phone</Text>
               <TextInput
-                style={styles.modalInput}
+                style={styles.textInput}
                 placeholder="+91 98765 43210"
                 placeholderTextColor="#94a3b8"
                 keyboardType="phone-pad"
-                value={newTeacher.phone}
-                onChangeText={v => setNewTeacher(p => ({ ...p, phone: v }))}
+                value={newStaff.phone}
+                onChangeText={v => setNewStaff(p => ({ ...p, phone: v }))}
               />
 
-              <Text style={styles.inputLabel}>Employee ID</Text>
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Employee Code</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="EMP042"
+                    placeholderTextColor="#94a3b8"
+                    value={newStaff.employee_id}
+                    onChangeText={v => setNewStaff(p => ({ ...p, employee_id: v }))}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Department</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="Science / Math"
+                    placeholderTextColor="#94a3b8"
+                    value={newStaff.department}
+                    onChangeText={v => setNewStaff(p => ({ ...p, department: v }))}
+                  />
+                </View>
+              </View>
+
+              <Text style={styles.inputLabel}>Designation</Text>
               <TextInput
-                style={styles.modalInput}
-                placeholder="e.g. EMP012"
+                style={styles.textInput}
+                placeholder="Senior Teacher"
                 placeholderTextColor="#94a3b8"
-                value={newTeacher.employee_id}
-                onChangeText={v => setNewTeacher(p => ({ ...p, employee_id: v }))}
+                value={newStaff.designation}
+                onChangeText={v => setNewStaff(p => ({ ...p, designation: v }))}
               />
-
-              <Text style={styles.inputLabel}>Department</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="e.g. Mathematics, Science"
-                placeholderTextColor="#94a3b8"
-                value={newTeacher.department}
-                onChangeText={v => setNewTeacher(p => ({ ...p, department: v }))}
-              />
-
-              <TouchableOpacity
-                style={styles.submitTeacherBtn}
-                onPress={handleAddTeacher}
-                disabled={submittingTeacher}
-                activeOpacity={0.85}
-              >
-                {submittingTeacher ? (
-                  <ActivityIndicator color="#ffffff" />
-                ) : (
-                  <Text style={styles.submitTeacherBtnText}>Register Teacher</Text>
-                )}
-              </TouchableOpacity>
             </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.modalSubmitBtn, submitting && { opacity: 0.6 }]}
+              onPress={handleAddStaff}
+              disabled={submitting}
+            >
+              {submitting ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
+                  <Text style={styles.modalSubmitBtnText}>Register Staff Member</Text>
+                </>
+              )}
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -357,242 +467,189 @@ export default function StaffScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f1f5f9',
-  },
+  container: { flex: 1, backgroundColor: '#f8fafc' },
   header: {
-    backgroundColor: colors.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    backgroundColor: '#0f172a',
     paddingHorizontal: 16,
     paddingVertical: 14,
-  },
-  headerBackBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
   },
-  headerTitle: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: '700',
+  headerTitle: { color: '#ffffff', fontSize: 18, fontWeight: '700' },
+  headerSubtitle: { color: '#94a3b8', fontSize: 11, marginTop: 1 },
+  attendanceNavBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#0284c7',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
   },
+  attendanceNavBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
   addBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.22)',
-    paddingHorizontal: 14,
+    gap: 3,
+    backgroundColor: '#16a34a',
+    paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.4)',
-    gap: 4,
+    borderRadius: 8,
   },
-  addBtnText: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '700',
+  addBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  statsRibbon: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
   },
+  statBox: { flex: 1, alignItems: 'center' },
+  statVal: { fontSize: 16, fontWeight: '800', color: '#1e293b' },
+  statLbl: { fontSize: 10, color: '#64748b', marginTop: 1 },
+  statDivider: { width: 1, backgroundColor: '#f1f5f9' },
   searchWrapper: {
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
+    backgroundColor: '#fff',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f8fafc',
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    paddingHorizontal: 14,
-    height: 42,
+    backgroundColor: '#f1f5f9',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    height: 38,
     gap: 8,
   },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    color: '#1e293b',
-  },
-  filterRow: {
+  searchInput: { flex: 1, fontSize: 13, color: '#1e293b', paddingVertical: 0 },
+  categoryRow: {
     flexDirection: 'row',
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    gap: 6,
+  },
+  categoryBtn: {
+    flex: 1,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#f8fafc',
+    alignItems: 'center',
+  },
+  categoryBtnActive: { backgroundColor: '#0f172a' },
+  categoryBtnText: { fontSize: 12, fontWeight: '600', color: '#64748b' },
+  categoryBtnTextActive: { color: '#fff' },
+  deptScroll: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    gap: 6,
+    backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#e2e8f0',
   },
-  filterPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    gap: 6,
-  },
-  filterPillText: {
-    fontSize: 12.5,
-    fontWeight: '600',
-    color: '#334155',
-  },
-  listContent: {
-    padding: 16,
-    paddingBottom: 32,
-    gap: 10,
-  },
-  teacherCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
-    borderRadius: 14,
-    padding: 14,
-    shadowColor: '#000',
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
-    borderWidth: 1,
-    borderColor: '#f1f5f9',
-  },
-  avatarCircle: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 14,
-  },
-  avatarText: {
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  infoCol: {
-    flex: 1,
-  },
-  teacherName: {
-    fontSize: 14.5,
-    fontWeight: '700',
-    color: '#1e293b',
-    marginBottom: 2,
-  },
-  teacherSubject: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#64748b',
-    marginBottom: 2,
-  },
-  teacherEmp: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#94a3b8',
-  },
-  centerBox: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 13,
-    color: '#64748b',
-    fontWeight: '600',
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
-  emptyTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#334155',
-    marginTop: 12,
-  },
-  emptySub: {
-    fontSize: 12.5,
-    color: '#94a3b8',
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  modalContent: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 16,
-    maxHeight: 400,
-  },
-  modalHeader: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1e293b',
-    marginBottom: 12,
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  modalItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f8fafc',
-  },
-  modalItemActive: {
-    backgroundColor: '#eff6ff',
-    borderRadius: 8,
-  },
-  modalItemText: {
-    fontSize: 14,
-    color: '#334155',
-  },
-  modalItemTextActive: {
-    color: colors.primary,
-    fontWeight: '700',
-  },
-  inputLabel: {
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: '#334155',
-    marginBottom: 6,
-    marginTop: 10,
-  },
-  modalInput: {
-    backgroundColor: '#f8fafc',
+  deptChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: '#f1f5f9',
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: '#1e293b',
   },
-  submitTeacherBtn: {
-    backgroundColor: colors.primary,
+  deptChipActive: { backgroundColor: '#0284c7', borderColor: '#0284c7' },
+  deptChipText: { fontSize: 11, color: '#475569' },
+  deptChipTextActive: { color: '#fff', fontWeight: '600' },
+  scrollContent: { padding: 14, paddingBottom: 40 },
+  centerBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  loadingText: { marginTop: 12, fontSize: 14, color: '#64748b' },
+  staffCard: {
+    backgroundColor: '#fff',
     borderRadius: 12,
-    paddingVertical: 13,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  avatarCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  avatarText: { fontWeight: '800', fontSize: 16 },
+  staffName: { fontSize: 14, fontWeight: '700', color: '#1e293b' },
+  catBadge: {
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  catBadgeText: { fontSize: 9, fontWeight: '700', color: '#475569', textTransform: 'uppercase' },
+  staffDesignation: { fontSize: 12, color: '#64748b', marginTop: 2 },
+  staffEmpId: { fontSize: 11, color: '#94a3b8', marginTop: 1 },
+  cardActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  idCardIconBtn: {
+    padding: 7,
+    borderRadius: 8,
+    backgroundColor: '#ecfdf5',
+    borderWidth: 1,
+    borderColor: '#a7f3d0',
+  },
+  emptyCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 32,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginTop: 14,
+  },
+  emptyCardTitle: { fontSize: 15, fontWeight: '700', color: '#334155', marginTop: 10 },
+  emptyCardText: { fontSize: 12, color: '#94a3b8', marginTop: 4, textAlign: 'center' },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 32,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: { fontSize: 17, fontWeight: '700', color: '#0f172a' },
+  inputLabel: { fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 5, marginTop: 10 },
+  textInput: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    fontSize: 13,
+    color: '#0f172a',
+  },
+  modalSubmitBtn: {
+    backgroundColor: '#16a34a',
+    borderRadius: 10,
+    paddingVertical: 13,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
     marginTop: 20,
-    marginBottom: 10,
   },
-  submitTeacherBtnText: {
-    color: '#ffffff',
-    fontSize: 14.5,
-    fontWeight: '700',
-  },
+  modalSubmitBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
 });

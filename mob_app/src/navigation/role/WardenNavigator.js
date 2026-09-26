@@ -8,6 +8,7 @@ import RollCallScreen        from '../../screens/hostel/RollCallScreen';
 import OutPassScreen         from '../../screens/hostel/OutPassScreen';
 import ComplaintsScreen      from '../../screens/hostel/ComplaintsScreen';
 import RoomMapScreen        from '../../screens/hostel/RoomMapScreen';
+import VisitorsScreen       from '../../screens/hostel/VisitorsScreen';
 import SettingsScreen        from '../../screens/settings/SettingsScreen';
 import ProfileScreen         from '../../screens/profile/ProfileScreen';
 import ChangePasswordScreen  from '../../screens/profile/ChangePasswordScreen';
@@ -51,6 +52,9 @@ export default function WardenNavigator() {
       <Stack.Screen name="WardenTabs"     component={WardenTabs} />
       <Stack.Screen name="RoomMap"        component={RoomMapScreen} />
       <Stack.Screen name="HostelRoomMap"  component={RoomMapScreen} />
+      <Stack.Screen name="Visitors"       component={VisitorsScreen} />
+      <Stack.Screen name="VisitorLog"     component={VisitorsScreen} />
+      <Stack.Screen name="GatePass"       component={VisitorsScreen} />
       <Stack.Screen name="Profile"        component={ProfileScreen} />
       <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
       <Stack.Screen name="Notifications"  component={NotificationsScreen} />

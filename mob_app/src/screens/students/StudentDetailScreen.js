@@ -20,6 +20,7 @@ export default function StudentDetailScreen({ route, navigation }) {
   const [fees, setFees] = useState(null);
   const [attendance, setAttendance] = useState(null);
   const [loading, setLoading] = useState(!passedStudent);
+  const [deleting, setDeleting] = useState(false);
 
   const sid = passedStudent?.id || student_id;
 
@@ -46,6 +47,34 @@ export default function StudentDetailScreen({ route, navigation }) {
     };
     fetchDetails();
   }, [sid]);
+
+  const handleDeleteStudent = () => {
+    if (!student?.id) return;
+    Alert.alert(
+      'Archive Student Record?',
+      `Are you sure you want to remove ${student.name || 'this student'} from active enrollment? This record will be moved to Deleted Items.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Archive / Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeleting(true);
+            try {
+              await client.delete(`/principal/students/${student.id}`);
+              Alert.alert('Student Archived', 'Student record has been archived successfully.', [
+                { text: 'OK', onPress: () => (navigation?.goBack ? navigation.goBack() : null) }
+              ]);
+            } catch (err) {
+              Alert.alert('Action Failed', err.response?.data?.error || 'Could not delete student record.');
+            } finally {
+              setDeleting(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   if (loading) {
     return (
@@ -109,7 +138,16 @@ export default function StudentDetailScreen({ route, navigation }) {
           <Ionicons name="arrow-back" size={22} color="#ffffff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Student Profile</Text>
-        <View style={{ width: 36 }} />
+        <TouchableOpacity
+          style={styles.headerBtn}
+          onPress={() => {
+            if (navigation?.navigate) {
+              navigation.navigate('IDCard', { student_id: sid, student });
+            }
+          }}
+        >
+          <Ionicons name="card-outline" size={20} color="#ffffff" />
+        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -122,20 +160,35 @@ export default function StudentDetailScreen({ route, navigation }) {
           <Text style={styles.admText}>
             Adm #{student.admission_no || student.admission_number || '—'}
           </Text>
-          {/* Attendance Badge */}
-          {attPct != null && (
-            <View style={[styles.attBadge, { backgroundColor: attPct >= 75 ? '#dcfce7' : '#fee2e2' }]}>
-              <Ionicons
-                name={attPct >= 75 ? 'checkmark-circle' : 'warning'}
-                size={13}
-                color={attPct >= 75 ? '#16a34a' : '#dc2626'}
-                style={{ marginRight: 4 }}
-              />
-              <Text style={[styles.attBadgeText, { color: attPct >= 75 ? '#16a34a' : '#dc2626' }]}>
-                {attPct}% Attendance
+
+          {/* Status & Attendance Badges */}
+          <View style={{ flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+            <View style={[
+              styles.statusPill,
+              { backgroundColor: student.status === 'PROVISIONAL' ? '#fef3c7' : '#dcfce7' }
+            ]}>
+              <Text style={[
+                styles.statusPillText,
+                { color: student.status === 'PROVISIONAL' ? '#d97706' : '#16a34a' }
+              ]}>
+                {student.status || 'ACTIVE'}
               </Text>
             </View>
-          )}
+
+            {attPct != null && (
+              <View style={[styles.attBadge, { backgroundColor: attPct >= 75 ? '#dcfce7' : '#fee2e2' }]}>
+                <Ionicons
+                  name={attPct >= 75 ? 'checkmark-circle' : 'warning'}
+                  size={13}
+                  color={attPct >= 75 ? '#16a34a' : '#dc2626'}
+                  style={{ marginRight: 4 }}
+                />
+                <Text style={[styles.attBadgeText, { color: attPct >= 75 ? '#16a34a' : '#dc2626' }]}>
+                  {attPct}% Attendance
+                </Text>
+              </View>
+            )}
+          </View>
 
           {/* Quick Action Buttons */}
           <View style={styles.actionRow}>
@@ -164,6 +217,18 @@ export default function StudentDetailScreen({ route, navigation }) {
             )}
 
             <TouchableOpacity
+              style={[styles.actionBtn, { backgroundColor: '#f3e8ff' }]}
+              onPress={() => {
+                if (navigation?.navigate) {
+                  navigation.navigate('IDCard', { student_id: sid, student });
+                }
+              }}
+            >
+              <Ionicons name="card" size={16} color="#7c3aed" />
+              <Text style={[styles.actionBtnText, { color: '#7c3aed' }]}>ID Card</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
               style={[styles.actionBtn, { backgroundColor: '#fef3c7' }]}
               onPress={() => {
                 try {
@@ -183,13 +248,40 @@ export default function StudentDetailScreen({ route, navigation }) {
           </View>
         </View>
 
+        {/* Academic Lifecycle & Classification Card */}
+        <View style={styles.card}>
+          <View style={styles.cardHeaderWithAction}>
+            <Text style={styles.cardTitle}>Academic Lifecycle</Text>
+            <TouchableOpacity
+              style={styles.reRegisterBtn}
+              onPress={() => {
+                if (navigation?.navigate) {
+                  navigation.navigate('AnnualRegister');
+                }
+              }}
+            >
+              <Ionicons name="repeat" size={14} color="#0b57d0" />
+              <Text style={styles.reRegisterBtnText}>Re-Register</Text>
+            </TouchableOpacity>
+          </View>
+
+          <InfoRow icon="calendar-outline" label="Academic Session" value={student.session || '2024-25'} />
+          <View style={styles.divider} />
+          <InfoRow icon="school-outline" label="Current Class"
+            value={`Class ${student.class_name || student.grade || student.class?.name || '—'} - Section ${student.section || '—'}`} />
+          <View style={styles.divider} />
+          <InfoRow icon="flag-outline" label="House" value={student.house} />
+          <View style={styles.divider} />
+          <InfoRow icon="git-branch-outline" label="Stream" value={student.stream || 'General'} />
+          <View style={styles.divider} />
+          <InfoRow icon="time-outline" label="Admission Date"
+            value={student.admission_date ? new Date(student.admission_date).toLocaleDateString('en-IN') : '—'} />
+        </View>
+
         {/* Personal Info Card */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Personal Dossier</Text>
           <InfoRow icon="person-outline" label="Full Name" value={name} />
-          <View style={styles.divider} />
-          <InfoRow icon="people-outline" label="Class / Section"
-            value={`Class ${student.class_name || student.grade || student.class?.name || '—'} - ${student.section || '—'}`} />
           <View style={styles.divider} />
           <InfoRow icon="document-text-outline" label="Roll Number"
             value={student.roll_no || student.roll_number} />
@@ -205,6 +297,9 @@ export default function StudentDetailScreen({ route, navigation }) {
           <View style={styles.divider} />
           <InfoRow icon="pricetag-outline" label="Category"
             value={student.category} />
+          <View style={styles.divider} />
+          <InfoRow icon="card-outline" label="Aadhar Number"
+            value={student.aadhar_no} />
           <View style={styles.divider} />
           <InfoRow icon="person-circle-outline" label="Father / Guardian"
             value={student.father_name || student.guardian_name} />
@@ -296,6 +391,22 @@ export default function StudentDetailScreen({ route, navigation }) {
             </>
           )}
         </View>
+
+        {/* Archive / Delete Student Option */}
+        <TouchableOpacity
+          style={styles.deleteBtn}
+          onPress={handleDeleteStudent}
+          disabled={deleting}
+        >
+          {deleting ? (
+            <ActivityIndicator size="small" color="#dc2626" />
+          ) : (
+            <>
+              <Ionicons name="trash-outline" size={18} color="#dc2626" />
+              <Text style={styles.deleteBtnText}>Archive / Delete Student Record</Text>
+            </>
+          )}
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -313,7 +424,7 @@ const styles = StyleSheet.create({
   },
   headerBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { color: '#ffffff', fontSize: 18, fontWeight: '700' },
-  scrollContent: { padding: 16, paddingBottom: 36 },
+  scrollContent: { padding: 16, paddingBottom: 40 },
   avatarSection: { alignItems: 'center', marginVertical: 16 },
   avatarCircle: {
     width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center',
@@ -323,9 +434,11 @@ const styles = StyleSheet.create({
   avatarText: { fontSize: 26, fontWeight: '800', color: '#1e293b' },
   nameText: { fontSize: 20, fontWeight: '800', color: '#1e293b' },
   admText: { fontSize: 13, color: '#64748b', marginTop: 3 },
+  statusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  statusPillText: { fontSize: 11, fontWeight: '800' },
   attBadge: {
     flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 5,
-    borderRadius: 99, marginTop: 10,
+    borderRadius: 99,
   },
   attBadgeText: { fontSize: 12, fontWeight: '700' },
   card: {
@@ -333,7 +446,23 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#e2e8f0', shadowColor: '#000',
     shadowOpacity: 0.03, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1,
   },
+  cardHeaderWithAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
   cardTitle: { fontSize: 14, fontWeight: '800', color: '#1e293b', marginBottom: 12 },
+  reRegisterBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  reRegisterBtnText: { fontSize: 11, fontWeight: '700', color: '#0b57d0' },
   infoRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
   infoIconBox: {
     width: 32, height: 32, borderRadius: 8, backgroundColor: '#f1f5f9',
@@ -361,7 +490,21 @@ const styles = StyleSheet.create({
   feeMeta: { fontSize: 11.5, color: '#64748b', marginTop: 2 },
   feeStatusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99 },
   feeStatusText: { fontSize: 11, fontWeight: '700' },
-  actionRow: { flexDirection: 'row', gap: 10, marginTop: 14, width: '100%', justifyContent: 'center' },
-  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },
+  actionRow: { flexDirection: 'row', gap: 8, marginTop: 14, width: '100%', justifyContent: 'center', flexWrap: 'wrap' },
+  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 },
   actionBtnText: { fontSize: 12, fontWeight: '700' },
+  deleteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    backgroundColor: '#fff',
+    marginTop: 8,
+    marginBottom: 20,
+  },
+  deleteBtnText: { fontSize: 13, fontWeight: '700', color: '#dc2626' },
 });
