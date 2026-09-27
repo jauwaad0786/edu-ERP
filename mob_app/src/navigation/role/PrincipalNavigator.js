@@ -17,6 +17,7 @@ import ClassDetailScreen from '../../screens/classes/ClassDetailScreen';
 import AttendanceScreen from '../../screens/attendance/AttendanceScreen';
 import FeesScreen from '../../screens/fees/FeesScreen';
 import CollectPaymentScreen from '../../screens/fees/CollectPaymentScreen';
+import FeeBillsScreen from '../../screens/fees/FeeBillsScreen';
 import OutstandingScreen from '../../screens/fees/OutstandingScreen';
 import FeeSetupScreen from '../../screens/fees/FeeSetupScreen';
 import FeeServiceGenerationScreen from '../../screens/fees/FeeServiceGenerationScreen';
@@ -174,6 +175,8 @@ export default function PrincipalNavigator() {
 
       {/* Finance & Fees */}
       <Stack.Screen name="Fees" component={FeesScreen} />
+      <Stack.Screen name="FeeBills" component={FeeBillsScreen} />
+      <Stack.Screen name="Bills" component={FeeBillsScreen} />
       <Stack.Screen name="FeeCollect" component={CollectPaymentScreen} />
       <Stack.Screen name="CollectPayment" component={CollectPaymentScreen} />
       <Stack.Screen name="FeeSetup" component={FeeSetupScreen} />
