@@ -68,6 +68,8 @@ import StudentImportScreen from '../../screens/students/StudentImportScreen';
 import ReceiptsScreen from '../../screens/fees/ReceiptsScreen';
 import SubjectsScreen from '../../screens/classes/SubjectsScreen';
 import DriverConsoleScreen from '../../screens/transport/DriverConsoleScreen';
+import DeveloperCenterScreen from '../../screens/developer/DeveloperCenterScreen';
+import FinanceHubScreen from '../../screens/finance/FinanceHubScreen';
 import { TAB_BAR_STYLE } from '../tabBarStyle';
 
 const Tab = createBottomTabNavigator();

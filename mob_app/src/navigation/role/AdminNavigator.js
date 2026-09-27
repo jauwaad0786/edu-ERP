@@ -21,6 +21,7 @@ import RolesScreen          from '../../screens/rbac/RolesScreen';
 import MeetingsScreen       from '../../screens/communication/MeetingsScreen';
 import AIChatScreen          from '../../screens/ai/AIChatScreen';
 import DeveloperCenterScreen from '../../screens/developer/DeveloperCenterScreen';
+import FinanceHubScreen from '../../screens/finance/FinanceHubScreen';
 import { TAB_BAR_STYLE } from '../tabBarStyle';
 
 const Tab = createBottomTabNavigator();
