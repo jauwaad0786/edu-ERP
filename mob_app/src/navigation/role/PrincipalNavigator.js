@@ -54,6 +54,8 @@ import EmployeesScreen from '../../screens/hr/EmployeesScreen';
 import PayrollScreen from '../../screens/hr/PayrollScreen';
 import LeavesScreen from '../../screens/leaves/LeavesScreen';
 import StaffAttendanceScreen from '../../screens/staff/StaffAttendanceScreen';
+import StaffAttendanceSettingsScreen from '../../screens/staff/StaffAttendanceSettingsScreen';
+import StaffAttendanceAnalyticsScreen from '../../screens/staff/StaffAttendanceAnalyticsScreen';
 import DelegationsScreen from '../../screens/delegations/DelegationsScreen';
 import ReportsScreen from '../../screens/reports/ReportsScreen';
 import AuditLogsScreen from '../../screens/audit/AuditLogsScreen';
@@ -222,6 +224,10 @@ export default function PrincipalNavigator() {
       {/* HRMS & Staff Operations */}
       <Stack.Screen name="Employees" component={EmployeesScreen} />
       <Stack.Screen name="StaffAttendance" component={StaffAttendanceScreen} />
+      <Stack.Screen name="StaffAttendanceSettings" component={StaffAttendanceSettingsScreen} />
+      <Stack.Screen name="AttendanceSettings" component={StaffAttendanceSettingsScreen} />
+      <Stack.Screen name="StaffAttendanceAnalytics" component={StaffAttendanceAnalyticsScreen} />
+      <Stack.Screen name="AttendanceAnalytics" component={StaffAttendanceAnalyticsScreen} />
       <Stack.Screen name="Payroll" component={PayrollScreen} />
       <Stack.Screen name="Leaves" component={LeavesScreen} />
       <Stack.Screen name="Delegations" component={DelegationsScreen} />

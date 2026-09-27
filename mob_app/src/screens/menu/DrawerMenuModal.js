@@ -123,13 +123,20 @@ export default function DrawerMenuModal({
             ],
           },
           {
+            title: 'Staff & HRMS',
+            items: [
+              { label: 'Employee Directory', icon: 'people-outline', screen: 'Employees', color: '#be123c' },
+              { label: 'GPS Punch Attendance', icon: 'finger-print-outline', screen: 'StaffAttendance', color: '#0284c7' },
+              { label: 'Attendance Analytics', icon: 'bar-chart-outline', screen: 'AttendanceAnalytics', color: '#16a34a' },
+              { label: 'Attendance & GPS Settings', icon: 'settings-outline', screen: 'AttendanceSettings', color: '#64748b' },
+              { label: 'Leaves & Official Duty', icon: 'calendar-outline', screen: 'Leaves', color: '#ea580c' },
+              { label: 'Payroll & Salary Slips', icon: 'cash-outline', screen: 'Payroll', color: '#15803d' },
+              { label: 'Staff Delegation & Proxy', icon: 'swap-horizontal-outline', screen: 'Delegations', color: '#4338ca' },
+            ],
+          },
+          {
             title: 'Campus & Operations',
             items: [
-              { label: 'Faculty & Staff Directory', icon: 'people-outline', screen: 'Teachers', color: '#4f46e5' },
-              { label: 'Staff Attendance & Punch', icon: 'finger-print-outline', screen: 'StaffAttendance', color: '#0284c7' },
-              { label: 'Staff Leave Approvals', icon: 'calendar-outline', screen: 'Leaves', color: '#ea580c' },
-              { label: 'Teacher Delegations', icon: 'swap-horizontal-outline', screen: 'Delegations', color: '#4338ca' },
-              { label: 'Payroll & Salary Runs', icon: 'cash-outline', screen: 'Payroll', color: '#16a34a' },
               { label: 'Finance Command Center', icon: 'trending-up-outline', screen: 'FinanceHub', color: '#0369a1' },
               { label: 'Purchase Orders & GRN', icon: 'cart-outline', screen: 'Purchases', color: '#7c3aed' },
               { label: 'Vendor Management', icon: 'business-outline', screen: 'Vendors', color: '#ea580c' },
