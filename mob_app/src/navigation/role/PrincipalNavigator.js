@@ -48,6 +48,8 @@ import FinesScreen from '../../screens/library/FinesScreen';
 import IssueReturnScreen from '../../screens/library/IssueReturnScreen';
 import MembersScreen from '../../screens/library/MembersScreen';
 import ReservationsScreen from '../../screens/library/ReservationsScreen';
+import StudentDocumentsScreen from '../../screens/documents/StudentDocumentsScreen';
+import IssueCertificatesScreen from '../../screens/documents/IssueCertificatesScreen';
 import EmployeesScreen from '../../screens/hr/EmployeesScreen';
 import PayrollScreen from '../../screens/hr/PayrollScreen';
 import LeavesScreen from '../../screens/leaves/LeavesScreen';
@@ -141,6 +143,10 @@ export default function PrincipalNavigator() {
       <Stack.Screen name="IDCards" component={IDCardScreen} />
       <Stack.Screen name="StudentImport" component={StudentImportScreen} />
       <Stack.Screen name="ImportStudents" component={StudentImportScreen} />
+      <Stack.Screen name="StudentDocuments" component={StudentDocumentsScreen} />
+      <Stack.Screen name="Documents" component={StudentDocumentsScreen} />
+      <Stack.Screen name="IssueCertificates" component={IssueCertificatesScreen} />
+      <Stack.Screen name="Certificates" component={IssueCertificatesScreen} />
 
       {/* Academics & Staff */}
       <Stack.Screen name="Teachers" component={StaffScreen} />
