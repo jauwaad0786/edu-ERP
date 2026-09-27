@@ -44,6 +44,22 @@ export default function ExaminationsScreen({ navigation }) {
   const [selectedClassIds, setSelectedClassIds] = useState([]);
   const [creating, setCreating] = useState(false);
 
+  // Add Paper Slot Modal state
+  const [slotModalVisible, setSlotModalVisible] = useState(false);
+  const [slotExam, setSlotExam] = useState(null);
+  const [slotClassId, setSlotClassId] = useState('');
+  const [slotSubjectId, setSlotSubjectId] = useState('');
+  const [slotSubjectNameManual, setSlotSubjectNameManual] = useState('');
+  const [slotDate, setSlotDate] = useState('');
+  const [slotStartTime, setSlotStartTime] = useState('10:00 AM');
+  const [slotEndTime, setSlotEndTime] = useState('01:00 PM');
+  const [slotVenue, setSlotVenue] = useState('Main Exam Hall');
+  const [slotMaxMarks, setSlotMaxMarks] = useState('100');
+  const [slotPassMarks, setSlotPassMarks] = useState('33');
+  const [slotInstructions, setSlotInstructions] = useState('');
+  const [slotSubjects, setSlotSubjects] = useState([]);
+  const [savingSlot, setSavingSlot] = useState(false);
+
   function getattrRole(u) {
     if (!u) return '';
     return typeof u.role === 'object' ? u.role?.value || '' : String(u.role || '');
@@ -96,6 +112,99 @@ export default function ExaminationsScreen({ navigation }) {
         setLoadingTimetableId(null);
       }
     }
+  };
+
+  // Load subjects for selected class in paper slot modal
+  useEffect(() => {
+    if (slotClassId) {
+      client.get(`/principal/classes/${slotClassId}/subjects`)
+        .then(r => {
+          const sList = Array.isArray(r.data) ? r.data : (r.data?.subjects || []);
+          setSlotSubjects(sList);
+          if (sList.length > 0) setSlotSubjectId(String(sList[0].id));
+        })
+        .catch(() => {
+          client.get(`/principal/subjects?class_id=${slotClassId}`)
+            .then(res => {
+              const sList = Array.isArray(res.data) ? res.data : (res.data?.subjects || []);
+              setSlotSubjects(sList);
+              if (sList.length > 0) setSlotSubjectId(String(sList[0].id));
+            })
+            .catch(() => setSlotSubjects([]));
+        });
+    } else {
+      setSlotSubjects([]);
+    }
+  }, [slotClassId]);
+
+  const openAddSlotModal = (exam) => {
+    const raw = exam.rawExam || exam;
+    setSlotExam(raw);
+    const defClass = classesList.length > 0 ? String(classesList[0].id) : '';
+    setSlotClassId(defClass);
+    setSlotDate(raw.start_date ? raw.start_date.split('T')[0] : '');
+    setSlotStartTime('10:00 AM');
+    setSlotEndTime('01:00 PM');
+    setSlotVenue('Main Exam Hall');
+    setSlotMaxMarks('100');
+    setSlotPassMarks('33');
+    setSlotInstructions('');
+    setSlotSubjectNameManual('');
+    setSlotModalVisible(true);
+  };
+
+  const handleAddSlot = async () => {
+    if (!slotExam?.id || !slotDate.trim()) {
+      Alert.alert('Required', 'Please enter Exam Date (YYYY-MM-DD).');
+      return;
+    }
+    setSavingSlot(true);
+    try {
+      await client.post(`/principal/exams/${slotExam.id}/timetable`, {
+        class_id: slotClassId ? parseInt(slotClassId, 10) : null,
+        subject_id: slotSubjectId ? parseInt(slotSubjectId, 10) : null,
+        subject_name_manual: slotSubjectNameManual.trim() || undefined,
+        exam_date: slotDate.trim(),
+        start_time: slotStartTime,
+        end_time: slotEndTime,
+        venue: slotVenue,
+        max_marks: parseInt(slotMaxMarks, 10) || 100,
+        pass_marks: parseInt(slotPassMarks, 10) || 33,
+        instructions: slotInstructions.trim(),
+      });
+      Alert.alert('Success', 'Paper added to datesheet successfully.');
+      setSlotModalVisible(false);
+      const res = await client.get(`/principal/exams/${slotExam.id}/timetable`);
+      setTimetables(prev => ({ ...prev, [slotExam.id]: Array.isArray(res.data) ? res.data : [] }));
+    } catch (err) {
+      Alert.alert('Error', err.response?.data?.error || err.response?.data?.message || 'Failed to add paper slot.');
+    } finally {
+      setSavingSlot(false);
+    }
+  };
+
+  const handleDeleteSlot = (examId, slotId, subjectName) => {
+    Alert.alert(
+      'Delete Paper',
+      `Remove "${subjectName || 'this paper'}" from datesheet?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await client.delete(`/principal/exams/${examId}/timetable/${slotId}`);
+              Alert.alert('Deleted', 'Paper removed from datesheet.');
+              const res = await client.get(`/principal/exams/${examId}/timetable`);
+              setTimetables(prev => ({ ...prev, [examId]: Array.isArray(res.data) ? res.data : [] }));
+            } catch {
+              Alert.alert('Error', 'Failed to remove paper.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleTogglePublish = (exam) => {
@@ -388,7 +497,18 @@ export default function ExaminationsScreen({ navigation }) {
                     {/* Expandable Timetable Section */}
                     {isExpanded && (
                       <View style={styles.timetableSection}>
-                        <Text style={styles.timetableHeading}>Exam Datesheet & Papers</Text>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                          <Text style={styles.timetableHeading}>Exam Datesheet & Papers</Text>
+                          {isPrincipalOrAdmin && (
+                            <TouchableOpacity
+                              style={styles.addSlotPill}
+                              onPress={() => openAddSlotModal(exam)}
+                            >
+                              <Ionicons name="add-circle-outline" size={14} color="#0284c7" />
+                              <Text style={styles.addSlotPillText}>Add Paper</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
                         {isLoadingTt ? (
                           <View style={{ paddingVertical: 14, alignItems: 'center' }}>
                             <ActivityIndicator size="small" color={colors.primary} />
@@ -401,13 +521,23 @@ export default function ExaminationsScreen({ navigation }) {
                                 <View style={{ flex: 1 }}>
                                   <Text style={styles.slotSubject}>{slot.subject_name || slot.subject?.name || `Paper ${idx + 1}`}</Text>
                                   <Text style={styles.slotClass}>
-                                    {slot.class_name ? `Class: ${slot.class_name}` : ''} {slot.room_number ? ` • Room: ${slot.room_number}` : ''}
+                                    {slot.class_name ? `Class: ${slot.class_name}` : ''} {slot.room_number || slot.venue ? ` • Room: ${slot.room_number || slot.venue}` : ''}
                                   </Text>
                                 </View>
-                                <View style={{ alignItems: 'flex-end' }}>
-                                  <Text style={styles.slotDate}>{slot.exam_date || 'Date TBD'}</Text>
-                                  <Text style={styles.slotTime}>{slot.start_time ? `${slot.start_time} - ${slot.end_time}` : 'Full Day'}</Text>
-                                  <Text style={styles.slotMarks}>Max: {slot.max_marks || 100} • Pass: {slot.pass_marks || 33}</Text>
+                                <View style={{ alignItems: 'flex-end', flexDirection: 'row', gap: 6 }}>
+                                  <View style={{ alignItems: 'flex-end' }}>
+                                    <Text style={styles.slotDate}>{slot.exam_date || 'Date TBD'}</Text>
+                                    <Text style={styles.slotTime}>{slot.start_time ? `${slot.start_time} - ${slot.end_time}` : 'Full Day'}</Text>
+                                    <Text style={styles.slotMarks}>Max: {slot.max_marks || 100} • Pass: {slot.pass_marks || 33}</Text>
+                                  </View>
+                                  {isPrincipalOrAdmin && (
+                                    <TouchableOpacity
+                                      style={{ padding: 4, marginLeft: 4 }}
+                                      onPress={() => handleDeleteSlot(exam.rawId, slot.id, slot.subject_name || slot.subject?.name)}
+                                    >
+                                      <Ionicons name="trash-outline" size={16} color="#dc2626" />
+                                    </TouchableOpacity>
+                                  )}
                                 </View>
                               </View>
                             ))}
@@ -567,6 +697,169 @@ export default function ExaminationsScreen({ navigation }) {
                 <>
                   <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
                   <Text style={styles.createBtnText}>Create Exam Schedule</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Add Paper Slot Modal ── */}
+      <Modal visible={slotModalVisible} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { maxHeight: '90%' }]}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Add Paper to Datesheet</Text>
+                <Text style={{ fontSize: 11, color: '#64748b' }}>{slotExam?.exam_name || slotExam?.name || 'Examination'}</Text>
+              </View>
+              <TouchableOpacity onPress={() => setSlotModalVisible(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close" size={24} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 16 }}>
+              {/* Class Selection */}
+              <Text style={styles.inputLabel}>Select Class *</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                {classesList.map(c => {
+                  const sel = String(slotClassId) === String(c.id);
+                  return (
+                    <TouchableOpacity
+                      key={c.id}
+                      style={[styles.classChip, sel && styles.classChipSel]}
+                      onPress={() => setSlotClassId(String(c.id))}
+                    >
+                      <Text style={[styles.classChipText, sel && styles.classChipTextSel]}>
+                        Class {c.name}{c.section ? `-${c.section}` : ''}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              {/* Subject Selection */}
+              <Text style={styles.inputLabel}>Select Subject</Text>
+              {slotSubjects.length > 0 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, marginBottom: 8 }}>
+                  {slotSubjects.map(s => {
+                    const sel = String(slotSubjectId) === String(s.id);
+                    return (
+                      <TouchableOpacity
+                        key={s.id}
+                        style={[styles.classChip, sel && styles.classChipSel]}
+                        onPress={() => setSlotSubjectId(String(s.id))}
+                      >
+                        <Text style={[styles.classChipText, sel && styles.classChipTextSel]}>
+                          {s.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              ) : (
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Or enter subject name (e.g. Mathematics)"
+                  placeholderTextColor="#94a3b8"
+                  value={slotSubjectNameManual}
+                  onChangeText={setSlotSubjectNameManual}
+                />
+              )}
+
+              {/* Date */}
+              <Text style={styles.inputLabel}>Paper Date (YYYY-MM-DD) *</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="2026-10-15"
+                placeholderTextColor="#94a3b8"
+                value={slotDate}
+                onChangeText={setSlotDate}
+              />
+
+              {/* Start & End Time */}
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Start Time</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="10:00 AM"
+                    placeholderTextColor="#94a3b8"
+                    value={slotStartTime}
+                    onChangeText={setSlotStartTime}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>End Time</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="01:00 PM"
+                    placeholderTextColor="#94a3b8"
+                    value={slotEndTime}
+                    onChangeText={setSlotEndTime}
+                  />
+                </View>
+              </View>
+
+              {/* Venue & Marks */}
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Venue / Room</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="Main Exam Hall"
+                    placeholderTextColor="#94a3b8"
+                    value={slotVenue}
+                    onChangeText={setSlotVenue}
+                  />
+                </View>
+                <View style={{ width: 80 }}>
+                  <Text style={styles.inputLabel}>Max Marks</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="100"
+                    placeholderTextColor="#94a3b8"
+                    keyboardType="numeric"
+                    value={slotMaxMarks}
+                    onChangeText={setSlotMaxMarks}
+                  />
+                </View>
+                <View style={{ width: 80 }}>
+                  <Text style={styles.inputLabel}>Pass Marks</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="33"
+                    placeholderTextColor="#94a3b8"
+                    keyboardType="numeric"
+                    value={slotPassMarks}
+                    onChangeText={setSlotPassMarks}
+                  />
+                </View>
+              </View>
+
+              {/* Instructions */}
+              <Text style={styles.inputLabel}>Special Paper Instructions</Text>
+              <TextInput
+                style={[styles.textInput, { height: 60, textAlignVertical: 'top' }]}
+                placeholder="e.g. Scientific calculators allowed, bring geometry kit"
+                placeholderTextColor="#94a3b8"
+                multiline
+                value={slotInstructions}
+                onChangeText={setSlotInstructions}
+              />
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.createBtn, savingSlot && { opacity: 0.6 }]}
+              onPress={handleAddSlot}
+              disabled={savingSlot}
+            >
+              {savingSlot ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
+                  <Text style={styles.createBtnText}>Save Paper Slot</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -806,4 +1099,20 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   createBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  addSlotPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  addSlotPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0284c7',
+  },
 });
