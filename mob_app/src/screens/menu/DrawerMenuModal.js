@@ -94,13 +94,32 @@ export default function DrawerMenuModal({
             ],
           },
           {
+            title: 'Hostel Management',
+            items: [
+              { label: 'Hostel Admissions & Allotment', icon: 'person-add-outline', screen: 'HostelAdmission', color: '#4338ca' },
+              { label: 'Transfers & Vacate Clearance', icon: 'swap-horizontal-outline', screen: 'HostelTransfers', color: '#6366f1' },
+              { label: 'Room & Bed Map', icon: 'business-outline', screen: 'RoomMap', color: '#3b82f6' },
+              { label: 'Monthly Hostel Fees', icon: 'receipt-outline', screen: 'HostelFees', color: '#15803d' },
+              { label: 'Hostel Fines & Penalties', icon: 'alert-circle-outline', screen: 'HostelFines', color: '#dc2626' },
+              { label: 'Night Roll Call', icon: 'bed-outline', screen: 'RollCall', color: '#0284c7' },
+              { label: 'Gate Out-Passes', icon: 'exit-outline', screen: 'OutPass', color: '#10b981' },
+              { label: 'Visitor Gate Pass', icon: 'shield-checkmark-outline', screen: 'Visitors', color: '#059669' },
+              { label: 'Room Maintenance & Complaints', icon: 'construct-outline', screen: 'Complaints', color: '#f59e0b' },
+            ],
+          },
+          {
+            title: 'Library Automation',
+            items: [
+              { label: 'Book Master Catalog', icon: 'library-outline', screen: 'Books', color: '#0891b2' },
+              { label: 'Issue & Return Desk', icon: 'swap-horizontal-outline', screen: 'IssueReturn', color: '#0284c7' },
+              { label: 'Library Members & Cards', icon: 'card-outline', screen: 'Members', color: '#0d9488' },
+              { label: 'Book Hold & Reservations', icon: 'bookmark-outline', screen: 'Reservations', color: '#7c3aed' },
+              { label: 'Overdue Fines & Dues', icon: 'cash-outline', screen: 'Fines', color: '#d97706' },
+            ],
+          },
+          {
             title: 'Campus & Operations',
             items: [
-              { label: 'Hostel Roll Call', icon: 'bed-outline', screen: 'RollCall', color: '#0284c7' },
-              { label: 'Hostel Room Map', icon: 'business-outline', screen: 'RoomMap', color: '#6366f1' },
-              { label: 'Student Out-Passes', icon: 'exit-outline', screen: 'OutPass', color: '#10b981' },
-              { label: 'Visitor Gate Pass', icon: 'shield-checkmark-outline', screen: 'Visitors', color: '#059669' },
-              { label: 'Hostel Complaints', icon: 'construct-outline', screen: 'Complaints', color: '#f59e0b' },
               { label: 'Faculty & Staff Directory', icon: 'people-outline', screen: 'Teachers', color: '#4f46e5' },
               { label: 'Staff Attendance & Punch', icon: 'finger-print-outline', screen: 'StaffAttendance', color: '#0284c7' },
               { label: 'Staff Leave Approvals', icon: 'calendar-outline', screen: 'Leaves', color: '#ea580c' },
@@ -241,11 +260,43 @@ export default function DrawerMenuModal({
           {
             title: 'Hostel Management',
             items: [
-              { label: 'Room & Bed Map', icon: 'bed-outline', screen: 'RoomMap', color: '#4338ca' },
+              { label: 'Hostel Admissions & Allotment', icon: 'person-add-outline', screen: 'HostelAdmission', color: '#4338ca' },
+              { label: 'Transfers & Vacate Clearance', icon: 'swap-horizontal-outline', screen: 'HostelTransfers', color: '#6366f1' },
+              { label: 'Room & Bed Map', icon: 'bed-outline', screen: 'RoomMap', color: '#3b82f6' },
+              { label: 'Monthly Hostel Fees', icon: 'receipt-outline', screen: 'HostelFees', color: '#15803d' },
+              { label: 'Hostel Fines & Penalties', icon: 'alert-circle-outline', screen: 'HostelFines', color: '#dc2626' },
               { label: 'Night Roll Call', icon: 'clipboard-outline', screen: 'RollCall', color: '#0284c7' },
               { label: 'Gate Out-Passes', icon: 'exit-outline', screen: 'OutPass', color: '#16a34a' },
               { label: 'Visitor Gate Pass', icon: 'shield-checkmark-outline', screen: 'Visitors', color: '#059669' },
               { label: 'Maintenance & Grievances', icon: 'construct-outline', screen: 'Complaints', color: '#ea580c' },
+            ],
+          },
+          {
+            title: 'Account & Settings',
+            items: [
+              { label: 'My Profile', icon: 'person-outline', screen: 'Profile', color: '#2563eb' },
+              { label: 'Account Settings', icon: 'settings-outline', screen: 'Settings', color: '#64748b' },
+            ],
+          },
+        ];
+
+      case 'LIBRARIAN':
+        return [
+          {
+            title: 'Overview',
+            items: [
+              { label: 'Library Dashboard', icon: 'grid-outline', screen: 'Dashboard', color: '#0891b2' },
+              { label: 'ERP Copilot (AI)', icon: 'sparkles', screen: 'AIChat', color: '#7c3aed', badge: 'AI' },
+            ],
+          },
+          {
+            title: 'Library Operations',
+            items: [
+              { label: 'Book Master Catalog', icon: 'library-outline', screen: 'Books', color: '#0891b2' },
+              { label: 'Issue & Return Desk', icon: 'swap-horizontal-outline', screen: 'IssueReturn', color: '#0284c7' },
+              { label: 'Library Members & Cards', icon: 'card-outline', screen: 'Members', color: '#0d9488' },
+              { label: 'Hold & Reservations Queue', icon: 'bookmark-outline', screen: 'Reservations', color: '#7c3aed' },
+              { label: 'Overdue Fines & Penalties', icon: 'cash-outline', screen: 'Fines', color: '#d97706' },
             ],
           },
           {

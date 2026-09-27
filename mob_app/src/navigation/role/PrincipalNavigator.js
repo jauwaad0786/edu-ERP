@@ -39,9 +39,15 @@ import RollCallScreen from '../../screens/hostel/RollCallScreen';
 import OutPassScreen from '../../screens/hostel/OutPassScreen';
 import ComplaintsScreen from '../../screens/hostel/ComplaintsScreen';
 import VisitorsScreen from '../../screens/hostel/VisitorsScreen';
+import HostelAdmissionScreen from '../../screens/hostel/HostelAdmissionScreen';
+import HostelTransfersScreen from '../../screens/hostel/HostelTransfersScreen';
+import HostelFeesScreen from '../../screens/hostel/HostelFeesScreen';
+import HostelFinesScreen from '../../screens/hostel/HostelFinesScreen';
 import BooksScreen from '../../screens/library/BooksScreen';
 import FinesScreen from '../../screens/library/FinesScreen';
 import IssueReturnScreen from '../../screens/library/IssueReturnScreen';
+import MembersScreen from '../../screens/library/MembersScreen';
+import ReservationsScreen from '../../screens/library/ReservationsScreen';
 import EmployeesScreen from '../../screens/hr/EmployeesScreen';
 import PayrollScreen from '../../screens/hr/PayrollScreen';
 import LeavesScreen from '../../screens/leaves/LeavesScreen';
@@ -189,6 +195,10 @@ export default function PrincipalNavigator() {
       <Stack.Screen name="Hostel" component={RollCallScreen} />
       <Stack.Screen name="RoomMap" component={RoomMapScreen} />
       <Stack.Screen name="HostelRoomMap" component={RoomMapScreen} />
+      <Stack.Screen name="HostelAdmission" component={HostelAdmissionScreen} />
+      <Stack.Screen name="HostelTransfers" component={HostelTransfersScreen} />
+      <Stack.Screen name="HostelFees" component={HostelFeesScreen} />
+      <Stack.Screen name="HostelFines" component={HostelFinesScreen} />
       <Stack.Screen name="OutPass" component={OutPassScreen} />
       <Stack.Screen name="Complaints" component={ComplaintsScreen} />
       <Stack.Screen name="Visitors" component={VisitorsScreen} />
@@ -198,6 +208,10 @@ export default function PrincipalNavigator() {
       <Stack.Screen name="Library" component={BooksScreen} />
       <Stack.Screen name="Fines" component={FinesScreen} />
       <Stack.Screen name="IssueReturn" component={IssueReturnScreen} />
+      <Stack.Screen name="Members" component={MembersScreen} />
+      <Stack.Screen name="LibraryMembers" component={MembersScreen} />
+      <Stack.Screen name="Reservations" component={ReservationsScreen} />
+      <Stack.Screen name="HoldQueue" component={ReservationsScreen} />
 
       {/* HRMS & Staff Operations */}
       <Stack.Screen name="Employees" component={EmployeesScreen} />

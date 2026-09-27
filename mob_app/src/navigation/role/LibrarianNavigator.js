@@ -11,6 +11,8 @@ import SettingsScreen           from '../../screens/settings/SettingsScreen';
 import ProfileScreen            from '../../screens/profile/ProfileScreen';
 import ChangePasswordScreen     from '../../screens/profile/ChangePasswordScreen';
 import NotificationsScreen      from '../../screens/notifications/NotificationsScreen';
+import MembersScreen            from '../../screens/library/MembersScreen';
+import ReservationsScreen       from '../../screens/library/ReservationsScreen';
 import { TAB_BAR_STYLE } from '../tabBarStyle';
 
 const Tab = createBottomTabNavigator();
@@ -46,6 +48,10 @@ export default function LibrarianNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="LibrarianTabs"  component={LibrarianTabs} />
+      <Stack.Screen name="Members"        component={MembersScreen} />
+      <Stack.Screen name="LibraryMembers" component={MembersScreen} />
+      <Stack.Screen name="Reservations"   component={ReservationsScreen} />
+      <Stack.Screen name="HoldQueue"      component={ReservationsScreen} />
       <Stack.Screen name="Profile"        component={ProfileScreen} />
       <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
       <Stack.Screen name="Notifications"  component={NotificationsScreen} />

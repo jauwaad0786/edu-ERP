@@ -13,6 +13,10 @@ import SettingsScreen        from '../../screens/settings/SettingsScreen';
 import ProfileScreen         from '../../screens/profile/ProfileScreen';
 import ChangePasswordScreen  from '../../screens/profile/ChangePasswordScreen';
 import NotificationsScreen   from '../../screens/notifications/NotificationsScreen';
+import HostelAdmissionScreen from '../../screens/hostel/HostelAdmissionScreen';
+import HostelTransfersScreen from '../../screens/hostel/HostelTransfersScreen';
+import HostelFeesScreen      from '../../screens/hostel/HostelFeesScreen';
+import HostelFinesScreen     from '../../screens/hostel/HostelFinesScreen';
 import { TAB_BAR_STYLE } from '../tabBarStyle';
 
 const Tab = createBottomTabNavigator();
@@ -49,15 +53,19 @@ function WardenTabs() {
 export default function WardenNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="WardenTabs"     component={WardenTabs} />
-      <Stack.Screen name="RoomMap"        component={RoomMapScreen} />
-      <Stack.Screen name="HostelRoomMap"  component={RoomMapScreen} />
-      <Stack.Screen name="Visitors"       component={VisitorsScreen} />
-      <Stack.Screen name="VisitorLog"     component={VisitorsScreen} />
-      <Stack.Screen name="GatePass"       component={VisitorsScreen} />
-      <Stack.Screen name="Profile"        component={ProfileScreen} />
-      <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
-      <Stack.Screen name="Notifications"  component={NotificationsScreen} />
+      <Stack.Screen name="WardenTabs"       component={WardenTabs} />
+      <Stack.Screen name="RoomMap"          component={RoomMapScreen} />
+      <Stack.Screen name="HostelRoomMap"    component={RoomMapScreen} />
+      <Stack.Screen name="HostelAdmission"  component={HostelAdmissionScreen} />
+      <Stack.Screen name="HostelTransfers"  component={HostelTransfersScreen} />
+      <Stack.Screen name="HostelFees"       component={HostelFeesScreen} />
+      <Stack.Screen name="HostelFines"      component={HostelFinesScreen} />
+      <Stack.Screen name="Visitors"         component={VisitorsScreen} />
+      <Stack.Screen name="VisitorLog"       component={VisitorsScreen} />
+      <Stack.Screen name="GatePass"         component={VisitorsScreen} />
+      <Stack.Screen name="Profile"          component={ProfileScreen} />
+      <Stack.Screen name="ChangePassword"   component={ChangePasswordScreen} />
+      <Stack.Screen name="Notifications"    component={NotificationsScreen} />
     </Stack.Navigator>
   );
 }
