@@ -30,6 +30,11 @@ import AssignmentsScreen from '../../screens/assignments/AssignmentsScreen';
 import LiveTrackingScreen from '../../screens/transport/LiveTrackingScreen';
 import VehiclesScreen from '../../screens/transport/VehiclesScreen';
 import RoutesScreen from '../../screens/transport/RoutesScreen';
+import DriversScreen from '../../screens/transport/DriversScreen';
+import ConductorsScreen from '../../screens/transport/ConductorsScreen';
+import StudentTransportScreen from '../../screens/transport/StudentTransportScreen';
+import VehicleMaintenanceScreen from '../../screens/transport/VehicleMaintenanceScreen';
+import StudentTravelHistoryScreen from '../../screens/transport/StudentTravelHistoryScreen';
 import RollCallScreen from '../../screens/hostel/RollCallScreen';
 import OutPassScreen from '../../screens/hostel/OutPassScreen';
 import ComplaintsScreen from '../../screens/hostel/ComplaintsScreen';
@@ -170,6 +175,14 @@ export default function PrincipalNavigator() {
       <Stack.Screen name="Transport" component={LiveTrackingScreen} />
       <Stack.Screen name="Vehicles" component={VehiclesScreen} />
       <Stack.Screen name="Routes" component={RoutesScreen} />
+      <Stack.Screen name="Drivers" component={DriversScreen} />
+      <Stack.Screen name="Conductors" component={ConductorsScreen} />
+      <Stack.Screen name="StudentTransport" component={StudentTransportScreen} />
+      <Stack.Screen name="TransportStudents" component={StudentTransportScreen} />
+      <Stack.Screen name="VehicleMaintenance" component={VehicleMaintenanceScreen} />
+      <Stack.Screen name="Maintenance" component={VehicleMaintenanceScreen} />
+      <Stack.Screen name="StudentTravelHistory" component={StudentTravelHistoryScreen} />
+      <Stack.Screen name="TravelHistory" component={StudentTravelHistoryScreen} />
       <Stack.Screen name="DriverConsole" component={DriverConsoleScreen} />
       <Stack.Screen name="DriverApp" component={DriverConsoleScreen} />
       <Stack.Screen name="RollCall" component={RollCallScreen} />

@@ -80,9 +80,22 @@ export default function DrawerMenuModal({
             ],
           },
           {
+            title: 'Transport & Fleet Management',
+            items: [
+              { label: 'Live GPS Tracking', icon: 'navigate-outline', screen: 'LiveTracking', color: '#ea580c' },
+              { label: 'Student Travel History', icon: 'trail-sign-outline', screen: 'StudentTravelHistory', color: '#0b57d0' },
+              { label: 'Vehicles & Fleet', icon: 'bus-outline', screen: 'Vehicles', color: '#2563eb' },
+              { label: 'Drivers Directory', icon: 'steering-wheel', screen: 'Drivers', color: '#059669' },
+              { label: 'Conductors List', icon: 'people-outline', screen: 'Conductors', color: '#0d9488' },
+              { label: 'Routes & Stops', icon: 'map-outline', screen: 'Routes', color: '#7c3aed' },
+              { label: 'Student Bus Roster', icon: 'person-add-outline', screen: 'StudentTransport', color: '#0284c7' },
+              { label: 'Vehicle Maintenance', icon: 'construct-outline', screen: 'VehicleMaintenance', color: '#dc2626' },
+              { label: 'Driver Console App', icon: 'speedometer-outline', screen: 'DriverConsole', color: '#f59e0b' },
+            ],
+          },
+          {
             title: 'Campus & Operations',
             items: [
-              { label: 'Live Transport GPS', icon: 'bus-outline', screen: 'LiveTracking', color: '#ea580c' },
               { label: 'Hostel Roll Call', icon: 'bed-outline', screen: 'RollCall', color: '#0284c7' },
               { label: 'Hostel Room Map', icon: 'business-outline', screen: 'RoomMap', color: '#6366f1' },
               { label: 'Student Out-Passes', icon: 'exit-outline', screen: 'OutPass', color: '#10b981' },

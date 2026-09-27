@@ -8,6 +8,11 @@ import VehiclesScreen           from '../../screens/transport/VehiclesScreen';
 import RoutesScreen             from '../../screens/transport/RoutesScreen';
 import LiveTrackingScreen       from '../../screens/transport/LiveTrackingScreen';
 import DriverConsoleScreen     from '../../screens/transport/DriverConsoleScreen';
+import DriversScreen           from '../../screens/transport/DriversScreen';
+import ConductorsScreen        from '../../screens/transport/ConductorsScreen';
+import StudentTransportScreen  from '../../screens/transport/StudentTransportScreen';
+import VehicleMaintenanceScreen from '../../screens/transport/VehicleMaintenanceScreen';
+import StudentTravelHistoryScreen from '../../screens/transport/StudentTravelHistoryScreen';
 import SettingsScreen           from '../../screens/settings/SettingsScreen';
 import ProfileScreen            from '../../screens/profile/ProfileScreen';
 import ChangePasswordScreen     from '../../screens/profile/ChangePasswordScreen';
@@ -47,6 +52,14 @@ export default function TransportNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="TransportTabs"  component={TransportTabs} />
+      <Stack.Screen name="Drivers"        component={DriversScreen} />
+      <Stack.Screen name="Conductors"     component={ConductorsScreen} />
+      <Stack.Screen name="StudentTransport" component={StudentTransportScreen} />
+      <Stack.Screen name="TransportStudents" component={StudentTransportScreen} />
+      <Stack.Screen name="VehicleMaintenance" component={VehicleMaintenanceScreen} />
+      <Stack.Screen name="Maintenance"    component={VehicleMaintenanceScreen} />
+      <Stack.Screen name="StudentTravelHistory" component={StudentTravelHistoryScreen} />
+      <Stack.Screen name="TravelHistory"  component={StudentTravelHistoryScreen} />
       <Stack.Screen name="DriverConsole"  component={DriverConsoleScreen} />
       <Stack.Screen name="DriverApp"      component={DriverConsoleScreen} />
       <Stack.Screen name="Profile"        component={ProfileScreen} />
