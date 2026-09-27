@@ -31,17 +31,20 @@ const Stack = createNativeStackNavigator();
 
 /**
  * Returns the correct authenticated navigator for the given user role.
- * Add new roles here — never in individual screen files.
+ * Normalizes roles to uppercase and mirrors Web ERP routeBuilder mapping.
  */
 function AuthenticatedNavigator({ user }) {
-  const isCompanyActor = user.school_id == null;
-  const isTrueAdmin = !!(user.is_super || ['CEO', 'SUPER_ADMIN'].includes(user.active_role?.key));
+  const isCompanyActor = user?.school_id == null;
+  const isTrueAdmin = !!(user?.is_super || ['CEO', 'SUPER_ADMIN'].includes(user?.active_role?.key));
+  const role = String(user?.role || '').toUpperCase();
 
-  switch (user.role) {
+  switch (role) {
     case 'SUPER_ADMIN':
       return (isCompanyActor && !isTrueAdmin) ? <PrincipalNavigator /> : <AdminNavigator />;
+    case 'ADMIN':
     case 'PRINCIPAL':
     case 'DIRECTOR':
+    case 'RECEPTIONIST':
       return <PrincipalNavigator />;
     case 'VICE_PRINCIPAL':
     case 'ACADEMIC_COORDINATOR':
@@ -54,10 +57,13 @@ function AuthenticatedNavigator({ user }) {
     case 'PARENT':
       return <ParentNavigator />;
     case 'ACCOUNTANT':
+    case 'ACCOUNTS':
+    case 'FINANCE':
       return <AccountantNavigator />;
     case 'LIBRARIAN':
       return <LibrarianNavigator />;
     case 'HOSTEL':
+    case 'WARDEN':
       return <WardenNavigator />;
     case 'TRANSPORT':
       return <TransportNavigator />;
@@ -66,35 +72,27 @@ function AuthenticatedNavigator({ user }) {
     case 'HR':
       return <HRNavigator />;
     default:
-      return (
-        <View style={styles.centerScreen}>
-          <Text style={styles.unknownText}>
-            Unknown role: <Text style={styles.code}>{user.role}</Text>
-          </Text>
-          <Text style={styles.subText}>Contact your administrator.</Text>
-        </View>
-      );
+      // Safe fallback to PrincipalNavigator for any valid authenticated user
+      return <PrincipalNavigator />;
   }
 }
 
 export default function AppNavigator() {
   const { user, loading } = useAuth();
 
-  if (loading) {
-    return <SplashScreen navigation={{ replace: () => {} }} />;
-  }
-
   return (
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {user ? (
+        {loading ? (
+          <Stack.Screen name="StartupSplash" component={SplashScreen} />
+        ) : user ? (
           <Stack.Screen name="App">
             {() => <AuthenticatedNavigator user={user} />}
           </Stack.Screen>
         ) : (
           <>
-            <Stack.Screen name="Splash" component={SplashScreen} />
             <Stack.Screen name="Auth" component={LoginScreen} />
+            <Stack.Screen name="Splash" component={SplashScreen} />
             <Stack.Screen name="LoggedOutSuccess" component={LoggedOutSuccessScreen} />
           </>
         )}

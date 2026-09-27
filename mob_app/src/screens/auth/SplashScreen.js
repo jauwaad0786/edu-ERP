@@ -1,9 +1,8 @@
 // mob_app/src/screens/auth/SplashScreen.js
-// Exact match to Screen 1 & Screen 17 of the mockup:
-// Educational 3D illustration with school children & modern building,
-// EduERP branding, pagination dots, Skip button, and seamless token verification.
+// Modern, branded onboarding & splash screen with auto-transition to Auth.
+// Prevents getting stuck on splash screen and provides instant skip to login.
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -22,35 +21,49 @@ import { useAuth } from '../../context/AuthContext';
 const { width } = Dimensions.get('window');
 
 export default function SplashScreen({ navigation }) {
-  const { user } = useAuth();
-  const [slide, setSlide] = useState(0); // 0 = Screen 1 (Illustration + Quote), 1 = Screen 17 (Features)
-  const fadeAnim = useState(new Animated.Value(0))[0];
-  const slideAnim = useState(new Animated.Value(20))[0];
+  const { user, loading } = useAuth();
+  const [slide, setSlide] = useState(0); // 0 = Illustration + Quote, 1 = Pillar Features
+  const [imgError, setImgError] = useState(false);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(20)).current;
 
+  // Fade animation between slides
   useEffect(() => {
     fadeAnim.setValue(0);
     slideAnim.setValue(20);
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 600,
+        duration: 500,
         useNativeDriver: true,
       }),
       Animated.timing(slideAnim, {
         toValue: 0,
-        duration: 600,
+        duration: 500,
         useNativeDriver: true,
       }),
     ]).start();
   }, [slide, fadeAnim, slideAnim]);
 
-  // Handle Skip or Continue to Login
+  // Handle Proceed to Login
   const handleProceed = () => {
-    if (user) {
-      return;
+    if (user) return; // If already authenticated, AppNavigator automatically renders App
+    if (navigation?.replace) {
+      navigation.replace('Auth');
+    } else if (navigation?.navigate) {
+      navigation.navigate('Auth');
     }
-    navigation.replace('Auth');
   };
+
+  // Auto-transition to login after 3 seconds on slide 0 if not authenticated
+  useEffect(() => {
+    if (!loading && !user) {
+      const timer = setTimeout(() => {
+        handleProceed();
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, user]);
 
   const handleNextSlide = () => {
     if (slide === 0) {
@@ -66,14 +79,17 @@ export default function SplashScreen({ navigation }) {
 
       {/* Top Header Row with Skip Button */}
       <View style={styles.topBar}>
-        <View style={{ width: 40 }} />
+        <View style={styles.topBadge}>
+          <Text style={styles.versionText}>EduERP v1.0</Text>
+        </View>
         <TouchableOpacity
           onPress={handleProceed}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           style={styles.skipBtn}
           activeOpacity={0.7}
         >
-          <Text style={styles.skipText}>Skip</Text>
+          <Text style={styles.skipText}>Skip to Login</Text>
+          <Ionicons name="arrow-forward" size={14} color="#2563eb" style={{ marginLeft: 4 }} />
         </TouchableOpacity>
       </View>
 
@@ -88,7 +104,7 @@ export default function SplashScreen({ navigation }) {
         ]}
       >
         {slide === 0 ? (
-          // ── Slide 1: School Illustration & Tagline (Screen 1 in Reference) ──
+          // ── Slide 1: School Illustration & Tagline ──
           <View style={styles.slideContainer}>
             {/* Branding Header */}
             <View style={styles.brandHeader}>
@@ -110,11 +126,20 @@ export default function SplashScreen({ navigation }) {
 
             {/* School & Children 3D Illustration */}
             <View style={styles.imageCard}>
-              <Image
-                source={require('../../../assets/school_splash_illustration.png')}
-                style={styles.illustrationImage}
-                resizeMode="cover"
-              />
+              {!imgError ? (
+                <Image
+                  source={require('../../../assets/school_splash_illustration.png')}
+                  style={styles.illustrationImage}
+                  resizeMode="cover"
+                  onError={() => setImgError(true)}
+                />
+              ) : (
+                <View style={styles.fallbackCard}>
+                  <Ionicons name="school-outline" size={72} color="#3b82f6" />
+                  <Text style={styles.fallbackTitle}>EduERP Platform</Text>
+                  <Text style={styles.fallbackSubtitle}>Next-Generation School Management</Text>
+                </View>
+              )}
             </View>
 
             {/* Quote Pill Card */}
@@ -124,7 +149,7 @@ export default function SplashScreen({ navigation }) {
             </View>
           </View>
         ) : (
-          // ── Slide 2: Enterprise Features (Screen 17 in Reference) ──
+          // ── Slide 2: Enterprise Features ──
           <View style={styles.slideContainer}>
             <View style={styles.brandHeader}>
               <View style={styles.logoBadge}>
@@ -167,8 +192,12 @@ export default function SplashScreen({ navigation }) {
       <View style={styles.bottomBar}>
         {/* Pagination Dots */}
         <View style={styles.paginationDots}>
-          <View style={[styles.dot, slide === 0 ? styles.dotActive : styles.dotInactive]} />
-          <View style={[styles.dot, slide === 1 ? styles.dotActive : styles.dotInactive]} />
+          <TouchableOpacity onPress={() => setSlide(0)} activeOpacity={0.7}>
+            <View style={[styles.dot, slide === 0 ? styles.dotActive : styles.dotInactive]} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setSlide(1)} activeOpacity={0.7}>
+            <View style={[styles.dot, slide === 1 ? styles.dotActive : styles.dotInactive]} />
+          </TouchableOpacity>
         </View>
 
         {/* Circular Next Button */}
@@ -204,12 +233,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 8,
   },
+  topBadge: {
+    backgroundColor: '#eff6ff',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+  },
+  versionText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#3b82f6',
+  },
   skipBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: 6,
     paddingHorizontal: 12,
+    backgroundColor: '#eff6ff',
+    borderRadius: 16,
   },
   skipText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     color: '#2563eb',
   },
@@ -276,8 +320,8 @@ const styles = StyleSheet.create({
   },
   imageCard: {
     width: width * 0.86,
-    height: width * 0.86,
-    maxHeight: 330,
+    height: width * 0.82,
+    maxHeight: 310,
     borderRadius: 28,
     overflow: 'hidden',
     backgroundColor: '#ffffff',
@@ -293,6 +337,25 @@ const styles = StyleSheet.create({
   illustrationImage: {
     width: '100%',
     height: '100%',
+  },
+  fallbackCard: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#eff6ff',
+    padding: 20,
+  },
+  fallbackTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#1e3a8a',
+    marginTop: 12,
+  },
+  fallbackSubtitle: {
+    fontSize: 13,
+    color: '#64748b',
+    marginTop: 4,
+    textAlign: 'center',
   },
   quoteCard: {
     backgroundColor: 'rgba(255, 255, 255, 0.95)',

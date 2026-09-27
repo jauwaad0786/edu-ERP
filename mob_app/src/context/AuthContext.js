@@ -1,6 +1,6 @@
 // mob_app/src/context/AuthContext.js
 // Authentication state manager — mirrors frontend/src/context/AuthContext.jsx
-// Uses SecureStore for persistent JWT storage across app restarts.
+// Uses SecureStore for persistent JWT storage across app restarts with fail-safe startup timeouts.
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import * as SecureStore from 'expo-secure-store';
@@ -12,21 +12,68 @@ export function AuthProvider({ children }) {
   const [user,    setUser]    = useState(null);
   const [loading, setLoading] = useState(true);  // true = checking stored token on startup
 
-  // ── Fetch current user profile ───────────────────────────────────────────
+  // Safe SecureStore helpers
+  const safeGetToken = async (key) => {
+    try {
+      return await SecureStore.getItemAsync(key);
+    } catch (e) {
+      console.warn(`[AuthContext] Error reading ${key} from SecureStore:`, e?.message);
+      return null;
+    }
+  };
+
+  const safeSetToken = async (key, val) => {
+    try {
+      await SecureStore.setItemAsync(key, val);
+    } catch (e) {
+      console.warn(`[AuthContext] Error saving ${key} to SecureStore:`, e?.message);
+    }
+  };
+
+  const safeDeleteToken = async (key) => {
+    try {
+      await SecureStore.deleteItemAsync(key);
+    } catch (e) {
+      console.warn(`[AuthContext] Error deleting ${key} from SecureStore:`, e?.message);
+    }
+  };
+
+  // ── Fetch current user profile with fail-safe timeout ─────────────────────
   const fetchMe = useCallback(async () => {
     try {
-      const token = await SecureStore.getItemAsync('access_token');
+      const token = await safeGetToken('access_token');
       if (!token) {
         setUser(null);
         return null;
       }
-      const res = await client.get('/auth/me');
-      setUser(res.data);
-      return res.data;
-    } catch {
+
+      // Race against a 4-second timeout so a sleeping backend doesn't freeze startup
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Auth check timeout')), 4000)
+      );
+
+      const res = await Promise.race([
+        client.get('/auth/me'),
+        timeoutPromise,
+      ]);
+
+      if (res?.data && res.data.id) {
+        setUser(res.data);
+        return res.data;
+      } else {
+        setUser(null);
+        await safeDeleteToken('access_token');
+        await safeDeleteToken('refresh_token');
+        return null;
+      }
+    } catch (err) {
+      console.warn('[AuthContext] Session verification skipped/failed:', err?.message);
       setUser(null);
-      await SecureStore.deleteItemAsync('access_token');
-      await SecureStore.deleteItemAsync('refresh_token');
+      // Only delete tokens if explicitly unauthorized (401/403)
+      if (err?.response?.status === 401 || err?.response?.status === 403) {
+        await safeDeleteToken('access_token');
+        await safeDeleteToken('refresh_token');
+      }
       return null;
     }
   }, []);
@@ -39,9 +86,11 @@ export function AuthProvider({ children }) {
       school_slug: school_slug || undefined,
     });
     const { access_token, refresh_token, user: userData } = res.data;
-    await SecureStore.setItemAsync('access_token', access_token);
+    if (access_token) {
+      await safeSetToken('access_token', access_token);
+    }
     if (refresh_token) {
-      await SecureStore.setItemAsync('refresh_token', refresh_token);
+      await safeSetToken('refresh_token', refresh_token);
     }
     setUser(userData);
     return userData;
@@ -53,9 +102,11 @@ export function AuthProvider({ children }) {
     if (father_name) payload.father_name = father_name;
     const res = await client.post('/auth/student-login', payload);
     const { access_token, refresh_token, user: userData } = res.data;
-    await SecureStore.setItemAsync('access_token', access_token);
+    if (access_token) {
+      await safeSetToken('access_token', access_token);
+    }
     if (refresh_token) {
-      await SecureStore.setItemAsync('refresh_token', refresh_token);
+      await safeSetToken('refresh_token', refresh_token);
     }
     setUser(userData);
     return userData;
@@ -66,14 +117,18 @@ export function AuthProvider({ children }) {
     try {
       await client.post('/auth/logout');
     } catch { /* best-effort */ }
-    await SecureStore.deleteItemAsync('access_token');
-    await SecureStore.deleteItemAsync('refresh_token');
+    await safeDeleteToken('access_token');
+    await safeDeleteToken('refresh_token');
     setUser(null);
   }, []);
 
-  // ── On mount: restore session ─────────────────────────────────────────────
+  // ── On mount: restore session safely ──────────────────────────────────────
   useEffect(() => {
-    fetchMe().finally(() => setLoading(false));
+    let mounted = true;
+    fetchMe().finally(() => {
+      if (mounted) setLoading(false);
+    });
+    return () => { mounted = false; };
   }, [fetchMe]);
 
   const value = {

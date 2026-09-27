@@ -5,17 +5,11 @@ import {
   KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Alert,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as SecureStore from 'expo-secure-store';
 import { useAuth } from '../../context/AuthContext';
 import { colors } from '../../theme/colors';
-
-let LinearGradient;
-try {
-  LinearGradient = require('expo-linear-gradient').LinearGradient;
-} catch (e) {
-  LinearGradient = null;
-}
 
 export default function LoginScreen({ navigation }) {
   const { login, studentLogin } = useAuth();
@@ -32,13 +26,18 @@ export default function LoginScreen({ navigation }) {
 
   // Auto-fill remembered identifier if present
   useEffect(() => {
-    SecureStore.getItemAsync('remembered_identifier').then(saved => {
-      if (saved) setIdentifier(saved);
-    }).catch(() => {});
+    SecureStore.getItemAsync('remembered_identifier')
+      .then(saved => {
+        if (saved) setIdentifier(saved);
+      })
+      .catch(() => {});
   }, []);
 
   const handleLogin = async () => {
-    if (!identifier.trim() || !password.trim()) {
+    const cleanId = identifier.trim();
+    const cleanPass = password.trim();
+
+    if (!cleanId || !cleanPass) {
       setError('Please enter your email or phone and password.');
       return;
     }
@@ -47,41 +46,43 @@ export default function LoginScreen({ navigation }) {
 
     try {
       if (rememberMe) {
-        await SecureStore.setItemAsync('remembered_identifier', identifier.trim());
+        await SecureStore.setItemAsync('remembered_identifier', cleanId).catch(() => {});
       } else {
         await SecureStore.deleteItemAsync('remembered_identifier').catch(() => {});
       }
 
       if (role === 'Student') {
-        // Direct Student Authentication fallback to standard login
+        // Direct Student Authentication with fallback to standard unified login
         try {
           await studentLogin({
-            phone: identifier.trim(),
-            name: identifier.trim(),
-            password: password.trim(),
+            phone: cleanId,
+            name: cleanId,
+            password: cleanPass,
           });
         } catch {
           await login({
-            identifier: identifier.trim(),
-            password: password.trim(),
+            identifier: cleanId,
+            password: cleanPass,
           });
         }
       } else {
         // Staff, Principal, Teacher & Parent Authentication
         await login({
-          identifier: identifier.trim(),
-          password: password.trim(),
+          identifier: cleanId,
+          password: cleanPass,
         });
       }
     } catch (err) {
-      const msg = err.response?.data?.error || err.response?.data?.message || err.message || 'Login failed. Please check your credentials.';
+      const msg =
+        err.response?.data?.error ||
+        err.response?.data?.message ||
+        err.message ||
+        'Login failed. Please check your credentials.';
       setError(msg);
     } finally {
       setLoading(false);
     }
   };
-
-  const GradientButtonWrapper = LinearGradient || TouchableOpacity;
 
   return (
     <KeyboardAvoidingView
@@ -207,34 +208,21 @@ export default function LoginScreen({ navigation }) {
           activeOpacity={0.85}
           style={styles.loginBtnShadow}
         >
-          {LinearGradient ? (
-            <LinearGradient
-              colors={colors.buttonGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.loginBtn}
-            >
-              {loading ? (
-                <ActivityIndicator color="#ffffff" />
-              ) : (
-                <View style={styles.btnContent}>
-                  <Text style={styles.loginBtnText}>Login</Text>
-                  <Ionicons name="arrow-forward" size={18} color="#ffffff" style={{ marginLeft: 8 }} />
-                </View>
-              )}
-            </LinearGradient>
-          ) : (
-            <View style={[styles.loginBtn, { backgroundColor: colors.primary }]}>
-              {loading ? (
-                <ActivityIndicator color="#ffffff" />
-              ) : (
-                <View style={styles.btnContent}>
-                  <Text style={styles.loginBtnText}>Login</Text>
-                  <Ionicons name="arrow-forward" size={18} color="#ffffff" style={{ marginLeft: 8 }} />
-                </View>
-              )}
-            </View>
-          )}
+          <LinearGradient
+            colors={colors.buttonGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.loginBtn}
+          >
+            {loading ? (
+              <ActivityIndicator color="#ffffff" />
+            ) : (
+              <View style={styles.btnContent}>
+                <Text style={styles.loginBtnText}>Login</Text>
+                <Ionicons name="arrow-forward" size={18} color="#ffffff" style={{ marginLeft: 8 }} />
+              </View>
+            )}
+          </LinearGradient>
         </TouchableOpacity>
 
         {/* Or Continue With */}
@@ -244,14 +232,14 @@ export default function LoginScreen({ navigation }) {
           <View style={styles.dividerLine} />
         </View>
 
-        {/* Social SSO Buttons */}
+        {/* Social SSO Buttons with valid Ionicons logos */}
         <View style={styles.socialRow}>
           <TouchableOpacity
             style={styles.socialBtn}
             activeOpacity={0.8}
             onPress={() => Alert.alert('Google SSO', 'Institutional Google Workspace Single Sign-On is being configured. Please use your standard ERP credentials to sign in.')}
           >
-            <FontAwesome5 name="google" size={19} color="#ea4335" />
+            <Ionicons name="logo-google" size={20} color="#ea4335" />
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -259,7 +247,7 @@ export default function LoginScreen({ navigation }) {
             activeOpacity={0.8}
             onPress={() => Alert.alert('Microsoft SSO', 'Institutional Microsoft 365 Single Sign-On is being configured. Please use your standard ERP credentials to sign in.')}
           >
-            <FontAwesome5 name="microsoft" size={19} color="#00a4ef" />
+            <Ionicons name="logo-windows" size={20} color="#00a4ef" />
           </TouchableOpacity>
 
           <TouchableOpacity
