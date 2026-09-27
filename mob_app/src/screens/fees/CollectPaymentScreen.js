@@ -1,20 +1,22 @@
-import React, { useState, useEffect } from 'react';
+// mob_app/src/screens/fees/CollectPaymentScreen.js
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TextInput,
-  TouchableOpacity, ActivityIndicator, Alert, Share, Linking,
+  TouchableOpacity, ActivityIndicator, Alert, Share, Linking, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import client from '../../api/client';
+import { colors } from '../../theme/colors';
 
 const C = {
-  primary: '#16a34a',
-  primaryDark: '#15803d',
+  primary: '#0b57d0',
+  primaryDark: '#032d60',
   green: '#16a34a',
-  blue: '#0b57d0',
+  greenDark: '#15803d',
   warning: '#d97706',
   error: '#dc2626',
-  text: '#1e293b',
+  text: '#0f172a',
   muted: '#64748b',
   bg: '#f8fafc',
   surface: '#ffffff',
@@ -22,46 +24,90 @@ const C = {
 };
 
 const PAYMENT_MODES = [
-  { id: 'CASH', label: 'Cash', icon: 'cash-outline' },
   { id: 'UPI', label: 'UPI / QR', icon: 'qr-code-outline' },
+  { id: 'CASH', label: 'Cash Counter', icon: 'cash-outline' },
   { id: 'CARD', label: 'Card / POS', icon: 'card-outline' },
-  { id: 'CHEQUE', label: 'Cheque', icon: 'document-text-outline' },
+  { id: 'CHEQUE', label: 'Cheque / DD', icon: 'document-text-outline' },
   { id: 'BANK_TRANSFER', label: 'NetBanking', icon: 'business-outline' },
 ];
 
 export default function CollectPaymentScreen({ navigation, route }) {
+  // Search & Filter State
+  const [classes, setClasses] = useState([]);
+  const [selectedClassId, setSelectedClassId] = useState('');
   const [query, setQuery] = useState('');
+  const [onlyPending, setOnlyPending] = useState(true);
   const [students, setStudents] = useState([]);
+  const [searching, setSearching] = useState(false);
+
+  // Selected Student & Financial Ledger
   const [selectedStudent, setSelectedStudent] = useState(null);
-  const [dueRecords, setDueRecords] = useState([]);
+  const [loadingLedger, setLoadingLedger] = useState(false);
+  const [selectedItems, setSelectedItems] = useState({}); // { itemId: { ... } }
   const [totalDue, setTotalDue] = useState(0);
-  const [amount, setAmount] = useState('');
+
+  // Payment Form State
   const [mode, setMode] = useState('UPI');
   const [txnRef, setTxnRef] = useState('');
   const [remarks, setRemarks] = useState('');
-  const [searching, setSearching] = useState(false);
-  const [loadingLedger, setLoadingLedger] = useState(false);
   const [collecting, setCollecting] = useState(false);
+
+  // Instant Fee Waiver / Concession (Maafi) Modal State
+  const [feeHeads, setFeeHeads] = useState([]);
+  const [showWaiverModal, setShowWaiverModal] = useState(false);
+  const [waiverHeadId, setWaiverHeadId] = useState('');
+  const [waiverType, setWaiverType] = useState('WAIVER'); // WAIVER or SCHOLARSHIP
+  const [waiverDiscountType, setWaiverDiscountType] = useState('FIXED'); // FIXED or PERCENTAGE
+  const [waiverAmount, setWaiverAmount] = useState('');
+  const [waiverReason, setWaiverReason] = useState('');
+  const [applyingWaiver, setApplyingWaiver] = useState(false);
+
+  // Receipt Modal State
   const [receiptData, setReceiptData] = useState(null);
 
+  // 1. Fetch Classes & Fee Heads on mount
+  useEffect(() => {
+    client.get('/principal/classes')
+      .then(res => {
+        const list = Array.isArray(res.data) ? res.data : res.data?.classes || [];
+        setClasses(list);
+      })
+      .catch(() => {});
+
+    client.get('/fees-finance/heads')
+      .then(res => {
+        const list = Array.isArray(res.data) ? res.data : res.data?.heads || [];
+        setFeeHeads(list);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Handle passed route param student
   useEffect(() => {
     if (route?.params?.student) {
-      selectStudent(route.params.student);
+      loadStudentLedger(route.params.student);
+    } else if (route?.params?.student_id) {
+      loadStudentLedger({ id: route.params.student_id });
     }
-  }, [route?.params?.student]);
+  }, [route?.params?.student, route?.params?.student_id]);
 
-  const searchStudent = async () => {
-    if (!query.trim()) return;
+  // 2. Fetch Students List with filter (1:1 with Web ERP)
+  const fetchStudents = useCallback(async () => {
     setSearching(true);
-    setSelectedStudent(null);
-    setReceiptData(null);
     try {
-      // Try fees-finance first, then principal search
-      let res = await client.get('/fees-finance/students/search', { params: { search: query.trim() } }).catch(() => null);
-      if (res?.data?.students && res.data.students.length > 0) {
+      const params = {};
+      if (selectedClassId) params.class_id = selectedClassId;
+      if (query.trim()) params.search = query.trim();
+      params.only_pending = onlyPending ? 'true' : 'false';
+
+      const res = await client.get('/fees-finance/students/search', { params }).catch(() => null);
+      if (res?.data?.students) {
         setStudents(res.data.students);
       } else {
-        const fallback = await client.get('/principal/fees/student-search', { params: { q: query.trim() } });
+        // Fallback to principal student search
+        const fallback = await client.get('/principal/fees/student-search', {
+          params: { q: query.trim() || undefined, class_id: selectedClassId || undefined }
+        }).catch(() => ({ data: [] }));
         setStudents(Array.isArray(fallback.data) ? fallback.data : []);
       }
     } catch {
@@ -69,97 +115,211 @@ export default function CollectPaymentScreen({ navigation, route }) {
     } finally {
       setSearching(false);
     }
-  };
+  }, [selectedClassId, query, onlyPending]);
 
-  const selectStudent = async (stu) => {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchStudents();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [fetchStudents]);
+
+  // 3. Load Student Ledger & Populate Itemized Allocations (1:1 with Web ERP)
+  const loadStudentLedger = async (stu) => {
+    const studentId = stu.id || stu.student_id;
+    if (!studentId) return;
+
     setSelectedStudent(stu);
-    setStudents([]);
     setReceiptData(null);
     setLoadingLedger(true);
-    try {
-      // 1. Try modern fees-finance ledger
-      const ledgerRes = await client.get(`/fees-finance/students/${stu.id}/ledger`).catch(() => null);
-      if (ledgerRes?.data) {
-        const ldata = ledgerRes.data;
-        const pendingBills = ldata.pending_bills || ldata.bills?.filter(b => (b.balance_due || 0) > 0) || [];
-        const pendingItems = [];
-        let total = 0;
 
-        pendingBills.forEach(b => {
-          b.items?.forEach(it => {
-            const bal = (it.balance_amount !== undefined && it.balance_amount !== null) ? Number(it.balance_amount) : Number(it.net_amount || 0);
-            if (bal > 0) {
-              pendingItems.push({
-                bill_id: b.id,
-                bill_no: b.bill_no,
-                bill_item_id: it.id,
-                fee_head_name: it.fee_head_name || 'Tuition Fee',
-                amount: bal,
-              });
-              total += bal;
-            }
-          });
+    try {
+      const res = await client.get(`/fees-finance/students/${studentId}/ledger`);
+      const ldata = res.data || {};
+      const studentInfo = ldata.student || stu;
+      setSelectedStudent(studentInfo);
+
+      // Populate bill items that have pending balance
+      const initialSelection = {};
+      let totalPendingAmt = 0;
+      const pendingBills = ldata.pending_bills || ldata.bills?.filter(b => (b.balance_due || 0) > 0) || [];
+
+      pendingBills.forEach(b => {
+        b.items?.forEach(it => {
+          const bal = (it.balance_amount !== undefined && it.balance_amount !== null)
+            ? Number(it.balance_amount)
+            : Number(it.net_amount || 0);
+
+          if (bal > 0) {
+            initialSelection[it.id] = {
+              bill_id: b.id,
+              bill_no: b.bill_no,
+              bill_period: b.bill_period_label || b.bill_month,
+              bill_item_id: it.id,
+              fee_head_id: it.fee_head_id,
+              fee_head_name: it.fee_head_name || 'Tuition Fee',
+              department: it.department || 'ACCOUNTS',
+              amount: bal,
+              max: bal,
+              selected: true,
+            };
+            totalPendingAmt += bal;
+          }
         });
 
-        setDueRecords(pendingItems);
-        setTotalDue(total);
-        setAmount(total > 0 ? String(total) : '');
-        return;
-      }
+        // Previous dues / opening balance if any
+        const prevDuesAmount = Number(b.previous_dues || 0);
+        if (prevDuesAmount > 0) {
+          const itemsPaid = (b.items || []).reduce((acc, it) => acc + Number(it.paid_amount || 0), 0);
+          const totalPaidOnBill = Number(b.amount_paid || 0);
+          const prevDuesPaid = Math.max(0, totalPaidOnBill - itemsPaid);
+          const prevDuesBal = Math.max(0, prevDuesAmount - prevDuesPaid);
+          if (prevDuesBal > 0) {
+            const key = `prev_dues_${b.id}`;
+            initialSelection[key] = {
+              bill_id: b.id,
+              bill_no: b.bill_no,
+              bill_period: b.bill_period_label || b.bill_month,
+              bill_item_id: null,
+              fee_head_id: null,
+              fee_head_name: 'Previous Dues / Opening Balance',
+              department: 'ACCOUNTS',
+              amount: prevDuesBal,
+              max: prevDuesBal,
+              selected: true,
+            };
+            totalPendingAmt += prevDuesBal;
+          }
+        }
+      });
 
-      // 2. Fallback to principal student-records
-      const recRes = await client.get(`/principal/fees/student-records/${stu.id}`);
-      const recs = Array.isArray(recRes.data) ? recRes.data : recRes.data?.records || [];
-      const unpaid = recs.filter(r => r.status !== 'PAID');
-      setDueRecords(unpaid);
-
-      const calculatedDue = unpaid.reduce((sum, r) => {
-        const val = typeof r.effective_due === 'number'
-          ? r.effective_due
-          : (r.amount_due ? Number(r.amount_due) - Number(r.amount_paid || 0) : 0);
-        return sum + Math.max(0, val);
-      }, 0);
-
-      setTotalDue(calculatedDue);
-      setAmount(calculatedDue > 0 ? String(calculatedDue) : '');
+      setSelectedItems(initialSelection);
+      setTotalDue(totalPendingAmt);
     } catch {
-      setDueRecords([]);
-      setTotalDue(0);
-      setAmount('');
+      // Fallback to principal student records if modern ledger fails
+      try {
+        const recRes = await client.get(`/principal/fees/student-records/${studentId}`);
+        const recs = Array.isArray(recRes.data) ? recRes.data : recRes.data?.records || [];
+        const unpaid = recs.filter(r => r.status !== 'PAID');
+        const fallbackSelection = {};
+        let total = 0;
+
+        unpaid.forEach((r, idx) => {
+          const due = typeof r.effective_due === 'number'
+            ? r.effective_due
+            : Math.max(0, Number(r.amount_due || 0) - Number(r.amount_paid || 0));
+
+          if (due > 0) {
+            const key = r.id ? String(r.id) : `rec_${idx}`;
+            fallbackSelection[key] = {
+              bill_id: r.id,
+              bill_no: r.bill_no || `REC-${r.id}`,
+              bill_period: r.academic_year || 'Current',
+              bill_item_id: null,
+              fee_head_id: r.fee_type_id || null,
+              fee_head_name: r.fee_type || 'Tuition Fee',
+              department: 'ACCOUNTS',
+              amount: due,
+              max: due,
+              selected: true,
+            };
+            total += due;
+          }
+        });
+
+        setSelectedItems(fallbackSelection);
+        setTotalDue(total);
+      } catch {
+        setSelectedItems({});
+        setTotalDue(0);
+      }
     } finally {
       setLoadingLedger(false);
     }
   };
 
-  const handleCollect = async () => {
-    const payAmount = Number(amount);
-    if (!selectedStudent || !payAmount || payAmount <= 0) {
-      Alert.alert('Validation Error', 'Please enter a valid payment amount greater than ₹0');
+  // Toggle item selection
+  const toggleItem = (itemId) => {
+    setSelectedItems(prev => ({
+      ...prev,
+      [itemId]: {
+        ...prev[itemId],
+        selected: !prev[itemId].selected,
+      },
+    }));
+  };
+
+  // Update item custom amount
+  const updateItemAmount = (itemId, val) => {
+    const num = parseFloat(val) || 0;
+    setSelectedItems(prev => ({
+      ...prev,
+      [itemId]: {
+        ...prev[itemId],
+        amount: Math.min(Math.max(0, num), prev[itemId].max),
+      },
+    }));
+  };
+
+  // Calculate live total to pay from selected items
+  const totalToPay = useMemo(() => {
+    return Object.values(selectedItems)
+      .filter(it => it.selected)
+      .reduce((sum, it) => sum + (parseFloat(it.amount) || 0), 0);
+  }, [selectedItems]);
+
+  // 4. Collect Payment Action (1:1 with Web ERP)
+  const handleCollectPayment = async () => {
+    if (!selectedStudent) {
+      Alert.alert('Selection Error', 'Please select a student first.');
+      return;
+    }
+    if (totalToPay <= 0) {
+      Alert.alert('Amount Required', 'Please select at least one fee head with amount greater than ₹0.');
       return;
     }
 
     setCollecting(true);
     try {
-      let receiptInfo = null;
+      const allocations = Object.values(selectedItems)
+        .filter(it => it.selected && it.amount > 0)
+        .map(it => ({
+          bill_id: it.bill_id,
+          bill_item_id: it.bill_item_id,
+          fee_head_id: it.fee_head_id,
+          amount: parseFloat(it.amount),
+        }));
 
-      // Primary: Modern POS collection endpoint
+      const depts = new Set(
+        Object.values(selectedItems)
+          .filter(it => it.selected && it.amount > 0)
+          .map(it => it.department || 'ACCOUNTS')
+      );
+      const chosenDept = depts.size === 1 ? Array.from(depts)[0] : 'ACCOUNTS';
+
+      const payload = {
+        student_id: selectedStudent.id,
+        amount: totalToPay,
+        amount_paid: totalToPay,
+        total_amount: totalToPay,
+        payment_mode: mode,
+        transaction_ref: txnRef.trim() || undefined,
+        remarks: remarks.trim() || 'Mobile POS counter collection',
+        allocations,
+        department: chosenDept,
+      };
+
+      let receiptInfo = null;
       try {
-        const res = await client.post('/fees-finance/payments/collect', {
-          student_id: selectedStudent.id,
-          amount_paid: payAmount,
-          amount: payAmount,
-          payment_mode: mode,
-          transaction_ref: txnRef.trim() || undefined,
-          remarks: remarks.trim() || 'Mobile POS counter collection',
-          department: 'ACCOUNTS',
-        });
+        const res = await client.post('/fees-finance/payments/collect', payload);
         receiptInfo = res.data;
       } catch (centralErr) {
-        // Fallback: Principal single fee record collection
-        if (dueRecords.length > 0 && dueRecords[0].id) {
+        // Fallback to legacy single collect endpoint
+        const firstRec = Object.values(selectedItems).find(it => it.selected && it.bill_id);
+        if (firstRec) {
           const res = await client.post('/principal/fees/collect', {
-            record_id: dueRecords[0].id,
-            amount_paid: payAmount,
+            record_id: firstRec.bill_id,
+            amount_paid: totalToPay,
             payment_mode: mode,
             remarks: remarks.trim() || 'Mobile POS collection',
           });
@@ -176,36 +336,82 @@ export default function CollectPaymentScreen({ navigation, route }) {
         receiptNo,
         paymentId,
         studentName: selectedStudent.name,
-        admissionNo: selectedStudent.admission_no,
+        admissionNo: selectedStudent.admission_no || selectedStudent.admission_number || '—',
         className: selectedStudent.class_name || selectedStudent.class?.name || '—',
-        amount: payAmount,
+        amount: totalToPay,
         mode,
         txnRef: txnRef.trim(),
         date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+        allocations,
       });
 
-      // Clear input fields
-      setAmount('');
+      // Real-time live update: reload student ledger and clear inputs
       setTxnRef('');
       setRemarks('');
-      setDueRecords([]);
+      loadStudentLedger(selectedStudent);
+      fetchStudents();
     } catch (err) {
-      Alert.alert('Collection Failed', err.response?.data?.error || err.message || 'Payment processing failed');
+      Alert.alert('Collection Failed', err.response?.data?.error || err.message || 'Payment processing failed.');
     } finally {
       setCollecting(false);
     }
   };
 
+  // 5. Apply Instant Concession / Fee Waiver (Maafi) Action (1:1 with Web ERP)
+  const handleApplyWaiver = async () => {
+    if (!selectedStudent) {
+      Alert.alert('Selection Error', 'Please select a student first.');
+      return;
+    }
+    const val = parseFloat(waiverAmount);
+    if (!val || val <= 0) {
+      Alert.alert('Validation Error', 'Enter a valid discount / fee waiver amount.');
+      return;
+    }
+    if (!waiverReason.trim()) {
+      Alert.alert('Validation Error', 'Please enter a reason or approval note.');
+      return;
+    }
+
+    setApplyingWaiver(true);
+    try {
+      const payload = {
+        student_id: selectedStudent.id,
+        fee_head_id: waiverHeadId ? parseInt(waiverHeadId, 10) : null,
+        concession_type: waiverType,
+        discount_type: waiverDiscountType,
+        discount_value: val,
+        reason: waiverReason.trim(),
+        session: '2026-27',
+      };
+
+      await client.post('/fees-finance/concessions', payload);
+      Alert.alert('Success', 'Scholarship / Fee Waiver (Maafi) applied successfully!');
+      setShowWaiverModal(false);
+      setWaiverAmount('');
+      setWaiverReason('');
+
+      // Real-time refresh
+      loadStudentLedger(selectedStudent);
+      fetchStudents();
+    } catch (err) {
+      Alert.alert('Waiver Failed', err.response?.data?.error || 'Failed to apply fee waiver.');
+    } finally {
+      setApplyingWaiver(false);
+    }
+  };
+
+  // 6. Share & Download PDF Receipt Handlers
   const handleShareReceipt = async () => {
     if (!receiptData) return;
-    const msg = `*OFFICIAL FEE RECEIPT*\n` +
+    const msg = `*OFFICIAL INSTITUTIONAL FEE RECEIPT*\n` +
       `Receipt No: ${receiptData.receiptNo}\n` +
       `Student: ${receiptData.studentName} (Adm: ${receiptData.admissionNo})\n` +
       `Class: ${receiptData.className}\n` +
       `Amount Paid: ₹${Number(receiptData.amount).toLocaleString('en-IN')}\n` +
-      `Mode: ${receiptData.mode}${receiptData.txnRef ? ` (Ref: ${receiptData.txnRef})` : ''}\n` +
+      `Payment Mode: ${receiptData.mode}${receiptData.txnRef ? ` (Ref: ${receiptData.txnRef})` : ''}\n` +
       `Date: ${receiptData.date}\n` +
-      `Status: Payment Confirmed\n\n` +
+      `Status: Payment Confirmed & Reconciled\n\n` +
       `School Accounts Department`;
 
     try {
@@ -217,7 +423,7 @@ export default function CollectPaymentScreen({ navigation, route }) {
 
   const handleDownloadReceiptPdf = () => {
     if (!receiptData?.paymentId) {
-      Alert.alert('Receipt', 'PDF receipt is being generated on the server.');
+      Alert.alert('Receipt Notice', 'PDF receipt is being processed on the central server.');
       return;
     }
     const pdfUrl = `${client.defaults.baseURL}/fees-finance/payments/${receiptData.paymentId}/receipt-pdf`;
@@ -229,41 +435,49 @@ export default function CollectPaymentScreen({ navigation, route }) {
   const resetForm = () => {
     setSelectedStudent(null);
     setReceiptData(null);
-    setDueRecords([]);
+    setSelectedItems({});
     setTotalDue(0);
-    setAmount('');
     setTxnRef('');
     setRemarks('');
-    setQuery('');
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
-      {/* Top App Bar */}
+    <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Top Header */}
       <View style={styles.header}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
           {navigation?.canGoBack() && (
             <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Ionicons name="arrow-back" size={24} color="#fff" />
+              <Ionicons name="arrow-back" size={24} color="#ffffff" />
             </TouchableOpacity>
           )}
-          <View>
-            <Text style={styles.headerTitle}>Collect Fee</Text>
-            <Text style={styles.headerSub}>Point of Sale (POS) Counter</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerTitle}>Collect Fee Payment</Text>
+            <Text style={styles.headerSub}>Point of Sale (POS) Cashier Counter</Text>
           </View>
         </View>
+
+        {selectedStudent && (
+          <TouchableOpacity
+            style={styles.waiverHeaderBtn}
+            onPress={() => setShowWaiverModal(true)}
+          >
+            <Ionicons name="gift-outline" size={15} color="#d97706" />
+            <Text style={styles.waiverHeaderBtnText}>+ Waiver</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
-        {/* Receipt Success Card */}
+      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        {/* Receipt Confirmation Modal / Banner */}
         {receiptData ? (
           <View style={styles.successCard}>
             <View style={styles.successHeader}>
               <View style={styles.successIconBadge}>
-                <Ionicons name="checkmark-circle" size={36} color="#16a34a" />
+                <Ionicons name="checkmark-circle" size={40} color="#16a34a" />
               </View>
               <Text style={styles.successTitle}>Payment Collected Successfully!</Text>
-              <Text style={styles.successSubtitle}>Official institutional receipt generated</Text>
+              <Text style={styles.successSubtitle}>Institutional receipt generated & ledger updated</Text>
             </View>
 
             <View style={styles.receiptBox}>
@@ -288,8 +502,8 @@ export default function CollectPaymentScreen({ navigation, route }) {
                 <Text style={styles.receiptVal}>{receiptData.date}</Text>
               </View>
               <View style={[styles.receiptRow, { borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 8, marginTop: 4 }]}>
-                <Text style={[styles.receiptLabel, { fontSize: 14, fontWeight: '800' }]}>Total Amount Paid</Text>
-                <Text style={[styles.receiptVal, { fontSize: 18, fontWeight: '900', color: C.primary }]}>
+                <Text style={[styles.receiptLabel, { fontSize: 14, fontWeight: '800' }]}>Total Amount Collected</Text>
+                <Text style={[styles.receiptVal, { fontSize: 18, fontWeight: '900', color: '#16a34a' }]}>
                   ₹{Number(receiptData.amount).toLocaleString('en-IN')}
                 </Text>
               </View>
@@ -302,7 +516,7 @@ export default function CollectPaymentScreen({ navigation, route }) {
               </TouchableOpacity>
               <TouchableOpacity style={[styles.receiptActionBtn, { backgroundColor: '#e0f2fe' }]} onPress={handleDownloadReceiptPdf}>
                 <Ionicons name="download-outline" size={18} color="#0284c7" />
-                <Text style={[styles.receiptActionText, { color: "#0284c7" }]}>Download PDF</Text>
+                <Text style={[styles.receiptActionText, { color: '#0284c7' }]}>Download PDF</Text>
               </TouchableOpacity>
             </View>
 
@@ -313,53 +527,111 @@ export default function CollectPaymentScreen({ navigation, route }) {
           </View>
         ) : (
           <>
-            {/* Student Search Box */}
+            {/* Step 1: Student Search & Class Filter */}
             <View style={styles.card}>
               <Text style={styles.cardSectionTitle}>1. Search Student</Text>
+
+              {/* Class Chips Filter (1:1 with Web ERP) */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, marginBottom: 12 }}>
+                <TouchableOpacity
+                  style={[styles.classChip, !selectedClassId && styles.classChipActive]}
+                  onPress={() => setSelectedClassId('')}
+                >
+                  <Text style={[styles.classChipText, !selectedClassId && styles.classChipTextActive]}>All Classes</Text>
+                </TouchableOpacity>
+                {classes.map(c => {
+                  const isSel = String(selectedClassId) === String(c.id);
+                  return (
+                    <TouchableOpacity
+                      key={c.id}
+                      style={[styles.classChip, isSel && styles.classChipActive]}
+                      onPress={() => setSelectedClassId(isSel ? '' : String(c.id))}
+                    >
+                      <Text style={[styles.classChipText, isSel && styles.classChipTextActive]}>
+                        {c.name} {c.section ? `(${c.section})` : ''}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              {/* Search Row & Only Pending Filter */}
               <View style={styles.searchRow}>
+                <Ionicons name="search" size={18} color="#94a3b8" style={{ marginLeft: 10 }} />
                 <TextInput
                   style={styles.searchInput}
-                  placeholder="Enter Student Name or Admission No..."
-                  placeholderTextColor={C.muted}
+                  placeholder="Student name, admission no, phone..."
+                  placeholderTextColor="#94a3b8"
                   value={query}
                   onChangeText={setQuery}
-                  onSubmitEditing={searchStudent}
                   returnKeyType="search"
                 />
-                <TouchableOpacity style={styles.searchBtn} onPress={searchStudent} disabled={searching}>
-                  {searching ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Ionicons name="search" size={18} color="#fff" />
-                  )}
-                </TouchableOpacity>
+                {query ? (
+                  <TouchableOpacity onPress={() => setQuery('')} style={{ padding: 8 }}>
+                    <Ionicons name="close-circle" size={18} color="#94a3b8" />
+                  </TouchableOpacity>
+                ) : null}
               </View>
 
-              {/* Student Dropdown / Search Results */}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
+                <TouchableOpacity
+                  style={styles.togglePendingBtn}
+                  onPress={() => setOnlyPending(!onlyPending)}
+                >
+                  <Ionicons
+                    name={onlyPending ? 'checkbox' : 'square-outline'}
+                    size={18}
+                    color={onlyPending ? colors.primary : '#94a3b8'}
+                  />
+                  <Text style={styles.togglePendingText}>Only Show Students with Pending Dues</Text>
+                </TouchableOpacity>
+
+                {searching && <ActivityIndicator size="small" color={colors.primary} />}
+              </View>
+
+              {/* Student Results List */}
               {students.length > 0 && !selectedStudent && (
                 <View style={styles.resultsBox}>
-                  <Text style={styles.resultsHeader}>Select a matching student:</Text>
-                  {students.map((s) => (
-                    <TouchableOpacity key={s.id} style={styles.studentItem} onPress={() => selectStudent(s)}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.studentName}>{s.name}</Text>
-                        <Text style={styles.studentMeta}>
-                          Adm #{s.admission_no || s.admission_number || '—'} · Class: {s.class_name || s.class?.name || '—'}
-                          {s.father_name ? ` · S/o ${s.father_name}` : ''}
-                        </Text>
-                      </View>
-                      <Ionicons name="chevron-forward" size={18} color={C.muted} />
-                    </TouchableOpacity>
-                  ))}
+                  <Text style={styles.resultsHeader}>Select matching student ({students.length}):</Text>
+                  {students.slice(0, 10).map(s => {
+                    const hasDues = (s.total_due || s.balance_due || s.effective_due || 0) > 0;
+                    return (
+                      <TouchableOpacity
+                        key={s.id}
+                        style={styles.studentItem}
+                        onPress={() => loadStudentLedger(s)}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={styles.studentName}>{s.name}</Text>
+                            {hasDues && (
+                              <View style={styles.miniDueBadge}>
+                                <Text style={styles.miniDueBadgeText}>
+                                  ₹{Number(s.total_due || s.balance_due || s.effective_due).toLocaleString()}
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                          <Text style={styles.studentMeta}>
+                            Adm #{s.admission_no || s.admission_number || '—'} · Class {s.class_name || s.class?.name || '—'}
+                            {s.father_name ? ` · F: ${s.father_name}` : ''}
+                          </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={18} color="#94a3b8" />
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               )}
             </View>
 
-            {/* Selected Student Ledger & Payment Entry */}
+            {/* Step 2: Selected Student Financial Ledger */}
             {loadingLedger && (
-              <View style={[styles.card, { alignItems: 'center', paddingVertical: 24, marginTop: 14 }]}>
-                <ActivityIndicator size="large" color={C.primary} />
-                <Text style={{ marginTop: 10, fontSize: 13, color: C.muted, fontWeight: '600' }}>Fetching student ledger...</Text>
+              <View style={[styles.card, { alignItems: 'center', paddingVertical: 28, marginTop: 14 }]}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={{ marginTop: 10, fontSize: 13, color: '#64748b', fontWeight: '600' }}>
+                  Loading real-time financial ledger...
+                </Text>
               </View>
             )}
 
@@ -371,6 +643,7 @@ export default function CollectPaymentScreen({ navigation, route }) {
                     <Text style={styles.selectedName}>{selectedStudent.name}</Text>
                     <Text style={styles.selectedSub}>
                       Adm #{selectedStudent.admission_no} · Class {selectedStudent.class_name || selectedStudent.class?.name || '—'}
+                      {selectedStudent.father_name ? ` · F: ${selectedStudent.father_name}` : ''}
                     </Text>
                   </View>
                   <TouchableOpacity onPress={() => setSelectedStudent(null)} style={styles.changeBtn}>
@@ -378,7 +651,7 @@ export default function CollectPaymentScreen({ navigation, route }) {
                   </TouchableOpacity>
                 </View>
 
-                {/* Outstanding Dues Summary */}
+                {/* Total Outstanding Summary */}
                 <View style={styles.duesBox}>
                   <View>
                     <Text style={styles.duesLabel}>Current Outstanding Dues</Text>
@@ -391,62 +664,89 @@ export default function CollectPaymentScreen({ navigation, route }) {
                   </View>
                 </View>
 
-                {/* Itemized Fee Breakdown */}
-                {dueRecords.length > 0 && (
-                  <View style={{ marginBottom: 16 }}>
-                    <Text style={styles.cardSectionTitle}>Pending Fee Items</Text>
-                    {dueRecords.map((r, idx) => (
-                      <View key={idx} style={styles.feeItemRow}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.feeItemTitle}>{r.fee_head_name || r.fee_type || 'Tuition Fee'}</Text>
-                          {r.bill_no && <Text style={styles.feeItemSub}>Bill: #{r.bill_no}</Text>}
-                        </View>
-                        <Text style={styles.feeItemAmount}>
-                          ₹{Number(r.amount || r.amount_due || 0).toLocaleString('en-IN')}
-                        </Text>
-                      </View>
-                    ))}
+                {/* Itemized Fee Breakdown with Checkboxes (1:1 with Web ERP) */}
+                <View style={{ marginBottom: 16 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <Text style={styles.cardSectionTitle}>Fee Head Allocations</Text>
+                    <Text style={{ fontSize: 11, color: '#64748b' }}>Select items to collect</Text>
                   </View>
-                )}
 
-                {/* Amount Input */}
-                <Text style={styles.fieldLabel}>Amount to Collect (₹) *</Text>
-                <TextInput
-                  style={styles.amountInput}
-                  placeholder="0.00"
-                  placeholderTextColor={C.muted}
-                  keyboardType="numeric"
-                  value={amount}
-                  onChangeText={setAmount}
-                />
+                  {Object.keys(selectedItems).length > 0 ? (
+                    Object.entries(selectedItems).map(([key, item]) => (
+                      <View key={key} style={[styles.allocationCard, item.selected && styles.allocationCardSelected]}>
+                        <TouchableOpacity
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}
+                          onPress={() => toggleItem(key)}
+                        >
+                          <Ionicons
+                            name={item.selected ? 'checkbox' : 'square-outline'}
+                            size={22}
+                            color={item.selected ? colors.primary : '#94a3b8'}
+                          />
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.allocHeadName, item.selected && { color: colors.primary }]}>
+                              {item.fee_head_name}
+                            </Text>
+                            <Text style={styles.allocPeriodText}>
+                              Bill: #{item.bill_no || 'Bill'} · Period: {item.bill_period || 'Current'}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
 
-                {/* Payment Mode Pills */}
-                <Text style={styles.fieldLabel}>Payment Mode *</Text>
+                        {/* Editable amount input for partial collection */}
+                        <View style={{ width: 100 }}>
+                          <TextInput
+                            style={[styles.allocAmountInput, !item.selected && { opacity: 0.5 }]}
+                            keyboardType="numeric"
+                            value={String(item.amount)}
+                            onChangeText={val => updateItemAmount(key, val)}
+                            editable={item.selected}
+                          />
+                          <Text style={styles.allocMaxText}>Max: ₹{item.max}</Text>
+                        </View>
+                      </View>
+                    ))
+                  ) : (
+                    <View style={styles.noDuesBox}>
+                      <Ionicons name="checkmark-circle-outline" size={32} color="#16a34a" />
+                      <Text style={styles.noDuesText}>No pending fee items on record!</Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Total To Pay Box */}
+                <View style={styles.totalPayBanner}>
+                  <Text style={styles.totalPayLabel}>Total Payable Amount:</Text>
+                  <Text style={styles.totalPayValue}>₹{totalToPay.toLocaleString('en-IN')}</Text>
+                </View>
+
+                {/* Step 3: Payment Mode Pills */}
+                <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Payment Mode *</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
                   <View style={{ flexDirection: 'row', gap: 8 }}>
-                    {PAYMENT_MODES.map((m) => (
+                    {PAYMENT_MODES.map(m => (
                       <TouchableOpacity
                         key={m.id}
                         style={[styles.modeBtn, mode === m.id && styles.modeBtnActive]}
                         onPress={() => setMode(m.id)}
                       >
-                        <Ionicons name={m.icon} size={16} color={mode === m.id ? '#fff' : C.muted} />
+                        <Ionicons name={m.icon} size={16} color={mode === m.id ? '#fff' : '#64748b'} />
                         <Text style={[styles.modeBtnText, mode === m.id && styles.modeBtnTextActive]}>{m.label}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
                 </ScrollView>
 
-                {/* Transaction / Reference ID (for UPI, Cheque, Card) */}
+                {/* Transaction / UTR / Cheque Ref ID */}
                 {mode !== 'CASH' && (
                   <>
                     <Text style={styles.fieldLabel}>
-                      {mode === 'CHEQUE' ? 'Cheque No. & Bank Name' : 'Transaction / UTR / Reference ID'}
+                      {mode === 'CHEQUE' ? 'Cheque No. & Bank Name *' : 'Transaction Ref / UTR / Auth Code *'}
                     </Text>
                     <TextInput
                       style={styles.input}
-                      placeholder={mode === 'CHEQUE' ? 'e.g., CHQ-982144 (HDFC Bank)' : 'e.g., UPI Ref / Card Txn ID'}
-                      placeholderTextColor={C.muted}
+                      placeholder={mode === 'CHEQUE' ? 'e.g., CHQ-982144 (HDFC Bank)' : 'e.g., UPI Ref 382910482019'}
+                      placeholderTextColor="#94a3b8"
                       value={txnRef}
                       onChangeText={setTxnRef}
                     />
@@ -454,28 +754,29 @@ export default function CollectPaymentScreen({ navigation, route }) {
                 )}
 
                 {/* Remarks */}
-                <Text style={styles.fieldLabel}>Notes / Remarks (Optional)</Text>
+                <Text style={styles.fieldLabel}>Counter Remarks / Notes (Optional)</Text>
                 <TextInput
-                  style={[styles.input, { height: 60, textAlignVertical: 'top', paddingTop: 10 }]}
-                  placeholder="e.g., First installment paid by father"
-                  placeholderTextColor={C.muted}
-                  multiline
+                  style={styles.input}
+                  placeholder="e.g., Paid at accounts window by parent"
+                  placeholderTextColor="#94a3b8"
                   value={remarks}
                   onChangeText={setRemarks}
                 />
 
-                {/* Confirm Button */}
+                {/* Collect Button */}
                 <TouchableOpacity
-                  style={[styles.submitBtn, collecting && { opacity: 0.7 }]}
-                  onPress={handleCollect}
-                  disabled={collecting}
+                  style={[styles.collectBtn, (collecting || totalToPay <= 0) && { opacity: 0.6 }]}
+                  disabled={collecting || totalToPay <= 0}
+                  onPress={handleCollectPayment}
                 >
                   {collecting ? (
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
                     <>
-                      <Ionicons name="receipt-outline" size={20} color="#fff" />
-                      <Text style={styles.submitBtnText}>Confirm Fee Collection</Text>
+                      <Ionicons name="card" size={20} color="#fff" />
+                      <Text style={styles.collectBtnText}>
+                        Collect ₹{totalToPay.toLocaleString('en-IN')} & Print Receipt
+                      </Text>
                     </>
                   )}
                 </TouchableOpacity>
@@ -484,197 +785,304 @@ export default function CollectPaymentScreen({ navigation, route }) {
           </>
         )}
       </ScrollView>
+
+      {/* ═══════════════════════════════════════════════ */}
+      {/* MODAL: SCHOLARSHIP / FEE WAIVER (MAAFI)         */}
+      {/* ═══════════════════════════════════════════════ */}
+      <Modal visible={showWaiverModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>🎁 Scholarship / Fee Waiver (Maafi)</Text>
+                <Text style={styles.modalSubtitle}>Apply instant discount or concession on student fee</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowWaiverModal(false)}>
+                <Ionicons name="close" size={24} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Fee Head Selector */}
+              <Text style={styles.fieldLabel}>Target Fee Head</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  <TouchableOpacity
+                    style={[styles.modalChip, !waiverHeadId && styles.modalChipActive]}
+                    onPress={() => setWaiverHeadId('')}
+                  >
+                    <Text style={[styles.modalChipText, !waiverHeadId && styles.modalChipTextActive]}>All Fee Heads</Text>
+                  </TouchableOpacity>
+                  {feeHeads.map(h => (
+                    <TouchableOpacity
+                      key={h.id}
+                      style={[styles.modalChip, waiverHeadId === String(h.id) && styles.modalChipActive]}
+                      onPress={() => setWaiverHeadId(String(h.id))}
+                    >
+                      <Text style={[styles.modalChipText, waiverHeadId === String(h.id) && styles.modalChipTextActive]}>
+                        {h.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+
+              {/* Concession Type */}
+              <Text style={styles.fieldLabel}>Concession Type</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                {['WAIVER', 'SCHOLARSHIP'].map(t => (
+                  <TouchableOpacity
+                    key={t}
+                    style={[styles.modalChip, { flex: 1, alignItems: 'center' }, waiverType === t && styles.modalChipActive]}
+                    onPress={() => setWaiverType(t)}
+                  >
+                    <Text style={[styles.modalChipText, waiverType === t && styles.modalChipTextActive]}>
+                      {t === 'WAIVER' ? 'Fee Waiver (Maafi)' : 'Merit Scholarship'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Discount Value & Type */}
+              <Text style={styles.fieldLabel}>Discount Amount (₹) *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g., 1000"
+                placeholderTextColor="#94a3b8"
+                keyboardType="numeric"
+                value={waiverAmount}
+                onChangeText={setWaiverAmount}
+              />
+
+              {/* Reason */}
+              <Text style={styles.fieldLabel}>Reason / Principal Approval Note *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g., Principal approved sibling discount or economic hardship"
+                placeholderTextColor="#94a3b8"
+                value={waiverReason}
+                onChangeText={setWaiverReason}
+              />
+
+              <TouchableOpacity
+                style={[styles.submitWaiverBtn, applyingWaiver && { opacity: 0.6 }]}
+                disabled={applyingWaiver}
+                onPress={handleApplyWaiver}
+              >
+                {applyingWaiver ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.submitWaiverBtnText}>Apply Waiver & Update Ledger</Text>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: C.bg },
   header: {
-    backgroundColor: C.primary,
+    backgroundColor: colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: C.primaryDark,
   },
-  headerTitle: { color: '#ffffff', fontSize: 20, fontWeight: '800' },
-  headerSub: { color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 2 },
+  headerTitle: { color: '#ffffff', fontSize: 18, fontWeight: '800' },
+  headerSub: { color: 'rgba(255,255,255,0.85)', fontSize: 11, marginTop: 2 },
+  waiverHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  waiverHeaderBtnText: { color: '#b45309', fontSize: 11, fontWeight: '800' },
+  scrollContent: { padding: 16, paddingBottom: 40 },
   card: {
-    backgroundColor: C.surface,
+    backgroundColor: '#ffffff',
     borderRadius: 14,
     padding: 16,
     borderWidth: 1,
-    borderColor: C.border,
+    borderColor: '#e2e8f0',
   },
-  cardSectionTitle: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: C.text,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 10,
+  cardSectionTitle: { fontSize: 14, fontWeight: '800', color: '#0f172a', marginBottom: 10 },
+  classChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: '#f1f5f9',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
-  searchRow: { flexDirection: 'row', gap: 8 },
-  searchInput: {
-    flex: 1,
+  classChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  classChipText: { fontSize: 11.5, fontWeight: '700', color: '#64748b' },
+  classChipTextActive: { color: '#ffffff' },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#f8fafc',
     borderWidth: 1,
-    borderColor: C.border,
+    borderColor: '#e2e8f0',
     borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: C.text,
   },
-  searchBtn: {
-    backgroundColor: C.primary,
-    borderRadius: 10,
-    width: 46,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  resultsBox: {
-    marginTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
-    paddingTop: 8,
-  },
-  resultsHeader: { fontSize: 12, fontWeight: '700', color: C.muted, marginBottom: 6 },
+  searchInput: { flex: 1, paddingVertical: 10, paddingHorizontal: 10, fontSize: 13, color: '#0f172a' },
+  togglePendingBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  togglePendingText: { fontSize: 11.5, fontWeight: '600', color: '#64748b' },
+  resultsBox: { marginTop: 12, borderTopWidth: 1, borderTopColor: '#f1f5f9', paddingTop: 10 },
+  resultsHeader: { fontSize: 11, fontWeight: '800', color: '#94a3b8', marginBottom: 8, textTransform: 'uppercase' },
   studentItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: '#f8fafc',
   },
-  studentName: { fontSize: 14, fontWeight: '700', color: C.text },
-  studentMeta: { fontSize: 12, color: C.muted, marginTop: 2 },
+  studentName: { fontSize: 14, fontWeight: '700', color: '#0f172a' },
+  studentMeta: { fontSize: 11.5, color: '#64748b', marginTop: 2 },
+  miniDueBadge: {
+    backgroundColor: '#fee2e2',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  miniDueBadgeText: { fontSize: 10, fontWeight: '800', color: '#dc2626' },
   studentSelectedHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#f1f5f9',
-    marginBottom: 14,
   },
-  selectedName: { fontSize: 17, fontWeight: '800', color: C.text },
-  selectedSub: { fontSize: 12, color: C.muted, marginTop: 2 },
-  changeBtn: { paddingVertical: 4, paddingHorizontal: 8, backgroundColor: '#fee2e2', borderRadius: 6 },
-  changeBtnText: { fontSize: 12, fontWeight: '700', color: C.error },
+  selectedName: { fontSize: 16, fontWeight: '800', color: '#0f172a' },
+  selectedSub: { fontSize: 12, color: '#64748b', marginTop: 2 },
+  changeBtn: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: '#eff6ff' },
+  changeBtnText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
   duesBox: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
     backgroundColor: '#f8fafc',
     padding: 12,
     borderRadius: 10,
-    marginBottom: 14,
+    marginVertical: 12,
     borderWidth: 1,
-    borderColor: C.border,
+    borderColor: '#e2e8f0',
   },
-  duesLabel: { fontSize: 11, fontWeight: '700', color: C.muted, textTransform: 'uppercase' },
-  duesAmount: { fontSize: 20, fontWeight: '900', color: C.text, marginTop: 2 },
-  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-  badgeDue: { backgroundColor: '#fef3c7' },
+  duesLabel: { fontSize: 11, color: '#64748b', fontWeight: '600' },
+  duesAmount: { fontSize: 18, fontWeight: '900', color: '#dc2626', marginTop: 2 },
+  badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  badgeDue: { backgroundColor: '#fee2e2' },
   badgeClear: { backgroundColor: '#dcfce7' },
-  badgeTextDue: { fontSize: 11, fontWeight: '800', color: C.warning },
-  badgeTextClear: { fontSize: 11, fontWeight: '800', color: C.green },
-  feeItemRow: {
+  badgeTextDue: { color: '#dc2626', fontSize: 11, fontWeight: '800' },
+  badgeTextClear: { color: '#16a34a', fontSize: 11, fontWeight: '800' },
+  allocationCard: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f8fafc',
-  },
-  feeItemTitle: { fontSize: 13, fontWeight: '600', color: C.text },
-  feeItemSub: { fontSize: 11, color: C.muted },
-  feeItemAmount: { fontSize: 13, fontWeight: '700', color: C.text },
-  fieldLabel: { fontSize: 12, fontWeight: '700', color: C.muted, marginBottom: 6, textTransform: 'uppercase' },
-  amountInput: {
-    backgroundColor: '#f8fafc',
-    borderWidth: 1.5,
-    borderColor: C.primary,
+    padding: 10,
     borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 20,
-    fontWeight: '900',
-    color: C.text,
-    marginBottom: 14,
-  },
-  input: {
-    backgroundColor: '#f8fafc',
     borderWidth: 1,
-    borderColor: C.border,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: C.text,
-    marginBottom: 14,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
+    marginBottom: 8,
   },
+  allocationCardSelected: { borderColor: colors.primary, backgroundColor: '#f0f7ff' },
+  allocHeadName: { fontSize: 13, fontWeight: '700', color: '#0f172a' },
+  allocPeriodText: { fontSize: 10.5, color: '#94a3b8', marginTop: 2 },
+  allocAmountInput: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'right',
+    color: '#0f172a',
+  },
+  allocMaxText: { fontSize: 9, color: '#94a3b8', textAlign: 'right', marginTop: 2 },
+  noDuesBox: { alignItems: 'center', paddingVertical: 16 },
+  noDuesText: { fontSize: 13, color: '#16a34a', fontWeight: '700', marginTop: 6 },
+  totalPayBanner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#eff6ff',
+    padding: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  totalPayLabel: { fontSize: 13, fontWeight: '800', color: '#1d4ed8' },
+  totalPayValue: { fontSize: 20, fontWeight: '900', color: '#1d4ed8' },
+  fieldLabel: { fontSize: 11, fontWeight: '800', color: '#64748b', marginBottom: 6, textTransform: 'uppercase' },
   modeBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#f1f5f9',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
+    backgroundColor: '#f1f5f9',
     borderWidth: 1,
-    borderColor: 'transparent',
+    borderColor: '#e2e8f0',
   },
-  modeBtnActive: { backgroundColor: C.primary, borderColor: C.primaryDark },
-  modeBtnText: { fontSize: 12, fontWeight: '700', color: C.text },
+  modeBtnActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  modeBtnText: { fontSize: 12, fontWeight: '700', color: '#64748b' },
   modeBtnTextActive: { color: '#ffffff' },
-  submitBtn: {
+  input: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    color: '#0f172a',
+    marginBottom: 12,
+  },
+  collectBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: C.primary,
+    backgroundColor: '#16a34a',
+    borderRadius: 10,
     paddingVertical: 14,
-    borderRadius: 12,
-    marginTop: 6,
+    marginTop: 10,
   },
-  submitBtnText: { color: '#ffffff', fontSize: 15, fontWeight: '800' },
+  collectBtnText: { color: '#ffffff', fontSize: 15, fontWeight: '800' },
   successCard: {
-    backgroundColor: C.surface,
+    backgroundColor: '#ffffff',
     borderRadius: 16,
     padding: 20,
     borderWidth: 1,
     borderColor: '#bbf7d0',
-    alignItems: 'center',
   },
   successHeader: { alignItems: 'center', marginBottom: 16 },
-  successIconBadge: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#dcfce7',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  successTitle: { fontSize: 18, fontWeight: '900', color: C.text, textAlign: 'center' },
-  successSubtitle: { fontSize: 12, color: C.muted, marginTop: 4 },
+  successIconBadge: { marginBottom: 6 },
+  successTitle: { fontSize: 17, fontWeight: '800', color: '#15803d', textAlign: 'center' },
+  successSubtitle: { fontSize: 12, color: '#64748b', marginTop: 2, textAlign: 'center' },
   receiptBox: {
-    width: '100%',
     backgroundColor: '#f8fafc',
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
-    borderColor: C.border,
+    borderColor: '#e2e8f0',
   },
-  receiptRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 6,
-  },
-  receiptLabel: { fontSize: 12, color: C.muted, fontWeight: '600' },
-  receiptVal: { fontSize: 13, color: C.text, fontWeight: '700' },
+  receiptRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
+  receiptLabel: { fontSize: 12, color: '#64748b', fontWeight: '600' },
+  receiptVal: { fontSize: 12, color: '#0f172a', fontWeight: '700' },
   receiptActionBtn: {
     flex: 1,
     flexDirection: 'row',
@@ -682,20 +1090,54 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: 8,
   },
-  receiptActionText: { fontSize: 13, fontWeight: '700' },
+  receiptActionText: { fontSize: 12, fontWeight: '700' },
   newCollectBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    backgroundColor: C.primary,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
+    gap: 6,
+    backgroundColor: colors.primary,
     borderRadius: 10,
-    width: '100%',
-    marginTop: 14,
+    paddingVertical: 12,
+    marginTop: 12,
   },
-  newCollectText: { color: '#ffffff', fontSize: 14, fontWeight: '800' },
+  newCollectText: { color: '#ffffff', fontSize: 13, fontWeight: '700' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalCard: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    maxHeight: '85%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  modalTitle: { fontSize: 17, fontWeight: '800', color: '#0f172a' },
+  modalSubtitle: { fontSize: 12, color: '#94a3b8', marginTop: 2 },
+  modalChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#f1f5f9',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  modalChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  modalChipText: { fontSize: 12, fontWeight: '700', color: '#64748b' },
+  modalChipTextActive: { color: '#ffffff' },
+  submitWaiverBtn: {
+    backgroundColor: '#d97706',
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 20,
+  },
+  submitWaiverBtnText: { color: '#ffffff', fontSize: 14, fontWeight: '800' },
 });

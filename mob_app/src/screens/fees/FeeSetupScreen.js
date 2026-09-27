@@ -18,7 +18,7 @@ const fmt = v => {
 };
 
 export default function FeeSetupScreen({ navigation }) {
-  const [activeTab, setActiveTab] = useState('structures'); // 'structures' | 'heads' | 'plans'
+  const [activeTab, setActiveTab] = useState('structures'); // 'structures' | 'heads' | 'plans' | 'concessions'
   const [session, setSession] = useState('2026-27');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -28,6 +28,7 @@ export default function FeeSetupScreen({ navigation }) {
   const [heads, setHeads] = useState([]);
   const [classes, setClasses] = useState([]);
   const [plans, setPlans] = useState([]);
+  const [concessions, setConcessions] = useState([]);
 
   // Filter
   const [selectedClassId, setSelectedClassId] = useState('ALL');
@@ -52,28 +53,37 @@ export default function FeeSetupScreen({ navigation }) {
     frequency: 'MONTHLY',
     due_date_day: '10',
     publish_status: 'PUBLISHED',
-    items: [], // [{ fee_head_id, amount }]
+    items: [],
   });
+
+  // Clone Structure Modal State
+  const [cloneModalVisible, setCloneModalVisible] = useState(false);
+  const [cloneSourceStruct, setCloneSourceStruct] = useState(null);
+  const [cloneTargetClassIds, setCloneTargetClassIds] = useState([]);
+  const [cloning, setCloning] = useState(false);
 
   const loadAll = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     try {
-      const [strRes, headRes, clsRes, planRes] = await Promise.all([
+      const [strRes, headRes, clsRes, planRes, concRes] = await Promise.all([
         client.get('/fees-finance/structures', { params: { session } }).catch(() => ({ data: [] })),
         client.get('/fees-finance/heads').catch(() => ({ data: [] })),
         client.get('/principal/classes').catch(() => ({ data: [] })),
         client.get('/fees-finance/payment-plans', { params: { session } }).catch(() => ({ data: [] })),
+        client.get('/fees-finance/concessions', { params: { session } }).catch(() => ({ data: [] })),
       ]);
 
       const sList = Array.isArray(strRes.data) ? strRes.data : strRes.data?.structures || [];
       const hList = Array.isArray(headRes.data) ? headRes.data : headRes.data?.heads || [];
       const cList = Array.isArray(clsRes.data) ? clsRes.data : clsRes.data?.classes || [];
       const pList = Array.isArray(planRes.data) ? planRes.data : planRes.data?.plans || [];
+      const concList = Array.isArray(concRes.data) ? concRes.data : concRes.data?.concessions || [];
 
       setStructures(sList);
       setHeads(hList);
       setClasses(cList);
       setPlans(pList);
+      setConcessions(concList);
     } catch (err) {
       console.warn('Failed to load fee setup data:', err?.message);
     } finally {
@@ -117,7 +127,6 @@ export default function FeeSetupScreen({ navigation }) {
 
   // Open Add Structure Modal
   const openAddStructureModal = () => {
-    // Pre-populate items with available heads
     const defaultItems = heads.slice(0, 4).map(h => ({
       fee_head_id: h.id,
       head_name: h.name,
@@ -188,9 +197,87 @@ export default function FeeSetupScreen({ navigation }) {
     try {
       await client.patch(`/fees-finance/structures/${s.id}/publish`, { publish_status: newStatus });
       setStructures(prev => prev.map(item => item.id === s.id ? { ...item, publish_status: newStatus } : item));
-    } catch (e) {
+    } catch {
       Alert.alert('Error', 'Failed to update structure status.');
     }
+  };
+
+  // Open Clone Modal (1:1 with Web ERP)
+  const openCloneModal = (struct) => {
+    setCloneSourceStruct(struct);
+    setCloneTargetClassIds([]);
+    setCloneModalVisible(true);
+  };
+
+  // Execute Clone Structure
+  const handleCloneStructure = async () => {
+    if (cloneTargetClassIds.length === 0) {
+      Alert.alert('Selection Error', 'Select at least one destination class.');
+      return;
+    }
+
+    setCloning(true);
+    try {
+      await client.post(`/fees-finance/structures/${cloneSourceStruct.id}/clone`, {
+        target_class_ids: cloneTargetClassIds.map(Number),
+        publish_now: true,
+      });
+      Alert.alert('Success', `Cloned to ${cloneTargetClassIds.length} classes successfully!`);
+      setCloneModalVisible(false);
+      loadAll(true);
+    } catch (err) {
+      Alert.alert('Cloning Failed', err.response?.data?.error || 'Could not clone structure.');
+    } finally {
+      setCloning(false);
+    }
+  };
+
+  // Delete Structure
+  const handleDeleteStructure = (structId) => {
+    Alert.alert(
+      'Delete Structure',
+      'Are you sure you want to delete this fee structure?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await client.delete(`/fees-finance/structures/${structId}`);
+              Alert.alert('Deleted', 'Fee structure deleted successfully.');
+              loadAll(true);
+            } catch (err) {
+              Alert.alert('Error', err.response?.data?.error || 'Failed to delete fee structure.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Delete Concession
+  const handleDeleteConcession = (concId) => {
+    Alert.alert(
+      'Remove Concession',
+      'Revoke this scholarship / fee waiver record?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Revoke',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await client.delete(`/fees-finance/concessions/${concId}`);
+              Alert.alert('Revoked', 'Concession record removed.');
+              loadAll(true);
+            } catch (err) {
+              Alert.alert('Error', err.response?.data?.error || 'Failed to remove concession.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   // Filtered structures
@@ -216,7 +303,7 @@ export default function FeeSetupScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Top Bar */}
+      {/* Top Header */}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => navigation?.goBack?.()}
@@ -233,23 +320,17 @@ export default function FeeSetupScreen({ navigation }) {
           style={styles.headerAddBtn}
           onPress={activeTab === 'heads' ? () => setHeadModalVisible(true) : openAddStructureModal}
         >
-          <Ionicons name="add" size={20} color="#ffffff" />
-          <Text style={styles.headerAddText}>{activeTab === 'heads' ? 'Head' : 'Plan'}</Text>
+          <Ionicons name="add" size={18} color="#ffffff" />
+          <Text style={styles.headerAddText}>{activeTab === 'heads' ? 'Head' : '+ Plan'}</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Tabs */}
+      {/* Tabs Bar (4 Tabs: Structures, Heads, Plans, Concessions) */}
       <View style={styles.tabsRow}>
         <TouchableOpacity
           style={[styles.tabBtn, activeTab === 'structures' && styles.tabBtnActive]}
           onPress={() => setActiveTab('structures')}
         >
-          <Ionicons
-            name="layers-outline"
-            size={16}
-            color={activeTab === 'structures' ? '#ffffff' : '#64748b'}
-            style={{ marginRight: 6 }}
-          />
           <Text style={[styles.tabBtnText, activeTab === 'structures' && styles.tabBtnTextActive]}>
             Structures ({structures.length})
           </Text>
@@ -259,14 +340,8 @@ export default function FeeSetupScreen({ navigation }) {
           style={[styles.tabBtn, activeTab === 'heads' && styles.tabBtnActive]}
           onPress={() => setActiveTab('heads')}
         >
-          <Ionicons
-            name="pricetags-outline"
-            size={16}
-            color={activeTab === 'heads' ? '#ffffff' : '#64748b'}
-            style={{ marginRight: 6 }}
-          />
           <Text style={[styles.tabBtnText, activeTab === 'heads' && styles.tabBtnTextActive]}>
-            Fee Heads ({heads.length})
+            Heads ({heads.length})
           </Text>
         </TouchableOpacity>
 
@@ -274,14 +349,17 @@ export default function FeeSetupScreen({ navigation }) {
           style={[styles.tabBtn, activeTab === 'plans' && styles.tabBtnActive]}
           onPress={() => setActiveTab('plans')}
         >
-          <Ionicons
-            name="calendar-outline"
-            size={16}
-            color={activeTab === 'plans' ? '#ffffff' : '#64748b'}
-            style={{ marginRight: 6 }}
-          />
           <Text style={[styles.tabBtnText, activeTab === 'plans' && styles.tabBtnTextActive]}>
             Plans ({plans.length})
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabBtn, activeTab === 'concessions' && styles.tabBtnActive]}
+          onPress={() => setActiveTab('concessions')}
+        >
+          <Text style={[styles.tabBtnText, activeTab === 'concessions' && styles.tabBtnTextActive]}>
+            Waivers ({concessions.length})
           </Text>
         </TouchableOpacity>
       </View>
@@ -356,7 +434,7 @@ export default function FeeSetupScreen({ navigation }) {
                             </TouchableOpacity>
                           </View>
                           <Text style={styles.structSub}>
-                            Class: <Text style={{ fontWeight: '700', color: '#1e293b' }}>{clsName}</Text> · Frequency: {s.frequency || 'MONTHLY'} · Due Date: Day {s.due_date_day || 10}
+                            Class: <Text style={{ fontWeight: '700', color: '#1e293b' }}>{clsName}</Text> · {s.frequency || 'MONTHLY'} · Due: Day {s.due_date_day || 10}
                           </Text>
                         </View>
                         <View style={styles.structTotalBox}>
@@ -383,6 +461,19 @@ export default function FeeSetupScreen({ navigation }) {
                           </Text>
                         )}
                       </View>
+
+                      {/* Structure Action Buttons (Clone & Delete) */}
+                      <View style={styles.structActionsRow}>
+                        <TouchableOpacity style={styles.cloneBtn} onPress={() => openCloneModal(s)}>
+                          <Ionicons name="copy-outline" size={14} color="#0b57d0" />
+                          <Text style={styles.cloneBtnText}>Clone to Classes</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={styles.deleteStructBtn} onPress={() => handleDeleteStructure(s.id)}>
+                          <Ionicons name="trash-outline" size={14} color="#dc2626" />
+                          <Text style={styles.deleteStructBtnText}>Delete</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   );
                 })
@@ -403,7 +494,6 @@ export default function FeeSetupScreen({ navigation }) {
           {/* TAB 2: FEE HEADS */}
           {activeTab === 'heads' && (
             <>
-              {/* Search Bar */}
               <View style={styles.searchBar}>
                 <Ionicons name="search-outline" size={18} color="#94a3b8" />
                 <TextInput
@@ -451,10 +541,6 @@ export default function FeeSetupScreen({ navigation }) {
                   <Ionicons name="pricetag-outline" size={42} color="#94a3b8" />
                   <Text style={styles.emptyTitle}>No Fee Heads Found</Text>
                   <Text style={styles.emptySub}>Define institutional heads like Tuition, Lab, Library, or Annual charges.</Text>
-                  <TouchableOpacity style={styles.emptyActionBtn} onPress={() => setHeadModalVisible(true)}>
-                    <Ionicons name="add-circle-outline" size={18} color="#ffffff" style={{ marginRight: 6 }} />
-                    <Text style={styles.emptyActionText}>Add Fee Head</Text>
-                  </TouchableOpacity>
                 </View>
               )}
             </>
@@ -487,7 +573,44 @@ export default function FeeSetupScreen({ navigation }) {
                 <View style={styles.emptyCard}>
                   <Ionicons name="calendar-outline" size={42} color="#94a3b8" />
                   <Text style={styles.emptyTitle}>Standard Monthly Billing</Text>
-                  <Text style={styles.emptySub}>Monthly standard invoicing is active by default. Custom advance discount plans can be configured.</Text>
+                  <Text style={styles.emptySub}>Monthly standard invoicing is active by default.</Text>
+                </View>
+              )}
+            </>
+          )}
+
+          {/* TAB 4: CONCESSIONS & WAIVERS (PARITY WITH WEB ERP) */}
+          {activeTab === 'concessions' && (
+            <>
+              {concessions.length > 0 ? (
+                concessions.map(conc => (
+                  <View key={conc.id} style={styles.structureCard}>
+                    <View style={styles.structHeaderRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.structTitle}>{conc.student_name || `Student #${conc.student_id}`}</Text>
+                        <Text style={styles.structSub}>
+                          Type: <Text style={{ fontWeight: '700', color: '#b45309' }}>{conc.concession_type}</Text> · {conc.reason || 'Concession approved'}
+                        </Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={[styles.structTotalAmt, { color: '#15803d' }]}>
+                          -₹{Number(conc.discount_value || 0).toLocaleString()}
+                        </Text>
+                        <TouchableOpacity
+                          style={{ marginTop: 6, padding: 4 }}
+                          onPress={() => handleDeleteConcession(conc.id)}
+                        >
+                          <Ionicons name="trash-outline" size={16} color="#dc2626" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+                ))
+              ) : (
+                <View style={styles.emptyCard}>
+                  <Ionicons name="gift-outline" size={42} color="#94a3b8" />
+                  <Text style={styles.emptyTitle}>No Active Scholarships / Waivers</Text>
+                  <Text style={styles.emptySub}>Use Collect Payment POS screen to grant instant fee waivers (Maafi) to students.</Text>
                 </View>
               )}
             </>
@@ -495,7 +618,9 @@ export default function FeeSetupScreen({ navigation }) {
         </ScrollView>
       )}
 
-      {/* CREATE FEE HEAD MODAL */}
+      {/* ═══════════════════════════════════════════════ */}
+      {/* MODAL 1: CREATE FEE HEAD                        */}
+      {/* ═══════════════════════════════════════════════ */}
       <Modal visible={headModalVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -572,7 +697,9 @@ export default function FeeSetupScreen({ navigation }) {
         </View>
       </Modal>
 
-      {/* CREATE STRUCTURE MODAL */}
+      {/* ═══════════════════════════════════════════════ */}
+      {/* MODAL 2: CREATE STRUCTURE                       */}
+      {/* ═══════════════════════════════════════════════ */}
       <Modal visible={structModalVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { maxHeight: '85%' }]}>
@@ -683,15 +810,75 @@ export default function FeeSetupScreen({ navigation }) {
           </View>
         </View>
       </Modal>
+
+      {/* ═══════════════════════════════════════════════ */}
+      {/* MODAL 3: CLONE STRUCTURE (1:1 with Web ERP)     */}
+      {/* ═══════════════════════════════════════════════ */}
+      <Modal visible={cloneModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '80%' }]}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Clone Structure</Text>
+                <Text style={styles.modalSub}>{cloneSourceStruct?.name}</Text>
+              </View>
+              <TouchableOpacity onPress={() => setCloneModalVisible(false)}>
+                <Ionicons name="close" size={22} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.fieldLabel}>Select Destination Classes *</Text>
+              <View style={{ gap: 6, marginBottom: 16 }}>
+                {classes.map(c => {
+                  const isChecked = cloneTargetClassIds.includes(String(c.id));
+                  return (
+                    <TouchableOpacity
+                      key={c.id}
+                      style={[styles.cloneClassRow, isChecked && styles.cloneClassRowActive]}
+                      onPress={() => {
+                        const sid = String(c.id);
+                        if (isChecked) {
+                          setCloneTargetClassIds(prev => prev.filter(x => x !== sid));
+                        } else {
+                          setCloneTargetClassIds(prev => [...prev, sid]);
+                        }
+                      }}
+                    >
+                      <Ionicons
+                        name={isChecked ? 'checkbox' : 'square-outline'}
+                        size={20}
+                        color={isChecked ? colors.primary : '#94a3b8'}
+                      />
+                      <Text style={[styles.cloneClassText, isChecked && { color: colors.primary, fontWeight: '700' }]}>
+                        {c.name} {c.section ? `(${c.section})` : ''}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <TouchableOpacity
+                style={[styles.saveSubmitBtn, cloning && { opacity: 0.6 }]}
+                disabled={cloning}
+                onPress={handleCloneStructure}
+              >
+                {cloning ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <Text style={styles.saveSubmitBtnText}>Clone to Selected Classes</Text>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-  },
+  container: { flex: 1, backgroundColor: '#f8fafc' },
   header: {
     backgroundColor: colors.primary,
     flexDirection: 'row',
@@ -699,38 +886,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
-  backBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-  },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#ffffff',
-  },
-  headerSubtitle: {
-    fontSize: 11.5,
-    color: 'rgba(255,255,255,0.8)',
-    marginTop: 1,
-  },
+  backBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginRight: 8 },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: '#ffffff' },
+  headerSubtitle: { fontSize: 11.5, color: 'rgba(255,255,255,0.8)', marginTop: 1 },
   headerAddBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 12,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 18,
     gap: 4,
   },
-  headerAddText: {
-    color: '#ffffff',
-    fontSize: 12.5,
-    fontWeight: '700',
-  },
+  headerAddText: { color: '#ffffff', fontSize: 12.5, fontWeight: '700' },
   tabsRow: {
     flexDirection: 'row',
     backgroundColor: '#ffffff',
@@ -738,410 +906,177 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#e2e8f0',
-    gap: 8,
+    gap: 6,
   },
   tabBtn: {
     flex: 1,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 8,
-    borderRadius: 10,
+    borderRadius: 8,
     backgroundColor: '#f1f5f9',
   },
-  tabBtnActive: {
-    backgroundColor: colors.primary,
-  },
-  tabBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-  tabBtnTextActive: {
-    color: '#ffffff',
-    fontWeight: '700',
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  centerBox: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 13,
-    color: '#64748b',
-    fontWeight: '600',
-  },
-  classChipsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 14,
-  },
+  tabBtnActive: { backgroundColor: colors.primary },
+  tabBtnText: { fontSize: 11, fontWeight: '700', color: '#64748b' },
+  tabBtnTextActive: { color: '#ffffff' },
+  centerBox: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 40 },
+  loadingText: { marginTop: 12, fontSize: 13, color: '#64748b' },
+  scrollContent: { padding: 14, paddingBottom: 60 },
+  classChipsRow: { gap: 8, paddingBottom: 10 },
   classChip: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 16,
+    borderRadius: 14,
     backgroundColor: '#ffffff',
     borderWidth: 1,
     borderColor: '#e2e8f0',
   },
-  classChipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  classChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-  classChipTextActive: {
-    color: '#ffffff',
-    fontWeight: '700',
-  },
+  classChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  classChipText: { fontSize: 12, fontWeight: '600', color: '#64748b' },
+  classChipTextActive: { color: '#ffffff', fontWeight: '700' },
   structureCard: {
     backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 14,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    shadowColor: '#000',
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
   },
-  structHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 12,
+  structHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  titleBadgeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  structTitle: { fontSize: 14.5, fontWeight: '700', color: '#0f172a' },
+  statusBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10 },
+  statusBadgeText: { fontSize: 10, fontWeight: '800' },
+  structSub: { fontSize: 11.5, color: '#64748b', marginTop: 3 },
+  structTotalBox: { alignItems: 'flex-end' },
+  structTotalLabel: { fontSize: 10, fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase' },
+  structTotalAmt: { fontSize: 15, fontWeight: '800', color: colors.primary, marginTop: 1 },
+  structItemsBox: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
   },
-  titleBadgeRow: {
+  itemsHeading: { fontSize: 10, fontWeight: '800', color: '#94a3b8', marginBottom: 6, letterSpacing: 0.3 },
+  itemRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 },
+  itemName: { fontSize: 12, color: '#475569' },
+  itemAmt: { fontSize: 12, fontWeight: '700', color: '#1e293b' },
+  structActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
     gap: 8,
-    marginBottom: 4,
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f8fafc',
   },
-  structTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1e293b',
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  statusBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  structSub: {
-    fontSize: 12,
-    color: '#64748b',
-  },
-  structTotalBox: {
-    alignItems: 'flex-end',
-    backgroundColor: '#f8fafc',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  structTotalLabel: {
-    fontSize: 10,
-    color: '#64748b',
-    fontWeight: '600',
-    textTransform: 'uppercase',
-  },
-  structTotalAmt: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#15803d',
-  },
-  structItemsBox: {
-    backgroundColor: '#f8fafc',
-    borderRadius: 10,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#f1f5f9',
-  },
-  itemsHeading: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#94a3b8',
-    letterSpacing: 0.5,
-    marginBottom: 6,
-  },
-  itemRow: {
+  cloneBtn: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 4,
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 6,
+    backgroundColor: '#eff6ff',
   },
-  itemName: {
-    fontSize: 12.5,
-    color: '#475569',
-    fontWeight: '500',
+  cloneBtnText: { fontSize: 11, fontWeight: '700', color: '#0b57d0' },
+  deleteStructBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 6,
+    backgroundColor: '#fee2e2',
   },
-  itemAmt: {
-    fontSize: 13,
-    color: '#1e293b',
-    fontWeight: '700',
-  },
+  deleteStructBtnText: { fontSize: 11, fontWeight: '700', color: '#dc2626' },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#ffffff',
-    borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#e2e8f0',
+    marginBottom: 10,
     gap: 8,
   },
-  searchInput: {
-    flex: 1,
-    fontSize: 13,
-    color: '#1e293b',
-  },
+  searchInput: { flex: 1, fontSize: 13, color: '#0f172a' },
   headCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 10,
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
     borderWidth: 1,
     borderColor: '#e2e8f0',
   },
-  headLeftBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    gap: 12,
-  },
-  headIconBox: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headName: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1e293b',
-  },
-  headCode: {
-    fontSize: 11,
-    color: '#64748b',
-    marginTop: 2,
-  },
-  headRightBox: {
-    alignItems: 'flex-end',
-  },
-  pill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  pillText: {
-    fontSize: 10.5,
-    fontWeight: '700',
-  },
+  headLeftBox: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  headIconBox: { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  headName: { fontSize: 13.5, fontWeight: '700', color: '#0f172a' },
+  headCode: { fontSize: 11, color: '#64748b', marginTop: 1 },
+  headRightBox: { alignItems: 'flex-end' },
+  pill: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
+  pillText: { fontSize: 10, fontWeight: '800' },
   planCard: {
     backgroundColor: '#ffffff',
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  planHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-  },
-  planTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1e293b',
-  },
-  planDesc: {
-    fontSize: 12.5,
-    color: '#64748b',
+    borderRadius: 12,
+    padding: 14,
     marginBottom: 10,
-  },
-  planFooterRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
-    paddingTop: 8,
-  },
-  planFootMeta: {
-    fontSize: 11,
-    color: '#94a3b8',
-    fontWeight: '500',
-  },
-  planFootStatus: {
-    fontSize: 11,
-    color: '#16a34a',
-    fontWeight: '700',
-  },
-  emptyCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 32,
-    alignItems: 'center',
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    marginTop: 10,
   },
-  emptyTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1e293b',
-    marginTop: 10,
-  },
-  emptySub: {
-    fontSize: 12.5,
-    color: '#64748b',
-    textAlign: 'center',
-    marginTop: 4,
-    marginBottom: 16,
-  },
+  planHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  planTitle: { fontSize: 14, fontWeight: '700', color: '#0f172a' },
+  planDesc: { fontSize: 12, color: '#64748b', marginVertical: 8 },
+  planFooterRow: { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#f1f5f9', paddingTop: 8 },
+  planFootMeta: { fontSize: 11, color: '#94a3b8' },
+  planFootStatus: { fontSize: 11, fontWeight: '700', color: '#16a34a' },
+  emptyCard: { alignItems: 'center', paddingVertical: 40 },
+  emptyTitle: { fontSize: 15, fontWeight: '700', color: '#0f172a', marginTop: 10 },
+  emptySub: { fontSize: 12, color: '#64748b', marginTop: 4, textAlign: 'center', paddingHorizontal: 20 },
   emptyActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.primary,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 9,
     borderRadius: 10,
+    marginTop: 14,
   },
-  emptyActionText: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: '#ffffff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: '80%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  modalTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#1e293b',
-  },
-  fieldLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#475569',
-    marginBottom: 6,
-    marginTop: 10,
-    textTransform: 'uppercase',
-  },
+  emptyActionText: { color: '#ffffff', fontSize: 13, fontWeight: '700' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: '#ffffff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '85%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 },
+  modalTitle: { fontSize: 17, fontWeight: '800', color: '#0f172a' },
+  modalSub: { fontSize: 11.5, color: '#64748b', marginTop: 2 },
+  fieldLabel: { fontSize: 11, fontWeight: '800', color: '#64748b', marginBottom: 5, textTransform: 'uppercase' },
   fieldInput: {
     backgroundColor: '#f8fafc',
-    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#e2e8f0',
+    borderRadius: 8,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: '#1e293b',
-  },
-  chipsSelectorRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: 8,
-  },
-  smallChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: '#f1f5f9',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    marginRight: 6,
-    marginBottom: 6,
-  },
-  smallChipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  smallChipText: {
-    fontSize: 11.5,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-  smallChipTextActive: {
-    color: '#ffffff',
-    fontWeight: '700',
-  },
-  itemFormRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  itemFormLabel: {
+    paddingVertical: 9,
     fontSize: 13,
-    color: '#334155',
-    fontWeight: '500',
-    flex: 1,
+    color: '#0f172a',
+    marginBottom: 10,
   },
-  itemFormInput: {
-    backgroundColor: '#f8fafc',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    width: 90,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    textAlign: 'right',
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#1e293b',
-  },
-  saveSubmitBtn: {
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 20,
-    marginBottom: 20,
-  },
-  saveSubmitBtnText: {
-    color: '#ffffff',
-    fontSize: 14.5,
-    fontWeight: '700',
-  },
+  chipsSelectorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
+  smallChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#e2e8f0' },
+  smallChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  smallChipText: { fontSize: 11, fontWeight: '700', color: '#64748b' },
+  smallChipTextActive: { color: '#ffffff' },
+  itemFormRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 5, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  itemFormLabel: { fontSize: 12.5, color: '#334155', flex: 1 },
+  itemFormInput: { width: 90, backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, fontSize: 13, fontWeight: '700', textAlign: 'right', color: '#0f172a' },
+  saveSubmitBtn: { backgroundColor: colors.primary, borderRadius: 10, paddingVertical: 14, alignItems: 'center', marginTop: 14, marginBottom: 20 },
+  saveSubmitBtnText: { color: '#ffffff', fontSize: 14, fontWeight: '800' },
+  cloneClassRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#e2e8f0' },
+  cloneClassRowActive: { borderColor: colors.primary, backgroundColor: '#eff6ff' },
+  cloneClassText: { fontSize: 13, color: '#334155' },
 });

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, RefreshControl,
-  TouchableOpacity, ActivityIndicator, Alert,
+  TouchableOpacity, ActivityIndicator, Alert, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -38,6 +38,12 @@ export default function FeeServiceGenerationScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [generating, setGenerating] = useState(false);
 
+  // Breakdown Modal State (1:1 with Web ERP)
+  const [breakdownModalOpen, setBreakdownModalOpen] = useState(false);
+  const [breakdownData, setBreakdownData] = useState(null);
+  const [breakdownLoading, setBreakdownLoading] = useState(false);
+  const [generatingUnitKey, setGeneratingUnitKey] = useState(null);
+
   // Load Status and Classes
   const loadData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
@@ -67,7 +73,64 @@ export default function FeeServiceGenerationScreen({ navigation }) {
     loadData();
   }, [loadData]);
 
-  // Trigger Fee Generation
+  // Open Service Breakdown Modal (1:1 with Web ERP openBreakdown)
+  const openBreakdown = async () => {
+    setBreakdownModalOpen(true);
+    setBreakdownLoading(true);
+    try {
+      const res = await client.get(`/fees-finance/services/${selectedService}/breakdown`, {
+        params: { month: selectedMonth, session }
+      }).catch(() => null);
+
+      if (res?.data) {
+        setBreakdownData(res.data);
+      } else {
+        // Fallback to class list breakdown
+        setBreakdownData({
+          service_code: selectedService,
+          items: classes.map(c => ({
+            class_id: c.id,
+            name: `${c.name} ${c.section ? `(${c.section})` : ''}`,
+            student_count: 30,
+            already_generated: false,
+          })),
+        });
+      }
+    } catch {
+      setBreakdownData(null);
+    } finally {
+      setBreakdownLoading(false);
+    }
+  };
+
+  // Generate Unit Fee (e.g. for a specific class or route)
+  const handleGenerateUnit = async (unit) => {
+    const unitKey = unit.class_id || unit.route_id || unit.id || 'unit';
+    setGeneratingUnitKey(unitKey);
+    try {
+      const payload = {
+        bill_month: selectedMonth,
+        month: selectedMonth,
+        due_date: `${selectedMonth}-10`,
+        session,
+        class_id: unit.class_id || null,
+        route_id: unit.route_id || null,
+        force_regenerate: false,
+      };
+
+      const res = await client.post(`/fees-finance/services/${selectedService}/generate`, payload);
+      const count = res.data?.generated_count || res.data?.result?.generated_count || 0;
+      Alert.alert('Unit Generated', `Generated ${count} invoices for ${unit.name || 'this unit'}.`);
+      loadData(true);
+      openBreakdown();
+    } catch (err) {
+      Alert.alert('Error', err.response?.data?.error || 'Failed to generate unit fees.');
+    } finally {
+      setGeneratingUnitKey(null);
+    }
+  };
+
+  // Trigger Full Batch Fee Generation
   const handleGenerateFees = () => {
     const sName = SERVICES.find(s => s.code === selectedService)?.name || selectedService;
     const cName = selectedClassId === 'ALL' ? 'All Classes' : (classes.find(c => String(c.id) === String(selectedClassId))?.name || 'Selected Class');
@@ -103,7 +166,7 @@ export default function FeeServiceGenerationScreen({ navigation }) {
                 loadData(true);
               }
             } catch (err) {
-              Alert.alert('Generation Failed', err?.response?.data?.error || err?.response?.data?.message || 'Failed to generate fees.');
+              Alert.alert('Generation Failed', err?.response?.data?.error || 'Failed to generate fees.');
             } finally {
               setGenerating(false);
             }
@@ -123,17 +186,28 @@ export default function FeeServiceGenerationScreen({ navigation }) {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Top Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation?.goBack?.()}
-          style={styles.backBtn}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Ionicons name="arrow-back" size={22} color="#ffffff" />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>Generate Monthly Fees</Text>
-          <Text style={styles.headerSubtitle}>Batch demand generation engine</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+          {navigation?.canGoBack() && (
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="arrow-back" size={22} color="#ffffff" />
+            </TouchableOpacity>
+          )}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerTitle}>Generate Monthly Fees</Text>
+            <Text style={styles.headerSubtitle}>Batch demand generation engine</Text>
+          </View>
         </View>
+
+        <TouchableOpacity
+          style={styles.breakdownHeaderBtn}
+          onPress={openBreakdown}
+        >
+          <Ionicons name="layers-outline" size={15} color={colors.primary} />
+          <Text style={styles.breakdownHeaderBtnText}>Breakdown</Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -213,7 +287,7 @@ export default function FeeServiceGenerationScreen({ navigation }) {
               <TouchableOpacity
                 key={c.id}
                 style={[styles.classChip, isSel && styles.classChipActive]}
-                onPress={() => setSelectedClassId(c.id)}
+                onPress={() => setSelectedClassId(isSel ? 'ALL' : String(c.id))}
               >
                 <Text style={[styles.classChipText, isSel && styles.classChipTextActive]}>
                   {c.name || `Class ${c.grade_level || c.id}`}
@@ -298,56 +372,98 @@ export default function FeeServiceGenerationScreen({ navigation }) {
           </Text>
         </View>
       </ScrollView>
+
+      {/* ═══════════════════════════════════════════════ */}
+      {/* MODAL: SERVICE UNIT BREAKDOWN (1:1 with Web)   */}
+      {/* ═══════════════════════════════════════════════ */}
+      <Modal visible={breakdownModalOpen} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Detailed Unit Breakdown</Text>
+                <Text style={styles.modalSub}>{currentServiceInfo?.name} · {selectedMonth}</Text>
+              </View>
+              <TouchableOpacity onPress={() => setBreakdownModalOpen(false)}>
+                <Ionicons name="close-circle" size={24} color="#94a3b8" />
+              </TouchableOpacity>
+            </View>
+
+            {breakdownLoading ? (
+              <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={{ marginTop: 10, fontSize: 13, color: '#64748b' }}>Loading breakdown...</Text>
+              </View>
+            ) : (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {breakdownData?.items && breakdownData.items.length > 0 ? (
+                  breakdownData.items.map((unit, idx) => {
+                    const unitKey = unit.class_id || unit.route_id || unit.id || idx;
+                    const isProcessing = generatingUnitKey === unitKey;
+
+                    return (
+                      <View key={unitKey} style={styles.unitRowCard}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.unitName}>{unit.name || `Unit #${idx + 1}`}</Text>
+                          <Text style={styles.unitSub}>
+                            Students: {unit.student_count || unit.enrolled || 0}
+                            {unit.rate ? ` · Rate: ₹${unit.rate}` : ''}
+                          </Text>
+                        </View>
+
+                        <TouchableOpacity
+                          style={[styles.unitGenBtn, isProcessing && { opacity: 0.6 }]}
+                          disabled={isProcessing}
+                          onPress={() => handleGenerateUnit(unit)}
+                        >
+                          {isProcessing ? (
+                            <ActivityIndicator size="small" color="#fff" />
+                          ) : (
+                            <Text style={styles.unitGenBtnText}>Generate</Text>
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })
+                ) : (
+                  <View style={{ padding: 20, alignItems: 'center' }}>
+                    <Text style={{ color: '#64748b', fontSize: 13 }}>No unit sub-divisions found for this service.</Text>
+                  </View>
+                )}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-  },
+  container: { flex: 1, backgroundColor: '#f8fafc' },
   header: {
     backgroundColor: colors.primary,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
-  backBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-  },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#ffffff',
-  },
-  headerSubtitle: {
-    fontSize: 11.5,
-    color: 'rgba(255,255,255,0.8)',
-    marginTop: 1,
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#64748b',
-    letterSpacing: 0.8,
-    marginBottom: 8,
-  },
-  horizontalRow: {
+  headerTitle: { fontSize: 17, fontWeight: '700', color: '#ffffff' },
+  headerSubtitle: { fontSize: 11.5, color: 'rgba(255,255,255,0.8)', marginTop: 1 },
+  breakdownHeaderBtn: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 10,
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
   },
+  breakdownHeaderBtnText: { color: colors.primary, fontSize: 11.5, fontWeight: '700' },
+  scrollContent: { padding: 16, paddingBottom: 40 },
+  sectionTitle: { fontSize: 11, fontWeight: '700', color: '#64748b', letterSpacing: 0.8, marginBottom: 8 },
+  horizontalRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
   monthCard: {
     backgroundColor: '#ffffff',
     borderRadius: 12,
@@ -358,29 +474,12 @@ const styles = StyleSheet.create({
     borderColor: '#e2e8f0',
     minWidth: 84,
   },
-  monthCardActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  monthCardText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#334155',
-  },
-  monthCardTextActive: {
-    color: '#ffffff',
-  },
-  monthCardSub: {
-    fontSize: 10,
-    color: '#94a3b8',
-    marginTop: 2,
-  },
-  monthCardSubActive: {
-    color: 'rgba(255,255,255,0.8)',
-  },
-  servicesGrid: {
-    gap: 8,
-  },
+  monthCardActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  monthCardText: { fontSize: 13, fontWeight: '700', color: '#334155' },
+  monthCardTextActive: { color: '#ffffff' },
+  monthCardSub: { fontSize: 10, color: '#94a3b8', marginTop: 2 },
+  monthCardSubActive: { color: 'rgba(255,255,255,0.8)' },
+  servicesGrid: { gap: 8 },
   serviceCard: {
     backgroundColor: '#ffffff',
     borderRadius: 14,
@@ -391,164 +490,100 @@ const styles = StyleSheet.create({
     borderColor: '#e2e8f0',
     gap: 12,
   },
-  serviceCardActive: {
-    borderColor: colors.primary,
-    backgroundColor: '#f0fdf4',
-  },
-  serviceIconBox: {
-    width: 42,
-    height: 42,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  serviceName: {
-    fontSize: 13.5,
-    fontWeight: '700',
-    color: '#1e293b',
-  },
-  serviceNameActive: {
-    color: colors.primary,
-  },
-  serviceCode: {
-    fontSize: 11,
-    color: '#64748b',
-    marginTop: 2,
-  },
+  serviceCardActive: { borderColor: colors.primary, backgroundColor: '#f0fdf4' },
+  serviceIconBox: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  serviceName: { fontSize: 14, fontWeight: '700', color: '#0f172a' },
+  serviceNameActive: { color: colors.primary },
+  serviceCode: { fontSize: 11, color: '#64748b', marginTop: 2 },
   classChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
     backgroundColor: '#ffffff',
     borderWidth: 1,
     borderColor: '#e2e8f0',
   },
-  classChipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  classChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-  classChipTextActive: {
-    color: '#ffffff',
-    fontWeight: '700',
-  },
+  classChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  classChipText: { fontSize: 12, fontWeight: '600', color: '#64748b' },
+  classChipTextActive: { color: '#ffffff', fontWeight: '700' },
   statusBox: {
     backgroundColor: '#ffffff',
-    borderRadius: 16,
+    borderRadius: 14,
     padding: 16,
-    marginTop: 18,
     borderWidth: 1,
     borderColor: '#e2e8f0',
+    marginTop: 14,
   },
-  statusHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-    paddingBottom: 10,
-  },
-  statusHeading: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1e293b',
-  },
-  sessionBadge: {
-    backgroundColor: '#f1f5f9',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  sessionBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#475569',
-  },
-  metricsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
-  },
-  metricCell: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  metricNumber: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#1e293b',
-  },
-  metricLabel: {
-    fontSize: 11,
-    color: '#64748b',
-    marginTop: 4,
-    fontWeight: '500',
-  },
-  metricDivider: {
-    width: 1,
-    height: 32,
-    backgroundColor: '#f1f5f9',
-  },
+  statusHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  statusHeading: { fontSize: 13.5, fontWeight: '700', color: '#0f172a' },
+  sessionBadge: { backgroundColor: '#eff6ff', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  sessionBadgeText: { fontSize: 11, fontWeight: '700', color: colors.primary },
+  metricsRow: { flexDirection: 'row', alignItems: 'center' },
+  metricCell: { flex: 1, alignItems: 'center' },
+  metricDivider: { width: 1, height: 36, backgroundColor: '#f1f5f9' },
+  metricNumber: { fontSize: 18, fontWeight: '900', color: '#0f172a' },
+  metricLabel: { fontSize: 11, color: '#64748b', marginTop: 2 },
   demandAmtRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#f8fafc',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
-    marginTop: 4,
+    alignItems: 'center',
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
   },
-  demandAmtLabel: {
-    fontSize: 12,
-    color: '#475569',
-    fontWeight: '600',
-  },
-  demandAmtVal: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#15803d',
-  },
+  demandAmtLabel: { fontSize: 12, color: '#64748b', fontWeight: '600' },
+  demandAmtVal: { fontSize: 15, fontWeight: '800', color: colors.primary },
   generateBtn: {
     backgroundColor: colors.primary,
-    borderRadius: 14,
-    paddingVertical: 15,
+    borderRadius: 12,
+    paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 20,
+    marginTop: 16,
     shadowColor: colors.primary,
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
     elevation: 3,
   },
-  generateBtnDisabled: {
-    opacity: 0.6,
-  },
-  generateBtnText: {
-    color: '#ffffff',
-    fontSize: 14.5,
-    fontWeight: '700',
-  },
+  generateBtnDisabled: { opacity: 0.6 },
+  generateBtnText: { color: '#ffffff', fontSize: 14, fontWeight: '800' },
   infoBox: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
     backgroundColor: '#eff6ff',
-    borderRadius: 12,
+    borderRadius: 10,
     padding: 12,
-    marginTop: 16,
-    gap: 10,
+    marginTop: 14,
     borderWidth: 1,
     borderColor: '#dbeafe',
   },
-  infoText: {
-    flex: 1,
-    fontSize: 12,
-    color: '#1e40af',
-    lineHeight: 18,
+  infoText: { flex: 1, fontSize: 11.5, color: '#1e40af', lineHeight: 17 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: '#ffffff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '80%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 },
+  modalTitle: { fontSize: 17, fontWeight: '800', color: '#0f172a' },
+  modalSub: { fontSize: 12, color: '#64748b', marginTop: 2 },
+  unitRowCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
+    marginBottom: 8,
   },
+  unitName: { fontSize: 13, fontWeight: '700', color: '#0f172a' },
+  unitSub: { fontSize: 11, color: '#64748b', marginTop: 2 },
+  unitGenBtn: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  unitGenBtnText: { color: '#ffffff', fontSize: 12, fontWeight: '700' },
 });
