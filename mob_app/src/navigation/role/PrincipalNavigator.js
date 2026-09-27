@@ -161,6 +161,9 @@ export default function PrincipalNavigator() {
       <Stack.Screen name="Attendance" component={AttendanceScreen} />
       <Stack.Screen name="Timetable" component={TimetableScreen} />
       <Stack.Screen name="Curriculum" component={CurriculumScreen} />
+      <Stack.Screen name="TeachingDiary" component={CurriculumScreen} />
+      <Stack.Screen name="CurriculumCoverage" component={CurriculumScreen} />
+      <Stack.Screen name="CurriculumSetup" component={CurriculumScreen} />
       <Stack.Screen name="Examinations" component={ExaminationsScreen} />
       <Stack.Screen name="ExamSchedule" component={ExaminationsScreen} />
       <Stack.Screen name="AdmitCard" component={AdmitCardScreen} />
@@ -172,6 +175,7 @@ export default function PrincipalNavigator() {
       <Stack.Screen name="Assignments" component={AssignmentsScreen} />
       <Stack.Screen name="Homework" component={AssignmentsScreen} />
       <Stack.Screen name="Notes" component={NotesScreen} />
+      <Stack.Screen name="StudyMaterial" component={NotesScreen} />
 
       {/* Finance & Fees */}
       <Stack.Screen name="Fees" component={FeesScreen} />

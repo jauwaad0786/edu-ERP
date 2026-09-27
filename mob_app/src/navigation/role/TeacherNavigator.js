@@ -80,6 +80,9 @@ export default function TeacherNavigator() {
       <Stack.Screen name="Subjects" component={SubjectsScreen} />
       <Stack.Screen name="Timetable" component={TimetableScreen} />
       <Stack.Screen name="Curriculum" component={CurriculumScreen} />
+      <Stack.Screen name="TeachingDiary" component={CurriculumScreen} />
+      <Stack.Screen name="CurriculumCoverage" component={CurriculumScreen} />
+      <Stack.Screen name="CurriculumSetup" component={CurriculumScreen} />
       <Stack.Screen name="Examinations" component={ExaminationsScreen} />
       <Stack.Screen name="ExamSchedule" component={ExaminationsScreen} />
       <Stack.Screen name="AdmitCard" component={AdmitCardScreen} />
@@ -87,6 +90,7 @@ export default function TeacherNavigator() {
       <Stack.Screen name="Assignments" component={AssignmentsScreen} />
       <Stack.Screen name="Homework" component={AssignmentsScreen} />
       <Stack.Screen name="Notes" component={NotesScreen} />
+      <Stack.Screen name="StudyMaterial" component={NotesScreen} />
       <Stack.Screen name="Marks" component={MarksScreen} />
       <Stack.Screen name="MarksEntry" component={MarksScreen} />
       <Stack.Screen name="Students" component={StudentsScreen} />

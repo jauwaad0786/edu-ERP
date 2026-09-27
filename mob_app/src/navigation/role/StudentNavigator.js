@@ -67,12 +67,15 @@ export default function StudentNavigator() {
       <Stack.Screen name="AIChat" component={AIChatScreen} />
       <Stack.Screen name="Timetable" component={TimetableScreen} />
       <Stack.Screen name="Curriculum" component={CurriculumScreen} />
+      <Stack.Screen name="TeachingDiary" component={CurriculumScreen} />
+      <Stack.Screen name="CurriculumCoverage" component={CurriculumScreen} />
       <Stack.Screen name="Examinations" component={ExaminationsScreen} />
       <Stack.Screen name="AdmitCard" component={AdmitCardScreen} />
       <Stack.Screen name="AdmitCards" component={AdmitCardScreen} />
       <Stack.Screen name="Result" component={ResultScreen} />
       <Stack.Screen name="Results" component={ResultScreen} />
       <Stack.Screen name="Notes" component={NotesScreen} />
+      <Stack.Screen name="StudyMaterial" component={NotesScreen} />
       <Stack.Screen name="Assignments" component={AssignmentsScreen} />
       <Stack.Screen name="Homework" component={AssignmentsScreen} />
       <Stack.Screen name="Books" component={BooksScreen} />
