@@ -40,6 +40,11 @@ import CurriculumScreen from '../../screens/curriculum/CurriculumScreen';
 import SubjectsScreen from '../../screens/classes/SubjectsScreen';
 import DelegationsScreen from '../../screens/delegations/DelegationsScreen';
 import MeetingsScreen from '../../screens/communication/MeetingsScreen';
+import BooksScreen from '../../screens/library/BooksScreen';
+import IssueReturnScreen from '../../screens/library/IssueReturnScreen';
+import FinesScreen from '../../screens/library/FinesScreen';
+import MembersScreen from '../../screens/library/MembersScreen';
+import ReservationsScreen from '../../screens/library/ReservationsScreen';
 import { TAB_BAR_STYLE } from '../tabBarStyle';
 
 const Tab = createBottomTabNavigator();
@@ -130,6 +135,18 @@ export default function TeacherNavigator() {
       <Stack.Screen name="Meetings" component={MeetingsScreen} />
       <Stack.Screen name="PTM" component={MeetingsScreen} />
       <Stack.Screen name="Conferences" component={MeetingsScreen} />
+
+      {/* Library Management */}
+      <Stack.Screen name="Books" component={BooksScreen} />
+      <Stack.Screen name="Library" component={BooksScreen} />
+      <Stack.Screen name="LibraryBooks" component={BooksScreen} />
+      <Stack.Screen name="IssueReturn" component={IssueReturnScreen} />
+      <Stack.Screen name="Fines" component={FinesScreen} />
+      <Stack.Screen name="LibraryFines" component={FinesScreen} />
+      <Stack.Screen name="Members" component={MembersScreen} />
+      <Stack.Screen name="LibraryMembers" component={MembersScreen} />
+      <Stack.Screen name="Reservations" component={ReservationsScreen} />
+      <Stack.Screen name="LibraryReservations" component={ReservationsScreen} />
     </Stack.Navigator>
   );
 }

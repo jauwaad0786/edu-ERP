@@ -40,6 +40,11 @@ import PayrollScreen from '../../screens/hr/PayrollScreen';
 import DelegationsScreen from '../../screens/delegations/DelegationsScreen';
 import StudentDocumentsScreen from '../../screens/documents/StudentDocumentsScreen';
 import IssueCertificatesScreen from '../../screens/documents/IssueCertificatesScreen';
+import BooksScreen from '../../screens/library/BooksScreen';
+import IssueReturnScreen from '../../screens/library/IssueReturnScreen';
+import FinesScreen from '../../screens/library/FinesScreen';
+import MembersScreen from '../../screens/library/MembersScreen';
+import ReservationsScreen from '../../screens/library/ReservationsScreen';
 import { TAB_BAR_STYLE } from '../tabBarStyle';
 
 const Tab = createBottomTabNavigator();
@@ -144,6 +149,18 @@ export default function VicePrincipalNavigator() {
       <Stack.Screen name="Delegations" component={DelegationsScreen} />
       <Stack.Screen name="TeacherDelegations" component={DelegationsScreen} />
       <Stack.Screen name="SubstituteDuties" component={DelegationsScreen} />
+
+      {/* Library Management */}
+      <Stack.Screen name="Books" component={BooksScreen} />
+      <Stack.Screen name="Library" component={BooksScreen} />
+      <Stack.Screen name="LibraryBooks" component={BooksScreen} />
+      <Stack.Screen name="IssueReturn" component={IssueReturnScreen} />
+      <Stack.Screen name="Fines" component={FinesScreen} />
+      <Stack.Screen name="LibraryFines" component={FinesScreen} />
+      <Stack.Screen name="Members" component={MembersScreen} />
+      <Stack.Screen name="LibraryMembers" component={MembersScreen} />
+      <Stack.Screen name="Reservations" component={ReservationsScreen} />
+      <Stack.Screen name="LibraryReservations" component={ReservationsScreen} />
     </Stack.Navigator>
   );
 }

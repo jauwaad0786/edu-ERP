@@ -323,6 +323,16 @@ export default function DrawerMenuModal({ visible, onClose, navigation }) {
             ],
           },
           {
+            title: 'Library Automation',
+            icon: 'library-outline',
+            color: '#0891b2',
+            items: [
+              { label: 'Book Master Catalog', icon: 'library-outline', screen: 'Books', color: '#0891b2' },
+              { label: 'Issue & Return Desk', icon: 'swap-horizontal-outline', screen: 'IssueReturn', color: '#0284c7' },
+              { label: 'Book Hold & Reservations', icon: 'bookmark-outline', screen: 'Reservations', color: '#7c3aed' },
+            ],
+          },
+          {
             title: 'Communication & Support',
             icon: 'headset-outline',
             color: '#059669',

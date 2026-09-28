@@ -212,6 +212,30 @@ export default function ReservationsScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
+      {/* Quick Service Navigation Strip */}
+      <View style={styles.serviceNavStrip}>
+        <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('Books')}>
+          <Ionicons name="book" size={14} color="#64748b" />
+          <Text style={styles.serviceNavText}>Catalog</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('IssueReturn')}>
+          <Ionicons name="swap-horizontal" size={14} color="#64748b" />
+          <Text style={styles.serviceNavText}>Desk</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('Members')}>
+          <Ionicons name="card" size={14} color="#64748b" />
+          <Text style={styles.serviceNavText}>Members</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.serviceNavTab, styles.serviceNavTabActive]} onPress={() => {}}>
+          <Ionicons name="bookmark" size={14} color="#0891b2" />
+          <Text style={[styles.serviceNavText, styles.serviceNavTextActive]}>Holds</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('Fines')}>
+          <Ionicons name="cash" size={14} color="#64748b" />
+          <Text style={styles.serviceNavText}>Fines</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Filter Tabs */}
       <View style={styles.filterBar}>
         {['WAITING', 'NOTIFIED', 'FULFILLED', 'CANCELLED'].map(s => (
@@ -522,4 +546,33 @@ const styles = StyleSheet.create({
   },
   submitBtnDisabled: { backgroundColor: '#94a3b8' },
   submitBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  serviceNavStrip: {
+    flexDirection: 'row',
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    justifyContent: 'space-around',
+  },
+  serviceNavTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+  },
+  serviceNavTabActive: {
+    backgroundColor: '#ecfeff',
+  },
+  serviceNavText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  serviceNavTextActive: {
+    color: '#0891b2',
+    fontWeight: '700',
+  },
 });

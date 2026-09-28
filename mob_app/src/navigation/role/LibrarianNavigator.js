@@ -48,6 +48,11 @@ export default function LibrarianNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="LibrarianTabs"  component={LibrarianTabs} />
+      <Stack.Screen name="Books"          component={BooksScreen} />
+      <Stack.Screen name="LibraryBooks"   component={BooksScreen} />
+      <Stack.Screen name="IssueReturn"    component={IssueReturnScreen} />
+      <Stack.Screen name="Fines"          component={FinesScreen} />
+      <Stack.Screen name="LibraryFines"   component={FinesScreen} />
       <Stack.Screen name="Members"        component={MembersScreen} />
       <Stack.Screen name="LibraryMembers" component={MembersScreen} />
       <Stack.Screen name="Reservations"   component={ReservationsScreen} />
