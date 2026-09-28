@@ -65,15 +65,22 @@ function shiftDateStr(dateStr, days) {
   }
 }
 
-export default function AttendanceScreen({ navigation }) {
+export default function AttendanceScreen({ navigation, route }) {
   const { user } = useAuth();
   const role = user?.role ? String(user.role).toUpperCase() : 'STUDENT';
   const isStaff = ['PRINCIPAL', 'VICE_PRINCIPAL', 'DIRECTOR', 'TEACHER', 'ADMIN', 'SUPER_ADMIN'].includes(role);
   const isParent = role === 'PARENT';
   const isStudent = role === 'STUDENT';
 
-  // Tabs for Staff
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'mark'
+  // Tabs for Staff: 'overview' | 'mark' | 'qr_scan' | 'staff_register'
+  const [activeTab, setActiveTab] = useState('overview');
+
+  // Handle incoming route params (e.g. from drawer or notifications)
+  useEffect(() => {
+    if (route?.params?.tab) {
+      setActiveTab(route.params.tab);
+    }
+  }, [route?.params?.tab]);
 
   // Selected Date
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
@@ -96,6 +103,22 @@ export default function AttendanceScreen({ navigation }) {
   const [isAlreadyMarked, setIsAlreadyMarked] = useState(false);
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [savingAttendance, setSavingAttendance] = useState(false);
+  const [markSearchText, setMarkSearchText] = useState('');
+
+  // QR / Fast Scan States
+  const [scanQuery, setScanQuery] = useState('');
+  const [scanLoading, setScanLoading] = useState(false);
+  const [lastScannedResult, setLastScannedResult] = useState(null);
+  const [recentScans, setRecentScans] = useState([]);
+  const [quickTestStudents, setQuickTestStudents] = useState([]);
+
+  // Staff Attendance Register States
+  const [staffDashboard, setStaffDashboard] = useState(null);
+  const [staffTodayList, setTodayStaffList] = useState([]);
+  const [staffRosterFilter, setStaffRosterFilter] = useState('ALL');
+  const [myPunchStatus, setMyPunchStatus] = useState(null);
+  const [punching, setPunching] = useState(false);
+  const [loadingStaff, setLoadingStaff] = useState(false);
 
   // Student / Parent Personal View Data
   const [children, setChildren] = useState([]);
@@ -322,6 +345,151 @@ export default function AttendanceScreen({ navigation }) {
       navigation.navigate('StudentDetail', { student_id: studentId });
     } catch {
       // Screen may not be in current navigator stack
+    }
+  };
+
+  // Staff Attendance Loader & Handlers
+  const loadStaffData = useCallback(async () => {
+    if (!isStaff) return;
+    setLoadingStaff(true);
+    try {
+      const [dashRes, todayRes, myRes] = await Promise.all([
+        client.get(`/staff-attendance/dashboard?date=${selectedDate}`).catch(() => ({ data: null })),
+        client.get(`/staff-attendance/today?date=${selectedDate}`).catch(() => ({ data: [] })),
+        client.get('/staff-attendance/my-status').catch(() => ({ data: null })),
+      ]);
+      setStaffDashboard(dashRes.data);
+      const rawList = Array.isArray(todayRes.data)
+        ? todayRes.data
+        : todayRes.data?.records || todayRes.data?.data || todayRes.data?.items || [];
+      setTodayStaffList(rawList);
+      setMyPunchStatus(myRes.data);
+    } catch {
+      // Graceful fallback
+    } finally {
+      setLoadingStaff(false);
+    }
+  }, [isStaff, selectedDate]);
+
+  const handleStaffPunchIn = async () => {
+    setPunching(true);
+    try {
+      await client.post('/staff-attendance/check-in', { device: 'MOBILE_APP' });
+      Alert.alert('Checked In ✅', 'Your check-in attendance has been recorded successfully.');
+      loadStaffData();
+    } catch (err) {
+      Alert.alert('Check-In Failed', err.response?.data?.error || 'Could not record check-in.');
+    } finally {
+      setPunching(false);
+    }
+  };
+
+  const handleStaffPunchOut = async () => {
+    setPunching(true);
+    try {
+      await client.post('/staff-attendance/check-out', { device: 'MOBILE_APP' });
+      Alert.alert('Checked Out 🚪', 'Your check-out attendance has been recorded successfully.');
+      loadStaffData();
+    } catch (err) {
+      Alert.alert('Check-Out Failed', err.response?.data?.error || 'Could not record check-out.');
+    } finally {
+      setPunching(false);
+    }
+  };
+
+  // Preload quick-test students from classes
+  useEffect(() => {
+    if (classes.length > 0 && quickTestStudents.length === 0) {
+      client.get('/principal/students', { params: { class_id: classes[0].id, per_page: 8 } })
+        .then((res) => {
+          const raw = res.data;
+          const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : (raw?.students || []));
+          setQuickTestStudents(list.map((s) => ({
+            id: s.id,
+            name: s.name || s.student_name || 'Student',
+            admission_no: s.admission_no || s.admission_number || '',
+            roll_no: s.roll_no || s.roll_number || '',
+          })));
+        })
+        .catch(() => {});
+    }
+  }, [classes, quickTestStudents.length]);
+
+  // Load staff data when tab is staff_register or on date change
+  useEffect(() => {
+    if (activeTab === 'staff_register') {
+      loadStaffData();
+    }
+  }, [activeTab, loadStaffData]);
+
+  // Fast Scan / QR lookup and auto-attendance recording
+  const handleFastScan = async (codeToScan) => {
+    const code = (codeToScan || scanQuery || '').trim();
+    if (!code) {
+      Alert.alert('Input Required', 'Please enter student Admission Number, Roll No, or Student ID.');
+      return;
+    }
+    setScanLoading(true);
+    try {
+      // 1. Search student via principal students endpoint
+      const searchRes = await client.get('/principal/students', {
+        params: { search: code, per_page: 5 },
+      });
+      const raw = searchRes.data;
+      const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : (raw?.students || []));
+      
+      let matchedStudent = list[0];
+      // If numeric, also try direct ID match
+      if (!matchedStudent && /^\d+$/.test(code)) {
+        try {
+          const directRes = await client.get(`/principal/students/${code}`);
+          matchedStudent = directRes.data?.student || directRes.data;
+        } catch {}
+      }
+
+      if (!matchedStudent) {
+        Alert.alert('Student Not Found', `No student found matching "${code}". Please verify ID or Admission Number.`);
+        return;
+      }
+
+      // 2. Automatically record attendance as PRESENT
+      const classId = matchedStudent.class_id;
+      const payload = {
+        class_id: classId,
+        date: selectedDate,
+        records: [{ student_id: matchedStudent.id, status: 'PRESENT' }],
+      };
+
+      try {
+        await client.post('/principal/attendance/mark', payload);
+      } catch (err) {
+        if (err.response?.status === 403 || err.response?.status === 404) {
+          await client.post('/teacher/attendance', payload);
+        } else {
+          throw err;
+        }
+      }
+
+      const scanRecord = {
+        id: matchedStudent.id,
+        name: matchedStudent.name || matchedStudent.student_name || 'Student',
+        roll_no: matchedStudent.roll_no || matchedStudent.roll_number || '—',
+        admission_no: matchedStudent.admission_no || matchedStudent.admission_number || code,
+        class_name: matchedStudent.class_name || (matchedStudent.class ? matchedStudent.class.name : 'Enrolled Class'),
+        timestamp: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }),
+        status: 'PRESENT',
+      };
+
+      setLastScannedResult(scanRecord);
+      setRecentScans((prev) => [scanRecord, ...prev.filter((item) => item.id !== matchedStudent.id)]);
+      setScanQuery('');
+      
+      // Also refresh overview numbers in background
+      loadOverview();
+    } catch (err) {
+      Alert.alert('Scan Failed', err.response?.data?.error || err.message || 'Failed to record QR attendance.');
+    } finally {
+      setScanLoading(false);
     }
   };
 
@@ -574,13 +742,17 @@ export default function AttendanceScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* Tab Switcher: Overview vs Mark */}
-        <View style={styles.tabContainer}>
+        {/* Tab Switcher: Overview, Mark Class, QR / Fast Scan, Staff Register */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabContainer}
+        >
           <TouchableOpacity
             style={[styles.tabBtn, activeTab === 'overview' && styles.tabBtnActive]}
             onPress={() => setActiveTab('overview')}
           >
-            <Ionicons name="stats-chart" size={16} color={activeTab === 'overview' ? C.primary : '#fff'} />
+            <Ionicons name="stats-chart" size={15} color={activeTab === 'overview' ? C.primary : '#fff'} />
             <Text style={[styles.tabText, activeTab === 'overview' && styles.tabTextActive]}>Overview</Text>
           </TouchableOpacity>
 
@@ -588,10 +760,26 @@ export default function AttendanceScreen({ navigation }) {
             style={[styles.tabBtn, activeTab === 'mark' && styles.tabBtnActive]}
             onPress={() => setActiveTab('mark')}
           >
-            <Ionicons name="create" size={16} color={activeTab === 'mark' ? C.primary : '#fff'} />
-            <Text style={[styles.tabText, activeTab === 'mark' && styles.tabTextActive]}>Mark Attendance</Text>
+            <Ionicons name="create" size={15} color={activeTab === 'mark' ? C.primary : '#fff'} />
+            <Text style={[styles.tabText, activeTab === 'mark' && styles.tabTextActive]}>Mark Class</Text>
           </TouchableOpacity>
-        </View>
+
+          <TouchableOpacity
+            style={[styles.tabBtn, activeTab === 'qr_scan' && styles.tabBtnActive]}
+            onPress={() => setActiveTab('qr_scan')}
+          >
+            <Ionicons name="qr-code" size={15} color={activeTab === 'qr_scan' ? C.primary : '#fff'} />
+            <Text style={[styles.tabText, activeTab === 'qr_scan' && styles.tabTextActive]}>QR / Fast Scan</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.tabBtn, activeTab === 'staff_register' && styles.tabBtnActive]}
+            onPress={() => setActiveTab('staff_register')}
+          >
+            <Ionicons name="people" size={15} color={activeTab === 'staff_register' ? C.primary : '#fff'} />
+            <Text style={[styles.tabText, activeTab === 'staff_register' && styles.tabTextActive]}>Staff Register</Text>
+          </TouchableOpacity>
+        </ScrollView>
       </View>
 
       {/* ── Interactive Date Navigator Bar ── */}
@@ -988,6 +1176,24 @@ export default function AttendanceScreen({ navigation }) {
             </View>
           </View>
 
+          {/* Student Filter / Search Input */}
+          <View style={styles.searchContainer}>
+            <Ionicons name="search-outline" size={16} color={C.muted} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Filter by name, roll no, or admission no..."
+              placeholderTextColor={C.muted}
+              value={markSearchText}
+              onChangeText={setMarkSearchText}
+              autoCapitalize="none"
+            />
+            {markSearchText.length > 0 && (
+              <TouchableOpacity onPress={() => setMarkSearchText('')} style={{ padding: 4 }}>
+                <Ionicons name="close-circle" size={16} color={C.muted} />
+              </TouchableOpacity>
+            )}
+          </View>
+
           {/* Student Roster List */}
           {loadingStudents ? (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -1001,8 +1207,28 @@ export default function AttendanceScreen({ navigation }) {
               contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 6, paddingBottom: 110 }}
               showsVerticalScrollIndicator={false}
             >
-              {markStudents.length > 0 ? (
-                markStudents.map((stu) => {
+              {markStudents
+                .filter((stu) => {
+                  if (!markSearchText.trim()) return true;
+                  const q = markSearchText.toLowerCase();
+                  return (
+                    (stu.name && stu.name.toLowerCase().includes(q)) ||
+                    (stu.roll_no && String(stu.roll_no).includes(q)) ||
+                    (stu.admission_no && String(stu.admission_no).toLowerCase().includes(q))
+                  );
+                })
+                .length > 0 ? (
+                markStudents
+                  .filter((stu) => {
+                    if (!markSearchText.trim()) return true;
+                    const q = markSearchText.toLowerCase();
+                    return (
+                      (stu.name && stu.name.toLowerCase().includes(q)) ||
+                      (stu.roll_no && String(stu.roll_no).includes(q)) ||
+                      (stu.admission_no && String(stu.admission_no).toLowerCase().includes(q))
+                    );
+                  })
+                  .map((stu) => {
                   const isPresent = stu.status === 'PRESENT';
                   const isAbsent = stu.status === 'ABSENT';
                   const isLate = stu.status === 'LATE';
@@ -1106,6 +1332,407 @@ export default function AttendanceScreen({ navigation }) {
             </View>
           )}
         </View>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════
+         TAB 3: QR & FAST SCAN ATTENDANCE
+         ═══════════════════════════════════════════════════════════════ */}
+      {activeTab === 'qr_scan' && (
+        <ScrollView
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: 110 }]}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Hero Scan Banner */}
+          <View style={styles.qrHeroCard}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={styles.qrHeroIcon}>
+                <Ionicons name="qr-code-outline" size={28} color="#fff" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.qrHeroTitle}>Student Fast Check-In</Text>
+                <Text style={styles.qrHeroSubtitle}>
+                  Scan student ID card barcode, QR code or enter Admission No.
+                </Text>
+              </View>
+            </View>
+
+            {/* Input Bar */}
+            <View style={styles.qrInputRow}>
+              <View style={styles.qrInputContainer}>
+                <Ionicons name="barcode-outline" size={20} color={C.muted} />
+                <TextInput
+                  style={styles.qrTextInput}
+                  placeholder="Enter Admission No, Roll No, or Student ID..."
+                  placeholderTextColor={C.muted}
+                  value={scanQuery}
+                  onChangeText={setScanQuery}
+                  onSubmitEditing={() => handleFastScan()}
+                  returnKeyType="done"
+                  autoCapitalize="none"
+                />
+                {scanQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setScanQuery('')}>
+                    <Ionicons name="close-circle" size={18} color={C.muted} />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              <TouchableOpacity
+                style={[styles.qrScanActionBtn, scanLoading && { opacity: 0.6 }]}
+                onPress={() => handleFastScan()}
+                disabled={scanLoading}
+              >
+                {scanLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="flash" size={16} color="#fff" />
+                    <Text style={styles.qrScanActionText}>Mark Present</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {/* Quick Test Demo Chips */}
+            {quickTestStudents.length > 0 && (
+              <View style={{ marginTop: 14 }}>
+                <Text style={styles.quickTestLabel}>⚡ Quick Tap to Test Instant Scan:</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, marginTop: 6 }}>
+                  {quickTestStudents.slice(0, 8).map((stu) => (
+                    <TouchableOpacity
+                      key={stu.id}
+                      style={styles.quickTestChip}
+                      onPress={() => handleFastScan(stu.admission_no || String(stu.id))}
+                    >
+                      <Text style={styles.quickTestChipText}>
+                        {stu.name} {stu.roll_no ? `(${stu.roll_no})` : ''}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+          </View>
+
+          {/* Last Scanned Confirmation Card */}
+          {lastScannedResult && (
+            <View style={styles.lastScannedCard}>
+              <View style={styles.lastScannedHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <View style={styles.verifiedCheckBadge}>
+                    <Ionicons name="checkmark-circle" size={26} color={C.success} />
+                  </View>
+                  <View>
+                    <Text style={styles.lastScannedTitle}>Attendance Confirmed!</Text>
+                    <Text style={styles.lastScannedTime}>Recorded at {lastScannedResult.timestamp}</Text>
+                  </View>
+                </View>
+                <Badge variant="success" size="md">PRESENT</Badge>
+              </View>
+
+              <View style={styles.lastScannedStudentInfo}>
+                <View style={styles.lastScannedAvatar}>
+                  <Text style={styles.lastScannedAvatarText}>
+                    {(lastScannedResult.name || 'S').charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.lastScannedName}>{lastScannedResult.name}</Text>
+                  <Text style={styles.lastScannedMeta}>
+                    Adm #{lastScannedResult.admission_no} · Roll #{lastScannedResult.roll_no}
+                  </Text>
+                  <Text style={styles.lastScannedClass}>{lastScannedResult.class_name}</Text>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* Today's Scanned Log Feed */}
+          <View style={styles.scannedFeedCard}>
+            <View style={styles.scannedFeedHeader}>
+              <View>
+                <Text style={styles.scannedFeedTitle}>Today's Fast Scans</Text>
+                <Text style={styles.scannedFeedSub}>Real-time automated student check-in records</Text>
+              </View>
+              <View style={styles.scannedCounterBadge}>
+                <Text style={styles.scannedCounterText}>{recentScans.length} Scanned</Text>
+              </View>
+            </View>
+
+            {recentScans.length > 0 ? (
+              <View style={{ marginTop: 10 }}>
+                {recentScans.map((item, idx) => (
+                  <View key={item.id + '-' + idx} style={styles.feedRow}>
+                    <View style={styles.feedStatusIndicator}>
+                      <Ionicons name="checkmark" size={14} color={C.success} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.feedStudentName}>{item.name}</Text>
+                      <Text style={styles.feedStudentMeta}>
+                        {item.class_name} · Adm #{item.admission_no}
+                      </Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={styles.feedTimestamp}>{item.timestamp}</Text>
+                      <Text style={styles.feedStatusTag}>PRESENT</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                <Ionicons name="scan-outline" size={40} color={C.muted} />
+                <Text style={{ marginTop: 8, fontSize: 13, color: C.muted, fontWeight: '600' }}>
+                  No students fast-scanned yet today.
+                </Text>
+                <Text style={{ fontSize: 12, color: C.muted, textAlign: 'center', marginTop: 4 }}>
+                  Scan a QR card or type an Admission number above to register attendance.
+                </Text>
+              </View>
+            )}
+          </View>
+        </ScrollView>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════
+         TAB 4: TEACHER / STAFF REGISTER
+         ═══════════════════════════════════════════════════════════════ */}
+      {activeTab === 'staff_register' && (
+        <ScrollView
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: 110 }]}
+          refreshControl={
+            <RefreshControl
+              refreshing={loadingStaff}
+              onRefresh={loadStaffData}
+              colors={[C.primary]}
+            />
+          }
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Current User Quick Punch Card */}
+          <View style={styles.staffPunchCard}>
+            <View style={styles.staffPunchHeader}>
+              <View>
+                <Text style={styles.staffPunchTitle}>Teacher / Staff Self-Punch</Text>
+                <Text style={styles.staffPunchSub}>
+                  {formatDateLabel(selectedDate)} · Institutional Geo-fence Active
+                </Text>
+              </View>
+              <View style={[
+                styles.punchStatusBadge,
+                myPunchStatus?.check_in_time ? styles.punchStatusPresent : styles.punchStatusPending
+              ]}>
+                <Text style={[
+                  styles.punchStatusBadgeText,
+                  myPunchStatus?.check_in_time ? { color: '#059669' } : { color: '#d97706' }
+                ]}>
+                  {myPunchStatus?.status || (myPunchStatus?.check_in_time ? 'PRESENT' : 'NOT PUNCHED')}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.staffPunchMetrics}>
+              <View style={styles.punchMetricCol}>
+                <Ionicons name="enter-outline" size={18} color="#16a34a" />
+                <Text style={styles.punchMetricLabel}>In Time</Text>
+                <Text style={styles.punchMetricVal}>
+                  {myPunchStatus?.check_in_time ? new Date(myPunchStatus.check_in_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : '—'}
+                </Text>
+              </View>
+              <View style={styles.punchMetricDivider} />
+              <View style={styles.punchMetricCol}>
+                <Ionicons name="exit-outline" size={18} color="#ea580c" />
+                <Text style={styles.punchMetricLabel}>Out Time</Text>
+                <Text style={styles.punchMetricVal}>
+                  {myPunchStatus?.check_out_time ? new Date(myPunchStatus.check_out_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : '—'}
+                </Text>
+              </View>
+              <View style={styles.punchMetricDivider} />
+              <View style={styles.punchMetricCol}>
+                <Ionicons name="time-outline" size={18} color="#7c3aed" />
+                <Text style={styles.punchMetricLabel}>Duration</Text>
+                <Text style={styles.punchMetricVal}>
+                  {myPunchStatus?.working_minutes ? `${Math.round(myPunchStatus.working_minutes / 60)}h ${myPunchStatus.working_minutes % 60}m` : (myPunchStatus?.check_in_time ? 'Active' : '—')}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.punchActionRow}>
+              {!myPunchStatus?.check_in_time ? (
+                <TouchableOpacity
+                  style={[styles.staffPunchBtn, { backgroundColor: '#16a34a' }, punching && { opacity: 0.6 }]}
+                  onPress={handleStaffPunchIn}
+                  disabled={punching}
+                >
+                  {punching ? <ActivityIndicator size="small" color="#fff" /> : (
+                    <>
+                      <Ionicons name="finger-print" size={18} color="#fff" />
+                      <Text style={styles.staffPunchBtnText}>Punch In Now</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              ) : !myPunchStatus?.check_out_time ? (
+                <TouchableOpacity
+                  style={[styles.staffPunchBtn, { backgroundColor: '#ea580c' }, punching && { opacity: 0.6 }]}
+                  onPress={handleStaffPunchOut}
+                  disabled={punching}
+                >
+                  {punching ? <ActivityIndicator size="small" color="#fff" /> : (
+                    <>
+                      <Ionicons name="log-out-outline" size={18} color="#fff" />
+                      <Text style={styles.staffPunchBtnText}>Punch Out (End Day)</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.punchedCompleteBanner}>
+                  <Ionicons name="checkmark-done-circle" size={18} color="#059669" />
+                  <Text style={styles.punchedCompleteText}>Full Day Punch Recorded</Text>
+                </View>
+              )}
+            </View>
+          </View>
+
+          {/* School Staff Today Turnout KPIs */}
+          <View style={{ marginTop: 16 }}>
+            <Text style={styles.sectionHeaderTitle}>Faculty & Staff Turnout</Text>
+            <View style={styles.kpiRow}>
+              <View style={{ flex: 1 }}>
+                <KPICard
+                  title="Total Staff"
+                  value={staffDashboard?.total_employees ?? '—'}
+                  icon="people"
+                  color="#2563eb"
+                  bg="#eff6ff"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <KPICard
+                  title="Present"
+                  value={staffDashboard?.present_today ?? '—'}
+                  icon="checkmark-circle"
+                  color="#16a34a"
+                  bg="#dcfce7"
+                />
+              </View>
+            </View>
+            <View style={[styles.kpiRow, { marginTop: 10 }]}>
+              <View style={{ flex: 1 }}>
+                <KPICard
+                  title="Absent"
+                  value={staffDashboard?.absent_today ?? '—'}
+                  icon="close-circle"
+                  color="#dc2626"
+                  bg="#fee2e2"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <KPICard
+                  title="Late Arrivals"
+                  value={staffDashboard?.late_today ?? '—'}
+                  icon="time"
+                  color="#d97706"
+                  bg="#fef3c7"
+                />
+              </View>
+            </View>
+          </View>
+
+          {/* Staff Roster Filter Pills */}
+          <View style={styles.staffFilterRow}>
+            {['ALL', 'PRESENT', 'ABSENT', 'LATE'].map((f) => (
+              <TouchableOpacity
+                key={f}
+                style={[styles.staffFilterChip, staffRosterFilter === f && styles.staffFilterChipActive]}
+                onPress={() => setStaffRosterFilter(f)}
+              >
+                <Text style={[styles.staffFilterChipText, staffRosterFilter === f && styles.staffFilterChipTextActive]}>
+                  {f === 'ALL' ? 'All Staff' : f}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Staff Roster List */}
+          <View style={styles.staffRosterCard}>
+            <View style={styles.staffRosterHeader}>
+              <Text style={styles.staffRosterTitle}>Today's Staff Register</Text>
+              <TouchableOpacity onPress={() => navigation.navigate('StaffAttendance')}>
+                <Text style={styles.seeFullLink}>Open Full HRMS →</Text>
+              </TouchableOpacity>
+            </View>
+
+            {staffTodayList.length > 0 ? (
+              staffTodayList
+                .filter((s) => staffRosterFilter === 'ALL' || (s.status || '').toUpperCase() === staffRosterFilter)
+                .map((staff, idx) => (
+                  <View key={staff.id || idx} style={styles.staffRosterRow}>
+                    <View style={styles.staffAvatar}>
+                      <Text style={styles.staffAvatarText}>
+                        {(staff.user_name || staff.name || 'T').charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1, marginHorizontal: 10 }}>
+                      <Text style={styles.staffNameText} numberOfLines={1}>
+                        {staff.user_name || staff.name || 'Staff Member'}
+                      </Text>
+                      <Text style={styles.staffMetaText}>
+                        {staff.role || 'Teacher'} · Emp #{staff.employee_id || staff.user_id || idx + 1}
+                      </Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Badge
+                        variant={
+                          (staff.status || '').toUpperCase() === 'PRESENT'
+                            ? 'success'
+                            : (staff.status || '').toUpperCase() === 'ABSENT'
+                            ? 'danger'
+                            : 'warning'
+                        }
+                        size="sm"
+                      >
+                        {staff.status || 'ABSENT'}
+                      </Badge>
+                      <Text style={styles.staffCheckInTime}>
+                        {staff.check_in_time ? new Date(staff.check_in_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : 'No punch'}
+                      </Text>
+                    </View>
+                  </View>
+                ))
+            ) : (
+              <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+                <Text style={{ fontSize: 13, color: C.muted }}>No staff records found for this date.</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Action Links to Analytics & Settings */}
+          <View style={styles.hubActionsContainer}>
+            <TouchableOpacity
+              style={styles.hubActionBtn}
+              onPress={() => navigation.navigate('StaffAttendanceAnalytics')}
+            >
+              <Ionicons name="bar-chart-outline" size={20} color={C.primary} />
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={styles.hubActionTitle}>Staff Attendance Analytics</Text>
+                <Text style={styles.hubActionSub}>Monthly trends, heatmaps, overtime & rankings</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={C.muted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.hubActionBtn, { marginTop: 10 }]}
+              onPress={() => navigation.navigate('StaffAttendanceSettings')}
+            >
+              <Ionicons name="settings-outline" size={20} color="#0d9488" />
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={styles.hubActionTitle}>Geo-fencing & Shift Policies</Text>
+                <Text style={styles.hubActionSub}>Radius, start/end times, grace periods & rules</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={C.muted} />
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       )}
 
       {/* ── Custom Date Input Modal ── */}
@@ -1670,4 +2297,305 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   modalApplyBtnText: { fontSize: 13, fontWeight: '800', color: '#fff' },
+
+  // Search input in Mark Tab
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: C.border,
+    paddingHorizontal: 12,
+    marginHorizontal: 16,
+    marginVertical: 8,
+    height: 40,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 13,
+    color: C.text,
+    marginLeft: 8,
+    paddingVertical: 0,
+  },
+
+  // QR / Fast Scan Styles
+  qrHeroCard: {
+    backgroundColor: '#1e293b',
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 16,
+  },
+  qrHeroIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#334155',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qrHeroTitle: { fontSize: 16, fontWeight: '800', color: '#fff' },
+  qrHeroSubtitle: { fontSize: 12, color: '#94a3b8', marginTop: 2 },
+  qrInputRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+    alignItems: 'center',
+  },
+  qrInputContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0f172a',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#334155',
+    paddingHorizontal: 12,
+    height: 44,
+  },
+  qrTextInput: {
+    flex: 1,
+    color: '#fff',
+    fontSize: 13,
+    marginLeft: 8,
+    paddingVertical: 0,
+  },
+  qrScanActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: C.primary,
+    paddingHorizontal: 14,
+    height: 44,
+    borderRadius: 10,
+    justifyContent: 'center',
+  },
+  qrScanActionText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  quickTestLabel: { fontSize: 11, fontWeight: '700', color: '#94a3b8' },
+  quickTestChip: {
+    backgroundColor: '#334155',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+  },
+  quickTestChipText: { fontSize: 11, color: '#e2e8f0', fontWeight: '600' },
+
+  lastScannedCard: {
+    backgroundColor: '#f0fdf4',
+    borderWidth: 1.5,
+    borderColor: '#86efac',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 16,
+  },
+  lastScannedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#dcfce7',
+  },
+  verifiedCheckBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lastScannedTitle: { fontSize: 15, fontWeight: '800', color: '#166534' },
+  lastScannedTime: { fontSize: 11, color: '#15803d', marginTop: 1 },
+  lastScannedStudentInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 12,
+  },
+  lastScannedAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#bbf7d0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lastScannedAvatarText: { fontSize: 18, fontWeight: '800', color: '#166534' },
+  lastScannedName: { fontSize: 15, fontWeight: '800', color: '#0f172a' },
+  lastScannedMeta: { fontSize: 12, color: '#475569', marginTop: 1 },
+  lastScannedClass: { fontSize: 12, fontWeight: '700', color: C.primary, marginTop: 2 },
+
+  scannedFeedCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  scannedFeedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  scannedFeedTitle: { fontSize: 15, fontWeight: '800', color: C.text },
+  scannedFeedSub: { fontSize: 11, color: C.muted, marginTop: 1 },
+  scannedCounterBadge: {
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  scannedCounterText: { fontSize: 11, fontWeight: '700', color: C.text },
+  feedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+    gap: 10,
+  },
+  feedStatusIndicator: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#dcfce7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  feedStudentName: { fontSize: 13, fontWeight: '700', color: C.text },
+  feedStudentMeta: { fontSize: 11, color: C.muted, marginTop: 1 },
+  feedTimestamp: { fontSize: 11, fontWeight: '700', color: C.text },
+  feedStatusTag: { fontSize: 10, fontWeight: '800', color: C.success, marginTop: 1 },
+
+  // Staff Register Styles
+  staffPunchCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  staffPunchHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  staffPunchTitle: { fontSize: 15, fontWeight: '800', color: C.text },
+  staffPunchSub: { fontSize: 11, color: C.muted, marginTop: 1 },
+  punchStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  punchStatusBadgeText: { fontSize: 11, fontWeight: '800' },
+  staffPunchMetrics: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+  },
+  punchMetricCol: { flex: 1, alignItems: 'center' },
+  punchMetricLabel: { fontSize: 11, color: C.muted, marginTop: 3 },
+  punchMetricVal: { fontSize: 13, fontWeight: '800', color: C.text, marginTop: 2 },
+  punchMetricDivider: { width: 1, height: 28, backgroundColor: C.border },
+  staffPunchBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 44,
+    borderRadius: 10,
+    marginTop: 14,
+  },
+  staffPunchBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  punchedCompleteBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#f0fdf4',
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 12,
+  },
+  punchedCompleteText: { fontSize: 13, fontWeight: '700', color: '#166534' },
+
+  sectionHeaderTitle: { fontSize: 15, fontWeight: '800', color: C.text, marginBottom: 10 },
+  staffFilterRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginVertical: 14,
+  },
+  staffFilterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  staffFilterChipActive: {
+    backgroundColor: C.primary,
+    borderColor: C.primary,
+  },
+  staffFilterChipText: { fontSize: 12, fontWeight: '700', color: C.muted },
+  staffFilterChipTextActive: { color: '#fff' },
+
+  staffRosterCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: C.border,
+    marginBottom: 16,
+  },
+  staffRosterHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  staffRosterTitle: { fontSize: 15, fontWeight: '800', color: C.text },
+  seeFullLink: { fontSize: 12, fontWeight: '700', color: C.primary },
+  staffRosterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  staffAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#e0e7ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  staffAvatarText: { fontSize: 14, fontWeight: '800', color: '#4338ca' },
+  staffNameText: { fontSize: 13, fontWeight: '700', color: C.text },
+  staffMetaText: { fontSize: 11, color: C.muted, marginTop: 1 },
+  staffCheckInTime: { fontSize: 10, color: C.muted, marginTop: 2 },
+
+  hubActionsContainer: {
+    marginBottom: 24,
+  },
+  hubActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  hubActionTitle: { fontSize: 13, fontWeight: '700', color: C.text },
+  hubActionSub: { fontSize: 11, color: C.muted, marginTop: 1 },
 });

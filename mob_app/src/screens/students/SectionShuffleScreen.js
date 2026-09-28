@@ -189,11 +189,14 @@ export default function SectionShuffleScreen({ navigation }) {
     if (!previewData) return;
     setExecuting(true);
     try {
+      const targetClass = classes.find(c => c.name === selectedClassName) || classes[0];
+      const moves = previewData.moves || previewData.allocations || [];
       const payload = {
         session: selectedSession || '2026-27',
+        class_id: targetClass?.id || (sourceClassId ? Number(sourceClassId) : 1),
         class_name: selectedClassName,
         mode,
-        allocations: previewData.allocations || previewData.moves || [],
+        moves: moves,
         remarks: `Mobile Shuffle: ${selectedClassName} (${mode})`,
       };
 

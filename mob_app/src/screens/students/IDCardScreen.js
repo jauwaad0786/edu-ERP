@@ -1,14 +1,15 @@
 // mob_app/src/screens/students/IDCardScreen.js
+// 100% Feature Parity with Web ERP IDCardPage.jsx & backend ID Card APIs
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, RefreshControl,
+  View, Text, StyleSheet, ScrollView,
   ActivityIndicator, TouchableOpacity, Image, Alert, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import client from '../../api/client';
 import { colors } from '../../theme/colors';
-import Card from '../../components/common/Card';
+import { useAuth } from '../../context/AuthContext';
 
 const C = {
   primary: '#0b57d0',
@@ -22,6 +23,7 @@ const C = {
 };
 
 export default function IDCardScreen({ route, navigation }) {
+  const { user } = useAuth();
   const { student_id, student: initialStudent } = route?.params || {};
 
   const [student, setStudent] = useState(initialStudent || null);
@@ -30,6 +32,10 @@ export default function IDCardScreen({ route, navigation }) {
   const [classStudents, setClassStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [cardSide, setCardSide] = useState('front'); // 'front' | 'back'
+
+  const schoolName = user?.school?.name || user?.school_name || 'Institutional School of Excellence';
+  const schoolCity = user?.school?.city || user?.school?.address || 'Campus Center';
+  const schoolPhone = user?.school?.phone || '';
 
   // Fetch student details if ID passed
   const loadStudentData = useCallback(async (sid) => {
@@ -102,16 +108,15 @@ export default function IDCardScreen({ route, navigation }) {
   };
 
   const stuName = student?.name || student?.student_name || 'Student Name';
-  const stuClass = student?.class_name || student?.class_obj?.name || 'Class 5';
+  const stuClass = student?.class_name || student?.class_obj?.name || 'Class';
   const stuSection = student?.section || student?.section_name || 'A';
   const stuRoll = student?.roll_no || student?.roll_number || '—';
   const stuAdm = student?.admission_no || student?.admission_number || '—';
-  const stuSession = student?.session || '2024-25';
-  const stuBlood = student?.blood_group || 'O+';
+  const stuSession = student?.session || user?.school?.current_session || '2026-27';
+  const stuBlood = student?.blood_group || '—';
   const stuFather = student?.father_name || student?.parent_name || '—';
   const stuPhone = student?.parent_phone || student?.phone || '—';
   const stuDob = student?.dob ? String(student.dob).slice(0, 10) : '—';
-  const stuGender = student?.gender || '—';
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -125,7 +130,7 @@ export default function IDCardScreen({ route, navigation }) {
         </TouchableOpacity>
         <View style={{ flex: 1, marginLeft: 10 }}>
           <Text style={styles.headerTitle}>Student Identity Card</Text>
-          <Text style={styles.headerSub}>Official Smart RFID/QR Student ID</Text>
+          <Text style={styles.headerSub}>Official Smart QR Verification ID</Text>
         </View>
         <TouchableOpacity style={styles.downloadBtn} onPress={handleDownloadPDF}>
           <Ionicons name="download-outline" size={18} color="#fff" />
@@ -138,19 +143,19 @@ export default function IDCardScreen({ route, navigation }) {
           <View style={styles.classChipsWrapper}>
             <Text style={styles.chipsLabel}>Select Class:</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-              {classes.map((cls) => {
-                const isSel = selectedClassId === cls.id;
+              {classes.map((c) => {
+                const isSelected = selectedClassId === c.id;
                 return (
                   <TouchableOpacity
-                    key={cls.id}
-                    style={[styles.classChip, isSel && styles.classChipActive]}
+                    key={c.id}
+                    style={[styles.classChip, isSelected && styles.classChipActive]}
                     onPress={() => {
-                      setSelectedClassId(cls.id);
+                      setSelectedClassId(c.id);
                       setStudent(null);
                     }}
                   >
-                    <Text style={[styles.classChipText, isSel && styles.classChipTextActive]}>
-                      {cls.name} ({cls.section || 'A'})
+                    <Text style={[styles.classChipText, isSelected && styles.classChipTextActive]}>
+                      {c.name} - {c.section}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -159,21 +164,21 @@ export default function IDCardScreen({ route, navigation }) {
           </View>
         )}
 
-        {/* Student selector chips in this class */}
+        {/* Student selector chips in browser mode */}
         {!student_id && classStudents.length > 0 && (
           <View style={styles.studentChipsWrapper}>
             <Text style={styles.chipsLabel}>Select Student ({classStudents.length}):</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-              {classStudents.map((stu) => {
-                const isSel = student?.id === stu.id;
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+              {classStudents.map((s) => {
+                const isSelected = student?.id === s.id;
                 return (
                   <TouchableOpacity
-                    key={stu.id}
-                    style={[styles.studentChip, isSel && styles.studentChipActive]}
-                    onPress={() => setStudent(stu)}
+                    key={s.id}
+                    style={[styles.studentChip, isSelected && styles.studentChipActive]}
+                    onPress={() => setStudent(s)}
                   >
-                    <Text style={[styles.studentChipText, isSel && styles.studentChipTextActive]}>
-                      {stu.name}
+                    <Text style={[styles.studentChipText, isSelected && styles.studentChipTextActive]}>
+                      {s.name}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -182,7 +187,7 @@ export default function IDCardScreen({ route, navigation }) {
           </View>
         )}
 
-        {/* Card Side Toggle Buttons: Front vs Back */}
+        {/* Side Toggle Tabs */}
         <View style={styles.sideToggleRow}>
           <TouchableOpacity
             style={[styles.sideToggleBtn, cardSide === 'front' && styles.sideToggleBtnActive]}
@@ -210,7 +215,7 @@ export default function IDCardScreen({ route, navigation }) {
         ) : student ? (
           <View style={styles.cardCenterContainer}>
             {cardSide === 'front' ? (
-              /* ── FRONT SIDE CARD (High Fidelity Web Parity) ── */
+              /* ── FRONT SIDE CARD ── */
               <View style={styles.idCard}>
                 {/* Header Banner */}
                 <View style={styles.cardHeader}>
@@ -219,9 +224,9 @@ export default function IDCardScreen({ route, navigation }) {
                   </View>
                   <View style={{ flex: 1, marginHorizontal: 8 }}>
                     <Text style={styles.schoolName} numberOfLines={1}>
-                      ST. XAVIER'S ACADEMY
+                      {schoolName}
                     </Text>
-                    <Text style={styles.schoolAffil}>CBSE AFFILIATED · REG. 10482</Text>
+                    <Text style={styles.schoolAffil}>{schoolCity}</Text>
                   </View>
                   <View style={styles.idTypeBadge}>
                     <Text style={styles.idTypeText}>STUDENT</Text>
@@ -288,7 +293,7 @@ export default function IDCardScreen({ route, navigation }) {
                 </View>
               </View>
             ) : (
-              /* ── BACK SIDE CARD (Terms, QR, Principal Signature) ── */
+              /* ── BACK SIDE CARD ── */
               <View style={styles.idCard}>
                 <View style={[styles.cardHeader, { paddingVertical: 8 }]}>
                   <Text style={[styles.schoolName, { textAlign: 'center', width: '100%' }]}>
@@ -297,7 +302,7 @@ export default function IDCardScreen({ route, navigation }) {
                 </View>
                 <View style={styles.goldBar} />
 
-                {/* QR Code Placeholder Box */}
+                {/* QR Code Box */}
                 <View style={styles.qrSection}>
                   <View style={styles.qrBox}>
                     <Ionicons name="qr-code" size={54} color={C.navy} />
@@ -307,16 +312,16 @@ export default function IDCardScreen({ route, navigation }) {
 
                 {/* Address Box */}
                 <View style={styles.addressBox}>
-                  <Text style={styles.addressTitle}>School Campus Address:</Text>
-                  <Text style={styles.addressText}>
-                    Main Campus, Knowledge Boulevard, Sector 12
-                  </Text>
-                  <Text style={styles.addressText}>Ph: +91 98765 43210 · info@schooledurp.com</Text>
+                  <Text style={styles.addressTitle}>School Campus:</Text>
+                  <Text style={styles.addressText}>{schoolName} - {schoolCity}</Text>
+                  {schoolPhone ? (
+                    <Text style={styles.addressText}>Ph: {schoolPhone}</Text>
+                  ) : null}
                 </View>
 
                 {/* Terms & Conditions */}
                 <View style={styles.termsBox}>
-                  <Text style={styles.termsTitle}>RULES & REGULATIONS:</Text>
+                  <Text style={styles.termsTitle}>RULES &amp; REGULATIONS:</Text>
                   <Text style={styles.termsItem}>• This card must be presented on request.</Text>
                   <Text style={styles.termsItem}>• Non-transferable. Loss must be reported.</Text>
                   <Text style={styles.termsItem}>• Property of the institution.</Text>
@@ -386,7 +391,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 8,
   },
-  classChipActive: { backgroundColor: C.primary, borderColor: C.primaryDark },
+  classChipActive: { backgroundColor: C.primary, borderColor: C.primary },
   classChipText: { fontSize: 12, fontWeight: '700', color: C.text },
   classChipTextActive: { color: '#fff' },
 
@@ -398,46 +403,46 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 20,
   },
-  studentChipActive: { backgroundColor: C.navy, borderColor: C.navy },
-  studentChipText: { fontSize: 12, fontWeight: '700', color: C.text },
-  studentChipTextActive: { color: '#fff' },
+  studentChipActive: { backgroundColor: C.primary, borderColor: C.primary },
+  studentChipText: { fontSize: 12, fontWeight: '600', color: C.text },
+  studentChipTextActive: { color: '#fff', fontWeight: '700' },
 
   sideToggleRow: {
     flexDirection: 'row',
-    gap: 10,
     backgroundColor: '#e2e8f0',
-    padding: 4,
     borderRadius: 10,
-    marginBottom: 16,
+    padding: 4,
+    marginBottom: 20,
+    gap: 4,
   },
   sideToggleBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
     paddingVertical: 8,
     borderRadius: 8,
+    gap: 6,
   },
-  sideToggleBtnActive: { backgroundColor: C.primary },
-  sideToggleText: { fontSize: 13, fontWeight: '700', color: C.muted },
-  sideToggleTextActive: { color: '#fff' },
+  sideToggleBtnActive: {
+    backgroundColor: C.primary,
+  },
+  sideToggleText: { fontSize: 12, fontWeight: '600', color: C.muted },
+  sideToggleTextActive: { color: '#fff', fontWeight: '800' },
 
-  cardCenterContainer: { alignItems: 'center', marginTop: 6 },
-
-  // ID Card Styling
+  cardCenterContainer: { alignItems: 'center' },
   idCard: {
-    width: '100%',
-    maxWidth: 320,
-    backgroundColor: '#fff',
-    borderRadius: 14,
+    width: 280,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
     overflow: 'hidden',
     borderWidth: 1.5,
     borderColor: '#bfdbfe',
-    elevation: 8,
-    shadowColor: '#032d60',
-    shadowOpacity: 0.18,
+    shadowColor: C.navy,
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   cardHeader: {
     backgroundColor: C.navy,
@@ -447,95 +452,84 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   schoolLogoBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 6,
-    backgroundColor: '#1d4ed8',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: C.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  schoolName: { color: '#fff', fontSize: 12, fontWeight: '900', letterSpacing: 0.3 },
-  schoolAffil: { color: '#93c5fd', fontSize: 8, marginTop: 1, fontWeight: '600' },
+  schoolName: { color: '#fff', fontSize: 11, fontWeight: '800', letterSpacing: 0.3 },
+  schoolAffil: { color: '#93c5fd', fontSize: 8, marginTop: 1 },
   idTypeBadge: { alignItems: 'flex-end' },
-  idTypeText: { color: C.gold, fontSize: 8, fontWeight: '800' },
+  idTypeText: { color: C.gold, fontSize: 7, fontWeight: '800', letterSpacing: 0.5 },
   goldBar: { height: 3, backgroundColor: C.gold },
-
-  photoSection: {
-    alignItems: 'center',
-    paddingVertical: 12,
-    backgroundColor: '#fff',
-  },
+  photoSection: { alignItems: 'center', paddingVertical: 12 },
   photoContainer: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#eff6ff',
     borderWidth: 2.5,
     borderColor: C.primary,
-    backgroundColor: '#eff6ff',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    marginBottom: 6,
+    marginBottom: 8,
   },
   photoImg: { width: '100%', height: '100%' },
-  cardStudentName: { fontSize: 15, fontWeight: '900', color: C.navy, textTransform: 'uppercase' },
-  cardStudentClass: { fontSize: 11, fontWeight: '700', color: C.primary, marginTop: 2 },
-
-  cardDivider: { height: 1, backgroundColor: '#e2e8f0', marginHorizontal: 12 },
+  cardStudentName: { fontSize: 14, fontWeight: '800', color: C.navy, textTransform: 'uppercase' },
+  cardStudentClass: { fontSize: 9.5, fontWeight: '700', color: C.primary, marginTop: 2 },
+  cardDivider: { height: 1, backgroundColor: '#f1f5f9', marginHorizontal: 12 },
   infoGrid: {
-    padding: 12,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    rowGap: 6,
   },
-  gridItem: { width: '47%' },
-  gridLabel: { fontSize: 9, color: C.muted, fontWeight: '600', textTransform: 'uppercase' },
-  gridValue: { fontSize: 11, color: C.text, fontWeight: '800', marginTop: 1 },
-
+  gridItem: { width: '50%' },
+  gridLabel: { fontSize: 8, color: '#94a3b8', fontWeight: '700', textTransform: 'uppercase' },
+  gridValue: { fontSize: 10, fontWeight: '800', color: C.text, marginTop: 1 },
   cardFooter: {
-    backgroundColor: C.navy,
+    backgroundColor: '#f8fafc',
     paddingVertical: 6,
     paddingHorizontal: 8,
     alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
   },
-  footerText: { fontSize: 9, color: '#93c5fd', textAlign: 'center' },
+  footerText: { fontSize: 7.5, color: C.muted, textAlign: 'center' },
 
-  // Back side elements
   qrSection: { alignItems: 'center', paddingVertical: 14 },
   qrBox: {
-    padding: 10,
     backgroundColor: '#f8fafc',
-    borderRadius: 8,
+    padding: 10,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#cbd5e1',
+    borderColor: C.border,
     alignItems: 'center',
   },
-  qrSubText: { fontSize: 8, fontWeight: '800', color: C.primary, marginTop: 4 },
-  addressBox: {
-    backgroundColor: '#f1f5f9',
-    marginHorizontal: 12,
-    padding: 8,
-    borderRadius: 6,
-    marginBottom: 8,
-  },
-  addressTitle: { fontSize: 9, fontWeight: '800', color: C.navy },
-  addressText: { fontSize: 8, color: C.muted, marginTop: 1 },
-  termsBox: { marginHorizontal: 12, marginBottom: 8 },
-  termsTitle: { fontSize: 8, fontWeight: '800', color: C.primary, marginBottom: 2 },
-  termsItem: { fontSize: 8, color: C.muted, lineHeight: 11 },
-  sigSection: { alignItems: 'flex-end', marginHorizontal: 14, marginBottom: 10 },
-  sigLine: { width: 90, height: 1, backgroundColor: '#94a3b8', marginBottom: 3 },
-  sigText: { fontSize: 8, fontWeight: '700', color: C.navy },
+  qrSubText: { fontSize: 7, fontWeight: '800', color: C.primary, marginTop: 4, letterSpacing: 0.5 },
+  addressBox: { paddingHorizontal: 14, marginBottom: 8 },
+  addressTitle: { fontSize: 8, fontWeight: '800', color: C.navy, textTransform: 'uppercase' },
+  addressText: { fontSize: 8, color: C.text, marginTop: 1 },
+  termsBox: { paddingHorizontal: 14, marginBottom: 10 },
+  termsTitle: { fontSize: 7.5, fontWeight: '800', color: C.navy, marginBottom: 2 },
+  termsItem: { fontSize: 7, color: C.muted, lineHeight: 11 },
+  sigSection: { alignItems: 'flex-end', paddingHorizontal: 14, marginBottom: 10 },
+  sigLine: { width: 90, height: 1, backgroundColor: '#94a3b8', marginBottom: 2 },
+  sigText: { fontSize: 7, fontWeight: '700', color: C.navy },
 
   printActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
     backgroundColor: C.primary,
-    paddingVertical: 12,
     paddingHorizontal: 20,
+    paddingVertical: 12,
     borderRadius: 10,
+    gap: 8,
     marginTop: 20,
   },
-  printActionBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  printActionBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
 });

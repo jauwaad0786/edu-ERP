@@ -1,4 +1,3 @@
-// mob_app/src/screens/classes/ClassesScreen.js
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, RefreshControl,
@@ -7,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import client from '../../api/client';
+import { useAuth } from '../../context/AuthContext';
 
 const C = {
   primary: '#7c3aed',
@@ -20,7 +20,12 @@ const C = {
   border: '#e2e8f0',
 };
 
+const SECTION_OPTIONS = ['A', 'B', 'C', 'D', 'E', 'F'];
+
 export default function ClassesScreen({ navigation }) {
+  const { user } = useAuth();
+  const currentSession = user?.school?.current_session || '2026-27';
+
   const [classes, setClasses] = useState([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -30,7 +35,17 @@ export default function ClassesScreen({ navigation }) {
   const [form, setForm] = useState({
     name: '',
     section: 'A',
-    session: '2024-25',
+    session: currentSession,
+  });
+
+  // Edit Class State
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const [editForm, setEditForm] = useState({
+    id: null,
+    name: '',
+    section: 'A',
+    session: currentSession,
   });
 
   const load = useCallback(async (isRefresh = false) => {
@@ -56,16 +71,48 @@ export default function ClassesScreen({ navigation }) {
       await client.post('/principal/classes', {
         name: form.name.trim(),
         section: form.section.trim().toUpperCase() || 'A',
-        session: form.session.trim() || '2024-25',
+        session: form.session.trim() || currentSession,
       });
       Alert.alert('Success', `Class ${form.name} (${form.section || 'A'}) created successfully.`);
       setShowAddModal(false);
-      setForm({ name: '', section: 'A', session: '2024-25' });
+      setForm({ name: '', section: 'A', session: currentSession });
       load(true);
     } catch (err) {
       Alert.alert('Creation Failed', err.response?.data?.message || err.response?.data?.error || 'Failed to create class.');
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleOpenEdit = (cls) => {
+    setEditForm({
+      id: cls.id,
+      name: cls.name || '',
+      section: cls.section || 'A',
+      session: cls.session || currentSession,
+    });
+    setShowEditModal(true);
+  };
+
+  const handleUpdateClass = async () => {
+    if (!editForm.name.trim()) {
+      Alert.alert('Validation Error', 'Please enter a class name.');
+      return;
+    }
+    setUpdating(true);
+    try {
+      await client.patch(`/principal/classes/${editForm.id}`, {
+        name: editForm.name.trim(),
+        section: editForm.section.trim().toUpperCase() || 'A',
+        session: editForm.session.trim() || currentSession,
+      });
+      Alert.alert('Success', `Class ${editForm.name} updated successfully.`);
+      setShowEditModal(false);
+      load(true);
+    } catch (err) {
+      Alert.alert('Update Failed', err.response?.data?.message || err.response?.data?.error || 'Failed to update class.');
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -165,15 +212,9 @@ export default function ClassesScreen({ navigation }) {
       >
         {filteredClasses.length > 0 ? (
           filteredClasses.map((cls, i) => (
-            <TouchableOpacity
+            <View
               key={cls.id || i}
               style={styles.card}
-              activeOpacity={0.7}
-              onPress={() => {
-                if (navigation?.navigate) {
-                  navigation.navigate('ClassDetail', { classId: cls.id, className: cls.name });
-                }
-              }}
             >
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -182,35 +223,76 @@ export default function ClassesScreen({ navigation }) {
                   </View>
                   <View style={{ marginLeft: 12 }}>
                     <Text style={styles.className}>Class {cls.name} {cls.section ? `(${cls.section})` : ''}</Text>
-                    <Text style={styles.sessionText}>Session: {cls.session || '2026-27'}</Text>
+                    <Text style={styles.sessionText}>Session: {cls.session || currentSession}</Text>
                   </View>
                 </View>
 
                 <View style={styles.badge}>
                   <Text style={{ fontSize: 12, fontWeight: '700', color: C.primary }}>
-                    {cls.student_count ?? cls.students_count ?? '—'} Students
+                    {cls.student_count ?? cls.students_count ?? 0} Students
+                  </Text>
+                </View>
+              </View>
+
+              {/* Sub-info Badges */}
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginVertical: 8 }}>
+                <View style={styles.infoBadge}>
+                  <Ionicons name="book-outline" size={13} color="#0284c7" />
+                  <Text style={[styles.infoBadgeText, { color: '#0284c7' }]}>
+                    {cls.subjects_count ?? 0} Subjects Configured
+                  </Text>
+                </View>
+                <View style={[styles.infoBadge, { backgroundColor: (cls.class_teacher_name || cls.teacher_name) ? '#f0fdf4' : '#fffbeb' }]}>
+                  <Ionicons
+                    name="person-outline"
+                    size={13}
+                    color={(cls.class_teacher_name || cls.teacher_name) ? '#16a34a' : '#d97706'}
+                  />
+                  <Text
+                    style={[
+                      styles.infoBadgeText,
+                      { color: (cls.class_teacher_name || cls.teacher_name) ? '#16a34a' : '#d97706' },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    Teacher: {cls.class_teacher_name || cls.teacher_name || 'Not assigned'}
                   </Text>
                 </View>
               </View>
 
               <View style={styles.cardDivider} />
 
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                  <Ionicons name="person-outline" size={15} color={C.muted} style={{ marginRight: 6 }} />
-                  <Text style={styles.meta} numberOfLines={1}>
-                    Class Teacher: <Text style={{ fontWeight: '700', color: C.text }}>{cls.class_teacher_name || cls.teacher_name || 'Not assigned'}</Text>
-                  </Text>
-                </View>
+              {/* Card Action Buttons: Details, Edit, Students */}
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
                 <TouchableOpacity
-                  style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 8 }}
+                  style={[styles.cardActionBtn, { backgroundColor: '#7c3aed', flex: 1.2 }]}
+                  onPress={() => {
+                    if (navigation?.navigate) {
+                      navigation.navigate('ClassDetail', { classId: cls.id, className: cls.name });
+                    }
+                  }}
+                >
+                  <Ionicons name="eye-outline" size={14} color="#ffffff" />
+                  <Text style={styles.cardActionBtnText}>View Details</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.cardActionBtn, { backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#cbd5e1' }]}
+                  onPress={() => handleOpenEdit(cls)}
+                >
+                  <Ionicons name="create-outline" size={14} color="#475569" />
+                  <Text style={[styles.cardActionBtnText, { color: '#475569' }]}>Edit</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.cardActionBtn, { backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe' }]}
                   onPress={() => navigation?.navigate?.('Students', { selectedClass: cls.name })}
                 >
-                  <Text style={styles.viewStudentsText}>Students</Text>
-                  <Ionicons name="chevron-forward" size={14} color={C.primary} />
+                  <Ionicons name="people-outline" size={14} color="#0284c7" />
+                  <Text style={[styles.cardActionBtnText, { color: '#0284c7' }]}>Students</Text>
                 </TouchableOpacity>
               </View>
-            </TouchableOpacity>
+            </View>
           ))
         ) : (
           <View style={{ alignItems: 'center', padding: 40 }}>
@@ -243,9 +325,30 @@ export default function ClassesScreen({ navigation }) {
             />
 
             <Text style={styles.inputLabel}>Section</Text>
+            <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8 }}>
+              {SECTION_OPTIONS.map(sec => (
+                <TouchableOpacity
+                  key={sec}
+                  style={[
+                    styles.sectionPill,
+                    form.section === sec && styles.sectionPillActive,
+                  ]}
+                  onPress={() => setForm(prev => ({ ...prev, section: sec }))}
+                >
+                  <Text
+                    style={[
+                      styles.sectionPillText,
+                      form.section === sec && styles.sectionPillTextActive,
+                    ]}
+                  >
+                    {sec}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
             <TextInput
               style={styles.modalInput}
-              placeholder="e.g. A, B, C (default: A)"
+              placeholder="or custom section (default: A)"
               placeholderTextColor="#94a3b8"
               value={form.section}
               onChangeText={(v) => setForm(prev => ({ ...prev, section: v }))}
@@ -255,7 +358,7 @@ export default function ClassesScreen({ navigation }) {
             <Text style={styles.inputLabel}>Academic Session</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="e.g. 2024-25"
+              placeholder={`e.g. ${currentSession}`}
               placeholderTextColor="#94a3b8"
               value={form.session}
               onChangeText={(v) => setForm(prev => ({ ...prev, session: v }))}
@@ -277,6 +380,89 @@ export default function ClassesScreen({ navigation }) {
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
                   <Text style={{ fontWeight: '700', color: '#fff' }}>Create Class</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Edit Class Modal */}
+      <Modal visible={showEditModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Edit Class Details</Text>
+              <TouchableOpacity onPress={() => setShowEditModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={24} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.inputLabel}>Class Name *</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="e.g. 10th, 9th, 1st"
+              placeholderTextColor="#94a3b8"
+              value={editForm.name}
+              onChangeText={(v) => setEditForm(prev => ({ ...prev, name: v }))}
+            />
+
+            <Text style={styles.inputLabel}>Section</Text>
+            <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8 }}>
+              {SECTION_OPTIONS.map(sec => (
+                <TouchableOpacity
+                  key={sec}
+                  style={[
+                    styles.sectionPill,
+                    editForm.section === sec && styles.sectionPillActive,
+                  ]}
+                  onPress={() => setEditForm(prev => ({ ...prev, section: sec }))}
+                >
+                  <Text
+                    style={[
+                      styles.sectionPillText,
+                      editForm.section === sec && styles.sectionPillTextActive,
+                    ]}
+                  >
+                    {sec}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Section (e.g. A, B, C)"
+              placeholderTextColor="#94a3b8"
+              value={editForm.section}
+              onChangeText={(v) => setEditForm(prev => ({ ...prev, section: v }))}
+              autoCapitalize="characters"
+            />
+
+            <Text style={styles.inputLabel}>Academic Session</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder={`e.g. ${currentSession}`}
+              placeholderTextColor="#94a3b8"
+              value={editForm.session}
+              onChangeText={(v) => setEditForm(prev => ({ ...prev, session: v }))}
+            />
+
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: '#f1f5f9' }]}
+                onPress={() => setShowEditModal(false)}
+              >
+                <Text style={{ fontWeight: '600', color: '#64748b' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: C.green }]}
+                onPress={handleUpdateClass}
+                disabled={updating}
+              >
+                {updating ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={{ fontWeight: '700', color: '#fff' }}>Save Changes</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -397,5 +583,52 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 12,
     fontWeight: '700',
+  },
+  infoBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f9ff',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
+  infoBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  cardActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 4,
+  },
+  cardActionBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  sectionPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#f1f5f9',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+  },
+  sectionPillActive: {
+    backgroundColor: '#7c3aed',
+    borderColor: '#7c3aed',
+  },
+  sectionPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  sectionPillTextActive: {
+    color: '#ffffff',
   },
 });

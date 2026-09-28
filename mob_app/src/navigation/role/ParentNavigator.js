@@ -20,12 +20,14 @@ import NotificationsScreen from '../../screens/notifications/NotificationsScreen
 import NoticeBoardScreen from '../../screens/notices/NoticeBoardScreen';
 import ExaminationsScreen from '../../screens/examinations/ExaminationsScreen';
 import AdmitCardScreen from '../../screens/examinations/AdmitCardScreen';
+import MarksScreen from '../../screens/marks/MarksScreen';
 import TimetableScreen from '../../screens/timetable/TimetableScreen';
 import CurriculumScreen from '../../screens/curriculum/CurriculumScreen';
 import AIChatScreen from '../../screens/ai/AIChatScreen';
 import OutPassScreen from '../../screens/hostel/OutPassScreen';
 import ComplaintsScreen from '../../screens/hostel/ComplaintsScreen';
 import MeetingsScreen from '../../screens/communication/MeetingsScreen';
+import StudentDocumentsScreen from '../../screens/documents/StudentDocumentsScreen';
 import { TAB_BAR_STYLE } from '../tabBarStyle';
 
 const Tab = createBottomTabNavigator();
@@ -69,8 +71,11 @@ export default function ParentNavigator() {
       <Stack.Screen name="Timetable" component={TimetableScreen} />
       <Stack.Screen name="Curriculum" component={CurriculumScreen} />
       <Stack.Screen name="Examinations" component={ExaminationsScreen} />
+      <Stack.Screen name="ExamSchedule" component={ExaminationsScreen} />
       <Stack.Screen name="AdmitCard" component={AdmitCardScreen} />
       <Stack.Screen name="AdmitCards" component={AdmitCardScreen} />
+      <Stack.Screen name="Marks" component={MarksScreen} />
+      <Stack.Screen name="MarksEntry" component={MarksScreen} />
       <Stack.Screen name="Result" component={ResultScreen} />
       <Stack.Screen name="Results" component={ResultScreen} />
       <Stack.Screen name="Notes" component={NotesScreen} />
@@ -89,6 +94,10 @@ export default function ParentNavigator() {
       <Stack.Screen name="Meetings" component={MeetingsScreen} />
       <Stack.Screen name="PTM" component={MeetingsScreen} />
       <Stack.Screen name="Conferences" component={MeetingsScreen} />
+      <Stack.Screen name="Documents" component={StudentDocumentsScreen} />
+      <Stack.Screen name="StudentDocuments" component={StudentDocumentsScreen} />
+      <Stack.Screen name="Certificates" component={StudentDocumentsScreen} />
+      <Stack.Screen name="MyDocuments" component={StudentDocumentsScreen} />
     </Stack.Navigator>
   );
 }

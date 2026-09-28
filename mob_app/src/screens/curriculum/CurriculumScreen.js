@@ -51,8 +51,14 @@ export default function CurriculumScreen({ navigation, route }) {
   const [selectedDate, setSelectedDate] = useState(todayStr);
 
   // Default tab can come from route params or 'diary'
-  const initialTab = route?.params?.initialTab || 'diary';
-  const [activeTab, setActiveTab] = useState(initialTab); // 'diary' | 'coverage' | 'history'
+  const initialTab = route?.params?.initialTab || (route?.name === 'TeachingDiary' ? 'diary' : route?.name === 'CurriculumCoverage' ? 'coverage' : route?.name === 'CurriculumSetup' ? 'setup' : 'diary');
+  const [activeTab, setActiveTab] = useState(initialTab); // 'diary' | 'coverage' | 'setup' | 'history'
+
+  useEffect(() => {
+    if (route?.params?.initialTab) {
+      setActiveTab(route.params.initialTab);
+    }
+  }, [route?.params?.initialTab]);
 
   // Teacher Filter for Principals
   const [teachers, setTeachers] = useState([]);
@@ -68,6 +74,63 @@ export default function CurriculumScreen({ navigation, route }) {
   const [loadingCoverage, setLoadingCoverage] = useState(false);
   const [coverageFilterClass, setCoverageFilterClass] = useState('ALL');
   const [classesList, setClassesList] = useState([]);
+
+  // Books & Curriculum Setup State
+  const [curriculums, setCurriculums] = useState([]);
+  const [loadingCurriculums, setLoadingCurriculums] = useState(false);
+  const [setupSession, setSetupSession] = useState('2026-27');
+  const [setupClassId, setSetupClassId] = useState('ALL');
+  const [setupSubjectId, setSetupSubjectId] = useState('ALL');
+  const [subjectsList, setSubjectsList] = useState([]);
+  const [expandedCurriculumId, setExpandedCurriculumId] = useState(null);
+  const [curriculumDetailMap, setCurriculumDetailMap] = useState({});
+  const [loadingDetailId, setLoadingDetailId] = useState(null);
+
+  // Add Book Modal State
+  const [showAddBookModal, setShowAddBookModal] = useState(false);
+  const [submittingBook, setSubmittingBook] = useState(false);
+  const [bookForm, setBookForm] = useState({
+    class_id: '',
+    subject_id: '',
+    book_name: '',
+    publisher: '',
+    book_code: '',
+    estimated_periods: '120',
+    description: '',
+    num_skeleton_chapters: '10',
+  });
+
+  // Chapter Modal State
+  const [showChapterModal, setShowChapterModal] = useState(false);
+  const [editingCurriculumId, setEditingCurriculumId] = useState(null);
+  const [submittingChapter, setSubmittingChapter] = useState(false);
+  const [chapterForm, setChapterForm] = useState({
+    id: null,
+    chapter_no: 1,
+    title: '',
+    estimated_periods: '8',
+    weightage: '10',
+    description: '',
+    learning_outcomes: '',
+  });
+
+  // Topic Modal State
+  const [showTopicModal, setShowTopicModal] = useState(false);
+  const [targetChapterId, setTargetChapterId] = useState(null);
+  const [targetCurriculumId, setTargetCurriculumId] = useState(null);
+  const [submittingTopic, setSubmittingTopic] = useState(false);
+  const [topicForm, setTopicForm] = useState({
+    topic_no: 1,
+    title: '',
+    estimated_periods: '1',
+    description: '',
+  });
+
+  // Copy Session Modal State
+  const [showCopyModal, setShowCopyModal] = useState(false);
+  const [copyCurriculumId, setCopyCurriculumId] = useState(null);
+  const [copyTargetSession, setCopyTargetSession] = useState('2027-28');
+  const [copyingSession, setCopyingSession] = useState(false);
 
   // Drilldown Modal
   const [selectedCurriculum, setSelectedCurriculum] = useState(null);
@@ -188,16 +251,262 @@ export default function CurriculumScreen({ navigation, route }) {
     }
   }, []);
 
+  // Load Subjects List for Setup
+  useEffect(() => {
+    client.get('/principal/subjects')
+      .then(res => {
+        const list = Array.isArray(res.data) ? res.data : (res.data?.subjects || []);
+        setSubjectsList(list);
+      })
+      .catch(() => setSubjectsList([]));
+  }, []);
+
+  // 6. Fetch Curriculums for Setup Tab
+  const loadCurriculums = useCallback(async (isRefresh = false) => {
+    setLoadingCurriculums(true);
+    try {
+      const params = { session: setupSession };
+      if (setupClassId !== 'ALL') params.class_id = setupClassId;
+      if (setupSubjectId !== 'ALL') params.subject_id = setupSubjectId;
+
+      const res = await client.get('/curriculum', { params }).catch(() => null);
+      const list = Array.isArray(res?.data) ? res.data : (res?.data?.curriculums || []);
+      setCurriculums(list);
+    } catch {
+      setCurriculums([]);
+    } finally {
+      setLoadingCurriculums(false);
+    }
+  }, [setupSession, setupClassId, setupSubjectId]);
+
+  const toggleExpandCurriculum = async (currId) => {
+    if (expandedCurriculumId === currId) {
+      setExpandedCurriculumId(null);
+      return;
+    }
+    setExpandedCurriculumId(currId);
+    if (!curriculumDetailMap[currId]) {
+      setLoadingDetailId(currId);
+      try {
+        const res = await client.get(`/curriculum/${currId}`);
+        if (res?.data) {
+          setCurriculumDetailMap(prev => ({ ...prev, [currId]: res.data }));
+        }
+      } catch (err) {
+        console.warn('Error loading curriculum detail:', err);
+      } finally {
+        setLoadingDetailId(null);
+      }
+    }
+  };
+
+  const refreshCurriculumDetail = async (currId) => {
+    try {
+      const res = await client.get(`/curriculum/${currId}`);
+      if (res?.data) {
+        setCurriculumDetailMap(prev => ({ ...prev, [currId]: res.data }));
+      }
+    } catch {}
+  };
+
+  // Add Book Action
+  const handleAddBook = async () => {
+    if (!bookForm.book_name.trim()) {
+      Alert.alert('Required', 'Please enter a Book / Curriculum Name.');
+      return;
+    }
+    if (!bookForm.class_id || !bookForm.subject_id) {
+      Alert.alert('Required', 'Please select both Class and Subject.');
+      return;
+    }
+    setSubmittingBook(true);
+    try {
+      await client.post('/curriculum', {
+        class_id: parseInt(bookForm.class_id, 10),
+        subject_id: parseInt(bookForm.subject_id, 10),
+        book_name: bookForm.book_name.trim(),
+        publisher: bookForm.publisher.trim(),
+        book_code: bookForm.book_code.trim(),
+        session: setupSession,
+        estimated_periods: parseInt(bookForm.estimated_periods, 10) || 120,
+        description: bookForm.description.trim(),
+        num_skeleton_chapters: parseInt(bookForm.num_skeleton_chapters, 10) || 0,
+      });
+      Alert.alert('Success', 'Curriculum & Book setup created successfully!');
+      setShowAddBookModal(false);
+      setBookForm({
+        class_id: '',
+        subject_id: '',
+        book_name: '',
+        publisher: '',
+        book_code: '',
+        estimated_periods: '120',
+        description: '',
+        num_skeleton_chapters: '10',
+      });
+      loadCurriculums();
+    } catch (err) {
+      Alert.alert('Error', err?.response?.data?.error || err?.response?.data?.message || 'Failed to create curriculum.');
+    } finally {
+      setSubmittingBook(false);
+    }
+  };
+
+  // Chapter Action: Save (Create or Update)
+  const handleSaveChapter = async () => {
+    if (!chapterForm.title.trim()) {
+      Alert.alert('Required', 'Please enter a Chapter Title.');
+      return;
+    }
+    setSubmittingChapter(true);
+    try {
+      if (chapterForm.id) {
+        await client.put(`/curriculum/chapters/${chapterForm.id}`, {
+          title: chapterForm.title.trim(),
+          chapter_no: parseInt(chapterForm.chapter_no, 10) || 1,
+          estimated_periods: parseInt(chapterForm.estimated_periods, 10) || 1,
+          weightage: parseFloat(chapterForm.weightage) || 0,
+          description: chapterForm.description.trim(),
+          learning_outcomes: chapterForm.learning_outcomes.trim(),
+        });
+        Alert.alert('Updated', 'Chapter details saved successfully.');
+      } else {
+        await client.post(`/curriculum/${editingCurriculumId}/chapters`, {
+          title: chapterForm.title.trim(),
+          chapter_no: parseInt(chapterForm.chapter_no, 10) || 1,
+          estimated_periods: parseInt(chapterForm.estimated_periods, 10) || 1,
+          weightage: parseFloat(chapterForm.weightage) || 0,
+          description: chapterForm.description.trim(),
+          learning_outcomes: chapterForm.learning_outcomes.trim(),
+        });
+        Alert.alert('Created', 'New chapter added to curriculum!');
+      }
+      setShowChapterModal(false);
+      if (editingCurriculumId) refreshCurriculumDetail(editingCurriculumId);
+      loadCurriculums();
+    } catch (err) {
+      Alert.alert('Error', err?.response?.data?.error || 'Failed to save chapter.');
+    } finally {
+      setSubmittingChapter(false);
+    }
+  };
+
+  // Chapter Action: Delete
+  const handleDeleteChapter = (chId, currId) => {
+    Alert.alert('Delete Chapter', 'Are you sure you want to delete this chapter and all its topics?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await client.delete(`/curriculum/chapters/${chId}`);
+            Alert.alert('Deleted', 'Chapter removed successfully.');
+            refreshCurriculumDetail(currId);
+            loadCurriculums();
+          } catch (err) {
+            Alert.alert('Error', 'Failed to delete chapter.');
+          }
+        },
+      },
+    ]);
+  };
+
+  // Topic Action: Save
+  const handleSaveTopic = async () => {
+    if (!topicForm.title.trim()) {
+      Alert.alert('Required', 'Please enter a Topic Title.');
+      return;
+    }
+    setSubmittingTopic(true);
+    try {
+      await client.post(`/curriculum/chapters/${targetChapterId}/topics`, {
+        title: topicForm.title.trim(),
+        topic_no: parseInt(topicForm.topic_no, 10) || 1,
+        estimated_periods: parseInt(topicForm.estimated_periods, 10) || 1,
+        description: topicForm.description.trim(),
+      });
+      Alert.alert('Added', 'Topic added to chapter successfully!');
+      setShowTopicModal(false);
+      if (targetCurriculumId) refreshCurriculumDetail(targetCurriculumId);
+    } catch (err) {
+      Alert.alert('Error', err?.response?.data?.error || 'Failed to add topic.');
+    } finally {
+      setSubmittingTopic(false);
+    }
+  };
+
+  // Topic Action: Delete
+  const handleDeleteTopic = (topId, currId) => {
+    Alert.alert('Delete Topic', 'Are you sure you want to delete this topic?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await client.delete(`/curriculum/topics/${topId}`);
+            Alert.alert('Deleted', 'Topic removed.');
+            refreshCurriculumDetail(currId);
+          } catch {
+            Alert.alert('Error', 'Failed to delete topic.');
+          }
+        },
+      },
+    ]);
+  };
+
+  // Copy Session Action
+  const handleCopySession = async () => {
+    if (!copyTargetSession.trim()) {
+      Alert.alert('Required', 'Please enter target session (e.g. 2027-28).');
+      return;
+    }
+    setCopyingSession(true);
+    try {
+      const res = await client.post(`/curriculum/${copyCurriculumId}/copy-session`, {
+        target_session: copyTargetSession.trim(),
+      });
+      Alert.alert('Success', res?.data?.message || 'Curriculum copied to session successfully!');
+      setShowCopyModal(false);
+      loadCurriculums();
+    } catch (err) {
+      Alert.alert('Copy Failed', err?.response?.data?.error || 'Failed to copy curriculum.');
+    } finally {
+      setCopyingSession(false);
+    }
+  };
+
+  // Aggregate stats for setup tab
+  const setupStats = useMemo(() => {
+    let totalChapters = 0;
+    let totalTopics = 0;
+    let totalPeriods = 0;
+    curriculums.forEach(c => {
+      totalPeriods += (c.estimated_periods || 0);
+      totalChapters += (c.total_chapters || (c.chapters || []).length || 0);
+      totalTopics += (c.total_topics || 0);
+    });
+    return {
+      totalCurriculums: curriculums.length,
+      totalChapters,
+      totalTopics,
+      totalPeriods,
+    };
+  }, [curriculums]);
+
   // Sync tab loading
   useEffect(() => {
     if (activeTab === 'diary') {
       loadSchedule();
     } else if (activeTab === 'coverage') {
       loadCoverage();
+    } else if (activeTab === 'setup') {
+      loadCurriculums();
     } else if (activeTab === 'history') {
       loadHistory();
     }
-  }, [activeTab, loadSchedule, loadCoverage, loadHistory]);
+  }, [activeTab, loadSchedule, loadCoverage, loadCurriculums, loadHistory]);
 
   // Open Log Diary Modal
   const openLogModal = (period) => {
@@ -314,6 +623,16 @@ export default function CurriculumScreen({ navigation, route }) {
             <Text style={styles.todayPillText}>Today</Text>
           </TouchableOpacity>
         )}
+
+        {activeTab === 'setup' && (
+          <TouchableOpacity
+            style={[styles.todayPillBtn, { backgroundColor: '#16a34a' }]}
+            onPress={() => setShowAddBookModal(true)}
+          >
+            <Ionicons name="add" size={16} color="#ffffff" />
+            <Text style={styles.todayPillText}>+ Add Book</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Tabs Row */}
@@ -322,24 +641,32 @@ export default function CurriculumScreen({ navigation, route }) {
           style={[styles.tabBtn, activeTab === 'diary' && styles.tabBtnActive]}
           onPress={() => setActiveTab('diary')}
         >
-          <Ionicons name="book-outline" size={15} color={activeTab === 'diary' ? '#fff' : '#64748b'} />
-          <Text style={[styles.tabBtnText, activeTab === 'diary' && styles.tabBtnTextActive]}>Daily Diary</Text>
+          <Ionicons name="book-outline" size={14} color={activeTab === 'diary' ? '#fff' : '#64748b'} />
+          <Text style={[styles.tabBtnText, activeTab === 'diary' && styles.tabBtnTextActive]}>Diary</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.tabBtn, activeTab === 'coverage' && styles.tabBtnActive]}
           onPress={() => setActiveTab('coverage')}
         >
-          <Ionicons name="pie-chart-outline" size={15} color={activeTab === 'coverage' ? '#fff' : '#64748b'} />
-          <Text style={[styles.tabBtnText, activeTab === 'coverage' && styles.tabBtnTextActive]}>Syllabus %</Text>
+          <Ionicons name="pie-chart-outline" size={14} color={activeTab === 'coverage' ? '#fff' : '#64748b'} />
+          <Text style={[styles.tabBtnText, activeTab === 'coverage' && styles.tabBtnTextActive]}>Coverage</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabBtn, activeTab === 'setup' && styles.tabBtnActive]}
+          onPress={() => setActiveTab('setup')}
+        >
+          <Ionicons name="library-outline" size={14} color={activeTab === 'setup' ? '#fff' : '#64748b'} />
+          <Text style={[styles.tabBtnText, activeTab === 'setup' && styles.tabBtnTextActive]}>Setup</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.tabBtn, activeTab === 'history' && styles.tabBtnActive]}
           onPress={() => setActiveTab('history')}
         >
-          <Ionicons name="time-outline" size={15} color={activeTab === 'history' ? '#fff' : '#64748b'} />
-          <Text style={[styles.tabBtnText, activeTab === 'history' && styles.tabBtnTextActive]}>Logs History</Text>
+          <Ionicons name="time-outline" size={14} color={activeTab === 'history' ? '#fff' : '#64748b'} />
+          <Text style={[styles.tabBtnText, activeTab === 'history' && styles.tabBtnTextActive]}>History</Text>
         </TouchableOpacity>
       </View>
 
@@ -621,6 +948,333 @@ export default function CurriculumScreen({ navigation, route }) {
         </ScrollView>
       )}
 
+      {/* ── TAB 3: CURRICULUM & BOOKS SETUP ── */}
+      {activeTab === 'setup' && (
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={<RefreshControl refreshing={loadingCurriculums} onRefresh={() => loadCurriculums(true)} />}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Session Selector Chips */}
+          <View style={{ marginBottom: 10 }}>
+            <Text style={styles.filterSectionLabel}>Academic Session</Text>
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              {['2025-26', '2026-27', '2027-28'].map(s => (
+                <TouchableOpacity
+                  key={s}
+                  style={[styles.sessionChip, setupSession === s && styles.sessionChipActive]}
+                  onPress={() => setSetupSession(s)}
+                >
+                  <Text style={[styles.sessionChipText, setupSession === s && styles.sessionChipTextActive]}>{s}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Class Filter Chips */}
+          <View style={{ marginBottom: 10 }}>
+            <Text style={styles.filterSectionLabel}>Class Filter</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                <TouchableOpacity
+                  style={[styles.filterChip, setupClassId === 'ALL' && styles.filterChipActive]}
+                  onPress={() => setSetupClassId('ALL')}
+                >
+                  <Text style={[styles.filterChipText, setupClassId === 'ALL' && styles.filterChipTextActive]}>All Classes</Text>
+                </TouchableOpacity>
+                {classesList.map(c => (
+                  <TouchableOpacity
+                    key={c.id}
+                    style={[styles.filterChip, String(setupClassId) === String(c.id) && styles.filterChipActive]}
+                    onPress={() => setSetupClassId(String(c.id))}
+                  >
+                    <Text style={[styles.filterChipText, String(setupClassId) === String(c.id) && styles.filterChipTextActive]}>
+                      Class {c.name}{c.section ? ` (${c.section})` : ''}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+
+          {/* Subject Filter Chips */}
+          <View style={{ marginBottom: 14 }}>
+            <Text style={styles.filterSectionLabel}>Subject Filter</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                <TouchableOpacity
+                  style={[styles.filterChip, setupSubjectId === 'ALL' && styles.filterChipActive]}
+                  onPress={() => setSetupSubjectId('ALL')}
+                >
+                  <Text style={[styles.filterChipText, setupSubjectId === 'ALL' && styles.filterChipTextActive]}>All Subjects</Text>
+                </TouchableOpacity>
+                {subjectsList.map(s => (
+                  <TouchableOpacity
+                    key={s.id}
+                    style={[styles.filterChip, String(setupSubjectId) === String(s.id) && styles.filterChipActive]}
+                    onPress={() => setSetupSubjectId(String(s.id))}
+                  >
+                    <Text style={[styles.filterChipText, String(setupSubjectId) === String(s.id) && styles.filterChipTextActive]}>
+                      {s.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+
+          {/* Setup KPI Banner */}
+          <View style={styles.kpiRow}>
+            <View style={[styles.kpiCard, { backgroundColor: '#eff6ff', borderColor: '#bfdbfe' }]}>
+              <Text style={[styles.kpiVal, { color: '#0b57d0' }]}>{setupStats.totalCurriculums}</Text>
+              <Text style={styles.kpiLabel}>Books</Text>
+            </View>
+            <View style={[styles.kpiCard, { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }]}>
+              <Text style={[styles.kpiVal, { color: '#16a34a' }]}>{setupStats.totalChapters}</Text>
+              <Text style={styles.kpiLabel}>Chapters</Text>
+            </View>
+            <View style={[styles.kpiCard, { backgroundColor: '#faf5ff', borderColor: '#e9d5ff' }]}>
+              <Text style={[styles.kpiVal, { color: '#7c3aed' }]}>{setupStats.totalTopics}</Text>
+              <Text style={styles.kpiLabel}>Topics</Text>
+            </View>
+            <View style={[styles.kpiCard, { backgroundColor: '#fff7ed', borderColor: '#fed7aa' }]}>
+              <Text style={[styles.kpiVal, { color: '#ea580c' }]}>{setupStats.totalPeriods}</Text>
+              <Text style={styles.kpiLabel}>Periods</Text>
+            </View>
+          </View>
+
+          {/* Curriculum List */}
+          {loadingCurriculums ? (
+            <View style={styles.centerBox}>
+              <ActivityIndicator size="large" color="#0b57d0" />
+              <Text style={styles.loadingText}>Loading curriculum and book catalog...</Text>
+            </View>
+          ) : curriculums.length > 0 ? (
+            curriculums.map((curr) => {
+              const isExpanded = expandedCurriculumId === curr.id;
+              const detail = curriculumDetailMap[curr.id] || curr;
+              const chList = detail.chapters || [];
+              const pct = Math.round(curr.coverage_percentage ?? curr.completion_percentage ?? 0);
+
+              return (
+                <View key={curr.id} style={styles.setupCard}>
+                  {/* Card Header */}
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Ionicons name="book" size={18} color="#0b57d0" />
+                        <Text style={styles.setupBookTitle}>{curr.book_name || 'Standard Curriculum'}</Text>
+                      </View>
+                      <Text style={styles.setupBookMeta}>
+                        {curr.publisher ? `Publisher: ${curr.publisher} · ` : ''}
+                        {curr.book_code ? `Code: ${curr.book_code}` : ''}
+                      </Text>
+                    </View>
+                    <View style={styles.setupSessionBadge}>
+                      <Text style={styles.setupSessionBadgeText}>{curr.session}</Text>
+                    </View>
+                  </View>
+
+                  {/* Class & Subject Badges */}
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginVertical: 8 }}>
+                    <View style={styles.setupPill}>
+                      <Ionicons name="school-outline" size={12} color="#0284c7" />
+                      <Text style={[styles.setupPillText, { color: '#0284c7' }]}>
+                        {curr.class_name ? `Class ${curr.class_name}` : 'All Classes'}
+                      </Text>
+                    </View>
+                    <View style={[styles.setupPill, { backgroundColor: '#f0fdf4' }]}>
+                      <Ionicons name="bookmark-outline" size={12} color="#16a34a" />
+                      <Text style={[styles.setupPillText, { color: '#16a34a' }]}>
+                        {curr.subject_name || 'Subject'}
+                      </Text>
+                    </View>
+                    <View style={[styles.setupPill, { backgroundColor: '#faf5ff' }]}>
+                      <Ionicons name="time-outline" size={12} color="#7c3aed" />
+                      <Text style={[styles.setupPillText, { color: '#7c3aed' }]}>
+                        {curr.estimated_periods || 120} Periods Est.
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Progress Row */}
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#475569' }}>
+                      {curr.total_chapters || chList.length || 0} Chapters · {curr.total_topics || 0} Topics
+                    </Text>
+                    <Text style={{ fontSize: 12, fontWeight: '800', color: '#0b57d0' }}>{pct}% Complete</Text>
+                  </View>
+                  <View style={styles.progressBarTrack}>
+                    <View style={[styles.progressBarFill, { width: `${Math.min(100, Math.max(3, pct))}%`, backgroundColor: '#0b57d0' }]} />
+                  </View>
+
+                  {/* Card Actions */}
+                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 10 }}>
+                    <TouchableOpacity
+                      style={[styles.setupBtn, { backgroundColor: isExpanded ? '#334155' : '#0b57d0', flex: 1.4 }]}
+                      onPress={() => toggleExpandCurriculum(curr.id)}
+                    >
+                      <Ionicons name={isExpanded ? 'chevron-up' : 'list-outline'} size={14} color="#ffffff" />
+                      <Text style={styles.setupBtnText}>{isExpanded ? 'Hide Chapters' : 'View Chapters'}</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.setupBtn, { backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe', flex: 1 }]}
+                      onPress={() => {
+                        setEditingCurriculumId(curr.id);
+                        setChapterForm({
+                          id: null,
+                          chapter_no: chList.length + 1,
+                          title: '',
+                          estimated_periods: '8',
+                          weightage: '10',
+                          description: '',
+                          learning_outcomes: '',
+                        });
+                        setShowChapterModal(true);
+                      }}
+                    >
+                      <Ionicons name="add-circle-outline" size={14} color="#0b57d0" />
+                      <Text style={[styles.setupBtnText, { color: '#0b57d0' }]}>+ Chapter</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.setupBtn, { backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#cbd5e1' }]}
+                      onPress={() => {
+                        setCopyCurriculumId(curr.id);
+                        setShowCopyModal(true);
+                      }}
+                    >
+                      <Ionicons name="copy-outline" size={14} color="#475569" />
+                      <Text style={[styles.setupBtnText, { color: '#475569' }]}>Copy</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Expanded Chapters Section */}
+                  {isExpanded && (
+                    <View style={styles.expandedChaptersBox}>
+                      {loadingDetailId === curr.id ? (
+                        <View style={{ padding: 20, alignItems: 'center' }}>
+                          <ActivityIndicator size="small" color="#0b57d0" />
+                          <Text style={{ marginTop: 6, fontSize: 12, color: '#64748b' }}>Loading chapters & topics...</Text>
+                        </View>
+                      ) : chList.length > 0 ? (
+                        chList.map((ch, idx) => (
+                          <View key={ch.id || idx} style={styles.chapterItemBox}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                                <View style={styles.chapterNumberPill}>
+                                  <Text style={styles.chapterNumberText}>{ch.chapter_no || idx + 1}</Text>
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                  <Text style={styles.chapterTitleText} numberOfLines={1}>{ch.title}</Text>
+                                  <Text style={styles.chapterSubText}>
+                                    {ch.estimated_periods || 1} Periods · Weightage: {ch.weightage || 0}%
+                                  </Text>
+                                </View>
+                              </View>
+
+                              {/* Chapter Actions */}
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <TouchableOpacity
+                                  style={styles.chapterActionBtn}
+                                  onPress={() => {
+                                    setEditingCurriculumId(curr.id);
+                                    setChapterForm({
+                                      id: ch.id,
+                                      chapter_no: ch.chapter_no,
+                                      title: ch.title,
+                                      estimated_periods: String(ch.estimated_periods || 1),
+                                      weightage: String(ch.weightage || 0),
+                                      description: ch.description || '',
+                                      learning_outcomes: ch.learning_outcomes || '',
+                                    });
+                                    setShowChapterModal(true);
+                                  }}
+                                >
+                                  <Ionicons name="pencil" size={13} color="#475569" />
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                  style={styles.chapterActionBtn}
+                                  onPress={() => handleDeleteChapter(ch.id, curr.id)}
+                                >
+                                  <Ionicons name="trash-outline" size={13} color="#dc2626" />
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                  style={[styles.chapterActionBtn, { backgroundColor: '#eff6ff' }]}
+                                  onPress={() => {
+                                    setTargetChapterId(ch.id);
+                                    setTargetCurriculumId(curr.id);
+                                    setTopicForm({
+                                      topic_no: (ch.topics || []).length + 1,
+                                      title: '',
+                                      estimated_periods: '1',
+                                      description: '',
+                                    });
+                                    setShowTopicModal(true);
+                                  }}
+                                >
+                                  <Ionicons name="add" size={14} color="#0b57d0" />
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+
+                            {/* Topics List under Chapter */}
+                            {Array.isArray(ch.topics) && ch.topics.length > 0 && (
+                              <View style={styles.topicsIndentBox}>
+                                {ch.topics.map((top, topIdx) => (
+                                  <View key={top.id || topIdx} style={styles.topicItemRow}>
+                                    <Ionicons
+                                      name={top.status === 'COMPLETED' ? 'checkmark-circle' : 'ellipse-outline'}
+                                      size={14}
+                                      color={top.status === 'COMPLETED' ? '#16a34a' : '#94a3b8'}
+                                    />
+                                    <Text style={[styles.topicTitleText, top.status === 'COMPLETED' && { textDecorationLine: 'line-through', color: '#94a3b8' }]} numberOfLines={1}>
+                                      {top.topic_no ? `${top.topic_no}. ` : ''}{top.title}
+                                    </Text>
+                                    <Text style={styles.topicPeriodsText}>{top.estimated_periods || 1}p</Text>
+                                    <TouchableOpacity
+                                      onPress={() => handleDeleteTopic(top.id, curr.id)}
+                                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                    >
+                                      <Ionicons name="close-circle-outline" size={14} color="#94a3b8" />
+                                    </TouchableOpacity>
+                                  </View>
+                                ))}
+                              </View>
+                            )}
+                          </View>
+                        ))
+                      ) : (
+                        <View style={{ padding: 16, alignItems: 'center' }}>
+                          <Text style={{ fontSize: 12, color: '#64748b' }}>No chapters created yet for this book.</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+                </View>
+              );
+            })
+          ) : (
+            <View style={styles.emptyBox}>
+              <Ionicons name="library-outline" size={48} color="#94a3b8" />
+              <Text style={styles.emptyTitle}>No Curriculums Configured</Text>
+              <Text style={styles.emptySub}>
+                Set up textbooks and chapter structures for session {setupSession}.
+              </Text>
+              <TouchableOpacity
+                style={[styles.submitBtn, { paddingHorizontal: 20, marginTop: 14 }]}
+                onPress={() => setShowAddBookModal(true)}
+              >
+                <Text style={styles.submitBtnText}>+ Create Book / Curriculum</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </ScrollView>
+      )}
+
       {/* ── TAB 3: DIARY HISTORY ── */}
       {activeTab === 'history' && (
         <ScrollView
@@ -864,6 +1518,330 @@ export default function CurriculumScreen({ navigation, route }) {
                 )}
               </ScrollView>
             )}
+          </View>
+        </View>
+      </Modal>
+      {/* ── MODAL: ADD BOOK / CURRICULUM ── */}
+      <Modal visible={showAddBookModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { maxHeight: '90%' }]}>
+            <View style={styles.modalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>Add Book & Curriculum</Text>
+                <Text style={styles.modalSub}>Configure syllabus structure for {setupSession}</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowAddBookModal(false)}>
+                <Ionicons name="close" size={24} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+              <Text style={styles.fieldLabel}>Select Class *</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  {classesList.map(c => (
+                    <TouchableOpacity
+                      key={c.id}
+                      style={[styles.modalPill, String(bookForm.class_id) === String(c.id) && styles.modalPillActive]}
+                      onPress={() => setBookForm(prev => ({ ...prev, class_id: String(c.id) }))}
+                    >
+                      <Text style={[styles.modalPillText, String(bookForm.class_id) === String(c.id) && styles.modalPillTextActive]}>
+                        Class {c.name}{c.section ? ` (${c.section})` : ''}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+
+              <Text style={styles.fieldLabel}>Select Subject *</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  {subjectsList.map(s => (
+                    <TouchableOpacity
+                      key={s.id}
+                      style={[styles.modalPill, String(bookForm.subject_id) === String(s.id) && styles.modalPillActive]}
+                      onPress={() => setBookForm(prev => ({ ...prev, subject_id: String(s.id) }))}
+                    >
+                      <Text style={[styles.modalPillText, String(bookForm.subject_id) === String(s.id) && styles.modalPillTextActive]}>
+                        {s.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+
+              <Text style={styles.fieldLabel}>Book / Curriculum Name *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. Mathematics - Part 1 (NCERT)"
+                placeholderTextColor="#94a3b8"
+                value={bookForm.book_name}
+                onChangeText={(v) => setBookForm(prev => ({ ...prev, book_name: v }))}
+              />
+
+              <Text style={styles.fieldLabel}>Publisher</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. NCERT / Oxford / Pearson"
+                placeholderTextColor="#94a3b8"
+                value={bookForm.publisher}
+                onChangeText={(v) => setBookForm(prev => ({ ...prev, publisher: v }))}
+              />
+
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Book Code</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. MATH-10-P1"
+                    placeholderTextColor="#94a3b8"
+                    value={bookForm.book_code}
+                    onChangeText={(v) => setBookForm(prev => ({ ...prev, book_code: v }))}
+                    autoCapitalize="characters"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Est. Periods</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="120"
+                    placeholderTextColor="#94a3b8"
+                    value={bookForm.estimated_periods}
+                    onChangeText={(v) => setBookForm(prev => ({ ...prev, estimated_periods: v }))}
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
+
+              <Text style={styles.fieldLabel}>Generate Skeleton Chapters (Optional)</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Number of chapters to auto-create (e.g. 12)"
+                placeholderTextColor="#94a3b8"
+                value={bookForm.num_skeleton_chapters}
+                onChangeText={(v) => setBookForm(prev => ({ ...prev, num_skeleton_chapters: v }))}
+                keyboardType="numeric"
+              />
+
+              <TouchableOpacity
+                style={[styles.submitBtn, submittingBook && { opacity: 0.7 }]}
+                onPress={handleAddBook}
+                disabled={submittingBook}
+              >
+                {submittingBook ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.submitBtnText}>Create Book & Curriculum</Text>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── MODAL: ADD / EDIT CHAPTER ── */}
+      <Modal visible={showChapterModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { maxHeight: '90%' }]}>
+            <View style={styles.modalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>{chapterForm.id ? 'Edit Chapter' : 'Add New Chapter'}</Text>
+                <Text style={styles.modalSub}>Define title, estimated periods, and weightage</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowChapterModal(false)}>
+                <Ionicons name="close" size={24} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ width: 90 }}>
+                  <Text style={styles.fieldLabel}>Chapter #</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={String(chapterForm.chapter_no)}
+                    onChangeText={(v) => setChapterForm(prev => ({ ...prev, chapter_no: v }))}
+                    keyboardType="numeric"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Chapter Title *</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. Real Numbers & Functions"
+                    placeholderTextColor="#94a3b8"
+                    value={chapterForm.title}
+                    onChangeText={(v) => setChapterForm(prev => ({ ...prev, title: v }))}
+                  />
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Estimated Periods</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="8"
+                    placeholderTextColor="#94a3b8"
+                    value={chapterForm.estimated_periods}
+                    onChangeText={(v) => setChapterForm(prev => ({ ...prev, estimated_periods: v }))}
+                    keyboardType="numeric"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Exam Weightage (%)</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="10"
+                    placeholderTextColor="#94a3b8"
+                    value={chapterForm.weightage}
+                    onChangeText={(v) => setChapterForm(prev => ({ ...prev, weightage: v }))}
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
+
+              <Text style={styles.fieldLabel}>Description / Notes</Text>
+              <TextInput
+                style={[styles.input, { height: 60, textAlignVertical: 'top' }]}
+                placeholder="Overview of this unit or chapter..."
+                placeholderTextColor="#94a3b8"
+                multiline
+                value={chapterForm.description}
+                onChangeText={(v) => setChapterForm(prev => ({ ...prev, description: v }))}
+              />
+
+              <Text style={styles.fieldLabel}>Learning Outcomes</Text>
+              <TextInput
+                style={[styles.input, { height: 60, textAlignVertical: 'top' }]}
+                placeholder="Expected competencies upon completion..."
+                placeholderTextColor="#94a3b8"
+                multiline
+                value={chapterForm.learning_outcomes}
+                onChangeText={(v) => setChapterForm(prev => ({ ...prev, learning_outcomes: v }))}
+              />
+
+              <TouchableOpacity
+                style={[styles.submitBtn, submittingChapter && { opacity: 0.7 }]}
+                onPress={handleSaveChapter}
+                disabled={submittingChapter}
+              >
+                {submittingChapter ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.submitBtnText}>{chapterForm.id ? 'Save Changes' : 'Create Chapter'}</Text>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── MODAL: ADD TOPIC ── */}
+      <Modal visible={showTopicModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>Add Topic to Chapter</Text>
+                <Text style={styles.modalSub}>Detailed syllabus micro-concept</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowTopicModal(false)}>
+                <Ionicons name="close" size={24} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ width: 80 }}>
+                <Text style={styles.fieldLabel}>Topic #</Text>
+                <TextInput
+                  style={styles.input}
+                  value={String(topicForm.topic_no)}
+                  onChangeText={(v) => setTopicForm(prev => ({ ...prev, topic_no: v }))}
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.fieldLabel}>Topic Title *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g. Fundamental Theorem of Arithmetic"
+                  placeholderTextColor="#94a3b8"
+                  value={topicForm.title}
+                  onChangeText={(v) => setTopicForm(prev => ({ ...prev, title: v }))}
+                />
+              </View>
+            </View>
+
+            <Text style={styles.fieldLabel}>Estimated Periods (hrs)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="1"
+              placeholderTextColor="#94a3b8"
+              value={topicForm.estimated_periods}
+              onChangeText={(v) => setTopicForm(prev => ({ ...prev, estimated_periods: v }))}
+              keyboardType="numeric"
+            />
+
+            <Text style={styles.fieldLabel}>Description</Text>
+            <TextInput
+              style={[styles.input, { height: 60, textAlignVertical: 'top' }]}
+              placeholder="Key sub-points and theorem statements..."
+              placeholderTextColor="#94a3b8"
+              multiline
+              value={topicForm.description}
+              onChangeText={(v) => setTopicForm(prev => ({ ...prev, description: v }))}
+            />
+
+            <TouchableOpacity
+              style={[styles.submitBtn, submittingTopic && { opacity: 0.7 }]}
+              onPress={handleSaveTopic}
+              disabled={submittingTopic}
+            >
+              {submittingTopic ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.submitBtnText}>Add Topic</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── MODAL: COPY TO SESSION ── */}
+      <Modal visible={showCopyModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>Copy to Next Session</Text>
+                <Text style={styles.modalSub}>Duplicate syllabus and chapters into new academic year</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowCopyModal(false)}>
+                <Ionicons name="close" size={24} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.fieldLabel}>Target Academic Session *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. 2027-28"
+              placeholderTextColor="#94a3b8"
+              value={copyTargetSession}
+              onChangeText={setCopyTargetSession}
+            />
+
+            <TouchableOpacity
+              style={[styles.submitBtn, copyingSession && { opacity: 0.7 }]}
+              onPress={handleCopySession}
+              disabled={copyingSession}
+            >
+              {copyingSession ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.submitBtnText}>Duplicate to Session</Text>
+              )}
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -1264,4 +2242,177 @@ const styles = StyleSheet.create({
   topicRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   topicName: { fontSize: 12, color: '#334155' },
   topicNameDone: { textDecorationLine: 'line-through', color: '#94a3b8' },
+
+  // Setup Styles
+  sessionChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+  },
+  sessionChipActive: {
+    backgroundColor: '#0b57d0',
+    borderColor: '#0b57d0',
+  },
+  sessionChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  sessionChipTextActive: {
+    color: '#ffffff',
+  },
+  setupCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  setupBookTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#1e293b',
+  },
+  setupBookMeta: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  setupSessionBadge: {
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  setupSessionBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#0b57d0',
+  },
+  setupPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#f0f9ff',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  setupPillText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  setupBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 4,
+  },
+  setupBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  expandedChaptersBox: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+    gap: 8,
+  },
+  chapterItemBox: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  chapterNumberPill: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#eff6ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chapterNumberText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#0b57d0',
+  },
+  chapterTitleText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#1e293b',
+  },
+  chapterSubText: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 1,
+  },
+  chapterActionBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  topicsIndentBox: {
+    marginTop: 8,
+    paddingTop: 6,
+    paddingLeft: 34,
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+    gap: 6,
+  },
+  topicItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  topicTitleText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#334155',
+  },
+  topicPeriodsText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#7c3aed',
+    backgroundColor: '#faf5ff',
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  modalPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#f1f5f9',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+  },
+  modalPillActive: {
+    backgroundColor: '#0b57d0',
+    borderColor: '#0b57d0',
+  },
+  modalPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  modalPillTextActive: {
+    color: '#ffffff',
+  },
 });

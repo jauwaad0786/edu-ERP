@@ -196,7 +196,7 @@ export default function SubjectsScreen({ navigation }) {
               onPress={() => setSelectedClassId(String(c.id))}
             >
               <Text style={[styles.filterChipText, String(selectedClassId) === String(c.id) && styles.filterChipTextActive]}>
-                Class {c.name}
+                Class {c.name}{c.section ? ` (${c.section})` : ''}
               </Text>
             </TouchableOpacity>
           ))}
@@ -332,7 +332,7 @@ export default function SubjectsScreen({ navigation }) {
                     onPress={() => setTargetClassId(String(c.id))}
                   >
                     <Text style={[styles.classPillText, String(targetClassId) === String(c.id) && styles.classPillTextActive]}>
-                      Class {c.name}
+                      Class {c.name}{c.section ? ` (${c.section})` : ''}
                     </Text>
                   </TouchableOpacity>
                 ))}

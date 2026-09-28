@@ -469,6 +469,20 @@ export default function FeesScreen({ navigation }) {
                     <TouchableOpacity
                       style={styles.actionRow}
                       activeOpacity={0.7}
+                      onPress={() => navigation?.navigate?.('FeeBills')}
+                    >
+                      <View style={[styles.actionIconBox, { backgroundColor: '#f0fdf4' }]}>
+                        <Ionicons name="document-text-outline" size={18} color="#16a34a" />
+                      </View>
+                      <Text style={styles.actionLabel}>Fee Bills & Demand Statements</Text>
+                      <Ionicons name="chevron-forward" size={18} color="#cbd5e1" />
+                    </TouchableOpacity>
+
+                    <View style={styles.actionRowDivider} />
+
+                    <TouchableOpacity
+                      style={styles.actionRow}
+                      activeOpacity={0.7}
                       onPress={() => navigation?.navigate?.('FeeRecords')}
                     >
                       <View style={[styles.actionIconBox, { backgroundColor: '#fee2e2' }]}>
@@ -489,6 +503,48 @@ export default function FeesScreen({ navigation }) {
                         <Ionicons name="wallet-outline" size={18} color="#db2777" />
                       </View>
                       <Text style={styles.actionLabel}>Operating School Expenses</Text>
+                      <Ionicons name="chevron-forward" size={18} color="#cbd5e1" />
+                    </TouchableOpacity>
+
+                    <View style={styles.actionRowDivider} />
+
+                    <TouchableOpacity
+                      style={styles.actionRow}
+                      activeOpacity={0.7}
+                      onPress={() => navigation?.navigate?.('Vendors')}
+                    >
+                      <View style={[styles.actionIconBox, { backgroundColor: '#ffedd5' }]}>
+                        <Ionicons name="business-outline" size={18} color="#ea580c" />
+                      </View>
+                      <Text style={styles.actionLabel}>Vendors & Supplier Directory</Text>
+                      <Ionicons name="chevron-forward" size={18} color="#cbd5e1" />
+                    </TouchableOpacity>
+
+                    <View style={styles.actionRowDivider} />
+
+                    <TouchableOpacity
+                      style={styles.actionRow}
+                      activeOpacity={0.7}
+                      onPress={() => navigation?.navigate?.('Inventory')}
+                    >
+                      <View style={[styles.actionIconBox, { backgroundColor: '#e0e7ff' }]}>
+                        <Ionicons name="cube-outline" size={18} color="#4338ca" />
+                      </View>
+                      <Text style={styles.actionLabel}>Inventory Stock & Issuance</Text>
+                      <Ionicons name="chevron-forward" size={18} color="#cbd5e1" />
+                    </TouchableOpacity>
+
+                    <View style={styles.actionRowDivider} />
+
+                    <TouchableOpacity
+                      style={styles.actionRow}
+                      activeOpacity={0.7}
+                      onPress={() => navigation?.navigate?.('Assets')}
+                    >
+                      <View style={[styles.actionIconBox, { backgroundColor: '#ede9fe' }]}>
+                        <Ionicons name="hardware-chip-outline" size={18} color="#7c3aed" />
+                      </View>
+                      <Text style={styles.actionLabel}>School Fixed Assets & Custody</Text>
                       <Ionicons name="chevron-forward" size={18} color="#cbd5e1" />
                     </TouchableOpacity>
 

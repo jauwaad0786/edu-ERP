@@ -10,10 +10,10 @@ import client from '../../api/client';
 import { colors } from '../../theme/colors';
 
 const ACTION_COLORS = {
-  PROMOTE: { bg: '#dcfce7', text: '#15803d', border: '#bbf7d0', label: 'Promote' },
-  DETAIN: { bg: '#fee2e2', text: '#dc2626', border: '#fecaca', label: 'Detain' },
+  PROMOTE:  { bg: '#dcfce7', text: '#15803d', border: '#bbf7d0', label: 'Promote' },
+  RETAIN:   { bg: '#fef3c7', text: '#b45309', border: '#fde68a', label: 'Retain' },
   GRADUATE: { bg: '#e0e7ff', text: '#4338ca', border: '#c7d2fe', label: 'Graduate' },
-  LEFT: { bg: '#f1f5f9', text: '#64748b', border: '#cbd5e1', label: 'Left/TC' },
+  WITHDRAW: { bg: '#fee2e2', text: '#dc2626', border: '#fecaca', label: 'Withdraw/Left' },
 };
 
 export default function PromotionScreen({ navigation }) {
@@ -125,11 +125,11 @@ export default function PromotionScreen({ navigation }) {
     }
   };
 
-  // Toggle student action: PROMOTE <-> DETAIN <-> LEFT
+  // Toggle student action: PROMOTE <-> RETAIN <-> GRADUATE <-> WITHDRAW
   const cycleAction = (studentId) => {
     setStudentActions(prev => {
       const current = prev[studentId]?.action || 'PROMOTE';
-      const order = ['PROMOTE', 'DETAIN', 'LEFT'];
+      const order = ['PROMOTE', 'RETAIN', 'GRADUATE', 'WITHDRAW'];
       const nextIdx = (order.indexOf(current) + 1) % order.length;
       return {
         ...prev,
@@ -166,13 +166,14 @@ export default function PromotionScreen({ navigation }) {
           onPress: async () => {
             setExecuting(true);
             try {
-              const studentsPayload = Object.keys(studentActions).map(id => ({
+              const promotionsPayload = Object.keys(studentActions).map(id => ({
                 student_id: parseInt(id, 10),
                 action: studentActions[id].action,
-                target_class_id: studentActions[id].target_class_id,
-                target_section: studentActions[id].target_section,
-                target_roll_number: studentActions[id].target_roll_number,
-                remarks: studentActions[id].remarks,
+                target_class_id: studentActions[id].target_class_id ? parseInt(studentActions[id].target_class_id, 10) : null,
+                target_section: studentActions[id].target_section || 'A',
+                target_roll_no: studentActions[id].target_roll_number || '',
+                target_roll_number: studentActions[id].target_roll_number || '',
+                remarks: studentActions[id].remarks || `Annual rollover from ${sourceSession}`,
               }));
 
               const res = await client.post('/principal/students/promote/confirm', {
@@ -180,7 +181,7 @@ export default function PromotionScreen({ navigation }) {
                 target_session: targetSession,
                 source_class_id: parseInt(sourceClassId, 10),
                 target_class_id: targetClassId ? parseInt(targetClassId, 10) : null,
-                students: studentsPayload,
+                promotions: promotionsPayload,
               });
 
               Alert.alert(

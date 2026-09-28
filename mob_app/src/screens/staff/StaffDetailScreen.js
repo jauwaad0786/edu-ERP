@@ -24,9 +24,12 @@ export default function StaffDetailScreen({ route, navigation }) {
     const fetchTeacher = async () => {
       setLoading(true);
       try {
-        const res = await client.get(`/principal/teachers/${tid}/profile`).catch(() => null);
+        let res = await client.get(`/principal/teachers/${tid}/profile`).catch(() => null);
+        if (!res?.data) {
+          res = await client.get(`/hrms/employees/${tid}`).catch(() => null);
+        }
         if (res?.data) {
-          setTeacher(res.data?.teacher || res.data);
+          setTeacher(res.data?.teacher || res.data?.employee || res.data);
         }
       } finally {
         setLoading(false);

@@ -65,12 +65,14 @@ export default function AssignmentsScreen({ navigation }) {
   const [formDesc, setFormDesc] = useState('');
   const [formMaxMarks, setFormMaxMarks] = useState('20');
   const [formDueDate, setFormDueDate] = useState('');
+  const [formAttachmentUrl, setFormAttachmentUrl] = useState('');
   const [creating, setCreating] = useState(false);
 
   // Student Homework Submit Modal
   const [submitModal, setSubmitModal] = useState(false);
   const [targetAssignment, setTargetAssignment] = useState(null);
   const [studentComment, setStudentComment] = useState('');
+  const [studentFileUrl, setStudentFileUrl] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   // Teacher Review & Grade Modal
@@ -82,6 +84,13 @@ export default function AssignmentsScreen({ navigation }) {
   const [gradeMarks, setGradeMarks] = useState('');
   const [gradeFeedback, setGradeFeedback] = useState('');
   const [savingGrade, setSavingGrade] = useState(false);
+
+  // Quick Due Date Preset
+  const setDueDateOffset = (days) => {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    setFormDueDate(d.toISOString().split('T')[0]);
+  };
 
   // 1. Fetch Classes & Subjects for Filters
   useEffect(() => {
@@ -145,6 +154,8 @@ export default function AssignmentsScreen({ navigation }) {
         description: formDesc.trim(),
         max_marks: parseFloat(formMaxMarks) || 20,
         due_date: formDueDate.trim(),
+        attachment_url: formAttachmentUrl.trim() || null,
+        attachment_name: formAttachmentUrl.trim() ? `${formTitle.trim()} Worksheet` : null,
       });
 
       Alert.alert('Success', 'Homework assignment published successfully!');
@@ -152,6 +163,7 @@ export default function AssignmentsScreen({ navigation }) {
       setFormTitle('');
       setFormDesc('');
       setFormDueDate('');
+      setFormAttachmentUrl('');
       loadAssignments();
     } catch (err) {
       const msg = err.response?.data?.error || err.message || 'Failed to create assignment';
@@ -401,6 +413,56 @@ export default function AssignmentsScreen({ navigation }) {
             </TouchableOpacity>
           ) : null}
         </View>
+
+        {/* Class Filter Chips (Teachers/Admins) */}
+        {!isStudent && classes.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.filterScroll, { paddingTop: 6 }]}>
+            <TouchableOpacity
+              style={[styles.filterChip, !selectedClassId && styles.filterChipActive]}
+              onPress={() => setSelectedClassId('')}
+            >
+              <Text style={[styles.filterChipText, !selectedClassId && styles.filterChipTextActive]}>
+                All Classes
+              </Text>
+            </TouchableOpacity>
+            {classes.map((cls) => (
+              <TouchableOpacity
+                key={cls.id}
+                style={[styles.filterChip, selectedClassId === cls.id && styles.filterChipActive]}
+                onPress={() => setSelectedClassId(selectedClassId === cls.id ? '' : cls.id)}
+              >
+                <Text style={[styles.filterChipText, selectedClassId === cls.id && styles.filterChipTextActive]}>
+                  Class {cls.name || cls.class_name} {cls.section ? `(${cls.section})` : ''}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+
+        {/* Subject Filter Chips */}
+        {subjects.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.filterScroll, { paddingTop: 6 }]}>
+            <TouchableOpacity
+              style={[styles.filterChip, !selectedSubjectId && styles.filterChipActive]}
+              onPress={() => setSelectedSubjectId('')}
+            >
+              <Text style={[styles.filterChipText, !selectedSubjectId && styles.filterChipTextActive]}>
+                All Subjects
+              </Text>
+            </TouchableOpacity>
+            {subjects.map((sub) => (
+              <TouchableOpacity
+                key={sub.id}
+                style={[styles.filterChip, selectedSubjectId === sub.id && styles.filterChipActive]}
+                onPress={() => setSelectedSubjectId(selectedSubjectId === sub.id ? '' : sub.id)}
+              >
+                <Text style={[styles.filterChipText, selectedSubjectId === sub.id && styles.filterChipTextActive]}>
+                  {sub.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
       </View>
 
       {/* Assignments List */}
@@ -674,7 +736,39 @@ export default function AssignmentsScreen({ navigation }) {
                     value={formDueDate}
                     onChangeText={setFormDueDate}
                   />
+                  {/* Quick Due Date Presets */}
+                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+                    <TouchableOpacity
+                      style={[styles.pickerChip, { paddingVertical: 4, paddingHorizontal: 8 }]}
+                      onPress={() => setDueDateOffset(1)}
+                    >
+                      <Text style={styles.pickerChipText}>Tomorrow</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.pickerChip, { paddingVertical: 4, paddingHorizontal: 8 }]}
+                      onPress={() => setDueDateOffset(3)}
+                    >
+                      <Text style={styles.pickerChipText}>In 3 Days</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.pickerChip, { paddingVertical: 4, paddingHorizontal: 8 }]}
+                      onPress={() => setDueDateOffset(7)}
+                    >
+                      <Text style={styles.pickerChipText}>In 1 Week</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
+              </View>
+
+              {/* Attachment / Drive Link */}
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Worksheet / Reference File URL (Optional)</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="https://drive.google.com/... or cloud document link"
+                  value={formAttachmentUrl}
+                  onChangeText={setFormAttachmentUrl}
+                />
               </View>
 
               {/* Submit Button */}

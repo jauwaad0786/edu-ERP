@@ -1,4 +1,5 @@
 // mob_app/src/screens/students/ProvisionalScreen.js
+// 100% Feature Parity with Web ERP ProvisionalAdmissionsPage.jsx & backend APIs
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, RefreshControl,
@@ -27,6 +28,10 @@ export default function ProvisionalScreen({ navigation }) {
   const [parentPhone, setParentPhone] = useState('');
   const [session, setSession] = useState('2026-27');
   const [savingInquiry, setSavingInquiry] = useState(false);
+
+  // Complete Admission Action Modal
+  const [targetStudent, setTargetStudent] = useState(null);
+  const [confirming, setConfirming] = useState(false);
 
   // Load Data
   const loadData = useCallback(async (isRefresh = false) => {
@@ -83,8 +88,6 @@ export default function ProvisionalScreen({ navigation }) {
     try {
       await client.post('/principal/students', {
         name: fullName.trim(),
-        first_name: fullName.trim().split(' ')[0],
-        last_name: fullName.trim().split(' ').slice(1).join(' ') || '.',
         class_id: Number(classId),
         section: 'A',
         father_name: fatherName.trim() || 'Parent',
@@ -107,28 +110,31 @@ export default function ProvisionalScreen({ navigation }) {
     }
   };
 
-  // Convert to Full Active Admission
-  const handleConfirmAdmission = (stu) => {
-    Alert.alert(
-      'Confirm Admission',
-      `Clear provisional hold and confirm full admission for ${stu.name}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Confirm & Collect Fee',
-          onPress: () => {
-            navigation.navigate('FeeCollect', { student: stu });
-          },
-        },
-      ]
-    );
+  // Instant Confirm Admission (Backend endpoint: /principal/students/:id/confirm-admission)
+  const handleInstantConfirm = async (stu) => {
+    setConfirming(true);
+    try {
+      const res = await client.post(`/principal/students/${stu.id}/confirm-admission`, {
+        session: stu.session || '2026-27',
+      });
+      Alert.alert(
+        'Admission Confirmed!',
+        res.data?.message || `${stu.name} has been officially confirmed and enrolled!`
+      );
+      setTargetStudent(null);
+      loadData();
+    } catch (err) {
+      Alert.alert('Confirmation Failed', err.response?.data?.error || 'Could not confirm admission.');
+    } finally {
+      setConfirming(false);
+    }
   };
 
   // Cancel Provisional Seat
   const handleCancelApplication = (stu) => {
     Alert.alert(
       'Cancel Provisional Seat',
-      `Are you sure you want to cancel the provisional inquiry for ${stu.name}?`,
+      `Are you sure you want to cancel the provisional inquiry for ${stu.name}? This will release the held admission.`,
       [
         { text: 'Back', style: 'cancel' },
         {
@@ -138,6 +144,7 @@ export default function ProvisionalScreen({ navigation }) {
             try {
               await client.delete(`/principal/students/${stu.id}`);
               Alert.alert('Cancelled', 'Provisional seat released.');
+              setTargetStudent(null);
               loadData();
             } catch (err) {
               Alert.alert('Error', err.response?.data?.error || 'Could not release seat.');
@@ -160,7 +167,9 @@ export default function ProvisionalScreen({ navigation }) {
           )}
           <View>
             <Text style={styles.headerTitle}>Provisional Admissions</Text>
-            <Text style={styles.headerSub}>Inquiries & Seat Reservations</Text>
+            <Text style={styles.headerSub}>
+              {students.length} Pending Fee Clearance
+            </Text>
           </View>
         </View>
 
@@ -168,6 +177,14 @@ export default function ProvisionalScreen({ navigation }) {
           <Ionicons name="add" size={18} color="#fff" />
           <Text style={styles.addBtnText}>New Inquiry</Text>
         </TouchableOpacity>
+      </View>
+
+      {/* Warning Notice Banner */}
+      <View style={styles.alertBanner}>
+        <Ionicons name="time" size={18} color="#b45309" />
+        <Text style={styles.alertBannerText}>
+          Provisional applicants have temporary PROV- IDs and are excluded from official rosters until fee clearance.
+        </Text>
       </View>
 
       {/* Search Input Bar */}
@@ -250,8 +267,8 @@ export default function ProvisionalScreen({ navigation }) {
                       style={[styles.contactChip, { backgroundColor: '#eff6ff' }]}
                       onPress={() => Linking.openURL(`tel:${stu.parent_phone}`)}
                     >
-                      <Ionicons name="call" size={14} color="#0b57d0" />
-                      <Text style={[styles.contactChipText, { color: '#0b57d0' }]}>Call Parent</Text>
+                      <Ionicons name="call" size={13} color="#0b57d0" />
+                      <Text style={[styles.contactChipText, { color: '#0b57d0' }]}>Call</Text>
                     </TouchableOpacity>
                   )}
 
@@ -264,24 +281,26 @@ export default function ProvisionalScreen({ navigation }) {
                         Linking.openURL(`https://wa.me/${intl}?text=Hello%2C%20regarding%20provisional%20admission%20of%20${encodeURIComponent(stu.name)}`).catch(() => {});
                       }}
                     >
-                      <Ionicons name="logo-whatsapp" size={14} color="#16a34a" />
+                      <Ionicons name="logo-whatsapp" size={13} color="#16a34a" />
                       <Text style={[styles.contactChipText, { color: '#16a34a' }]}>WhatsApp</Text>
                     </TouchableOpacity>
                   )}
 
                   <TouchableOpacity
-                    style={[styles.contactChip, { backgroundColor: '#fef3c7' }]}
-                    onPress={() => handleConfirmAdmission(stu)}
+                    style={[styles.contactChip, { backgroundColor: '#fffbeb', borderColor: '#fcd34d', borderWidth: 1 }]}
+                    onPress={() => setTargetStudent(stu)}
                   >
-                    <Ionicons name="checkmark-circle" size={14} color="#d97706" />
-                    <Text style={[styles.contactChipText, { color: '#d97706' }]}>Confirm Admission</Text>
+                    <Ionicons name="flash-outline" size={13} color="#b45309" />
+                    <Text style={[styles.contactChipText, { color: '#b45309', fontWeight: '800' }]}>
+                      Complete Admission →
+                    </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[styles.contactChip, { backgroundColor: '#fee2e2' }]}
+                    style={[styles.contactChip, { backgroundColor: '#fef2f2' }]}
                     onPress={() => handleCancelApplication(stu)}
                   >
-                    <Ionicons name="trash-outline" size={14} color="#dc2626" />
+                    <Ionicons name="trash-outline" size={13} color="#dc2626" />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -294,6 +313,89 @@ export default function ProvisionalScreen({ navigation }) {
             </View>
           )}
         </ScrollView>
+      )}
+
+      {/* Complete Admission Choice Modal (Matching Web ERP) */}
+      {targetStudent && (
+        <Modal visible={Boolean(targetStudent)} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalCard, { maxHeight: 500 }]}>
+              <View style={styles.modalHeader}>
+                <View>
+                  <Text style={styles.modalTitle}>Complete Admission</Text>
+                  <Text style={styles.modalSub}>{targetStudent.name} (#{targetStudent.admission_no})</Text>
+                </View>
+                <TouchableOpacity onPress={() => setTargetStudent(null)}>
+                  <Ionicons name="close" size={24} color="#64748b" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingVertical: 8 }}>
+                {/* Option 1: Collect Fee & Auto Confirm */}
+                <TouchableOpacity
+                  style={styles.choiceCard}
+                  onPress={() => {
+                    const st = targetStudent;
+                    setTargetStudent(null);
+                    navigation.navigate('FeeCollect', { student: st });
+                  }}
+                >
+                  <View style={styles.choiceIconBox}>
+                    <Ionicons name="card" size={22} color="#15803d" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.choiceTitle}>Collect Admission Fee &amp; Auto-Confirm</Text>
+                    <Text style={styles.choiceDesc}>
+                      Issue official receipt and promote status immediately to Confirmed (Active).
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color="#15803d" />
+                </TouchableOpacity>
+
+                {/* Option 2: Instant Confirm */}
+                <TouchableOpacity
+                  style={[styles.choiceCard, { borderColor: '#93c5fd', backgroundColor: '#eff6ff' }]}
+                  onPress={() => handleInstantConfirm(targetStudent)}
+                  disabled={confirming}
+                >
+                  <View style={[styles.choiceIconBox, { backgroundColor: '#dbeafe' }]}>
+                    <Ionicons name="flash" size={22} color="#1d4ed8" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.choiceTitle, { color: '#1d4ed8' }]}>
+                      {confirming ? 'Confirming...' : 'Instant Confirm Without Fee'}
+                    </Text>
+                    <Text style={[styles.choiceDesc, { color: '#2563eb' }]}>
+                      Directly clears provisional hold and generates official active student enrollment.
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color="#1d4ed8" />
+                </TouchableOpacity>
+
+                {/* Option 3: Complete Dossier */}
+                <TouchableOpacity
+                  style={[styles.choiceCard, { borderColor: '#e2e8f0', backgroundColor: '#f8fafc' }]}
+                  onPress={() => {
+                    const st = targetStudent;
+                    setTargetStudent(null);
+                    navigation.navigate('StudentDetail', { student: st, student_id: st.id });
+                  }}
+                >
+                  <View style={[styles.choiceIconBox, { backgroundColor: '#e2e8f0' }]}>
+                    <Ionicons name="person" size={22} color="#334155" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.choiceTitle, { color: '#1e293b' }]}>Complete Profile &amp; KYC</Text>
+                    <Text style={styles.choiceDesc}>
+                      Update student photograph, national ID documents, address, and academic records.
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color="#334155" />
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
       )}
 
       {/* New Inquiry Modal */}
@@ -318,24 +420,24 @@ export default function ProvisionalScreen({ navigation }) {
               />
 
               <Text style={styles.fieldLabel}>Target Class *</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-                <View style={{ flexDirection: 'row', gap: 6 }}>
-                  {classes.map(c => {
-                    const isSel = String(classId) === String(c.id);
-                    return (
-                      <TouchableOpacity
-                        key={c.id}
-                        style={[styles.modalChip, isSel && styles.modalChipActive]}
-                        onPress={() => setClassId(String(c.id))}
-                      >
-                        <Text style={[styles.modalChipText, isSel && styles.modalChipTextActive]}>{c.name}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </ScrollView>
+              <View style={styles.classChipsRow}>
+                {classes.map(c => {
+                  const isSel = String(classId) === String(c.id);
+                  return (
+                    <TouchableOpacity
+                      key={c.id}
+                      style={[styles.miniClassChip, isSel && styles.miniClassChipActive]}
+                      onPress={() => setClassId(String(c.id))}
+                    >
+                      <Text style={[styles.miniClassChipText, isSel && styles.miniClassChipTextActive]}>
+                        {c.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
 
-              <Text style={styles.fieldLabel}>Father / Guardian Name</Text>
+              <Text style={styles.fieldLabel}>Father's / Guardian's Name</Text>
               <TextInput
                 style={styles.input}
                 placeholder="e.g., Rajesh Sharma"
@@ -344,10 +446,10 @@ export default function ProvisionalScreen({ navigation }) {
                 onChangeText={setFatherName}
               />
 
-              <Text style={styles.fieldLabel}>Parent Mobile Number (10 Digits) *</Text>
+              <Text style={styles.fieldLabel}>Primary Contact Phone (10 digits) *</Text>
               <TextInput
                 style={styles.input}
-                placeholder="9876543210"
+                placeholder="e.g., 9876543210"
                 placeholderTextColor="#94a3b8"
                 keyboardType="phone-pad"
                 maxLength={10}
@@ -358,19 +460,17 @@ export default function ProvisionalScreen({ navigation }) {
               <Text style={styles.fieldLabel}>Academic Session</Text>
               <TextInput
                 style={styles.input}
-                placeholder="2026-27"
-                placeholderTextColor="#94a3b8"
                 value={session}
                 onChangeText={setSession}
               />
 
               <TouchableOpacity
-                style={[styles.submitBtn, savingInquiry && { opacity: 0.7 }]}
+                style={styles.submitBtn}
                 onPress={handleCreateInquiry}
                 disabled={savingInquiry}
               >
                 {savingInquiry ? (
-                  <ActivityIndicator size="small" color="#fff" />
+                  <ActivityIndicator color="#fff" />
                 ) : (
                   <Text style={styles.submitBtnText}>Register Provisional Seat</Text>
                 )}
@@ -386,134 +486,177 @@ export default function ProvisionalScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc' },
   header: {
-    backgroundColor: colors.primary,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    backgroundColor: '#0b57d0',
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
-  headerTitle: { color: '#ffffff', fontSize: 18, fontWeight: '800' },
-  headerSub: { color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 2 },
+  headerTitle: { fontSize: 17, fontWeight: '800', color: '#ffffff' },
+  headerSub: { fontSize: 11, color: '#bfdbfe', marginTop: 1 },
   addBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
     backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
+    gap: 4,
   },
-  addBtnText: { color: '#ffffff', fontSize: 13, fontWeight: '700' },
+  addBtnText: { color: '#ffffff', fontSize: 12, fontWeight: '700' },
+  alertBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  alertBannerText: {
+    flex: 1,
+    fontSize: 11.5,
+    color: '#92400e',
+    fontWeight: '600',
+  },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#ffffff',
-    marginHorizontal: 16,
-    marginTop: 12,
-    paddingHorizontal: 12,
+    marginHorizontal: 14,
+    marginTop: 10,
     borderRadius: 10,
+    paddingHorizontal: 12,
+    height: 40,
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    gap: 8,
   },
-  searchInput: { flex: 1, paddingVertical: 10, fontSize: 14, color: '#1e293b' },
-  chipsBar: { paddingVertical: 8 },
+  searchInput: { flex: 1, marginLeft: 8, fontSize: 13, color: '#0f172a' },
+  chipsBar: { marginVertical: 8 },
   chip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 14,
-    backgroundColor: '#f1f5f9',
+    borderRadius: 16,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
   },
-  chipActive: { backgroundColor: colors.primary },
-  chipText: { fontSize: 12, fontWeight: '700', color: '#64748b' },
-  chipTextActive: { color: '#ffffff' },
-  scrollContent: { padding: 16, paddingBottom: 40 },
-  centerBox: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 40 },
-  loadingText: { marginTop: 12, fontSize: 13, color: '#64748b' },
+  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipText: { fontSize: 12, color: '#475569', fontWeight: '600' },
+  chipTextActive: { color: '#ffffff', fontWeight: '700' },
+  scrollContent: { paddingHorizontal: 14, paddingBottom: 20, gap: 10 },
   card: {
     backgroundColor: '#ffffff',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 12,
+    borderRadius: 12,
+    padding: 12,
     borderWidth: 1,
     borderColor: '#e2e8f0',
   },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  candidateName: { fontSize: 16, fontWeight: '800', color: '#1e293b' },
+  candidateName: { fontSize: 14.5, fontWeight: '700', color: '#0f172a' },
   candidateMeta: { fontSize: 12, color: '#64748b', marginTop: 2 },
-  guardianText: { fontSize: 11, color: '#94a3b8', marginTop: 2 },
+  guardianText: { fontSize: 11.5, color: '#334155', marginTop: 2, fontWeight: '600' },
   provisionalBadge: {
     backgroundColor: '#fef3c7',
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    paddingVertical: 3,
+    borderRadius: 8,
   },
-  provisionalBadgeText: { fontSize: 10, fontWeight: '800', color: '#d97706' },
+  provisionalBadgeText: { fontSize: 10, fontWeight: '800', color: '#b45309' },
   actionsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 12,
-    paddingTop: 10,
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: '#f1f5f9',
+    flexWrap: 'wrap',
   },
   contactChip: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 6,
     gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
   },
-  contactChipText: { fontSize: 12, fontWeight: '700' },
-  emptyBox: { alignItems: 'center', justifyContent: 'center', paddingVertical: 48 },
-  emptyTitle: { fontSize: 16, fontWeight: '800', color: '#1e293b', marginTop: 12 },
-  emptySub: { fontSize: 13, color: '#94a3b8', marginTop: 4, textAlign: 'center' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  contactChipText: { fontSize: 11, fontWeight: '700' },
+  centerBox: { padding: 40, alignItems: 'center' },
+  loadingText: { fontSize: 13, color: '#64748b', marginTop: 10 },
+  emptyBox: { padding: 40, alignItems: 'center', justifyContent: 'center' },
+  emptyTitle: { fontSize: 15, fontWeight: '700', color: '#0f172a', marginTop: 10 },
+  emptySub: { fontSize: 12, color: '#94a3b8', textAlign: 'center', marginTop: 4 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    padding: 20,
+  },
   modalCard: {
     backgroundColor: '#ffffff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: '85%',
+    borderRadius: 14,
+    padding: 18,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
+    alignItems: 'flex-start',
+    marginBottom: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
   },
-  modalTitle: { fontSize: 18, fontWeight: '800', color: '#1e293b' },
-  fieldLabel: { fontSize: 12, fontWeight: '700', color: '#64748b', marginBottom: 6, textTransform: 'uppercase' },
+  modalTitle: { fontSize: 16, fontWeight: '800', color: '#0f172a' },
+  modalSub: { fontSize: 12, color: '#64748b', marginTop: 1 },
+  fieldLabel: { fontSize: 12, fontWeight: '700', color: '#334155', marginTop: 10, marginBottom: 4 },
   input: {
     backgroundColor: '#f8fafc',
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: '#1e293b',
-    marginBottom: 12,
-  },
-  modalChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    borderColor: '#cbd5e1',
     borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 13.5,
+    color: '#0f172a',
+  },
+  classChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginVertical: 4 },
+  miniClassChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
     backgroundColor: '#f1f5f9',
   },
-  modalChipActive: { backgroundColor: colors.primary },
-  modalChipText: { fontSize: 12, fontWeight: '700', color: '#64748b' },
-  modalChipTextActive: { color: '#ffffff' },
+  miniClassChipActive: { backgroundColor: colors.primary },
+  miniClassChipText: { fontSize: 12, color: '#475569' },
+  miniClassChipTextActive: { color: '#ffffff', fontWeight: '700' },
   submitBtn: {
     backgroundColor: colors.primary,
+    paddingVertical: 12,
     borderRadius: 10,
-    paddingVertical: 14,
     alignItems: 'center',
-    marginTop: 10,
-    marginBottom: 20,
+    justifyContent: 'center',
+    marginTop: 16,
   },
-  submitBtnText: { color: '#ffffff', fontSize: 15, fontWeight: '800' },
+  submitBtnText: { color: '#ffffff', fontSize: 13.5, fontWeight: '700' },
+  choiceCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0fdf4',
+    borderWidth: 1.5,
+    borderColor: '#86efac',
+    borderRadius: 10,
+    padding: 12,
+    gap: 10,
+  },
+  choiceIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: '#dcfce7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  choiceTitle: { fontSize: 13, fontWeight: '800', color: '#15803d' },
+  choiceDesc: { fontSize: 11, color: '#166534', marginTop: 2 },
 });

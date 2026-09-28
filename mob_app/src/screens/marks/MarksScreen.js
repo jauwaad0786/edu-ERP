@@ -26,12 +26,13 @@ export default function MarksScreen({ route, navigation }) {
   const { user } = useAuth();
   const role = typeof user?.role === 'object' ? user.role?.value : String(user?.role || '');
   const isPrincipal = ['PRINCIPAL', 'DIRECTOR', 'VICE_PRINCIPAL', 'SUPER_ADMIN'].includes(role);
+  const isStudentOrParent = role === 'STUDENT' || role === 'PARENT';
 
   const initialExamId = route?.params?.examId || null;
   const initialClassId = route?.params?.classId || null;
   const initialSubjectId = route?.params?.subjectId || null;
 
-  const [activeMainTab, setActiveMainTab] = useState('Entry'); // 'Entry' | 'Toppers'
+  const [activeMainTab, setActiveMainTab] = useState(isStudentOrParent ? 'Toppers' : 'Entry'); // 'Entry' | 'Toppers'
 
   // Dropdown lists
   const [classes, setClasses] = useState([]);
@@ -291,6 +292,40 @@ export default function MarksScreen({ route, navigation }) {
     );
   };
 
+  // Publish Results (Principal Action)
+  const [publishing, setPublishing] = useState(false);
+  const handlePublishResults = () => {
+    if (!selectedExam) {
+      Alert.alert('Notice', 'Please select an exam first.');
+      return;
+    }
+    Alert.alert(
+      'Publish Exam Results',
+      'This will publish marks to students and parents for this examination. Make sure marks are saved and verified.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Publish',
+          onPress: async () => {
+            setPublishing(true);
+            try {
+              await client.post('/marks/publish', {
+                exam_id: selectedExam,
+                class_id: selectedClass || undefined,
+              });
+              Alert.alert('Success', 'Exam results have been published successfully!');
+              loadRoster();
+            } catch (err) {
+              Alert.alert('Publish Error', err.response?.data?.error || 'Could not publish exam results.');
+            } finally {
+              setPublishing(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
@@ -308,7 +343,7 @@ export default function MarksScreen({ route, navigation }) {
             </View>
           </View>
 
-          {activeMainTab === 'Entry' && roster.length > 0 && !isLocked && (
+          {activeMainTab === 'Entry' && roster.length > 0 && !isLocked && !isStudentOrParent && (
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <TouchableOpacity
                 style={styles.saveHeaderBtn}
@@ -325,35 +360,54 @@ export default function MarksScreen({ route, navigation }) {
                 )}
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.submitHeaderBtn}
-                onPress={handleSubmitToPrincipal}
-                disabled={submitting}
-              >
-                {submitting ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <>
-                    <Ionicons name="send" size={14} color="#fff" />
-                    <Text style={styles.saveHeaderBtnText}>Submit</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              {isPrincipal ? (
+                <TouchableOpacity
+                  style={styles.publishHeaderBtn}
+                  onPress={handlePublishResults}
+                  disabled={publishing}
+                >
+                  {publishing ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="megaphone" size={14} color="#fff" />
+                      <Text style={styles.saveHeaderBtnText}>Publish</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={styles.submitHeaderBtn}
+                  onPress={handleSubmitToPrincipal}
+                  disabled={submitting}
+                >
+                  {submitting ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="send" size={14} color="#fff" />
+                      <Text style={styles.saveHeaderBtnText}>Submit</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
           )}
         </View>
 
         {/* Main Tab Switcher */}
         <View style={styles.mainTabs}>
-          <TouchableOpacity
-            style={[styles.mainTab, activeMainTab === 'Entry' && styles.mainTabActive]}
-            onPress={() => setActiveMainTab('Entry')}
-          >
-            <Ionicons name="create-outline" size={15} color={activeMainTab === 'Entry' ? '#fff' : '#94a3b8'} />
-            <Text style={[styles.mainTabText, activeMainTab === 'Entry' && styles.mainTabTextActive]}>
-              Marks Entry
-            </Text>
-          </TouchableOpacity>
+          {!isStudentOrParent && (
+            <TouchableOpacity
+              style={[styles.mainTab, activeMainTab === 'Entry' && styles.mainTabActive]}
+              onPress={() => setActiveMainTab('Entry')}
+            >
+              <Ionicons name="create-outline" size={15} color={activeMainTab === 'Entry' ? '#fff' : '#94a3b8'} />
+              <Text style={[styles.mainTabText, activeMainTab === 'Entry' && styles.mainTabTextActive]}>
+                Marks Entry
+              </Text>
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
             style={[styles.mainTab, activeMainTab === 'Toppers' && styles.mainTabActive]}
@@ -364,6 +418,18 @@ export default function MarksScreen({ route, navigation }) {
               Toppers & Ranks
             </Text>
           </TouchableOpacity>
+
+          {isStudentOrParent && (
+            <TouchableOpacity
+              style={styles.mainTab}
+              onPress={() => navigation?.navigate?.('Result', { examId: selectedExam })}
+            >
+              <Ionicons name="ribbon-outline" size={15} color="#94a3b8" />
+              <Text style={styles.mainTabText}>
+                My Report Card
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -709,6 +775,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     backgroundColor: '#059669',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  publishHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#7c3aed',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,

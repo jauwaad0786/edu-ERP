@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import client from '../../api/client';
 import { colors } from '../../theme/colors';
 import { useAuth } from '../../context/AuthContext';
@@ -89,10 +90,24 @@ export default function StaffAttendanceScreen({ navigation }) {
   const handleCheckIn = async () => {
     setPunching(true);
     try {
+      let coords = null;
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          coords = loc?.coords;
+        }
+      } catch (locErr) {
+        console.warn('GPS location fetch warning:', locErr);
+      }
+
       await client.post('/staff-attendance/check-in', {
         device: 'MOBILE_APP',
+        latitude: coords?.latitude,
+        longitude: coords?.longitude,
+        accuracy: coords?.accuracy,
       });
-      Alert.alert('Checked In', 'Your check-in attendance has been recorded successfully.');
+      Alert.alert('Checked In', 'Your GPS check-in attendance has been recorded successfully.');
       loadSelfStatus();
       if (isPrincipalOrHR) loadDashboard();
     } catch (err) {
@@ -106,7 +121,22 @@ export default function StaffAttendanceScreen({ navigation }) {
   const handleCheckOut = async () => {
     setPunching(true);
     try {
-      await client.post('/staff-attendance/check-out', {});
+      let coords = null;
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          coords = loc?.coords;
+        }
+      } catch (locErr) {
+        console.warn('GPS location fetch warning:', locErr);
+      }
+
+      await client.post('/staff-attendance/check-out', {
+        device: 'MOBILE_APP',
+        latitude: coords?.latitude,
+        longitude: coords?.longitude,
+      });
       Alert.alert('Checked Out', 'Your check-out attendance has been recorded successfully.');
       loadSelfStatus();
       if (isPrincipalOrHR) loadDashboard();

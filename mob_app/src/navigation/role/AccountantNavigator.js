@@ -9,9 +9,13 @@ import OutstandingScreen         from '../../screens/fees/OutstandingScreen';
 import ReceiptsScreen            from '../../screens/fees/ReceiptsScreen';
 import FeesScreen                from '../../screens/fees/FeesScreen';
 import FeeSetupScreen            from '../../screens/fees/FeeSetupScreen';
+import FeeBillsScreen            from '../../screens/fees/FeeBillsScreen';
 import FeeServiceGenerationScreen from '../../screens/fees/FeeServiceGenerationScreen';
 import ExpensesScreen            from '../../screens/finance/ExpensesScreen';
 import FinanceHubScreen          from '../../screens/finance/FinanceHubScreen';
+import VendorsScreen             from '../../screens/finance/VendorsScreen';
+import InventoryScreen           from '../../screens/finance/InventoryScreen';
+import AssetsScreen              from '../../screens/finance/AssetsScreen';
 import PayrollScreen             from '../../screens/hr/PayrollScreen';
 import SettingsScreen            from '../../screens/settings/SettingsScreen';
 import ProfileScreen             from '../../screens/profile/ProfileScreen';
@@ -59,11 +63,18 @@ export default function AccountantNavigator() {
       <Stack.Screen name="Receipts"       component={ReceiptsScreen} />
       <Stack.Screen name="Fees"           component={FeesScreen} />
       <Stack.Screen name="FeeSetup"       component={FeeSetupScreen} />
+      <Stack.Screen name="FeeBills"       component={FeeBillsScreen} />
+      <Stack.Screen name="Bills"          component={FeeBillsScreen} />
       <Stack.Screen name="FeeGeneration"  component={FeeServiceGenerationScreen} />
       <Stack.Screen name="Payroll"        component={PayrollScreen} />
       <Stack.Screen name="FinanceHub"     component={FinanceHubScreen} />
       <Stack.Screen name="Purchases"      component={FinanceHubScreen} />
-      <Stack.Screen name="Vendors"        component={FinanceHubScreen} />
+      <Stack.Screen name="Vendors"        component={VendorsScreen} />
+      <Stack.Screen name="VendorDirectory" component={VendorsScreen} />
+      <Stack.Screen name="Inventory"      component={InventoryScreen} />
+      <Stack.Screen name="Stock"          component={InventoryScreen} />
+      <Stack.Screen name="Assets"         component={AssetsScreen} />
+      <Stack.Screen name="FixedAssets"    component={AssetsScreen} />
       <Stack.Screen name="FinanceDash"    component={FinanceHubScreen} />
       <Stack.Screen name="Profile"        component={ProfileScreen} />
       <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />

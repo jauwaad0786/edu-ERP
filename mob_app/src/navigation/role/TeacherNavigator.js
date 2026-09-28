@@ -24,7 +24,12 @@ import NoticeBoardScreen from '../../screens/notices/NoticeBoardScreen';
 import ExaminationsScreen from '../../screens/examinations/ExaminationsScreen';
 import AdmitCardScreen from '../../screens/examinations/AdmitCardScreen';
 import StudentsScreen from '../../screens/students/StudentsScreen';
+import AddStudentWizardScreen from '../../screens/students/AddStudentWizardScreen';
 import StudentDetailScreen from '../../screens/students/StudentDetailScreen';
+import ProvisionalScreen from '../../screens/students/ProvisionalScreen';
+import SectionShuffleScreen from '../../screens/students/SectionShuffleScreen';
+import PromotionScreen from '../../screens/students/PromotionScreen';
+import BulkEditScreen from '../../screens/students/BulkEditScreen';
 import IDCardScreen from '../../screens/students/IDCardScreen';
 import AnnualRegisterScreen from '../../screens/students/AnnualRegisterScreen';
 import StudentImportScreen from '../../screens/students/StudentImportScreen';
@@ -74,6 +79,7 @@ export default function TeacherNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="TeacherTabs" component={TeacherTabs} />
+      <Stack.Screen name="Attendance" component={AttendanceScreen} />
       <Stack.Screen name="AIChat" component={AIChatScreen} />
       <Stack.Screen name="Classes" component={ClassesScreen} />
       <Stack.Screen name="ClassDetail" component={ClassDetailScreen} />
@@ -94,11 +100,18 @@ export default function TeacherNavigator() {
       <Stack.Screen name="Marks" component={MarksScreen} />
       <Stack.Screen name="MarksEntry" component={MarksScreen} />
       <Stack.Screen name="Students" component={StudentsScreen} />
+      <Stack.Screen name="AddStudent" component={AddStudentWizardScreen} />
+      <Stack.Screen name="AddStudentWizard" component={AddStudentWizardScreen} />
       <Stack.Screen name="StudentDetail" component={StudentDetailScreen} />
+      <Stack.Screen name="Provisional" component={ProvisionalScreen} />
+      <Stack.Screen name="SectionShuffle" component={SectionShuffleScreen} />
+      <Stack.Screen name="Promotion" component={PromotionScreen} />
+      <Stack.Screen name="BulkEdit" component={BulkEditScreen} />
       <Stack.Screen name="IDCard" component={IDCardScreen} />
       <Stack.Screen name="IDCards" component={IDCardScreen} />
       <Stack.Screen name="AnnualRegister" component={AnnualRegisterScreen} />
       <Stack.Screen name="StudentImport" component={StudentImportScreen} />
+      <Stack.Screen name="ImportStudents" component={StudentImportScreen} />
       <Stack.Screen name="StaffDetail" component={StaffDetailScreen} />
       <Stack.Screen name="Result" component={ResultScreen} />
       <Stack.Screen name="Results" component={ResultScreen} />

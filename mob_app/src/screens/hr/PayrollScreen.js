@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as SecureStore from 'expo-secure-store';
 import client from '../../api/client';
 import { colors } from '../../theme/colors';
 import { useAuth } from '../../context/AuthContext';
@@ -164,11 +165,15 @@ export default function PayrollScreen({ navigation }) {
   };
 
   // Download PDF Salary Slip
-  const handleDownloadSlipPdf = (slipId) => {
-    const url = `${client.defaults.baseURL}/hrms/payroll/slips/${slipId}/pdf`;
-    Linking.openURL(url).catch(() => {
+  const handleDownloadSlipPdf = async (slipId) => {
+    try {
+      const token = await SecureStore.getItemAsync('access_token').catch(() => null);
+      let url = `${client.defaults.baseURL}/hrms/payroll/slips/${slipId}/pdf`;
+      if (token) url += `?token=${encodeURIComponent(token)}`;
+      await Linking.openURL(url);
+    } catch {
       Alert.alert('Download Error', 'Could not open payslip PDF link on this device.');
-    });
+    }
   };
 
   return (

@@ -225,6 +225,31 @@ export default function NotesScreen({ navigation }) {
         </ScrollView>
       </View>
 
+      {/* Subject Filter Chips */}
+      <View style={[styles.filtersSection, { paddingTop: 0, paddingBottom: 8 }]}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+          <TouchableOpacity
+            style={[styles.filterChip, !selectedSubjectId && styles.filterChipActive]}
+            onPress={() => setSelectedSubjectId('')}
+          >
+            <Text style={[styles.filterChipText, !selectedSubjectId && styles.filterChipTextActive]}>
+              All Subjects
+            </Text>
+          </TouchableOpacity>
+          {subjects.map((sub) => (
+            <TouchableOpacity
+              key={sub.id}
+              style={[styles.filterChip, selectedSubjectId === sub.id && styles.filterChipActive]}
+              onPress={() => setSelectedSubjectId(selectedSubjectId === sub.id ? '' : sub.id)}
+            >
+              <Text style={[styles.filterChipText, selectedSubjectId === sub.id && styles.filterChipTextActive]}>
+                {sub.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
       {/* Notes List */}
       {loading ? (
         <View style={styles.centerContainer}>

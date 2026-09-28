@@ -194,7 +194,7 @@ export default function ExaminationsScreen({ navigation }) {
           style: 'destructive',
           onPress: async () => {
             try {
-              await client.delete(`/principal/exams/${examId}/timetable/${slotId}`);
+              await client.delete(`/principal/exams/timetable/${slotId}`).catch(() => client.delete(`/principal/exams/${examId}/timetable/${slotId}`));
               Alert.alert('Deleted', 'Paper removed from datesheet.');
               const res = await client.get(`/principal/exams/${examId}/timetable`);
               setTimetables(prev => ({ ...prev, [examId]: Array.isArray(res.data) ? res.data : [] }));

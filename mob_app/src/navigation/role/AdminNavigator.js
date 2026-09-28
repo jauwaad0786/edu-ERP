@@ -22,6 +22,40 @@ import MeetingsScreen       from '../../screens/communication/MeetingsScreen';
 import AIChatScreen          from '../../screens/ai/AIChatScreen';
 import DeveloperCenterScreen from '../../screens/developer/DeveloperCenterScreen';
 import FinanceHubScreen from '../../screens/finance/FinanceHubScreen';
+import VendorsScreen from '../../screens/finance/VendorsScreen';
+import InventoryScreen from '../../screens/finance/InventoryScreen';
+import AssetsScreen from '../../screens/finance/AssetsScreen';
+import StudentDocumentsScreen from '../../screens/documents/StudentDocumentsScreen';
+import IssueCertificatesScreen from '../../screens/documents/IssueCertificatesScreen';
+import StudentsScreen from '../../screens/students/StudentsScreen';
+import AddStudentWizardScreen from '../../screens/students/AddStudentWizardScreen';
+import StudentDetailScreen from '../../screens/students/StudentDetailScreen';
+import ProvisionalScreen from '../../screens/students/ProvisionalScreen';
+import SectionShuffleScreen from '../../screens/students/SectionShuffleScreen';
+import PromotionScreen from '../../screens/students/PromotionScreen';
+import BulkEditScreen from '../../screens/students/BulkEditScreen';
+import AnnualRegisterScreen from '../../screens/students/AnnualRegisterScreen';
+import IDCardScreen from '../../screens/students/IDCardScreen';
+import StudentImportScreen from '../../screens/students/StudentImportScreen';
+import AttendanceScreen from '../../screens/attendance/AttendanceScreen';
+import StaffAttendanceScreen from '../../screens/staff/StaffAttendanceScreen';
+import StaffAttendanceAnalyticsScreen from '../../screens/staff/StaffAttendanceAnalyticsScreen';
+import StaffAttendanceSettingsScreen from '../../screens/staff/StaffAttendanceSettingsScreen';
+import ClassesScreen from '../../screens/classes/ClassesScreen';
+import ClassDetailScreen from '../../screens/classes/ClassDetailScreen';
+import SubjectsScreen from '../../screens/classes/SubjectsScreen';
+import TimetableScreen from '../../screens/timetable/TimetableScreen';
+import CurriculumScreen from '../../screens/curriculum/CurriculumScreen';
+import NotesScreen from '../../screens/notes/NotesScreen';
+import AssignmentsScreen from '../../screens/assignments/AssignmentsScreen';
+import ExaminationsScreen from '../../screens/examinations/ExaminationsScreen';
+import AdmitCardScreen from '../../screens/examinations/AdmitCardScreen';
+import MarksScreen from '../../screens/marks/MarksScreen';
+import ResultScreen from '../../screens/result/ResultScreen';
+import StaffScreen from '../../screens/staff/StaffScreen';
+import StaffDetailScreen from '../../screens/staff/StaffDetailScreen';
+import LeavesScreen from '../../screens/leaves/LeavesScreen';
+import PayrollScreen from '../../screens/hr/PayrollScreen';
 import { TAB_BAR_STYLE } from '../tabBarStyle';
 
 const Tab = createBottomTabNavigator();
@@ -88,8 +122,75 @@ export default function AdminNavigator() {
       <Stack.Screen name="SystemHealth"     component={DeveloperCenterScreen} />
       <Stack.Screen name="FinanceHub"     component={FinanceHubScreen} />
       <Stack.Screen name="Purchases"      component={FinanceHubScreen} />
-      <Stack.Screen name="Vendors"        component={FinanceHubScreen} />
+      <Stack.Screen name="Vendors"        component={VendorsScreen} />
+      <Stack.Screen name="VendorDirectory" component={VendorsScreen} />
+      <Stack.Screen name="Inventory"      component={InventoryScreen} />
+      <Stack.Screen name="Stock"          component={InventoryScreen} />
+      <Stack.Screen name="Assets"         component={AssetsScreen} />
+      <Stack.Screen name="FixedAssets"    component={AssetsScreen} />
       <Stack.Screen name="FinanceDash"    component={FinanceHubScreen} />
+
+      {/* Student Lifecycle */}
+      <Stack.Screen name="Students" component={StudentsScreen} />
+      <Stack.Screen name="AddStudent" component={AddStudentWizardScreen} />
+      <Stack.Screen name="AddStudentWizard" component={AddStudentWizardScreen} />
+      <Stack.Screen name="StudentDetail" component={StudentDetailScreen} />
+      <Stack.Screen name="Provisional" component={ProvisionalScreen} />
+      <Stack.Screen name="SectionShuffle" component={SectionShuffleScreen} />
+      <Stack.Screen name="Promotion" component={PromotionScreen} />
+      <Stack.Screen name="BulkEdit" component={BulkEditScreen} />
+      <Stack.Screen name="AnnualRegister" component={AnnualRegisterScreen} />
+      <Stack.Screen name="IDCard" component={IDCardScreen} />
+      <Stack.Screen name="IDCards" component={IDCardScreen} />
+      <Stack.Screen name="StudentImport" component={StudentImportScreen} />
+      <Stack.Screen name="ImportStudents" component={StudentImportScreen} />
+      <Stack.Screen name="StudentDocuments" component={StudentDocumentsScreen} />
+      <Stack.Screen name="Documents" component={StudentDocumentsScreen} />
+      <Stack.Screen name="IssueCertificates" component={IssueCertificatesScreen} />
+      <Stack.Screen name="Certificates" component={IssueCertificatesScreen} />
+
+      {/* Attendance & HRMS */}
+      <Stack.Screen name="Attendance" component={AttendanceScreen} />
+      <Stack.Screen name="StaffAttendance" component={StaffAttendanceScreen} />
+      <Stack.Screen name="StaffAttendanceAnalytics" component={StaffAttendanceAnalyticsScreen} />
+      <Stack.Screen name="AttendanceAnalytics" component={StaffAttendanceAnalyticsScreen} />
+      <Stack.Screen name="StaffAttendanceSettings" component={StaffAttendanceSettingsScreen} />
+      <Stack.Screen name="AttendanceSettings" component={StaffAttendanceSettingsScreen} />
+
+      {/* Academics & Curriculum */}
+      <Stack.Screen name="Classes" component={ClassesScreen} />
+      <Stack.Screen name="ClassDetail" component={ClassDetailScreen} />
+      <Stack.Screen name="Subjects" component={SubjectsScreen} />
+      <Stack.Screen name="Timetable" component={TimetableScreen} />
+      <Stack.Screen name="Curriculum" component={CurriculumScreen} />
+      <Stack.Screen name="TeachingDiary" component={CurriculumScreen} />
+      <Stack.Screen name="CurriculumCoverage" component={CurriculumScreen} />
+      <Stack.Screen name="CurriculumSetup" component={CurriculumScreen} />
+
+      {/* Academic Resources */}
+      <Stack.Screen name="Notes" component={NotesScreen} />
+      <Stack.Screen name="StudyMaterial" component={NotesScreen} />
+      <Stack.Screen name="Assignments" component={AssignmentsScreen} />
+      <Stack.Screen name="Homework" component={AssignmentsScreen} />
+
+      {/* Examinations & Evaluation */}
+      <Stack.Screen name="Examinations" component={ExaminationsScreen} />
+      <Stack.Screen name="ExamSchedule" component={ExaminationsScreen} />
+      <Stack.Screen name="AdmitCard" component={AdmitCardScreen} />
+      <Stack.Screen name="AdmitCards" component={AdmitCardScreen} />
+      <Stack.Screen name="Marks" component={MarksScreen} />
+      <Stack.Screen name="MarksEntry" component={MarksScreen} />
+      <Stack.Screen name="Result" component={ResultScreen} />
+      <Stack.Screen name="Results" component={ResultScreen} />
+
+      {/* Staff & HRMS */}
+      <Stack.Screen name="Staff" component={StaffScreen} />
+      <Stack.Screen name="Teachers" component={StaffScreen} />
+      <Stack.Screen name="Employees" component={StaffScreen} />
+      <Stack.Screen name="StaffDetail" component={StaffDetailScreen} />
+      <Stack.Screen name="TeacherDetail" component={StaffDetailScreen} />
+      <Stack.Screen name="Leaves" component={LeavesScreen} />
+      <Stack.Screen name="Payroll" component={PayrollScreen} />
     </Stack.Navigator>
   );
 }

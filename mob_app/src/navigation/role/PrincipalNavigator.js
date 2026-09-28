@@ -86,6 +86,9 @@ import SubjectsScreen from '../../screens/classes/SubjectsScreen';
 import DriverConsoleScreen from '../../screens/transport/DriverConsoleScreen';
 import DeveloperCenterScreen from '../../screens/developer/DeveloperCenterScreen';
 import FinanceHubScreen from '../../screens/finance/FinanceHubScreen';
+import VendorsScreen from '../../screens/finance/VendorsScreen';
+import InventoryScreen from '../../screens/finance/InventoryScreen';
+import AssetsScreen from '../../screens/finance/AssetsScreen';
 import { TAB_BAR_STYLE } from '../tabBarStyle';
 
 const Tab = createBottomTabNavigator();
@@ -107,7 +110,7 @@ function PrincipalTabs() {
           const icons = {
             Home: focused ? 'home' : 'home-outline',
             Students: focused ? 'people' : 'people-outline',
-            Teachers: focused ? 'person' : 'person-outline',
+            Staff: focused ? 'people-circle' : 'people-circle-outline',
             Fees: focused ? 'card' : 'card-outline',
             Settings: focused ? 'settings' : 'settings-outline',
           };
@@ -117,7 +120,7 @@ function PrincipalTabs() {
     >
       <Tab.Screen name="Home" component={PrincipalDashboardScreen} />
       <Tab.Screen name="Students" component={StudentsScreen} />
-      <Tab.Screen name="Teachers" component={StaffScreen} />
+      <Tab.Screen name="Staff" component={StaffScreen} />
       <Tab.Screen name="Fees" component={FeesScreen} />
       <Tab.Screen name="Settings" component={SettingsScreen} />
     </Tab.Navigator>
@@ -152,7 +155,9 @@ export default function PrincipalNavigator() {
       <Stack.Screen name="Certificates" component={IssueCertificatesScreen} />
 
       {/* Academics & Staff */}
+      <Stack.Screen name="Staff" component={StaffScreen} />
       <Stack.Screen name="Teachers" component={StaffScreen} />
+      <Stack.Screen name="Employees" component={StaffScreen} />
       <Stack.Screen name="StaffDetail" component={StaffDetailScreen} />
       <Stack.Screen name="TeacherDetail" component={StaffDetailScreen} />
       <Stack.Screen name="Classes" component={ClassesScreen} />
@@ -268,7 +273,12 @@ export default function PrincipalNavigator() {
       <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
       <Stack.Screen name="FinanceHub"     component={FinanceHubScreen} />
       <Stack.Screen name="Purchases"      component={FinanceHubScreen} />
-      <Stack.Screen name="Vendors"        component={FinanceHubScreen} />
+      <Stack.Screen name="Vendors"        component={VendorsScreen} />
+      <Stack.Screen name="VendorDirectory" component={VendorsScreen} />
+      <Stack.Screen name="Inventory"      component={InventoryScreen} />
+      <Stack.Screen name="Stock"          component={InventoryScreen} />
+      <Stack.Screen name="Assets"         component={AssetsScreen} />
+      <Stack.Screen name="FixedAssets"    component={AssetsScreen} />
       <Stack.Screen name="FinanceDash"    component={FinanceHubScreen} />
     </Stack.Navigator>
   );

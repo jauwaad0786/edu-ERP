@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as SecureStore from 'expo-secure-store';
 import client from '../../api/client';
 import { colors } from '../../theme/colors';
 import { useAuth } from '../../context/AuthContext';
@@ -189,29 +190,39 @@ export default function ResultScreen({ route, navigation }) {
   };
 
   // Download Student Result Card PDF
-  const handleDownloadPDF = (studentId) => {
+  const handleDownloadPDF = async (studentId) => {
     const targetStudentId = studentId || currentStudentProfile?.id;
     if (!targetStudentId || !selectedExamId) {
       Alert.alert('Notice', 'Exam or student selection missing.');
       return;
     }
-    const url = `${client.defaults.baseURL}/principal/result-card/${targetStudentId}/${selectedExamId}`;
-    Linking.openURL(url).catch(() => {
+    try {
+      const token = await SecureStore.getItemAsync('access_token').catch(() => null);
+      let url = `${client.defaults.baseURL}/principal/result-card/${targetStudentId}/${selectedExamId}`;
+      if (token) url += `?token=${encodeURIComponent(token)}`;
+      await Linking.openURL(url);
+    } catch {
       Alert.alert('Download Error', 'Could not open PDF report card URL.');
-    });
+    }
   };
 
   // Bulk Download Class Result Cards (Admin)
-  const handleBulkDownload = () => {
+  const handleBulkDownload = async () => {
     if (!selectedExamId) {
       Alert.alert('Notice', 'Please select an examination first.');
       return;
     }
-    let url = `${client.defaults.baseURL}/principal/exams/${selectedExamId}/result-cards/bulk`;
-    if (selectedClassId) url += `?class_id=${selectedClassId}`;
-    Linking.openURL(url).catch(() => {
+    try {
+      const token = await SecureStore.getItemAsync('access_token').catch(() => null);
+      let url = `${client.defaults.baseURL}/principal/exams/${selectedExamId}/result-cards/bulk`;
+      const params = [];
+      if (selectedClassId) params.push(`class_id=${selectedClassId}`);
+      if (token) params.push(`token=${encodeURIComponent(token)}`);
+      if (params.length > 0) url += `?${params.join('&')}`;
+      await Linking.openURL(url);
+    } catch {
       Alert.alert('Download Error', 'Could not open bulk report cards download URL.');
-    });
+    }
   };
 
   // Principal RMS Actions: Approve, Return, Publish

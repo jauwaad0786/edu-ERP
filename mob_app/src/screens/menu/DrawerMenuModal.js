@@ -42,6 +42,7 @@ export default function DrawerMenuModal({ visible, onClose, navigation }) {
       case 'DIRECTOR':
       case 'VICE_PRINCIPAL':
       case 'ADMIN':
+      case 'ACCOUNTANT':
         return [
           {
             title: 'Overview & AI',
@@ -67,6 +68,8 @@ export default function DrawerMenuModal({ visible, onClose, navigation }) {
               { label: 'Annual Re-Registration', icon: 'repeat-outline', screen: 'AnnualRegister', color: '#059669' },
               { label: 'Bulk Student Import CSV', icon: 'cloud-upload-outline', screen: 'StudentImport', color: '#0891b2' },
               { label: 'Student ID Cards', icon: 'card-outline', screen: 'IDCard', color: '#7c3aed' },
+              { label: 'Issue Certificates (TC, Bonafide)', icon: 'ribbon-outline', screen: 'IssueCertificates', color: '#7c3aed' },
+              { label: 'Student KYC & Documents', icon: 'shield-checkmark-outline', screen: 'StudentDocuments', color: '#0284c7' },
               { label: 'Inquiries & Leads', icon: 'megaphone-outline', screen: 'Leads', color: '#ea580c' },
             ],
           },
@@ -75,7 +78,12 @@ export default function DrawerMenuModal({ visible, onClose, navigation }) {
             icon: 'checkbox-outline',
             color: '#16a34a',
             items: [
-              { label: 'Student Daily Attendance', icon: 'checkbox-outline', screen: 'Attendance', color: '#16a34a' },
+              { label: 'Attendance Dashboard', icon: 'stats-chart-outline', screen: 'Attendance', params: { tab: 'overview' }, color: '#16a34a' },
+              { label: 'Mark Class Attendance', icon: 'create-outline', screen: 'Attendance', params: { tab: 'mark' }, color: '#0b57d0' },
+              { label: 'QR & Fast Scan Check-In', icon: 'qr-code-outline', screen: 'Attendance', params: { tab: 'qr_scan' }, color: '#7c3aed' },
+              { label: 'Staff / Teacher Register', icon: 'people-outline', screen: 'StaffAttendance', color: '#ea580c' },
+              { label: 'Staff Attendance Analytics', icon: 'bar-chart-outline', screen: 'StaffAttendanceAnalytics', color: '#0891b2' },
+              { label: 'Attendance Rules & Geo-fence', icon: 'settings-outline', screen: 'StaffAttendanceSettings', color: '#64748b' },
             ],
           },
           {
@@ -86,9 +94,9 @@ export default function DrawerMenuModal({ visible, onClose, navigation }) {
               { label: 'Classes & Section Setup', icon: 'school-outline', screen: 'Classes', color: '#0d9488' },
               { label: 'Subject Management', icon: 'book-outline', screen: 'Subjects', color: '#0284c7' },
               { label: 'Weekly Timetable Grid', icon: 'calendar-outline', screen: 'Timetable', color: '#7c3aed' },
-              { label: 'Teacher Teaching Diary', icon: 'journal-outline', screen: 'TeachingDiary', color: '#059669' },
-              { label: 'Syllabus Coverage Tracker', icon: 'pie-chart-outline', screen: 'CurriculumCoverage', color: '#16a34a' },
-              { label: 'Curriculum & Books', icon: 'book-outline', screen: 'Curriculum', color: '#0284c7' },
+              { label: 'Teacher Teaching Diary', icon: 'journal-outline', screen: 'TeachingDiary', params: { initialTab: 'diary' }, color: '#059669' },
+              { label: 'Syllabus Coverage Tracker', icon: 'pie-chart-outline', screen: 'CurriculumCoverage', params: { initialTab: 'coverage' }, color: '#16a34a' },
+              { label: 'Curriculum & Books Setup', icon: 'library-outline', screen: 'Curriculum', params: { initialTab: 'setup' }, color: '#0284c7' },
               { label: 'Faculty & Teachers Directory', icon: 'people-outline', screen: 'Teachers', color: '#4f46e5' },
             ],
           },
@@ -158,6 +166,8 @@ export default function DrawerMenuModal({ visible, onClose, navigation }) {
               { label: 'Operating Expenses', icon: 'wallet-outline', screen: 'Expenses', color: '#dc2626' },
               { label: 'Purchase Orders & GRN', icon: 'cart-outline', screen: 'Purchases', color: '#7c3aed' },
               { label: 'Vendor Directory', icon: 'business-outline', screen: 'Vendors', color: '#ea580c' },
+              { label: 'Inventory & Stock', icon: 'cube-outline', screen: 'Inventory', color: '#4338ca' },
+              { label: 'Fixed Assets Register', icon: 'hardware-chip-outline', screen: 'Assets', color: '#7c3aed' },
             ],
           },
           {
@@ -252,7 +262,10 @@ export default function DrawerMenuModal({ visible, onClose, navigation }) {
             icon: 'checkbox-outline',
             color: '#16a34a',
             items: [
-              { label: 'Student Daily Attendance', icon: 'clipboard-outline', screen: 'Attendance', color: '#16a34a' },
+              { label: 'Class Attendance Dashboard', icon: 'stats-chart-outline', screen: 'Attendance', params: { tab: 'overview' }, color: '#16a34a' },
+              { label: 'Mark Daily Attendance', icon: 'create-outline', screen: 'Attendance', params: { tab: 'mark' }, color: '#0b57d0' },
+              { label: 'QR & Fast Scan Check-In', icon: 'qr-code-outline', screen: 'Attendance', params: { tab: 'qr_scan' }, color: '#7c3aed' },
+              { label: 'My Punch & Staff Attendance', icon: 'person-circle-outline', screen: 'StaffAttendance', color: '#ea580c' },
             ],
           },
           {
@@ -260,8 +273,9 @@ export default function DrawerMenuModal({ visible, onClose, navigation }) {
             icon: 'school-outline',
             color: '#0d9488',
             items: [
-              { label: "Today's Teaching Diary", icon: 'journal-outline', screen: 'TeachingDiary', color: '#059669' },
-              { label: 'Syllabus Coverage Tracker', icon: 'pie-chart-outline', screen: 'CurriculumCoverage', color: '#16a34a' },
+              { label: "Today's Teaching Diary", icon: 'journal-outline', screen: 'TeachingDiary', params: { initialTab: 'diary' }, color: '#059669' },
+              { label: 'Syllabus Coverage Tracker', icon: 'pie-chart-outline', screen: 'CurriculumCoverage', params: { initialTab: 'coverage' }, color: '#16a34a' },
+              { label: 'Curriculum & Books Setup', icon: 'library-outline', screen: 'Curriculum', params: { initialTab: 'setup' }, color: '#0284c7' },
               { label: 'Weekly Timetable Grid', icon: 'calendar-outline', screen: 'Timetable', color: '#7c3aed' },
               { label: 'Assigned Classes', icon: 'school-outline', screen: 'Classes', color: '#0d9488' },
               { label: 'Curriculum Subjects', icon: 'book-outline', screen: 'Subjects', color: '#0284c7' },
@@ -278,9 +292,10 @@ export default function DrawerMenuModal({ visible, onClose, navigation }) {
           },
           {
             title: 'Examinations & Evaluation',
-            icon: 'pencil-outline',
+            icon: 'calendar-outline',
             color: '#4338ca',
             items: [
+              { label: 'Exam Schedules & Datesheets', icon: 'calendar-outline', screen: 'Examinations', color: '#ea580c' },
               { label: 'Exam Marks Entry', icon: 'pencil-outline', screen: 'Marks', color: '#4338ca' },
               { label: 'Admit Cards (Hall Tickets)', icon: 'card-outline', screen: 'AdmitCard', color: '#059669' },
               { label: 'Results & RMS Cards', icon: 'ribbon-outline', screen: 'Result', color: '#be185d' },
@@ -377,6 +392,7 @@ export default function DrawerMenuModal({ visible, onClose, navigation }) {
             icon: 'person-outline',
             color: '#2563eb',
             items: [
+              { label: 'My Documents & Certificates', icon: 'document-attach-outline', screen: 'StudentDocuments', color: '#7c3aed' },
               { label: 'Support & Grievances', icon: 'headset-outline', screen: 'Support', color: '#059669' },
               { label: 'My Profile', icon: 'person-outline', screen: 'Profile', color: '#2563eb' },
               { label: 'Account Settings', icon: 'settings-outline', screen: 'Settings', color: '#64748b' },
@@ -405,6 +421,7 @@ export default function DrawerMenuModal({ visible, onClose, navigation }) {
               { label: 'Homework & Tasks', icon: 'clipboard-outline', screen: 'Assignments', color: '#6366f1' },
               { label: 'Study Materials & Notes', icon: 'document-text-outline', screen: 'Notes', color: '#0284c7' },
               { label: 'Attendance Records', icon: 'clipboard-outline', screen: 'Attendance', color: '#16a34a' },
+              { label: 'Child Documents & Certificates', icon: 'document-attach-outline', screen: 'StudentDocuments', color: '#7c3aed' },
             ],
           },
           {
@@ -551,6 +568,8 @@ export default function DrawerMenuModal({ visible, onClose, navigation }) {
               { label: 'Finance Command Center', icon: 'trending-up-outline', screen: 'FinanceHub', color: '#0369a1' },
               { label: 'Purchase Orders & GRN', icon: 'cart-outline', screen: 'Purchases', color: '#7c3aed' },
               { label: 'Vendor Management', icon: 'business-outline', screen: 'Vendors', color: '#ea580c' },
+              { label: 'Inventory & Stock', icon: 'cube-outline', screen: 'Inventory', color: '#4338ca' },
+              { label: 'Fixed Assets Register', icon: 'hardware-chip-outline', screen: 'Assets', color: '#7c3aed' },
               { label: 'Security & Settings', icon: 'settings-outline', screen: 'Settings', color: '#64748b' },
             ],
           },
@@ -577,10 +596,14 @@ export default function DrawerMenuModal({ visible, onClose, navigation }) {
       .filter(Boolean);
   }, [menuGroups, searchQuery]);
 
-  const handleNavigate = (screen) => {
+  const handleNavigate = (screen, params) => {
     onClose();
     if (screen && navigation?.navigate) {
-      navigation.navigate(screen);
+      if (params) {
+        navigation.navigate(screen, params);
+      } else {
+        navigation.navigate(screen);
+      }
     }
   };
 
@@ -692,7 +715,7 @@ export default function DrawerMenuModal({ visible, onClose, navigation }) {
                       <TouchableOpacity
                         key={item.label}
                         style={styles.menuRow}
-                        onPress={() => handleNavigate(item.screen)}
+                        onPress={() => handleNavigate(item.screen, item.params)}
                         activeOpacity={0.7}
                       >
                         <View style={[styles.iconBox, { backgroundColor: `${item.color}15` }]}>

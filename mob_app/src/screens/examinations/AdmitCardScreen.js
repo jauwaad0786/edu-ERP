@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as SecureStore from 'expo-secure-store';
 import client from '../../api/client';
 import { colors } from '../../theme/colors';
 import { useAuth } from '../../context/AuthContext';
@@ -160,7 +161,7 @@ export default function AdmitCardScreen({ route, navigation }) {
   };
 
   // Download Individual Admit Card PDF
-  const handleDownloadSingle = (studentId, studentName) => {
+  const handleDownloadSingle = async (studentId, studentName) => {
     if (!selectedExamId) {
       Alert.alert('Notice', 'Please select an examination first.');
       return;
@@ -171,25 +172,33 @@ export default function AdmitCardScreen({ route, navigation }) {
       return;
     }
 
-    const url = `${client.defaults.baseURL}/principal/admit-card/${targetStudentId}/${selectedExamId}`;
-    Linking.openURL(url).catch(() => {
+    try {
+      const token = await SecureStore.getItemAsync('access_token').catch(() => null);
+      let url = `${client.defaults.baseURL}/principal/admit-card/${targetStudentId}/${selectedExamId}`;
+      if (token) url += `?token=${encodeURIComponent(token)}`;
+      await Linking.openURL(url);
+    } catch {
       Alert.alert('Download Error', 'Could not open admit card download link on this device.');
-    });
+    }
   };
 
   // Bulk Download Class Admit Cards (Admin/Teacher)
-  const handleBulkDownload = () => {
+  const handleBulkDownload = async () => {
     if (!selectedExamId) {
       Alert.alert('Notice', 'Please select an examination.');
       return;
     }
-    let url = `${client.defaults.baseURL}/principal/exams/${selectedExamId}/admit-cards/bulk`;
-    if (selectedClassId) {
-      url += `?class_id=${selectedClassId}`;
-    }
-    Linking.openURL(url).catch(() => {
+    try {
+      const token = await SecureStore.getItemAsync('access_token').catch(() => null);
+      let url = `${client.defaults.baseURL}/principal/exams/${selectedExamId}/admit-cards/bulk`;
+      const params = [];
+      if (selectedClassId) params.push(`class_id=${selectedClassId}`);
+      if (token) params.push(`token=${encodeURIComponent(token)}`);
+      if (params.length > 0) url += `?${params.join('&')}`;
+      await Linking.openURL(url);
+    } catch {
       Alert.alert('Download Error', 'Could not open bulk admit cards download URL.');
-    });
+    }
   };
 
   const filteredStudents = useMemo(() => {
