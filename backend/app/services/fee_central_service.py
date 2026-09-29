@@ -540,6 +540,25 @@ class FeeCentralService:
             created_txns.append(txn)
             rem_to_apply = round_curr(rem_to_apply - settle_slice)
 
+            # Sync external service fines if linked
+            if r.source == 'LIBRARY' and r.source_ref_id:
+                try:
+                    from app.services.library_fee_service import sync_library_fine_from_fee_record
+                    sync_library_fine_from_fee_record(r, txn)
+                except Exception as lib_err:
+                    print(f"[FeeCentralService] Error syncing library fine: {lib_err}")
+            elif r.source == 'HOSTEL_FINE' and r.source_ref_id:
+                try:
+                    from app.models.hostel import HostelFineRecord
+                    fine = HostelFineRecord.query.get(r.source_ref_id)
+                    if fine:
+                        fine.amount_paid = r.amount_paid
+                        fine.payment_mode = r.payment_mode
+                        fine.receipt_no = r.receipt_no
+                        fine.status = 'PAID' if fine.outstanding_amount <= 0 else 'PARTIALLY_PAID'
+                except Exception as hf_err:
+                    print(f"[FeeCentralService] Error syncing hostel fine: {hf_err}")
+
         # 2. Create Central FeePayment
         central_payment = FeePayment(
             receipt_no=receipt_no,
