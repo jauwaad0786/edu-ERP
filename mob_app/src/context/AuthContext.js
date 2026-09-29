@@ -44,12 +44,13 @@ export function AuthProvider({ children }) {
       const token = await safeGetToken('access_token');
       if (!token) {
         setUser(null);
+        await safeDeleteToken('cached_user');
         return null;
       }
 
-      // Race against a 4-second timeout so a sleeping backend doesn't freeze startup
+      // 15-second timeout for verification against cloud backend
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Auth check timeout')), 4000)
+        setTimeout(() => reject(new Error('Auth check timeout')), 15000)
       );
 
       const res = await Promise.race([
@@ -59,20 +60,23 @@ export function AuthProvider({ children }) {
 
       if (res?.data && res.data.id) {
         setUser(res.data);
+        await safeSetToken('cached_user', JSON.stringify(res.data));
         return res.data;
       } else {
         setUser(null);
         await safeDeleteToken('access_token');
         await safeDeleteToken('refresh_token');
+        await safeDeleteToken('cached_user');
         return null;
       }
     } catch (err) {
       console.warn('[AuthContext] Session verification skipped/failed:', err?.message);
-      setUser(null);
-      // Only delete tokens if explicitly unauthorized (401/403)
+      // Only reset user and delete tokens if explicitly unauthorized (401/403)
       if (err?.response?.status === 401 || err?.response?.status === 403) {
+        setUser(null);
         await safeDeleteToken('access_token');
         await safeDeleteToken('refresh_token');
+        await safeDeleteToken('cached_user');
       }
       return null;
     }
@@ -92,6 +96,9 @@ export function AuthProvider({ children }) {
     if (refresh_token) {
       await safeSetToken('refresh_token', refresh_token);
     }
+    if (userData) {
+      await safeSetToken('cached_user', JSON.stringify(userData));
+    }
     setUser(userData);
     return userData;
   }, []);
@@ -108,6 +115,9 @@ export function AuthProvider({ children }) {
     if (refresh_token) {
       await safeSetToken('refresh_token', refresh_token);
     }
+    if (userData) {
+      await safeSetToken('cached_user', JSON.stringify(userData));
+    }
     setUser(userData);
     return userData;
   }, []);
@@ -119,15 +129,35 @@ export function AuthProvider({ children }) {
     } catch { /* best-effort */ }
     await safeDeleteToken('access_token');
     await safeDeleteToken('refresh_token');
+    await safeDeleteToken('cached_user');
     setUser(null);
   }, []);
 
   // ── On mount: restore session safely ──────────────────────────────────────
   useEffect(() => {
     let mounted = true;
-    fetchMe().finally(() => {
-      if (mounted) setLoading(false);
-    });
+    const initAuth = async () => {
+      try {
+        const [token, cachedUserStr] = await Promise.all([
+          safeGetToken('access_token'),
+          safeGetToken('cached_user'),
+        ]);
+        if (token && cachedUserStr && mounted) {
+          try {
+            const cachedUser = JSON.parse(cachedUserStr);
+            if (cachedUser && cachedUser.id) {
+              setUser(cachedUser);
+              setLoading(false);
+            }
+          } catch { /* ignore parse errors */ }
+        }
+      } finally {
+        fetchMe().finally(() => {
+          if (mounted) setLoading(false);
+        });
+      }
+    };
+    initAuth();
     return () => { mounted = false; };
   }, [fetchMe]);
 

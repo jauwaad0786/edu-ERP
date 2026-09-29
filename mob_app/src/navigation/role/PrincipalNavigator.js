@@ -157,7 +157,6 @@ export default function PrincipalNavigator() {
       {/* Academics & Staff */}
       <Stack.Screen name="Staff" component={StaffScreen} />
       <Stack.Screen name="Teachers" component={StaffScreen} />
-      <Stack.Screen name="Employees" component={StaffScreen} />
       <Stack.Screen name="StaffDetail" component={StaffDetailScreen} />
       <Stack.Screen name="TeacherDetail" component={StaffDetailScreen} />
       <Stack.Screen name="Classes" component={ClassesScreen} />

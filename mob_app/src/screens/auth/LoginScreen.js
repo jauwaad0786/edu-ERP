@@ -73,11 +73,16 @@ export default function LoginScreen({ navigation }) {
         });
       }
     } catch (err) {
-      const msg =
+      let msg =
         err.response?.data?.error ||
-        err.response?.data?.message ||
-        err.message ||
-        'Login failed. Please check your credentials.';
+        err.response?.data?.message;
+      if (!msg) {
+        if (err.message === 'Network Error' || err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+          msg = 'Unable to connect to server. The backend cloud instance may be waking up (takes ~30-45s). Please try again in a moment.';
+        } else {
+          msg = err.message || 'Login failed. Please check your credentials.';
+        }
+      }
       setError(msg);
     } finally {
       setLoading(false);
