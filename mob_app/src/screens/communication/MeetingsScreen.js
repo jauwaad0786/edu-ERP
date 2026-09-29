@@ -60,9 +60,16 @@ export default function MeetingsScreen({ navigation }) {
     return d.toISOString().slice(0, 10);
   });
   const [meetingTime, setMeetingTime] = useState('11:00 AM');
-  const [priority, setPriority] = useState('MEDIUM');
-  const [preferredMode, setPreferredMode] = useState('GOOGLE_MEET');
   const [submitting, setSubmitting] = useState(false);
+
+  // Host Action State (Accept / Reschedule / Reject)
+  const [actionType, setActionType] = useState(null); // 'ACCEPT' | 'RESCHEDULE' | 'REJECT'
+  const [actionMeeting, setActionMeeting] = useState(null);
+  const [actionMeetLink, setActionMeetLink] = useState('');
+  const [actionNote, setActionNote] = useState('');
+  const [actionDate, setActionDate] = useState('');
+  const [actionTime, setActionTime] = useState('11:00 AM');
+  const [submittingAction, setSubmittingAction] = useState(false);
 
   // Load Meetings
   const loadMeetings = useCallback(async (isRefresh = false) => {
@@ -133,6 +140,56 @@ export default function MeetingsScreen({ navigation }) {
     });
   };
 
+  // Host Actions
+  const openHostAction = (meeting, type) => {
+    setActionMeeting(meeting);
+    setActionType(type);
+    setActionMeetLink(meeting.meeting_link || '');
+    setActionNote('');
+    setActionDate(meeting.meeting_date || '');
+    setActionTime(meeting.meeting_time || '11:00 AM');
+  };
+
+  const handleExecuteHostAction = async () => {
+    if (!actionMeeting) return;
+    setSubmittingAction(true);
+    try {
+      if (actionType === 'ACCEPT') {
+        await client.post(`/support/meetings/${actionMeeting.id}/accept`, {
+          meeting_link: actionMeetLink.trim(),
+          response_note: actionNote.trim(),
+        });
+        Alert.alert('Accepted', 'Meeting request confirmed and notification sent.');
+      } else if (actionType === 'RESCHEDULE') {
+        if (!actionDate || !actionTime) {
+          Alert.alert('Error', 'Please provide both new date and time.');
+          setSubmittingAction(false);
+          return;
+        }
+        await client.post(`/support/meetings/${actionMeeting.id}/reschedule`, {
+          reschedule_date: actionDate,
+          reschedule_time: actionTime,
+          response_note: actionNote.trim(),
+        });
+        Alert.alert('Rescheduled', 'New meeting timing dispatched to requester.');
+      } else if (actionType === 'REJECT') {
+        await client.post(`/support/meetings/${actionMeeting.id}/reject`, {
+          response_note: actionNote.trim(),
+        });
+        Alert.alert('Rejected', 'Meeting request has been rejected.');
+      }
+
+      setActionType(null);
+      setActionMeeting(null);
+      setDetailMeeting(null);
+      loadMeetings();
+    } catch (err) {
+      Alert.alert('Action Failed', err.response?.data?.error || 'Unable to update meeting status.');
+    } finally {
+      setSubmittingAction(false);
+    }
+  };
+
   // Filtered List
   const filteredList = useMemo(() => {
     if (!search.trim()) return meetings;
@@ -186,6 +243,28 @@ export default function MeetingsScreen({ navigation }) {
           <Ionicons name="add" size={18} color="#fff" />
           <Text style={styles.createBtnText}>Book Meeting</Text>
         </TouchableOpacity>
+      </View>
+
+      {/* Communication Service Navigation Strip */}
+      <View style={styles.serviceNavStrip}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 12 }}>
+          <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('NoticeBoard')}>
+            <Ionicons name="megaphone" size={14} color="#64748b" />
+            <Text style={styles.serviceNavText}>Notice Board</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('WhatsApp')}>
+            <Ionicons name="logo-whatsapp" size={14} color="#64748b" />
+            <Text style={styles.serviceNavText}>WhatsApp & SMS</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.serviceNavTab, styles.serviceNavTabActive]} onPress={() => {}}>
+            <Ionicons name="videocam" size={14} color="#4338ca" />
+            <Text style={[styles.serviceNavText, styles.serviceNavTextActive]}>Meetings & PTM</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('Leads')}>
+            <Ionicons name="flash" size={14} color="#64748b" />
+            <Text style={styles.serviceNavText}>Inquiries & Leads</Text>
+          </TouchableOpacity>
+        </ScrollView>
       </View>
 
       {/* Main Content */}
@@ -425,12 +504,117 @@ export default function MeetingsScreen({ navigation }) {
                     <Text style={styles.detailValue}>{detailMeeting.response_note}</Text>
                   </View>
                 )}
+
+                {/* Host Controls for Principal & Admin */}
+                {isPrincipalOrAdmin && (detailMeeting.status === 'PENDING' || detailMeeting.status === 'RESCHEDULED') && (
+                  <View style={styles.hostActionSection}>
+                    <Text style={styles.detailLabel}>Host Meeting Management</Text>
+                    <View style={styles.hostActionRow}>
+                      <TouchableOpacity
+                        style={[styles.hostActionBtn, { backgroundColor: '#16a34a' }]}
+                        onPress={() => openHostAction(detailMeeting, 'ACCEPT')}
+                      >
+                        <Ionicons name="checkmark-circle" size={14} color="#fff" />
+                        <Text style={styles.hostActionBtnText}>Accept</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.hostActionBtn, { backgroundColor: '#0284c7' }]}
+                        onPress={() => openHostAction(detailMeeting, 'RESCHEDULE')}
+                      >
+                        <Ionicons name="calendar" size={14} color="#fff" />
+                        <Text style={styles.hostActionBtnText}>Reschedule</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.hostActionBtn, { backgroundColor: '#dc2626' }]}
+                        onPress={() => openHostAction(detailMeeting, 'REJECT')}
+                      >
+                        <Ionicons name="close-circle" size={14} color="#fff" />
+                        <Text style={styles.hostActionBtnText}>Reject</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
               </ScrollView>
             )}
 
             <TouchableOpacity style={styles.modalPrimaryBtn} onPress={() => setDetailMeeting(null)}>
               <Text style={styles.modalPrimaryBtnText}>Close</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* HOST ACTION DIALOG MODAL */}
+      <Modal visible={Boolean(actionType)} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.actionModalCard}>
+            <Text style={styles.modalTitle}>
+              {actionType === 'ACCEPT' ? 'Accept Meeting' : actionType === 'RESCHEDULE' ? 'Reschedule Meeting' : 'Reject Meeting'}
+            </Text>
+            <Text style={styles.modalSubtitle}>
+              {actionMeeting?.topic}
+            </Text>
+
+            {actionType === 'ACCEPT' && (
+              <View style={{ marginBottom: 12 }}>
+                <Text style={styles.inputLabel}>Video Room Link (Google Meet / Zoom)</Text>
+                <TextInput
+                  style={styles.actionInput}
+                  placeholder="https://meet.google.com/xyz or Zoom URL"
+                  value={actionMeetLink}
+                  onChangeText={setActionMeetLink}
+                  autoCapitalize="none"
+                />
+              </View>
+            )}
+
+            {actionType === 'RESCHEDULE' && (
+              <View style={{ marginBottom: 12 }}>
+                <Text style={styles.inputLabel}>New Date (YYYY-MM-DD)</Text>
+                <TextInput
+                  style={styles.actionInput}
+                  placeholder="2026-10-05"
+                  value={actionDate}
+                  onChangeText={setActionDate}
+                />
+                <Text style={[styles.inputLabel, { marginTop: 8 }]}>New Time</Text>
+                <TextInput
+                  style={styles.actionInput}
+                  placeholder="11:30 AM"
+                  value={actionTime}
+                  onChangeText={setActionTime}
+                />
+              </View>
+            )}
+
+            <Text style={styles.inputLabel}>Response Note to Requester</Text>
+            <TextInput
+              style={[styles.actionInput, { height: 70, textAlignVertical: 'top' }]}
+              placeholder="Optional remarks or meeting instructions..."
+              multiline
+              value={actionNote}
+              onChangeText={setActionNote}
+            />
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+              <TouchableOpacity
+                style={[styles.modalPrimaryBtn, { flex: 1, backgroundColor: '#f1f5f9' }]}
+                onPress={() => setActionType(null)}
+              >
+                <Text style={[styles.modalPrimaryBtnText, { color: '#64748b' }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalPrimaryBtn, { flex: 1, backgroundColor: actionType === 'REJECT' ? '#dc2626' : '#16a34a' }]}
+                onPress={handleExecuteHostAction}
+                disabled={submittingAction}
+              >
+                {submittingAction ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.modalPrimaryBtnText}>Confirm</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1048,5 +1232,79 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#fff',
+  },
+  serviceNavStrip: {
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    paddingVertical: 8,
+  },
+  serviceNavTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  serviceNavTabActive: {
+    backgroundColor: '#eef2ff',
+    borderColor: '#c7d2fe',
+  },
+  serviceNavText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  serviceNavTextActive: {
+    color: '#4338ca',
+    fontWeight: '700',
+  },
+  hostActionSection: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  hostActionRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  hostActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 9,
+    borderRadius: 8,
+  },
+  hostActionBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  actionModalCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 20,
+    marginHorizontal: 20,
+    width: '90%',
+    alignSelf: 'center',
+  },
+  actionInput: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: '#0f172a',
+    marginTop: 4,
   },
 });

@@ -14,8 +14,27 @@ import NotificationsScreen   from '../../screens/notifications/NotificationsScre
 import NoticeBoardScreen    from '../../screens/notices/NoticeBoardScreen';
 import LeadsScreen          from '../../screens/admin/LeadsScreen';
 import VisitorsScreen       from '../../screens/hostel/VisitorsScreen';
+import RoomMapScreen        from '../../screens/hostel/RoomMapScreen';
+import HostelAdmissionScreen from '../../screens/hostel/HostelAdmissionScreen';
+import HostelTransfersScreen from '../../screens/hostel/HostelTransfersScreen';
+import HostelFeesScreen      from '../../screens/hostel/HostelFeesScreen';
+import HostelFinesScreen     from '../../screens/hostel/HostelFinesScreen';
+import RollCallScreen        from '../../screens/hostel/RollCallScreen';
+import OutPassScreen         from '../../screens/hostel/OutPassScreen';
+import ComplaintsScreen      from '../../screens/hostel/ComplaintsScreen';
+import LiveTrackingScreen    from '../../screens/transport/LiveTrackingScreen';
+import VehiclesScreen        from '../../screens/transport/VehiclesScreen';
+import RoutesScreen          from '../../screens/transport/RoutesScreen';
+import DriversScreen         from '../../screens/transport/DriversScreen';
+import ConductorsScreen      from '../../screens/transport/ConductorsScreen';
+import StudentTransportScreen from '../../screens/transport/StudentTransportScreen';
+import VehicleMaintenanceScreen from '../../screens/transport/VehicleMaintenanceScreen';
+import StudentTravelHistoryScreen from '../../screens/transport/StudentTravelHistoryScreen';
+import DriverConsoleScreen   from '../../screens/transport/DriverConsoleScreen';
 import DelegationsScreen    from '../../screens/delegations/DelegationsScreen';
 import AuditLogsScreen      from '../../screens/audit/AuditLogsScreen';
+import SchoolProfileScreen  from '../../screens/admin/SchoolProfileScreen';
+import SessionManagerScreen from '../../screens/admin/SessionManagerScreen';
 import WhatsAppScreen       from '../../screens/communication/WhatsAppScreen';
 import RolesScreen          from '../../screens/rbac/RolesScreen';
 import MeetingsScreen       from '../../screens/communication/MeetingsScreen';
@@ -113,6 +132,13 @@ export default function AdminNavigator() {
       <Stack.Screen name="AuditLogs"      component={AuditLogsScreen} />
       <Stack.Screen name="AuditTrail"     component={AuditLogsScreen} />
       <Stack.Screen name="SecurityLogs"   component={AuditLogsScreen} />
+      <Stack.Screen name="SchoolProfile"  component={SchoolProfileScreen} />
+      <Stack.Screen name="SchoolSettings" component={SchoolProfileScreen} />
+      <Stack.Screen name="Branches"       component={SchoolProfileScreen} />
+      <Stack.Screen name="SessionManager" component={SessionManagerScreen} />
+      <Stack.Screen name="Sessions"       component={SessionManagerScreen} />
+      <Stack.Screen name="Terms"          component={SessionManagerScreen} />
+      <Stack.Screen name="SessionSwitcher" component={SessionManagerScreen} />
       <Stack.Screen name="WhatsApp"       component={WhatsAppScreen} />
       <Stack.Screen name="WhatsAppSettings" component={WhatsAppScreen} />
       <Stack.Screen name="Roles"          component={RolesScreen} />
@@ -208,6 +234,37 @@ export default function AdminNavigator() {
       <Stack.Screen name="LibraryMembers" component={MembersScreen} />
       <Stack.Screen name="Reservations" component={ReservationsScreen} />
       <Stack.Screen name="LibraryReservations" component={ReservationsScreen} />
+
+      {/* Hostel Management */}
+      <Stack.Screen name="RoomMap" component={RoomMapScreen} />
+      <Stack.Screen name="HostelRoomMap" component={RoomMapScreen} />
+      <Stack.Screen name="HostelAdmission" component={HostelAdmissionScreen} />
+      <Stack.Screen name="HostelTransfers" component={HostelTransfersScreen} />
+      <Stack.Screen name="HostelFees" component={HostelFeesScreen} />
+      <Stack.Screen name="HostelFines" component={HostelFinesScreen} />
+      <Stack.Screen name="RollCall" component={RollCallScreen} />
+      <Stack.Screen name="Hostel" component={RollCallScreen} />
+      <Stack.Screen name="OutPass" component={OutPassScreen} />
+      <Stack.Screen name="Visitors" component={VisitorsScreen} />
+      <Stack.Screen name="VisitorLog" component={VisitorsScreen} />
+      <Stack.Screen name="GatePass" component={VisitorsScreen} />
+      <Stack.Screen name="Complaints" component={ComplaintsScreen} />
+
+      {/* Transport Management */}
+      <Stack.Screen name="LiveTracking" component={LiveTrackingScreen} />
+      <Stack.Screen name="Transport" component={LiveTrackingScreen} />
+      <Stack.Screen name="Vehicles" component={VehiclesScreen} />
+      <Stack.Screen name="Routes" component={RoutesScreen} />
+      <Stack.Screen name="Drivers" component={DriversScreen} />
+      <Stack.Screen name="Conductors" component={ConductorsScreen} />
+      <Stack.Screen name="StudentTransport" component={StudentTransportScreen} />
+      <Stack.Screen name="TransportStudents" component={StudentTransportScreen} />
+      <Stack.Screen name="VehicleMaintenance" component={VehicleMaintenanceScreen} />
+      <Stack.Screen name="Maintenance" component={VehicleMaintenanceScreen} />
+      <Stack.Screen name="StudentTravelHistory" component={StudentTravelHistoryScreen} />
+      <Stack.Screen name="TravelHistory" component={StudentTravelHistoryScreen} />
+      <Stack.Screen name="DriverConsole" component={DriverConsoleScreen} />
+      <Stack.Screen name="DriverApp" component={DriverConsoleScreen} />
     </Stack.Navigator>
   );
 }

@@ -64,6 +64,22 @@ export default function WhatsAppScreen({ navigation }) {
   const [appId, setAppId] = useState('');
   const [apiVersion, setApiVersion] = useState('v21.0');
 
+  // Sub-tabs: 'GATEWAY' | 'LOGS'
+  const [subTab, setSubTab] = useState('GATEWAY');
+
+  // Notification Logs State
+  const [logs, setLogs] = useState([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+
+  // Broadcast Composer Modal
+  const [showBroadcastModal, setShowBroadcastModal] = useState(false);
+  const [broadcastTitle, setBroadcastTitle] = useState('');
+  const [broadcastMessage, setBroadcastMessage] = useState('');
+  const [broadcastAudience, setBroadcastAudience] = useState('ALL');
+  const [broadcastChannels, setBroadcastChannels] = useState(['whatsapp', 'sms', 'in_app']);
+  const [broadcastPriority, setBroadcastPriority] = useState('MEDIUM');
+  const [broadcasting, setBroadcasting] = useState(false);
+
   // Load Settings
   const loadSettings = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
@@ -89,9 +105,60 @@ export default function WhatsAppScreen({ navigation }) {
     }
   }, []);
 
+  const loadLogs = useCallback(async () => {
+    setLoadingLogs(true);
+    try {
+      const res = await client.get('/support/notifications', { params: { per_page: 50 } })
+        .catch(() => client.get('/notifications', { params: { per_page: 50 } }))
+        .catch(() => ({ data: { data: [] } }));
+      const list = res.data?.data || (Array.isArray(res.data) ? res.data : []);
+      setLogs(list);
+    } catch {
+      setLogs([]);
+    } finally {
+      setLoadingLogs(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadSettings();
-  }, [loadSettings]);
+    loadLogs();
+  }, [loadSettings, loadLogs]);
+
+  // Handle Send Broadcast
+  const handleSendBroadcast = async () => {
+    if (!broadcastTitle.trim() || !broadcastMessage.trim()) {
+      Alert.alert('Required Fields', 'Please enter both announcement title and message content.');
+      return;
+    }
+    setBroadcasting(true);
+    try {
+      await client.post('/support/notifications/send', {
+        title: broadcastTitle.trim(),
+        message: broadcastMessage.trim(),
+        audience: broadcastAudience,
+        channels: broadcastChannels,
+        priority: broadcastPriority,
+      }).catch(() => client.post('/notifications/send', {
+        title: broadcastTitle.trim(),
+        message: broadcastMessage.trim(),
+        audience: broadcastAudience,
+        channels: broadcastChannels,
+        priority: broadcastPriority,
+      }));
+
+      Alert.alert('Broadcast Dispatched!', `Alert sent via ${broadcastChannels.join(', ').toUpperCase()} to ${broadcastAudience}.`);
+      setShowBroadcastModal(false);
+      setBroadcastTitle('');
+      setBroadcastMessage('');
+      loadLogs();
+    } catch (err) {
+      const msg = err.response?.data?.error || err.message || 'Failed to dispatch broadcast';
+      Alert.alert('Dispatch Error', msg);
+    } finally {
+      setBroadcasting(false);
+    }
+  };
 
   // Save Settings
   const handleSave = async () => {
@@ -215,13 +282,132 @@ export default function WhatsAppScreen({ navigation }) {
 
         <TouchableOpacity
           style={styles.refreshBtn}
-          onPress={() => loadSettings(true)}
-          disabled={loading}
+          onPress={() => {
+            if (subTab === 'GATEWAY') loadSettings(true);
+            else loadLogs();
+          }}
+          disabled={loading || loadingLogs}
         >
           <Ionicons name="refresh" size={18} color="#64748b" />
         </TouchableOpacity>
       </View>
 
+      {/* Communication Service Navigation Strip */}
+      <View style={styles.serviceNavStrip}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 12 }}>
+          <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('NoticeBoard')}>
+            <Ionicons name="megaphone" size={14} color="#64748b" />
+            <Text style={styles.serviceNavText}>Notice Board</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.serviceNavTab, styles.serviceNavTabActive]} onPress={() => {}}>
+            <Ionicons name="logo-whatsapp" size={14} color="#16a34a" />
+            <Text style={[styles.serviceNavText, styles.serviceNavTextActive]}>WhatsApp & SMS</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('Meetings')}>
+            <Ionicons name="videocam" size={14} color="#64748b" />
+            <Text style={styles.serviceNavText}>Meetings & PTM</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('Leads')}>
+            <Ionicons name="flash" size={14} color="#64748b" />
+            <Text style={styles.serviceNavText}>Inquiries & Leads</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+
+      {/* Module Sub-Tabs */}
+      <View style={styles.subTabRow}>
+        <TouchableOpacity
+          style={[styles.subTabBtn, subTab === 'GATEWAY' && styles.subTabBtnActive]}
+          onPress={() => setSubTab('GATEWAY')}
+        >
+          <Ionicons name="logo-whatsapp" size={15} color={subTab === 'GATEWAY' ? '#16a34a' : '#64748b'} />
+          <Text style={[styles.subTabBtnText, subTab === 'GATEWAY' && styles.subTabBtnTextActive]}>
+            WhatsApp Gateway
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.subTabBtn, subTab === 'LOGS' && styles.subTabBtnActive]}
+          onPress={() => setSubTab('LOGS')}
+        >
+          <Ionicons name="notifications-outline" size={15} color={subTab === 'LOGS' ? '#16a34a' : '#64748b'} />
+          <Text style={[styles.subTabBtnText, subTab === 'LOGS' && styles.subTabBtnTextActive]}>
+            SMS & Notification Logs ({logs.length})
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {subTab === 'LOGS' ? (
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={<RefreshControl refreshing={loadingLogs} onRefresh={loadLogs} colors={[colors.primary]} />}
+        >
+          {/* Broadcast Trigger Banner */}
+          <View style={styles.broadcastBanner}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.broadcastBannerTitle}>Dispatch Multi-Channel Broadcast</Text>
+              <Text style={styles.broadcastBannerSubtitle}>Instant WhatsApp, SMS & Push notification to parents or staff</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.broadcastTriggerBtn}
+              onPress={() => setShowBroadcastModal(true)}
+            >
+              <Ionicons name="paper-plane" size={15} color="#fff" />
+              <Text style={styles.broadcastTriggerBtnText}>Compose</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Activity Logs */}
+          <Text style={styles.sectionHeader}>Recent Dispatch & Notification History</Text>
+          {loadingLogs ? (
+            <View style={styles.centerContainer}>
+              <ActivityIndicator size="small" color="#16a34a" />
+              <Text style={styles.loadingText}>Fetching notification logs...</Text>
+            </View>
+          ) : logs.length === 0 ? (
+            <View style={styles.emptyLogsCard}>
+              <Ionicons name="chatbox-ellipses-outline" size={42} color="#cbd5e1" />
+              <Text style={styles.emptyLogsTitle}>No Notification Activity</Text>
+              <Text style={styles.emptyLogsSub}>Broadcast notices and automated triggers will show delivery status here.</Text>
+            </View>
+          ) : (
+            logs.map((log) => {
+              const channels = log.metadata?.channels || ['whatsapp', 'sms'];
+              return (
+                <View key={log.id} style={styles.logCard}>
+                  <View style={styles.logCardHeader}>
+                    <View style={styles.channelBadgeRow}>
+                      {channels.map((ch, i) => (
+                        <View key={i} style={styles.channelPill}>
+                          <Ionicons
+                            name={ch === 'whatsapp' ? 'logo-whatsapp' : ch === 'sms' ? 'chatbubble-outline' : 'notifications-outline'}
+                            size={11}
+                            color="#0284c7"
+                          />
+                          <Text style={styles.channelPillText}>{String(ch).toUpperCase()}</Text>
+                        </View>
+                      ))}
+                    </View>
+                    <Text style={styles.logTimeText}>
+                      {log.created_at ? new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recent'}
+                    </Text>
+                  </View>
+
+                  <Text style={styles.logTitle}>{log.title || 'Broadcast Alert'}</Text>
+                  <Text style={styles.logMessage} numberOfLines={3}>{log.message}</Text>
+
+                  <View style={styles.logFooter}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <Ionicons name="checkmark-done" size={14} color="#16a34a" />
+                      <Text style={styles.deliveryStatusText}>Delivered</Text>
+                    </View>
+                    <Text style={styles.logTypeTag}>{log.notif_type || 'BROADCAST'}</Text>
+                  </View>
+                </View>
+              );
+            })
+          )}
+        </ScrollView>
+      ) : (
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadSettings(true)} colors={[colors.primary]} />}
@@ -435,6 +621,101 @@ export default function WhatsAppScreen({ navigation }) {
           </>
         )}
       </ScrollView>
+      )}
+
+      {/* Broadcast Composer Modal */}
+      <Modal visible={showBroadcastModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <View>
+                <Text style={styles.modalTitle}>Dispatch Multi-Channel Broadcast</Text>
+                <Text style={styles.modalSubtitle}>Send alerts via WhatsApp, SMS & Push</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowBroadcastModal(false)}>
+                <Ionicons name="close" size={24} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Audience */}
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#334155', marginBottom: 6 }}>Target Audience *</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                {['ALL', 'TEACHERS', 'PARENTS', 'STUDENTS', 'STAFF'].map(aud => (
+                  <TouchableOpacity
+                    key={aud}
+                    style={[{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#e2e8f0' }, broadcastAudience === aud && { backgroundColor: '#16a34a', borderColor: '#16a34a' }]}
+                    onPress={() => setBroadcastAudience(aud)}
+                  >
+                    <Text style={[{ fontSize: 11, fontWeight: '700', color: '#475569' }, broadcastAudience === aud && { color: '#fff' }]}>{aud}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Channels */}
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#334155', marginBottom: 6 }}>Delivery Channels *</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                {[
+                  { key: 'whatsapp', label: 'WhatsApp', icon: 'logo-whatsapp', color: '#16a34a' },
+                  { key: 'sms', label: 'SMS Gateway', icon: 'chatbubble-outline', color: '#0284c7' },
+                  { key: 'in_app', label: 'Push App', icon: 'notifications-outline', color: '#7c3aed' },
+                ].map(ch => {
+                  const isSelected = broadcastChannels.includes(ch.key);
+                  return (
+                    <TouchableOpacity
+                      key={ch.key}
+                      style={[{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 7, borderRadius: 6, backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0' }, isSelected && { backgroundColor: '#f0fdf4', borderColor: ch.color }]}
+                      onPress={() => {
+                        if (isSelected) {
+                          if (broadcastChannels.length > 1) {
+                            setBroadcastChannels(broadcastChannels.filter(c => c !== ch.key));
+                          }
+                        } else {
+                          setBroadcastChannels([...broadcastChannels, ch.key]);
+                        }
+                      }}
+                    >
+                      <Ionicons name={ch.icon} size={13} color={isSelected ? ch.color : '#94a3b8'} />
+                      <Text style={[{ fontSize: 11, fontWeight: '600', color: '#64748b' }, isSelected && { color: ch.color, fontWeight: '700' }]}>{ch.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Title */}
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#334155', marginBottom: 4 }}>Broadcast Subject / Headline *</Text>
+              <TextInput
+                style={{ backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: '#0f172a', marginBottom: 12 }}
+                placeholder="e.g. Weather Alert: School Closed Tomorrow"
+                value={broadcastTitle}
+                onChangeText={setBroadcastTitle}
+              />
+
+              {/* Message */}
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#334155', marginBottom: 4 }}>Message Content *</Text>
+              <TextInput
+                style={{ backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: '#0f172a', height: 100, textAlignVertical: 'top', marginBottom: 16 }}
+                placeholder="Type the message to dispatch to all recipients..."
+                multiline
+                value={broadcastMessage}
+                onChangeText={setBroadcastMessage}
+              />
+
+              <TouchableOpacity
+                style={[{ backgroundColor: '#16a34a', borderRadius: 10, paddingVertical: 12, alignItems: 'center' }, broadcasting && { opacity: 0.6 }]}
+                onPress={handleSendBroadcast}
+                disabled={broadcasting}
+              >
+                {broadcasting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>Send Broadcast Now</Text>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -712,5 +993,218 @@ const styles = StyleSheet.create({
   },
   copyBtn: {
     padding: 6,
+  },
+  serviceNavStrip: {
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    paddingVertical: 8,
+  },
+  serviceNavTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  serviceNavTabActive: {
+    backgroundColor: '#ecfdf5',
+    borderColor: '#a7f3d0',
+  },
+  serviceNavText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  serviceNavTextActive: {
+    color: '#16a34a',
+    fontWeight: '700',
+  },
+  subTabRow: {
+    flexDirection: 'row',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    gap: 8,
+  },
+  subTabBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 9,
+    borderRadius: 8,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  subTabBtnActive: {
+    backgroundColor: '#ecfdf5',
+    borderColor: '#86efac',
+  },
+  subTabBtnText: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  subTabBtnTextActive: {
+    color: '#15803d',
+    fontWeight: '700',
+  },
+  broadcastBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0f172a',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+    gap: 12,
+  },
+  broadcastBannerTitle: {
+    color: '#ffffff',
+    fontSize: 13.5,
+    fontWeight: '700',
+  },
+  broadcastBannerSubtitle: {
+    color: '#94a3b8',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  broadcastTriggerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#16a34a',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  broadcastTriggerBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  emptyLogsCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  emptyLogsTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#334155',
+    marginTop: 10,
+  },
+  emptyLogsSub: {
+    fontSize: 12,
+    color: '#94a3b8',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  logCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  logCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  channelBadgeRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  channelPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#f0f9ff',
+    borderColor: '#bae6fd',
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  channelPillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#0284c7',
+  },
+  logTimeText: {
+    fontSize: 11,
+    color: '#94a3b8',
+  },
+  logTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 4,
+  },
+  logMessage: {
+    fontSize: 12.5,
+    color: '#475569',
+    lineHeight: 18,
+    marginBottom: 8,
+  },
+  logFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+    paddingTop: 8,
+  },
+  deliveryStatusText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#16a34a',
+  },
+  logTypeTag: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#64748b',
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    maxHeight: '90%',
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  modalSubtitle: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 2,
+    marginBottom: 16,
   },
 });

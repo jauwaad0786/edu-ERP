@@ -38,6 +38,7 @@ export default function DrawerMenuModal({ visible, onClose, navigation }) {
   // Role-Specific Navigation Groups strictly matching Web ERP services
   const menuGroups = useMemo(() => {
     switch (role) {
+      case 'SUPER_ADMIN':
       case 'PRINCIPAL':
       case 'DIRECTOR':
       case 'VICE_PRINCIPAL':
@@ -215,11 +216,14 @@ export default function DrawerMenuModal({ visible, onClose, navigation }) {
             ],
           },
           {
-            title: 'Communication & Notices',
+            title: 'Communication & Inquiries',
             icon: 'chatbubbles-outline',
             color: '#ea580c',
             items: [
-              { label: 'Announcements & Circulars', icon: 'megaphone-outline', screen: 'NoticeBoard', color: '#ea580c' },
+              { label: 'Notice Board & Circulars', icon: 'megaphone-outline', screen: 'NoticeBoard', color: '#ea580c' },
+              { label: 'WhatsApp Gateway & SMS Logs', icon: 'logo-whatsapp', screen: 'WhatsApp', color: '#16a34a' },
+              { label: 'Virtual Meetings & PTM', icon: 'videocam-outline', screen: 'Meetings', color: '#4338ca' },
+              { label: 'Inquiries & Admissions Leads', icon: 'flash-outline', screen: 'Leads', color: '#dc2626' },
               { label: 'Messages & Direct Chat', icon: 'chatbubbles-outline', screen: 'Messages', color: '#0284c7' },
             ],
           },
@@ -229,18 +233,18 @@ export default function DrawerMenuModal({ visible, onClose, navigation }) {
             color: '#dc2626',
             items: [
               { label: 'Audit Command Center & Logs', icon: 'shield-checkmark-outline', screen: 'AuditLogs', color: '#dc2626' },
-              { label: 'Roles & Permissions', icon: 'key-outline', screen: 'Roles', color: '#4338ca' },
+              { label: 'Roles & RBAC Matrix', icon: 'key-outline', screen: 'Roles', color: '#4338ca' },
             ],
           },
           {
-            title: 'ERP Support & Settings',
-            icon: 'settings-outline',
-            color: '#64748b',
+            title: 'School Profile & Settings',
+            icon: 'business-outline',
+            color: '#0b57d0',
             items: [
-              { label: 'WhatsApp Gateway', icon: 'logo-whatsapp', screen: 'WhatsApp', color: '#16a34a' },
-              { label: 'Virtual Meetings & PTM', icon: 'videocam-outline', screen: 'Meetings', color: '#0284c7' },
+              { label: 'School Profile & Branches', icon: 'business-outline', screen: 'SchoolProfile', color: '#0b57d0' },
+              { label: 'Sessions & Term Switcher', icon: 'calendar-outline', screen: 'SessionManager', color: '#7c3aed' },
               { label: 'Support & Help Desk', icon: 'headset-outline', screen: 'Support', color: '#059669' },
-              { label: 'School Settings & Profile', icon: 'settings-outline', screen: 'Settings', color: '#64748b' },
+              { label: 'ERP Settings', icon: 'settings-outline', screen: 'Settings', color: '#64748b' },
             ],
           },
         ];
@@ -330,6 +334,15 @@ export default function DrawerMenuModal({ visible, onClose, navigation }) {
               { label: 'Book Master Catalog', icon: 'library-outline', screen: 'Books', color: '#0891b2' },
               { label: 'Issue & Return Desk', icon: 'swap-horizontal-outline', screen: 'IssueReturn', color: '#0284c7' },
               { label: 'Book Hold & Reservations', icon: 'bookmark-outline', screen: 'Reservations', color: '#7c3aed' },
+            ],
+          },
+          {
+            title: 'Transport & Fleet',
+            icon: 'bus-outline',
+            color: '#2563eb',
+            items: [
+              { label: 'Live GPS Fleet Tracking', icon: 'navigate-outline', screen: 'LiveTracking', color: '#ea580c' },
+              { label: 'Student Bus Roster', icon: 'person-add-outline', screen: 'StudentTransport', color: '#0284c7' },
             ],
           },
           {

@@ -63,6 +63,10 @@ export default function WardenNavigator() {
       <Stack.Screen name="Visitors"         component={VisitorsScreen} />
       <Stack.Screen name="VisitorLog"       component={VisitorsScreen} />
       <Stack.Screen name="GatePass"         component={VisitorsScreen} />
+      <Stack.Screen name="RollCall"         component={RollCallScreen} />
+      <Stack.Screen name="HostelAttendance" component={RollCallScreen} />
+      <Stack.Screen name="OutPass"          component={OutPassScreen} />
+      <Stack.Screen name="Complaints"       component={ComplaintsScreen} />
       <Stack.Screen name="Profile"          component={ProfileScreen} />
       <Stack.Screen name="ChangePassword"   component={ChangePasswordScreen} />
       <Stack.Screen name="Notifications"    component={NotificationsScreen} />

@@ -239,6 +239,28 @@ export default function RolesScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
+      {/* System Administration Navigation Ribbon */}
+      <View style={styles.serviceNavStrip}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 12 }}>
+          <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('AuditLogs')}>
+            <Ionicons name="shield-checkmark" size={14} color="#64748b" />
+            <Text style={styles.serviceNavText}>Audit Logs</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.serviceNavTab, styles.serviceNavTabActive]} onPress={() => {}}>
+            <Ionicons name="key" size={14} color="#0b57d0" />
+            <Text style={[styles.serviceNavText, styles.serviceNavTextActive]}>Roles & RBAC</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('SchoolProfile')}>
+            <Ionicons name="business" size={14} color="#64748b" />
+            <Text style={styles.serviceNavText}>School & Branches</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('SessionManager')}>
+            <Ionicons name="calendar" size={14} color="#64748b" />
+            <Text style={styles.serviceNavText}>Sessions & Terms</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+
       {/* Main Tabs */}
       <View style={styles.tabBar}>
         <TouchableOpacity
@@ -929,5 +951,35 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#fff',
+  },
+  serviceNavStrip: {
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    paddingVertical: 8,
+  },
+  serviceNavTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  serviceNavTabActive: {
+    backgroundColor: '#eff6ff',
+    borderColor: '#bfdbfe',
+  },
+  serviceNavText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  serviceNavTextActive: {
+    color: '#0b57d0',
+    fontWeight: '700',
   },
 });

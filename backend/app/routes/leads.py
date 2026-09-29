@@ -23,12 +23,15 @@ leads_bp = Blueprint('leads', __name__)
 
 
 def _require_company_actor():
-    """developer_center.py jaisa hi gate — school_id set hote hi 403."""
+    """CEO / Super Admin / Principal / School Admin gate."""
     actor = get_current_user()
     if not actor:
         return None, (jsonify({'error': 'Authentication required'}), 401)
-    if getattr(actor, 'school_id', None) is not None:
-        return None, (jsonify({'error': 'Leads panel is company-side only'}), 403)
+    
+    # Allow Super Admins and School Leadership (Principal, Vice Principal, Admin)
+    allowed_roles = [UserRole.SUPER_ADMIN, UserRole.PRINCIPAL, UserRole.VICE_PRINCIPAL, UserRole.ADMIN]
+    if actor.role not in allowed_roles:
+        return None, (jsonify({'error': 'Unauthorized to access inquiries and leads'}), 403)
     return actor, None
 
 

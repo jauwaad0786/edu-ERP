@@ -62,7 +62,19 @@ export default function NoticeBoardScreen({ navigation }) {
   const [pubAudience, setPubAudience] = useState('ALL');
   const [pubPriority, setPubPriority] = useState('MEDIUM');
   const [pubIsPinned, setPubIsPinned] = useState(false);
+  const [pubAttachment, setPubAttachment] = useState('');
   const [publishing, setPublishing] = useState(false);
+
+  // Attachment Link Extractor
+  const getAttachmentUrl = (notice) => {
+    if (!notice) return null;
+    if (notice.attachment_url) return notice.attachment_url;
+    if (notice.body) {
+      const match = notice.body.match(/(https?:\/\/[^\s]+(?:\.pdf|\.png|\.jpg|\.jpeg|\.doc|\.docx|[^\s]*))/i);
+      return match ? match[0] : null;
+    }
+    return null;
+  };
 
   // Detail Modal State
   const [detailModal, setDetailModal] = useState(false);
@@ -100,9 +112,14 @@ export default function NoticeBoardScreen({ navigation }) {
 
     setPublishing(true);
     try {
+      let finalBody = pubBody.trim();
+      if (pubAttachment.trim()) {
+        finalBody += `\n\n📄 Circular Document: ${pubAttachment.trim()}`;
+      }
+
       await client.post('/support/announcements', {
         title: pubTitle.trim(),
-        body: pubBody.trim(),
+        body: finalBody,
         audience: pubAudience,
         priority: pubPriority,
         is_pinned: pubIsPinned,
@@ -112,6 +129,7 @@ export default function NoticeBoardScreen({ navigation }) {
       setPublishModal(false);
       setPubTitle('');
       setPubBody('');
+      setPubAttachment('');
       setPubAudience('ALL');
       setPubPriority('MEDIUM');
       setPubIsPinned(false);
@@ -227,6 +245,28 @@ export default function NoticeBoardScreen({ navigation }) {
         </View>
       </View>
 
+      {/* Communication Service Navigation Strip */}
+      <View style={styles.serviceNavStrip}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 12 }}>
+          <TouchableOpacity style={[styles.serviceNavTab, styles.serviceNavTabActive]} onPress={() => {}}>
+            <Ionicons name="megaphone" size={14} color="#ea580c" />
+            <Text style={[styles.serviceNavText, styles.serviceNavTextActive]}>Notice Board</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('WhatsApp')}>
+            <Ionicons name="logo-whatsapp" size={14} color="#64748b" />
+            <Text style={styles.serviceNavText}>WhatsApp & SMS</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('Meetings')}>
+            <Ionicons name="videocam" size={14} color="#64748b" />
+            <Text style={styles.serviceNavText}>Meetings & PTM</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('Leads')}>
+            <Ionicons name="flash" size={14} color="#64748b" />
+            <Text style={styles.serviceNavText}>Inquiries & Leads</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+
       {/* Filter Bar */}
       <View style={styles.filterSection}>
         {/* Search */}
@@ -310,6 +350,20 @@ export default function NoticeBoardScreen({ navigation }) {
                   {/* Title & Body Preview */}
                   <Text style={styles.title}>{n.title}</Text>
                   <Text style={styles.body} numberOfLines={3}>{n.body}</Text>
+
+                  {/* Attachment Pill if available */}
+                  {Boolean(getAttachmentUrl(n)) && (
+                    <TouchableOpacity
+                      style={styles.attachmentPill}
+                      onPress={() => {
+                        const url = getAttachmentUrl(n);
+                        Linking.openURL(url).catch(() => Alert.alert('Error', 'Unable to open attachment link.'));
+                      }}
+                    >
+                      <Ionicons name="document-attach" size={13} color="#0284c7" />
+                      <Text style={styles.attachmentPillText}>View Attachment / PDF</Text>
+                    </TouchableOpacity>
+                  )}
 
                   {/* Card Footer: Author & Timestamp */}
                   <View style={styles.cardFooter}>
@@ -399,6 +453,20 @@ export default function NoticeBoardScreen({ navigation }) {
 
               {/* Full Notice Content */}
               <Text style={styles.fullBodyText}>{selectedNotice?.body}</Text>
+
+              {/* Modal Attachment Link */}
+              {Boolean(getAttachmentUrl(selectedNotice)) && (
+                <TouchableOpacity
+                  style={styles.modalAttachmentBtn}
+                  onPress={() => {
+                    const url = getAttachmentUrl(selectedNotice);
+                    Linking.openURL(url).catch(() => Alert.alert('Error', 'Unable to open attachment.'));
+                  }}
+                >
+                  <Ionicons name="cloud-download-outline" size={18} color="#fff" />
+                  <Text style={styles.modalAttachmentBtnText}>Open Circular Attachment / Document</Text>
+                </TouchableOpacity>
+              )}
             </ScrollView>
           </View>
         </View>
@@ -503,11 +571,23 @@ export default function NoticeBoardScreen({ navigation }) {
               <View style={styles.formGroup}>
                 <Text style={styles.formLabel}>Circular Announcement Message *</Text>
                 <TextInput
-                  style={[styles.formInput, { height: 120, textAlignVertical: 'top' }]}
+                  style={[styles.formInput, { height: 110, textAlignVertical: 'top' }]}
                   placeholder="Detailed instructions, dates, requirements, or event info..."
                   multiline
                   value={pubBody}
                   onChangeText={setPubBody}
+                />
+              </View>
+
+              {/* Attachment URL */}
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Circular Attachment / PDF Link (Optional)</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="https://example.com/circular.pdf or drive link"
+                  value={pubAttachment}
+                  onChangeText={setPubAttachment}
+                  autoCapitalize="none"
                 />
               </View>
 
@@ -697,4 +777,67 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   submitBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  serviceNavStrip: {
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    paddingVertical: 8,
+  },
+  serviceNavTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  serviceNavTabActive: {
+    backgroundColor: '#fff7ed',
+    borderColor: '#fed7aa',
+  },
+  serviceNavText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  serviceNavTextActive: {
+    color: '#ea580c',
+    fontWeight: '700',
+  },
+  attachmentPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    alignSelf: 'flex-start',
+    backgroundColor: '#e0f2fe',
+    borderColor: '#bae6fd',
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginBottom: 8,
+  },
+  attachmentPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0284c7',
+  },
+  modalAttachmentBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#0284c7',
+    borderRadius: 10,
+    paddingVertical: 12,
+    marginTop: 18,
+  },
+  modalAttachmentBtnText: {
+    color: '#fff',
+    fontSize: 13.5,
+    fontWeight: '700',
+  },
 });

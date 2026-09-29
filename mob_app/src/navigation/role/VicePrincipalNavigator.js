@@ -45,6 +45,32 @@ import IssueReturnScreen from '../../screens/library/IssueReturnScreen';
 import FinesScreen from '../../screens/library/FinesScreen';
 import MembersScreen from '../../screens/library/MembersScreen';
 import ReservationsScreen from '../../screens/library/ReservationsScreen';
+import RoomMapScreen from '../../screens/hostel/RoomMapScreen';
+import HostelAdmissionScreen from '../../screens/hostel/HostelAdmissionScreen';
+import HostelTransfersScreen from '../../screens/hostel/HostelTransfersScreen';
+import HostelFeesScreen from '../../screens/hostel/HostelFeesScreen';
+import HostelFinesScreen from '../../screens/hostel/HostelFinesScreen';
+import RollCallScreen from '../../screens/hostel/RollCallScreen';
+import OutPassScreen from '../../screens/hostel/OutPassScreen';
+import VisitorsScreen from '../../screens/hostel/VisitorsScreen';
+import ComplaintsScreen from '../../screens/hostel/ComplaintsScreen';
+import LiveTrackingScreen from '../../screens/transport/LiveTrackingScreen';
+import VehiclesScreen from '../../screens/transport/VehiclesScreen';
+import RoutesScreen from '../../screens/transport/RoutesScreen';
+import DriversScreen from '../../screens/transport/DriversScreen';
+import ConductorsScreen from '../../screens/transport/ConductorsScreen';
+import StudentTransportScreen from '../../screens/transport/StudentTransportScreen';
+import VehicleMaintenanceScreen from '../../screens/transport/VehicleMaintenanceScreen';
+import StudentTravelHistoryScreen from '../../screens/transport/StudentTravelHistoryScreen';
+import DriverConsoleScreen from '../../screens/transport/DriverConsoleScreen';
+import NoticeBoardScreen from '../../screens/notices/NoticeBoardScreen';
+import WhatsAppScreen from '../../screens/communication/WhatsAppScreen';
+import MeetingsScreen from '../../screens/communication/MeetingsScreen';
+import LeadsScreen from '../../screens/admin/LeadsScreen';
+import AuditLogsScreen from '../../screens/audit/AuditLogsScreen';
+import RolesScreen from '../../screens/rbac/RolesScreen';
+import SchoolProfileScreen from '../../screens/admin/SchoolProfileScreen';
+import SessionManagerScreen from '../../screens/admin/SessionManagerScreen';
 import { TAB_BAR_STYLE } from '../tabBarStyle';
 
 const Tab = createBottomTabNavigator();
@@ -161,6 +187,64 @@ export default function VicePrincipalNavigator() {
       <Stack.Screen name="LibraryMembers" component={MembersScreen} />
       <Stack.Screen name="Reservations" component={ReservationsScreen} />
       <Stack.Screen name="LibraryReservations" component={ReservationsScreen} />
+
+      {/* Hostel Management */}
+      <Stack.Screen name="RoomMap" component={RoomMapScreen} />
+      <Stack.Screen name="HostelRoomMap" component={RoomMapScreen} />
+      <Stack.Screen name="HostelAdmission" component={HostelAdmissionScreen} />
+      <Stack.Screen name="HostelTransfers" component={HostelTransfersScreen} />
+      <Stack.Screen name="HostelFees" component={HostelFeesScreen} />
+      <Stack.Screen name="HostelFines" component={HostelFinesScreen} />
+      <Stack.Screen name="RollCall" component={RollCallScreen} />
+      <Stack.Screen name="Hostel" component={RollCallScreen} />
+      <Stack.Screen name="OutPass" component={OutPassScreen} />
+      <Stack.Screen name="Visitors" component={VisitorsScreen} />
+      <Stack.Screen name="VisitorLog" component={VisitorsScreen} />
+      <Stack.Screen name="GatePass" component={VisitorsScreen} />
+      <Stack.Screen name="Complaints" component={ComplaintsScreen} />
+
+      {/* Transport Management */}
+      <Stack.Screen name="LiveTracking" component={LiveTrackingScreen} />
+      <Stack.Screen name="Transport" component={LiveTrackingScreen} />
+      <Stack.Screen name="Vehicles" component={VehiclesScreen} />
+      <Stack.Screen name="Routes" component={RoutesScreen} />
+      <Stack.Screen name="Drivers" component={DriversScreen} />
+      <Stack.Screen name="Conductors" component={ConductorsScreen} />
+      <Stack.Screen name="StudentTransport" component={StudentTransportScreen} />
+      <Stack.Screen name="TransportStudents" component={StudentTransportScreen} />
+      <Stack.Screen name="VehicleMaintenance" component={VehicleMaintenanceScreen} />
+      <Stack.Screen name="Maintenance" component={VehicleMaintenanceScreen} />
+      <Stack.Screen name="StudentTravelHistory" component={StudentTravelHistoryScreen} />
+      <Stack.Screen name="TravelHistory" component={StudentTravelHistoryScreen} />
+      <Stack.Screen name="DriverConsole" component={DriverConsoleScreen} />
+      <Stack.Screen name="DriverApp" component={DriverConsoleScreen} />
+
+      {/* Communication & Inquiries */}
+      <Stack.Screen name="NoticeBoard" component={NoticeBoardScreen} />
+      <Stack.Screen name="Notices" component={NoticeBoardScreen} />
+      <Stack.Screen name="WhatsApp" component={WhatsAppScreen} />
+      <Stack.Screen name="WhatsAppSettings" component={WhatsAppScreen} />
+      <Stack.Screen name="Meetings" component={MeetingsScreen} />
+      <Stack.Screen name="PTM" component={MeetingsScreen} />
+      <Stack.Screen name="Conferences" component={MeetingsScreen} />
+      <Stack.Screen name="Leads" component={LeadsScreen} />
+      <Stack.Screen name="Inquiries" component={LeadsScreen} />
+
+      {/* System Administration & RBAC */}
+      <Stack.Screen name="AuditLogs" component={AuditLogsScreen} />
+      <Stack.Screen name="AuditTrail" component={AuditLogsScreen} />
+      <Stack.Screen name="SecurityLogs" component={AuditLogsScreen} />
+      <Stack.Screen name="Roles" component={RolesScreen} />
+      <Stack.Screen name="RoleManagement" component={RolesScreen} />
+      <Stack.Screen name="PermissionMatrix" component={RolesScreen} />
+      <Stack.Screen name="RBAC" component={RolesScreen} />
+      <Stack.Screen name="SchoolProfile" component={SchoolProfileScreen} />
+      <Stack.Screen name="SchoolSettings" component={SchoolProfileScreen} />
+      <Stack.Screen name="Branches" component={SchoolProfileScreen} />
+      <Stack.Screen name="SessionManager" component={SessionManagerScreen} />
+      <Stack.Screen name="Sessions" component={SessionManagerScreen} />
+      <Stack.Screen name="Terms" component={SessionManagerScreen} />
+      <Stack.Screen name="SessionSwitcher" component={SessionManagerScreen} />
     </Stack.Navigator>
   );
 }

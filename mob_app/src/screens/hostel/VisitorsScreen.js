@@ -218,6 +218,40 @@ export default function VisitorsScreen({ navigation }) {
         </View>
       </View>
 
+      {/* Hostel Quick Service Navigation Ribbon */}
+      <View style={styles.serviceNavStrip}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 12 }}>
+          <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('RoomMap')}>
+            <Ionicons name="business" size={14} color="#64748b" />
+            <Text style={styles.serviceNavText}>Room Map</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('HostelAdmission')}>
+            <Ionicons name="person-add" size={14} color="#64748b" />
+            <Text style={styles.serviceNavText}>Admissions</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('HostelTransfers')}>
+            <Ionicons name="swap-horizontal" size={14} color="#64748b" />
+            <Text style={styles.serviceNavText}>Transfers</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('RollCall')}>
+            <Ionicons name="bed" size={14} color="#64748b" />
+            <Text style={styles.serviceNavText}>Roll Call</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('OutPass')}>
+            <Ionicons name="exit" size={14} color="#64748b" />
+            <Text style={styles.serviceNavText}>Out-Pass</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.serviceNavTab, styles.serviceNavTabActive]} onPress={() => {}}>
+            <Ionicons name="shield-checkmark" size={14} color="#4338ca" />
+            <Text style={[styles.serviceNavText, styles.serviceNavTextActive]}>Visitors</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('Complaints')}>
+            <Ionicons name="construct" size={14} color="#64748b" />
+            <Text style={styles.serviceNavText}>Complaints</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+
       {/* Filter Section */}
       <View style={styles.filterSection}>
         {/* Search */}
@@ -691,4 +725,34 @@ const styles = StyleSheet.create({
   dropdownItemSub: { fontSize: 11, color: colors.textMuted },
   selectedPill: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#dcfce7', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, marginTop: 6 },
   selectedPillText: { fontSize: 12, color: '#16a34a', fontWeight: '600' },
+  serviceNavStrip: {
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    paddingVertical: 8,
+  },
+  serviceNavTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  serviceNavTabActive: {
+    backgroundColor: '#eef2ff',
+    borderColor: '#c7d2fe',
+  },
+  serviceNavText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  serviceNavTextActive: {
+    color: '#4338ca',
+    fontWeight: '700',
+  },
 });

@@ -45,6 +45,8 @@ import IssueReturnScreen from '../../screens/library/IssueReturnScreen';
 import FinesScreen from '../../screens/library/FinesScreen';
 import MembersScreen from '../../screens/library/MembersScreen';
 import ReservationsScreen from '../../screens/library/ReservationsScreen';
+import LiveTrackingScreen from '../../screens/transport/LiveTrackingScreen';
+import StudentTransportScreen from '../../screens/transport/StudentTransportScreen';
 import { TAB_BAR_STYLE } from '../tabBarStyle';
 
 const Tab = createBottomTabNavigator();
@@ -147,6 +149,12 @@ export default function TeacherNavigator() {
       <Stack.Screen name="LibraryMembers" component={MembersScreen} />
       <Stack.Screen name="Reservations" component={ReservationsScreen} />
       <Stack.Screen name="LibraryReservations" component={ReservationsScreen} />
+
+      {/* Transport */}
+      <Stack.Screen name="LiveTracking" component={LiveTrackingScreen} />
+      <Stack.Screen name="Transport" component={LiveTrackingScreen} />
+      <Stack.Screen name="StudentTransport" component={StudentTransportScreen} />
+      <Stack.Screen name="TransportStudents" component={StudentTransportScreen} />
     </Stack.Navigator>
   );
 }

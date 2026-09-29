@@ -168,6 +168,40 @@ export default function RoutesScreen({ navigation }) {
         )}
       </View>
 
+      {/* Transport Quick Service Navigation Ribbon */}
+      <View style={styles.serviceNavStrip}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 12 }}>
+          <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('LiveTracking')}>
+            <Ionicons name="navigate" size={14} color="#64748b" />
+            <Text style={styles.serviceNavText}>Live GPS</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('Vehicles')}>
+            <Ionicons name="bus" size={14} color="#64748b" />
+            <Text style={styles.serviceNavText}>Vehicles</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.serviceNavTab, styles.serviceNavTabActive]} onPress={() => {}}>
+            <Ionicons name="map" size={14} color="#ea580c" />
+            <Text style={[styles.serviceNavText, styles.serviceNavTextActive]}>Routes & Stops</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('Drivers')}>
+            <Ionicons name="person" size={14} color="#64748b" />
+            <Text style={styles.serviceNavText}>Drivers</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('Conductors')}>
+            <Ionicons name="people" size={14} color="#64748b" />
+            <Text style={styles.serviceNavText}>Conductors</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('StudentTransport')}>
+            <Ionicons name="person-add" size={14} color="#64748b" />
+            <Text style={styles.serviceNavText}>Student Roster</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('VehicleMaintenance')}>
+            <Ionicons name="construct" size={14} color="#64748b" />
+            <Text style={styles.serviceNavText}>Maintenance</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+
       {/* KPI Bar */}
       <View style={styles.kpiContainer}>
         <View style={styles.kpiTile}>
@@ -781,5 +815,35 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     color: '#ffffff',
+  },
+  serviceNavStrip: {
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    paddingVertical: 8,
+  },
+  serviceNavTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  serviceNavTabActive: {
+    backgroundColor: '#fff7ed',
+    borderColor: '#fed7aa',
+  },
+  serviceNavText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  serviceNavTextActive: {
+    color: '#ea580c',
+    fontWeight: '700',
   },
 });

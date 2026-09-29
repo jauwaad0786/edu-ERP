@@ -60,6 +60,8 @@ import StaffAttendanceAnalyticsScreen from '../../screens/staff/StaffAttendanceA
 import DelegationsScreen from '../../screens/delegations/DelegationsScreen';
 import ReportsScreen from '../../screens/reports/ReportsScreen';
 import AuditLogsScreen from '../../screens/audit/AuditLogsScreen';
+import SchoolProfileScreen from '../../screens/admin/SchoolProfileScreen';
+import SessionManagerScreen from '../../screens/admin/SessionManagerScreen';
 import WhatsAppScreen from '../../screens/communication/WhatsAppScreen';
 import RolesScreen from '../../screens/rbac/RolesScreen';
 import MeetingsScreen from '../../screens/communication/MeetingsScreen';
@@ -251,6 +253,13 @@ export default function PrincipalNavigator() {
       <Stack.Screen name="AuditLogs" component={AuditLogsScreen} />
       <Stack.Screen name="AuditTrail" component={AuditLogsScreen} />
       <Stack.Screen name="SecurityLogs" component={AuditLogsScreen} />
+      <Stack.Screen name="SchoolProfile" component={SchoolProfileScreen} />
+      <Stack.Screen name="SchoolSettings" component={SchoolProfileScreen} />
+      <Stack.Screen name="Branches" component={SchoolProfileScreen} />
+      <Stack.Screen name="SessionManager" component={SessionManagerScreen} />
+      <Stack.Screen name="Sessions" component={SessionManagerScreen} />
+      <Stack.Screen name="Terms" component={SessionManagerScreen} />
+      <Stack.Screen name="SessionSwitcher" component={SessionManagerScreen} />
       <Stack.Screen name="Support" component={SupportScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
       <Stack.Screen name="NoticeBoard" component={NoticeBoardScreen} />

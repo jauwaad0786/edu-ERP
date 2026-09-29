@@ -52,6 +52,10 @@ export default function TransportNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="TransportTabs"  component={TransportTabs} />
+      <Stack.Screen name="Vehicles"       component={VehiclesScreen} />
+      <Stack.Screen name="Routes"         component={RoutesScreen} />
+      <Stack.Screen name="LiveTracking"   component={LiveTrackingScreen} />
+      <Stack.Screen name="Transport"      component={LiveTrackingScreen} />
       <Stack.Screen name="Drivers"        component={DriversScreen} />
       <Stack.Screen name="Conductors"     component={ConductorsScreen} />
       <Stack.Screen name="StudentTransport" component={StudentTransportScreen} />

@@ -21,7 +21,7 @@ from app.models.user import User, UserRole
 # reaching a delete-user route via this expansion still gets correctly
 # blocked one layer deeper, by the real hierarchy check, not by name.
 ROLE_EQUIVALENCE = {
-    'PRINCIPAL': {'PRINCIPAL', 'DIRECTOR', 'VICE_PRINCIPAL'},
+    'PRINCIPAL': {'PRINCIPAL', 'DIRECTOR', 'VICE_PRINCIPAL', 'SUPER_ADMIN', 'ADMIN'},
 }
 
 

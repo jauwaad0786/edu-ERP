@@ -158,6 +158,28 @@ export default function LeadsScreen({ navigation }) {
         </View>
       </View>
 
+      {/* Communication Service Navigation Strip */}
+      <View style={styles.serviceNavStrip}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 12 }}>
+          <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('NoticeBoard')}>
+            <Ionicons name="megaphone" size={14} color="#64748b" />
+            <Text style={styles.serviceNavText}>Notice Board</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('WhatsApp')}>
+            <Ionicons name="logo-whatsapp" size={14} color="#64748b" />
+            <Text style={styles.serviceNavText}>WhatsApp & SMS</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.serviceNavTab} onPress={() => navigation.navigate('Meetings')}>
+            <Ionicons name="videocam" size={14} color="#64748b" />
+            <Text style={styles.serviceNavText}>Meetings & PTM</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.serviceNavTab, styles.serviceNavTabActive]} onPress={() => {}}>
+            <Ionicons name="flash" size={14} color="#dc2626" />
+            <Text style={[styles.serviceNavText, styles.serviceNavTextActive]}>Inquiries & Leads</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+
       {/* Filter Section */}
       <View style={styles.filterSection}>
         {/* Search */}
@@ -555,4 +577,34 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   statusChangeBtnText: { fontSize: 12 },
+  serviceNavStrip: {
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    paddingVertical: 8,
+  },
+  serviceNavTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  serviceNavTabActive: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecaca',
+  },
+  serviceNavText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  serviceNavTextActive: {
+    color: '#dc2626',
+    fontWeight: '700',
+  },
 });
