@@ -230,6 +230,7 @@ const ROLE_MENUS = {
         {
           icon: 'ti-speakerphone', label: 'Communication', path: '/announcements',
           children: [
+            { icon: 'ti-bell',         label: 'Notification Center',        path: '/notifications/center' },
             { icon: 'ti-speakerphone', label: 'Announcements & Circulars', path: '/announcements' },
             { icon: 'ti-message-2',    label: 'Messages',                   path: '/messages' },
           ],

@@ -125,7 +125,8 @@ export function AuthProvider({ children }) {
   // ── Logout ───────────────────────────────────────────────────────────────
   const logout = useCallback(async () => {
     try {
-      await client.post('/auth/logout');
+      await client.post('/support/notifications/devices/unregister').catch(() => {});
+      await client.post('/auth/logout').catch(() => {});
     } catch { /* best-effort */ }
     await safeDeleteToken('access_token');
     await safeDeleteToken('refresh_token');

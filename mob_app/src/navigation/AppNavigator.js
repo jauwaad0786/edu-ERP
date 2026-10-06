@@ -77,11 +77,11 @@ function AuthenticatedNavigator({ user }) {
   }
 }
 
-export default function AppNavigator() {
+export default function AppNavigator({ navigationRef }) {
   const { user, loading } = useAuth();
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {loading ? (
           <Stack.Screen name="StartupSplash" component={SplashScreen} />

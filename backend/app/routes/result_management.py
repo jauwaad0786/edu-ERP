@@ -931,6 +931,22 @@ def publish_result():
                     f'{exam.exam_name} result for {cls.name} - {cls.section} has been published.', school_id=sid)
 
     db.session.commit()
+
+    try:
+        from app.services.notification import emit_notification_event
+        emit_notification_event(
+            event_name='results.announced',
+            school_id=sid,
+            payload={
+                'exam_title': exam.exam_name,
+                'class_name': f"{cls.name} {cls.section or ''}".strip(),
+                'class_ids': [class_id],
+                'created_by': user.id
+            }
+        )
+    except Exception as notif_err:
+        print(f"[NOTIF] RMS Result published notification trigger note: {notif_err}")
+
     return jsonify({'message': 'Result published', 'publication': pub.to_dict()}), 200
 
 

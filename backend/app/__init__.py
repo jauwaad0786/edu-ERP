@@ -173,6 +173,9 @@ def create_app(config_name='default'):
     app.register_blueprint(announcements_bp, url_prefix='/api/support/announcements')
     app.register_blueprint(chat_bp,          url_prefix='/api/support/chat')
     
+    from app.routes.notification_center import notification_center_bp
+    app.register_blueprint(notification_center_bp, url_prefix='/api/notification-center')
+    
     app.register_blueprint(marks_bp,        url_prefix='/api/marks')
     app.register_blueprint(result_bp,       url_prefix='/api/results')
     app.register_blueprint(auth_bp,         url_prefix='/api/auth')
@@ -210,6 +213,7 @@ def create_app(config_name='default'):
             from app.models import device as device_models  # noqa: F401
             from app.models import delegation as delegation_models  # noqa: F401
             from app.models import curriculum as curriculum_models  # noqa: F401
+            from app.models import notification as notification_models  # noqa: F401
             _ensure_school_columns()
             _ensure_user_columns()
             _ensure_teacher_columns()
@@ -286,7 +290,13 @@ def create_app(config_name='default'):
         except Exception as e:
             app.logger.warning(f'Role backfill skipped: {e}')
 
-        # ── START DELEGATION AUTO-EXPIRY SCHEDULER (Singleton Process Guarded) ──
+        try:
+            from app.services.notification import seed_default_notification_templates
+            seed_default_notification_templates()
+        except Exception as e:
+            app.logger.warning(f'Notification template seed skipped: {e}')
+
+        # ── START BACKGROUND SCHEDULER (Singleton Process Guarded) ──
         global _scheduler_instance
         is_scheduler_disabled = os.environ.get('DISABLE_SCHEDULER', '').lower() in ('true', '1', 'yes')
         is_testing = app.config.get('TESTING', False)
@@ -315,6 +325,22 @@ def create_app(config_name='default'):
                         except Exception as ex:
                             app.logger.error(f'Archive cleanup job error: {ex}')
 
+                def _scheduled_notifications_runner():
+                    with app.app_context():
+                        try:
+                            from app.services.notification.scheduler_jobs import process_scheduled_notifications_job
+                            process_scheduled_notifications_job()
+                        except Exception as ex:
+                            app.logger.error(f'Scheduled notifications job error: {ex}')
+
+                def _cleanup_notifications_runner():
+                    with app.app_context():
+                        try:
+                            from app.services.notification.scheduler_jobs import cleanup_old_notifications_job
+                            cleanup_old_notifications_job()
+                        except Exception as ex:
+                            app.logger.error(f'Notifications retention cleanup error: {ex}')
+
                 _scheduler_instance = BackgroundScheduler()
                 _scheduler_instance.add_job(
                     func=_delegation_expiry_runner,
@@ -330,14 +356,28 @@ def create_app(config_name='default'):
                     id='deleted_items_retention_cleanup',
                     replace_existing=True
                 )
+                _scheduler_instance.add_job(
+                    func=_scheduled_notifications_runner,
+                    trigger='interval',
+                    minutes=1,
+                    id='scheduled_notifications_runner',
+                    replace_existing=True
+                )
+                _scheduler_instance.add_job(
+                    func=_cleanup_notifications_runner,
+                    trigger='interval',
+                    hours=24,
+                    id='notifications_retention_cleanup',
+                    replace_existing=True
+                )
                 _scheduler_instance.start()
-                app.logger.info('✅ Background schedulers started (delegation auto-expiry: 5m, archive cleanup: 24h)')
+                app.logger.info('✅ Background schedulers started (delegations, archive, notifications queue: 1m, retention: 24h)')
 
                 import atexit
                 atexit.register(lambda: _scheduler_instance.shutdown() if _scheduler_instance else None)
             except Exception as e:
                 app.logger.warning(f'Background scheduler initialization skipped: {e}')
-        # ── END DELEGATION AUTO-EXPIRY SCHEDULER ──
+        # ── END BACKGROUND SCHEDULER ──
 
     return app
 
@@ -767,13 +807,21 @@ def _ensure_communication_columns():
                 except Exception as e:
                     print(f'[WARN] chat_messages index creation: {e}')
 
-        # 3. support_notifications columns (created_by, priority, metadata_json)
+        # 3. support_notifications columns
         if 'support_notifications' in table_names:
             notif_cols = {c['name'] for c in inspector.get_columns('support_notifications')}
             to_add_notif = {
                 'created_by': 'INTEGER REFERENCES users(id)',
                 'priority': "VARCHAR(20) DEFAULT 'MEDIUM'",
                 'metadata_json': "TEXT DEFAULT '{}'",
+                'category': "VARCHAR(30) DEFAULT 'GENERAL'",
+                'deep_link': "VARCHAR(300) DEFAULT ''",
+                'action_data': "TEXT DEFAULT '{}'",
+                'delivered_at': 'TIMESTAMP',
+                'clicked_at': 'TIMESTAMP',
+                'expires_at': 'TIMESTAMP',
+                'scheduled_at': 'TIMESTAMP',
+                'channel': "VARCHAR(20) DEFAULT 'in_app'",
             }
             with db.engine.connect() as conn:
                 for col, defn in to_add_notif.items():
@@ -784,6 +832,24 @@ def _ensure_communication_columns():
                             print(f'[OK] Added column support_notifications.{col}')
                         except Exception as e:
                             print(f'[WARN] support_notifications.{col}: {e}')
+
+        # 4. user_devices columns (expo_push_token, device_name, app_version)
+        if 'user_devices' in table_names:
+            device_cols = {c['name'] for c in inspector.get_columns('user_devices')}
+            to_add_device = {
+                'expo_push_token': 'VARCHAR(200)',
+                'device_name': "VARCHAR(100) DEFAULT ''",
+                'app_version': "VARCHAR(20) DEFAULT ''",
+            }
+            with db.engine.connect() as conn:
+                for col, defn in to_add_device.items():
+                    if col not in device_cols:
+                        try:
+                            conn.execute(text(f'ALTER TABLE user_devices ADD COLUMN {col} {defn}'))
+                            conn.commit()
+                            print(f'[OK] Added column user_devices.{col}')
+                        except Exception as e:
+                            print(f'[WARN] user_devices.{col}: {e}')
     except Exception as e:
         print(f'[WARN] _ensure_communication_columns error: {e}')
 

@@ -241,21 +241,29 @@ def register_device():
     user = get_current_user()
     data = request.get_json() or {}
     device_token = (data.get('device_token') or '').strip()
+    expo_push_token = (data.get('expo_push_token') or '').strip() or None
+    device_name = (data.get('device_name') or '').strip()
+    app_version = (data.get('app_version') or '').strip()
     platform = (data.get('platform') or 'web').strip().lower()
 
-    if not device_token:
-        return jsonify({'error': 'device_token is required'}), 400
+    if not device_token and not expo_push_token:
+        return jsonify({'error': 'device_token or expo_push_token is required'}), 400
+
+    effective_token = device_token or expo_push_token
 
     device = UserDevice.query.filter_by(
         user_id=user.id,
-        device_token=device_token
+        device_token=effective_token
     ).first()
 
     if not device:
         device = UserDevice(
             user_id=user.id,
             school_id=user.school_id,
-            device_token=device_token,
+            device_token=effective_token,
+            expo_push_token=expo_push_token or (effective_token if effective_token.startswith('ExponentPushToken[') or effective_token.startswith('ExpoPushToken[') else None),
+            device_name=device_name,
+            app_version=app_version,
             platform=platform,
             is_active=True,
             last_seen=utc_now()
@@ -264,6 +272,12 @@ def register_device():
     else:
         device.is_active = True
         device.platform = platform
+        if expo_push_token:
+            device.expo_push_token = expo_push_token
+        if device_name:
+            device.device_name = device_name
+        if app_version:
+            device.app_version = app_version
         device.last_seen = utc_now()
 
     db.session.commit()

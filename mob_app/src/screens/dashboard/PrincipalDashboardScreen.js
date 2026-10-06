@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import client from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
+import { useMobileNotifications } from '../../context/NotificationContext';
 import { colors } from '../../theme/colors';
 import ProgressRing from '../../components/common/ProgressRing';
 import DrawerMenuModal from '../menu/DrawerMenuModal';
@@ -15,6 +16,7 @@ import LogoutModal from '../menu/LogoutModal';
 
 export default function PrincipalDashboardScreen({ navigation }) {
   const { user, logout } = useAuth();
+  const { unreadCount: liveUnreadCount } = useMobileNotifications();
 
   const [stats, setStats] = useState(null);
   const [fees, setFees] = useState(null);
@@ -165,9 +167,9 @@ export default function PrincipalDashboardScreen({ navigation }) {
               activeOpacity={0.75}
             >
               <Ionicons name="notifications" size={20} color="#ffffff" />
-              {unreadCount > 0 && (
+              {(liveUnreadCount > 0 || unreadCount > 0) && (
                 <View style={styles.badgeCount}>
-                  <Text style={styles.badgeText}>{unreadCount}</Text>
+                  <Text style={styles.badgeText}>{liveUnreadCount > 0 ? liveUnreadCount : unreadCount}</Text>
                 </View>
               )}
             </TouchableOpacity>

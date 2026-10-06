@@ -2,6 +2,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { colors } from '../../theme/colors';
+import NotificationBell from '../NotificationBell';
 
 let LinearGradient;
 try {
@@ -17,6 +18,7 @@ export default function GradientHero({
   avatarText = '',
   gradientColors = colors.primaryGradient,
   rightElement = null,
+  showBell = true,
   children,
   style,
 }) {
@@ -32,8 +34,22 @@ export default function GradientHero({
         </View>
 
         {rightElement || (
-          <View style={styles.avatarBox}>
-            <Text style={styles.avatarText}>{initial}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {showBell && (
+              <NotificationBell
+                style={{
+                  marginRight: 10,
+                  backgroundColor: 'rgba(255, 255, 255, 0.18)',
+                  borderRadius: 14,
+                  padding: 8,
+                }}
+                color="#ffffff"
+                size={22}
+              />
+            )}
+            <View style={styles.avatarBox}>
+              <Text style={styles.avatarText}>{initial}</Text>
+            </View>
           </View>
         )}
       </View>

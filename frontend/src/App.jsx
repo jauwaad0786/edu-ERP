@@ -61,6 +61,7 @@ import VendorsPage      from './pages/finance/VendorsPage';
 import PurchasesPage    from './pages/finance/PurchasesPage';
 import AssetsPage       from './pages/finance/AssetsPage';
 import DeletedItemsPage from './pages/principal/DeletedItemsPage';
+import NotificationCenterPage from './pages/notifications/NotificationCenterPage';
 
 import WhatsAppSettings  from './pages/settings/WhatsAppSettings';
 
@@ -788,6 +789,11 @@ export default function App() {
             <Route path="/:schoolSlug/:role/announcements/create" element={<TenantProtectedRoute permissions={ROUTE_PERMISSIONS['/support/announcements']}><Announcements initialShowForm={true} /></TenantProtectedRoute>} />
             <Route path="/:schoolSlug/:role/messages" element={<TenantProtectedRoute><ChatWindow /></TenantProtectedRoute>} />
             <Route path="/:schoolSlug/:role/support/chat" element={<LegacyRedirect toService="messages" />} />
+            <Route path="/:schoolSlug/:role/notifications/center" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'VICE_PRINCIPAL', 'ADMIN']}>
+                <NotificationCenterPage />
+              </TenantProtectedRoute>
+            } />
             <Route path="/:schoolSlug/:role/help-center" element={<TenantProtectedRoute><KnowledgeBase /></TenantProtectedRoute>} />
             <Route path="/:schoolSlug/:role/support/help" element={<LegacyRedirect toService="help-center" />} />
 
@@ -930,6 +936,8 @@ export default function App() {
             <Route path="/transport" element={<LegacyRedirect toService="transport" />} />
             <Route path="/announcements" element={<LegacyRedirect toService="announcements" />} />
             <Route path="/messages" element={<LegacyRedirect toService="messages" />} />
+            <Route path="/notifications/center" element={<LegacyRedirect toService="notifications/center" />} />
+            <Route path="/notifications" element={<LegacyRedirect toService="notifications/center" />} />
             <Route path="/support/tickets" element={<LegacyRedirect toService="support/tickets" />} />
             <Route path="/support/tickets/new" element={<LegacyRedirect toService="support/tickets/new" />} />
             <Route path="/support/meetings" element={<LegacyRedirect toService="support/meetings" />} />

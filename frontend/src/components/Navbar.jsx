@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 import NotificationBell from '../components/communication/NotificationBell';
+import ErpNotificationBell from './notifications/ErpNotificationBell';
 import SalaryAckBell from '../components/SalaryAckBell';
 import RoleSwitchDropdown from '../components/rbac/RoleSwitchDropdown';
 import { ROLE_DISPLAY_NAMES, getCanonicalRoleSlug, resolveTenantPath } from '../utils/routeBuilder';
@@ -35,6 +36,7 @@ const BREADCRUMB_MAP = {
   '/support/chat':          'Messages',
   '/support/help':          'Help Center',
   '/support/kb':            'Knowledge Base',
+  '/notifications/center':  'Notification Center',
   '/developer/support':     'Support Dashboard',
   // ── RBAC Routes ──
   '/rbac/roles':            'Role Management',
@@ -360,7 +362,10 @@ export default function Navbar({ title, darkMode, onToggleDark }) {
               style={{ fontSize: 16 }} aria-hidden="true" />
           </button>
 
-          {/* ── Notification + Chat + Support bell ── */}
+          {/* ── ERP Institutional Notification Bell (Fees, Attendance, Exams, Leaves, etc.) ── */}
+          <ErpNotificationBell darkMode={darkMode} />
+
+          {/* ── Helpdesk + Support Headset ── */}
           <NotificationBell darkMode={darkMode} />
 
           {/* ── Salary acknowledgement bell — Teacher + non-teaching staff only ── */}

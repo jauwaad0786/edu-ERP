@@ -358,6 +358,23 @@ def confirm_promotion():
 
         db.session.commit()
 
+        # Emit notification event (non-blocking)
+        try:
+            from app.services.notification.event_emitter import emit_notification_event
+            emit_notification_event(
+                event_name='academic.promoted',
+                school_id=sid,
+                payload={
+                    'source_session': source_session,
+                    'target_session': target_session,
+                    'promoted_count': str(promoted_count),
+                    'roles': ['PARENTS', 'STUDENTS'],
+                    'include_parents': True,
+                }
+            )
+        except Exception:
+            pass
+
         # Audit log
         log_school_action(
             school_id=sid,

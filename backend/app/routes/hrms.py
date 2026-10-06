@@ -944,6 +944,22 @@ def pay_payroll_slip_route(slip_id):
             paid_by_user=actor,
             remarks=remarks
         )
+
+        try:
+            from app.services.notification import emit_notification_event
+            emit_notification_event(
+                event_name='payroll.processed',
+                school_id=slip.school_id,
+                payload={
+                    'user_id': slip.user_id,
+                    'month_year': f"{slip.payroll_run.month_name} {slip.payroll_run.year}" if slip.payroll_run else '',
+                    'net_amount': str(round(slip.net_salary or 0.0, 2)),
+                    'created_by': actor.id
+                }
+            )
+        except Exception as notif_err:
+            print(f"[NOTIF] Payroll slip paid notification note: {notif_err}")
+
         return jsonify({
             'message': f'Salary for {slip.user.name} paid successfully!',
             'slip': slip.to_dict(),
@@ -970,6 +986,23 @@ def pay_payroll_run_all_route(run_id):
             paid_by_user=actor,
             remarks=remarks
         )
+
+        try:
+            from app.services.notification import emit_notification_event
+            for s in run.slips:
+                emit_notification_event(
+                    event_name='payroll.processed',
+                    school_id=run.school_id,
+                    payload={
+                        'user_id': s.user_id,
+                        'month_year': f"{run.month_name} {run.year}",
+                        'net_amount': str(round(s.net_salary or 0.0, 2)),
+                        'created_by': actor.id
+                    }
+                )
+        except Exception as notif_err:
+            print(f"[NOTIF] Payroll pay-all notification note: {notif_err}")
+
         return jsonify({
             'message': f'Disbursed {count} salary payments for {run.month_name} successfully!',
             'run': run.to_dict(),

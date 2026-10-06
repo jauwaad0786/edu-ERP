@@ -73,6 +73,28 @@ def mark_attendance():
     except Exception as audit_err:
         print(f"[AUDIT] Teacher attendance mark logging failed: {audit_err}")
 
+    # Notification Event Trigger for Absent Students
+    try:
+        from app.services.notification import emit_notification_event
+        absent_student_ids = [r.get('student_id') for r in records if (r.get('status') or '').upper() == 'ABSENT']
+        if absent_student_ids:
+            absent_students = Student.query.filter(Student.id.in_(absent_student_ids)).all()
+            for s in absent_students:
+                emit_notification_event(
+                    event_name='attendance.absent',
+                    school_id=user.school_id,
+                    payload={
+                        'student_name': s.user.name if s.user else f"Student #{s.id}",
+                        'student_id': s.id,
+                        'user_id': s.user_id,
+                        'class_name': f"{cls.name} {cls.section or ''}".strip(),
+                        'date': str(att_date),
+                        'created_by': user.id
+                    }
+                )
+    except Exception as notif_err:
+        print(f"[NOTIF] Teacher attendance notification trigger note: {notif_err}")
+
     return jsonify({'message': f'Attendance marked for {marked_count} students'}), 200
 
 

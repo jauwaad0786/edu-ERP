@@ -48,6 +48,11 @@ class NotificationService:
 
         # 1. In-App Notification Record
         meta_str = json.dumps(metadata) if metadata else '{}'
+        target_channels = [c.lower() for c in (channels or ['in_app'])]
+        channel_label = 'multi' if len(target_channels) > 1 else (target_channels[0] if target_channels else 'in_app')
+        category_val = (metadata.get('category') if metadata and isinstance(metadata, dict) else notif_type) or 'GENERAL'
+        deep_link_val = metadata.get('deep_link', '') if metadata and isinstance(metadata, dict) else ''
+
         notif = SupportNotification(
             user_id=user_id,
             ticket_id=ticket_id,
@@ -56,48 +61,36 @@ class NotificationService:
             title=(title or '').strip()[:200],
             message=(message or '').strip()[:500],
             notif_type=(notif_type or 'SYSTEM').upper(),
+            category=str(category_val).upper(),
             priority=(priority or 'MEDIUM').upper(),
+            deep_link=deep_link_val,
+            action_data=meta_str,
             metadata_json=meta_str,
+            channel=channel_label,
             is_read=False,
             created_at=utc_now()
         )
         db.session.add(notif)
 
         # 2. External Channels (Graceful failure: never crashes DB transaction)
-        target_channels = [c.lower() for c in (channels or ['in_app'])]
-
         user = User.query.get(user_id)
         if user and user.is_active:
-            # SMS Channel
-            if 'sms' in target_channels and user.phone:
+            # Push Channel via Unified Push Dispatcher (Expo Mobile Push + Web Push)
+            if any(ch in target_channels for ch in ('push', 'expo_push', 'web_push')):
                 try:
-                    MSG91Service.send_sms(user.phone, f"{title}: {message}")
-                except Exception as e:
-                    logger.warning(f"[NotificationService] SMS dispatch skipped/failed: {e}")
-
-            # Email Channel
-            if 'email' in target_channels and user.email:
-                try:
-                    MSG91Service.send_email(
-                        to_email=user.email,
-                        subject=title,
-                        body=message,
-                        variables={"NAME": user.name, "MESSAGE": message}
-                    )
-                except Exception as e:
-                    logger.warning(f"[NotificationService] Email dispatch skipped/failed: {e}")
-
-            # Push Channel
-            if 'push' in target_channels:
-                try:
+                    from app.services.notification.push_provider import push_dispatcher
                     active_devices = (
                         UserDevice.query
                         .filter_by(user_id=user.id, is_active=True)
                         .all()
                     )
-                    tokens = [d.device_token for d in active_devices if d.device_token]
-                    if tokens:
-                        MSG91Service.send_push(tokens, title, message, payload=metadata)
+                    if active_devices:
+                        push_dispatcher.dispatch_for_devices(
+                            devices=active_devices,
+                            title=title,
+                            body=message,
+                            data=metadata
+                        )
                 except Exception as e:
                     logger.warning(f"[NotificationService] Push dispatch skipped/failed: {e}")
 

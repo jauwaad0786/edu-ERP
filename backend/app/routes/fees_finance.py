@@ -1168,6 +1168,24 @@ def generate_bills():
         session=session,
         force_regenerate=force_regen
     )
+    try:
+        from app.services.notification.event_emitter import emit_notification_event
+        emit_notification_event(
+            event_name='fees.reminder',
+            school_id=user.school_id,
+            payload={
+                'due_date': str(due_date or 'end of month'),
+                'amount': 'applicable dues',
+                'student_name': 'Student',
+                'class_ids': [class_id] if class_id else [],
+                'student_ids': student_ids or [],
+                'include_parents': True,
+                'roles': ['PARENTS', 'STUDENTS'],
+            }
+        )
+    except Exception:
+        pass
+
     return jsonify(result), 200
 
 
@@ -1322,6 +1340,26 @@ def collect_payment():
             department=department,
             session=session
         )
+        # Emit notification event (non-blocking)
+        try:
+            from app.services.notification.event_emitter import emit_notification_event
+            st = Student.query.get(student_id)
+            student_name = st.user.name if st and st.user else 'Student'
+            emit_notification_event(
+                event_name='fees.collected',
+                school_id=user.school_id,
+                payload={
+                    'student_name': student_name,
+                    'amount': str(payment.total_paid),
+                    'receipt_no': payment.receipt_no or f'REC-{payment.id}',
+                    'student_ids': [student_id],
+                    'include_parents': True,
+                    'roles': ['PARENTS', 'STUDENTS'],
+                }
+            )
+        except Exception:
+            pass
+
         return jsonify({
             'message':      'Payment collected successfully',
             'receipt_no':   payment.receipt_no,
