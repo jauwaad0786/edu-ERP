@@ -192,6 +192,9 @@ def create_app(config_name='default'):
     app.register_blueprint(delegations_bp, url_prefix='/api')
     from app.routes.curriculum import curriculum_bp
     app.register_blueprint(curriculum_bp)
+    from app.routes.arrival import arrival_bp
+    app.register_blueprint(arrival_bp, url_prefix='/api/arrivals')
+    app.register_blueprint(arrival_bp, url_prefix='/api/principal/arrivals', name='arrival_principal_alias_bp')
 
     # ── 1P360 BOT — AI Blueprint ─────────────────────────────────────────────
     try:
@@ -229,6 +232,7 @@ def create_app(config_name='default'):
             _ensure_finance_phase2_columns()
             _ensure_fee_plan_columns()
             _ensure_audit_columns()
+            _ensure_arrival_tables()
             # ── Import AI models so db.create_all() creates their tables ──
             try:
                 from app.AI.models.ai_models import (  # noqa: F401
@@ -315,6 +319,14 @@ def create_app(config_name='default'):
                         except Exception as ex:
                             app.logger.error(f'Archive cleanup job error: {ex}')
 
+                def _arrival_auto_sweep_runner():
+                    with app.app_context():
+                        try:
+                            from app.services.arrival_service import ArrivalService
+                            ArrivalService.sweep_expired_events()
+                        except Exception as ex:
+                            app.logger.error(f'Arrival auto-sweep job error: {ex}')
+
                 _scheduler_instance = BackgroundScheduler()
                 _scheduler_instance.add_job(
                     func=_delegation_expiry_runner,
@@ -330,8 +342,15 @@ def create_app(config_name='default'):
                     id='deleted_items_retention_cleanup',
                     replace_existing=True
                 )
+                _scheduler_instance.add_job(
+                    func=_arrival_auto_sweep_runner,
+                    trigger='interval',
+                    minutes=10,
+                    id='arrival_auto_sweep',
+                    replace_existing=True
+                )
                 _scheduler_instance.start()
-                app.logger.info('✅ Background schedulers started (delegation auto-expiry: 5m, archive cleanup: 24h)')
+                app.logger.info('✅ Background schedulers started (delegation auto-expiry: 5m, arrival sweep: 10m, archive cleanup: 24h)')
 
                 import atexit
                 atexit.register(lambda: _scheduler_instance.shutdown() if _scheduler_instance else None)
@@ -1457,6 +1476,37 @@ def _ensure_fee_plan_columns():
                             print(f'[WARN] Failed to add fee_records.{col}: {ex}')
     except Exception as e:
         print(f'[WARN] _ensure_fee_plan_columns: {e}')
+
+
+def _ensure_arrival_tables():
+    """Ensure student_arrival_events table and necessary columns exist."""
+    from sqlalchemy import text, inspect
+    try:
+        from app.models.arrival import StudentArrivalEvent  # noqa: F401
+        inspector = inspect(db.engine)
+        if 'student_arrival_events' in inspector.get_table_names():
+            existing = {c['name'] for c in inspector.get_columns('student_arrival_events')}
+            to_add = {
+                'event_uuid': "VARCHAR(36)",
+                'is_discrepancy_resolved': "BOOLEAN DEFAULT FALSE",
+                'discrepancy_resolved_at': "TIMESTAMP NULL",
+                'discrepancy_resolved_by': "INTEGER NULL",
+                'discrepancy_resolution_notes': "VARCHAR(255) NULL",
+                'delivery_status': "VARCHAR(30) DEFAULT 'DELIVERED'",
+                'response_status': "VARCHAR(30) DEFAULT 'AWAITING_RESPONSE'",
+            }
+            with db.engine.connect() as conn:
+                for col, defn in to_add.items():
+                    if col not in existing:
+                        try:
+                            conn.execute(text(f'ALTER TABLE student_arrival_events ADD COLUMN {col} {defn}'))
+                            conn.commit()
+                            print(f'[OK] Added column student_arrival_events.{col}')
+                        except Exception as ex:
+                            print(f'[WARN] student_arrival_events.{col}: {ex}')
+    except Exception as e:
+        print(f'[WARN] _ensure_arrival_tables: {e}')
+
 
 
 

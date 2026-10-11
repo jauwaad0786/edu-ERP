@@ -43,6 +43,9 @@ INDEXES_TO_CREATE = [
     ('announcements', 'idx_announcements_school_active', ['school_id', 'is_active']),
     ('meeting_requests', 'idx_meeting_requests_school_id', ['school_id']),
     ('teacher_attendance', 'idx_teacher_att_school_date', ['school_id', 'date']),
+    ('student_arrival_events', 'idx_arrival_school_date', ['school_id', 'arrival_date']),
+    ('student_arrival_events', 'idx_arrival_school_status', ['school_id', 'response_status']),
+    ('student_arrival_events', 'idx_arrival_student_date', ['student_id', 'arrival_date']),
 ]
 
 

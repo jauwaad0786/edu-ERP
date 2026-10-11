@@ -443,6 +443,12 @@ class FeeBill(db.Model):
         else:
             self.status = BillStatus.ISSUED.value
 
+    @property
+    def is_overdue(self):
+        return self.status == BillStatus.OVERDUE.value or (
+            bool(self.due_date and date.today() > self.due_date and (self.balance_due or 0.0) > 0)
+        )
+
     def to_dict(self):
         return {
             'id':                    self.id,
@@ -465,6 +471,7 @@ class FeeBill(db.Model):
             'amount_paid':           self.amount_paid or 0.0,
             'balance_due':           self.balance_due,
             'status':                self.status,
+            'is_overdue':            self.is_overdue,
             'items':                 [it.to_dict() for it in self.items],
             'created_at':            self.created_at.isoformat() if self.created_at else None,
         }

@@ -12,24 +12,42 @@ from app.routes.marks import _grade
 student_bp = Blueprint('student', __name__)
 
 
+def _clean_phone(phone_str):
+    if not phone_str:
+        return ''
+    cleaned = ''.join(c for c in str(phone_str) if c.isdigit())
+    return cleaned[-10:] if len(cleaned) >= 10 else cleaned
+
+
 def _get_effective_student(user, student_id=None):
     if not user:
         return None
     role_str = getattr(user.role, 'value', str(user.role))
     if role_str == 'PARENT':
+        clean_user_phone = _clean_phone(user.phone)
+        user_email = (user.email or '').strip().lower()
+
+        all_students = Student.query.filter_by(school_id=user.school_id, is_deleted=False).all()
+        matched = []
+        for s in all_students:
+            s_clean_phone = _clean_phone(s.parent_phone)
+            s_clean_guard = _clean_phone(s.guardian_phone)
+            s_email = (s.parent_email or '').strip().lower()
+            if (
+                s.user_id == user.id or
+                (clean_user_phone and s_clean_phone and clean_user_phone == s_clean_phone) or
+                (clean_user_phone and s_clean_guard and clean_user_phone == s_clean_guard) or
+                (user_email and s_email and user_email == s_email)
+            ):
+                matched.append(s)
+
         if student_id:
-            student = Student.query.filter_by(id=student_id, school_id=user.school_id).first()
-            if not student or (student.parent_email != user.email and student.parent_phone != user.phone and student.user_id != user.id):
-                return None
-            return student
-        return Student.query.filter(
-            Student.school_id == user.school_id,
-            (
-                (Student.parent_email == user.email) |
-                (Student.parent_phone == user.phone) |
-                (Student.user_id == user.id)
-            )
-        ).first()
+            for s in matched:
+                if s.id == student_id:
+                    return s
+            return None
+        return matched[0] if matched else None
+
     return Student.query.filter_by(user_id=user.id, school_id=user.school_id).first()
 
 
@@ -41,7 +59,26 @@ def my_profile():
     student = _get_effective_student(user, student_id)
     if not student:
         return jsonify({'error': 'Student profile not found'}), 404
-    return jsonify(student.to_dict()), 200
+
+    data = student.to_dict()
+    if getattr(user.role, 'value', str(user.role)) == 'PARENT':
+        clean_user_phone = _clean_phone(user.phone)
+        user_email = (user.email or '').strip().lower()
+        all_students = Student.query.filter_by(school_id=user.school_id, is_deleted=False).all()
+        children = []
+        for s in all_students:
+            s_clean_phone = _clean_phone(s.parent_phone)
+            s_clean_guard = _clean_phone(s.guardian_phone)
+            s_email = (s.parent_email or '').strip().lower()
+            if (
+                s.user_id == user.id or
+                (clean_user_phone and s_clean_phone and clean_user_phone == s_clean_phone) or
+                (clean_user_phone and s_clean_guard and clean_user_phone == s_clean_guard) or
+                (user_email and s_email and user_email == s_email)
+            ):
+                children.append(s.to_dict())
+        data['children'] = children
+    return jsonify(data), 200
 
 
 @student_bp.route('/attendance', methods=['GET'])
@@ -81,6 +118,7 @@ def _class_result_is_published(exam_id, class_id):
 
 
 @student_bp.route('/children', methods=['GET'])
+@student_bp.route('/parent/children', methods=['GET'])
 @role_required('PARENT', 'STUDENT')
 def my_children():
     user = get_current_user()
@@ -88,16 +126,24 @@ def my_children():
         s = Student.query.filter_by(user_id=user.id, school_id=user.school_id).first()
         return jsonify([s.to_dict()] if s else []), 200
 
-    # Parent: find all students matching email or phone or user_id within parent's school
-    students = Student.query.filter(
-        Student.school_id == user.school_id,
-        (
-            (Student.parent_email == user.email) |
-            (Student.parent_phone == user.phone) |
-            (Student.user_id == user.id)
-        )
-    ).all()
-    return jsonify([s.to_dict() for s in students]), 200
+    clean_user_phone = _clean_phone(user.phone)
+    user_email = (user.email or '').strip().lower()
+
+    all_students = Student.query.filter_by(school_id=user.school_id, is_deleted=False).all()
+    matched = []
+    for s in all_students:
+        s_clean_phone = _clean_phone(s.parent_phone)
+        s_clean_guard = _clean_phone(s.guardian_phone)
+        s_email = (s.parent_email or '').strip().lower()
+        if (
+            s.user_id == user.id or
+            (clean_user_phone and s_clean_phone and clean_user_phone == s_clean_phone) or
+            (clean_user_phone and s_clean_guard and clean_user_phone == s_clean_guard) or
+            (user_email and s_email and user_email == s_email)
+        ):
+            matched.append(s)
+
+    return jsonify([s.to_dict() for s in matched]), 200
 
 
 @student_bp.route('/marks', methods=['GET'])

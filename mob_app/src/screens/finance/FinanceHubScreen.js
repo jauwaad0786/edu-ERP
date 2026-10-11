@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import client from '../../api/client';
 import { colors } from '../../theme/colors';
+import { handlePdfActionMenu } from '../../utils/pdfHelper';
 
 const TABS = ['Dashboard', 'Purchases', 'Vendors', 'Reports'];
 
@@ -584,7 +585,22 @@ export default function FinanceHubScreen({ navigation }) {
             ? <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 60 }} />
             : rptData
               ? <>
-                  <Text style={s.secTitle}>Financial Reports — {session}</Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, marginTop: 14 }}>
+                    <Text style={[s.secTitle, { paddingHorizontal: 0, marginVertical: 0 }]}>Financial Reports — {session}</Text>
+                    <TouchableOpacity
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
+                      onPress={() => {
+                        handlePdfActionMenu({
+                          pathOrUrl: `/fees-finance/reports/collection-report/pdf?session=${encodeURIComponent(session)}`,
+                          filename: `Collection_Report_${session}.pdf`,
+                          title: `Financial Collection Report (${session})`,
+                        });
+                      }}
+                    >
+                      <Ionicons name="document-text-outline" size={15} color="#fff" />
+                      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>Export PDF</Text>
+                    </TouchableOpacity>
+                  </View>
 
                   {/* Summary cards */}
                   <View style={s.kpiGrid}>

@@ -27,6 +27,9 @@ import TimetableScreen from '../../screens/timetable/TimetableScreen';
 import CurriculumScreen from '../../screens/curriculum/CurriculumScreen';
 import AIChatScreen from '../../screens/ai/AIChatScreen';
 import StudentDocumentsScreen from '../../screens/documents/StudentDocumentsScreen';
+import LeavesScreen from '../../screens/leaves/LeavesScreen';
+import IDCardScreen from '../../screens/students/IDCardScreen';
+import ReceiptsScreen from '../../screens/fees/ReceiptsScreen';
 import { TAB_BAR_STYLE } from '../tabBarStyle';
 
 const Tab = createBottomTabNavigator();
@@ -87,6 +90,12 @@ export default function StudentNavigator() {
       <Stack.Screen name="Transport" component={TransportTrackScreen} />
       <Stack.Screen name="OutPass" component={OutPassScreen} />
       <Stack.Screen name="Complaints" component={ComplaintsScreen} />
+      <Stack.Screen name="Leaves" component={LeavesScreen} />
+      <Stack.Screen name="ApplyLeave" component={LeavesScreen} />
+      <Stack.Screen name="IDCard" component={IDCardScreen} />
+      <Stack.Screen name="StudentIDCard" component={IDCardScreen} />
+      <Stack.Screen name="Receipts" component={ReceiptsScreen} />
+      <Stack.Screen name="FeeReceipts" component={ReceiptsScreen} />
       <Stack.Screen name="Support" component={SupportScreen} />
       <Stack.Screen name="Profile" component={ProfileScreen} />
       <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />

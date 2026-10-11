@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import client from '../../api/client';
 import { colors } from '../../theme/colors';
+import { handlePdfActionMenu, printPdf } from '../../utils/pdfHelper';
 
 const C = {
   primary: '#0b57d0',
@@ -45,6 +46,15 @@ export default function CollectPaymentScreen({ navigation, route }) {
   const [loadingLedger, setLoadingLedger] = useState(false);
   const [selectedItems, setSelectedItems] = useState({}); // { itemId: { ... } }
   const [totalDue, setTotalDue] = useState(0);
+
+  // Multi-Month Package State (1, 3, 6, 12 Months & Custom)
+  const [collectionTab, setCollectionTab] = useState('MULTI_MONTH'); // 'MULTI_MONTH' | 'ITEMIZED'
+  const [scheduleData, setScheduleData] = useState(null);
+  const [loadingSchedule, setLoadingSchedule] = useState(false);
+  const [selectedMonths, setSelectedMonths] = useState([]);
+  const [activePreset, setActivePreset] = useState('1_month');
+  const [multiMonthPayingAmount, setMultiMonthPayingAmount] = useState('');
+  const [generatingNotice, setGeneratingNotice] = useState(false);
 
   // Payment Form State
   const [mode, setMode] = useState('UPI');
@@ -132,109 +142,227 @@ export default function CollectPaymentScreen({ navigation, route }) {
     setSelectedStudent(stu);
     setReceiptData(null);
     setLoadingLedger(true);
+    setLoadingSchedule(true);
 
     try {
-      const res = await client.get(`/fees-finance/students/${studentId}/ledger`);
-      const ldata = res.data || {};
-      const studentInfo = ldata.student || stu;
-      setSelectedStudent(studentInfo);
+      const [res, schedRes] = await Promise.allSettled([
+        client.get(`/fees-finance/students/${studentId}/ledger`),
+        client.get(`/fees-finance/students/${studentId}/multi-month-schedule`),
+      ]);
 
-      // Populate bill items that have pending balance
-      const initialSelection = {};
-      let totalPendingAmt = 0;
-      const pendingBills = ldata.pending_bills || ldata.bills?.filter(b => (b.balance_due || 0) > 0) || [];
+      if (res.status === 'fulfilled') {
+        const ldata = res.value.data || {};
+        const studentInfo = ldata.student || stu;
+        setSelectedStudent(studentInfo);
 
-      pendingBills.forEach(b => {
-        b.items?.forEach(it => {
-          const bal = (it.balance_amount !== undefined && it.balance_amount !== null)
-            ? Number(it.balance_amount)
-            : Number(it.net_amount || 0);
+        // Populate bill items that have pending balance
+        const initialSelection = {};
+        let totalPendingAmt = 0;
+        const pendingBills = ldata.pending_bills || ldata.bills?.filter(b => (b.balance_due || 0) > 0) || [];
 
-          if (bal > 0) {
-            initialSelection[it.id] = {
-              bill_id: b.id,
-              bill_no: b.bill_no,
-              bill_period: b.bill_period_label || b.bill_month,
-              bill_item_id: it.id,
-              fee_head_id: it.fee_head_id,
-              fee_head_name: it.fee_head_name || 'Tuition Fee',
-              department: it.department || 'ACCOUNTS',
-              amount: bal,
-              max: bal,
-              selected: true,
-            };
-            totalPendingAmt += bal;
+        pendingBills.forEach(b => {
+          b.items?.forEach(it => {
+            const bal = (it.balance_amount !== undefined && it.balance_amount !== null)
+              ? Number(it.balance_amount)
+              : Number(it.net_amount || 0);
+
+            if (bal > 0) {
+              initialSelection[it.id] = {
+                bill_id: b.id,
+                bill_no: b.bill_no,
+                bill_period: b.bill_period_label || b.bill_month,
+                bill_item_id: it.id,
+                fee_head_id: it.fee_head_id,
+                fee_head_name: it.fee_head_name || 'Tuition Fee',
+                department: it.department || 'ACCOUNTS',
+                amount: bal,
+                max: bal,
+                selected: true,
+              };
+              totalPendingAmt += bal;
+            }
+          });
+
+          // Previous dues / opening balance if any
+          const prevDuesAmount = Number(b.previous_dues || 0);
+          if (prevDuesAmount > 0) {
+            const itemsPaid = (b.items || []).reduce((acc, it) => acc + Number(it.paid_amount || 0), 0);
+            const totalPaidOnBill = Number(b.amount_paid || 0);
+            const prevDuesPaid = Math.max(0, totalPaidOnBill - itemsPaid);
+            const prevDuesBal = Math.max(0, prevDuesAmount - prevDuesPaid);
+            if (prevDuesBal > 0) {
+              const key = `prev_dues_${b.id}`;
+              initialSelection[key] = {
+                bill_id: b.id,
+                bill_no: b.bill_no,
+                bill_period: b.bill_period_label || b.bill_month,
+                bill_item_id: null,
+                fee_head_id: null,
+                fee_head_name: 'Previous Dues / Opening Balance',
+                department: 'ACCOUNTS',
+                amount: prevDuesBal,
+                max: prevDuesBal,
+                selected: true,
+              };
+              totalPendingAmt += prevDuesBal;
+            }
           }
         });
 
-        // Previous dues / opening balance if any
-        const prevDuesAmount = Number(b.previous_dues || 0);
-        if (prevDuesAmount > 0) {
-          const itemsPaid = (b.items || []).reduce((acc, it) => acc + Number(it.paid_amount || 0), 0);
-          const totalPaidOnBill = Number(b.amount_paid || 0);
-          const prevDuesPaid = Math.max(0, totalPaidOnBill - itemsPaid);
-          const prevDuesBal = Math.max(0, prevDuesAmount - prevDuesPaid);
-          if (prevDuesBal > 0) {
-            const key = `prev_dues_${b.id}`;
-            initialSelection[key] = {
-              bill_id: b.id,
-              bill_no: b.bill_no,
-              bill_period: b.bill_period_label || b.bill_month,
-              bill_item_id: null,
-              fee_head_id: null,
-              fee_head_name: 'Previous Dues / Opening Balance',
-              department: 'ACCOUNTS',
-              amount: prevDuesBal,
-              max: prevDuesBal,
-              selected: true,
-            };
-            totalPendingAmt += prevDuesBal;
+        setSelectedItems(initialSelection);
+        setTotalDue(totalPendingAmt);
+      }
+
+      if (schedRes.status === 'fulfilled') {
+        const sdata = schedRes.value.data || {};
+        setScheduleData(sdata);
+        if (sdata?.presets?.['1_month']?.months?.length) {
+          setSelectedMonths(sdata.presets['1_month'].months);
+          setActivePreset('1_month');
+          setMultiMonthPayingAmount(String(sdata.presets['1_month'].amount_payable || 0));
+        } else {
+          const unpaid = (sdata.months || []).filter(m => m.balance > 0);
+          if (unpaid.length) {
+            setSelectedMonths([unpaid[0].month_code]);
+            setActivePreset('custom');
+            setMultiMonthPayingAmount(String(unpaid[0].balance));
+          } else {
+            setSelectedMonths([]);
+            setActivePreset('custom');
+            setMultiMonthPayingAmount('0');
           }
         }
-      });
-
-      setSelectedItems(initialSelection);
-      setTotalDue(totalPendingAmt);
-    } catch {
-      // Fallback to principal student records if modern ledger fails
-      try {
-        const recRes = await client.get(`/principal/fees/student-records/${studentId}`);
-        const recs = Array.isArray(recRes.data) ? recRes.data : recRes.data?.records || [];
-        const unpaid = recs.filter(r => r.status !== 'PAID');
-        const fallbackSelection = {};
-        let total = 0;
-
-        unpaid.forEach((r, idx) => {
-          const due = typeof r.effective_due === 'number'
-            ? r.effective_due
-            : Math.max(0, Number(r.amount_due || 0) - Number(r.amount_paid || 0));
-
-          if (due > 0) {
-            const key = r.id ? String(r.id) : `rec_${idx}`;
-            fallbackSelection[key] = {
-              bill_id: r.id,
-              bill_no: r.bill_no || `REC-${r.id}`,
-              bill_period: r.academic_year || 'Current',
-              bill_item_id: null,
-              fee_head_id: r.fee_type_id || null,
-              fee_head_name: r.fee_type || 'Tuition Fee',
-              department: 'ACCOUNTS',
-              amount: due,
-              max: due,
-              selected: true,
-            };
-            total += due;
-          }
-        });
-
-        setSelectedItems(fallbackSelection);
-        setTotalDue(total);
-      } catch {
-        setSelectedItems({});
-        setTotalDue(0);
       }
+    } catch {
+      setSelectedItems({});
+      setTotalDue(0);
     } finally {
       setLoadingLedger(false);
+      setLoadingSchedule(false);
+    }
+  };
+
+  // Preset Selection Handler for Mobile
+  const applyPreset = (presetKey) => {
+    if (!scheduleData?.presets?.[presetKey]) return;
+    const p = scheduleData.presets[presetKey];
+    setActivePreset(presetKey);
+    setSelectedMonths(p.months || []);
+    setMultiMonthPayingAmount(String(p.amount_payable || 0));
+  };
+
+  // Toggle single month in custom mode
+  const toggleMonth = (monthCode) => {
+    setActivePreset('custom');
+    let updated;
+    if (selectedMonths.includes(monthCode)) {
+      updated = selectedMonths.filter(m => m !== monthCode);
+    } else {
+      updated = [...selectedMonths, monthCode];
+    }
+    setSelectedMonths(updated);
+
+    if (scheduleData?.months) {
+      const selObjs = scheduleData.months.filter(m => updated.includes(m.month_code));
+      const payable = selObjs.reduce((sum, m) => sum + (m.balance || 0), 0);
+      setMultiMonthPayingAmount(String(payable));
+    }
+  };
+
+  const selectedMonthsDetails = useMemo(() => {
+    if (!scheduleData?.months) return [];
+    return scheduleData.months.filter(m => selectedMonths.includes(m.month_code));
+  }, [scheduleData, selectedMonths]);
+
+  const multiMonthBase = selectedMonthsDetails.reduce((sum, m) => sum + (m.original_amount || 0), 0);
+  const multiMonthDisc = selectedMonthsDetails.reduce((sum, m) => sum + (m.discount_amount || 0), 0);
+  const multiMonthFine = selectedMonthsDetails.reduce((sum, m) => sum + (m.fine_amount || 0), 0);
+  const multiMonthPayable = selectedMonthsDetails.reduce((sum, m) => sum + (m.balance || 0), 0);
+
+  // Submit Multi-Month Payment on Mobile
+  const handleCollectMultiMonthPayment = async () => {
+    if (!selectedStudent) {
+      Alert.alert('Selection Error', 'Please select a student first.');
+      return;
+    }
+    if (selectedMonths.length === 0) {
+      Alert.alert('Validation Error', 'Please select at least one month to pay.');
+      return;
+    }
+    const payAmt = parseFloat(multiMonthPayingAmount);
+    if (!payAmt || payAmt <= 0) {
+      Alert.alert('Validation Error', 'Payment amount must be greater than ₹0.');
+      return;
+    }
+
+    setCollecting(true);
+    try {
+      const studentId = selectedStudent.id || selectedStudent.student_id;
+      const idempotencyKey = `mob_mm_${studentId}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const payload = {
+        months: selectedMonths,
+        amount_paid: payAmt,
+        payment_mode: mode,
+        transaction_ref: txnRef.trim(),
+        remarks: remarks.trim() || `Mobile POS multi-month fee for ${selectedMonths.join(', ')}`,
+        idempotency_key: idempotencyKey,
+      };
+
+      const res = await client.post(`/fees-finance/students/${studentId}/pay-multi-month`, payload);
+      const data = res.data;
+      const receiptNo = data.receipt_no || data.payment?.receipt_no || `REC-${Date.now().toString().slice(-6)}`;
+      const paymentId = data.payment_id || data.payment?.id;
+
+      setReceiptData({
+        receiptNo,
+        paymentId,
+        studentName: selectedStudent.name,
+        admissionNo: selectedStudent.admission_no || selectedStudent.admission_number || '—',
+        className: selectedStudent.class_name || selectedStudent.class?.name || '—',
+        amount: payAmt,
+        mode,
+        txnRef: txnRef.trim(),
+        date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+        monthsCovered: selectedMonths,
+        allocations: data.payment?.allocations || [],
+      });
+
+      setTxnRef('');
+      setRemarks('');
+      loadStudentLedger(selectedStudent);
+      fetchStudents();
+    } catch (err) {
+      Alert.alert('Payment Failed', err.response?.data?.error || err.message || 'Payment processing failed.');
+    } finally {
+      setCollecting(false);
+    }
+  };
+
+  // Generate Demand Bill / Notice on Mobile
+  const handleGenerateDemandNotice = async () => {
+    if (!selectedStudent) {
+      Alert.alert('Selection Error', 'Please select a student first.');
+      return;
+    }
+    if (selectedMonths.length === 0) {
+      Alert.alert('Validation Error', 'Please select at least one month for the demand notice.');
+      return;
+    }
+
+    setGeneratingNotice(true);
+    try {
+      const studentId = selectedStudent.id || selectedStudent.student_id;
+      const payload = {
+        months: selectedMonths,
+        due_date: new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0],
+      };
+      const res = await client.post(`/fees-finance/students/${studentId}/generate-demand-notice`, payload);
+      Alert.alert('Demand Bill Generated', res.data?.message || `Official Payment Request notice generated for ${selectedMonths.length} month(s)! Notice status is ISSUED.`);
+      loadStudentLedger(selectedStudent);
+    } catch (err) {
+      Alert.alert('Demand Bill Error', err.response?.data?.error || 'Failed to generate demand notice.');
+    } finally {
+      setGeneratingNotice(false);
     }
   };
 
@@ -426,10 +554,23 @@ export default function CollectPaymentScreen({ navigation, route }) {
       Alert.alert('Receipt Notice', 'PDF receipt is being processed on the central server.');
       return;
     }
-    const pdfUrl = `${client.defaults.baseURL}/fees-finance/payments/${receiptData.paymentId}/receipt-pdf`;
-    Linking.openURL(pdfUrl).catch(() => {
-      Alert.alert('Download', 'Could not open receipt URL on this device.');
+    handlePdfActionMenu({
+      pathOrUrl: `/fees-finance/payments/${receiptData.paymentId}/receipt-pdf`,
+      filename: `Official_Receipt_${receiptData.receiptNo}.pdf`,
+      title: `Official Receipt #${receiptData.receiptNo}`,
     });
+  };
+
+  const handlePrintReceiptPdf = () => {
+    if (!receiptData?.paymentId) {
+      Alert.alert('Receipt Notice', 'PDF receipt is being processed on the central server.');
+      return;
+    }
+    printPdf(
+      `/fees-finance/payments/${receiptData.paymentId}/receipt-pdf`,
+      `Official_Receipt_${receiptData.receiptNo}.pdf`,
+      `Receipt #${receiptData.receiptNo}`
+    );
   };
 
   const resetForm = () => {
@@ -493,6 +634,14 @@ export default function CollectPaymentScreen({ navigation, route }) {
                 <Text style={styles.receiptLabel}>Admission No / Class</Text>
                 <Text style={styles.receiptVal}>#{receiptData.admissionNo} · {receiptData.className}</Text>
               </View>
+              {receiptData.monthsCovered && receiptData.monthsCovered.length > 0 && (
+                <View style={styles.receiptRow}>
+                  <Text style={styles.receiptLabel}>Months Covered</Text>
+                  <Text style={[styles.receiptVal, { color: C.primary, fontWeight: '700' }]}>
+                    {receiptData.monthsCovered.join(', ')}
+                  </Text>
+                </View>
+              )}
               <View style={styles.receiptRow}>
                 <Text style={styles.receiptLabel}>Payment Mode</Text>
                 <Text style={styles.receiptVal}>{receiptData.mode} {receiptData.txnRef ? `(${receiptData.txnRef})` : ''}</Text>
@@ -509,14 +658,19 @@ export default function CollectPaymentScreen({ navigation, route }) {
               </View>
             </View>
 
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+            {/* Native Print & Share Buttons */}
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 16 }}>
               <TouchableOpacity style={[styles.receiptActionBtn, { backgroundColor: '#f1f5f9' }]} onPress={handleShareReceipt}>
-                <Ionicons name="share-social-outline" size={18} color={C.text} />
-                <Text style={[styles.receiptActionText, { color: C.text }]}>Share Receipt</Text>
+                <Ionicons name="chatbubble-ellipses-outline" size={16} color={C.text} />
+                <Text style={[styles.receiptActionText, { color: C.text }]}>Share Text</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.receiptActionBtn, { backgroundColor: '#eff6ff' }]} onPress={handlePrintReceiptPdf}>
+                <Ionicons name="print-outline" size={16} color={C.primary} />
+                <Text style={[styles.receiptActionText, { color: C.primary }]}>Print PDF</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.receiptActionBtn, { backgroundColor: '#e0f2fe' }]} onPress={handleDownloadReceiptPdf}>
-                <Ionicons name="download-outline" size={18} color="#0284c7" />
-                <Text style={[styles.receiptActionText, { color: '#0284c7' }]}>Download PDF</Text>
+                <Ionicons name="share-outline" size={16} color="#0284c7" />
+                <Text style={[styles.receiptActionText, { color: "#0284c7" }]}>Save/Share</Text>
               </TouchableOpacity>
             </View>
 
@@ -664,122 +818,361 @@ export default function CollectPaymentScreen({ navigation, route }) {
                   </View>
                 </View>
 
-                {/* Itemized Fee Breakdown with Checkboxes (1:1 with Web ERP) */}
-                <View style={{ marginBottom: 16 }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <Text style={styles.cardSectionTitle}>Fee Head Allocations</Text>
-                    <Text style={{ fontSize: 11, color: '#64748b' }}>Select items to collect</Text>
-                  </View>
+                {/* Mode Selector Tabs (Multi-Month Package vs Itemized Dues) */}
+                <View style={{ flexDirection: 'row', backgroundColor: '#f1f5f9', borderRadius: 10, padding: 4, marginBottom: 14 }}>
+                  <TouchableOpacity
+                    style={[{ flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 }, collectionTab === 'MULTI_MONTH' && { backgroundColor: colors.primary }]}
+                    onPress={() => setCollectionTab('MULTI_MONTH')}
+                  >
+                    <Text style={[{ fontSize: 12, fontWeight: '800', color: '#64748b' }, collectionTab === 'MULTI_MONTH' && { color: '#ffffff' }]}>
+                      Multi-Month (1, 3, 6, 12 Mo)
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[{ flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 }, collectionTab === 'ITEMIZED' && { backgroundColor: colors.primary }]}
+                    onPress={() => setCollectionTab('ITEMIZED')}
+                  >
+                    <Text style={[{ fontSize: 12, fontWeight: '800', color: '#64748b' }, collectionTab === 'ITEMIZED' && { color: '#ffffff' }]}>
+                      Itemized Dues ({Object.keys(selectedItems).length})
+                    </Text>
+                  </TouchableOpacity>
+                </View>
 
-                  {Object.keys(selectedItems).length > 0 ? (
-                    Object.entries(selectedItems).map(([key, item]) => (
-                      <View key={key} style={[styles.allocationCard, item.selected && styles.allocationCardSelected]}>
+                {collectionTab === 'MULTI_MONTH' ? (
+                  /* ── TAB 1: MULTI-MONTH PAYMENT WORKFLOW ── */
+                  <View>
+                    {/* Period Preset Options */}
+                    <Text style={styles.fieldLabel}>Select Payment Period</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+                      <View style={{ flexDirection: 'row', gap: 6 }}>
+                        {[
+                          { key: '1_month', label: '1 Month' },
+                          { key: '3_months', label: '3 Mo (Quarter)' },
+                          { key: '6_months', label: '6 Mo (Half-Yr)' },
+                          { key: '12_months', label: '1 Year (Annual)' },
+                          { key: 'custom', label: 'Custom' },
+                        ].map(preset => {
+                          const isActive = activePreset === preset.key;
+                          const pData = scheduleData?.presets?.[preset.key];
+                          const isDisabled = preset.key !== 'custom' && (!pData || !pData.is_available);
+                          return (
+                            <TouchableOpacity
+                              key={preset.key}
+                              disabled={isDisabled}
+                              style={[
+                                styles.modeBtn,
+                                isActive && styles.modeBtnActive,
+                                isDisabled && { opacity: 0.4 }
+                              ]}
+                              onPress={() => {
+                                if (preset.key === 'custom') {
+                                  setActivePreset('custom');
+                                } else {
+                                  applyPreset(preset.key);
+                                }
+                              }}
+                            >
+                              <Text style={[styles.modeBtnText, isActive && styles.modeBtnTextActive]}>
+                                {preset.label}
+                                {pData && pData.amount_payable > 0 ? ` (₹${pData.amount_payable.toLocaleString()})` : ''}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </ScrollView>
+
+                    {/* Schedule Months List */}
+                    <Text style={styles.fieldLabel}>Academic Session Fee Months ({selectedMonths.length} Selected)</Text>
+                    {loadingSchedule ? (
+                      <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+                        <ActivityIndicator size="small" color={colors.primary} />
+                        <Text style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>Loading fee schedule...</Text>
+                      </View>
+                    ) : (scheduleData?.months || []).map(m => {
+                      const isSel = selectedMonths.includes(m.month_code);
+                      const isPaid = m.is_paid || m.balance <= 0;
+                      return (
                         <TouchableOpacity
-                          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}
-                          onPress={() => toggleItem(key)}
+                          key={m.month_code}
+                          disabled={isPaid}
+                          style={[
+                            styles.allocationCard,
+                            isSel && styles.allocationCardSelected,
+                            isPaid && { backgroundColor: '#f8fafc', opacity: 0.7 }
+                          ]}
+                          onPress={() => !isPaid && toggleMonth(m.month_code)}
                         >
                           <Ionicons
-                            name={item.selected ? 'checkbox' : 'square-outline'}
-                            size={22}
-                            color={item.selected ? colors.primary : '#94a3b8'}
+                            name={isPaid ? 'checkmark-circle' : isSel ? 'checkbox' : 'square-outline'}
+                            size={20}
+                            color={isPaid ? '#16a34a' : isSel ? colors.primary : '#94a3b8'}
                           />
-                          <View style={{ flex: 1 }}>
-                            <Text style={[styles.allocHeadName, item.selected && { color: colors.primary }]}>
-                              {item.fee_head_name}
-                            </Text>
+                          <View style={{ flex: 1, marginLeft: 8 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Text style={[styles.allocHeadName, isSel && { color: colors.primary }]}>
+                                {m.month_label}
+                              </Text>
+                              <View style={[
+                                styles.miniDueBadge,
+                                isPaid ? { backgroundColor: '#dcfce7' } : m.is_partial ? { backgroundColor: '#fef3c7' } : { backgroundColor: '#fee2e2' }
+                              ]}>
+                                <Text style={[
+                                  styles.miniDueBadgeText,
+                                  isPaid ? { color: '#16a34a' } : m.is_partial ? { color: '#d97706' } : { color: '#dc2626' }
+                                ]}>
+                                  {isPaid ? 'PAID' : m.is_partial ? 'PARTIAL' : m.status || 'DUE'}
+                                </Text>
+                              </View>
+                            </View>
                             <Text style={styles.allocPeriodText}>
-                              Bill: #{item.bill_no || 'Bill'} · Period: {item.bill_period || 'Current'}
+                              Base: ₹{m.original_amount} {m.discount_amount > 0 ? `· Disc: -₹${m.discount_amount}` : ''} {m.fine_amount > 0 ? `· Fine: +₹${m.fine_amount}` : ''}
                             </Text>
                           </View>
+                          <Text style={{ fontSize: 14, fontWeight: '800', color: m.balance > 0 ? '#dc2626' : '#16a34a' }}>
+                            ₹{m.balance.toLocaleString()}
+                          </Text>
                         </TouchableOpacity>
+                      );
+                    })}
 
-                        {/* Editable amount input for partial collection */}
-                        <View style={{ width: 100 }}>
-                          <TextInput
-                            style={[styles.allocAmountInput, !item.selected && { opacity: 0.5 }]}
-                            keyboardType="numeric"
-                            value={String(item.amount)}
-                            onChangeText={val => updateItemAmount(key, val)}
-                            editable={item.selected}
-                          />
-                          <Text style={styles.allocMaxText}>Max: ₹{item.max}</Text>
-                        </View>
+                    {/* Multi-Month Financial Calculation Card */}
+                    <View style={[styles.totalPayBanner, { flexDirection: 'column', alignItems: 'stretch', gap: 6, marginVertical: 12 }]}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <Text style={{ fontSize: 12, color: '#1e40af' }}>Base Fee:</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#1e40af' }}>₹{multiMonthBase.toLocaleString()}</Text>
                       </View>
-                    ))
-                  ) : (
-                    <View style={styles.noDuesBox}>
-                      <Ionicons name="checkmark-circle-outline" size={32} color="#16a34a" />
-                      <Text style={styles.noDuesText}>No pending fee items on record!</Text>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <Text style={{ fontSize: 12, color: '#16a34a' }}>Concessions / Maafi:</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#16a34a' }}>-₹{multiMonthDisc.toLocaleString()}</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <Text style={{ fontSize: 12, color: '#dc2626' }}>Late Fines:</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#dc2626' }}>+₹{multiMonthFine.toLocaleString()}</Text>
+                      </View>
+                      <View style={{ height: 1, backgroundColor: '#bfdbfe', marginVertical: 2 }} />
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={styles.totalPayLabel}>Total Payable:</Text>
+                        <Text style={styles.totalPayValue}>₹{multiMonthPayable.toLocaleString('en-IN')}</Text>
+                      </View>
                     </View>
-                  )}
-                </View>
 
-                {/* Total To Pay Box */}
-                <View style={styles.totalPayBanner}>
-                  <Text style={styles.totalPayLabel}>Total Payable Amount:</Text>
-                  <Text style={styles.totalPayValue}>₹{totalToPay.toLocaleString('en-IN')}</Text>
-                </View>
+                    {/* Amount to Collect Input */}
+                    <Text style={styles.fieldLabel}>Amount to Collect (₹) *</Text>
+                    <TextInput
+                      style={[styles.input, { fontWeight: '800', fontSize: 16, color: '#16a34a' }]}
+                      keyboardType="numeric"
+                      value={multiMonthPayingAmount}
+                      onChangeText={setMultiMonthPayingAmount}
+                      placeholder="e.g. 5000"
+                    />
 
-                {/* Step 3: Payment Mode Pills */}
-                <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Payment Mode *</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    {PAYMENT_MODES.map(m => (
-                      <TouchableOpacity
-                        key={m.id}
-                        style={[styles.modeBtn, mode === m.id && styles.modeBtnActive]}
-                        onPress={() => setMode(m.id)}
-                      >
-                        <Ionicons name={m.icon} size={16} color={mode === m.id ? '#fff' : '#64748b'} />
-                        <Text style={[styles.modeBtnText, mode === m.id && styles.modeBtnTextActive]}>{m.label}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </ScrollView>
+                    {/* Payment Mode Pills */}
+                    <Text style={styles.fieldLabel}>Payment Mode *</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        {PAYMENT_MODES.map(m => (
+                          <TouchableOpacity
+                            key={m.id}
+                            style={[styles.modeBtn, mode === m.id && styles.modeBtnActive]}
+                            onPress={() => setMode(m.id)}
+                          >
+                            <Ionicons name={m.icon} size={16} color={mode === m.id ? '#fff' : '#64748b'} />
+                            <Text style={[styles.modeBtnText, mode === m.id && styles.modeBtnTextActive]}>{m.label}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </ScrollView>
 
-                {/* Transaction / UTR / Cheque Ref ID */}
-                {mode !== 'CASH' && (
-                  <>
-                    <Text style={styles.fieldLabel}>
-                      {mode === 'CHEQUE' ? 'Cheque No. & Bank Name *' : 'Transaction Ref / UTR / Auth Code *'}
-                    </Text>
+                    {/* Transaction Ref */}
+                    {mode !== 'CASH' && (
+                      <>
+                        <Text style={styles.fieldLabel}>Transaction / UTR Reference</Text>
+                        <TextInput
+                          style={styles.input}
+                          placeholder="e.g. UPI-9988776655"
+                          placeholderTextColor="#94a3b8"
+                          value={txnRef}
+                          onChangeText={setTxnRef}
+                        />
+                      </>
+                    )}
+
+                    {/* Remarks */}
+                    <Text style={styles.fieldLabel}>Counter Remarks / Notes</Text>
                     <TextInput
                       style={styles.input}
-                      placeholder={mode === 'CHEQUE' ? 'e.g., CHQ-982144 (HDFC Bank)' : 'e.g., UPI Ref 382910482019'}
+                      placeholder="e.g. Multi-month fee collected at cashier counter"
                       placeholderTextColor="#94a3b8"
-                      value={txnRef}
-                      onChangeText={setTxnRef}
+                      value={remarks}
+                      onChangeText={setRemarks}
                     />
-                  </>
+
+                    {/* Dual Action Buttons: Collect vs Demand Notice */}
+                    <View style={{ gap: 8, marginTop: 4 }}>
+                      <TouchableOpacity
+                        style={[
+                          styles.collectBtn,
+                          (collecting || selectedMonths.length === 0 || !multiMonthPayingAmount || parseFloat(multiMonthPayingAmount) <= 0) && { opacity: 0.6 }
+                        ]}
+                        disabled={collecting || selectedMonths.length === 0 || !multiMonthPayingAmount || parseFloat(multiMonthPayingAmount) <= 0}
+                        onPress={handleCollectMultiMonthPayment}
+                      >
+                        {collecting ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                          <>
+                            <Ionicons name="card" size={20} color="#fff" />
+                            <Text style={styles.collectBtnText}>
+                              Collect ₹{Number(multiMonthPayingAmount || multiMonthPayable).toLocaleString('en-IN')} & Print
+                            </Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.modeBtn,
+                          { justifyContent: 'center', paddingVertical: 12, backgroundColor: '#f1f5f9' },
+                          (generatingNotice || selectedMonths.length === 0) && { opacity: 0.6 }
+                        ]}
+                        disabled={generatingNotice || selectedMonths.length === 0}
+                        onPress={handleGenerateDemandNotice}
+                      >
+                        {generatingNotice ? (
+                          <ActivityIndicator size="small" color={colors.primary} />
+                        ) : (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Ionicons name="document-text-outline" size={18} color={colors.primary} />
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.primary }}>
+                              Issue Demand Bill / Notice ({selectedMonths.length} mo)
+                            </Text>
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  /* ── TAB 2: ITEMIZED DUES SELECTION WORKFLOW ── */
+                  <View>
+                    {/* Itemized Fee Breakdown with Checkboxes (1:1 with Web ERP) */}
+                    <View style={{ marginBottom: 16 }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <Text style={styles.cardSectionTitle}>Fee Head Allocations</Text>
+                        <Text style={{ fontSize: 11, color: '#64748b' }}>Select items to collect</Text>
+                      </View>
+
+                      {Object.keys(selectedItems).length > 0 ? (
+                        Object.entries(selectedItems).map(([key, item]) => (
+                          <View key={key} style={[styles.allocationCard, item.selected && styles.allocationCardSelected]}>
+                            <TouchableOpacity
+                              style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}
+                              onPress={() => toggleItem(key)}
+                            >
+                              <Ionicons
+                                name={item.selected ? 'checkbox' : 'square-outline'}
+                                size={22}
+                                color={item.selected ? colors.primary : '#94a3b8'}
+                              />
+                              <View style={{ flex: 1 }}>
+                                <Text style={[styles.allocHeadName, item.selected && { color: colors.primary }]}>
+                                  {item.fee_head_name}
+                                </Text>
+                                <Text style={styles.allocPeriodText}>
+                                  Bill: #{item.bill_no || 'Bill'} · Period: {item.bill_period || 'Current'}
+                                </Text>
+                              </View>
+                            </TouchableOpacity>
+
+                            {/* Editable amount input for partial collection */}
+                            <View style={{ width: 100 }}>
+                              <TextInput
+                                style={[styles.allocAmountInput, !item.selected && { opacity: 0.5 }]}
+                                keyboardType="numeric"
+                                value={String(item.amount)}
+                                onChangeText={val => updateItemAmount(key, val)}
+                                editable={item.selected}
+                              />
+                              <Text style={styles.allocMaxText}>Max: ₹{item.max}</Text>
+                            </View>
+                          </View>
+                        ))
+                      ) : (
+                        <View style={styles.noDuesBox}>
+                          <Ionicons name="checkmark-circle-outline" size={32} color="#16a34a" />
+                          <Text style={styles.noDuesText}>No pending fee items on record!</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Total To Pay Box */}
+                    <View style={styles.totalPayBanner}>
+                      <Text style={styles.totalPayLabel}>Total Payable Amount:</Text>
+                      <Text style={styles.totalPayValue}>₹{totalToPay.toLocaleString('en-IN')}</Text>
+                    </View>
+
+                    {/* Step 3: Payment Mode Pills */}
+                    <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Payment Mode *</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        {PAYMENT_MODES.map(m => (
+                          <TouchableOpacity
+                            key={m.id}
+                            style={[styles.modeBtn, mode === m.id && styles.modeBtnActive]}
+                            onPress={() => setMode(m.id)}
+                          >
+                            <Ionicons name={m.icon} size={16} color={mode === m.id ? '#fff' : '#64748b'} />
+                            <Text style={[styles.modeBtnText, mode === m.id && styles.modeBtnTextActive]}>{m.label}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </ScrollView>
+
+                    {/* Transaction / UTR / Cheque Ref ID */}
+                    {mode !== 'CASH' && (
+                      <>
+                        <Text style={styles.fieldLabel}>
+                          {mode === 'CHEQUE' ? 'Cheque No. & Bank Name *' : 'Transaction Ref / UTR / Auth Code *'}
+                        </Text>
+                        <TextInput
+                          style={styles.input}
+                          placeholder={mode === 'CHEQUE' ? 'e.g., CHQ-982144 (HDFC Bank)' : 'e.g., UPI Ref 382910482019'}
+                          placeholderTextColor="#94a3b8"
+                          value={txnRef}
+                          onChangeText={setTxnRef}
+                        />
+                      </>
+                    )}
+
+                    {/* Remarks */}
+                    <Text style={styles.fieldLabel}>Counter Remarks / Notes (Optional)</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="e.g., Paid at accounts window by parent"
+                      placeholderTextColor="#94a3b8"
+                      value={remarks}
+                      onChangeText={setRemarks}
+                    />
+
+                    {/* Collect Button */}
+                    <TouchableOpacity
+                      style={[styles.collectBtn, (collecting || totalToPay <= 0) && { opacity: 0.6 }]}
+                      disabled={collecting || totalToPay <= 0}
+                      onPress={handleCollectPayment}
+                    >
+                      {collecting ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <>
+                          <Ionicons name="card" size={20} color="#fff" />
+                          <Text style={styles.collectBtnText}>
+                            Collect ₹{totalToPay.toLocaleString('en-IN')} & Print Receipt
+                          </Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </View>
                 )}
-
-                {/* Remarks */}
-                <Text style={styles.fieldLabel}>Counter Remarks / Notes (Optional)</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g., Paid at accounts window by parent"
-                  placeholderTextColor="#94a3b8"
-                  value={remarks}
-                  onChangeText={setRemarks}
-                />
-
-                {/* Collect Button */}
-                <TouchableOpacity
-                  style={[styles.collectBtn, (collecting || totalToPay <= 0) && { opacity: 0.6 }]}
-                  disabled={collecting || totalToPay <= 0}
-                  onPress={handleCollectPayment}
-                >
-                  {collecting ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <>
-                      <Ionicons name="card" size={20} color="#fff" />
-                      <Text style={styles.collectBtnText}>
-                        Collect ₹{totalToPay.toLocaleString('en-IN')} & Print Receipt
-                      </Text>
-                    </>
-                  )}
-                </TouchableOpacity>
               </View>
             )}
           </>

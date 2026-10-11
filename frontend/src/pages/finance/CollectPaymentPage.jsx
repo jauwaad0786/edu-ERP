@@ -33,6 +33,15 @@ export default function CollectPaymentPage() {
   const [selectedItems, setSelectedItems] = useState({}); // { itemId: { ... } }
   const [collecting, setCollecting] = useState(false);
 
+  // Multi-Month Package State (1, 3, 6, 12 Months & Custom)
+  const [collectionTab, setCollectionTab] = useState('MULTI_MONTH'); // 'MULTI_MONTH' | 'ITEMIZED'
+  const [scheduleData, setScheduleData] = useState(null);
+  const [loadingSchedule, setLoadingSchedule] = useState(false);
+  const [selectedMonths, setSelectedMonths] = useState([]);
+  const [activePreset, setActivePreset] = useState('1_month');
+  const [multiMonthPayingAmount, setMultiMonthPayingAmount] = useState(0);
+  const [generatingDemandNotice, setGeneratingDemandNotice] = useState(false);
+
   // Instant Concession / Maafi Form State
   const [concHeadId, setConcHeadId] = useState('');
   const [concType, setConcType] = useState('WAIVER');
@@ -79,66 +88,101 @@ export default function CollectPaymentPage() {
     return () => clearTimeout(timer);
   }, [selectedClass, searchQuery, onlyPending]);
 
-  // 3. Load Student Ledger when selected or via URL param
+  // Helper to sync multi-month presets from schedule
+  const initSchedulePresets = (sched) => {
+    if (!sched?.presets) return;
+    const p1 = sched.presets['1_month'];
+    if (p1 && p1.months?.length > 0) {
+      setSelectedMonths(p1.months);
+      setActivePreset('1_month');
+      setMultiMonthPayingAmount(p1.amount_payable);
+    } else {
+      const unpaid = (sched.months || []).filter((m) => m.balance > 0);
+      if (unpaid.length > 0) {
+        setSelectedMonths([unpaid[0].month_code]);
+        setActivePreset('custom');
+        setMultiMonthPayingAmount(unpaid[0].balance);
+      } else {
+        setSelectedMonths([]);
+        setActivePreset('custom');
+        setMultiMonthPayingAmount(0);
+      }
+    }
+  };
+
+  // 3. Load Student Ledger and Multi-Month Schedule when selected or via URL param
   const loadStudentLedger = async (studentId) => {
     try {
       setLoadingLedger(true);
-      const res = await api.get(`/fees-finance/students/${studentId}/ledger`);
-      setLedgerData(res.data);
-      setSelectedStudent(res.data.student || { id: studentId, name: res.data.student_name });
+      setLoadingSchedule(true);
+      const [ledgerRes, schedRes] = await Promise.allSettled([
+        api.get(`/fees-finance/students/${studentId}/ledger`),
+        api.get(`/fees-finance/students/${studentId}/multi-month-schedule`),
+      ]);
 
-      // Populate bill items that have pending balance
-      const initialSelection = {};
-      const pendingBills = res.data.pending_bills || res.data.bills?.filter((b) => (b.balance_due || 0) > 0) || [];
+      if (ledgerRes.status === 'fulfilled') {
+        const res = ledgerRes.value;
+        setLedgerData(res.data);
+        setSelectedStudent(res.data.student || { id: studentId, name: res.data.student_name });
 
-      pendingBills.forEach((b) => {
-        b.items?.forEach((it) => {
-          const bal = (it.balance_amount !== undefined && it.balance_amount !== null) ? it.balance_amount : (it.net_amount || 0);
-          if (bal > 0) {
-            initialSelection[it.id] = {
-              bill_id: b.id,
-              bill_no: b.bill_no,
-              bill_period: b.bill_period_label || b.bill_month,
-              bill_item_id: it.id,
-              fee_head_id: it.fee_head_id,
-              fee_head_name: it.fee_head_name,
-              department: it.department || 'ACCOUNTS',
-              amount: bal,
-              max: bal,
-              selected: true,
-            };
+        // Populate bill items that have pending balance
+        const initialSelection = {};
+        const pendingBills = res.data.pending_bills || res.data.bills?.filter((b) => (b.balance_due || 0) > 0) || [];
+
+        pendingBills.forEach((b) => {
+          b.items?.forEach((it) => {
+            const bal = (it.balance_amount !== undefined && it.balance_amount !== null) ? it.balance_amount : (it.net_amount || 0);
+            if (bal > 0) {
+              initialSelection[it.id] = {
+                bill_id: b.id,
+                bill_no: b.bill_no,
+                bill_period: b.bill_period_label || b.bill_month,
+                bill_item_id: it.id,
+                fee_head_id: it.fee_head_id,
+                fee_head_name: it.fee_head_name,
+                department: it.department || 'ACCOUNTS',
+                amount: bal,
+                max: bal,
+                selected: true,
+              };
+            }
+          });
+
+          const prevDuesAmount = (b.previous_dues || 0);
+          if (prevDuesAmount > 0) {
+            const itemsPaid = (b.items || []).reduce((acc, it) => acc + (it.paid_amount || 0), 0);
+            const totalPaidOnBill = (b.amount_paid || 0);
+            const prevDuesPaid = Math.max(0, totalPaidOnBill - itemsPaid);
+            const prevDuesBal = Math.max(0, prevDuesAmount - prevDuesPaid);
+            if (prevDuesBal > 0) {
+              initialSelection[`prev_dues_${b.id}`] = {
+                bill_id: b.id,
+                bill_no: b.bill_no,
+                bill_period: b.bill_period_label || b.bill_month,
+                bill_item_id: null,
+                fee_head_id: null,
+                fee_head_name: 'Previous Dues / Opening Balance',
+                department: 'ACCOUNTS',
+                amount: prevDuesBal,
+                max: prevDuesBal,
+                selected: true,
+              };
+            }
           }
         });
+        setSelectedItems(initialSelection);
+      }
 
-        // If bill has previous dues that are not yet covered
-        const prevDuesAmount = (b.previous_dues || 0);
-        if (prevDuesAmount > 0) {
-          const itemsPaid = (b.items || []).reduce((acc, it) => acc + (it.paid_amount || 0), 0);
-          const totalPaidOnBill = (b.amount_paid || 0);
-          const prevDuesPaid = Math.max(0, totalPaidOnBill - itemsPaid);
-          const prevDuesBal = Math.max(0, prevDuesAmount - prevDuesPaid);
-          if (prevDuesBal > 0) {
-            initialSelection[`prev_dues_${b.id}`] = {
-              bill_id: b.id,
-              bill_no: b.bill_no,
-              bill_period: b.bill_period_label || b.bill_month,
-              bill_item_id: null,
-              fee_head_id: null,
-              fee_head_name: 'Previous Dues / Opening Balance',
-              department: 'ACCOUNTS',
-              amount: prevDuesBal,
-              max: prevDuesBal,
-              selected: true,
-            };
-          }
-        }
-      });
-
-      setSelectedItems(initialSelection);
+      if (schedRes.status === 'fulfilled') {
+        const sdata = schedRes.value.data;
+        setScheduleData(sdata);
+        initSchedulePresets(sdata);
+      }
     } catch (err) {
-      toast.error('Failed to load student ledger');
+      toast.error('Failed to load student ledger or fee schedule');
     } finally {
       setLoadingLedger(false);
+      setLoadingSchedule(false);
     }
   };
 
@@ -148,6 +192,116 @@ export default function CollectPaymentPage() {
       loadStudentLedger(studentIdParam);
     }
   }, [searchParams]);
+
+  // Preset Selection Handler
+  const applyPreset = (presetKey) => {
+    if (!scheduleData?.presets?.[presetKey]) return;
+    const p = scheduleData.presets[presetKey];
+    setActivePreset(presetKey);
+    setSelectedMonths(p.months || []);
+    setMultiMonthPayingAmount(p.amount_payable || 0);
+  };
+
+  // Toggle single month in custom mode
+  const toggleMonth = (monthCode) => {
+    setActivePreset('custom');
+    let updated;
+    if (selectedMonths.includes(monthCode)) {
+      updated = selectedMonths.filter((m) => m !== monthCode);
+    } else {
+      updated = [...selectedMonths, monthCode];
+    }
+    setSelectedMonths(updated);
+
+    // Calculate total payable for updated months from schedule
+    if (scheduleData?.months) {
+      const selObjs = scheduleData.months.filter((m) => updated.includes(m.month_code));
+      const payable = selObjs.reduce((sum, m) => sum + (m.balance || 0), 0);
+      setMultiMonthPayingAmount(payable);
+    }
+  };
+
+  // Calculated figures for currently selected months
+  const selectedMonthsDetails = useMemo(() => {
+    if (!scheduleData?.months) return [];
+    return scheduleData.months.filter((m) => selectedMonths.includes(m.month_code));
+  }, [scheduleData, selectedMonths]);
+
+  const multiMonthBase = selectedMonthsDetails.reduce((sum, m) => sum + (m.original_amount || 0), 0);
+  const multiMonthDisc = selectedMonthsDetails.reduce((sum, m) => sum + (m.discount_amount || 0), 0);
+  const multiMonthFine = selectedMonthsDetails.reduce((sum, m) => sum + (m.fine_amount || 0), 0);
+  const multiMonthPayable = selectedMonthsDetails.reduce((sum, m) => sum + (m.balance || 0), 0);
+
+  // Submit Multi-Month Payment
+  const handleCollectMultiMonthPayment = async (e) => {
+    e.preventDefault();
+    if (!selectedStudent) {
+      toast.error('Please select a student first');
+      return;
+    }
+    if (selectedMonths.length === 0) {
+      toast.error('Please select at least one month to pay');
+      return;
+    }
+    const payAmt = parseFloat(multiMonthPayingAmount);
+    if (!payAmt || payAmt <= 0) {
+      toast.error('Payment amount must be greater than ₹0');
+      return;
+    }
+
+    try {
+      setCollecting(true);
+      const idempotencyKey = `mm_pay_${selectedStudent.id}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const payload = {
+        months: selectedMonths,
+        amount_paid: payAmt,
+        payment_mode: paymentMode,
+        transaction_ref: transactionRef.trim(),
+        remarks: remarks.trim() || `Multi-month fee payment for ${selectedMonths.join(', ')}`,
+        session: ledgerData?.session || scheduleData?.session || '2026-27',
+        idempotency_key: idempotencyKey,
+      };
+
+      const res = await api.post(`/fees-finance/students/${selectedStudent.id}/pay-multi-month`, payload);
+      toast.success(res.data?.message || `Payment Collected! Receipt No: ${res.data.receipt_no}`);
+      setReceiptModal(res.data);
+      loadStudentLedger(selectedStudent.id);
+      fetchStudents();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Multi-month payment collection failed');
+    } finally {
+      setCollecting(false);
+    }
+  };
+
+  // Generate Demand Bill / Payment Request Notice (Without payment)
+  const handleGenerateDemandNotice = async () => {
+    if (!selectedStudent) {
+      toast.error('Please select a student first');
+      return;
+    }
+    if (selectedMonths.length === 0) {
+      toast.error('Please select at least one month for the demand bill');
+      return;
+    }
+
+    try {
+      setGeneratingDemandNotice(true);
+      const payload = {
+        months: selectedMonths,
+        due_date: new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0],
+        session: ledgerData?.session || scheduleData?.session || '2026-27',
+      };
+
+      const res = await api.post(`/fees-finance/students/${selectedStudent.id}/generate-demand-notice`, payload);
+      toast.success(res.data?.message || `Demand Bill / Payment Notice generated for ${selectedMonths.length} month(s)!`);
+      loadStudentLedger(selectedStudent.id);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to generate demand notice');
+    } finally {
+      setGeneratingDemandNotice(false);
+    }
+  };
 
   const toggleItem = (itemId) => {
     setSelectedItems((prev) => ({
@@ -504,140 +658,418 @@ export default function CollectPaymentPage() {
                   </div>
                 </div>
 
-                {/* Right Column: Itemized Dues & Payment Form */}
+                {/* Right Column: Multi-Month Package & Itemized Dues Tabs */}
                 <div className="card">
-                  <div className="card-header">
-                    <div>
-                      <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, margin: 0 }}>Itemized Dues & Service Selection</h3>
-                      <p className="text-xs text-muted" style={{ margin: 0 }}>
-                        Select specific fee heads to pay (Tuition, Transport, Library, etc.).
-                      </p>
-                    </div>
-                    <span className="badge badge-info">{Object.keys(selectedItems).length} Payable Items</span>
+                  {/* Mode Selector Tabs */}
+                  <div style={{ display: 'flex', borderBottom: '1px solid var(--neutral-2)', background: '#f8fafc', padding: '8px 12px', gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => setCollectionTab('MULTI_MONTH')}
+                      className={`btn btn-sm ${collectionTab === 'MULTI_MONTH' ? 'btn-primary' : 'btn-neutral'}`}
+                      style={{ fontWeight: 700 }}
+                    >
+                      <i className="ti ti-calendar-event"></i> Multi-Month Package (1, 3, 6, 12 Months)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCollectionTab('ITEMIZED')}
+                      className={`btn btn-sm ${collectionTab === 'ITEMIZED' ? 'btn-primary' : 'btn-neutral'}`}
+                      style={{ fontWeight: 700 }}
+                    >
+                      <i className="ti ti-list-check"></i> Itemized Dues POS ({Object.keys(selectedItems).length})
+                    </button>
                   </div>
 
-                  <form onSubmit={handleCollectPayment}>
-                    <div className="card-body" style={{ padding: 16 }}>
-                      {Object.keys(selectedItems).length === 0 ? (
-                        <div className="empty-state" style={{ padding: '30px 20px' }}>
-                          <i className="ti ti-check" style={{ fontSize: 32, color: '#2e844a' }}></i>
-                          <h4 style={{ marginTop: 8 }}>All Dues are Cleared!</h4>
-                          <p className="text-xs text-muted">This student has no pending fee bills or charges.</p>
+                  {collectionTab === 'MULTI_MONTH' ? (
+                    /* TAB 1: MULTI-MONTH PAYMENT WORKFLOW */
+                    <form onSubmit={handleCollectMultiMonthPayment}>
+                      <div className="card-header" style={{ padding: '12px 16px', borderBottom: '1px solid var(--neutral-2)' }}>
+                        <div>
+                          <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, margin: 0 }}>
+                            Multi-Month Package Payment
+                          </h3>
+                          <p className="text-xs text-muted" style={{ margin: 0 }}>
+                            Pay 1 month, quarterly (3 mo), half-yearly (6 mo), or annual (12 mo) in a single consolidated transaction.
+                          </p>
                         </div>
-                      ) : (
-                        <div className="table-container mb-4" style={{ border: '1px solid var(--neutral-2)' }}>
-                          <table className="table">
-                            <thead>
-                              <tr>
-                                <th style={{ width: 40 }}></th>
-                                <th>Service / Fee Head</th>
-                                <th>Bill Period</th>
-                                <th>Department</th>
-                                <th style={{ textAlign: 'right' }}>Max Due</th>
-                                <th style={{ textAlign: 'right', width: 140 }}>Paying (₹)</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {Object.values(selectedItems).map((it) => (
-                                <tr key={it.bill_item_id} style={{ background: it.selected ? '#fafaf9' : 'transparent' }}>
-                                  <td>
-                                    <input
-                                      type="checkbox"
-                                      checked={it.selected}
-                                      onChange={() => toggleItem(it.bill_item_id)}
-                                      style={{ width: 16, height: 16, cursor: 'pointer' }}
-                                    />
-                                  </td>
-                                  <td>
-                                    <div style={{ fontWeight: 700, color: 'var(--neutral-9)' }}>{it.fee_head_name}</div>
-                                  </td>
-                                  <td style={{ fontSize: 12, color: 'var(--neutral-6)' }}>{it.bill_period}</td>
-                                  <td>
-                                    <span className="badge badge-neutral" style={{ fontSize: 10 }}>{it.department}</span>
-                                  </td>
-                                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(it.max)}</td>
-                                  <td style={{ textAlign: 'right' }}>
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      max={it.max}
-                                      step="any"
-                                      disabled={!it.selected}
-                                      value={it.amount}
-                                      onChange={(e) => updateItemAmount(it.bill_item_id, e.target.value)}
-                                      className="form-input"
-                                      style={{ height: 32, width: 110, textAlign: 'right', fontWeight: 700, marginLeft: 'auto' }}
-                                    />
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-
-                      {/* Payment Mode & Transaction Details */}
-                      <div className="grid-3 mb-4">
-                        <div className="form-group" style={{ margin: 0 }}>
-                          <label className="form-label">Payment Mode</label>
-                          <select
-                            value={paymentMode}
-                            onChange={(e) => setPaymentMode(e.target.value)}
-                            className="form-select"
-                            style={{ fontWeight: 700 }}
-                          >
-                            <option value="UPI">UPI / QR Code</option>
-                            <option value="CASH">Cash Counter</option>
-                            <option value="CARD">Debit / Credit Card</option>
-                            <option value="BANK_TRANSFER">Bank Transfer / NEFT</option>
-                            <option value="CHEQUE">Cheque / Demand Draft</option>
-                          </select>
-                        </div>
-
-                        <div className="form-group" style={{ margin: 0 }}>
-                          <label className="form-label">Transaction Ref / UTR No</label>
-                          <input
-                            type="text"
-                            value={transactionRef}
-                            onChange={(e) => setTransactionRef(e.target.value)}
-                            placeholder="e.g. UPI-UTR-998877"
-                            className="form-input"
-                          />
-                        </div>
-
-                        <div className="form-group" style={{ margin: 0 }}>
-                          <label className="form-label">Remarks / Notes</label>
-                          <input
-                            type="text"
-                            value={remarks}
-                            onChange={(e) => setRemarks(e.target.value)}
-                            placeholder="e.g. Paid at accounts desk"
-                            className="form-input"
-                          />
-                        </div>
+                        <span className="badge badge-success">Idempotent & Reconciled</span>
                       </div>
 
-                      {/* Total & Submit Button */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#eaf5ea', border: '1px solid #a9d6b3', borderRadius: 8, padding: '12px 16px' }}>
-                        <div>
-                          <span className="text-xs font-semibold" style={{ color: '#2e844a' }}>TOTAL PAYMENT AMOUNT:</span>
-                          <div style={{ fontSize: '1.375rem', fontWeight: 800, color: '#2e844a' }}>
-                            {fmt(totalToPay)}
+                      <div className="card-body" style={{ padding: 16 }}>
+                        {/* Period Preset Options */}
+                        <div style={{ marginBottom: 14 }}>
+                          <label className="form-label" style={{ marginBottom: 6, fontWeight: 700 }}>
+                            Select Payment Period:
+                          </label>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            {[
+                              { key: '1_month', label: '1 Month', icon: 'ti-calendar' },
+                              { key: '3_months', label: '3 Months (Quarterly)', icon: 'ti-calendar-plus' },
+                              { key: '6_months', label: '6 Months (Half-Yearly)', icon: 'ti-calendar-stats' },
+                              { key: '12_months', label: '1 Year (Annual)', icon: 'ti-calendar-star' },
+                              { key: 'custom', label: 'Custom Months', icon: 'ti-adjustments' },
+                            ].map((preset) => {
+                              const isPresetActive = activePreset === preset.key;
+                              const pData = scheduleData?.presets?.[preset.key];
+                              const isDisabled = preset.key !== 'custom' && (!pData || !pData.is_available);
+                              return (
+                                <button
+                                  key={preset.key}
+                                  type="button"
+                                  disabled={isDisabled}
+                                  onClick={() => {
+                                    if (preset.key === 'custom') {
+                                      setActivePreset('custom');
+                                    } else {
+                                      applyPreset(preset.key);
+                                    }
+                                  }}
+                                  className={`btn btn-sm ${isPresetActive ? 'btn-primary' : 'btn-neutral'}`}
+                                  style={{
+                                    fontWeight: 700,
+                                    borderColor: isPresetActive ? 'var(--blue-60)' : 'var(--neutral-3)',
+                                    opacity: isDisabled ? 0.4 : 1,
+                                  }}
+                                >
+                                  <i className={`ti ${preset.icon}`}></i> {preset.label}
+                                  {pData && pData.amount_payable > 0 && (
+                                    <span style={{ marginLeft: 4, opacity: 0.85, fontSize: 11 }}>
+                                      ({fmt(pData.amount_payable)})
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
 
-                        <button
-                          type="submit"
-                          disabled={collecting || totalToPay <= 0}
-                          className="btn btn-primary"
-                          style={{ height: 42, padding: '0 24px', fontSize: '0.875rem' }}
-                        >
-                          <i className="ti ti-check"></i>
-                          {collecting ? 'Processing Payment...' : 'Collect & Issue Receipt'}
-                        </button>
+                        {/* Schedule Months Matrix */}
+                        {loadingSchedule ? (
+                          <div className="empty-state" style={{ padding: '20px 0' }}>
+                            <div className="spinner" style={{ width: 20, height: 20 }}></div>
+                            <p className="text-xs text-muted mt-2">Loading academic session schedule...</p>
+                          </div>
+                        ) : !scheduleData?.months || scheduleData.months.length === 0 ? (
+                          <div className="alert alert-info" style={{ fontSize: 12 }}>
+                            No fee schedule found for this student. Configure class fee structures first.
+                          </div>
+                        ) : (
+                          <div className="table-container mb-4" style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid var(--neutral-2)' }}>
+                            <table className="table">
+                              <thead>
+                                <tr>
+                                  <th style={{ width: 36 }}></th>
+                                  <th>Month</th>
+                                  <th style={{ textAlign: 'right' }}>Base Charges</th>
+                                  <th style={{ textAlign: 'right' }}>Waiver/Maafi</th>
+                                  <th style={{ textAlign: 'right' }}>Late Fine</th>
+                                  <th style={{ textAlign: 'right' }}>Balance Due</th>
+                                  <th style={{ textAlign: 'center', width: 110 }}>Status</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {scheduleData.months.map((m) => {
+                                  const isSelected = selectedMonths.includes(m.month_code);
+                                  const isPaid = m.is_paid || m.balance <= 0;
+                                  return (
+                                    <tr
+                                      key={m.month_code}
+                                      onClick={() => !isPaid && toggleMonth(m.month_code)}
+                                      style={{
+                                        cursor: isPaid ? 'default' : 'pointer',
+                                        background: isSelected ? '#eff6ff' : isPaid ? '#f8fafc' : 'transparent',
+                                        opacity: isPaid ? 0.7 : 1,
+                                      }}
+                                    >
+                                      <td>
+                                        <input
+                                          type="checkbox"
+                                          disabled={isPaid}
+                                          checked={isSelected}
+                                          onChange={() => toggleMonth(m.month_code)}
+                                          style={{ cursor: isPaid ? 'default' : 'pointer' }}
+                                        />
+                                      </td>
+                                      <td style={{ fontWeight: 700 }}>
+                                        {m.month_label}
+                                        {m.bill_no && (
+                                          <span className="text-xs text-muted" style={{ display: 'block', fontWeight: 400 }}>
+                                            Bill: {m.bill_no}
+                                          </span>
+                                        )}
+                                      </td>
+                                      <td style={{ textAlign: 'right' }}>{fmt(m.original_amount)}</td>
+                                      <td style={{ textAlign: 'right', color: m.discount_amount > 0 ? '#16a34a' : 'inherit' }}>
+                                        {m.discount_amount > 0 ? `-${fmt(m.discount_amount)}` : '—'}
+                                      </td>
+                                      <td style={{ textAlign: 'right', color: m.fine_amount > 0 ? '#dc2626' : 'inherit' }}>
+                                        {m.fine_amount > 0 ? `+${fmt(m.fine_amount)}` : '—'}
+                                      </td>
+                                      <td style={{ textAlign: 'right', fontWeight: 800, color: m.balance > 0 ? '#dd7a01' : '#2e844a' }}>
+                                        {fmt(m.balance)}
+                                      </td>
+                                      <td style={{ textAlign: 'center' }}>
+                                        {isPaid ? (
+                                          <span className="badge badge-success" style={{ fontSize: 10 }}>PAID</span>
+                                        ) : m.is_partial ? (
+                                          <span className="badge badge-warning" style={{ fontSize: 10 }}>PARTIAL</span>
+                                        ) : m.status === 'OVERDUE' ? (
+                                          <span className="badge badge-error" style={{ fontSize: 10 }}>OVERDUE</span>
+                                        ) : (
+                                          <span className="badge badge-neutral" style={{ fontSize: 10 }}>UPCOMING</span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+
+                        {/* Calculation Summary Box */}
+                        <div style={{ background: '#f8fafc', border: '1px solid var(--neutral-2)', borderRadius: 8, padding: 12, marginBottom: 14 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--neutral-7)' }}>
+                              SELECTED MONTHS ({selectedMonths.length}):
+                            </span>
+                            <span style={{ fontSize: 12, fontWeight: 600 }}>
+                              {selectedMonthsDetails.map((m) => m.month_label).join(', ') || 'None selected'}
+                            </span>
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, textAlign: 'center', background: '#ffffff', padding: 8, borderRadius: 6, border: '1px solid var(--neutral-2)' }}>
+                            <div>
+                              <div style={{ fontSize: 11, color: 'var(--neutral-5)' }}>Base Fee</div>
+                              <div style={{ fontWeight: 700 }}>{fmt(multiMonthBase)}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 11, color: '#16a34a' }}>Discounts/Maafi</div>
+                              <div style={{ fontWeight: 700, color: '#16a34a' }}>-{fmt(multiMonthDisc)}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 11, color: '#dc2626' }}>Late Fines</div>
+                              <div style={{ fontWeight: 700, color: '#dc2626' }}>+{fmt(multiMonthFine)}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 11, color: 'var(--blue-60)', fontWeight: 700 }}>Total Payable</div>
+                              <div style={{ fontWeight: 800, color: 'var(--blue-60)' }}>{fmt(multiMonthPayable)}</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Payment Details Form */}
+                        <div className="grid-3 mb-4">
+                          <div className="form-group" style={{ margin: 0 }}>
+                            <label className="form-label">Payment Mode</label>
+                            <select
+                              value={paymentMode}
+                              onChange={(e) => setPaymentMode(e.target.value)}
+                              className="form-select"
+                              style={{ fontWeight: 700 }}
+                            >
+                              <option value="UPI">UPI / QR Code</option>
+                              <option value="CASH">Cash Counter</option>
+                              <option value="CARD">Debit / Credit Card</option>
+                              <option value="BANK_TRANSFER">Bank Transfer / NEFT</option>
+                              <option value="CHEQUE">Cheque / Demand Draft</option>
+                            </select>
+                          </div>
+
+                          <div className="form-group" style={{ margin: 0 }}>
+                            <label className="form-label">Transaction Ref / UTR</label>
+                            <input
+                              type="text"
+                              value={transactionRef}
+                              onChange={(e) => setTransactionRef(e.target.value)}
+                              placeholder="e.g. UPI-9988776655"
+                              className="form-input"
+                            />
+                          </div>
+
+                          <div className="form-group" style={{ margin: 0 }}>
+                            <label className="form-label">Amount to Collect (₹)</label>
+                            <input
+                              type="number"
+                              min="1"
+                              step="any"
+                              value={multiMonthPayingAmount}
+                              onChange={(e) => setMultiMonthPayingAmount(e.target.value)}
+                              className="form-input"
+                              style={{ fontWeight: 800, color: '#2e844a' }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Dual Action Bar: Collect Payment vs Demand Bill Notice */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#eaf5ea', border: '1px solid #a9d6b3', borderRadius: 8, padding: '12px 16px', flexWrap: 'wrap', gap: 10 }}>
+                          <div>
+                            <span className="text-xs font-semibold" style={{ color: '#2e844a' }}>PAYABLE TOTAL:</span>
+                            <div style={{ fontSize: '1.375rem', fontWeight: 800, color: '#2e844a' }}>
+                              {fmt(multiMonthPayingAmount || multiMonthPayable)}
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button
+                              type="button"
+                              disabled={generatingDemandNotice || selectedMonths.length === 0}
+                              onClick={handleGenerateDemandNotice}
+                              className="btn btn-neutral"
+                              style={{ height: 42, padding: '0 16px', fontWeight: 700 }}
+                              title="Generate an official Demand Bill / Payment Request without recording a payment"
+                            >
+                              <i className="ti ti-file-invoice"></i>
+                              {generatingDemandNotice ? 'Generating...' : 'Issue Demand Bill'}
+                            </button>
+
+                            <button
+                              type="submit"
+                              disabled={collecting || selectedMonths.length === 0 || !multiMonthPayingAmount || parseFloat(multiMonthPayingAmount) <= 0}
+                              className="btn btn-primary"
+                              style={{ height: 42, padding: '0 24px', fontSize: '0.875rem', fontWeight: 700 }}
+                            >
+                              <i className="ti ti-check"></i>
+                              {collecting ? 'Processing Payment...' : 'Collect & Issue Receipt'}
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </form>
+                    </form>
+                  ) : (
+                    /* TAB 2: ITEMIZED DUES SELECTION WORKFLOW */
+                    <form onSubmit={handleCollectPayment}>
+                      <div className="card-header" style={{ padding: '12px 16px', borderBottom: '1px solid var(--neutral-2)' }}>
+                        <div>
+                          <h3 style={{ fontSize: '0.9375rem', fontWeight: 700, margin: 0 }}>Itemized Dues & Service Selection</h3>
+                          <p className="text-xs text-muted" style={{ margin: 0 }}>
+                            Select specific fee heads to pay (Tuition, Transport, Library, etc.).
+                          </p>
+                        </div>
+                        <span className="badge badge-info">{Object.keys(selectedItems).length} Payable Items</span>
+                      </div>
+
+                      <div className="card-body" style={{ padding: 16 }}>
+                        {Object.keys(selectedItems).length === 0 ? (
+                          <div className="empty-state" style={{ padding: '30px 20px' }}>
+                            <i className="ti ti-check" style={{ fontSize: 32, color: '#2e844a' }}></i>
+                            <h4 style={{ marginTop: 8 }}>All Dues are Cleared!</h4>
+                            <p className="text-xs text-muted">This student has no pending fee bills or charges.</p>
+                          </div>
+                        ) : (
+                          <div className="table-container mb-4" style={{ border: '1px solid var(--neutral-2)' }}>
+                            <table className="table">
+                              <thead>
+                                <tr>
+                                  <th style={{ width: 40 }}></th>
+                                  <th>Service / Fee Head</th>
+                                  <th>Bill Period</th>
+                                  <th>Department</th>
+                                  <th style={{ textAlign: 'right' }}>Max Due</th>
+                                  <th style={{ textAlign: 'right', width: 140 }}>Paying (₹)</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {Object.values(selectedItems).map((it) => (
+                                  <tr key={it.bill_item_id} style={{ background: it.selected ? '#fafaf9' : 'transparent' }}>
+                                    <td>
+                                      <input
+                                        type="checkbox"
+                                        checked={it.selected}
+                                        onChange={() => toggleItem(it.bill_item_id)}
+                                        style={{ width: 16, height: 16, cursor: 'pointer' }}
+                                      />
+                                    </td>
+                                    <td>
+                                      <div style={{ fontWeight: 700, color: 'var(--neutral-9)' }}>{it.fee_head_name}</div>
+                                    </td>
+                                    <td style={{ fontSize: 12, color: 'var(--neutral-6)' }}>{it.bill_period}</td>
+                                    <td>
+                                      <span className="badge badge-neutral" style={{ fontSize: 10 }}>{it.department}</span>
+                                    </td>
+                                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(it.max)}</td>
+                                    <td style={{ textAlign: 'right' }}>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        max={it.max}
+                                        step="any"
+                                        disabled={!it.selected}
+                                        value={it.amount}
+                                        onChange={(e) => updateItemAmount(it.bill_item_id, e.target.value)}
+                                        className="form-input"
+                                        style={{ height: 32, width: 110, textAlign: 'right', fontWeight: 700, marginLeft: 'auto' }}
+                                      />
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+
+                        {/* Payment Mode & Transaction Details */}
+                        <div className="grid-3 mb-4">
+                          <div className="form-group" style={{ margin: 0 }}>
+                            <label className="form-label">Payment Mode</label>
+                            <select
+                              value={paymentMode}
+                              onChange={(e) => setPaymentMode(e.target.value)}
+                              className="form-select"
+                              style={{ fontWeight: 700 }}
+                            >
+                              <option value="UPI">UPI / QR Code</option>
+                              <option value="CASH">Cash Counter</option>
+                              <option value="CARD">Debit / Credit Card</option>
+                              <option value="BANK_TRANSFER">Bank Transfer / NEFT</option>
+                              <option value="CHEQUE">Cheque / Demand Draft</option>
+                            </select>
+                          </div>
+
+                          <div className="form-group" style={{ margin: 0 }}>
+                            <label className="form-label">Transaction Ref / UTR No</label>
+                            <input
+                              type="text"
+                              value={transactionRef}
+                              onChange={(e) => setTransactionRef(e.target.value)}
+                              placeholder="e.g. UPI-UTR-998877"
+                              className="form-input"
+                            />
+                          </div>
+
+                          <div className="form-group" style={{ margin: 0 }}>
+                            <label className="form-label">Remarks / Notes</label>
+                            <input
+                              type="text"
+                              value={remarks}
+                              onChange={(e) => setRemarks(e.target.value)}
+                              placeholder="e.g. Paid at accounts desk"
+                              className="form-input"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Total & Submit Button */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#eaf5ea', border: '1px solid #a9d6b3', borderRadius: 8, padding: '12px 16px' }}>
+                          <div>
+                            <span className="text-xs font-semibold" style={{ color: '#2e844a' }}>TOTAL PAYMENT AMOUNT:</span>
+                            <div style={{ fontSize: '1.375rem', fontWeight: 800, color: '#2e844a' }}>
+                              {fmt(totalToPay)}
+                            </div>
+                          </div>
+
+                          <button
+                            type="submit"
+                            disabled={collecting || totalToPay <= 0}
+                            className="btn btn-primary"
+                            style={{ height: 42, padding: '0 24px', fontSize: '0.875rem' }}
+                          >
+                            <i className="ti ti-check"></i>
+                            {collecting ? 'Processing Payment...' : 'Collect & Issue Receipt'}
+                          </button>
+                        </div>
+                      </div>
+                    </form>
+                  )}
                 </div>
               </div>
 
@@ -775,6 +1207,13 @@ export default function CollectPaymentPage() {
                     <div className="text-xs text-muted mt-1">
                       Student: <strong>{selectedStudent?.name}</strong> ({selectedStudent?.admission_no})
                     </div>
+                    {(receiptModal.months_covered || receiptModal.payment?.months_covered) && (
+                      <div style={{ marginTop: 8 }}>
+                        <span className="badge badge-info" style={{ fontSize: 11 }}>
+                          Months Covered: {(receiptModal.months_covered || receiptModal.payment?.months_covered).join(', ')}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="table-container mb-4">

@@ -39,6 +39,19 @@ export default function AttendancePage() {
   const [markStudents,setMarkStudents]= useState([]);
   const [saving,      setSaving]      = useState(false);
 
+  /* ── arrival tracking state ── */
+  const [arrivalData,          setArrivalData]          = useState({ summary: {}, events: [] });
+  const [arrivalLoading,       setArrivalLoading]       = useState(false);
+  const [arrivalStatusFilter,  setArrivalStatusFilter]  = useState('ALL');
+  const [arrivalClassFilter,   setArrivalClassFilter]   = useState('');
+  const [arrivalClassSelect,   setArrivalClassSelect]   = useState('');
+  const [arrivalStudents,      setArrivalStudents]      = useState([]);
+  const [selectedArrivalIds,   setSelectedArrivalIds]   = useState([]);
+  const [recordingArrival,     setRecordingArrival]     = useState(false);
+  const [resolveModal,         setResolveModal]         = useState(null);
+  const [resolutionNotes,      setResolutionNotes]      = useState('');
+  const [resolvingDiscrepancy, setResolvingDiscrepancy] = useState(false);
+
   /* ── load overview ── */
   const loadOverview = useCallback(() => {
     setLoading(true);
@@ -125,7 +138,95 @@ export default function AttendancePage() {
   const TABS = [
     { key: 'overview', label: '📊 Overview' },
     { key: 'mark',     label: '✏️ Mark Attendance' },
+    { key: 'arrival',  label: '🚸 Arrival Verification & Alerts' },
   ];
+
+  /* ── load arrival dashboard ── */
+  const loadArrivalDashboard = useCallback(async () => {
+    setArrivalLoading(true);
+    try {
+      let url = `/arrivals/dashboard?date=${selDate}`;
+      if (arrivalClassFilter) url += `&class_id=${arrivalClassFilter}`;
+      if (arrivalStatusFilter !== 'ALL') url += `&status=${arrivalStatusFilter}`;
+      const res = await api.get(url);
+      setArrivalData(res.data || { summary: {}, events: [] });
+    } catch {
+      flash('❌ Failed to load arrival tracking data', 'error');
+    } finally {
+      setArrivalLoading(false);
+    }
+  }, [selDate, arrivalClassFilter, arrivalStatusFilter]);
+
+  useEffect(() => {
+    if (tab === 'arrival') {
+      loadArrivalDashboard();
+    }
+  }, [tab, loadArrivalDashboard]);
+
+  /* ── load students for arrival marking ── */
+  async function loadArrivalStudents(class_id) {
+    setArrivalClassSelect(class_id);
+    if (!class_id) {
+      setArrivalStudents([]);
+      setSelectedArrivalIds([]);
+      return;
+    }
+    try {
+      const res = await api.get(`/principal/students?class_id=${class_id}&per_page=100`);
+      const raw = res.data;
+      const list = Array.isArray(raw) ? raw : Array.isArray(raw?.data) ? raw.data : [];
+      setArrivalStudents(list);
+      setSelectedArrivalIds(list.map(s => s.id));
+    } catch {
+      flash('❌ Failed to load class students', 'error');
+    }
+  }
+
+  /* ── bulk record arrival ── */
+  async function handleBulkRecordArrival() {
+    if (!selectedArrivalIds.length) {
+      flash('❌ Please select at least one student', 'error');
+      return;
+    }
+    setRecordingArrival(true);
+    try {
+      const res = await api.post('/arrivals/bulk-record', {
+        student_ids: selectedArrivalIds,
+        arrival_date: selDate,
+      });
+      const data = res.data;
+      toast.success(`Arrival recorded for ${data.created_count} students! Notifications sent.`);
+      flash(`✅ Recorded arrival for ${data.created_count} students (${data.duplicate_count} already marked)`);
+      loadArrivalDashboard();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to record arrivals');
+      flash('❌ Failed to record arrivals', 'error');
+    } finally {
+      setRecordingArrival(false);
+    }
+  }
+
+  /* ── resolve discrepancy ── */
+  async function handleResolveDiscrepancy() {
+    if (!resolveModal || !resolutionNotes.trim()) {
+      flash('❌ Please enter resolution notes', 'error');
+      return;
+    }
+    setResolvingDiscrepancy(true);
+    try {
+      await api.post(`/arrivals/${resolveModal.id}/resolve`, {
+        resolution_notes: resolutionNotes.trim()
+      });
+      toast.success('Discrepancy resolved successfully');
+      setResolveModal(null);
+      setResolutionNotes('');
+      loadArrivalDashboard();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to resolve discrepancy');
+    } finally {
+      setResolvingDiscrepancy(false);
+    }
+  }
 
   /* ════════════════════════════════════════════════════════════════════════ */
   return (
@@ -617,6 +718,353 @@ export default function AttendancePage() {
                 )}
               </div>
             </div>
+          )}
+
+          {/* ══════════════ TAB: ARRIVAL VERIFICATION ══════════════ */}
+          {tab === 'arrival' && (
+            <>
+              {/* Critical Discrepancy Alert Banner */}
+              {arrivalData.summary?.reported_no > 0 && (
+                <div style={{
+                  padding: '14px 20px', borderRadius: 8, marginBottom: 20,
+                  background: '#fef1ee', border: '1px solid #f9c9c0',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  boxShadow: '0 2px 8px rgba(186, 5, 23, 0.08)'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ fontSize: 26 }}>🚨</span>
+                    <div>
+                      <strong style={{ color: '#ba0517', fontSize: 14 }}>
+                        Urgent Attention: {arrivalData.summary.reported_no} Arrival Discrepanc{arrivalData.summary.reported_no > 1 ? 'ies' : 'y'} Reported by Parents!
+                      </strong>
+                      <div style={{ fontSize: 12, color: '#7c0c16', marginTop: 2 }}>
+                        Parents tapped <strong>"NO — Not Reached School"</strong>. Please immediately verify the student's physical whereabouts and resolve the record.
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    className="btn btn-sm"
+                    style={{ background: '#ba0517', color: '#fff', border: 'none', fontWeight: 700 }}
+                    onClick={() => setArrivalStatusFilter('REPORTED_NO')}>
+                    Filter Discrepancies
+                  </button>
+                </div>
+              )}
+
+              {/* Arrival KPI Cards */}
+              <div className="grid-4 mb-6" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+                <StatCard icon="🚸" label="Arrivals Recorded"
+                  value={arrivalData.summary?.total_events ?? 0}
+                  color="#0176d3" bg="#e8f4fd" />
+                <StatCard icon="✅" label="Confirmed YES"
+                  value={arrivalData.summary?.confirmed_yes ?? 0}
+                  color="#2e844a" bg="#eaf5ea" />
+                <StatCard icon="🚨" label="Reported NO (Discrepancy)"
+                  value={arrivalData.summary?.reported_no ?? 0}
+                  color="#ba0517" bg="#fef1ee" />
+                <StatCard icon="⏳" label="Awaiting Parent Response"
+                  value={arrivalData.summary?.awaiting_response ?? 0}
+                  color="#dd7a01" bg="#fef5e4" />
+                <StatCard icon="⌛" label="No Response (Expired)"
+                  value={arrivalData.summary?.no_response ?? 0}
+                  color="#5c6f84" bg="#f1f5f9" />
+              </div>
+
+              {/* Quick Record Physical Arrival Section */}
+              <div className="card mb-6">
+                <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h4>📍 Mark Physical Arrival & Dispatch Parent Notifications</h4>
+                  <span style={{ fontSize: 12, color: 'var(--neutral-5)' }}>
+                    Separate from roll-call attendance • Sends 1-tap YES/NO prompt
+                  </span>
+                </div>
+                <div className="card-body" style={{ padding: '16px 20px' }}>
+                  <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
+                    <div className="form-group" style={{ minWidth: 220, margin: 0 }}>
+                      <label className="form-label" style={{ fontSize: 12 }}>Select Class</label>
+                      <select
+                        className="form-select"
+                        value={arrivalClassSelect}
+                        onChange={e => loadArrivalStudents(e.target.value)}>
+                        <option value="">— Select Class —</option>
+                        {classes.map(c => (
+                          <option key={c.class_id} value={c.class_id}>
+                            {c.class_name} — Section {c.section}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="form-group" style={{ minWidth: 160, margin: 0 }}>
+                      <label className="form-label" style={{ fontSize: 12 }}>Arrival Date</label>
+                      <input
+                        type="date"
+                        className="form-input"
+                        value={selDate}
+                        onChange={e => setSelDate(e.target.value)}
+                      />
+                    </div>
+
+                    {arrivalStudents.length > 0 && (
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                        <button
+                          type="button"
+                          className="btn btn-neutral btn-sm"
+                          onClick={() => {
+                            if (selectedArrivalIds.length === arrivalStudents.length) {
+                              setSelectedArrivalIds([]);
+                            } else {
+                              setSelectedArrivalIds(arrivalStudents.map(s => s.id));
+                            }
+                          }}>
+                          {selectedArrivalIds.length === arrivalStudents.length ? 'Deselect All' : 'Select All'}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          disabled={recordingArrival || !selectedArrivalIds.length}
+                          onClick={handleBulkRecordArrival}
+                          style={{ background: '#2e844a', borderColor: '#2e844a' }}>
+                          {recordingArrival ? 'Dispatching...' : `🚀 Confirm Arrival & Notify Parents (${selectedArrivalIds.length})`}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {arrivalStudents.length > 0 && (
+                    <div style={{
+                      display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                      gap: 8, maxHeight: 180, overflowY: 'auto', padding: '10px',
+                      background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0'
+                    }}>
+                      {arrivalStudents.map(s => {
+                        const checked = selectedArrivalIds.includes(s.id);
+                        return (
+                          <label key={s.id} style={{
+                            display: 'flex', alignItems: 'center', gap: 8, fontSize: 12,
+                            padding: '6px 10px', borderRadius: 6, background: checked ? '#e8f4fd' : '#fff',
+                            border: `1px solid ${checked ? '#90caf9' : '#e2e8f0'}`, cursor: 'pointer'
+                          }}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={e => {
+                                if (e.target.checked) setSelectedArrivalIds(prev => [...prev, s.id]);
+                                else setSelectedArrivalIds(prev => prev.filter(id => id !== s.id));
+                              }}
+                            />
+                            <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {s.name || s.student_name}
+                            </span>
+                            <span style={{ color: 'var(--neutral-5)', fontSize: 11 }}>({s.roll_number || '—'})</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Arrival Event Log & Filter Controls */}
+              <div className="card">
+                <div className="card-header" style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <h4>📋 Arrival Event Log & Responses</h4>
+                    <span className="badge badge-info">{arrivalData.events?.length || 0} Events</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <select
+                      className="form-select form-select-sm"
+                      style={{ width: 150 }}
+                      value={arrivalClassFilter}
+                      onChange={e => setArrivalClassFilter(e.target.value)}>
+                      <option value="">All Classes</option>
+                      {classes.map(c => (
+                        <option key={c.class_id} value={c.class_id}>{c.class_name} {c.section}</option>
+                      ))}
+                    </select>
+
+                    <select
+                      className="form-select form-select-sm"
+                      style={{ width: 170 }}
+                      value={arrivalStatusFilter}
+                      onChange={e => setArrivalStatusFilter(e.target.value)}>
+                      <option value="ALL">All Statuses</option>
+                      <option value="REPORTED_NO">🚨 Reported NO</option>
+                      <option value="CONFIRMED_YES">✅ Confirmed YES</option>
+                      <option value="AWAITING_RESPONSE">⏳ Awaiting Response</option>
+                      <option value="NO_RESPONSE">⌛ Expired (No Reply)</option>
+                    </select>
+
+                    <button
+                      className="btn btn-neutral btn-sm"
+                      onClick={loadArrivalDashboard}
+                      disabled={arrivalLoading}>
+                      🔄 Refresh
+                    </button>
+                  </div>
+                </div>
+
+                <div className="table-container">
+                  {arrivalLoading ? (
+                    <div style={{ padding: 40, textAlign: 'center', color: 'var(--neutral-5)' }}>
+                      Loading arrival verification data...
+                    </div>
+                  ) : (
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Student</th>
+                          <th>Class / Roll</th>
+                          <th>Recorded Time</th>
+                          <th>Delivery Status</th>
+                          <th>Parent Response</th>
+                          <th>Response Time</th>
+                          <th>Discrepancy Status</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {arrivalData.events?.map(ev => {
+                          const isNo = ev.response_status === 'REPORTED_NO';
+                          const isYes = ev.response_status === 'CONFIRMED_YES';
+                          const isAwaiting = ev.response_status === 'AWAITING_RESPONSE';
+                          const isExpired = ev.response_status === 'NO_RESPONSE';
+
+                          return (
+                            <tr key={ev.id} style={{ background: isNo && !ev.discrepancy_resolved ? '#fff5f5' : 'transparent' }}>
+                              <td>
+                                <div style={{ fontWeight: 700, fontSize: 13, color: '#0176d3' }}>
+                                  {ev.student_name}
+                                </div>
+                                <div style={{ fontSize: 11, color: 'var(--neutral-5)' }}>
+                                  Parent: {ev.parent_phone || '—'}
+                                </div>
+                              </td>
+                              <td>
+                                <div style={{ fontWeight: 600, fontSize: 12 }}>{ev.class_name} - {ev.section}</div>
+                                <div style={{ fontSize: 11, color: 'var(--neutral-5)' }}>Roll: {ev.roll_number || '—'}</div>
+                              </td>
+                              <td style={{ fontSize: 12 }}>
+                                {ev.arrival_time ? new Date(ev.arrival_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
+                              </td>
+                              <td>
+                                <span style={{
+                                  fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
+                                  background: ev.delivery_status === 'DELIVERED' ? '#eaf5ea' : ev.delivery_status === 'FAILED' ? '#fef1ee' : '#fef5e4',
+                                  color: ev.delivery_status === 'DELIVERED' ? '#2e844a' : ev.delivery_status === 'FAILED' ? '#ba0517' : '#dd7a01',
+                                }}>
+                                  {ev.delivery_status}
+                                </span>
+                              </td>
+                              <td>
+                                <span style={{
+                                  fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 6, display: 'inline-block',
+                                  background: isYes ? '#eaf5ea' : isNo ? '#fef1ee' : isAwaiting ? '#fef5e4' : '#f1f5f9',
+                                  color: isYes ? '#2e844a' : isNo ? '#ba0517' : isAwaiting ? '#dd7a01' : '#5c6f84',
+                                  border: `1px solid ${isYes ? '#a3d9a5' : isNo ? '#f9c9c0' : isAwaiting ? '#fde8b0' : '#cbd5e1'}`
+                                }}>
+                                  {isYes && '✅ Confirmed YES'}
+                                  {isNo && '🚨 Reported NO'}
+                                  {isAwaiting && '⏳ Awaiting Reply'}
+                                  {isExpired && '⌛ No Response'}
+                                </span>
+                              </td>
+                              <td style={{ fontSize: 12, color: 'var(--neutral-6)' }}>
+                                {ev.response_at ? new Date(ev.response_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
+                              </td>
+                              <td>
+                                {isNo && (
+                                  ev.discrepancy_resolved ? (
+                                    <span style={{ fontSize: 11, color: '#2e844a', fontWeight: 600 }}>
+                                      ✅ Resolved ({ev.resolution_notes ? ev.resolution_notes.slice(0, 20) + '...' : 'Verified'})
+                                    </span>
+                                  ) : (
+                                    <span style={{ fontSize: 11, color: '#ba0517', fontWeight: 700 }}>
+                                      ⚠️ Unresolved Alert
+                                    </span>
+                                  )
+                                )}
+                                {!isNo && <span style={{ color: 'var(--neutral-4)', fontSize: 12 }}>—</span>}
+                              </td>
+                              <td>
+                                {isNo && !ev.discrepancy_resolved && (
+                                  <button
+                                    className="btn btn-sm"
+                                    style={{ background: '#ba0517', color: '#fff', border: 'none', fontSize: 11, padding: '4px 8px' }}
+                                    onClick={() => {
+                                      setResolveModal(ev);
+                                      setResolutionNotes('');
+                                    }}>
+                                    Resolve
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {(!arrivalData.events || arrivalData.events.length === 0) && !arrivalLoading && (
+                          <tr>
+                            <td colSpan={8}>
+                              <div className="empty-state">
+                                <div className="empty-state-icon">🚸</div>
+                                <p>No arrival events recorded for {selDate}</p>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+
+              {/* Discrepancy Resolution Modal */}
+              {resolveModal && (
+                <div style={{
+                  position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                  background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  zIndex: 9999
+                }}>
+                  <div style={{
+                    background: '#fff', borderRadius: 12, padding: 24, width: '100%', maxWidth: 480,
+                    boxShadow: '0 10px 25px rgba(0,0,0,0.2)'
+                  }}>
+                    <h3 style={{ marginTop: 0, color: '#ba0517' }}>⚠️ Resolve Arrival Discrepancy</h3>
+                    <p style={{ fontSize: 13, color: 'var(--neutral-6)' }}>
+                      Parent of <strong>{resolveModal.student_name}</strong> reported that the student did not reach school on {resolveModal.arrival_date}.
+                    </p>
+                    <div className="form-group mb-4">
+                      <label className="form-label">Investigation & Resolution Notes *</label>
+                      <textarea
+                        className="form-input"
+                        rows={3}
+                        placeholder="e.g., Contacted parent, confirmed student arrived late via school bus at 8:45 AM."
+                        value={resolutionNotes}
+                        onChange={e => setResolutionNotes(e.target.value)}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                      <button
+                        className="btn btn-neutral"
+                        onClick={() => setResolveModal(null)}
+                        disabled={resolvingDiscrepancy}>
+                        Cancel
+                      </button>
+                      <button
+                        className="btn btn-primary"
+                        style={{ background: '#2e844a', borderColor: '#2e844a' }}
+                        onClick={handleResolveDiscrepancy}
+                        disabled={resolvingDiscrepancy}>
+                        {resolvingDiscrepancy ? 'Saving...' : 'Mark Resolved'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
         </div>

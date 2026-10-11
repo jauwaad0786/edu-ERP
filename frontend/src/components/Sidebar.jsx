@@ -468,6 +468,8 @@ const ROLE_MENUS = {
     {
       group: 'My School',
       items: [
+        { icon: 'ti-calendar',        label: 'Apply Leave',       path: '/leaves' },
+        { icon: 'ti-id-badge',        label: 'My ID Card',        path: '/id-cards/students' },
         { icon: 'ti-books',           label: 'Notes & Materials', path: '/notes' },
         { icon: 'ti-clipboard-list',  label: 'Assignments',       path: '/assignments' },
         { icon: 'ti-chart-dots',      label: 'Internal Marks',    path: '/internal-marks' },
@@ -500,6 +502,8 @@ const ROLE_MENUS = {
     {
       group: 'My Child',
       items: [
+        { icon: 'ti-calendar',        label: 'Apply Leave',   path: '/leaves' },
+        { icon: 'ti-id-badge',        label: 'Child ID Card', path: '/id-cards/students' },
         { icon: 'ti-clipboard-check', label: 'Attendance',   path: '/dashboard?tab=attendance' },
         { icon: 'ti-file-certificate',label: 'Report Card',  path: '/result-card' },
         { icon: 'ti-receipt',         label: 'Fees',         path: '/dashboard?tab=fees' },

@@ -63,15 +63,22 @@ export default function ResultScreen({ route, navigation }) {
           client.get('/student/marks').catch(() => ({ data: [] })),
         ]);
 
-        if (profileRes?.data) {
-          if (role === 'PARENT' && Array.isArray(profileRes.data.children)) {
-            setChildren(profileRes.data.children);
-            const first = profileRes.data.children[0];
+        if (role === 'PARENT') {
+          let childList = profileRes?.data?.children;
+          if (!Array.isArray(childList) || childList.length === 0) {
+            const chRes = await client.get('/student/children').catch(() => ({ data: [] }));
+            childList = Array.isArray(chRes.data) ? chRes.data : [];
+          }
+          if (Array.isArray(childList) && childList.length > 0) {
+            setChildren(childList);
+            const first = childList[0];
             setSelectedChildId(first?.id || null);
             setCurrentStudentProfile(first || null);
-          } else {
+          } else if (profileRes?.data) {
             setCurrentStudentProfile(profileRes.data);
           }
+        } else if (profileRes?.data) {
+          setCurrentStudentProfile(profileRes.data);
         }
 
         const rawMarks = Array.isArray(marksRes.data) ? marksRes.data : [];

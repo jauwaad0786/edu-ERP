@@ -22,6 +22,8 @@ class Config:
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
     JWT_BLOCKLIST_ENABLED = True
     JWT_BLOCKLIST_TOKEN_CHECKS = ['access', 'refresh']
+    JWT_TOKEN_LOCATION = ['headers', 'query_string']
+    JWT_QUERY_STRING_NAME = 'token'
     SQLALCHEMY_DATABASE_URI = _normalize_db_url(os.environ.get('DATABASE_URL', 'sqlite:///eduErp.db'))
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {

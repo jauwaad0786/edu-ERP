@@ -63,6 +63,23 @@ export default function StudentFinancialLedgerPage() {
     }
   };
 
+  const downloadStatementPDF = async () => {
+    try {
+      const res = await api.get(`/fees-finance/students/${studentId}/ledger/pdf`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Statement_of_Account_${admissionNo || studentId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      toast.success('Account Statement PDF downloaded');
+    } catch (e) {
+      toast.error('Failed to download statement PDF');
+    }
+  };
+
+
   const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 
   const studentName = ledger?.student?.name || ledger?.student_name || 'Student';

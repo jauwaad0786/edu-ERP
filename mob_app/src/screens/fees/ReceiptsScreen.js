@@ -8,10 +8,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import client from '../../api/client';
 import { colors } from '../../theme/colors';
+import { useAuth } from '../../context/AuthContext';
+import { handlePdfActionMenu } from '../../utils/pdfHelper';
 
 const PAYMENT_MODES = ['ALL', 'CASH', 'UPI', 'CARD', 'CHEQUE', 'BANK_TRANSFER'];
 
 export default function ReceiptsScreen({ navigation }) {
+  const { user } = useAuth();
+  const role = user?.role ? String(user.role).toUpperCase() : '';
+  const canCancel = ['PRINCIPAL', 'ACCOUNTANT', 'SUPER_ADMIN', 'DIRECTOR', 'VICE_PRINCIPAL'].includes(role);
+
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -65,26 +71,23 @@ export default function ReceiptsScreen({ navigation }) {
     });
   }, [payments, search, selectedMode]);
 
-  // Open PDF Download
+  // Open PDF Download / Native Print / Share using pdfHelper
   const handleOpenPdf = (paymentId) => {
-    const baseUrl = client.defaults.baseURL || 'https://edu-erp-backend-xoas.onrender.com/api';
-    const pdfUrl = `${baseUrl}/fees-finance/payments/${paymentId}/receipt-pdf`;
-    Linking.openURL(pdfUrl).catch(() => {
-      Alert.alert('Notice', 'Unable to open PDF link. Please check device browser.');
+    handlePdfActionMenu({
+      pathOrUrl: `/fees-finance/payments/${paymentId}/receipt-pdf`,
+      filename: `Receipt_${paymentId}.pdf`,
+      title: 'Fee Payment Receipt',
     });
   };
 
-  // WhatsApp Share Receipt
-  const handleShareWhatsApp = (item) => {
-    const amt = item.amount_paid || item.amount || 0;
+  // Share Receipt Document
+  const handleShareReceipt = (item) => {
+    const paymentId = item.id;
     const recNo = item.receipt_no || `REC-${item.id}`;
-    const name = item.student_name || 'Student';
-    const msg = `Dear Parent, Official Fee Receipt ${recNo} for ${name} amounting to ₹${amt.toLocaleString()} has been generated. Thank you!`;
-    const waUrl = item.parent_phone
-      ? `https://wa.me/91${item.parent_phone}?text=${encodeURIComponent(msg)}`
-      : `https://wa.me/?text=${encodeURIComponent(msg)}`;
-    Linking.openURL(waUrl).catch(() => {
-      Share.share({ message: msg });
+    handlePdfActionMenu({
+      pathOrUrl: `/fees-finance/payments/${paymentId}/receipt-pdf`,
+      filename: `Official_Receipt_${recNo}.pdf`,
+      title: `Official Receipt #${recNo}`,
     });
   };
 
@@ -248,16 +251,16 @@ export default function ReceiptsScreen({ navigation }) {
                     <View style={styles.actionRow}>
                       <TouchableOpacity
                         style={styles.iconActionBtn}
-                        onPress={() => handleShareWhatsApp(item)}
+                        onPress={() => handleShareReceipt(item)}
                       >
-                        <Ionicons name="logo-whatsapp" size={16} color="#16a34a" />
+                        <Ionicons name="share-social-outline" size={16} color="#0b57d0" />
                       </TouchableOpacity>
 
                       <TouchableOpacity
                         style={styles.iconActionBtn}
                         onPress={() => handleOpenPdf(item.id)}
                       >
-                        <Ionicons name="download-outline" size={16} color="#0b57d0" />
+                        <Ionicons name="download-outline" size={16} color="#059669" />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -324,7 +327,7 @@ export default function ReceiptsScreen({ navigation }) {
                     <Text style={styles.modalPdfBtnText}>Open PDF Receipt</Text>
                   </TouchableOpacity>
 
-                  {selectedReceipt.status !== 'CANCELLED' && !selectedReceipt.is_cancelled && (
+                  {canCancel && selectedReceipt.status !== 'CANCELLED' && !selectedReceipt.is_cancelled && (
                     <TouchableOpacity
                       style={styles.modalCancelBtn}
                       onPress={() => setCancelModalVisible(true)}

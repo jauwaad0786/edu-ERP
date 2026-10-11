@@ -14,6 +14,8 @@ export default function LeavesScreen({ navigation }) {
   const { user } = useAuth();
   const role = typeof user?.role === 'object' ? user.role?.value : String(user?.role || '');
   const isPrincipalOrAdmin = ['PRINCIPAL', 'DIRECTOR', 'VICE_PRINCIPAL', 'SUPER_ADMIN', 'HR'].includes(role);
+  const isStudent = role === 'STUDENT';
+  const isParent = role === 'PARENT';
 
   // Common States
   const [filter, setFilter] = useState(isPrincipalOrAdmin ? 'PENDING' : 'ALL');
@@ -23,10 +25,12 @@ export default function LeavesScreen({ navigation }) {
   // Admin States
   const [requests, setRequests] = useState([]);
 
-  // Staff States
+  // Staff & Student States
   const [myBalances, setMyBalances] = useState([]);
   const [myRequests, setMyRequests] = useState([]);
   const [leaveTypes, setLeaveTypes] = useState([]);
+  const [children, setChildren] = useState([]);
+  const [selectedChildId, setSelectedChildId] = useState(null);
 
   // Apply Leave Modal State
   const [showApplyModal, setShowApplyModal] = useState(false);
@@ -52,9 +56,10 @@ export default function LeavesScreen({ navigation }) {
         const list = Array.isArray(res.data) ? res.data : res.data?.requests || [];
         setRequests(list);
       } else {
-        const [myRes, typeRes] = await Promise.all([
+        const [myRes, typeRes, chRes] = await Promise.all([
           client.get('/hrms/my/leaves').catch(() => ({ data: {} })),
           client.get('/hrms/leaves/types').catch(() => ({ data: [] })),
+          isParent ? client.get('/student/children').catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
         ]);
 
         const bal = myRes.data?.balances || [];
@@ -67,13 +72,21 @@ export default function LeavesScreen({ navigation }) {
         if (types.length > 0 && !selectedTypeId) {
           setSelectedTypeId(types[0].id);
         }
+
+        if (isParent) {
+          const chList = Array.isArray(chRes.data) ? chRes.data : chRes.data?.children || [];
+          setChildren(chList);
+          if (chList.length > 0 && !selectedChildId) {
+            setSelectedChildId(chList[0].id);
+          }
+        }
       }
     } catch (err) {
       console.warn('Failed to load leaves:', err);
     } finally {
       if (isRefresh) setRefreshing(false); else setLoading(false);
     }
-  }, [isPrincipalOrAdmin, filter, selectedTypeId]);
+  }, [isPrincipalOrAdmin, isParent, filter, selectedTypeId, selectedChildId]);
 
   useEffect(() => {
     loadData();
@@ -88,13 +101,18 @@ export default function LeavesScreen({ navigation }) {
 
     setSubmittingLeave(true);
     try {
-      await client.post('/hrms/leaves/requests', {
+      const payload = {
         leave_type_id: selectedTypeId,
         from_date: fromDate.trim(),
         to_date: toDate.trim(),
         reason: reason.trim(),
         is_half_day: isHalfDay,
-      });
+      };
+      if (isParent && selectedChildId) {
+        payload.student_id = selectedChildId;
+      }
+
+      await client.post('/hrms/leaves/requests', payload);
 
       Alert.alert('Application Submitted', 'Your leave request has been submitted for principal approval.');
       setShowApplyModal(false);
@@ -169,8 +187,12 @@ export default function LeavesScreen({ navigation }) {
             </TouchableOpacity>
           )}
           <View>
-            <Text style={styles.headerTitle}>Leave Applications</Text>
-            <Text style={styles.headerSub}>Quota balances & approvals</Text>
+            <Text style={styles.headerTitle}>
+              {isStudent ? 'Student Leaves' : isParent ? 'Child Leave Application' : 'Leave Applications'}
+            </Text>
+            <Text style={styles.headerSub}>
+              {isStudent ? 'Apply for absence & track approval' : isParent ? 'Apply leave for your children' : 'Quota balances & approvals'}
+            </Text>
           </View>
         </View>
 
@@ -186,8 +208,20 @@ export default function LeavesScreen({ navigation }) {
         )}
       </View>
 
+      {/* Student/Parent Notice Card */}
+      {(isStudent || isParent) && (
+        <View style={{ backgroundColor: '#eff6ff', marginHorizontal: 16, marginTop: 12, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#bfdbfe', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <Ionicons name="information-circle" size={24} color="#0284c7" />
+          <Text style={{ flex: 1, fontSize: 12, color: '#0369a1', lineHeight: 17 }}>
+            {isParent
+              ? 'Submit absence or medical leave requests directly to the class teacher and principal for review.'
+              : 'Submit your leave request for official approval by your class teacher and principal.'}
+          </Text>
+        </View>
+      )}
+
       {/* Staff Leave Balances Ribbon */}
-      {!isPrincipalOrAdmin && myBalances.length > 0 && (
+      {!isPrincipalOrAdmin && !isStudent && !isParent && myBalances.length > 0 && (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -352,6 +386,30 @@ export default function LeavesScreen({ navigation }) {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
+              {/* Child picker for Parents */}
+              {isParent && children.length > 1 && (
+                <View style={{ marginBottom: 14 }}>
+                  <Text style={styles.inputLabel}>Select Child *</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {children.map(c => {
+                      const isSel = selectedChildId === c.id;
+                      return (
+                        <TouchableOpacity
+                          key={c.id}
+                          style={[styles.typeChip, isSel && styles.typeChipActive]}
+                          onPress={() => setSelectedChildId(c.id)}
+                        >
+                          <Ionicons name="person" size={13} color={isSel ? '#fff' : '#0284c7'} style={{ marginRight: 4 }} />
+                          <Text style={[styles.typeChipText, isSel && styles.typeChipTextActive]}>
+                            {c.name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
+
               {/* Leave Type selector */}
               <Text style={styles.inputLabel}>Select Leave Category *</Text>
               <View style={styles.typeGrid}>

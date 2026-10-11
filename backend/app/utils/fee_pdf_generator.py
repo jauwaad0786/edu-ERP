@@ -155,15 +155,16 @@ def generate_fee_bill_pdf(bill, school, student=None):
 
     # Notice Badge Bar
     notice_table = Table([[
-        Paragraph("<b>FEE BILL / DEMAND NOTICE</b>", doc_type_style),
-        Paragraph(f"<b>Bill Period:</b> {bill.bill_period_label}", ParagraphStyle('BP', fontName='Helvetica-Bold', fontSize=9, textColor=DARK_TEXT, alignment=TA_RIGHT))
+        Paragraph("<b>DEMAND BILL / PAYMENT REQUEST</b>", doc_type_style),
+        Paragraph(f"<b>Billing Period:</b> {bill.bill_period_label}", ParagraphStyle('BP', fontName='Helvetica-Bold', fontSize=9, textColor=DARK_TEXT, alignment=TA_RIGHT))
     ]], colWidths=[11.0 * cm, 7.6 * cm])
     notice_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
     ]))
     elements.append(notice_table)
-    elements.append(Spacer(1, 0.25 * cm))
+    elements.append(Paragraph("<font color='#64748B'><i>Note: This document is a formal fee demand / payment request. It does NOT constitute proof of payment.</i></font>", ParagraphStyle('NOTE', fontName='Helvetica-Oblique', fontSize=7.5, textColor=MUTED_TEXT, alignment=TA_CENTER)))
+    elements.append(Spacer(1, 0.20 * cm))
 
     # ── Meta Box: Student & Bill Dates ────────────────────────────────────
     meta_rows = [
@@ -444,23 +445,38 @@ def generate_fee_receipt_pdf(payment, school, student=None, ledger_balance=0.0):
     allocs = payment.allocations or []
     if allocs:
         for idx, alc in enumerate(allocs, 1):
+            head_name = alc.fee_head.name if alc.fee_head else 'Fee Item'
+            period_label = ''
+            if getattr(alc, 'bill', None) and alc.bill.bill_period_label:
+                period_label = f" — {alc.bill.bill_period_label}"
+            elif getattr(alc, 'bill_item', None) and getattr(alc.bill_item, 'coverage_label', None):
+                period_label = f" — {alc.bill_item.coverage_label}"
+            display_name = f"<b>{head_name}</b><font color='#64748B'>{period_label}</font>"
+
             item_rows.append([
                 Paragraph(str(idx), ParagraphStyle('TD1', fontName='Helvetica', fontSize=8, alignment=TA_CENTER)),
-                Paragraph(f"<b>{alc.fee_head.name}</b>" if alc.fee_head else 'Fee Item', ParagraphStyle('TD2', fontName='Helvetica', fontSize=8)),
+                Paragraph(display_name, ParagraphStyle('TD2', fontName='Helvetica', fontSize=8)),
                 Paragraph(alc.department or 'ACCOUNTS', ParagraphStyle('TD3', fontName='Helvetica', fontSize=7.5, alignment=TA_CENTER, textColor=MUTED_TEXT)),
                 Paragraph(f"<b>{alc.allocated_amount:,.2f}</b>", ParagraphStyle('TD4', fontName='Helvetica-Bold', fontSize=8, alignment=TA_RIGHT, textColor=DARK_TEXT)),
             ])
     else:
         item_rows.append([
             Paragraph("1", ParagraphStyle('TD1', fontName='Helvetica', fontSize=8, alignment=TA_CENTER)),
-            Paragraph("Combined Fee Payment", ParagraphStyle('TD2', fontName='Helvetica', fontSize=8)),
+            Paragraph(f"Combined Fee Payment <font color='#64748B'>— {payment.session}</font>", ParagraphStyle('TD2', fontName='Helvetica', fontSize=8)),
             Paragraph(payment.department or 'ACCOUNTS', ParagraphStyle('TD3', fontName='Helvetica', fontSize=7.5, alignment=TA_CENTER, textColor=MUTED_TEXT)),
             Paragraph(f"<b>{payment.total_paid:,.2f}</b>", ParagraphStyle('TD4', fontName='Helvetica-Bold', fontSize=8, alignment=TA_RIGHT, textColor=DARK_TEXT)),
         ])
 
+    if getattr(payment, 'advance_credited', 0) and payment.advance_credited > 0:
+        item_rows.append([
+            '', Paragraph("<b>Advance Prepayment Credited (Future Periods)</b>", ParagraphStyle('ADV1', fontName='Helvetica-Bold', fontSize=8, textColor=BLUE_ACCENT)),
+            Paragraph('ADVANCE', ParagraphStyle('ADV2', fontName='Helvetica', fontSize=7.5, alignment=TA_CENTER, textColor=BLUE_ACCENT)),
+            Paragraph(f"<b>{payment.advance_credited:,.2f}</b>", ParagraphStyle('ADV3', fontName='Helvetica-Bold', fontSize=8, alignment=TA_RIGHT, textColor=BLUE_ACCENT))
+        ])
+
     # Total Paid Row
     item_rows.append([
-        '', Paragraph("<b>TOTAL AMOUNT PAID</b>", ParagraphStyle('TOT1', fontName='Helvetica-Bold', fontSize=9, textColor=GREEN_ACCENT)),
+        '', Paragraph("<b>TOTAL AMOUNT RECEIVED</b>", ParagraphStyle('TOT1', fontName='Helvetica-Bold', fontSize=9, textColor=GREEN_ACCENT)),
         '',
         Paragraph(f"<b>₹ {payment.total_paid:,.2f}</b>", ParagraphStyle('TOT2', fontName='Helvetica-Bold', fontSize=9.5, alignment=TA_RIGHT, textColor=GREEN_ACCENT))
     ])
@@ -539,3 +555,313 @@ def generate_fee_receipt_pdf(payment, school, student=None, ledger_balance=0.0):
 
     buffer.seek(0)
     return buffer
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  3. STUDENT FINANCIAL STATEMENT / LEDGER PDF GENERATOR
+# ═══════════════════════════════════════════════════════════════════════
+
+def generate_student_ledger_pdf(ledger_data, school, student=None):
+    """
+    Generates an official Student Fee Statement / Account Ledger PDF
+    showing complete chronological charges, payments, concessions, and outstanding balance.
+    """
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=A4,
+        rightMargin=1.2 * cm, leftMargin=1.2 * cm,
+        topMargin=1.0 * cm, bottomMargin=1.0 * cm
+    )
+    elements = []
+    tmp_files = []
+
+    std = student or (ledger_data.get('student') if isinstance(ledger_data, dict) else None)
+    std_name = ledger_data.get('student_name') if isinstance(ledger_data, dict) else ''
+    if not std_name and std:
+        std_name = std.user.name if (hasattr(std, 'user') and std.user) else (std.name if hasattr(std, 'name') else 'Student')
+    adm_no = ledger_data.get('admission_no') if isinstance(ledger_data, dict) else ''
+    if not adm_no and std:
+        adm_no = getattr(std, 'admission_no', '—')
+    cls_name = ledger_data.get('class_name') if isinstance(ledger_data, dict) else ''
+    if not cls_name and std and hasattr(std, 'class_ref') and std.class_ref:
+        cls_name = f"{std.class_ref.name} {std.class_ref.section or ''}".strip()
+    session = ledger_data.get('session') or '2026-27'
+
+    sch_name = getattr(school, 'name', 'School Name')
+    sch_addr = getattr(school, 'address', 'School Campus') or 'School Campus'
+    sch_aff  = getattr(school, 'affiliation_no', '') or ''
+    sch_phone= getattr(school, 'phone', '') or ''
+
+    # Header
+    title_style = ParagraphStyle(
+        'LTitle', fontName='Helvetica-Bold', fontSize=15,
+        leading=18, textColor=NAVY_PRIMARY, alignment=TA_CENTER
+    )
+    sub_style = ParagraphStyle(
+        'LSub', fontName='Helvetica', fontSize=8.5,
+        leading=11, textColor=MUTED_TEXT, alignment=TA_CENTER
+    )
+    doc_type_style = ParagraphStyle(
+        'LDocType', fontName='Helvetica-Bold', fontSize=12,
+        leading=14, textColor=BLUE_ACCENT, alignment=TA_CENTER
+    )
+
+    elements.append(Paragraph(f"<b>{sch_name.upper()}</b>", title_style))
+    if sch_aff:
+        elements.append(Paragraph(f"Affiliated to CBSE / State Board | Affiliation No: {sch_aff}", sub_style))
+    elements.append(Paragraph(f"{sch_addr} {(' | Phone: ' + sch_phone) if sch_phone else ''}", sub_style))
+    elements.append(Spacer(1, 0.25 * cm))
+    elements.append(HRFlowable(width="100%", thickness=1.5, color=NAVY_HEADER, spaceBefore=2, spaceAfter=8))
+
+    # Statement Bar
+    stmt_table = Table([[
+        Paragraph("<b>STUDENT STATEMENT OF ACCOUNT / FEE LEDGER</b>", doc_type_style),
+        Paragraph(f"<b>Session:</b> {session} | <b>As of:</b> {date.today().strftime('%d %b %Y')}", ParagraphStyle('SB', fontName='Helvetica-Bold', fontSize=9, textColor=DARK_TEXT, alignment=TA_RIGHT))
+    ]], colWidths=[11.5 * cm, 7.1 * cm])
+    stmt_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+    ]))
+    elements.append(stmt_table)
+    elements.append(Spacer(1, 0.25 * cm))
+
+    # Student Meta Box
+    meta_rows = [
+        [
+            Paragraph("<b>Student Name:</b>", ParagraphStyle('M1', fontName='Helvetica-Bold', fontSize=8, textColor=DARK_TEXT)),
+            Paragraph(std_name, ParagraphStyle('M2', fontName='Helvetica-Bold', fontSize=8.5, textColor=NAVY_PRIMARY)),
+            Paragraph("<b>Class / Section:</b>", ParagraphStyle('M3', fontName='Helvetica-Bold', fontSize=8, textColor=DARK_TEXT)),
+            Paragraph(cls_name or '—', ParagraphStyle('M4', fontName='Helvetica', fontSize=8)),
+        ],
+        [
+            Paragraph("<b>Admission No:</b>", ParagraphStyle('M5', fontName='Helvetica-Bold', fontSize=8, textColor=DARK_TEXT)),
+            Paragraph(adm_no or '—', ParagraphStyle('M6', fontName='Helvetica', fontSize=8)),
+            Paragraph("<b>Parent / Phone:</b>", ParagraphStyle('M7', fontName='Helvetica-Bold', fontSize=8, textColor=DARK_TEXT)),
+            Paragraph(ledger_data.get('parent_phone') or getattr(std, 'parent_phone', '—') or '—', ParagraphStyle('M8', fontName='Helvetica', fontSize=8)),
+        ]
+    ]
+    meta_table = Table(meta_rows, colWidths=[3.2 * cm, 6.0 * cm, 3.4 * cm, 6.0 * cm])
+    meta_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), LIGHT_BG),
+        ('BOX', (0, 0), (-1, -1), 0.8, BORDER_COLOR),
+        ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#E2E8F0')),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    elements.append(meta_table)
+    elements.append(Spacer(1, 0.35 * cm))
+
+    # Financial Summary KPI Box
+    total_billed = float(ledger_data.get('total_billed', 0.0))
+    total_paid = float(ledger_data.get('total_paid', 0.0))
+    outstanding = float(ledger_data.get('outstanding', 0.0))
+    advance_credit = float(ledger_data.get('advance_credit', 0.0))
+
+    kpi_rows = [[
+        Paragraph(f"<b>Total Billed:</b><br/><font size='10' color='#1E3A8A'>₹{total_billed:,.2f}</font>", ParagraphStyle('K1', fontName='Helvetica', alignment=TA_CENTER)),
+        Paragraph(f"<b>Total Paid:</b><br/><font size='10' color='#16A34A'>₹{total_paid:,.2f}</font>", ParagraphStyle('K2', fontName='Helvetica', alignment=TA_CENTER)),
+        Paragraph(f"<b>Outstanding Due:</b><br/><font size='10' color='#DC2626'>₹{outstanding:,.2f}</font>", ParagraphStyle('K3', fontName='Helvetica', alignment=TA_CENTER)),
+        Paragraph(f"<b>Advance Balance:</b><br/><font size='10' color='#2563EB'>₹{advance_credit:,.2f}</font>", ParagraphStyle('K4', fontName='Helvetica', alignment=TA_CENTER)),
+    ]]
+    kpi_table = Table(kpi_rows, colWidths=[4.65 * cm, 4.65 * cm, 4.65 * cm, 4.65 * cm])
+    kpi_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#EFF6FF')),
+        ('BOX', (0, 0), (-1, -1), 1.0, BLUE_ACCENT),
+        ('GRID', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+    ]))
+    elements.append(kpi_table)
+    elements.append(Spacer(1, 0.35 * cm))
+
+    # Ledger Transactions Table
+    trans_header = [
+        Paragraph("<b>Date</b>", ParagraphStyle('TH1', fontName='Helvetica-Bold', fontSize=8, textColor=colors.white)),
+        Paragraph("<b>Ref / Bill / Rec</b>", ParagraphStyle('TH2', fontName='Helvetica-Bold', fontSize=8, textColor=colors.white)),
+        Paragraph("<b>Description / Period</b>", ParagraphStyle('TH3', fontName='Helvetica-Bold', fontSize=8, textColor=colors.white)),
+        Paragraph("<b>Type</b>", ParagraphStyle('TH4', fontName='Helvetica-Bold', fontSize=8, textColor=colors.white, alignment=TA_CENTER)),
+        Paragraph("<b>Amount (₹)</b>", ParagraphStyle('TH5', fontName='Helvetica-Bold', fontSize=8, textColor=colors.white, alignment=TA_RIGHT)),
+    ]
+    trans_rows = [trans_header]
+
+    raw_entries = ledger_data.get('ledger_entries') or []
+    if raw_entries:
+        for it in raw_entries:
+            entry_type = it.get('entry_type', 'DEBIT')
+            is_credit = entry_type == 'CREDIT'
+            amt_color = '#16A34A' if is_credit else '#0F172A'
+            amt_prefix = "- " if is_credit else "+ "
+            trans_rows.append([
+                Paragraph(str(it.get('entry_date', '')), ParagraphStyle('TD1', fontName='Helvetica', fontSize=7.5)),
+                Paragraph(str(it.get('reference_no', '') or '—'), ParagraphStyle('TD2', fontName='Helvetica-Bold', fontSize=7.5, textColor=NAVY_HEADER)),
+                Paragraph(str(it.get('description', '')), ParagraphStyle('TD3', fontName='Helvetica', fontSize=7.5)),
+                Paragraph(entry_type, ParagraphStyle('TD4', fontName='Helvetica-Bold', fontSize=7, alignment=TA_CENTER, textColor=colors.HexColor('#16A34A') if is_credit else colors.HexColor('#DC2626'))),
+                Paragraph(f"<font color='{amt_color}'><b>{amt_prefix}₹{float(it.get('amount', 0)):,.2f}</b></font>", ParagraphStyle('TD5', fontName='Helvetica', fontSize=7.5, alignment=TA_RIGHT)),
+            ])
+    else:
+        # Fallback to bills list
+        bills = ledger_data.get('bills') or []
+        for b in bills:
+            trans_rows.append([
+                Paragraph(str(b.get('generation_date', '')), ParagraphStyle('TD1', fontName='Helvetica', fontSize=7.5)),
+                Paragraph(str(b.get('bill_no', '')), ParagraphStyle('TD2', fontName='Helvetica-Bold', fontSize=7.5, textColor=NAVY_HEADER)),
+                Paragraph(f"Fee Bill — {b.get('bill_period_label', '')}", ParagraphStyle('TD3', fontName='Helvetica', fontSize=7.5)),
+                Paragraph("DEBIT", ParagraphStyle('TD4', fontName='Helvetica-Bold', fontSize=7, alignment=TA_CENTER, textColor=colors.HexColor('#DC2626'))),
+                Paragraph(f"<b>₹{float(b.get('total_payable', 0)):,.2f}</b>", ParagraphStyle('TD5', fontName='Helvetica', fontSize=7.5, alignment=TA_RIGHT)),
+            ])
+
+    trans_table = Table(trans_rows, colWidths=[2.3 * cm, 3.5 * cm, 7.8 * cm, 2.0 * cm, 3.0 * cm])
+    trans_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), NAVY_HEADER),
+        ('GRID', (0, 0), (-1, -1), 0.4, BORDER_COLOR),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, LIGHT_BG]),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    elements.append(trans_table)
+    elements.append(Spacer(1, 0.4 * cm))
+
+    # QR and Signatory
+    qr_data = f"EduERP-Statement|School:{school.id}|Student:{adm_no}|Outstanding:{outstanding}"
+    qr_path = _generate_qr_code_image(qr_data, size_cm=1.8)
+    if qr_path:
+        tmp_files.append(qr_path)
+        qr_flowable = Image(qr_path, width=1.8 * cm, height=1.8 * cm)
+    else:
+        qr_flowable = Paragraph("", ParagraphStyle('E'))
+
+    foot_table = Table([[
+        Paragraph("<i>Certified that the above statement reflects all debits and credits recorded in the institutional ledger. This is a computer-generated account statement.</i>", ParagraphStyle('FT', fontName='Helvetica-Oblique', fontSize=7.5, leading=10, textColor=MUTED_TEXT)),
+        qr_flowable,
+        Paragraph("<br/><br/>_______________________<br/><b>Accounts Officer</b><br/>(Authorized Signatory)", ParagraphStyle('SIG', fontName='Helvetica', fontSize=7.5, alignment=TA_CENTER, textColor=DARK_TEXT))
+    ]], colWidths=[10.5 * cm, 3.5 * cm, 4.6 * cm])
+    foot_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BOX', (0, 0), (-1, -1), 0.5, BORDER_COLOR),
+        ('BACKGROUND', (0, 0), (-1, -1), LIGHT_BG),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(foot_table)
+
+    doc.build(elements)
+    for f in tmp_files:
+        try:
+            os.remove(f)
+        except Exception:
+            pass
+    buffer.seek(0)
+    return buffer
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  4. OUTSTANDING DUES / DEFAULTERS REPORT PDF GENERATOR
+# ═══════════════════════════════════════════════════════════════════════
+
+def generate_outstanding_dues_report_pdf(outstanding_bills, school, session=None, month=None):
+    """
+    Generates a formal Outstanding Dues & Fee Defaulters summary report PDF.
+    """
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=A4,
+        rightMargin=1.2 * cm, leftMargin=1.2 * cm,
+        topMargin=1.0 * cm, bottomMargin=1.0 * cm
+    )
+    elements = []
+
+    sch_name = getattr(school, 'name', 'School Name')
+    sch_addr = getattr(school, 'address', 'School Campus') or 'School Campus'
+
+    # Header
+    title_style = ParagraphStyle(
+        'OTitle', fontName='Helvetica-Bold', fontSize=15,
+        leading=18, textColor=NAVY_PRIMARY, alignment=TA_CENTER
+    )
+    sub_style = ParagraphStyle(
+        'OSub', fontName='Helvetica', fontSize=8.5,
+        leading=11, textColor=MUTED_TEXT, alignment=TA_CENTER
+    )
+    elements.append(Paragraph(f"<b>{sch_name.upper()}</b>", title_style))
+    elements.append(Paragraph(f"{sch_addr}", sub_style))
+    elements.append(Spacer(1, 0.25 * cm))
+    elements.append(HRFlowable(width="100%", thickness=1.5, color=NAVY_HEADER, spaceBefore=2, spaceAfter=8))
+
+    month_str = f" | Month: {month}" if month else ""
+    hdr_table = Table([[
+        Paragraph("<b>OUTSTANDING FEE DUES & DEFAULTERS REPORT</b>", ParagraphStyle('D1', fontName='Helvetica-Bold', fontSize=12, textColor=colors.HexColor('#DC2626'))),
+        Paragraph(f"<b>Session:</b> {session or 'Current'}{month_str}", ParagraphStyle('D2', fontName='Helvetica-Bold', fontSize=9, alignment=TA_RIGHT, textColor=DARK_TEXT))
+    ]], colWidths=[12.0 * cm, 6.6 * cm])
+    elements.append(hdr_table)
+    elements.append(Spacer(1, 0.3 * cm))
+
+    # Summary
+    total_due = sum(float(getattr(b, 'balance_due', 0.0) if hasattr(b, 'balance_due') else b.get('balance_due', 0.0)) for b in outstanding_bills)
+    summary_p = Paragraph(f"<b>Total Defaulters / Unpaid Bills:</b> {len(outstanding_bills)} &nbsp;|&nbsp; <b>Total Outstanding Dues:</b> <font color='#DC2626'><b>₹{total_due:,.2f}</b></font>", ParagraphStyle('SM', fontName='Helvetica', fontSize=9, textColor=DARK_TEXT))
+    elements.append(summary_p)
+    elements.append(Spacer(1, 0.3 * cm))
+
+    # Defaulters Table
+    cols = [
+        Paragraph("<b>#</b>", ParagraphStyle('H1', fontName='Helvetica-Bold', fontSize=8, textColor=colors.white, alignment=TA_CENTER)),
+        Paragraph("<b>Bill No</b>", ParagraphStyle('H2', fontName='Helvetica-Bold', fontSize=8, textColor=colors.white)),
+        Paragraph("<b>Student Name</b>", ParagraphStyle('H3', fontName='Helvetica-Bold', fontSize=8, textColor=colors.white)),
+        Paragraph("<b>Class</b>", ParagraphStyle('H4', fontName='Helvetica-Bold', fontSize=8, textColor=colors.white)),
+        Paragraph("<b>Period</b>", ParagraphStyle('H5', fontName='Helvetica-Bold', fontSize=8, textColor=colors.white)),
+        Paragraph("<b>Due Date</b>", ParagraphStyle('H6', fontName='Helvetica-Bold', fontSize=8, textColor=colors.white, alignment=TA_CENTER)),
+        Paragraph("<b>Balance Due (₹)</b>", ParagraphStyle('H7', fontName='Helvetica-Bold', fontSize=8, textColor=colors.white, alignment=TA_RIGHT)),
+    ]
+    rows = [cols]
+
+    for idx, b in enumerate(outstanding_bills, 1):
+        if hasattr(b, 'bill_no'):
+            b_no = b.bill_no
+            s_name = b.student.user.name if (b.student and b.student.user) else 'Student'
+            c_name = f"{b.student.class_ref.name} {b.student.class_ref.section or ''}".strip() if (b.student and b.student.class_ref) else '—'
+            p_lbl = b.bill_period_label or b.bill_month
+            d_date = b.due_date.strftime('%d %b %Y') if b.due_date else '—'
+            b_due = float(b.balance_due or 0.0)
+        else:
+            b_no = b.get('bill_no', '')
+            s_name = b.get('student_name', '')
+            c_name = b.get('class_name', '—')
+            p_lbl = b.get('bill_period_label') or b.get('bill_month', '')
+            d_date = str(b.get('due_date', '—'))
+            b_due = float(b.get('balance_due', 0.0))
+
+        rows.append([
+            Paragraph(str(idx), ParagraphStyle('T1', fontName='Helvetica', fontSize=7.5, alignment=TA_CENTER)),
+            Paragraph(b_no, ParagraphStyle('T2', fontName='Helvetica-Bold', fontSize=7.5, textColor=NAVY_HEADER)),
+            Paragraph(s_name, ParagraphStyle('T3', fontName='Helvetica-Bold', fontSize=7.5)),
+            Paragraph(c_name, ParagraphStyle('T4', fontName='Helvetica', fontSize=7.5)),
+            Paragraph(p_lbl, ParagraphStyle('T5', fontName='Helvetica', fontSize=7.5)),
+            Paragraph(d_date, ParagraphStyle('T6', fontName='Helvetica', fontSize=7.5, alignment=TA_CENTER)),
+            Paragraph(f"<font color='#DC2626'><b>₹{b_due:,.2f}</b></font>", ParagraphStyle('T7', fontName='Helvetica', fontSize=7.5, alignment=TA_RIGHT)),
+        ])
+
+    t = Table(rows, colWidths=[1.0 * cm, 3.2 * cm, 4.4 * cm, 2.5 * cm, 2.7 * cm, 2.3 * cm, 2.5 * cm])
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), NAVY_HEADER),
+        ('GRID', (0, 0), (-1, -1), 0.4, BORDER_COLOR),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, LIGHT_BG]),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    elements.append(t)
+    elements.append(Spacer(1, 0.4 * cm))
+
+    elements.append(Paragraph(f"<i>Report generated on {datetime.now().strftime('%d %B %Y at %I:%M %p')}. Confirmed against Central Fees Ledger.</i>", ParagraphStyle('GEN', fontName='Helvetica-Oblique', fontSize=7.5, textColor=MUTED_TEXT)))
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+

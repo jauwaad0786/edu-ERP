@@ -19,6 +19,7 @@ Routes:
 from datetime import datetime, date, timedelta
 from calendar import monthrange
 import os
+import re
 from flask import Blueprint, request, jsonify, send_file
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from werkzeug.utils import secure_filename
@@ -27,7 +28,7 @@ from sqlalchemy import func
 
 from app import db
 from app.models.user import User, UserRole
-from app.models.academic import Teacher, Class, Subject
+from app.models.academic import Teacher, Class, Subject, Student
 from app.models.school import School
 from app.models.hrms import (
     EmployeeProfile, EmployeeDepartment, EmployeeDesignation,
@@ -648,6 +649,28 @@ def list_leave_requests():
 def apply_leave():
     user = get_current_user()
     data = request.get_json() or {}
+    role_str = str(getattr(user.role, 'value', user.role)).upper()
+
+    # If Parent applies on behalf of their child
+    if 'PARENT' in role_str:
+        student_id = data.get('student_id')
+        child_student = None
+        if student_id:
+            child_student = Student.query.filter_by(id=student_id, school_id=user.school_id, is_deleted=False).first()
+        else:
+            clean_p_phone = ''.join(c for c in str(user.phone or '') if c.isdigit())[-10:]
+            p_email = (user.email or '').strip().lower()
+            all_s = Student.query.filter_by(school_id=user.school_id, is_deleted=False).all()
+            for s in all_s:
+                stu_phone = ''.join(c for c in str(s.parent_phone or '') if c.isdigit())[-10:]
+                stu_email = (s.parent_email or '').strip().lower()
+                if (s.user_id == user.id) or (clean_p_phone and stu_phone == clean_p_phone) or (p_email and stu_email == p_email):
+                    child_student = s
+                    break
+        if child_student and child_student.user_id:
+            child_user = User.query.get(child_student.user_id)
+            if child_user:
+                user = child_user
 
     leave_type_id = data.get('leave_type_id')
     from_date = _parse_date(data.get('from_date'))
@@ -1033,8 +1056,21 @@ def get_my_leaves():
     user = get_current_user()
     session_year = str(date.today().year)
 
-    balances = LeaveBalance.query.filter_by(user_id=user.id, session_year=session_year).all()
-    requests = LeaveRequest.query.filter_by(user_id=user.id).order_by(LeaveRequest.created_at.desc()).all()
+    target_user_ids = [user.id]
+    user_role_str = str(getattr(user, 'role', '')).upper()
+    if 'PARENT' in user_role_str:
+        clean_p_phone = re.sub(r'[^0-9]', '', user.phone or '')[-10:] if user.phone else ''
+        p_email = (user.email or '').strip().lower()
+        students = Student.query.filter_by(school_id=user.school_id, is_deleted=False).all()
+        for s in students:
+            stu_phone = re.sub(r'[^0-9]', '', s.parent_phone or '')[-10:] if s.parent_phone else ''
+            stu_email = (s.parent_email or '').strip().lower()
+            if (s.user_id == user.id) or (clean_p_phone and stu_phone == clean_p_phone) or (p_email and stu_email == p_email):
+                if s.user_id and s.user_id not in target_user_ids:
+                    target_user_ids.append(s.user_id)
+
+    balances = LeaveBalance.query.filter(LeaveBalance.user_id.in_(target_user_ids), LeaveBalance.session_year == session_year).all()
+    requests = LeaveRequest.query.filter(LeaveRequest.user_id.in_(target_user_ids)).order_by(LeaveRequest.created_at.desc()).all()
 
     return jsonify({
         'balances': [b.to_dict() for b in balances],

@@ -25,6 +25,7 @@ from app.models.delegation import TeacherDelegation, TeacherDelegationScope, Tea
 from app.models.curriculum import Curriculum, CurriculumChapter, CurriculumTopic, TeachingLog, TeachingWorksheet
 
 from app.models.migration import MigrationBatch, MigrationRecord
+from app.models.arrival import StudentArrivalEvent
 
 __all__ = [
     'User', 'UserRole', 'School', 'Product',
@@ -39,5 +40,5 @@ __all__ = [
     'OTPVerification', 'OTPPurpose', 'UserDevice',
     'TeacherDelegation', 'TeacherDelegationScope', 'TeacherDelegationPermission',
     'Curriculum', 'CurriculumChapter', 'CurriculumTopic', 'TeachingLog', 'TeachingWorksheet',
-    'MigrationBatch', 'MigrationRecord',
+    'MigrationBatch', 'MigrationRecord', 'StudentArrivalEvent',
 ]

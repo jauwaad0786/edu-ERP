@@ -453,6 +453,11 @@ export default function IDCardPage() {
   const isEmployee = type === 'employees';
   const isStaff    = type === 'staff';
 
+  const curUser = JSON.parse(localStorage.getItem('ederp_user') || '{}');
+  const role = String(curUser.role || '').toUpperCase();
+  const isStudent = role === 'STUDENT';
+  const isParent  = role === 'PARENT';
+
   const [classes,     setClasses]     = useState([]);
   const [items,       setItems]       = useState([]);   // students or employees
   const [selClass,    setSelClass]    = useState('');
@@ -463,58 +468,6 @@ export default function IDCardPage() {
   const [search,      setSearch]      = useState('');
   const [editTarget,  setEditTarget]  = useState(null);  // student/employee object for edit modal
   const [deleteConfirm, setDeleteConfirm] = useState(null); // id to delete
-
-  // Load classes
-  useEffect(function() {
-    api.get('/principal/classes').then(function(r) {
-      var raw = r.data;
-      var clsList = Array.isArray(raw) ? raw : (raw.data || []);
-      setClasses(clsList);
-      if (clsList.length > 0 && !selClass && !isEmployee && !isStaff) {
-        setSelClass(clsList[0].id);
-      }
-    }).catch(function() {});
-  }, [isEmployee, isStaff]);
-
-  // Load items (students or employees)
-  // Load items (students or employees or staff)
-  useEffect(function() {
-    if (isStaff) {
-      setLoading(true);
-      api.get('/principal/staff-list').then(function(r) {
-        setItems(Array.isArray(r.data) ? r.data : []);
-        setSelId('');
-        setPreview(null);
-      }).catch(function() {
-        toast.error('Failed to load Staff');
-      }).finally(function() { setLoading(false); });
-      return;
-    }
-    if (isEmployee) {
-      setLoading(true);
-      api.get('/principal/teachers').then(function(r) {
-        var raw = r.data;
-        var list = Array.isArray(raw) ? raw : (raw.data || []);
-        setItems(list);
-        setSelId('');
-        setPreview(null);
-      }).catch(function() {
-        toast.error('Failed to load Employees');
-      }).finally(function() { setLoading(false); });
-    } else {
-      if (!selClass) { setItems([]); setSelId(''); setPreview(null); return; }
-      setLoading(true);
-      api.get('/principal/students?class_id=' + selClass + '&per_page=100')
-        .then(function(r) {
-          var raw = r.data;
-          var list = Array.isArray(raw) ? raw : (Array.isArray(raw.data) ? raw.data : []);
-          setItems(list);
-          setSelId('');
-          setPreview(null);
-        }).catch(function() { toast.error('Failed to load students'); })
-        .finally(function() { setLoading(false); });
-    }
-  }, [selClass, isEmployee, isStaff]);
 
   // Load preview
   var loadPreview = useCallback(function(id, itemType) {
@@ -558,6 +511,85 @@ export default function IDCardPage() {
       }).catch(function() { toast.error('Failed to load Preview'); });
     }
   }, []);
+
+  // Load classes
+  useEffect(function() {
+    if (isStudent || isParent) return;
+    api.get('/principal/classes').then(function(r) {
+      var raw = r.data;
+      var clsList = Array.isArray(raw) ? raw : (raw.data || []);
+      setClasses(clsList);
+      if (clsList.length > 0 && !selClass && !isEmployee && !isStaff) {
+        setSelClass(clsList[0].id);
+      }
+    }).catch(function() {});
+  }, [isEmployee, isStaff, isStudent, isParent]);
+
+  // Load items (students or employees or self profile)
+  useEffect(function() {
+    if (isStudent) {
+      setLoading(true);
+      api.get('/student/profile').then(function(r) {
+        var stu = r.data?.student || r.data;
+        if (stu) {
+          setItems([stu]);
+          setSelId(stu.id);
+          loadPreview(stu.id, 'student');
+        }
+      }).catch(function() { toast.error('Failed to load ID card'); })
+      .finally(function() { setLoading(false); });
+      return;
+    }
+    if (isParent) {
+      setLoading(true);
+      api.get('/student/children').then(function(r) {
+        var raw = r.data;
+        var kids = Array.isArray(raw) ? raw : (raw?.children || []);
+        setItems(kids);
+        if (kids.length > 0) {
+          setSelId(kids[0].id);
+          loadPreview(kids[0].id, 'student');
+        }
+      }).catch(function() { toast.error('Failed to load children'); })
+      .finally(function() { setLoading(false); });
+      return;
+    }
+    if (isStaff) {
+      setLoading(true);
+      api.get('/principal/staff-list').then(function(r) {
+        setItems(Array.isArray(r.data) ? r.data : []);
+        setSelId('');
+        setPreview(null);
+      }).catch(function() {
+        toast.error('Failed to load Staff');
+      }).finally(function() { setLoading(false); });
+      return;
+    }
+    if (isEmployee) {
+      setLoading(true);
+      api.get('/principal/teachers').then(function(r) {
+        var raw = r.data;
+        var list = Array.isArray(raw) ? raw : (raw.data || []);
+        setItems(list);
+        setSelId('');
+        setPreview(null);
+      }).catch(function() {
+        toast.error('Failed to load Employees');
+      }).finally(function() { setLoading(false); });
+    } else {
+      if (!selClass) { setItems([]); setSelId(''); setPreview(null); return; }
+      setLoading(true);
+      api.get('/principal/students?class_id=' + selClass + '&per_page=100')
+        .then(function(r) {
+          var raw = r.data;
+          var list = Array.isArray(raw) ? raw : (Array.isArray(raw.data) ? raw.data : []);
+          setItems(list);
+          setSelId('');
+          setPreview(null);
+        }).catch(function() { toast.error('Failed to load students'); })
+        .finally(function() { setLoading(false); });
+    }
+  }, [selClass, isEmployee, isStaff, isStudent, isParent, loadPreview]);
 
   // Download single
   function downloadSingle(id, name) {
@@ -626,7 +658,7 @@ export default function IDCardPage() {
   });
 
   var selCls = classes.find(function(c) { return String(c.id) === String(selClass); });
-  var pageTitle = isEmployee ? '👔 Employee ID Card Management' : '🪪 Student ID Card Management';
+  var pageTitle = isStudent ? '🪪 My Student Identity Card' : isParent ? '🪪 Child Identity Card' : isEmployee ? '👔 Employee ID Card Management' : '🪪 Student ID Card Management';
 
   return (
     <div className="app-shell">
@@ -640,71 +672,119 @@ export default function IDCardPage() {
             <div>
               <h2 className="page-title">{pageTitle}</h2>
               <p className="page-subtitle">
-                {isEmployee ? 'Generate Employee ID cards' : 'Generate, preview, and download Student ID cards'}
+                {isStudent
+                  ? 'Official digital smart QR identity card and PDF download'
+                  : isParent
+                  ? 'Official identity card and verification record for your children'
+                  : isEmployee
+                  ? 'Generate Employee ID cards'
+                  : 'Generate, preview, and download Student ID cards'}
               </p>
             </div>
           </div>
 
-          {/* Tab Toggle */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-            {[
-              { label: '🎒 Student ID Cards', path: '/id-cards/students' },
-              { label: '👔 Employee ID Cards', path: '/id-cards/employees' },
-            ].map(function(tab) {
-              var active = ('/' + type === tab.path.replace('/id-cards','')) || tab.path === '/id-cards/' + type;
-              // simpler check:
-              var isActive = isEmployee ? tab.path.includes('employees') : tab.path.includes('students');
-              return (
-                <button key={tab.path}
-                  onClick={function() { navigate(resolveTenantPath(tab.path)); }}
-                  style={{
-                    padding: '9px 18px', borderRadius: 8, border: '2px solid',
-                    borderColor: isActive ? '#0176d3' : '#e2e8f0',
-                    background: isActive ? '#e8f4fd' : '#fff',
-                    color: isActive ? '#0176d3' : '#64748b',
-                    fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
-                  }}>
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
+          {/* Child Switcher for Parents */}
+          {isParent && items.length > 1 && (
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#475569' }}>Select Child:</span>
+              {items.map(function(k) {
+                var isSel = String(selId) === String(k.id);
+                return (
+                  <button key={k.id} onClick={function() { setSelId(k.id); loadPreview(k.id, 'student'); }}
+                    style={{
+                      padding: '7px 16px', borderRadius: 20, border: '1.5px solid',
+                      borderColor: isSel ? '#0176d3' : '#cbd5e1',
+                      background: isSel ? '#0176d3' : '#fff',
+                      color: isSel ? '#fff' : '#334155',
+                      fontWeight: 700, fontSize: 13, cursor: 'pointer', transition: 'all 0.15s'
+                    }}>
+                    👤 {k.name} ({k.class_display || k.class_name || 'Class'})
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Tab Toggle (Only for staff/admin) */}
+          {!isStudent && !isParent && (
+            <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+              {[
+                { label: '🎒 Student ID Cards', path: '/id-cards/students' },
+                { label: '👔 Employee ID Cards', path: '/id-cards/employees' },
+              ].map(function(tab) {
+                var isActive = isEmployee ? tab.path.includes('employees') : tab.path.includes('students');
+                return (
+                  <button key={tab.path}
+                    onClick={function() { navigate(resolveTenantPath(tab.path)); }}
+                    style={{
+                      padding: '9px 18px', borderRadius: 8, border: '2px solid',
+                      borderColor: isActive ? '#0176d3' : '#e2e8f0',
+                      background: isActive ? '#e8f4fd' : '#fff',
+                      color: isActive ? '#0176d3' : '#64748b',
+                      fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
+                    }}>
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {/* Controls */}
           <div className="card mb-6">
             <div className="card-body" style={{ padding: '16px 20px' }}>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-
-                {/* Class Select — only for students */}
-                {!isEmployee && (
-                  <div className="form-group" style={{ flex: 1, minWidth: 180, marginBottom: 0 }}>
-                    <label className="form-label" htmlFor="idcard-class-select">📚 Select Class</label>
-                    <select id="idcard-class-select" className="form-select" value={selClass} onChange={function(e) { setSelClass(e.target.value); }}>
-                      <option value="">— Select Class —</option>
-                      {classes.map(function(c) {
-                        return <option key={c.id} value={c.id}>{c.name} — {c.section}</option>;
-                      })}
-                    </select>
+              {(isStudent || isParent) ? (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: '#032d60' }}>
+                      Official Identity Record: {preview?.student?.name || curUser?.name}
+                    </span>
+                    {preview?.student?.admission_no && (
+                      <span style={{ padding: '3px 8px', borderRadius: 4, background: '#f1f5f9', fontSize: 12, fontWeight: 600, color: '#475569' }}>
+                        Adm: {preview.student.admission_no}
+                      </span>
+                    )}
                   </div>
-                )}
-
-                {/* Search */}
-                <div className="form-group" style={{ flex: 1, minWidth: 200, marginBottom: 0 }}>
-                  <label className="form-label" htmlFor="idcard-search-input">🔍 Search</label>
-                  <input id="idcard-search-input" className="form-input"
-                    placeholder={isEmployee ? 'Name / Employee ID...' : 'Name / Roll No...'}
-                    value={search}
-                    onChange={function(e) { setSearch(e.target.value); }} />
+                  {selId && (
+                    <button className="btn btn-primary" onClick={function() { downloadSingle(selId, preview?.student?.name); }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700 }}>
+                      ⬇️ Download ID Card (PDF)
+                    </button>
+                  )}
                 </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                  {/* Class Select — only for students */}
+                  {!isEmployee && (
+                    <div className="form-group" style={{ flex: 1, minWidth: 180, marginBottom: 0 }}>
+                      <label className="form-label" htmlFor="idcard-class-select">📚 Select Class</label>
+                      <select id="idcard-class-select" className="form-select" value={selClass} onChange={function(e) { setSelClass(e.target.value); }}>
+                        <option value="">— Select Class —</option>
+                        {classes.map(function(c) {
+                          return <option key={c.id} value={c.id}>{c.name} — {c.section}</option>;
+                        })}
+                      </select>
+                    </div>
+                  )}
 
-                {/* Bulk Download */}
-                {items.length > 0 && (
-                  <button className="btn btn-primary" onClick={downloadBulk} disabled={bulkLoading}
-                    style={{ display: 'flex', alignItems: 'center', gap: 6, alignSelf: 'flex-end' }}>
-                    {bulkLoading ? '⏳ Generating...' : '📦 Download All as ZIP'}
-                  </button>
-                )}
-              </div>
+                  {/* Search */}
+                  <div className="form-group" style={{ flex: 1, minWidth: 200, marginBottom: 0 }}>
+                    <label className="form-label" htmlFor="idcard-search-input">🔍 Search</label>
+                    <input id="idcard-search-input" className="form-input"
+                      placeholder={isEmployee ? 'Name / Employee ID...' : 'Name / Roll No...'}
+                      value={search}
+                      onChange={function(e) { setSearch(e.target.value); }} />
+                  </div>
+
+                  {/* Bulk Download */}
+                  {items.length > 0 && (
+                    <button className="btn btn-primary" onClick={downloadBulk} disabled={bulkLoading}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, alignSelf: 'flex-end' }}>
+                      {bulkLoading ? '⏳ Generating...' : '📦 Download All as ZIP'}
+                    </button>
+                  )}
+                </div>
+              )}
 
               {selCls && !isEmployee && (
                 <div style={{ marginTop: 12, padding: '8px 12px', background: '#e8f4fd', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: '#0176d3', fontWeight: 600 }}>

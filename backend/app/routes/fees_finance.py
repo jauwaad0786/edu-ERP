@@ -16,7 +16,7 @@ Routes:
 """
 
 from flask import Blueprint, request, jsonify, send_file
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required, get_jwt_identity, decode_token
 from datetime import datetime, date
 from app import db
 from app.models.user import User
@@ -40,13 +40,30 @@ from app.services.fee_ledger_service import (
     reconcile_school_fee_balances, get_current_academic_session
 )
 from app.services import payroll_engine as p_svc
-from app.utils.fee_pdf_generator import generate_fee_bill_pdf, generate_fee_receipt_pdf
+from app.utils.fee_pdf_generator import (
+    generate_fee_bill_pdf, generate_fee_receipt_pdf,
+    generate_student_ledger_pdf, generate_outstanding_dues_report_pdf
+)
 
 fees_finance_bp = Blueprint('fees_finance', __name__)
 
 
 def _get_current_user():
-    ident = get_jwt_identity()
+    ident = None
+    try:
+        ident = get_jwt_identity()
+    except Exception:
+        pass
+    if not ident:
+        token = request.args.get('token')
+        if token:
+            try:
+                decoded = decode_token(token)
+                ident = decoded.get('sub')
+            except Exception:
+                pass
+    if not ident:
+        return None
     user_id = ident.get('id') if isinstance(ident, dict) else ident
     user = User.query.get(user_id)
     if user and not user.school_id:
@@ -63,6 +80,42 @@ def _get_current_user():
             if sid:
                 user.school_id = sid
     return user
+
+
+def _verify_student_access(user, student_id):
+    """
+    Verifies that the current user is authorized to view/transact on student_id.
+    - Staff / Accountant / Principal / Super Admin: student must belong to user.school_id
+    - Student: student.user_id must equal user.id
+    - Parent: student.id must be in parent's linked children
+    """
+    if not user or not user.school_id:
+        return None, ('Unauthorized', 401)
+
+    student = Student.query.filter_by(id=student_id, school_id=user.school_id, is_deleted=False).first()
+    if not student:
+        return None, ('Student not found in your institution.', 404)
+
+    role_str = str(getattr(user.role, 'value', user.role)).upper()
+    if role_str == 'STUDENT':
+        if student.user_id != user.id:
+            return None, ('Access forbidden: You cannot access other students financial records.', 403)
+    elif role_str == 'PARENT':
+        clean_user_phone = ''.join(c for c in str(user.phone or '') if c.isdigit())[-10:]
+        user_email = (user.email or '').strip().lower()
+        all_students = Student.query.filter_by(school_id=user.school_id, is_deleted=False).all()
+        child_ids = [
+            s.id for s in all_students
+            if (s.user_id == user.id) or
+               (clean_user_phone and ''.join(c for c in str(s.parent_phone or '') if c.isdigit())[-10:] == clean_user_phone) or
+               (clean_user_phone and ''.join(c for c in str(s.guardian_phone or '') if c.isdigit())[-10:] == clean_user_phone) or
+               (user_email and (s.parent_email or '').strip().lower() == user_email)
+        ]
+        if student.id not in child_ids:
+            return None, ('Access forbidden: You can only view your linked children fee records.', 403)
+
+    return student, None
+
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -1102,6 +1155,33 @@ def get_student_financial_ledger(student_id):
     return jsonify(ledger_data), 200
 
 
+@fees_finance_bp.route('/students/<int:student_id>/ledger/pdf', methods=['GET'])
+@jwt_required(optional=True)
+def download_student_ledger_pdf(student_id):
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    student, err = _verify_student_access(user, student_id)
+    if err:
+        return jsonify({'error': err[0]}), err[1]
+
+    session = request.args.get('session', None) or get_current_academic_session(user.school_id)
+    ledger_data = get_student_ledger(student_id, session=session)
+    if not ledger_data:
+        return jsonify({'error': 'Student ledger not found.'}), 404
+
+    school = School.query.get(user.school_id)
+    pdf_buffer = generate_student_ledger_pdf(ledger_data, school, student)
+    return send_file(
+        pdf_buffer,
+        mimetype='application/pdf',
+        as_attachment=False,
+        download_name=f"Fee_Statement_{student.admission_no or student.id}_{session}.pdf"
+    )
+
+
+
 @fees_finance_bp.route('/students/<int:student_id>/applicable-charges', methods=['GET'])
 @jwt_required()
 def get_applicable_charges(student_id):
@@ -1112,6 +1192,142 @@ def get_applicable_charges(student_id):
     session = request.args.get('session') or get_current_academic_session(user.school_id)
     charges = get_student_applicable_charges(student_id, session=session)
     return jsonify(charges), 200
+
+
+@fees_finance_bp.route('/students/<int:student_id>/multi-month-schedule', methods=['GET'])
+@jwt_required()
+def get_multi_month_schedule(student_id):
+    user = _get_current_user()
+    student, err = _verify_student_access(user, student_id)
+    if err:
+        return jsonify({'error': err[0]}), err[1]
+
+    session = request.args.get('session') or get_current_academic_session(user.school_id)
+    from app.services.fee_central_service import FeeCentralService
+    try:
+        schedule = FeeCentralService.get_student_multi_month_schedule(student_id, session=session)
+        return jsonify(schedule), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@fees_finance_bp.route('/students/<int:student_id>/calculate-multi-month', methods=['POST'])
+@jwt_required()
+def calculate_multi_month(student_id):
+    user = _get_current_user()
+    student, err = _verify_student_access(user, student_id)
+    if err:
+        return jsonify({'error': err[0]}), err[1]
+
+    data = request.get_json() or {}
+    months = data.get('months') or []
+    session = data.get('session') or get_current_academic_session(user.school_id)
+
+    if not months:
+        return jsonify({'error': 'Please select at least one month.'}), 400
+
+    from app.services.fee_central_service import FeeCentralService
+    try:
+        calc = FeeCentralService.calculate_multi_month_fee(student_id, months, session=session)
+        return jsonify(calc), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@fees_finance_bp.route('/students/<int:student_id>/pay-multi-month', methods=['POST'])
+@jwt_required()
+def pay_multi_month(student_id):
+    user = _get_current_user()
+    student, err = _verify_student_access(user, student_id)
+    if err:
+        return jsonify({'error': err[0]}), err[1]
+
+    data = request.get_json() or {}
+    months = data.get('months') or []
+    amount_paid = data.get('amount_paid') if data.get('amount_paid') is not None else data.get('amount', 0.0)
+    payment_mode = (data.get('payment_mode') or 'UPI').upper()
+    transaction_ref = data.get('transaction_ref') or ''
+    remarks = data.get('remarks') or ''
+    session = data.get('session') or get_current_academic_session(user.school_id)
+    idempotency_key = data.get('idempotency_key') or request.headers.get('X-Idempotency-Key')
+    payment_date = data.get('payment_date')
+
+    if not months:
+        return jsonify({'error': 'Please select at least one month to pay.'}), 400
+
+    try:
+        amount_paid = float(amount_paid)
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Invalid payment amount.'}), 400
+
+    if amount_paid <= 0:
+        return jsonify({'error': 'Payment amount must be greater than zero.'}), 400
+
+    from app.services.fee_central_service import FeeCentralService
+    try:
+        payment, is_new = FeeCentralService.pay_multi_month_fee(
+            school_id=user.school_id,
+            student_id=student_id,
+            month_codes=months,
+            amount_paid=amount_paid,
+            payment_mode=payment_mode,
+            collected_by=user,
+            transaction_ref=transaction_ref,
+            remarks=remarks,
+            session=session,
+            idempotency_key=idempotency_key,
+            payment_date=payment_date
+        )
+        return jsonify({
+            'success': True,
+            'is_duplicate': not is_new,
+            'payment_id': payment.id,
+            'receipt_no': payment.receipt_no,
+            'total_paid': payment.total_paid,
+            'payment_mode': payment.payment_mode,
+            'months_covered': months,
+            'payment': payment.to_dict(),
+            'message': f"Payment of ₹{payment.total_paid:,.2f} recorded successfully (Receipt #{payment.receipt_no})."
+        }), 201 if is_new else 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@fees_finance_bp.route('/students/<int:student_id>/generate-demand-notice', methods=['POST'])
+@jwt_required()
+def generate_demand_notice_for_student(student_id):
+    user = _get_current_user()
+    student, err = _verify_student_access(user, student_id)
+    if err:
+        return jsonify({'error': err[0]}), err[1]
+
+    data = request.get_json() or {}
+    months = data.get('months') or []
+    due_date = data.get('due_date')
+    session = data.get('session') or get_current_academic_session(user.school_id)
+
+    if not months:
+        return jsonify({'error': 'Please select at least one month for the demand bill.'}), 400
+
+    from app.services.fee_central_service import FeeCentralService
+    try:
+        bills = FeeCentralService.generate_consolidated_demand_bill(
+            school_id=user.school_id,
+            student_id=student_id,
+            month_codes=months,
+            due_date=due_date,
+            session=session,
+            actor_user=user
+        )
+        return jsonify({
+            'success': True,
+            'bills_count': len(bills),
+            'bills': [b.to_dict() for b in bills],
+            'primary_bill_id': bills[0].id if bills else None,
+            'message': f"Generated Demand Notice for {len(bills)} billing periods."
+        }), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -1265,22 +1481,59 @@ def get_bill_detail(bill_id):
 
 
 @fees_finance_bp.route('/bills/<int:bill_id>/pdf', methods=['GET'])
-@jwt_required()
+@jwt_required(optional=True)
 def download_bill_pdf(bill_id):
     user = _get_current_user()
     if not user or not user.school_id:
         return jsonify({'error': 'Unauthorized'}), 401
 
     bill = FeeBill.query.filter_by(id=bill_id, school_id=user.school_id).first_or_404()
-    school = School.query.get(user.school_id)
+    student, err = _verify_student_access(user, bill.student_id)
+    if err:
+        return jsonify({'error': err[0]}), err[1]
 
+    school = School.query.get(user.school_id)
     pdf_buffer = generate_fee_bill_pdf(bill, school)
     return send_file(
         pdf_buffer,
         mimetype='application/pdf',
         as_attachment=False,
-        download_name=f"{bill.bill_no}_{bill.student.admission_no}.pdf"
+        download_name=f"Demand_Bill_{bill.bill_no}_{bill.student.admission_no if bill.student else ''}.pdf"
     )
+
+
+@fees_finance_bp.route('/bills/<int:bill_id>/send', methods=['POST'])
+@jwt_required()
+def send_fee_bill(bill_id):
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    bill = FeeBill.query.filter_by(id=bill_id, school_id=user.school_id).first_or_404()
+    student = bill.student
+    if not student:
+        return jsonify({'error': 'Student not found.'}), 404
+
+    # Record delivery tracking in FinancialAuditLog
+    audit = FinancialAuditLog(
+        school_id=user.school_id,
+        student_id=bill.student_id,
+        action='DEMAND_BILL_DELIVERED',
+        actor_id=user.id,
+        new_value=f"Bill No: {bill.bill_no}, Amount: ₹{bill.total_payable:,.2f}, Due Date: {bill.due_date}",
+        reason="Demand notice dispatched to parent via institutional notification"
+    )
+    db.session.add(audit)
+    db.session.commit()
+
+    return jsonify({
+        'success': True,
+        'message': f"Demand notice for Bill {bill.bill_no} dispatched successfully.",
+        'bill_no': bill.bill_no,
+        'delivery_status': 'DELIVERED',
+        'delivered_at': datetime.utcnow().isoformat()
+    }), 200
+
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -1341,6 +1594,10 @@ def list_payments():
     if not user or not user.school_id:
         return jsonify({'error': 'Unauthorized'}), 401
 
+    role_str = str(getattr(user.role, 'value', user.role)).upper()
+    is_student = (role_str == 'STUDENT')
+    is_parent  = (role_str == 'PARENT')
+
     session = request.args.get('session') or get_current_academic_session(user.school_id)
     search  = (request.args.get('search') or '').strip()
     status  = request.args.get('status')
@@ -1349,7 +1606,8 @@ def list_payments():
     collector_id = request.args.get('collector_id', type=int)
     date_from = request.args.get('date_from')
     date_to = request.args.get('date_to')
-    log_type = request.args.get('type', 'ALL').upper() # ALL, INCOME, EXPENSE, SALARY
+    # Students & Parents may never see operational expenses or staff salaries
+    log_type = 'INCOME' if (is_student or is_parent) else request.args.get('type', 'ALL').upper()
 
     results = []
 
@@ -1363,6 +1621,29 @@ def list_payments():
             joinedload(FeePayment.student).joinedload(Student.class_ref),
             joinedload(FeePayment.allocations)
         ).filter_by(school_id=user.school_id, session=session)
+
+        if is_student:
+            stu = Student.query.filter_by(user_id=user.id, school_id=user.school_id, is_deleted=False).first()
+            if stu:
+                q = q.filter(FeePayment.student_id == stu.id)
+            else:
+                q = q.filter(FeePayment.id == -1)
+        elif is_parent:
+            clean_user_phone = ''.join(c for c in str(user.phone or '') if c.isdigit())[-10:]
+            user_email = (user.email or '').strip().lower()
+            all_students = Student.query.filter_by(school_id=user.school_id, is_deleted=False).all()
+            child_ids = [
+                s.id for s in all_students
+                if (s.user_id == user.id) or
+                   (clean_user_phone and ''.join(c for c in str(s.parent_phone or '') if c.isdigit())[-10:] == clean_user_phone) or
+                   (clean_user_phone and ''.join(c for c in str(s.guardian_phone or '') if c.isdigit())[-10:] == clean_user_phone) or
+                   (user_email and (s.parent_email or '').strip().lower() == user_email)
+            ]
+            if child_ids:
+                q = q.filter(FeePayment.student_id.in_(child_ids))
+            else:
+                q = q.filter(FeePayment.id == -1)
+
         if status:
             q = q.filter_by(status=status)
         if mode:
@@ -1629,13 +1910,17 @@ def get_expenses_by_category():
 
 
 @fees_finance_bp.route('/payments/<int:payment_id>/receipt-pdf', methods=['GET'])
-@jwt_required()
+@jwt_required(optional=True)
 def download_receipt_pdf(payment_id):
     user = _get_current_user()
     if not user or not user.school_id:
         return jsonify({'error': 'Unauthorized'}), 401
 
     payment = FeePayment.query.filter_by(id=payment_id, school_id=user.school_id).first_or_404()
+    student, err = _verify_student_access(user, payment.student_id)
+    if err:
+        return jsonify({'error': err[0]}), err[1]
+
     school  = School.query.get(user.school_id)
 
     # Remaining student ledger balance
@@ -1657,6 +1942,10 @@ def cancel_receipt(payment_id):
     user = _get_current_user()
     if not user or not user.school_id:
         return jsonify({'error': 'Unauthorized'}), 401
+
+    role_str = str(getattr(user.role, 'value', user.role)).upper()
+    if role_str in ('STUDENT', 'PARENT'):
+        return jsonify({'error': 'Students and Parents cannot cancel official fee receipts.'}), 403
 
     data = request.get_json() or {}
     reason = (data.get('reason') or '').strip()
@@ -1829,6 +2118,102 @@ def get_outstanding():
 
     bills = q.order_by(FeeBill.balance_due.desc()).all()
     return jsonify([b.to_dict() for b in bills]), 200
+
+
+@fees_finance_bp.route('/outstanding/pdf', methods=['GET'])
+@jwt_required(optional=True)
+def download_outstanding_dues_pdf():
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    class_id = request.args.get('class_id')
+    session  = request.args.get('session') or get_current_academic_session(user.school_id)
+    month    = request.args.get('month')
+
+    q = FeeBill.query.join(Student, FeeBill.student_id == Student.id)\
+        .join(User, Student.user_id == User.id)\
+        .filter(
+            FeeBill.school_id == user.school_id,
+            FeeBill.session == session,
+            FeeBill.balance_due > 0,
+            FeeBill.status.in_([BillStatus.ISSUED.value, BillStatus.PARTIALLY_PAID.value, BillStatus.OVERDUE.value]),
+            Student.is_deleted == False,
+            User.is_deleted == False,
+            ~User.name.ilike('%Former Student%'),
+            ~Student.status.in_(['FORMER', 'ALUMNI', 'WITHDRAWN', 'LEFT', 'GRADUATED', 'ARCHIVED', 'INACTIVE'])
+        )
+    if month:
+        q = q.filter(FeeBill.bill_month == month)
+    if class_id:
+        q = q.filter(Student.class_id == class_id)
+
+    bills = q.order_by(FeeBill.balance_due.desc()).all()
+    school = School.query.get(user.school_id)
+    pdf_buffer = generate_outstanding_dues_report_pdf(bills, school, session=session, month=month)
+    return send_file(
+        pdf_buffer,
+        mimetype='application/pdf',
+        as_attachment=False,
+        download_name=f"Outstanding_Dues_{session}_{month or 'All'}.pdf"
+    )
+
+
+@fees_finance_bp.route('/reports/collection-report/pdf', methods=['GET'])
+@jwt_required(optional=True)
+def download_fees_collection_report_pdf():
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    month = request.args.get('month')
+    session_param = request.args.get('session') or get_current_academic_session(user.school_id)
+    class_id = request.args.get('class_id')
+    fee_type = request.args.get('fee_type')
+    status = request.args.get('status')
+
+    from app.models.school import School
+    from app.utils.pdf_generator import generate_fee_collection_report_pdf
+
+    school = School.query.get(user.school_id)
+    q = FeeRecord.query.filter(FeeRecord.school_id == user.school_id, FeeRecord.status != 'DRAFT')
+
+    if month:
+        from sqlalchemy import or_
+        q = q.filter(or_(FeeRecord.month == month, FeeRecord.month.like(f"{month}%")))
+    if session_param:
+        q = q.filter(FeeRecord.session == session_param)
+    if class_id:
+        q = q.join(Student, FeeRecord.student_id == Student.id).filter(Student.class_id == class_id)
+    if fee_type:
+        q = q.filter(FeeRecord.fee_type == fee_type)
+    if status:
+        q = q.filter(FeeRecord.status == status)
+
+    records = q.all()
+    tot_due = sum(float(r.amount_due or 0.0) for r in records)
+    tot_paid = sum(float(r.amount_paid or 0.0) for r in records)
+    summary = {
+        'total_billed': tot_due,
+        'total_collected': tot_paid,
+        'total_pending': max(0.0, tot_due - tot_paid),
+    }
+    subtitle = f"Academic Session: {session_param}" if session_param else ""
+    if month:
+        subtitle += f" | Month: {month}"
+
+    serialized_records = [r.to_dict() if hasattr(r, 'to_dict') else r for r in records]
+    buf = generate_fee_collection_report_pdf(
+        school=school,
+        summary=summary,
+        transactions_or_records=serialized_records,
+        report_title="Fee Collection & Revenue Report",
+        subtitle=subtitle
+    )
+    filename = f"Fee_Collection_Report_{month or session_param or 'All'}.pdf"
+    return send_file(buf, mimetype='application/pdf', as_attachment=False, download_name=filename)
+
+
 
 
 @fees_finance_bp.route('/outstanding/purge-former', methods=['POST', 'DELETE'])

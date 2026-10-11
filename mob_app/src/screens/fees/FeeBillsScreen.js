@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import client from '../../api/client';
 import { colors } from '../../theme/colors';
+import { handlePdfActionMenu } from '../../utils/pdfHelper';
 
 const getCurrentMonth = () => {
   const d = new Date();
@@ -117,13 +118,28 @@ export default function FeeBillsScreen({ navigation }) {
     }
   };
 
-  // Download Bill PDF Handler
+  // Download / Print / Share Bill PDF Handler
   const handleDownloadBillPdf = (bill) => {
     if (!bill?.id) return;
-    const pdfUrl = `${client.defaults.baseURL}/fees-finance/bills/${bill.id}/pdf`;
-    Linking.openURL(pdfUrl).catch(() => {
-      Alert.alert('Download Error', 'Could not open bill PDF URL.');
+    handlePdfActionMenu({
+      pathOrUrl: `/fees-finance/bills/${bill.id}/pdf`,
+      filename: `Demand_Bill_${bill.bill_no || bill.id}.pdf`,
+      title: `Demand Bill #${bill.bill_no || bill.id}`,
     });
+  };
+
+  // Dispatch / Send Demand Notice to Parent
+  const handleSendBillNotice = async (bill) => {
+    if (!bill?.id) return;
+    try {
+      const res = await client.post(`/fees-finance/bills/${bill.id}/send`, {
+        delivery_channel: 'IN_APP_AND_SMS',
+      });
+      Alert.alert('Notice Dispatched', res.data?.message || 'Demand bill notice dispatched to parent.');
+      loadBills();
+    } catch (err) {
+      Alert.alert('Delivery Failed', err.response?.data?.error || 'Could not send demand bill.');
+    }
   };
 
   const filteredBills = useMemo(() => {
@@ -201,6 +217,14 @@ export default function FeeBillsScreen({ navigation }) {
           >
             <Ionicons name="document-text-outline" size={14} color="#64748b" />
             <Text style={styles.pdfBtnText}>PDF</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.pdfBtn, { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }]}
+            onPress={() => handleSendBillNotice(item)}
+          >
+            <Ionicons name="send-outline" size={13} color="#16a34a" />
+            <Text style={[styles.pdfBtnText, { color: '#16a34a' }]}>Send</Text>
           </TouchableOpacity>
 
           {!isPaid ? (

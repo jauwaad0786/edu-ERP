@@ -454,7 +454,12 @@ def submit_leave_request(user, leave_type_id, from_date, to_date, reason,
         db.session.add(bal)
         db.session.flush()
 
-    if lt.is_paid and bal and bal.remaining < days_count:
+    # Verify balance if leave requires quota check (exempt students and parents)
+    is_student_or_parent = (
+        getattr(user, 'role', None) in (UserRole.STUDENT, UserRole.PARENT) or
+        str(getattr(user, 'role', '')).upper() in ('STUDENT', 'PARENT', 'USERROLE.STUDENT', 'USERROLE.PARENT')
+    )
+    if not is_student_or_parent and lt.is_paid and bal and bal.remaining < days_count:
         raise ValueError(f'Insufficient leave balance. Remaining: {bal.remaining} days, Requested: {days_count} days.')
 
     req = LeaveRequest(

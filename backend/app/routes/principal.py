@@ -4721,25 +4721,33 @@ def dashboard():
     # Today's student attendance (strictly excluding unconfirmed provisional students)
     total_students = Student.query.filter_by(school_id=sid, is_deleted=False).filter(Student.status != 'PROVISIONAL').count()
     unconfirmed_admissions_count = Student.query.filter_by(school_id=sid, is_deleted=False, status='PROVISIONAL').count()
-    att_today      = Attendance.query.join(
-                         Student, Attendance.student_id == Student.id
-                     ).filter(
-                         Student.school_id == sid,
-                         Student.is_deleted == False,
-                         Student.status != 'PROVISIONAL',
-                         Attendance.date == today
-                     ).all()
-    s_present = sum(1 for a in att_today if a.status == 'PRESENT')
-    s_absent  = sum(1 for a in att_today if a.status == 'ABSENT')
-    s_late    = sum(1 for a in att_today if a.status == 'LATE')
+    # Aggregated in SQL instead of loading all student rows into memory
+    s_att_counts = dict(
+        db.session.query(Attendance.status, func.count(Attendance.id))
+        .join(Student, Attendance.student_id == Student.id)
+        .filter(
+            Student.school_id == sid,
+            Student.is_deleted == False,
+            Student.status != 'PROVISIONAL',
+            Attendance.date == today
+        )
+        .group_by(Attendance.status)
+        .all()
+    )
+    s_present = s_att_counts.get('PRESENT', 0)
+    s_absent  = s_att_counts.get('ABSENT', 0)
+    s_late    = s_att_counts.get('LATE', 0)
 
-    # Today's teacher attendance
+    # Today's teacher attendance aggregated in SQL
     total_teachers = Teacher.query.filter_by(school_id=sid).count()
-    t_att_today    = TeacherAttendance.query.filter_by(
-                         school_id=sid, date=today
-                     ).all()
-    t_present = sum(1 for a in t_att_today if a.status == 'PRESENT')
-    t_absent  = sum(1 for a in t_att_today if a.status == 'ABSENT')
+    t_att_counts = dict(
+        db.session.query(TeacherAttendance.status, func.count(TeacherAttendance.id))
+        .filter(TeacherAttendance.school_id == sid, TeacherAttendance.date == today)
+        .group_by(TeacherAttendance.status)
+        .all()
+    )
+    t_present = t_att_counts.get('PRESENT', 0)
+    t_absent  = t_att_counts.get('ABSENT', 0)
 
     # ── Class-wise student attendance breakdown today (Optimized into 2 queries) ──
     classes = Class.query.filter_by(school_id=sid).order_by(Class.name, Class.section).all()
@@ -5774,8 +5782,23 @@ def generate_student_id_card(student_id):
 
     student = Student.query.get_or_404(student_id)
     cur_user = get_current_user()
-    if cur_user and getattr(cur_user.role, 'value', str(cur_user.role)) in ('STUDENT', 'PARENT'):
+    role_str = str(getattr(cur_user.role, 'value', cur_user.role)).upper() if cur_user else ''
+    if role_str == 'STUDENT':
         if student.user_id != cur_user.id:
+            return jsonify({'error': 'Unauthorized'}), 403
+    elif role_str == 'PARENT':
+        clean_user_phone = ''.join(c for c in str(cur_user.phone or '') if c.isdigit())[-10:]
+        user_email = (cur_user.email or '').strip().lower()
+        s_clean_phone = ''.join(c for c in str(student.parent_phone or '') if c.isdigit())[-10:]
+        s_clean_guard = ''.join(c for c in str(student.guardian_phone or '') if c.isdigit())[-10:]
+        s_email = (student.parent_email or '').strip().lower()
+        is_linked = (
+            student.user_id == cur_user.id or
+            (clean_user_phone and s_clean_phone and clean_user_phone == s_clean_phone) or
+            (clean_user_phone and s_clean_guard and clean_user_phone == s_clean_guard) or
+            (user_email and s_email and user_email == s_email)
+        )
+        if not is_linked:
             return jsonify({'error': 'Unauthorized'}), 403
     elif student.school_id != _school_id():
         return jsonify({'error': 'Unauthorized'}), 403
@@ -5889,7 +5912,7 @@ def bulk_id_cards():
 
 
 @principal_bp.route('/id-cards/preview/<int:student_id>', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_required('PRINCIPAL', 'TEACHER', 'STUDENT', 'PARENT', 'SUPER_ADMIN')
 def preview_id_card_data(student_id):
     """
     Return JSON data for frontend live preview.
@@ -5898,7 +5921,26 @@ def preview_id_card_data(student_id):
     from app.models.school import School
 
     student = Student.query.get_or_404(student_id)
-    if student.school_id != _school_id():
+    cur_user = get_current_user()
+    role_str = str(getattr(cur_user.role, 'value', cur_user.role)).upper() if cur_user else ''
+    if role_str == 'STUDENT':
+        if student.user_id != cur_user.id:
+            return jsonify({'error': 'Unauthorized'}), 403
+    elif role_str == 'PARENT':
+        clean_user_phone = ''.join(c for c in str(cur_user.phone or '') if c.isdigit())[-10:]
+        user_email = (cur_user.email or '').strip().lower()
+        s_clean_phone = ''.join(c for c in str(student.parent_phone or '') if c.isdigit())[-10:]
+        s_clean_guard = ''.join(c for c in str(student.guardian_phone or '') if c.isdigit())[-10:]
+        s_email = (student.parent_email or '').strip().lower()
+        is_linked = (
+            student.user_id == cur_user.id or
+            (clean_user_phone and s_clean_phone and clean_user_phone == s_clean_phone) or
+            (clean_user_phone and s_clean_guard and clean_user_phone == s_clean_guard) or
+            (user_email and s_email and user_email == s_email)
+        )
+        if not is_linked:
+            return jsonify({'error': 'Unauthorized'}), 403
+    elif student.school_id != _school_id():
         return jsonify({'error': 'Unauthorized'}), 403
 
     school = School.query.get(student.school_id)

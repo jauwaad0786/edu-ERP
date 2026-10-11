@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import client from '../../api/client';
 import { colors } from '../../theme/colors';
 import ProgressRing from '../../components/common/ProgressRing';
+import { handlePdfActionMenu } from '../../utils/pdfHelper';
 
 const fmt = v => {
   if (v == null || isNaN(v)) return '₹ 0';
@@ -45,7 +46,7 @@ export default function FeesScreen({ navigation }) {
 
       if (role === 'STUDENT' || role === 'PARENT') {
         if (role === 'PARENT') {
-          const pRes = await client.get('/parent/children').catch(() => ({ data: [] }));
+          const pRes = await client.get('/student/children').catch(() => client.get('/parent/children')).catch(() => ({ data: [] }));
           const cList = Array.isArray(pRes.data) ? pRes.data : pRes.data?.children || [];
           setParentChildren(cList);
           const activeChildId = selectedChildId || cList[0]?.id;
@@ -141,12 +142,12 @@ export default function FeesScreen({ navigation }) {
     );
   };
 
-  // Open PDF Download
+  // Open PDF Download / Native Print / Share using pdfHelper
   const handleDownloadReceiptPdf = (paymentId) => {
-    const baseUrl = client.defaults.baseURL || 'https://edu-erp-backend-xoas.onrender.com/api';
-    const pdfUrl = `${baseUrl}/fees-finance/payments/${paymentId}/receipt-pdf`;
-    Linking.openURL(pdfUrl).catch(() => {
-      Alert.alert('Notice', 'Unable to open PDF. Please check device browser.');
+    handlePdfActionMenu({
+      pathOrUrl: `/fees-finance/payments/${paymentId}/receipt-pdf`,
+      filename: `Official_Receipt_${paymentId}.pdf`,
+      title: 'Fee Payment Receipt',
     });
   };
 

@@ -26,7 +26,12 @@ export default function IDCardScreen({ route, navigation }) {
   const { user } = useAuth();
   const { student_id, student: initialStudent } = route?.params || {};
 
+  const role = user?.role ? String(user.role).toUpperCase() : 'STUDENT';
+  const isStudent = role === 'STUDENT';
+  const isParent = role === 'PARENT';
+
   const [student, setStudent] = useState(initialStudent || null);
+  const [children, setChildren] = useState([]);
   const [classes, setClasses] = useState([]);
   const [selectedClassId, setSelectedClassId] = useState(null);
   const [classStudents, setClassStudents] = useState([]);
@@ -37,22 +42,35 @@ export default function IDCardScreen({ route, navigation }) {
   const schoolCity = user?.school?.city || user?.school?.address || 'Campus Center';
   const schoolPhone = user?.school?.phone || '';
 
-  // Fetch student details if ID passed
+  // Fetch student details if ID passed or Student self profile
   const loadStudentData = useCallback(async (sid) => {
-    if (!sid) return;
     setLoading(true);
     try {
-      const res = await client.get(`/principal/students/${sid}`);
-      setStudent(res.data?.student || res.data);
+      if (sid) {
+        const res = await client.get(`/principal/students/${sid}`);
+        setStudent(res.data?.student || res.data);
+      } else if (isStudent) {
+        const res = await client.get('/student/profile');
+        setStudent(res.data?.student || res.data);
+      } else if (isParent) {
+        const res = await client.get('/student/children');
+        const list = Array.isArray(res.data) ? res.data : (res.data?.children || []);
+        setChildren(list);
+        if (list.length > 0) {
+          const selected = initialStudent ? list.find(k => k.id === initialStudent.id) || list[0] : list[0];
+          setStudent(selected);
+        }
+      }
     } catch {
       // Fallback
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isStudent, isParent, initialStudent]);
 
-  // Fetch classes for browser mode if no single student pinned
+  // Fetch classes for browser mode if staff/admin
   const loadClassesAndRoster = useCallback(async () => {
+    if (isStudent || isParent) return;
     try {
       const res = await client.get('/principal/classes').catch(() => ({ data: [] }));
       const list = Array.isArray(res.data) ? res.data : res.data?.classes || [];
@@ -63,11 +81,11 @@ export default function IDCardScreen({ route, navigation }) {
     } catch {
       // Fallback
     }
-  }, [selectedClassId, student_id]);
+  }, [selectedClassId, student_id, isStudent, isParent]);
 
   // Load students of selected class
   const loadRoster = useCallback(async (cid) => {
-    if (!cid) return;
+    if (!cid || isStudent || isParent) return;
     setLoading(true);
     try {
       const res = await client.get('/principal/students', {
@@ -83,21 +101,21 @@ export default function IDCardScreen({ route, navigation }) {
     } finally {
       setLoading(false);
     }
-  }, [student]);
+  }, [student, isStudent, isParent]);
 
   useEffect(() => {
-    if (student_id) {
+    if (student_id || isStudent || isParent) {
       loadStudentData(student_id);
     } else {
       loadClassesAndRoster();
     }
-  }, [student_id, loadStudentData, loadClassesAndRoster]);
+  }, [student_id, isStudent, isParent, loadStudentData, loadClassesAndRoster]);
 
   useEffect(() => {
-    if (!student_id && selectedClassId) {
+    if (!student_id && !isStudent && !isParent && selectedClassId) {
       loadRoster(selectedClassId);
     }
-  }, [student_id, selectedClassId, loadRoster]);
+  }, [student_id, isStudent, isParent, selectedClassId, loadRoster]);
 
   const handleDownloadPDF = () => {
     if (!student?.id) return;
@@ -138,8 +156,32 @@ export default function IDCardScreen({ route, navigation }) {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Class selector chips if in browser mode */}
-        {!student_id && classes.length > 0 && (
+        {/* Child selector chips if parent has multiple children */}
+        {isParent && children.length > 1 && (
+          <View style={styles.classChipsWrapper}>
+            <Text style={styles.chipsLabel}>Select Child:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {children.map((c) => {
+                const isSelected = student?.id === c.id;
+                return (
+                  <TouchableOpacity
+                    key={c.id}
+                    style={[styles.classChip, isSelected && styles.classChipActive]}
+                    onPress={() => setStudent(c)}
+                  >
+                    <Ionicons name="person" size={13} color={isSelected ? '#fff' : C.primary} style={{ marginRight: 4 }} />
+                    <Text style={[styles.classChipText, isSelected && styles.classChipTextActive]}>
+                      {c.name} ({c.class_display || c.class_name || 'Class'})
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Class selector chips if in staff browser mode */}
+        {!student_id && !isStudent && !isParent && classes.length > 0 && (
           <View style={styles.classChipsWrapper}>
             <Text style={styles.chipsLabel}>Select Class:</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
@@ -164,8 +206,8 @@ export default function IDCardScreen({ route, navigation }) {
           </View>
         )}
 
-        {/* Student selector chips in browser mode */}
-        {!student_id && classStudents.length > 0 && (
+        {/* Student selector chips in staff browser mode */}
+        {!student_id && !isStudent && !isParent && classStudents.length > 0 && (
           <View style={styles.studentChipsWrapper}>
             <Text style={styles.chipsLabel}>Select Student ({classStudents.length}):</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>

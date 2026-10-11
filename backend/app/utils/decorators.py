@@ -78,7 +78,8 @@ def role_required(*roles):
         @wraps(fn)
         def wrapper(*args, **kwargs):
             verify_jwt_in_request()
-            user_id = int(get_jwt_identity())
+            ident = get_jwt_identity()
+            user_id = int(ident.get('id') if isinstance(ident, dict) else ident)
             user = User.query.get(user_id)
             is_valid, err_resp = validate_user_and_school_lifecycle(user)
             if not is_valid:
@@ -109,7 +110,15 @@ def get_current_user():
         verify_jwt_in_request(optional=True)
         identity = get_jwt_identity()
         if identity is None:
+            from flask import request
+            from flask_jwt_extended import decode_token
+            token = request.args.get('token')
+            if token:
+                decoded = decode_token(token)
+                identity = decoded.get('sub')
+        if identity is None:
             return None
-        return User.query.get(int(identity))
+        user_id = int(identity.get('id') if isinstance(identity, dict) else identity)
+        return User.query.get(user_id)
     except Exception:
         return None

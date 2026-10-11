@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import client from '../../api/client';
 import { colors } from '../../theme/colors';
+import { handlePdfActionMenu } from '../../utils/pdfHelper';
 
 const fmt = v => {
   if (v == null || isNaN(v)) return '₹ 0';
@@ -120,6 +121,16 @@ export default function OutstandingScreen({ navigation }) {
     navigation.navigate('FeeCollect', { student: studentObj });
   };
 
+  // Export Outstanding Defaulters PDF
+  const handleExportOutstandingPdf = () => {
+    const classParam = selectedClassId !== 'ALL' ? `?class_id=${selectedClassId}` : '';
+    handlePdfActionMenu({
+      pathOrUrl: `/fees-finance/outstanding/pdf${classParam}`,
+      filename: `Outstanding_Defaulters_Report.pdf`,
+      title: 'Outstanding Dues Defaulters Report',
+    });
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
@@ -137,6 +148,13 @@ export default function OutstandingScreen({ navigation }) {
             {filtered.length} Defaulters · Total {fmt(totalOutstanding)}
           </Text>
         </View>
+        <TouchableOpacity
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}
+          onPress={handleExportOutstandingPdf}
+        >
+          <Ionicons name="document-text-outline" size={16} color="#ffffff" />
+          <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '700' }}>PDF</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Search Input Bar */}

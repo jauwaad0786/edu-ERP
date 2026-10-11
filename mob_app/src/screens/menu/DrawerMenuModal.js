@@ -379,6 +379,7 @@ export default function DrawerMenuModal({ visible, onClose, navigation }) {
               { label: 'Homework & Assignments', icon: 'clipboard-outline', screen: 'Assignments', color: '#6366f1' },
               { label: 'Study Notes & PDFs', icon: 'document-text-outline', screen: 'Notes', color: '#0284c7' },
               { label: 'My Attendance Registry', icon: 'clipboard-outline', screen: 'Attendance', color: '#16a34a' },
+              { label: 'Apply Leave & History', icon: 'calendar-outline', screen: 'Leaves', color: '#ea580c' },
             ],
           },
           {
@@ -387,6 +388,7 @@ export default function DrawerMenuModal({ visible, onClose, navigation }) {
             color: '#ea580c',
             items: [
               { label: 'Exam Schedule & Datesheet', icon: 'calendar-outline', screen: 'Examinations', color: '#ea580c' },
+              { label: 'Digital Student ID Card', icon: 'card-outline', screen: 'IDCard', color: '#0b57d0' },
               { label: 'Exam Admit Card', icon: 'card-outline', screen: 'AdmitCard', color: '#059669' },
               { label: 'Exam Report Card & RMS', icon: 'ribbon-outline', screen: 'Result', color: '#7c3aed' },
             ],
@@ -396,7 +398,8 @@ export default function DrawerMenuModal({ visible, onClose, navigation }) {
             icon: 'receipt-outline',
             color: '#d97706',
             items: [
-              { label: 'Fee Dues & Receipts', icon: 'receipt-outline', screen: 'Fees', color: '#d97706' },
+              { label: 'Fee Dues & Online Pay', icon: 'wallet-outline', screen: 'Fees', color: '#d97706' },
+              { label: 'Official Fee Receipts', icon: 'receipt-outline', screen: 'Receipts', color: '#059669' },
             ],
           },
           {
@@ -444,6 +447,7 @@ export default function DrawerMenuModal({ visible, onClose, navigation }) {
               { label: 'Homework & Tasks', icon: 'clipboard-outline', screen: 'Assignments', color: '#6366f1' },
               { label: 'Study Materials & Notes', icon: 'document-text-outline', screen: 'Notes', color: '#0284c7' },
               { label: 'Attendance Records', icon: 'clipboard-outline', screen: 'Attendance', color: '#16a34a' },
+              { label: 'Apply Child Leave', icon: 'calendar-outline', screen: 'Leaves', color: '#ea580c' },
               { label: 'Child Documents & Certificates', icon: 'document-attach-outline', screen: 'StudentDocuments', color: '#7c3aed' },
             ],
           },
@@ -453,6 +457,7 @@ export default function DrawerMenuModal({ visible, onClose, navigation }) {
             color: '#ea580c',
             items: [
               { label: 'Exam Datesheets', icon: 'calendar-outline', screen: 'Examinations', color: '#ea580c' },
+              { label: 'Child Digital ID Card', icon: 'card-outline', screen: 'IDCard', color: '#0b57d0' },
               { label: 'Child Admit Card', icon: 'card-outline', screen: 'AdmitCard', color: '#059669' },
               { label: 'Report Card & Marks', icon: 'ribbon-outline', screen: 'Result', color: '#7c3aed' },
             ],
@@ -462,7 +467,8 @@ export default function DrawerMenuModal({ visible, onClose, navigation }) {
             icon: 'receipt-outline',
             color: '#d97706',
             items: [
-              { label: 'Fee Dues & Payment Receipts', icon: 'receipt-outline', screen: 'Fees', color: '#d97706' },
+              { label: 'Fee Dues & Online Pay', icon: 'wallet-outline', screen: 'Fees', color: '#d97706' },
+              { label: 'Official Fee Receipts', icon: 'receipt-outline', screen: 'Receipts', color: '#059669' },
             ],
           },
           {

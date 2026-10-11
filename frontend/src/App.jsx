@@ -47,6 +47,7 @@ import TeacherDailyDiaryPage from './pages/academics/TeacherDailyDiaryPage';
 import TeacherSyllabusCoveragePage from './pages/academics/TeacherSyllabusCoveragePage';
 import PrincipalAcademicDashboard from './pages/academics/PrincipalAcademicDashboard';
 import IDCardPage       from './pages/IDCardPage';
+import StudentLeavePage from './pages/StudentLeavePage';
 import AdmitCardPage    from './pages/AdmitCardPage';
 import ResultCardPage   from './pages/ResultCardPage';
 import MarksPage        from './pages/MarksPage';
@@ -443,13 +444,18 @@ export default function App() {
               </TenantProtectedRoute>
             } />
             <Route path="/:schoolSlug/:role/id-cards" element={
-              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']}>
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR']}>
                 <IDCardPage />
               </TenantProtectedRoute>
             } />
             <Route path="/:schoolSlug/:role/id-cards/:type" element={
-              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN']}>
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'TEACHER', 'STUDENT', 'PARENT', 'VICE_PRINCIPAL', 'DIRECTOR']}>
                 <IDCardPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/leaves" element={
+              <TenantProtectedRoute roles={['STUDENT', 'PARENT', 'TEACHER', 'PRINCIPAL', 'SUPER_ADMIN', 'HR', 'VICE_PRINCIPAL', 'DIRECTOR']}>
+                <StudentLeavePage />
               </TenantProtectedRoute>
             } />
 

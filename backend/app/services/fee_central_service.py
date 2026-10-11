@@ -680,3 +680,480 @@ class FeeCentralService:
             'synced_fee_records': synced_records,
             'synced_bill_items': synced_bills
         }
+
+    @staticmethod
+    def get_session_months(session_str):
+        """
+        Returns list of 12 academic months (April to March) for the given session.
+        e.g. '2026-27' -> April 2026 to March 2027.
+        """
+        try:
+            if '-' in str(session_str):
+                start_yr = int(str(session_str).split('-')[0])
+            else:
+                start_yr = int(str(session_str))
+        except Exception:
+            start_yr = date.today().year if date.today().month >= 4 else date.today().year - 1
+
+        months = []
+        # April (04) to December (12)
+        for m in range(4, 13):
+            code = f"{start_yr}-{m:02d}"
+            label = f"{calendar.month_name[m]} {start_yr}"
+            months.append({'code': code, 'label': label, 'month_num': m, 'year': start_yr})
+        # January (01) to March (03) of next year
+        next_yr = start_yr + 1
+        for m in range(1, 4):
+            code = f"{next_yr}-{m:02d}"
+            label = f"{calendar.month_name[m]} {next_yr}"
+            months.append({'code': code, 'label': label, 'month_num': m, 'year': next_yr})
+        return months
+
+    @staticmethod
+    def get_student_multi_month_schedule(student_id, session=None):
+        """
+        Calculates the complete 12-month fee schedule for a student for the given session,
+        categorizing each month as PAID, PARTIAL, OVERDUE, ISSUED, or UPCOMING,
+        and generating calculated presets for 1 Month, 3 Months, 6 Months, and 12 Months.
+        """
+        student = Student.query.get(student_id)
+        if not student:
+            raise ValueError(f"Student #{student_id} not found.")
+
+        if not session:
+            session = get_current_academic_session(student.school_id)
+
+        from app.services.fee_ledger_service import get_student_applicable_charges
+        months_meta = FeeCentralService.get_session_months(session)
+
+        # Fetch existing FeeBills for this session
+        existing_bills = {
+            b.bill_month: b for b in FeeBill.query.filter_by(
+                school_id=student.school_id,
+                student_id=student_id,
+                session=session
+            ).filter(FeeBill.status != BillStatus.CANCELLED.value).all()
+        }
+
+        # Fetch existing FeeRecords for this session
+        existing_records = {}
+        records = FeeRecord.query.filter_by(
+            school_id=student.school_id,
+            student_id=student_id,
+            session=session
+        ).filter(FeeRecord.status != 'CANCELLED').all()
+        for r in records:
+            if r.month:
+                existing_records.setdefault(r.month, []).append(r)
+
+        schedule_months = []
+        today = date.today()
+
+        for m in months_meta:
+            m_code = m['code']
+            m_label = m['label']
+            bill = existing_bills.get(m_code)
+            recs = existing_records.get(m_code, [])
+
+            if bill:
+                base_amt = float(bill.total_current_charges or 0.0)
+                disc_amt = float(bill.total_discount or 0.0)
+                fine_amt = float(bill.total_late_fine or 0.0)
+                net_amt = float(bill.total_payable or 0.0)
+                paid_amt = float(bill.amount_paid or 0.0)
+                bal_amt = float(bill.balance_due or 0.0)
+                st = bill.status
+                items = [
+                    {
+                        'id': it.id,
+                        'fee_head_id': it.fee_head_id,
+                        'fee_head_name': it.fee_head.name if it.fee_head else 'Fee Item',
+                        'department': it.department or 'ACCOUNTS',
+                        'original_amount': float(it.original_amount or 0.0),
+                        'discount_amount': float(it.discount_amount or 0.0),
+                        'fine_amount': float(it.fine_amount or 0.0),
+                        'net_amount': float(it.net_amount or 0.0),
+                        'paid_amount': float(it.paid_amount or 0.0),
+                        'balance_amount': float(it.balance_amount or 0.0)
+                    } for it in bill.items
+                ]
+            else:
+                # Calculate from configured fee structures and active concessions
+                charges = get_student_applicable_charges(student_id, session=session, bill_month=m_code)
+                base_amt = sum(float(c['original_amount']) for c in charges)
+                disc_amt = sum(float(c['discount_amount']) for c in charges)
+                fine_amt = sum(float(c['fine_amount']) for c in charges)
+                net_amt = sum(float(c['net_amount']) for c in charges)
+
+                # Check if matching FeeRecord was paid
+                rec_paid = sum(float(r.amount_paid or 0.0) for r in recs)
+                paid_amt = rec_paid
+                bal_amt = max(0.0, net_amt - paid_amt)
+                if bal_amt <= 0 and net_amt > 0:
+                    st = 'PAID'
+                elif paid_amt > 0:
+                    st = 'PARTIAL'
+                else:
+                    st = 'UPCOMING'
+                items = [
+                    {
+                        'id': None,
+                        'fee_head_id': c['fee_head_id'],
+                        'fee_head_name': c['fee_head_name'],
+                        'department': c['department'],
+                        'original_amount': float(c['original_amount']),
+                        'discount_amount': float(c['discount_amount']),
+                        'fine_amount': float(c['fine_amount']),
+                        'net_amount': float(c['net_amount']),
+                        'paid_amount': 0.0,
+                        'balance_amount': float(c['net_amount'])
+                    } for c in charges
+                ]
+
+            is_paid = (bal_amt <= 0 and net_amt > 0)
+            is_partial = (paid_amt > 0 and bal_amt > 0)
+
+            schedule_months.append({
+                'month_code': m_code,
+                'month_label': m_label,
+                'bill_id': bill.id if bill else None,
+                'bill_no': bill.bill_no if bill else None,
+                'original_amount': round_curr(base_amt),
+                'discount_amount': round_curr(disc_amt),
+                'fine_amount': round_curr(fine_amt),
+                'net_amount': round_curr(net_amt),
+                'paid_amount': round_curr(paid_amt),
+                'balance': round_curr(bal_amt),
+                'status': st,
+                'is_paid': is_paid,
+                'is_partial': is_partial,
+                'items': items
+            })
+
+        unpaid_months = [m for m in schedule_months if m['balance'] > 0]
+
+        def _calc_preset(sub_list, label):
+            b_amt = sum(m['original_amount'] for m in sub_list)
+            d_amt = sum(m['discount_amount'] for m in sub_list)
+            f_amt = sum(m['fine_amount'] for m in sub_list)
+            n_amt = sum(m['balance'] for m in sub_list)
+            return {
+                'label': label,
+                'month_count': len(sub_list),
+                'months': [m['month_code'] for m in sub_list],
+                'month_labels': [m['month_label'] for m in sub_list],
+                'original_amount': round_curr(b_amt),
+                'discount_amount': round_curr(d_amt),
+                'fine_amount': round_curr(f_amt),
+                'amount_payable': round_curr(n_amt),
+                'is_available': len(sub_list) > 0
+            }
+
+        presets = {
+            '1_month': _calc_preset(unpaid_months[:1], '1 Month'),
+            '3_months': _calc_preset(unpaid_months[:3], '3 Months (Quarterly)'),
+            '6_months': _calc_preset(unpaid_months[:6], '6 Months (Half-Yearly)'),
+            '12_months': _calc_preset(unpaid_months[:12], '1 Year (Annual)'),
+        }
+
+        total_annual = round_curr(sum(m['net_amount'] for m in schedule_months))
+        total_paid_so_far = round_curr(sum(m['paid_amount'] for m in schedule_months))
+        total_outstanding = round_curr(sum(m['balance'] for m in schedule_months))
+
+        cls_display = f"{student.class_ref.name} {student.class_ref.section or ''}".strip() if student.class_ref else '—'
+
+        return {
+            'student': {
+                'id': student.id,
+                'name': student.user.name if student.user else '',
+                'admission_no': student.admission_no or '',
+                'class_name': cls_display,
+                'parent_name': student.parent_name or getattr(student, 'father_name', '') or '',
+            },
+            'session': session,
+            'summary': {
+                'total_annual_fee': total_annual,
+                'total_paid': total_paid_so_far,
+                'total_outstanding': total_outstanding,
+                'unpaid_months_count': len(unpaid_months),
+                'next_unpaid_month': unpaid_months[0]['month_label'] if unpaid_months else 'None (Fully Settled)'
+            },
+            'months': schedule_months,
+            'presets': presets
+        }
+
+    @staticmethod
+    def calculate_multi_month_fee(student_id, month_codes, session=None):
+        """
+        Calculates the exact billing breakdown for specific selected months.
+        Includes earlier unpaid dues warning if applicable.
+        """
+        schedule = FeeCentralService.get_student_multi_month_schedule(student_id, session=session)
+        all_months = schedule['months']
+
+        selected_map = {m['month_code']: m for m in all_months if m['month_code'] in month_codes}
+        selected_list = [selected_map[code] for code in sorted(month_codes) if code in selected_map]
+
+        base_amt = sum(m['original_amount'] for m in selected_list)
+        disc_amt = sum(m['discount_amount'] for m in selected_list)
+        fine_amt = sum(m['fine_amount'] for m in selected_list)
+        already_paid = sum(m['paid_amount'] for m in selected_list)
+        amount_payable = sum(m['balance'] for m in selected_list)
+
+        # Check for any earlier unpaid months before the earliest selected month
+        earliest_code = min(month_codes) if month_codes else '9999-99'
+        earlier_unpaid = [
+            m for m in all_months
+            if m['month_code'] < earliest_code and m['balance'] > 0
+        ]
+        earlier_dues_total = sum(m['balance'] for m in earlier_unpaid)
+
+        return {
+            'student': schedule['student'],
+            'session': schedule['session'],
+            'selected_months_count': len(selected_list),
+            'selected_months': [m['month_code'] for m in selected_list],
+            'selected_labels': [m['month_label'] for m in selected_list],
+            'original_amount': round_curr(base_amt),
+            'discount_amount': round_curr(disc_amt),
+            'fine_amount': round_curr(fine_amt),
+            'already_paid': round_curr(already_paid),
+            'amount_payable': round_curr(amount_payable),
+            'earlier_unpaid_dues': round_curr(earlier_dues_total),
+            'earlier_unpaid_months': [m['month_label'] for m in earlier_unpaid],
+            'grand_total_due': round_curr(amount_payable + earlier_dues_total),
+            'month_breakdown': selected_list
+        }
+
+    @staticmethod
+    def pay_multi_month_fee(
+        school_id,
+        student_id,
+        month_codes,
+        amount_paid,
+        payment_mode='UPI',
+        collected_by=None,
+        transaction_ref='',
+        remarks='',
+        session=None,
+        idempotency_key=None,
+        payment_date=None
+    ):
+        """
+        Processes a multi-month payment with full ACID transaction safety,
+        idempotency protection against duplicate submissions,
+        automatic bill generation for upcoming months, and multi-month allocation.
+        """
+        amount_paid = round_curr(amount_paid)
+        if amount_paid <= 0:
+            raise ValueError("Payment amount must be greater than zero.")
+
+        if not month_codes or len(month_codes) == 0:
+            raise ValueError("At least one month must be selected for payment.")
+
+        student = Student.query.filter_by(id=student_id, school_id=school_id).first()
+        if not student:
+            raise ValueError(f"Student #{student_id} not found.")
+
+        if not session:
+            session = get_current_academic_session(school_id)
+
+        p_date = payment_date or date.today()
+        if isinstance(p_date, str):
+            p_date = datetime.strptime(p_date, '%Y-%m-%d').date()
+
+        collector_id = collected_by.id if (collected_by and hasattr(collected_by, 'id')) else collected_by
+
+        # Idempotency check: prevent duplicate payments
+        idem_ref = (idempotency_key or '').strip()
+        if idem_ref:
+            existing_pay = FeePayment.query.filter_by(school_id=school_id, student_id=student_id).filter(
+                (FeePayment.transaction_ref == idem_ref) | (FeePayment.remarks.like(f"%[IDEM:{idem_ref}]%"))
+            ).first()
+            if existing_pay:
+                return existing_pay, False
+
+        # Ensure FeeBill exists for each selected month
+        from app.services.fee_ledger_service import generate_fee_bill
+        actor_user = User.query.get(collector_id) if collector_id else None
+
+        bills_to_settle = []
+        for m_code in sorted(month_codes):
+            bill = FeeBill.query.filter_by(
+                school_id=school_id,
+                student_id=student_id,
+                bill_month=m_code,
+                session=session
+            ).filter(FeeBill.status != BillStatus.CANCELLED.value).first()
+
+            if not bill:
+                due_d = f"{m_code}-10"
+                try:
+                    bill, _ = generate_fee_bill(student_id, m_code, due_d, actor_user, session=session)
+                except Exception as b_err:
+                    print(f"[FeeCentralService] Error generating bill for {m_code}: {b_err}")
+            if bill:
+                bills_to_settle.append(bill)
+
+        # Recalculate previous_dues for bills in this batch so they do not count each other as unpaid dues
+        batch_bill_ids = {b.id for b in bills_to_settle}
+        for b in bills_to_settle:
+            other_prev_bills = FeeBill.query.filter(
+                FeeBill.student_id == student_id,
+                FeeBill.bill_month < b.bill_month,
+                ~FeeBill.id.in_(batch_bill_ids),
+                FeeBill.status != BillStatus.CANCELLED.value
+            ).all()
+            b.previous_dues = round(sum(pb.balance_due for pb in other_prev_bills), 2)
+            b.calculate_totals()
+
+        total_unpaid_balance = sum(b.balance_due for b in bills_to_settle)
+        if total_unpaid_balance <= 0 and len(bills_to_settle) > 0:
+            raise ValueError("All selected months are already fully paid. Please select unpaid or upcoming months.")
+
+        # Generate unique sequential receipt number
+        seq = FeePayment.query.filter_by(school_id=school_id).count() + 1
+        while True:
+            candidate = f"REC-{p_date.year}-{seq:06d}"
+            if not FeePayment.query.filter_by(receipt_no=candidate).first() and not FeeRecord.query.filter_by(receipt_no=candidate).first():
+                receipt_no = candidate
+                break
+            seq += 1
+
+        # Calculate month labels for description
+        m_labels = []
+        for m in sorted(month_codes):
+            try:
+                yr, mo = map(int, m.split('-'))
+                m_labels.append(f"{calendar.month_name[mo][:3]} '{str(yr)[-2:]}")
+            except Exception:
+                m_labels.append(m)
+        period_summary = ", ".join(m_labels)
+
+        idem_tag = f" [IDEM:{idem_ref}]" if idem_ref else ""
+        final_remarks = f"Multi-Month ({len(month_codes)} mos: {period_summary}) - {remarks}".strip() + idem_tag
+
+        # Create Central FeePayment
+        central_payment = FeePayment(
+            receipt_no=receipt_no,
+            school_id=school_id,
+            student_id=student_id,
+            session=session,
+            payment_date=p_date,
+            total_paid=amount_paid,
+            payment_mode=payment_mode,
+            transaction_ref=transaction_ref or idem_ref or '',
+            collected_by=collector_id,
+            department='ACCOUNTS',
+            remarks=final_remarks,
+            status=PaymentStatus.VALID.value
+        )
+        db.session.add(central_payment)
+        db.session.flush()
+
+        # Allocate amount_paid across bills and items
+        rem_alloc = amount_paid
+        for bill in bills_to_settle:
+            if rem_alloc <= 0:
+                break
+            for it in bill.items:
+                if rem_alloc <= 0:
+                    break
+                it_bal = round_curr(it.net_amount - (it.paid_amount or 0.0))
+                if it_bal <= 0:
+                    continue
+                alloc_slice = min(rem_alloc, it_bal)
+                it.paid_amount = round_curr((it.paid_amount or 0.0) + alloc_slice)
+                it.balance_amount = round_curr(max(0.0, it.net_amount - it.paid_amount))
+
+                alloc_rec = FeePaymentAllocation(
+                    payment_id=central_payment.id,
+                    bill_id=bill.id,
+                    bill_item_id=it.id,
+                    fee_head_id=it.fee_head_id,
+                    department=it.department or 'ACCOUNTS',
+                    allocated_amount=alloc_slice
+                )
+                db.session.add(alloc_rec)
+                rem_alloc = round_curr(rem_alloc - alloc_slice)
+
+                # Sync to FeeRecord
+                sync_bill_item_to_fee_record(it, bill)
+
+            bill.amount_paid = round_curr(sum(i.paid_amount or 0.0 for i in bill.items))
+            bill.calculate_totals()
+
+        # If any excess money remains, record advance_credited
+        if rem_alloc > 0:
+            central_payment.advance_credited = rem_alloc
+
+        # Post StudentLedger CREDIT entry
+        ledger_credit = StudentLedger(
+            school_id=school_id,
+            student_id=student_id,
+            department='ACCOUNTS',
+            entry_type='CREDIT',
+            entry_date=p_date,
+            period_label=f"Multi-Month ({period_summary})",
+            session=session,
+            amount=amount_paid,
+            balance_after=0.0,
+            payment_id=central_payment.id,
+            reference_no=receipt_no,
+            description=f"Fee Payment Collected ({payment_mode}) - Receipt #{receipt_no} [{period_summary}]",
+            created_by=collector_id
+        )
+        db.session.add(ledger_credit)
+
+        # Check provisional promotion
+        if student.status == 'PROVISIONAL':
+            try:
+                from app.services.admission_service import promote_provisional_student
+                promote_provisional_student(student)
+            except Exception as e:
+                print(f"[FeeCentralService] Error promoting student: {e}")
+
+        db.session.commit()
+        return central_payment, True
+
+    @staticmethod
+    def generate_consolidated_demand_bill(
+        school_id,
+        student_id,
+        month_codes,
+        due_date=None,
+        session=None,
+        actor_user=None
+    ):
+        """
+        Generates or ensures formal Demand Notices / Fee Bills exist for all specified months.
+        """
+        student = Student.query.filter_by(id=student_id, school_id=school_id).first()
+        if not student:
+            raise ValueError(f"Student #{student_id} not found.")
+
+        if not session:
+            session = get_current_academic_session(school_id)
+
+        from app.services.fee_ledger_service import generate_fee_bill
+        generated_bills = []
+        for m_code in sorted(month_codes):
+            d_date = due_date or f"{m_code}-10"
+            bill, _ = generate_fee_bill(student_id, m_code, d_date, actor_user, session=session)
+            generated_bills.append(bill)
+
+        # Recalculate previous_dues for bills in this batch so they do not count each other as unpaid dues
+        batch_bill_ids = {b.id for b in generated_bills}
+        for b in generated_bills:
+            other_prev_bills = FeeBill.query.filter(
+                FeeBill.student_id == student_id,
+                FeeBill.bill_month < b.bill_month,
+                ~FeeBill.id.in_(batch_bill_ids),
+                FeeBill.status != BillStatus.CANCELLED.value
+            ).all()
+            b.previous_dues = round(sum(pb.balance_due for pb in other_prev_bills), 2)
+            b.calculate_totals()
+
+        db.session.commit()
+        return generated_bills
+
