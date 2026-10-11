@@ -102,6 +102,7 @@ export function normalizeServiceAlias(rawService) {
   if (s === 'settings/whatsapp') return 'settings/whatsapp';
   if (s === 'my-hr') return 'my-hr';
   if (s === 'my-services') return 'my-services';
+  if (s === 'notifications') return 'notifications/center';
   return s;
 }
 

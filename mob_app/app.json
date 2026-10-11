@@ -32,7 +32,8 @@
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS"
       ]
     },
     "web": {
@@ -41,7 +42,14 @@
     "plugins": [
       "expo-secure-store",
       "expo-location",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#0176d3"
+        }
+      ]
     ],
     "extra": {
       "apiUrl": "https://edu-erp-backend-xoas.onrender.com",

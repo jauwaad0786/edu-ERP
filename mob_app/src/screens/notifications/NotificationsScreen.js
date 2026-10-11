@@ -1,4 +1,5 @@
 // mob_app/src/screens/notifications/NotificationsScreen.js
+// Categorized notifications with dynamic backend sync, arrival confirmations, deep-linking, mark-all-read & unread badges.
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, RefreshControl,
@@ -8,6 +9,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import client from '../../api/client';
 import { colors } from '../../theme/colors';
+import { useMobileNotifications } from '../../context/NotificationContext';
+import notificationService from '../../services/notificationService';
 
 export default function NotificationsScreen({ navigation }) {
   const [activeTab, setActiveTab] = useState('All');
@@ -16,13 +19,14 @@ export default function NotificationsScreen({ navigation }) {
   const [respondingEventId, setRespondingEventId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const { markAsRead: contextMarkAsRead, markAllAsRead: contextMarkAllAsRead, refreshUnreadCount } = useMobileNotifications();
 
   const loadNotifications = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     try {
       const [notifRes, arrivalRes] = await Promise.all([
-        client.get('/notifications').catch(() =>
-          client.get('/support/notifications').catch(() => null)
+        client.get('/support/notifications').catch(() =>
+          client.get('/notifications').catch(() => null)
         ),
         client.get('/arrivals/parent/pending').catch(() =>
           client.get('/principal/arrivals/parent/pending').catch(() => ({ data: { events: [] } }))
@@ -38,12 +42,13 @@ export default function NotificationsScreen({ navigation }) {
         ? arrivalRes.data.events
         : (Array.isArray(arrivalRes?.data) ? arrivalRes.data : []);
       setArrivalEvents(arrivals);
+      refreshUnreadCount?.();
     } catch (err) {
       console.warn('Failed to load notifications:', err?.message);
     } finally {
       if (isRefresh) setRefreshing(false); else setLoading(false);
     }
-  }, []);
+  }, [refreshUnreadCount]);
 
   useEffect(() => {
     loadNotifications();
@@ -91,9 +96,53 @@ export default function NotificationsScreen({ navigation }) {
     }
   };
 
+  const handleMarkAllRead = async () => {
+    try {
+      await contextMarkAllAsRead?.();
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+    } catch (e) {
+      console.warn('Error marking all as read:', e);
+    }
+  };
+
+  const handleNotificationPress = async (item) => {
+    // 1. Mark as read
+    if (!item.isRead) {
+      try {
+        await contextMarkAsRead?.(item.id);
+        setNotifications(prev =>
+          prev.map(n => (n.id === item.id ? { ...n, is_read: true } : n))
+        );
+      } catch (e) {
+        // silently ignore
+      }
+    }
+
+    // 2. Deep-link navigation
+    const deepLink = item.deep_link;
+    const cat = item.rawCategory || '';
+
+    if (deepLink) {
+      if (deepLink.includes('fee')) navigation?.navigate?.('Fees');
+      else if (deepLink.includes('attendance')) navigation?.navigate?.('Attendance');
+      else if (deepLink.includes('exam')) navigation?.navigate?.('Exams');
+      else if (deepLink.includes('result')) navigation?.navigate?.('Results');
+      else if (deepLink.includes('hostel')) navigation?.navigate?.('Hostel');
+      else if (deepLink.includes('transport')) navigation?.navigate?.('Transport');
+    } else if (cat.includes('FEE')) {
+      navigation?.navigate?.('Fees');
+    } else if (cat.includes('ATTENDANCE')) {
+      navigation?.navigate?.('Attendance');
+    } else if (cat.includes('EXAM')) {
+      navigation?.navigate?.('Exams');
+    } else if (cat.includes('RESULT')) {
+      navigation?.navigate?.('Results');
+    }
+  };
+
   const displayList = useMemo(() => {
     return notifications.map((n, i) => {
-      const rawCat = (n.category || n.type || '').toUpperCase();
+      const rawCat = (n.category || n.notif_type || n.type || '').toUpperCase();
       let category = 'Others';
       let icon = 'notifications';
       let color = '#0284c7';
@@ -124,7 +173,7 @@ export default function NotificationsScreen({ navigation }) {
         icon = 'time';
         color = '#0284c7';
         bg = '#e0f2fe';
-      } else if (rawCat.includes('QUERY') || rawCat.includes('MESSAGE') || rawCat.includes('CHAT')) {
+      } else if (rawCat.includes('QUERY') || rawCat.includes('MESSAGE') || rawCat.includes('CHAT') || rawCat.includes('ANNOUNCEMENT')) {
         category = 'Others';
         icon = 'chatbubble-ellipses';
         color = '#ea580c';
@@ -133,6 +182,7 @@ export default function NotificationsScreen({ navigation }) {
 
       return {
         id: n.id || i,
+        rawCategory: rawCat,
         category: category,
         title: n.title || 'Institutional Notification',
         desc: n.message || n.body || n.content || n.description || 'Details available in portal.',
@@ -140,6 +190,7 @@ export default function NotificationsScreen({ navigation }) {
         icon,
         color,
         bg,
+        deep_link: n.deep_link,
         isRead: Boolean(n.is_read || n.read),
       };
     });
@@ -174,12 +225,22 @@ export default function NotificationsScreen({ navigation }) {
           <Ionicons name="arrow-back" size={22} color="#ffffff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Notifications</Text>
-        <TouchableOpacity
-          style={styles.headerBackBtn}
-          onPress={() => loadNotifications(true)}
-        >
-          <Ionicons name="refresh-outline" size={20} color="#ffffff" />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <TouchableOpacity
+            style={styles.headerActionBtn}
+            onPress={() => loadNotifications(true)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="refresh-outline" size={20} color="#ffffff" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerActionBtn}
+            onPress={handleMarkAllRead}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="checkmark-done-outline" size={20} color="#ffffff" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Category Tabs */}
@@ -250,6 +311,7 @@ export default function NotificationsScreen({ navigation }) {
           }
           showsVerticalScrollIndicator={false}
         >
+<<<<<<< HEAD
           {/* ══════════════════════════════════════════════════════════════
               SPECIAL FEATURE: SCHOOL ARRIVAL CONFIRMATION WITH YES/NO BUTTONS
              ══════════════════════════════════════════════════════════════ */}
@@ -371,31 +433,40 @@ export default function NotificationsScreen({ navigation }) {
           )}
 
           {/* Regular Notifications List */}
-          <View style={{ gap: 10 }}>
-            {filtered.map(item => (
-              <View key={item.id} style={styles.notifCard}>
-                <View style={[styles.iconCircle, { backgroundColor: item.bg }]}>
-                  <Ionicons name={item.icon} size={20} color={item.color} />
-                </View>
-
-                <View style={styles.infoCol}>
-                  <View style={styles.titleRow}>
-                    <Text style={styles.notifTitle}>{item.title}</Text>
-                    <Text style={styles.notifTime}>{item.time}</Text>
+          {filtered.length === 0 && arrivalEvents.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="notifications-off-outline" size={48} color="#94a3b8" />
+              <Text style={styles.emptyTitle}>No Notifications</Text>
+              <Text style={styles.emptySubtitle}>You're all caught up with your announcements and updates.</Text>
+            </View>
+          ) : (
+            <View style={{ gap: 10 }}>
+              {filtered.map(item => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={[styles.notifCard, !item.isRead && styles.unreadCard]}
+                  onPress={() => handleNotificationPress(item)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.iconCircle, { backgroundColor: item.bg }]}>
+                    <Ionicons name={item.icon} size={20} color={item.color} />
                   </View>
-                  <Text style={styles.notifDesc}>{item.desc}</Text>
-                </View>
-              </View>
-            ))}
 
-            {filtered.length === 0 && arrivalEvents.length === 0 && (
-              <View style={styles.emptyCard}>
-                <Ionicons name="notifications-off-outline" size={44} color="#94a3b8" />
-                <Text style={styles.emptyTitle}>No Notifications</Text>
-                <Text style={styles.emptySubtitle}>You're all caught up with your announcements and updates.</Text>
-              </View>
-            )}
-          </View>
+                  <View style={styles.infoCol}>
+                    <View style={styles.titleRow}>
+                      <Text style={[styles.notifTitle, !item.isRead && styles.unreadTitle]}>
+                        {item.title}
+                      </Text>
+                      <Text style={styles.notifTime}>{item.time}</Text>
+                    </View>
+                    <Text style={styles.notifDesc} numberOfLines={2}>{item.desc}</Text>
+                  </View>
+
+                  {!item.isRead && <View style={styles.unreadDot} />}
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </ScrollView>
       )}
     </SafeAreaView>
@@ -405,7 +476,7 @@ export default function NotificationsScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: '#f8fafc',
   },
   header: {
     backgroundColor: colors.primary,
@@ -416,11 +487,10 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   headerBackBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
+    padding: 4,
+  },
+  headerActionBtn: {
+    padding: 4,
   },
   headerTitle: {
     color: '#ffffff',
@@ -430,19 +500,17 @@ const styles = StyleSheet.create({
   tabsRow: {
     flexDirection: 'row',
     backgroundColor: '#ffffff',
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#e2e8f0',
-    gap: 6,
+    gap: 8,
   },
   tabBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
     backgroundColor: '#f1f5f9',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   tabBtnActive: {
     backgroundColor: colors.primary,
@@ -451,17 +519,27 @@ const styles = StyleSheet.create({
     backgroundColor: '#059669',
   },
   tabText: {
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: '600',
     color: '#64748b',
   },
   tabTextActive: {
     color: '#ffffff',
-    fontWeight: '700',
+  },
+  centerBox: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 30,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 13,
+    color: '#64748b',
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 36,
+    flexGrow: 1,
   },
   arrivalSection: {
     marginBottom: 16,
@@ -649,17 +727,21 @@ const styles = StyleSheet.create({
   },
   notifCard: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
     backgroundColor: '#ffffff',
-    borderRadius: 16,
+    borderRadius: 12,
     padding: 14,
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: '#e2e8f0',
     shadowColor: '#000',
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
     shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
     elevation: 1,
+  },
+  unreadCard: {
+    backgroundColor: '#f0f7ff',
+    borderColor: '#bfdbfe',
   },
   iconCircle: {
     width: 40,
@@ -668,7 +750,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
-    marginTop: 2,
   },
   infoCol: {
     flex: 1,
@@ -681,50 +762,46 @@ const styles = StyleSheet.create({
   },
   notifTitle: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '600',
     color: '#1e293b',
+    flex: 1,
+    marginRight: 8,
+  },
+  unreadTitle: {
+    fontWeight: '700',
+    color: '#0f172a',
   },
   notifTime: {
     fontSize: 11,
-    fontWeight: '500',
     color: '#94a3b8',
   },
   notifDesc: {
     fontSize: 12.5,
-    fontWeight: '400',
     color: '#64748b',
-    lineHeight: 18,
+    lineHeight: 17,
   },
-  emptyCard: {
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#2563eb',
+    marginLeft: 8,
+  },
+  emptyContainer: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 32,
-    marginTop: 16,
+    paddingVertical: 60,
   },
   emptyTitle: {
     fontSize: 16,
     fontWeight: '700',
     color: '#334155',
-    marginTop: 10,
+    marginTop: 12,
   },
   emptySubtitle: {
-    fontSize: 12.5,
-    color: '#94a3b8',
-    textAlign: 'center',
-    marginTop: 4,
-    paddingHorizontal: 20,
-  },
-  centerBox: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingText: {
-    marginTop: 10,
     fontSize: 13,
-    color: '#64748b',
-    fontWeight: '600',
+    color: '#94a3b8',
+    marginTop: 4,
   },
 });

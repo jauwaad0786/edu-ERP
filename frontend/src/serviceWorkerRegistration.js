@@ -122,3 +122,46 @@ export function unregister() {
       .catch(() => {});
   }
 }
+
+/**
+ * Subscribes current browser session to VAPID Web Push
+ */
+export async function subscribeToWebPush(apiClient) {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    return null;
+  }
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    let subscription = await registration.pushManager.getSubscription();
+    if (!subscription) {
+      const vapidKey = process.env.REACT_APP_VAPID_PUBLIC_KEY;
+      if (!vapidKey) return null;
+
+      const padding = '='.repeat((4 - (vapidKey.length % 4)) % 4);
+      const base64 = (vapidKey + padding).replace(/-/g, '+').replace(/_/g, '/');
+      const rawData = window.atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
+      for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+      }
+
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: outputArray,
+      });
+    }
+
+    if (subscription && apiClient) {
+      await apiClient.post('/support/notifications/devices/register', {
+        platform: 'web',
+        device_token: JSON.stringify(subscription),
+        device_name: 'Web Browser PWA',
+      });
+    }
+    return subscription;
+  } catch (err) {
+    console.warn('[WebPush] Registration failed:', err);
+    return null;
+  }
+}
+

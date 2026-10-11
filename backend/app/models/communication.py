@@ -232,6 +232,18 @@ class SupportNotification(db.Model):
     read_at       = db.Column(db.DateTime, nullable=True)
     created_at    = db.Column(db.DateTime, default=datetime.utcnow)
 
+    # ── Notification Engine Extensions ───────────────────────────────────────────
+    category      = db.Column(db.String(30), default='GENERAL')
+    # GENERAL | ACADEMIC | FEES | ATTENDANCE | EXAMS | RESULTS | HOSTEL | TRANSPORT | HRMS | ADMISSION | SYSTEM
+    deep_link     = db.Column(db.String(300), default='')
+    action_data   = db.Column(db.Text, default='{}')
+    delivered_at  = db.Column(db.DateTime, nullable=True)
+    clicked_at    = db.Column(db.DateTime, nullable=True)
+    expires_at    = db.Column(db.DateTime, nullable=True)
+    scheduled_at  = db.Column(db.DateTime, nullable=True)
+    channel       = db.Column(db.String(20), default='in_app')
+    # in_app | push | web_push | multi
+
     def to_dict(self):
         import json
         meta = {}
@@ -240,6 +252,13 @@ class SupportNotification(db.Model):
                 meta = json.loads(self.metadata_json)
         except Exception:
             meta = {}
+
+        action = {}
+        try:
+            if self.action_data:
+                action = json.loads(self.action_data)
+        except Exception:
+            action = {}
 
         return {
             'id':                self.id,
@@ -253,11 +272,19 @@ class SupportNotification(db.Model):
             'message':           self.message,
             'type':              self.notif_type,
             'notif_type':        self.notif_type,
+            'category':          self.category or 'GENERAL',
             'priority':          self.priority or 'MEDIUM',
+            'deep_link':         self.deep_link or '',
+            'channel':           self.channel or 'in_app',
+            'action_data':       action,
             'metadata':          meta,
             'is_read':           self.is_read,
-            'read_at':           self.read_at.isoformat()   if self.read_at   else None,
-            'created_at':        self.created_at.isoformat() if self.created_at else None,
+            'read_at':           self.read_at.isoformat()      if self.read_at      else None,
+            'delivered_at':      self.delivered_at.isoformat() if self.delivered_at else None,
+            'clicked_at':        self.clicked_at.isoformat()   if self.clicked_at   else None,
+            'expires_at':        self.expires_at.isoformat()   if self.expires_at   else None,
+            'scheduled_at':      self.scheduled_at.isoformat() if self.scheduled_at else None,
+            'created_at':        self.created_at.isoformat()   if self.created_at   else None,
         }
 
 

@@ -24,3 +24,5 @@ groq
 openai
 pymupdf
 python-docx
+exponent_server_sdk==2.2.0
+pywebpush==2.5.0

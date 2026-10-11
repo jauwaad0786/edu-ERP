@@ -55,15 +55,30 @@ def _broadcast_notification(ann, school_id):
     if target_roles:
         q = q.filter(User.role.in_(target_roles))
 
-    users = q.all()
-    for u in users:
-        send_notification(
-            user_id   = u.id,
-            title     = f'📢 {ann.title}',
-            message   = ann.body[:200] + ('...' if len(ann.body) > 200 else ''),
-            school_id = u.school_id,
-            notif_type= 'ANNOUNCEMENT',
-        )
+    user_ids = [u.id for u in q.all()]
+    if user_ids:
+        try:
+            from app.services.notification import NotificationEngine
+            NotificationEngine.dispatch_bulk(
+                user_ids=user_ids,
+                title=f'📢 {ann.title}',
+                message=ann.body[:200] + ('...' if len(ann.body) > 200 else ''),
+                school_id=school_id,
+                category='COMMUNICATION',
+                deep_link='/announcements',
+                priority=ann.priority or 'MEDIUM',
+                channels=['in_app', 'push'],
+                created_by=ann.created_by
+            )
+        except Exception:
+            for uid in user_ids:
+                send_notification(
+                    user_id   = uid,
+                    title     = f'📢 {ann.title}',
+                    message   = ann.body[:200] + ('...' if len(ann.body) > 200 else ''),
+                    school_id = school_id,
+                    notif_type= 'ANNOUNCEMENT',
+                )
 
 
 # ─── 1. Create Announcement ───────────────────────────────────────────────────

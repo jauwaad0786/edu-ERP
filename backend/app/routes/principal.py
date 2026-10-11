@@ -1907,6 +1907,36 @@ def confirm_provisional_admission(student_id=None):
 
         db.session.commit()
 
+        try:
+            from app.services.notification import emit_notification_event
+            emit_notification_event(
+                event_name='admission.confirmed',
+                school_id=sid,
+                payload={
+                    'student_name': student.user.name if student.user else f"Student #{student.id}",
+                    'student_id': student.id,
+                    'user_id': student.user_id,
+                    'admission_no': student.admission_no,
+                    'class_name': student.class_ref.name if getattr(student, 'class_ref', None) else '',
+                    'created_by': get_current_user().id if get_current_user() else None
+                }
+            )
+            if amount_paid > 0:
+                emit_notification_event(
+                    event_name='fees.collected',
+                    school_id=sid,
+                    payload={
+                        'student_name': student.user.name if student.user else f"Student #{student.id}",
+                        'student_id': student.id,
+                        'user_id': student.user_id,
+                        'amount': str(amount_paid),
+                        'receipt_no': receipt_no,
+                        'created_by': get_current_user().id if get_current_user() else None
+                    }
+                )
+        except Exception as notif_err:
+            print(f"[NOTIF] Admission confirmation notification trigger note: {notif_err}")
+
         return jsonify({
             'success': True,
             'message': f'Admission confirmed! Official admission number: {student.admission_no}',
@@ -2051,6 +2081,25 @@ def collect_fee_multiple():
 
     db.session.commit()
     student = Student.query.get(student_id_check)
+
+    try:
+        from app.services.notification import emit_notification_event
+        if student and total > 0:
+            emit_notification_event(
+                event_name='fees.collected',
+                school_id=sid,
+                payload={
+                    'student_name': student.user.name if student.user else f"Student #{student.id}",
+                    'student_id': student.id,
+                    'user_id': student.user_id,
+                    'amount': str(total),
+                    'receipt_no': receipts[0]['receipt_no'] if receipts else receipt_no,
+                    'created_by': get_current_user().id if get_current_user() else None
+                }
+            )
+    except Exception as notif_err:
+        print(f"[NOTIF] Fee collected notification trigger note: {notif_err}")
+
     return jsonify({
         'student_id': student_id_check,
         'student_name': student.user.name if student and student.user else '',
@@ -3061,6 +3110,27 @@ def mark_attendance():
     except Exception as audit_err:
         print(f"[AUDIT] Attendance mark logging failed: {audit_err}")
 
+    # Notification Event Trigger for Absent Students
+    try:
+        from app.services.notification import emit_notification_event
+        absent_student_ids = [r.get('student_id') for r in records if (r.get('status') or '').upper() == 'ABSENT']
+        if absent_student_ids:
+            absent_students = Student.query.filter(Student.id.in_(absent_student_ids)).all()
+            for s in absent_students:
+                emit_notification_event(
+                    event_name='attendance.absent',
+                    school_id=_school_id(),
+                    payload={
+                        'student_name': s.user.name if s.user else f"Student #{s.id}",
+                        'student_id': s.id,
+                        'user_id': s.user_id,
+                        'date': str(att_date),
+                        'created_by': marker_id
+                    }
+                )
+    except Exception as notif_err:
+        print(f"[NOTIF] Principal attendance notification trigger note: {notif_err}")
+
     return jsonify({'message': f'{len(records)} attendance records saved'}), 200
 @principal_bp.route('/teachers/attendance/today', methods=['GET'])
 @role_required('PRINCIPAL', 'TEACHER')
@@ -3555,6 +3625,25 @@ def publish_exam(exam_id):
         pass
 
     db.session.commit()
+
+    try:
+        from app.services.notification import emit_notification_event
+        participating_cids = [ec.class_id for ec in exam.participating_classes.all()]
+        emit_notification_event(
+            event_name='exams.published',
+            school_id=sid,
+            payload={
+                'exam_title': exam.exam_name,
+                'exam_id': exam.id,
+                'session': exam.session,
+                'start_date': exam.start_date.isoformat() if exam.start_date else '',
+                'class_ids': participating_cids,
+                'created_by': get_current_user().id
+            }
+        )
+    except Exception as notif_err:
+        print(f"[NOTIF] Exam publish notification trigger note: {notif_err}")
+
     return jsonify({'message': 'Exam published successfully', 'exam': exam.to_dict()}), 200
 
 

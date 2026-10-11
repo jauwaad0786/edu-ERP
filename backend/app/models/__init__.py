@@ -26,6 +26,10 @@ from app.models.curriculum import Curriculum, CurriculumChapter, CurriculumTopic
 
 from app.models.migration import MigrationBatch, MigrationRecord
 from app.models.arrival import StudentArrivalEvent
+from app.models.notification import (
+    NotificationTemplate, NotificationRule, NotificationPreference,
+    NotificationDeliveryLog, ScheduledNotification,
+)
 
 __all__ = [
     'User', 'UserRole', 'School', 'Product',
@@ -41,4 +45,6 @@ __all__ = [
     'TeacherDelegation', 'TeacherDelegationScope', 'TeacherDelegationPermission',
     'Curriculum', 'CurriculumChapter', 'CurriculumTopic', 'TeachingLog', 'TeachingWorksheet',
     'MigrationBatch', 'MigrationRecord', 'StudentArrivalEvent',
+    'NotificationTemplate', 'NotificationRule', 'NotificationPreference',
+    'NotificationDeliveryLog', 'ScheduledNotification',
 ]

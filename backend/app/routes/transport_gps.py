@@ -373,6 +373,25 @@ def start_trip():
         latitude=lat, longitude=lng, recorded_at=utc_now(),
     ))
     db.session.commit()
+
+    try:
+        from app.services.notification import emit_notification_event
+        assigned_transports = StudentTransport.query.filter_by(vehicle_id=vehicle.id, status='ACTIVE').all()
+        student_ids = [st.student_id for st in assigned_transports]
+        if student_ids:
+            emit_notification_event(
+                event_name='transport.delay',
+                school_id=driver.school_id or vehicle.school_id,
+                payload={
+                    'route_name': vehicle.route.route_name if vehicle.route else f"Bus #{vehicle.registration_number}",
+                    'delay_minutes': 0,
+                    'student_ids': student_ids,
+                    'created_by': get_current_user().id if get_current_user() else None
+                }
+            )
+    except Exception as notif_err:
+        print(f"[NOTIF] Trip start notification note: {notif_err}")
+
     return jsonify({'success': True, 'data': trip.to_dict()}), 201
 
 

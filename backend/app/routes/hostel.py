@@ -2141,6 +2141,26 @@ def update_out_pass_status(pass_id):
 
     log_hostel_activity(sid, user.id, 'OUTPASS_UPDATED', f'Out-pass #{pass_entry.id} → {pass_entry.status}')
     db.session.commit()
+
+    try:
+        from app.services.notification import emit_notification_event
+        from app.models.academic import Student
+        st = Student.query.get(pass_entry.student_id)
+        if st:
+            emit_notification_event(
+                event_name='hostel.outpass',
+                school_id=sid,
+                payload={
+                    'student_name': st.user.name if st.user else f"Student #{st.id}",
+                    'student_id': st.id,
+                    'user_id': st.user_id,
+                    'status': pass_entry.status,
+                    'created_by': user.id
+                }
+            )
+    except Exception as notif_err:
+        print(f"[NOTIF] Hostel outpass notification note: {notif_err}")
+
     return jsonify(pass_entry.to_dict()), 200
 
 
