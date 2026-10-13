@@ -225,6 +225,7 @@ def create_app(config_name='default'):
             _ensure_user_columns()
             _ensure_teacher_columns()
             _ensure_student_columns()
+            _ensure_curriculum_and_timetable_columns()
             _ensure_enrollment_table()
             _ensure_teacher_delegation_tables()
             _ensure_communication_columns()
@@ -1375,6 +1376,7 @@ def _ensure_student_columns():
         'pending_admission_no':    'VARCHAR(50)',
         'house':                   'VARCHAR(50)',
         'stream':                  'VARCHAR(50)',
+        'parent_user_id':          'INTEGER REFERENCES users(id)',
     }
     with db.engine.connect() as conn:
         for col, defn in to_add.items():
@@ -1385,6 +1387,46 @@ def _ensure_student_columns():
                     print(f'[OK] Added column students.{col}')
                 except Exception as e:
                     print(f'[WARN] students.{col}: {e}')
+
+
+def _ensure_curriculum_and_timetable_columns():
+    """
+    Ensures teaching diary approval fields and timetable period type columns exist.
+    """
+    from sqlalchemy import text, inspect
+    inspector = inspect(db.engine)
+    table_names = inspector.get_table_names()
+
+    # teaching_logs
+    if 'teaching_logs' in table_names:
+        existing_tl = {c['name'] for c in inspector.get_columns('teaching_logs')}
+        to_add_tl = {
+            'approval_status':  "VARCHAR(20) DEFAULT 'APPROVED'",
+            'approved_by':      'INTEGER REFERENCES users(id)',
+            'approved_at':      'TIMESTAMP',
+            'approval_remarks': "VARCHAR(500) DEFAULT ''",
+        }
+        with db.engine.connect() as conn:
+            for col, defn in to_add_tl.items():
+                if col not in existing_tl:
+                    try:
+                        conn.execute(text(f'ALTER TABLE teaching_logs ADD COLUMN {col} {defn}'))
+                        conn.commit()
+                        print(f'[OK] Added column teaching_logs.{col}')
+                    except Exception as e:
+                        print(f'[WARN] teaching_logs.{col}: {e}')
+
+    # timetable_periods
+    if 'timetable_periods' in table_names:
+        existing_tp = {c['name'] for c in inspector.get_columns('timetable_periods')}
+        if 'period_type' not in existing_tp:
+            with db.engine.connect() as conn:
+                try:
+                    conn.execute(text("ALTER TABLE timetable_periods ADD COLUMN period_type VARCHAR(20) DEFAULT 'LECTURE'"))
+                    conn.commit()
+                    print('[OK] Added column timetable_periods.period_type')
+                except Exception as e:
+                    print(f'[WARN] timetable_periods.period_type: {e}')
 
 
 def _ensure_enrollment_table():

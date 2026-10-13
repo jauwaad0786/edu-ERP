@@ -10,8 +10,15 @@ from app.models.academic import (
 from app.models.financial import (
     FeeRecord, FeeStructure, FeeTransaction, FeeGenerationBatch,
     ExamSchedule, ExamTimetable, ExamClass, ExamSubject, ExamTeacherDelegation, ResultVersion,
-    Holiday, Timetable, TimetablePeriod,
+    Holiday, Timetable, TimetablePeriod, TimetableSubstitution,
     FeeReceiptGroup,
+)
+from app.services.substitute_service import (
+    validate_timetable_conflict,
+    get_affected_periods_for_date,
+    get_eligible_substitutes,
+    assign_substitute,
+    cancel_substitute,
 )
 from app.models.documents import (
     IssuedDocument, StudentDocument, SchoolDocumentRequirement,
@@ -5739,13 +5746,36 @@ def unpublish_timetable(tt_id):
 
 
 @principal_bp.route('/timetables/<int:tt_id>/periods', methods=['GET'])
-@role_required('PRINCIPAL', 'TEACHER')
+@role_required('PRINCIPAL', 'TEACHER', 'STUDENT', 'PARENT', 'SUPER_ADMIN')
 def get_periods(tt_id):
     tt = Timetable.query.get_or_404(tt_id)
     if tt.school_id != _school_id():
         return jsonify({'error': 'Unauthorized'}), 403
     periods = tt.periods.order_by(TimetablePeriod.day, TimetablePeriod.period_no).all()
-    return jsonify([p.to_dict() for p in periods]), 200
+    target_date_str = request.args.get('date')
+    subst_map = {}
+    if target_date_str:
+        try:
+            target_date = datetime.strptime(target_date_str, '%Y-%m-%d').date()
+            substs = TimetableSubstitution.query.filter_by(
+                school_id=_school_id(),
+                date=target_date,
+                status='CONFIRMED'
+            ).all()
+            subst_map = {s.timetable_period_id: s.to_dict() for s in substs}
+        except ValueError:
+            pass
+
+    res = []
+    for p in periods:
+        pd = p.to_dict()
+        if p.id in subst_map:
+            pd['substitution'] = subst_map[p.id]
+            pd['is_substituted'] = True
+        else:
+            pd['is_substituted'] = False
+        res.append(pd)
+    return jsonify(res), 200
 
 
 @principal_bp.route('/timetables/<int:tt_id>/periods', methods=['POST'])
@@ -5754,34 +5784,58 @@ def add_period(tt_id):
     tt = Timetable.query.get_or_404(tt_id)
     if tt.school_id != _school_id():
         return jsonify({'error': 'Unauthorized'}), 403
-    data = request.get_json()
-    # upsert — same day + period_no → replace
+    data = request.get_json() or {}
+
+    day = (data.get('day') or '').upper()[:3]
+    period_no = data.get('period_no')
+    teacher_id = data.get('teacher_id')
+    room = data.get('room')
+    is_break = bool(data.get('is_break', False))
+
     existing = TimetablePeriod.query.filter_by(
         timetable_id=tt_id,
-        day=data['day'],
-        period_no=data['period_no']
+        day=day,
+        period_no=period_no
     ).first()
+
+    # Conflict check if not a break
+    if not is_break:
+        conflict = validate_timetable_conflict(
+            school_id=_school_id(),
+            timetable_id=tt_id,
+            day=day,
+            period_no=period_no,
+            teacher_id=teacher_id,
+            room=room,
+            exclude_period_id=existing.id if existing else None
+        )
+        if conflict.get('conflict'):
+            return jsonify({'error': conflict['message'], 'conflict_type': conflict.get('type')}), 409
+
     if existing:
         existing.subject_id  = data.get('subject_id')
-        existing.teacher_id  = data.get('teacher_id')
+        existing.teacher_id  = teacher_id
         existing.start_time  = data.get('start_time', '')
         existing.end_time    = data.get('end_time', '')
-        existing.room        = data.get('room', '')
-        existing.is_break    = data.get('is_break', False)
+        existing.room        = room or ''
+        existing.is_break    = is_break
         existing.break_label = data.get('break_label', '')
+        existing.period_type = data.get('period_type', 'BREAK' if is_break else 'LECTURE')
         db.session.commit()
         return jsonify(existing.to_dict()), 200
+
     p = TimetablePeriod(
         timetable_id = tt_id,
-        day          = data['day'],
-        period_no    = data['period_no'],
+        day          = day,
+        period_no    = period_no,
         subject_id   = data.get('subject_id'),
-        teacher_id   = data.get('teacher_id'),
+        teacher_id   = teacher_id,
         start_time   = data.get('start_time', ''),
         end_time     = data.get('end_time', ''),
-        room         = data.get('room', ''),
-        is_break     = data.get('is_break', False),
+        room         = room or '',
+        is_break     = is_break,
         break_label  = data.get('break_label', ''),
+        period_type  = data.get('period_type', 'BREAK' if is_break else 'LECTURE')
     )
     db.session.add(p)
     db.session.commit()
@@ -5795,6 +5849,62 @@ def delete_period(period_id):
     db.session.delete(p)
     db.session.commit()
     return jsonify({'message': 'Period deleted'}), 200
+
+
+# ─── Daily Timetable Substitutions ──────────────────────────────────────────
+
+@principal_bp.route('/substitutes/daily', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER', 'SUPER_ADMIN')
+def get_daily_substitutes():
+    target_date = request.args.get('date', date.today().isoformat())
+    affected = get_affected_periods_for_date(_school_id(), target_date)
+    return jsonify(affected), 200
+
+
+@principal_bp.route('/substitutes/candidates', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER', 'SUPER_ADMIN')
+def get_substitute_candidates():
+    target_date = request.args.get('date', date.today().isoformat())
+    period_id = request.args.get('period_id', type=int)
+    if not period_id:
+        return jsonify({'error': 'period_id is required'}), 400
+    candidates = get_eligible_substitutes(_school_id(), target_date, period_id)
+    return jsonify(candidates), 200
+
+
+@principal_bp.route('/substitutes/assign', methods=['POST'])
+@role_required('PRINCIPAL', 'TEACHER', 'SUPER_ADMIN')
+def assign_substitute_endpoint():
+    data = request.get_json() or {}
+    target_date = data.get('date')
+    period_id = data.get('period_id')
+    substitute_teacher_id = data.get('substitute_teacher_id')
+    reason = data.get('reason', 'Teacher Absence')
+    notes = data.get('notes', '')
+
+    if not all([target_date, period_id, substitute_teacher_id]):
+        return jsonify({'error': 'date, period_id, and substitute_teacher_id are required'}), 400
+
+    try:
+        subst = assign_substitute(
+            school_id=_school_id(),
+            target_date=target_date,
+            timetable_period_id=period_id,
+            substitute_teacher_id=substitute_teacher_id,
+            assigned_by_user_id=get_current_user().id,
+            reason=reason,
+            notes=notes
+        )
+        return jsonify({'message': 'Substitute assigned successfully', 'substitution': subst.to_dict()}), 201
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@principal_bp.route('/substitutes/<int:subst_id>', methods=['DELETE'])
+@role_required('PRINCIPAL', 'SUPER_ADMIN')
+def cancel_substitute_endpoint(subst_id):
+    subst = cancel_substitute(_school_id(), subst_id, get_current_user().id)
+    return jsonify({'message': 'Substitution cancelled', 'substitution': subst.to_dict()}), 200
 
 
 @principal_bp.route('/subjects', methods=['GET'])

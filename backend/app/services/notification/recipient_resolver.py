@@ -106,7 +106,11 @@ class RecipientResolver:
                     resolved_ids.add(s.user_id)
 
             # Optionally resolve parents of these students
-            if target.get('include_parents', False):
+            if target.get('include_parents', False) or target.get('parents_only', False):
+                for s in students:
+                    if getattr(s, 'parent_user_id', None):
+                        resolved_ids.add(s.parent_user_id)
+
                 parent_phones = [s.parent_phone for s in students if s.parent_phone]
                 parent_emails = [s.parent_email for s in students if s.parent_email]
 
@@ -130,6 +134,10 @@ class RecipientResolver:
                         pq = pq.filter(or_(*conds))
                         resolved_ids.update([u.id for u in pq.all()])
 
+                if target.get('parents_only', False):
+                    # Remove student user_ids if parents_only requested
+                    resolved_ids.difference_update([s.user_id for s in students if s.user_id])
+
         # 4. Student IDs target
         student_ids = target.get('student_ids')
         if student_ids:
@@ -139,8 +147,36 @@ class RecipientResolver:
             if school_id:
                 sq = sq.filter(Student.school_id == school_id)
             students = sq.all()
-            for s in students:
-                if s.user_id:
-                    resolved_ids.add(s.user_id)
+            if not target.get('parents_only', False):
+                for s in students:
+                    if s.user_id:
+                        resolved_ids.add(s.user_id)
+
+            if target.get('include_parents', False) or target.get('parents_only', False):
+                for s in students:
+                    if getattr(s, 'parent_user_id', None):
+                        resolved_ids.add(s.parent_user_id)
+
+                parent_phones = [s.parent_phone for s in students if s.parent_phone]
+                parent_emails = [s.parent_email for s in students if s.parent_email]
+                if parent_phones or parent_emails:
+                    pq = User.query.filter(
+                        User.role == UserRole.PARENT,
+                        User.is_active == True,
+                        User.is_deleted == False
+                    )
+                    if school_id:
+                        pq = pq.filter(User.school_id == school_id)
+
+                    conds = []
+                    if parent_phones:
+                        conds.append(User.phone.in_(parent_phones))
+                    if parent_emails:
+                        conds.append(User.email.in_(parent_emails))
+
+                    if conds:
+                        from sqlalchemy import or_
+                        pq = pq.filter(or_(*conds))
+                        resolved_ids.update([u.id for u in pq.all()])
 
         return list(resolved_ids)

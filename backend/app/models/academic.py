@@ -138,6 +138,7 @@ class Student(db.Model):
     parent_name  = db.Column(db.String(120))
     parent_phone = db.Column(db.String(20))
     parent_email = db.Column(db.String(120))
+    parent_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
     blood_group  = db.Column(db.String(5))
     session      = db.Column(db.String(20), default='2024-25')
     father_name  = db.Column(db.String(120))
@@ -191,6 +192,7 @@ class Student(db.Model):
         db.Index('idx_students_school_class', 'school_id', 'class_id'),
         db.Index('idx_students_school_deleted', 'school_id', 'is_deleted'),
         db.Index('idx_students_school_status', 'school_id', 'status'),
+        db.Index('idx_students_school_parent_user', 'school_id', 'parent_user_id'),
     )
 
     def to_dict(self):
@@ -205,6 +207,7 @@ class Student(db.Model):
         return {
             'id':                      self.id,
             'user_id':                 self.user_id,
+            'parent_user_id':          self.parent_user_id,
             'roll_number':             self.roll_number or '',
             'admission_no':            self.admission_no or '',
             'admission_number':        self.admission_no or '',

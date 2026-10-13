@@ -15,7 +15,7 @@ from app.services.curriculum_service import (
     record_teaching_log, calculate_curriculum_coverage,
     get_subject_wise_coverage, get_class_wise_coverage,
     get_teacher_activity_summary, get_curriculum_drilldown,
-    get_academic_dashboard_summary
+    get_academic_dashboard_summary, get_curriculum_overview
 )
 
 curriculum_bp = Blueprint('curriculum', __name__, url_prefix='/api')
@@ -597,3 +597,59 @@ def get_analytics_teachers():
 def get_analytics_drilldown(curriculum_id):
     drilldown = get_curriculum_drilldown(curriculum_id=curriculum_id)
     return jsonify(drilldown), 200
+
+
+@curriculum_bp.route('/curriculum/overview', methods=['GET'])
+@jwt_required()
+def get_lesson_plan_overview():
+    """
+    Edumerge Lesson Plan Overview telemetry endpoint (Reference Image 1).
+    Provides KPI summary cards, coverage ring metrics, monthly trend,
+    status breakdown, recent lesson plans, and upcoming approvals.
+    """
+    user = get_current_user()
+    school_id = _get_active_school_id(user)
+    if not school_id:
+        return jsonify({'error': 'School context required'}), 400
+
+    session = request.args.get('session', '2026-27')
+    class_id = request.args.get('class_id', type=int)
+
+    overview = get_curriculum_overview(school_id=school_id, session=session, class_id=class_id)
+    return jsonify(overview), 200
+
+
+@curriculum_bp.route('/curriculum/teaching-logs/<int:log_id>/approval', methods=['POST'])
+@role_required('PRINCIPAL', 'SUPER_ADMIN', 'ADMIN', 'VICE_PRINCIPAL', 'HOD')
+def approve_teaching_log(log_id):
+    """
+    HOD/Principal approval or rejection workflow for a teacher's lesson plan/log.
+    """
+    user = get_current_user()
+    school_id = _get_active_school_id(user)
+
+    log = TeachingLog.query.filter_by(id=log_id, school_id=school_id).first_or_404()
+    data = request.get_json() or {}
+
+    new_status = data.get('approval_status', 'APPROVED').upper()
+    if new_status not in ['APPROVED', 'REJECTED', 'PENDING']:
+        return jsonify({'error': 'Invalid approval status'}), 400
+
+    log.approval_status = new_status
+    log.approved_by = user.id
+    log.approved_at = datetime.utcnow()
+    log.approval_remarks = data.get('approval_remarks', '')
+
+    # If approved and log requested topic completion, apply it now
+    if new_status == 'APPROVED' and log.topic_id and log.topic_completion_status == 'COMPLETED':
+        topic = CurriculumTopic.query.get(log.topic_id)
+        if topic:
+            topic.status = 'COMPLETED'
+            topic.actual_completion_date = log.date or date.today()
+
+    db.session.commit()
+    return jsonify({
+        'message': f'Teaching log {new_status.lower()} successfully.',
+        'log': log.to_dict()
+    }), 200
+

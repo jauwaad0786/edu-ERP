@@ -77,28 +77,55 @@ export default function StudentDashboard() {
     api.get('/student/hostel').then(r => setHostelData(r.data)).catch(() => {});
   };
 
-  const fetchProfile = () => {
+  // Multi-Child & Parent Portal State
+  const [children,          setChildren]          = useState([]);
+  const [selectedChildId,   setSelectedChildId]   = useState(null);
+  const [timetableData,     setTimetableData]     = useState(null);
+  const [loadingTimetable,  setLoadingTimetable]  = useState(false);
+  const [homeworkList,      setHomeworkList]      = useState([]);
+  const [loadingHomework,   setLoadingHomework]   = useState(false);
+
+  const isParent = user?.role === 'PARENT';
+
+  useEffect(() => {
+    if (isParent) {
+      api.get('/student/parent/children')
+        .then(r => {
+          const chList = Array.isArray(r.data) ? r.data : [];
+          setChildren(chList);
+          if (chList.length > 0 && !selectedChildId) {
+            setSelectedChildId(chList[0].id);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isParent]);
+
+  const fetchProfile = (childId) => {
     setLoadingProfile(true);
     setProfileError(false);
-    api.get('/student/profile')
+    const url = childId ? `/student/profile?student_id=${childId}` : '/student/profile';
+    api.get(url)
       .then(r => setProfile(r.data))
       .catch(() => setProfileError(true))
       .finally(() => setLoadingProfile(false));
   };
 
-  const fetchAttendance = () => {
+  const fetchAttendance = (childId) => {
     setLoadingAttendance(true);
     setAttendanceError(false);
-    api.get('/student/attendance')
+    const url = childId ? `/student/attendance?student_id=${childId}` : '/student/attendance';
+    api.get(url)
       .then(r => setAttendance(r.data))
       .catch(() => setAttendanceError(true))
       .finally(() => setLoadingAttendance(false));
   };
 
-  const fetchFees = () => {
+  const fetchFees = (childId) => {
     setLoadingFees(true);
     setFeesError(false);
-    api.get('/student/fees')
+    const url = childId ? `/student/fees?student_id=${childId}` : '/student/fees';
+    api.get(url)
       .then(r => setFees(r.data))
       .catch(() => setFeesError(true))
       .finally(() => setLoadingFees(false));
@@ -112,36 +139,62 @@ export default function StudentDashboard() {
       .finally(() => setLoadingNotes(false));
   };
 
-  const fetchMarksOverview = () => {
+  const fetchMarksOverview = (childId) => {
     setLoadingMarks(true);
     setMarksError(false);
-    api.get('/student/marks')
+    const url = childId ? `/student/marks?student_id=${childId}` : '/student/marks';
+    api.get(url)
       .then(r => {
         const list = Array.isArray(r.data) ? r.data : [];
         setExamsSummary(list);
         if (list.length > 0) {
           const firstExId = list[0].exam_id;
           setSelectedExamId(firstExId);
-          api.get(`/student/marks?exam_id=${firstExId}`)
+          const detailUrl = childId
+            ? `/student/marks?exam_id=${firstExId}&student_id=${childId}`
+            : `/student/marks?exam_id=${firstExId}`;
+          api.get(detailUrl)
             .then(res => setReportCard(res.data))
             .catch(() => {});
+        } else {
+          setReportCard(null);
         }
       })
       .catch(() => setMarksError(true))
       .finally(() => setLoadingMarks(false));
   };
 
+  const fetchTimetable = (childId) => {
+    setLoadingTimetable(true);
+    const url = childId ? `/student/timetable?student_id=${childId}` : '/student/timetable';
+    api.get(url)
+      .then(r => setTimetableData(r.data))
+      .catch(() => {})
+      .finally(() => setLoadingTimetable(false));
+  };
+
+  const fetchHomework = (childId) => {
+    setLoadingHomework(true);
+    const url = childId ? `/student/homework?student_id=${childId}` : '/student/homework';
+    api.get(url)
+      .then(r => setHomeworkList(Array.isArray(r.data) ? r.data : []))
+      .catch(() => {})
+      .finally(() => setLoadingHomework(false));
+  };
+
   useEffect(() => {
-    fetchProfile();
-    fetchAttendance();
-    fetchFees();
-    fetchMarksOverview();
+    fetchProfile(selectedChildId);
+    fetchAttendance(selectedChildId);
+    fetchFees(selectedChildId);
+    fetchMarksOverview(selectedChildId);
+    fetchTimetable(selectedChildId);
+    fetchHomework(selectedChildId);
     fetchNotes();
     api.get('/principal/exams?status=PUBLISHED').then(r => setExams(r.data || [])).catch(() => {});
     api.get('/principal/holidays').then(r => setHolidays(r.data || [])).catch(() => {});
     api.get('/student/library').then(r => setLibraryData(r.data)).catch(() => {});
     fetchHostelData();
-  }, []);
+  }, [selectedChildId]);
 
   useEffect(() => {
     if (selectedExamId) {
@@ -197,6 +250,8 @@ export default function StudentDashboard() {
     { key: 'attendance', icon: 'ti-clipboard-check', label: 'Attendance' },
     { key: 'marks',      icon: 'ti-award',           label: 'Report Card' },
     { key: 'fees',       icon: 'ti-receipt-2',       label: 'Fee Details' },
+    { key: 'timetable',  icon: 'ti-calendar-time',   label: 'Timetable' },
+    { key: 'homework',   icon: 'ti-notebook',        label: 'Homework & Diary' },
     { key: 'library',    icon: 'ti-books',           label: 'My Library' },
     { key: 'hostel',     icon: 'ti-building',        label: 'My Hostel' },
     { key: 'notes',      icon: 'ti-book-2',          label: 'Study Material' },
@@ -207,9 +262,86 @@ export default function StudentDashboard() {
     <div className={`app-shell${darkMode ? ' theme-dark' : ''}`}>
       <Sidebar darkMode={darkMode} />
       <div className="main-content">
-        <Navbar title="Student Learning Hub" darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
+        <Navbar title={isParent ? "Parent Portal • Academic & Student Hub" : "Student Learning Hub"} darkMode={darkMode} onToggleDark={() => setDarkMode(d => !d)} />
 
         <div className="page-body" style={{ padding: '24px', background: darkMode ? '#0b0f19' : '#f8fafc' }}>
+
+          {/* ══ PARENT MULTI-CHILD SWITCHER ══ */}
+          {isParent && children.length > 0 && (
+            <div style={{
+              background: darkMode ? '#111827' : '#ffffff',
+              border: `1.5px solid ${darkMode ? 'rgba(255,255,255,0.1)' : '#e2e8f0'}`,
+              borderRadius: '16px',
+              padding: '16px 20px',
+              marginBottom: '20px',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '12px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{
+                  width: '40px', height: '40px', borderRadius: '12px',
+                  background: '#eff6ff', color: '#2563eb',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '20px'
+                }}>
+                  👨‍👩‍👦
+                </div>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: '14px', color: darkMode ? '#ffffff' : '#0f172a' }}>
+                    Linked Children ({children.length})
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#64748b' }}>
+                    Select a child below to refresh profile, attendance, fees, timetable &amp; homework
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {children.map(ch => {
+                  const isSelected = selectedChildId === ch.id;
+                  return (
+                    <button
+                      key={ch.id}
+                      type="button"
+                      onClick={() => setSelectedChildId(ch.id)}
+                      style={{
+                        padding: '8px 16px',
+                        borderRadius: '100px',
+                        border: isSelected ? '2px solid #2563eb' : (darkMode ? '1px solid #374151' : '1.5px solid #cbd5e1'),
+                        background: isSelected ? '#2563eb' : (darkMode ? '#1f2937' : '#f8fafc'),
+                        color: isSelected ? '#ffffff' : (darkMode ? '#e5e7eb' : '#334155'),
+                        fontWeight: isSelected ? 800 : 600,
+                        fontSize: '12.5px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        boxShadow: isSelected ? '0 4px 10px rgba(37,99,235,0.25)' : 'none',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <span style={{ fontSize: '14px' }}>{ch.gender === 'Female' ? '👧' : '👦'}</span>
+                      <span>{ch.name}</span>
+                      <span style={{
+                        fontSize: '10px',
+                        fontWeight: 700,
+                        padding: '2px 8px',
+                        borderRadius: '20px',
+                        background: isSelected ? 'rgba(255,255,255,0.25)' : (darkMode ? '#374151' : '#e2e8f0'),
+                        color: isSelected ? '#ffffff' : '#64748b'
+                      }}>
+                        {ch.class_display || ch.class_name || 'Class'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* ══ 1. STUDENT STUDY HERO BANNER WITH LAMP & DESK ILLUSTRATION ══ */}
           <div style={{
@@ -1444,7 +1576,273 @@ export default function StudentDashboard() {
             </div>
           )}
 
-          {/* ══ TAB: STUDY NOTES ══ */}
+          {/* ══ TAB: TIMETABLE ══ */}
+          {tab === 'timetable' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div className="card" style={{
+                borderRadius: '16px', padding: '18px 22px',
+                background: darkMode ? '#111827' : '#ffffff',
+                border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`,
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px'
+              }}>
+                <div>
+                  <h4 style={{ margin: '0 0 4px', fontSize: '16px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                    📅 {profile?.class_display || profile?.class_name || 'Class'} Weekly Timetable
+                  </h4>
+                  <div style={{ fontSize: '12px', color: '#64748b' }}>
+                    Scheduled classroom lectures, labs, activity periods &amp; teacher substitutions
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <span style={{
+                    fontSize: '11px', fontWeight: 800, padding: '4px 10px', borderRadius: '100px',
+                    background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0'
+                  }}>
+                    ● PUBLISHED SCHEDULE
+                  </span>
+                  <button
+                    onClick={() => fetchTimetable(selectedChildId)}
+                    className="btn btn-secondary btn-sm"
+                    style={{ borderRadius: '8px' }}
+                  >
+                    <i className="ti ti-refresh" /> Refresh
+                  </button>
+                </div>
+              </div>
+
+              {loadingTimetable ? (
+                <div style={{ textAlign: 'center', padding: '50px 20px', color: '#94a3b8' }}>
+                  <i className="ti ti-loader-2 spin" style={{ fontSize: '32px', color: '#2563eb', display: 'inline-block', marginBottom: '10px' }} />
+                  <div>Loading class timetable &amp; daily substitutions...</div>
+                </div>
+              ) : !timetableData?.timetable ? (
+                <div className="card text-center" style={{
+                  borderRadius: '16px', padding: '48px 20px',
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+                }}>
+                  <i className="ti ti-calendar-off" style={{ fontSize: '42px', color: '#94a3b8', display: 'block', marginBottom: '12px' }} />
+                  <h4 style={{ margin: '0 0 6px', color: darkMode ? '#fff' : '#0f172a' }}>No Timetable Published</h4>
+                  <p style={{ margin: 0, color: '#94a3b8', fontSize: '13px' }}>The administration has not yet published a weekly timetable for this class.</p>
+                </div>
+              ) : (
+                <div className="card" style={{
+                  borderRadius: '16px', overflow: 'hidden',
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+                }}>
+                  <div style={{ overflowX: 'auto', padding: '16px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '6px' }}>
+                      <thead>
+                        <tr>
+                          <th style={{
+                            padding: '10px', fontSize: '11px', fontWeight: 800,
+                            color: '#64748b', textAlign: 'center', background: darkMode ? '#1e293b' : '#f8fafc',
+                            borderRadius: '8px', width: '70px'
+                          }}>
+                            Period
+                          </th>
+                          {['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map(day => (
+                            <th key={day} style={{
+                              padding: '10px', fontSize: '11px', fontWeight: 800,
+                              color: '#475569', textAlign: 'center', background: darkMode ? '#1e293b' : '#f1f5f9',
+                              borderRadius: '8px', minWidth: '120px'
+                            }}>
+                              {day === 'MON' ? 'Monday' : day === 'TUE' ? 'Tuesday' : day === 'WED' ? 'Wednesday' : day === 'THU' ? 'Thursday' : day === 'FRI' ? 'Friday' : 'Saturday'}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[1, 2, 3, 4, 5, 6, 7, 8].map(pNo => (
+                          <tr key={pNo}>
+                            <td style={{
+                              textAlign: 'center', fontSize: '11px', fontWeight: 800,
+                              color: '#2563eb', background: darkMode ? 'rgba(37,99,235,0.1)' : '#eff6ff',
+                              borderRadius: '8px', padding: '8px 4px'
+                            }}>
+                              P{pNo}
+                            </td>
+                            {['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map(day => {
+                              const p = (timetableData?.periods || []).find(x => x.day === day && x.period_no === pNo);
+                              if (!p) {
+                                return (
+                                  <td key={day} style={{
+                                    borderRadius: '8px', border: `1px dashed ${darkMode ? '#334155' : '#e2e8f0'}`,
+                                    background: darkMode ? '#0f172a' : '#fafafa', minHeight: '65px'
+                                  }} />
+                                );
+                              }
+                              if (p.is_break) {
+                                return (
+                                  <td key={day} style={{
+                                    borderRadius: '8px', background: darkMode ? '#292524' : '#fffbeb',
+                                    border: '1px solid #fde68a', textAlign: 'center', padding: '8px 6px'
+                                  }}>
+                                    <div style={{ fontSize: '11px', fontWeight: 800, color: '#b45309' }}>☕ {p.break_label || 'Break'}</div>
+                                    {p.start_time && <div style={{ fontSize: '9px', color: '#92400e', marginTop: '2px' }}>{p.start_time} - {p.end_time}</div>}
+                                  </td>
+                                );
+                              }
+                              const isSubst = p.is_substituted || p.substitution;
+                              return (
+                                <td key={day} style={{
+                                  borderRadius: '8px',
+                                  background: isSubst
+                                    ? (darkMode ? 'rgba(245,158,11,0.15)' : '#fffbeb')
+                                    : (darkMode ? '#1e293b' : '#f8faff'),
+                                  border: isSubst
+                                    ? '1.5px solid #f59e0b'
+                                    : `1px solid ${darkMode ? '#334155' : '#e0e7ff'}`,
+                                  padding: '8px 10px', verticalAlign: 'top'
+                                }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{
+                                      fontSize: '11.5px', fontWeight: 800,
+                                      color: isSubst ? '#d97706' : (darkMode ? '#93c5fd' : '#1d4ed8')
+                                    }}>
+                                      {p.subject_name || 'Subject'}
+                                    </span>
+                                    {isSubst && (
+                                      <span title="Substituted Teacher" style={{
+                                        fontSize: '9px', fontWeight: 800, padding: '2px 5px',
+                                        borderRadius: '10px', background: '#f59e0b', color: '#fff'
+                                      }}>
+                                        ⇄ SUB
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div style={{ fontSize: '10px', color: darkMode ? '#cbd5e1' : '#475569', marginTop: '4px' }}>
+                                    👤 {isSubst ? (p.substitution?.substitute_teacher_name || p.teacher_name) : (p.teacher_name || 'Teacher')}
+                                  </div>
+                                  {(p.room || p.start_time) && (
+                                    <div style={{ fontSize: '9px', color: '#94a3b8', marginTop: '3px' }}>
+                                      {p.start_time && `${p.start_time} `}
+                                      {p.room && `· ${p.room}`}
+                                    </div>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ══ TAB: HOMEWORK & DIARY ══ */}
+          {tab === 'homework' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div className="card" style={{
+                borderRadius: '16px', padding: '18px 22px',
+                background: darkMode ? '#111827' : '#ffffff',
+                border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`,
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px'
+              }}>
+                <div>
+                  <h4 style={{ margin: '0 0 4px', fontSize: '16px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                    📖 Homework, Classwork &amp; Teaching Diary
+                  </h4>
+                  <div style={{ fontSize: '12px', color: '#64748b' }}>
+                    Daily lessons, assigned practice exercises &amp; teacher instructions for {profile?.class_display || profile?.class_name || 'your class'}
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => fetchHomework(selectedChildId)}
+                  className="btn btn-secondary btn-sm"
+                  style={{ borderRadius: '8px' }}
+                >
+                  <i className="ti ti-refresh" /> Refresh Homework
+                </button>
+              </div>
+
+              {loadingHomework ? (
+                <div style={{ textAlign: 'center', padding: '50px 20px', color: '#94a3b8' }}>
+                  <i className="ti ti-loader-2 spin" style={{ fontSize: '32px', color: '#2563eb', display: 'inline-block', marginBottom: '10px' }} />
+                  <div>Loading homework &amp; teaching diary records...</div>
+                </div>
+              ) : homeworkList.length === 0 ? (
+                <div className="card text-center" style={{
+                  borderRadius: '16px', padding: '48px 20px',
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`
+                }}>
+                  <i className="ti ti-notebook" style={{ fontSize: '42px', color: '#94a3b8', display: 'block', marginBottom: '12px' }} />
+                  <h4 style={{ margin: '0 0 6px', color: darkMode ? '#fff' : '#0f172a' }}>No Homework Assigned</h4>
+                  <p style={{ margin: 0, color: '#94a3b8', fontSize: '13px' }}>Subject teachers have not recorded any pending homework for your class recently.</p>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '16px' }}>
+                  {homeworkList.map((hw, idx) => (
+                    <div key={hw.id || idx} className="card" style={{
+                      borderRadius: '16px', overflow: 'hidden',
+                      background: darkMode ? '#111827' : '#ffffff',
+                      border: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#e2e8f0'}`,
+                      display: 'flex', flexDirection: 'column'
+                    }}>
+                      <div style={{
+                        padding: '16px 18px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`,
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                      }}>
+                        <span style={{
+                          padding: '4px 10px', borderRadius: '100px', fontSize: '11px', fontWeight: 800,
+                          background: '#eff6ff', color: '#2563eb'
+                        }}>
+                          {hw.subject_name || 'Subject'}
+                        </span>
+                        {hw.due_date && (
+                          <span style={{
+                            fontSize: '11px', fontWeight: 700, color: '#ef4444',
+                            display: 'flex', alignItems: 'center', gap: '4px'
+                          }}>
+                            <i className="ti ti-clock" /> Due: {hw.due_date}
+                          </span>
+                        )}
+                      </div>
+
+                      <div style={{ padding: '16px 18px', flex: 1 }}>
+                        <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
+                          Topic Taught: <strong>{hw.topic || 'Class Lesson'}</strong>
+                        </div>
+                        <div style={{
+                          fontSize: '13.5px', color: darkMode ? '#e2e8f0' : '#1e293b',
+                          lineHeight: 1.5, marginBottom: '12px'
+                        }}>
+                          {hw.homework_description || 'Please complete assigned exercises from class.'}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                          👨‍🏫 Assigned by {hw.teacher_name || 'Subject Teacher'} • {hw.assigned_date}
+                        </div>
+                      </div>
+
+                      {hw.attachment_url && (
+                        <div style={{
+                          padding: '10px 18px', borderTop: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`,
+                          background: darkMode ? '#0f172a' : '#f8fafc', display: 'flex', justifyContent: 'flex-end'
+                        }}>
+                          <a
+                            href={hw.attachment_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="btn btn-primary btn-sm"
+                            style={{ borderRadius: '8px', fontSize: '11.5px', fontWeight: 700 }}
+                          >
+                            <i className="ti ti-download" /> Download Worksheet
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           {tab === 'notes' && (
             <div style={{
               display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px'

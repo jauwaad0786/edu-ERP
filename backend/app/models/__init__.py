@@ -10,7 +10,8 @@ from app.models.developer_center import ErrorLog, IssueAssignment
 
 from app.models.financial import (
     FeeStructure, FeeRecord, ExamSchedule, ExamTimetable,
-    ExamClass, ExamSubject, ExamTeacherDelegation, ResultVersion
+    ExamClass, ExamSubject, ExamTeacherDelegation, ResultVersion,
+    Timetable, TimetablePeriod, TimetableSubstitution
 )
 from app.models.academic import Class, Teacher, Student, StudentEnrollment, Subject, Marks, Attendance, Note, TeacherAttendance
 from app.models.staff_attendance import (

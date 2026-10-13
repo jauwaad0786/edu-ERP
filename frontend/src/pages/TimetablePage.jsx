@@ -180,7 +180,7 @@ function PeriodCell({ period, subjects, teachers, isPublished, onClick }) {
     return (
       <div onClick={onClick}
         style={{
-          minHeight: 68, borderRadius: 6, border: '1.5px dashed #e2e8f0',
+          minHeight: 74, borderRadius: 8, border: '1.5px dashed #e2e8f0',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: isPublished ? 'default' : 'pointer',
           color: '#cbd5e1', fontSize: 11,
@@ -198,7 +198,7 @@ function PeriodCell({ period, subjects, teachers, isPublished, onClick }) {
   if (period.is_break) {
     return (
       <div style={{
-        minHeight: 68, borderRadius: 6,
+        minHeight: 74, borderRadius: 8,
         background: 'linear-gradient(135deg, #fef9c3, #fef3c7)',
         border: '1px solid #fde68a',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -217,34 +217,73 @@ function PeriodCell({ period, subjects, teachers, isPublished, onClick }) {
     );
   }
 
-  const subjectIdx = subjects.findIndex(s => s.id === period.subject_id);
-  const color = SUBJECT_COLORS[subjectIdx % SUBJECT_COLORS.length] || '#64748b';
+  const isSubst = period.is_substituted || period.substitution;
+  const pType = period.period_type || (isSubst ? 'SUBSTITUTION' : 'LECTURE');
+
+  // Pill styling matching Reference Image 2
+  let typeBg = '#f0fdf4';
+  let typeColor = '#16a34a';
+  let borderColor = '#bbf7d0';
+
+  if (isSubst) {
+    typeBg = '#fffbeb';
+    typeColor = '#d97706';
+    borderColor = '#f59e0b';
+  } else if (pType === 'LAB') {
+    typeBg = '#eff6ff';
+    typeColor = '#2563eb';
+    borderColor = '#bfdbfe';
+  } else if (pType === 'ACTIVITY') {
+    typeBg = '#faf5ff';
+    typeColor = '#9333ea';
+    borderColor = '#e9d5ff';
+  }
+
+  const tchName = isSubst
+    ? (period.substitution?.substitute_teacher_name || period.teacher_name)
+    : period.teacher_name;
 
   return (
     <div onClick={!isPublished ? onClick : undefined}
       style={{
-        minHeight: 68, borderRadius: 6,
-        background: `${color}12`,
-        border: `1.5px solid ${color}44`,
-        padding: '6px 8px',
+        minHeight: 74, borderRadius: 8,
+        background: typeBg,
+        border: `1.5px solid ${borderColor}`,
+        padding: '8px 10px',
         cursor: isPublished ? 'default' : 'pointer',
         transition: 'all 0.15s',
         display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+        position: 'relative'
       }}
-      onMouseEnter={e => { if (!isPublished) e.currentTarget.style.borderColor = color; }}
-      onMouseLeave={e => { if (!isPublished) e.currentTarget.style.borderColor = `${color}44`; }}
+      onMouseEnter={e => { if (!isPublished) e.currentTarget.style.borderColor = typeColor; }}
+      onMouseLeave={e => { if (!isPublished) e.currentTarget.style.borderColor = borderColor; }}
     >
-      <div style={{ fontWeight: 700, fontSize: 11, color, lineHeight: 1.2 }}>
-        {period.subject_name || '—'}
-      </div>
-      {period.teacher_name && (
-        <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>
-          👤 {period.teacher_name}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 4 }}>
+        <div style={{ fontWeight: 800, fontSize: 11.5, color: typeColor, lineHeight: 1.2 }}>
+          {period.subject_name || '—'}
+          {isSubst && <span style={{ fontSize: 9.5, fontWeight: 700, color: '#d97706', display: 'block' }}>(Substitute)</span>}
         </div>
-      )}
-      <div style={{ fontSize: 9, color: '#94a3b8', marginTop: 2 }}>
-        {period.start_time && `${period.start_time}–${period.end_time}`}
-        {period.room && ` · ${period.room}`}
+        {isSubst && (
+          <span title="Substitute Active" style={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            width: 18, height: 18, borderRadius: 4, background: '#f59e0b', color: 'white',
+            fontSize: 10, fontWeight: 800
+          }}>
+            ⇄
+          </span>
+        )}
+      </div>
+
+      <div>
+        {tchName && (
+          <div style={{ fontSize: 10, color: '#475569', fontWeight: 600, marginTop: 3 }}>
+            👤 {tchName}
+          </div>
+        )}
+        <div style={{ fontSize: 9, color: '#94a3b8', marginTop: 2, display: 'flex', justifyContent: 'space-between' }}>
+          <span>{period.start_time && `${period.start_time}–${period.end_time}`}</span>
+          <span>{period.room}</span>
+        </div>
       </div>
     </div>
   );
@@ -260,6 +299,7 @@ function PeriodModal({ day, periodNo, existing, subjects, teachers, onSave, onDe
     room:        existing?.room        || '',
     is_break:    existing?.is_break    || false,
     break_label: existing?.break_label || 'Lunch Break',
+    period_type: existing?.period_type || 'LECTURE',
   });
   const set = (k, v) => {
     setForm(f => {
@@ -278,7 +318,7 @@ function PeriodModal({ day, periodNo, existing, subjects, teachers, onSave, onDe
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200,
     }} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{
-        background: 'white', borderRadius: 10, width: 420, maxWidth: '95vw',
+        background: 'white', borderRadius: 10, width: 440, maxWidth: '95vw',
         boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
       }}>
         <div style={{
@@ -290,7 +330,7 @@ function PeriodModal({ day, periodNo, existing, subjects, teachers, onSave, onDe
               {DAY_LABELS[day]} — Period {periodNo}
             </div>
             <div style={{ fontSize: 11, color: '#94a3b8' }}>
-              {existing ? 'Edit period' : 'Add period'}
+              {existing ? 'Edit period schedule' : 'Add period schedule'}
             </div>
           </div>
           <button onClick={onClose}
@@ -316,6 +356,16 @@ function PeriodModal({ day, periodNo, existing, subjects, teachers, onSave, onDe
             </div>
           ) : (
             <>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 3 }}>Period Category</label>
+                <select value={form.period_type} onChange={e => set('period_type', e.target.value)}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 12 }}>
+                  <option value="LECTURE">Lecture</option>
+                  <option value="LAB">Lab / Practical</option>
+                  <option value="ACTIVITY">Activity / Sports</option>
+                </select>
+              </div>
+
               <div>
                 <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 3 }}>Subject</label>
                 <select value={form.subject_id} onChange={e => set('subject_id', e.target.value)}
@@ -354,7 +404,7 @@ function PeriodModal({ day, periodNo, existing, subjects, teachers, onSave, onDe
               <div>
                 <label style={{ fontSize: 11, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 3 }}>Room / Venue</label>
                 <input value={form.room} onChange={e => set('room', e.target.value)}
-                  placeholder="e.g. Room 12, Lab 2"
+                  placeholder="e.g. Room 201, Lab 1, Ground"
                   style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 12, boxSizing: 'border-box' }} />
               </div>
             </>
@@ -409,6 +459,354 @@ function PeriodModal({ day, periodNo, existing, subjects, teachers, onSave, onDe
   );
 }
 
+// ─── Daily Substitute Management Modal ────────────────────────────────────────
+function DailySubstituteModal({ onClose, onUpdated }) {
+  const [targetDate, setTargetDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [affectedList, setAffectedList] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedSlot, setSelectedSlot] = useState(null);
+  const [candidates, setCandidates] = useState([]);
+  const [loadingCandidates, setLoadingCandidates] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+  const [reason, setReason] = useState('Teacher Absence');
+  const [notes, setNotes] = useState('');
+  const [statusMsg, setStatusMsg] = useState('');
+
+  const fetchDaily = async (dt) => {
+    setLoading(true);
+    setSelectedSlot(null);
+    setCandidates([]);
+    setStatusMsg('');
+    try {
+      const res = await api.get(`/principal/substitutes/daily?date=${dt}`);
+      setAffectedList(res.data || []);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDaily(targetDate);
+  }, [targetDate]);
+
+  const openCandidatePicker = async (slot) => {
+    setSelectedSlot(slot);
+    setLoadingCandidates(true);
+    setStatusMsg('');
+    try {
+      const res = await api.get(`/principal/substitutes/candidates?period_id=${slot.period_id}&date=${targetDate}`);
+      setCandidates(res.data || []);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingCandidates(false);
+    }
+  };
+
+  const handleAssign = async (cand) => {
+    setAssigning(true);
+    setStatusMsg('');
+    try {
+      await api.post('/principal/substitutes/assign', {
+        date: targetDate,
+        period_id: selectedSlot.period_id,
+        substitute_teacher_id: cand.teacher_id,
+        reason,
+        notes,
+      });
+      setStatusMsg(`✅ Substitute assigned: ${cand.name}`);
+      setSelectedSlot(null);
+      fetchDaily(targetDate);
+      if (onUpdated) onUpdated();
+    } catch (e) {
+      setStatusMsg(`❌ ${e.response?.data?.error || 'Failed to assign substitute'}`);
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const handleCancel = async (substId) => {
+    if (!window.confirm('Cancel this substitution assignment?')) return;
+    try {
+      await api.delete(`/principal/substitutes/${substId}`);
+      fetchDaily(targetDate);
+      if (onUpdated) onUpdated();
+    } catch (e) {
+      alert(e.response?.data?.error || 'Failed to cancel');
+    }
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1250,
+      backdropFilter: 'blur(3px)'
+    }} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{
+        background: 'white', borderRadius: 14, width: 780, maxWidth: '95vw',
+        maxHeight: '90vh', display: 'flex', flexDirection: 'column',
+        boxShadow: '0 25px 70px rgba(0,0,0,0.25)', overflow: 'hidden'
+      }}>
+        {/* Header */}
+        <div style={{
+          padding: '18px 24px', borderBottom: '1px solid #e2e8f0',
+          background: 'linear-gradient(135deg, #f8faff 0%, #f1f5f9 100%)',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{
+              width: 42, height: 42, borderRadius: 10, background: '#fffbeb',
+              color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 22, border: '1.5px solid #fde68a'
+            }}>
+              ⇄
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 16, color: '#0f172a' }}>
+                Smart Substitute Teacher Management
+              </div>
+              <div style={{ fontSize: 12, color: '#64748b' }}>
+                Automatic absent teacher detection, affected period allocation &amp; candidate ranking
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <input
+              type="date"
+              value={targetDate}
+              onChange={e => setTargetDate(e.target.value)}
+              style={{
+                padding: '7px 12px', borderRadius: 8, border: '1.5px solid #cbd5e1',
+                fontSize: 12, fontWeight: 700, color: '#0f172a'
+              }}
+            />
+            <button onClick={onClose}
+              style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#94a3b8' }}>✕</button>
+          </div>
+        </div>
+
+        {/* Content Body */}
+        <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {statusMsg && (
+            <div style={{
+              padding: '10px 14px', borderRadius: 8, fontSize: 13, fontWeight: 700,
+              background: statusMsg.startsWith('✅') ? '#ecfdf5' : '#fef2f2',
+              color: statusMsg.startsWith('✅') ? '#059669' : '#dc2626',
+              border: `1px solid ${statusMsg.startsWith('✅') ? '#a7f3d0' : '#fecaca'}`
+            }}>
+              {statusMsg}
+            </div>
+          )}
+
+          {/* Affected Slots Section */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h4 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#0f172a' }}>
+                Affected Periods on {targetDate} ({affectedList.length})
+              </h4>
+              <span style={{ fontSize: 12, color: '#64748b' }}>
+                Source: Staff Attendance &amp; Approved Leave Records
+              </span>
+            </div>
+
+            {loading ? (
+              <div style={{ textAlign: 'center', padding: '40px 20px', color: '#94a3b8' }}>
+                Loading daily schedule conflicts...
+              </div>
+            ) : affectedList.length === 0 ? (
+              <div style={{
+                textAlign: 'center', padding: '36px 20px', borderRadius: 10,
+                background: '#f8fafc', border: '1px dashed #cbd5e1'
+              }}>
+                <div style={{ fontSize: 28, marginBottom: 6 }}>🎉</div>
+                <div style={{ fontWeight: 800, fontSize: 14, color: '#0f172a' }}>
+                  No teacher absences or conflicts found!
+                </div>
+                <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                  All scheduled periods for {targetDate} have their assigned teachers available.
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {affectedList.map(slot => {
+                  const isAssigned = !!slot.substitution && slot.substitution.status === 'CONFIRMED';
+                  const isSelected = selectedSlot?.period_id === slot.period_id;
+
+                  return (
+                    <div key={slot.period_id} style={{
+                      borderRadius: 10, padding: '12px 16px',
+                      background: isSelected ? '#eff6ff' : (isAssigned ? '#f0fdf4' : '#fffbeb'),
+                      border: isSelected ? '2px solid #2563eb' : (isAssigned ? '1px solid #bbf7d0' : '1px solid #fde68a'),
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10
+                    }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{
+                            padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 800,
+                            background: '#0f172a', color: 'white'
+                          }}>
+                            Period {slot.period_no}
+                          </span>
+                          <span style={{ fontWeight: 800, fontSize: 14, color: '#0f172a' }}>
+                            {slot.class_name} • {slot.subject_name}
+                          </span>
+                          {slot.room && <span style={{ fontSize: 11, color: '#64748b' }}>📍 {slot.room}</span>}
+                          {slot.start_time && <span style={{ fontSize: 11, color: '#64748b' }}>⏰ {slot.start_time}–{slot.end_time}</span>}
+                        </div>
+
+                        <div style={{ marginTop: 6, fontSize: 12, display: 'flex', gap: 14, alignItems: 'center' }}>
+                          <span style={{ color: '#ef4444', fontWeight: 600 }}>
+                            Absent: <strong>{slot.original_teacher_name || 'Teacher'}</strong>
+                          </span>
+                          {isAssigned ? (
+                            <span style={{ color: '#059669', fontWeight: 700 }}>
+                              Assigned Substitute: <strong>{slot.substitution?.substitute_teacher_name}</strong>
+                            </span>
+                          ) : (
+                            <span style={{ color: '#d97706', fontWeight: 700 }}>
+                              ⚠️ Needs Substitute
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        {isAssigned ? (
+                          <>
+                            <button
+                              onClick={() => openCandidatePicker(slot)}
+                              style={{
+                                padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700,
+                                background: 'white', color: '#2563eb', border: '1px solid #bfdbfe', cursor: 'pointer'
+                              }}
+                            >
+                              Change
+                            </button>
+                            <button
+                              onClick={() => handleCancel(slot.substitution.id)}
+                              style={{
+                                padding: '6px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+                                background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca', cursor: 'pointer'
+                              }}
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => openCandidatePicker(slot)}
+                            style={{
+                              padding: '7px 14px', borderRadius: 7, fontSize: 12, fontWeight: 800,
+                              background: '#2563eb', color: 'white', border: 'none', cursor: 'pointer',
+                              boxShadow: '0 2px 6px rgba(37,99,235,0.25)'
+                            }}
+                          >
+                            + Assign Substitute
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Candidate Recommendation Drawer / Card */}
+          {selectedSlot && (
+            <div style={{
+              borderRadius: 12, padding: '16px 20px', background: '#f8fafc',
+              border: '1.5px solid #cbd5e1', marginTop: 8
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#0f172a' }}>
+                    Ranked Substitute Candidates for {selectedSlot.class_name} • Period {selectedSlot.period_no}
+                  </h4>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>
+                    Sorted by Subject Expertise, Free Period confirmation, and Daily Teaching Workload
+                  </div>
+                </div>
+                <button onClick={() => setSelectedSlot(null)}
+                  style={{ background: 'none', border: 'none', fontSize: 14, color: '#64748b', cursor: 'pointer' }}>Close</button>
+              </div>
+
+              {loadingCandidates ? (
+                <div style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>
+                  Evaluating teacher availability and timetables...
+                </div>
+              ) : candidates.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '24px', color: '#ef4444', fontSize: 13, fontWeight: 600 }}>
+                  No available free teachers found in Period {selectedSlot.period_no}. All active teachers have conflicting classes or are absent.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {candidates.map(cand => (
+                    <div key={cand.teacher_id} style={{
+                      padding: '12px 16px', borderRadius: 10, background: 'white',
+                      border: cand.is_recommended ? '1.5px solid #10b981' : '1px solid #e2e8f0',
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10
+                    }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontWeight: 800, fontSize: 13, color: '#0f172a' }}>{cand.name}</span>
+                          {cand.department && <span style={{ fontSize: 11, color: '#64748b' }}>({cand.department})</span>}
+                          {cand.is_recommended && (
+                            <span style={{
+                              padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 800,
+                              background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0'
+                            }}>
+                              ⭐ Top Match
+                            </span>
+                          )}
+                        </div>
+
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                          {cand.eligibility_reasons.map((r, i) => (
+                            <span key={i} style={{
+                              padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 600,
+                              background: '#f1f5f9', color: '#475569'
+                            }}>
+                              ✓ {r}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => handleAssign(cand)}
+                        disabled={assigning}
+                        style={{
+                          padding: '7px 16px', borderRadius: 8, fontSize: 12, fontWeight: 800,
+                          background: '#059669', color: 'white', border: 'none', cursor: 'pointer',
+                          boxShadow: '0 2px 6px rgba(5,150,105,0.25)'
+                        }}
+                      >
+                        {assigning ? 'Assigning…' : 'Confirm Assignment'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '12px 24px', borderTop: '1px solid #f1f5f9', background: '#f8fafc', display: 'flex', justifyContent: 'flex-end' }}>
+          <button onClick={onClose}
+            style={{ padding: '8px 18px', borderRadius: 8, fontSize: 12, fontWeight: 700, background: 'white', border: '1.5px solid #cbd5e1', cursor: 'pointer' }}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Timetable Grid ───────────────────────────────────────────────────────────
 function TimetableGrid({ timetable, subjects, teachers, onUpdate, schoolName = '' }) {
   const [periods,    setPeriods]    = useState([]);
@@ -416,13 +814,16 @@ function TimetableGrid({ timetable, subjects, teachers, onUpdate, schoolName = '
   const [saving,     setSaving]     = useState(false);
   const [msg,        setMsg]        = useState('');
 
+  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [showSubstituteModal, setShowSubstituteModal] = useState(false);
+
   const isPublished = timetable.status === 'PUBLISHED';
 
   const loadPeriods = useCallback(() => {
-    api.get(`/principal/timetables/${timetable.id}/periods`)
+    api.get(`/principal/timetables/${timetable.id}/periods?date=${selectedDate}`)
       .then(r => setPeriods(r.data))
       .catch(() => {});
-  }, [timetable.id]);
+  }, [timetable.id, selectedDate]);
 
   useEffect(() => { loadPeriods(); }, [loadPeriods]);
 
@@ -500,9 +901,13 @@ function TimetableGrid({ timetable, subjects, teachers, onUpdate, schoolName = '
     }
   };
 
+  const totalPeriods = periods.length;
+  const activeTeachersCount = [...new Set(periods.filter(p => p.teacher_id).map(p => p.teacher_id))].length;
+  const roomsCount = [...new Set(periods.filter(p => p.room).map(p => p.room))].length;
+  const substitutionsCount = periods.filter(p => p.is_substituted || p.substitution).length;
+
   return (
     <div>
-      {/* Timetable header bar */}
       {/* ── Timetable Header Bar ── */}
       <div style={{
         background: 'linear-gradient(135deg, #f8faff 0%, #f1f5ff 100%)',
@@ -551,6 +956,43 @@ function TimetableGrid({ timetable, subjects, teachers, onUpdate, schoolName = '
 
         {/* Right — action buttons */}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Date Selector for timetable view */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'white', padding: '3px 8px', borderRadius: 8, border: '1.5px solid #e2e8f0' }}>
+            <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Date:</span>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={e => setSelectedDate(e.target.value)}
+              style={{ border: 'none', fontSize: 12, fontWeight: 700, color: '#0f172a', outline: 'none', background: 'transparent' }}
+            />
+          </div>
+
+          {/* Daily Substitute Management button */}
+          <button
+            onClick={() => setShowSubstituteModal(true)}
+            title="Manage Teacher Absences & Smart Substitutions"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700,
+              background: '#fffbeb', color: '#d97706',
+              border: '1.5px solid #fde68a', cursor: 'pointer',
+              boxShadow: '0 1px 3px rgba(217,119,6,0.1)',
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#fef3c7'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = '#fffbeb'; }}
+          >
+            ⇄ <span>Daily Substitutions</span>
+            {substitutionsCount > 0 && (
+              <span style={{
+                background: '#d97706', color: 'white', borderRadius: '50%',
+                width: 17, height: 17, fontSize: 10, display: 'inline-flex',
+                alignItems: 'center', justifyContent: 'center', fontWeight: 800
+              }}>
+                {substitutionsCount}
+              </span>
+            )}
+          </button>
 
           {/* Download PDF — always */}
           <button
@@ -707,6 +1149,59 @@ function TimetableGrid({ timetable, subjects, teachers, onUpdate, schoolName = '
         }}>{msg}</div>
       )}
 
+      {/* Top Timetable KPI Metrics Cards (Reference Image 2) */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+        gap: 12, marginBottom: 16
+      }}>
+        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>TOTAL PERIODS</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: '#0f172a', marginTop: 3 }}>{totalPeriods}</div>
+          <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>Configured in timetable</div>
+        </div>
+
+        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>TEACHING FACULTY</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: '#2563eb', marginTop: 3 }}>{activeTeachersCount}</div>
+          <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>Assigned teachers</div>
+        </div>
+
+        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>ROOMS ALLOCATED</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: '#0f172a', marginTop: 3 }}>{roomsCount}</div>
+          <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>Unique class rooms</div>
+        </div>
+
+        <div style={{
+          background: substitutionsCount > 0 ? '#fffbeb' : '#f8fafc',
+          border: substitutionsCount > 0 ? '1.5px solid #fde68a' : '1px solid #e2e8f0',
+          borderRadius: 10, padding: '10px 14px'
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: substitutionsCount > 0 ? '#d97706' : '#64748b' }}>
+            SUBSTITUTIONS
+          </div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: substitutionsCount > 0 ? '#d97706' : '#64748b', marginTop: 3 }}>
+            {substitutionsCount}
+          </div>
+          <div style={{ fontSize: 10, color: substitutionsCount > 0 ? '#b45309' : '#94a3b8', marginTop: 2 }}>
+            {substitutionsCount > 0 ? 'Active swaps for date' : 'No swaps today'}
+          </div>
+        </div>
+
+        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>STATUS</div>
+          <div style={{
+            fontSize: 14, fontWeight: 800, marginTop: 7,
+            color: isPublished ? '#059669' : '#d97706'
+          }}>
+            {isPublished ? '● PUBLISHED' : '○ DRAFT'}
+          </div>
+          <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 5 }}>
+            {isPublished ? 'Visible to students' : 'Private to admin'}
+          </div>
+        </div>
+      </div>
+
       {/* Grid */}
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 4 }}>
@@ -786,6 +1281,14 @@ function TimetableGrid({ timetable, subjects, teachers, onUpdate, schoolName = '
           onSave={saveCell}
           onDelete={deleteCell}
           onClose={() => setEditCell(null)}
+        />
+      )}
+
+      {/* Daily Substitute Management modal */}
+      {showSubstituteModal && (
+        <DailySubstituteModal
+          onClose={() => setShowSubstituteModal(false)}
+          onUpdated={loadPeriods}
         />
       )}
     </div>

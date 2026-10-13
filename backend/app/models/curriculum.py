@@ -309,6 +309,12 @@ class TeachingLog(db.Model):
     attachment_name              = db.Column(db.String(255), default='')
     attachment_type              = db.Column(db.String(50), default='')
 
+    # Approval Lifecycle (Draft / Pending / Approved / Rejected)
+    approval_status              = db.Column(db.String(20), default='APPROVED', nullable=False, index=True) # DRAFT, PENDING, APPROVED, REJECTED
+    approved_by                  = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    approved_at                  = db.Column(db.DateTime, nullable=True)
+    approval_remarks             = db.Column(db.String(500), default='')
+
     created_by                   = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     updated_by                   = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     created_at                   = db.Column(db.DateTime, default=datetime.utcnow)
@@ -318,6 +324,7 @@ class TeachingLog(db.Model):
     class_ref                    = db.relationship('Class', backref='teaching_logs')
     subject_ref                  = db.relationship('Subject', backref='teaching_logs')
     teacher_ref                  = db.relationship('Teacher', backref='teaching_logs')
+    approver_ref                 = db.relationship('User', foreign_keys=[approved_by], backref='approved_teaching_logs')
     timetable_period_ref         = db.relationship('TimetablePeriod', backref='teaching_logs')
     worksheets                   = db.relationship('TeachingWorksheet', backref='teaching_log', lazy='dynamic')
 
@@ -372,6 +379,11 @@ class TeachingLog(db.Model):
             'attachment_url':              self.attachment_url or '',
             'attachment_name':             self.attachment_name or '',
             'attachment_type':             self.attachment_type or '',
+            'approval_status':             getattr(self, 'approval_status', 'APPROVED') or 'APPROVED',
+            'approved_by':                 self.approved_by,
+            'approved_by_name':            self.approver_ref.name if self.approver_ref else '',
+            'approved_at':                 self.approved_at.isoformat() if self.approved_at else None,
+            'approval_remarks':            self.approval_remarks or '',
             'worksheets':                  [w.to_dict() for w in self.worksheets.all()],
             'created_at':                  self.created_at.isoformat() if self.created_at else None,
             'updated_at':                  self.updated_at.isoformat() if self.updated_at else None,

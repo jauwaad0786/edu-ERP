@@ -112,7 +112,8 @@ class User(db.Model):
     # Relationships
     school          = db.relationship('School', foreign_keys=[school_id], backref='members')
     teacher_profile = db.relationship('Teacher', backref='user', uselist=False)
-    student_profile = db.relationship('Student', backref='user', uselist=False)
+    student_profile = db.relationship('Student', foreign_keys='Student.user_id', backref='user', uselist=False)
+    children        = db.relationship('Student', foreign_keys='Student.parent_user_id', backref='parent_user', lazy='dynamic')
 
     # ── Password helpers ────────────────────────────────────────────────────
     def set_password(self, plain_text, store_plain=False):

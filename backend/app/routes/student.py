@@ -3,7 +3,8 @@ from flask_jwt_extended import get_jwt_identity
 from sqlalchemy import func
 from app import db
 from app.models.academic import Student, Attendance, Marks, Class
-from app.models.financial import FeeRecord, ExamSchedule
+from app.models.financial import FeeRecord, ExamSchedule, Timetable, TimetablePeriod, TimetableSubstitution
+from app.models.curriculum import TeachingLog
 from app.models.documents import StudentDocument, IssuedDocument
 from app.utils.decorators import role_required, get_current_user
 from app.routes.marks import _grade
@@ -35,6 +36,7 @@ def _get_effective_student(user, student_id=None):
             s_email = (s.parent_email or '').strip().lower()
             if (
                 s.user_id == user.id or
+                (getattr(s, 'parent_user_id', None) and s.parent_user_id == user.id) or
                 (clean_user_phone and s_clean_phone and clean_user_phone == s_clean_phone) or
                 (clean_user_phone and s_clean_guard and clean_user_phone == s_clean_guard) or
                 (user_email and s_email and user_email == s_email)
@@ -72,6 +74,7 @@ def my_profile():
             s_email = (s.parent_email or '').strip().lower()
             if (
                 s.user_id == user.id or
+                (getattr(s, 'parent_user_id', None) and s.parent_user_id == user.id) or
                 (clean_user_phone and s_clean_phone and clean_user_phone == s_clean_phone) or
                 (clean_user_phone and s_clean_guard and clean_user_phone == s_clean_guard) or
                 (user_email and s_email and user_email == s_email)
@@ -137,6 +140,7 @@ def my_children():
         s_email = (s.parent_email or '').strip().lower()
         if (
             s.user_id == user.id or
+            (getattr(s, 'parent_user_id', None) and s.parent_user_id == user.id) or
             (clean_user_phone and s_clean_phone and clean_user_phone == s_clean_phone) or
             (clean_user_phone and s_clean_guard and clean_user_phone == s_clean_guard) or
             (user_email and s_email and user_email == s_email)
@@ -152,22 +156,9 @@ def my_marks():
     user = get_current_user()
     student_id = request.args.get('student_id', type=int)
 
-    if getattr(user.role, 'value', str(user.role)) == 'PARENT':
-        if student_id:
-            student = Student.query.filter_by(id=student_id, school_id=user.school_id).first()
-            if not student or (student.parent_email != user.email and student.parent_phone != user.phone and student.user_id != user.id):
-                return jsonify({'error': 'Unauthorized child access'}), 403
-        else:
-            student = Student.query.filter(
-                Student.school_id == user.school_id,
-                (
-                    (Student.parent_email == user.email) |
-                    (Student.parent_phone == user.phone) |
-                    (Student.user_id == user.id)
-                )
-            ).first()
-    else:
-        student = Student.query.filter_by(user_id=user.id, school_id=user.school_id).first()
+    student = _get_effective_student(user, student_id)
+    if not student:
+        return jsonify({'error': 'Unauthorized child access or student profile not found'}), 403
 
     if not student:
         return jsonify({'error': 'Student profile not found'}), 404
@@ -251,19 +242,11 @@ def my_marks():
 @student_bp.route('/fees', methods=['GET'])
 @role_required('STUDENT', 'PARENT')
 def my_fees():
-    user    = get_current_user()
-    student = Student.query.filter_by(user_id=user.id).first()
+    user = get_current_user()
+    student_id = request.args.get('student_id', type=int)
+    student = _get_effective_student(user, student_id)
     if not student:
-        role_str = getattr(user.role, 'value', str(user.role))
-        if role_str == 'PARENT':
-            child_id = request.args.get('student_id', type=int)
-            if child_id:
-                student = Student.query.filter_by(id=child_id, school_id=user.school_id).first()
-            if not student and getattr(user, 'phone', None):
-                student = Student.query.filter_by(parent_phone=user.phone, school_id=user.school_id).first()
-
-    if not student:
-        return jsonify({'error': 'Student not found'}), 404
+        return jsonify({'error': 'Unauthorized child access or student not found'}), 403
 
     session = request.args.get('session')
     q = FeeRecord.query.filter_by(student_id=student.id).filter(FeeRecord.status != 'DRAFT')
@@ -284,6 +267,100 @@ def my_fees():
         'outstanding': balance,
         'records': [r.to_dict() for r in records]
     }), 200
+
+
+@student_bp.route('/timetable', methods=['GET'])
+@role_required('STUDENT', 'PARENT')
+def my_timetable():
+    """
+    Weekly timetable for the student's class, including period details and substitution alerts.
+    """
+    user = get_current_user()
+    student_id = request.args.get('student_id', type=int)
+    student = _get_effective_student(user, student_id)
+    if not student or not student.class_id:
+        return jsonify({'error': 'Student or class not found'}), 404
+
+    target_date_str = request.args.get('date')
+    subst_map = {}
+    if target_date_str:
+        try:
+            from datetime import datetime
+            target_date = datetime.strptime(target_date_str, '%Y-%m-%d').date()
+            substs = TimetableSubstitution.query.filter_by(
+                school_id=user.school_id,
+                date=target_date,
+                status='CONFIRMED'
+            ).all()
+            subst_map = {s.timetable_period_id: s.to_dict() for s in substs}
+        except ValueError:
+            pass
+
+    tt = Timetable.query.filter_by(
+        school_id=user.school_id,
+        class_id=student.class_id,
+        status='PUBLISHED'
+    ).order_by(Timetable.id.desc()).first()
+
+    if not tt:
+        return jsonify({
+            'timetable': None,
+            'periods': [],
+            'class_name': f"{student.class_ref.name} {student.class_ref.section}".strip() if student.class_ref else '',
+            'message': 'No published timetable for this class.'
+        }), 200
+
+    periods = tt.periods.order_by(TimetablePeriod.day, TimetablePeriod.period_no).all()
+    res_periods = []
+    for p in periods:
+        pd = p.to_dict()
+        if p.id in subst_map:
+            pd['substitution'] = subst_map[p.id]
+            pd['is_substituted'] = True
+        else:
+            pd['is_substituted'] = False
+        res_periods.append(pd)
+
+    return jsonify({
+        'timetable': tt.to_dict(),
+        'periods': res_periods,
+        'class_name': f"{student.class_ref.name} {student.class_ref.section}".strip() if student.class_ref else '',
+    }), 200
+
+
+@student_bp.route('/homework', methods=['GET'])
+@role_required('STUDENT', 'PARENT')
+def my_homework():
+    """
+    Homework and classroom teaching diary entries assigned to the student's class.
+    """
+    user = get_current_user()
+    student_id = request.args.get('student_id', type=int)
+    student = _get_effective_student(user, student_id)
+    if not student or not student.class_id:
+        return jsonify({'error': 'Student or class not found'}), 404
+
+    logs = TeachingLog.query.filter_by(
+        school_id=user.school_id,
+        class_id=student.class_id,
+        homework_given=True
+    ).order_by(TeachingLog.date.desc(), TeachingLog.id.desc()).limit(50).all()
+
+    items = []
+    for l in logs:
+        sub_name = l.subject_ref.name if l.subject_ref else ''
+        t_name = l.teacher_ref.user.name if (l.teacher_ref and l.teacher_ref.user) else ''
+        items.append({
+            'id': l.id,
+            'subject_name': sub_name,
+            'teacher_name': t_name,
+            'topic': l.what_was_taught,
+            'homework_description': l.homework_description or '',
+            'assigned_date': l.date.isoformat() if l.date else None,
+            'due_date': l.homework_due_date.isoformat() if l.homework_due_date else None,
+            'attachment_url': l.homework_attachment_url or '',
+        })
+    return jsonify(items), 200
 
 
 # ─── Student / Parent: My Documents ────────────────────────────────────────────
