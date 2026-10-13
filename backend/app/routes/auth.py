@@ -255,6 +255,8 @@ def _serialize_user(user):
     # Sidebar, and usePermission should key off for company-side users.
     active_role = get_active_role(user)
     data['active_role'] = active_role.to_dict() if active_role else None
+    data['is_root_protected'] = getattr(user, 'is_root_protected', False)
+    data['reports_to_user_id'] = getattr(user, 'reports_to_user_id', None)
 
     if user.school:
         data['school'] = user.school.to_dict()
@@ -262,6 +264,17 @@ def _serialize_user(user):
         data['school_name'] = user.school.name
         data['school_code'] = user.school.code
         data['school_city'] = user.school.city
+
+    if user.school_id:
+        try:
+            from app.models.subscription import calculate_effective_entitlements
+            eff_mod = sorted(list(calculate_effective_entitlements(user.school_id)))
+            data['effective_modules'] = eff_mod
+            if 'school' in data and isinstance(data['school'], dict):
+                data['school']['effective_modules'] = eff_mod
+        except Exception as ex:
+            logger.warning(f"Error resolving effective_modules for user {user.id}: {ex}")
+            data['effective_modules'] = []
 
     return data
 
@@ -559,7 +572,7 @@ def student_login():
     return jsonify({
         'access_token':  access_token,
         'refresh_token': refresh_token,
-        'user':          user.to_dict(),
+        'user':          _serialize_user(user),
     }), 200
 
 

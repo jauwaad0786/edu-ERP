@@ -87,6 +87,23 @@ export default function TenantProtectedRoute({ children, roles, permissions }) {
         />
       );
     }
+  // ── 4. Module Entitlement Check ──
+  if (!isCompanyActor && !isSuperAdmin && user?.effective_modules) {
+    const path = (location.pathname || '').toLowerCase();
+    const GATED_MODULES = [
+      { prefix: '/transport', key: 'transport_management', name: 'Transport & Fleet Management' },
+      { prefix: '/hostel', key: 'hostel_management', name: 'Hostel Management' },
+      { prefix: '/library', key: 'library_management', name: 'Library Management' },
+      { prefix: '/hrms', key: 'hrms_module', name: 'HRMS & Staff Management' },
+    ];
+    const matched = GATED_MODULES.find(m => path.includes(m.prefix));
+    if (matched && !user.effective_modules.includes(matched.key)) {
+      return (
+        <AccessDeniedPage
+          message={`The "${matched.name}" module is not enabled for your school. Please contact your platform administrator to upgrade your plan or grant module access.`}
+        />
+      );
+    }
   }
 
   return children;

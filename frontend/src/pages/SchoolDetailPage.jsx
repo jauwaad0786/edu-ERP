@@ -52,6 +52,22 @@ export default function SchoolDetail() {
   const [permConfirmInput, setPermConfirmInput] = useState('');
   const [permForce,        setPermForce]        = useState(false);
 
+  // ── Plan & Entitlements states ──
+  const [entitlementsData,    setEntitlementsData]    = useState(null);
+  const [loadingEntitlements, setLoadingEntitlements] = useState(false);
+  const [searchModule,        setSearchModule]        = useState('');
+  const [selectedModuleKeys,  setSelectedModuleKeys]  = useState([]);
+  const [showDiffModal,       setShowDiffModal]       = useState(false);
+  const [diffSummary,         setDiffSummary]         = useState({ granted: [], revoked: [] });
+  const [changeReason,        setChangeReason]        = useState('');
+  const [savingEntitlements,  setSavingEntitlements]  = useState(false);
+
+  const [plansCatalog,        setPlansCatalog]        = useState([]);
+  const [showChangePlanModal, setShowChangePlanModal] = useState(false);
+  const [selectedPlanId,      setSelectedPlanId]      = useState('');
+  const [changePlanReason,    setChangePlanReason]    = useState('');
+  const [savingPlan,          setSavingPlan]          = useState(false);
+
   const load = () => {
     setLoading(true);
     api.get(`/admin/schools/${id}`)
@@ -66,13 +82,101 @@ export default function SchoolDetail() {
       .catch(() => {});
   };
 
+  const loadEntitlements = () => {
+    setLoadingEntitlements(true);
+    api.get(`/admin/schools/${id}/entitlements`)
+      .then(r => {
+        setEntitlementsData(r.data);
+        setSelectedModuleKeys(r.data.effective_modules || []);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingEntitlements(false));
+  };
+
+  const loadPlans = () => {
+    api.get('/admin/plans/catalog')
+      .then(r => {
+        setPlansCatalog(r.data.plans || []);
+      })
+      .catch(() => {});
+  };
+
   useEffect(() => {
     load();
     loadStaff();
+    loadEntitlements();
+    loadPlans();
     api.get('/rbac/roles', { params: { scope: 'TENANT' } })
       .then(r => setTenantRoles(r.data || []))
       .catch(() => {});
   }, [id]);
+
+  const toggleModule = (key) => {
+    setSelectedModuleKeys(prev =>
+      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+    );
+  };
+
+  const openDiffModal = () => {
+    const currentEff = new Set(entitlementsData?.effective_modules || []);
+    const nextEff = new Set(selectedModuleKeys);
+    const catalog = entitlementsData?.all_catalog_modules || [];
+
+    const granted = [];
+    const revoked = [];
+    catalog.forEach(m => {
+      if (!currentEff.has(m.key) && nextEff.has(m.key)) {
+        granted.push(m);
+      } else if (currentEff.has(m.key) && !nextEff.has(m.key)) {
+        revoked.push(m);
+      }
+    });
+
+    if (granted.length === 0 && revoked.length === 0) {
+      setMsg('ℹ️ No changes made to module entitlements.');
+      return;
+    }
+
+    setDiffSummary({ granted, revoked });
+    setChangeReason('');
+    setShowDiffModal(true);
+  };
+
+  const confirmSaveEntitlements = async (e) => {
+    e.preventDefault();
+    setSavingEntitlements(true);
+    try {
+      const res = await api.put(`/admin/schools/${id}/modules/save-entitlements`, {
+        modules: selectedModuleKeys,
+        reason: changeReason || 'Administrative update from Developer console',
+      });
+      setMsg(`✅ Entitlements updated! Granted: ${res.data.granted?.length || 0}, Revoked: ${res.data.revoked?.length || 0}`);
+      setShowDiffModal(false);
+      loadEntitlements();
+    } catch (err) {
+      setMsg('❌ ' + (err.response?.data?.error || 'Failed to save entitlements'));
+    }
+    setSavingEntitlements(false);
+  };
+
+  const handleChangePlan = async (e) => {
+    e.preventDefault();
+    if (!selectedPlanId) return;
+    setSavingPlan(true);
+    try {
+      await api.post(`/admin/schools/${id}/subscription`, {
+        plan_id: selectedPlanId,
+        reason: changePlanReason || 'Plan changed from school details console',
+      });
+      setMsg('✅ Subscription plan updated successfully!');
+      setShowChangePlanModal(false);
+      load();
+      loadEntitlements();
+    } catch (err) {
+      setMsg('❌ ' + (err.response?.data?.error || 'Failed to update plan'));
+    }
+    setSavingPlan(false);
+  };
 
   // ── Lifecycle Handlers ──
   const openArchiveDialog = async () => {
@@ -454,6 +558,7 @@ export default function SchoolDetail() {
           <div style={{ display: 'flex', borderBottom: '2px solid #e2e8f0', marginBottom: 20 }}>
             {[
               ['overview',  '📋 Overview'],
+              ['modules',   '⚡ Plan & Module Access'],
               ['staff',     '👤 Staff & Principal'],
               ['charges',   '💳 Service Charges'],
               ['info',      'ℹ️ Info'],
@@ -467,6 +572,205 @@ export default function SchoolDetail() {
               }}>{l}</button>
             ))}
           </div>
+
+          {/* ── Tab: Plan & Module Access ── */}
+          {tab === 'modules' && (
+            <div>
+              {/* Subscription Plan Summary Card */}
+              <div style={{
+                background: '#fff', borderRadius: 12, padding: 24, boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
+                marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16
+              }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+                      Current Subscription Plan
+                    </span>
+                    <span style={{
+                      padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 800,
+                      background: entitlementsData?.subscription?.status === 'ACTIVE' ? '#dcfce7' : '#fef3c7',
+                      color: entitlementsData?.subscription?.status === 'ACTIVE' ? '#15803d' : '#b45309'
+                    }}>
+                      {entitlementsData?.subscription?.status || 'ACTIVE'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+                    <h3 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: '#0f172a' }}>
+                      {entitlementsData?.subscription?.plan?.name || school?.plan || 'Basic Plan'}
+                    </h3>
+                    <span style={{ fontSize: 14, color: '#64748b' }}>
+                      {entitlementsData?.subscription?.plan?.price ? `₹${entitlementsData.subscription.plan.price.toLocaleString('en-IN')}` : 'Free'} / {entitlementsData?.subscription?.plan?.billing_period || 'Annual'}
+                    </span>
+                  </div>
+                  <p style={{ margin: '6px 0 0', fontSize: 12.5, color: '#64748b' }}>
+                    {entitlementsData?.subscription?.plan?.description || 'Core academic and school management foundation.'}
+                    {entitlementsData?.subscription?.expiry_date && (
+                      <span> · Valid until: <strong>{new Date(entitlementsData.subscription.expiry_date).toLocaleDateString()}</strong></span>
+                    )}
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button
+                    onClick={() => {
+                      setSelectedPlanId(entitlementsData?.subscription?.plan?.id || '');
+                      setChangePlanReason('');
+                      setShowChangePlanModal(true);
+                    }}
+                    style={{
+                      background: '#0284c7', color: '#fff', border: 'none', borderRadius: 8,
+                      padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                      boxShadow: '0 2px 6px rgba(2,132,199,0.25)', display: 'flex', alignItems: 'center', gap: 6
+                    }}
+                  >
+                    🔄 Change Plan / Upgrade
+                  </button>
+                  <button
+                    onClick={loadEntitlements}
+                    style={{
+                      background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', borderRadius: 8,
+                      padding: '9px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer'
+                    }}
+                  >
+                    ↻ Refresh
+                  </button>
+                </div>
+              </div>
+
+              {/* Module Entitlement Controls & Matrix */}
+              <div style={{ background: '#fff', borderRadius: 12, padding: 24, boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14, marginBottom: 20 }}>
+                  <div>
+                    <h4 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 800, color: '#0f172a' }}>
+                      ⚡ Module Entitlements &amp; Individual Grants
+                    </h4>
+                    <p style={{ margin: 0, fontSize: 13, color: '#64748b' }}>
+                      Grant individual modules beyond the base subscription plan (e.g. Transport, Hostel, HRMS) with zero data loss on revocation.
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      placeholder="Search modules..."
+                      value={searchModule}
+                      onChange={e => setSearchModule(e.target.value)}
+                      style={{
+                        padding: '8px 14px', borderRadius: 8, border: '1px solid #cbd5e1',
+                        fontSize: 13, width: 220, outline: 'none'
+                      }}
+                    />
+                    <button
+                      onClick={openDiffModal}
+                      style={{
+                        background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8,
+                        padding: '9px 18px', fontSize: 13, fontWeight: 800, cursor: 'pointer',
+                        boxShadow: '0 2px 8px rgba(22,163,74,0.3)', display: 'flex', alignItems: 'center', gap: 6
+                      }}
+                    >
+                      💾 Review &amp; Save Entitlements
+                    </button>
+                  </div>
+                </div>
+
+                {/* Summary badges */}
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20, padding: '12px 16px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                  <div style={{ fontSize: 12, color: '#475569' }}>
+                    <strong>Plan Modules:</strong> {entitlementsData?.plan_modules?.length || 0}
+                  </div>
+                  <div style={{ color: '#cbd5e1' }}>•</div>
+                  <div style={{ fontSize: 12, color: '#7c3aed' }}>
+                    <strong>Individually Granted:</strong> {entitlementsData?.individual_grants?.length || 0}
+                  </div>
+                  <div style={{ color: '#cbd5e1' }}>•</div>
+                  <div style={{ fontSize: 12, color: '#0284c7' }}>
+                    <strong>Effective Entitlements:</strong> {selectedModuleKeys.length} of {entitlementsData?.all_catalog_modules?.length || 12}
+                  </div>
+                </div>
+
+                {/* Modules Grid */}
+                {loadingEntitlements ? (
+                  <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>Loading module entitlements...</div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
+                    {(entitlementsData?.all_catalog_modules || [])
+                      .filter(m => !searchModule || m.name.toLowerCase().includes(searchModule.toLowerCase()) || m.key.toLowerCase().includes(searchModule.toLowerCase()))
+                      .map(mod => {
+                        const inPlan = entitlementsData?.plan_modules?.includes(mod.key);
+                        const isSelected = selectedModuleKeys.includes(mod.key);
+                        const isIndividuallyGranted = isSelected && !inPlan;
+
+                        return (
+                          <div
+                            key={mod.key}
+                            onClick={() => toggleModule(mod.key)}
+                            style={{
+                              border: isSelected ? '1.5px solid #0284c7' : '1px solid #e2e8f0',
+                              background: isSelected ? '#f0f9ff' : '#ffffff',
+                              borderRadius: 10, padding: '16px', cursor: 'pointer',
+                              display: 'flex', alignItems: 'flex-start', gap: 14,
+                              transition: 'all 0.2s ease',
+                              boxShadow: isSelected ? '0 2px 8px rgba(2,132,199,0.1)' : 'none'
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => {}}
+                              style={{ width: 18, height: 18, marginTop: 3, cursor: 'pointer', accentColor: '#0284c7' }}
+                            />
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>
+                                  {mod.name}
+                                </div>
+                                <div>
+                                  {inPlan ? (
+                                    <span style={{
+                                      fontSize: 10.5, fontWeight: 800, padding: '2px 8px', borderRadius: 12,
+                                      background: '#dcfce7', color: '#15803d'
+                                    }}>
+                                      INCLUDED IN PLAN
+                                    </span>
+                                  ) : isIndividuallyGranted ? (
+                                    <span style={{
+                                      fontSize: 10.5, fontWeight: 800, padding: '2px 8px', borderRadius: 12,
+                                      background: '#f3e8ff', color: '#7c3aed'
+                                    }}>
+                                      INDIVIDUALLY GRANTED
+                                    </span>
+                                  ) : (
+                                    <span style={{
+                                      fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 12,
+                                      background: '#f1f5f9', color: '#94a3b8'
+                                    }}>
+                                      NOT ENABLED
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <p style={{ margin: '0 0 8px', fontSize: 12, color: '#64748b', lineHeight: 1.4 }}>
+                                {mod.description || 'Module features and service tools.'}
+                              </p>
+                              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                <span style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'monospace' }}>
+                                  key: {mod.key}
+                                </span>
+                                {mod.category && (
+                                  <span style={{ fontSize: 10, background: '#f1f5f9', color: '#475569', padding: '1px 6px', borderRadius: 4 }}>
+                                    {mod.category}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* ── Tab: Overview ── */}
           {tab === 'overview' && (
@@ -1157,6 +1461,123 @@ export default function SchoolDetail() {
                   style={{ fontWeight: 800 }}
                 >
                   {actionLoading ? 'Deleting...' : '🚨 Permanently Delete School'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      {/* ── Entitlements Diff Confirmation Modal ── */}
+      {showDiffModal && (
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowDiffModal(false)}>
+          <div className="modal" style={{ maxWidth: 560 }}>
+            <div className="modal-header">
+              <h3>⚡ Review Entitlement Changes</h3>
+              <button className="modal-close" onClick={() => setShowDiffModal(false)}>✕</button>
+            </div>
+            <form onSubmit={confirmSaveEntitlements}>
+              <div className="modal-body">
+                <p style={{ fontSize: 13, color: '#475569', margin: '0 0 16px' }}>
+                  Please review the exact differences before applying them to <strong>{school?.name}</strong>.
+                  Changes are persisted transactionally and an in-app notice will be delivered to the Principal.
+                </p>
+
+                {diffSummary.granted.length > 0 && (
+                  <div style={{ marginBottom: 16, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '12px 16px' }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: '#166534', marginBottom: 6, textTransform: 'uppercase' }}>
+                      ✅ Modules Being Granted ({diffSummary.granted.length}):
+                    </div>
+                    {diffSummary.granted.map(m => (
+                      <div key={m.key} style={{ fontSize: 13, color: '#15803d', fontWeight: 600, margin: '3px 0' }}>
+                        + {m.name} ({m.key})
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {diffSummary.revoked.length > 0 && (
+                  <div style={{ marginBottom: 16, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '12px 16px' }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: '#991b1b', marginBottom: 6, textTransform: 'uppercase' }}>
+                      ⚠️ Modules Being Revoked ({diffSummary.revoked.length}):
+                    </div>
+                    {diffSummary.revoked.map(m => (
+                      <div key={m.key} style={{ fontSize: 13, color: '#b91c1c', fontWeight: 600, margin: '3px 0' }}>
+                        − {m.name} ({m.key})
+                      </div>
+                    ))}
+                    <div style={{ fontSize: 11.5, color: '#7f1d1d', marginTop: 6, fontStyle: 'italic' }}>
+                      🛡️ Zero Data Loss Guarantee: All existing student, academic, and financial records for these modules remain intact. Access is simply locked.
+                    </div>
+                  </div>
+                )}
+
+                <div className="form-group">
+                  <label className="form-label" style={{ fontWeight: 700 }}>
+                    Reason for Entitlement Update *
+                  </label>
+                  <textarea
+                    className="form-input"
+                    rows={3}
+                    required
+                    placeholder="e.g. Granted transport module trial for 30 days upon school management request."
+                    value={changeReason}
+                    onChange={e => setChangeReason(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-neutral" onClick={() => setShowDiffModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={savingEntitlements}>
+                  {savingEntitlements ? 'Saving Entitlements...' : 'Confirm & Apply Entitlements'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Change Subscription Plan Modal ── */}
+      {showChangePlanModal && (
+        <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowChangePlanModal(false)}>
+          <div className="modal" style={{ maxWidth: 540 }}>
+            <div className="modal-header">
+              <h3>🔄 Change School Subscription Plan</h3>
+              <button className="modal-close" onClick={() => setShowChangePlanModal(false)}>✕</button>
+            </div>
+            <form onSubmit={handleChangePlan}>
+              <div className="modal-body">
+                <div className="form-group" style={{ marginBottom: 16 }}>
+                  <label className="form-label" style={{ fontWeight: 700 }}>Select New Plan *</label>
+                  <select
+                    className="form-input"
+                    required
+                    value={selectedPlanId}
+                    onChange={e => setSelectedPlanId(e.target.value)}
+                  >
+                    <option value="">-- Choose Plan from Catalogue --</option>
+                    {plansCatalog.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.key}) — ₹{p.price?.toLocaleString('en-IN')}/{p.billing_period || 'ANNUAL'} ({p.included_modules?.length || 0} modules included)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" style={{ fontWeight: 700 }}>Change Reason *</label>
+                  <textarea
+                    className="form-input"
+                    rows={2}
+                    required
+                    placeholder="e.g. Upgraded to Professional Plan as per annual renewal agreement."
+                    value={changePlanReason}
+                    onChange={e => setChangePlanReason(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-neutral" onClick={() => setShowChangePlanModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={savingPlan || !selectedPlanId}>
+                  {savingPlan ? 'Updating Plan...' : 'Apply Subscription Change'}
                 </button>
               </div>
             </form>

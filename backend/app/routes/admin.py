@@ -883,7 +883,12 @@ def update_user(user_id):
 
     if 'role' in data:
         try:
-            user.role = UserRole(data['role'])
+            new_role = UserRole(data['role'])
+            if new_role != user.role:
+                blocked = _hierarchy_guard(actor, user, action='demote' if new_role != UserRole.SUPER_ADMIN else 'modify')
+                if blocked:
+                    return blocked
+            user.role = new_role
         except ValueError:
             return jsonify({'error': f"Invalid role: {data['role']}"}), 400
 
@@ -912,30 +917,21 @@ def _hierarchy_guard(actor, user, action='modify'):
     user's standing (delete, activate/deactivate, ...). Returns None if the
     action is allowed, or a (response, status) tuple to return immediately
     if it's blocked.
-
-    BUGFIX (2026-07): this used to live only inside delete_user() -- toggle_user
-    and update_user's is_active branch had *no* check at all beyond the route's
-    @role_required('SUPER_ADMIN'), which only proves the actor holds the
-    SUPER_ADMIN key -- including via a TEMPORARY DELEGATION. A Team Lead
-    delegated SUPER_ADMIN for one task could therefore activate/deactivate
-    a CEO or the real Super Admin, because nothing compared actual
-    hierarchy_level or checked is_protected on the target. Centralizing the
-    check here and calling it from all three places closes that gap
-    everywhere at once, instead of three separate copies drifting apart.
-
-    Company-side target (school_id is None): checked via can_manage_role()
-    using their UserRoleAssignment roles -- this is what makes CEO
-    un-modifiable-by-anyone-except-CEO and lets a Sub Admin manage a
-    Developer but never a CEO, without any hardcoded role-name check here.
-    can_manage_role() compares real hierarchy_level and blocks is_protected
-    targets outright, so a temporarily-delegated SUPER_ADMIN still can't
-    out-rank an actual CEO/Super Admin the way a bare role-name check would.
-
-    School-side targets keep the simpler legacy guard (unchanged) since
-    Principal-side management has its own dedicated flow in principal.py.
     """
     if user.id == actor.id:
         return jsonify({'error': f'Cannot {action} your own account'}), 403
+
+    # Phase 3: Critical root administrator protection
+    if getattr(user, 'is_root_protected', False) and not getattr(actor, 'is_root_protected', False):
+        return jsonify({'error': f'Root platform owner is protected and cannot be {action}d'}), 403
+
+    if getattr(user, 'is_root_protected', False) and action in ('delete', 'activate/deactivate', 'demote'):
+        return jsonify({'error': f'Root platform owner is permanently protected from {action}'}), 403
+
+    if action in ('delete', 'activate/deactivate', 'demote') and user.role == UserRole.SUPER_ADMIN:
+        remaining_roots = User.query.filter(User.role == UserRole.SUPER_ADMIN, User.is_active == True, User.id != user.id).count()
+        if remaining_roots == 0:
+            return jsonify({'error': 'Cannot remove or deactivate the last platform Super Admin'}), 400
 
     if user.school_id is None:
         target_roles = get_user_roles(user)

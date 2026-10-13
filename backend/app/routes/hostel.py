@@ -29,6 +29,21 @@ from app.utils.timezone_util import utc_now
 hostel_bp = Blueprint('hostel', __name__)
 
 
+@hostel_bp.before_request
+def check_hostel_entitlement():
+    """Server-enforced module entitlement boundary for Hostel Management."""
+    user = get_current_user()
+    if user and user.school_id:
+        from app.models.school import School
+        school = School.query.get(user.school_id)
+        if not school or not school.has_feature('hostel_management'):
+            return jsonify({
+                'error': 'module_not_entitled',
+                'module': 'hostel_management',
+                'message': 'Hostel Management module is not enabled for your school subscription.'
+            }), 403
+
+
 def _school_id():
     return get_current_user().school_id
 

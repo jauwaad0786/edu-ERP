@@ -18,6 +18,22 @@ import string
 
 library_bp = Blueprint('library', __name__)
 
+
+@library_bp.before_request
+def check_library_entitlement():
+    """Server-enforced module entitlement boundary for Library Management."""
+    user = get_current_user()
+    if user and user.school_id:
+        from app.models.school import School
+        school = School.query.get(user.school_id)
+        if not school or not school.has_feature('library_management'):
+            return jsonify({
+                'error': 'module_not_entitled',
+                'module': 'library_management',
+                'message': 'Library Management module is not enabled for your school subscription.'
+            }), 403
+
+
 LIBRARY_ROLES = ('PRINCIPAL', 'DIRECTOR', 'VICE_PRINCIPAL', 'LIBRARIAN', 'TEACHER', 'SUPER_ADMIN', 'ADMIN')
 LIBRARY_ADMIN_ROLES = ('PRINCIPAL', 'DIRECTOR', 'VICE_PRINCIPAL', 'LIBRARIAN', 'SUPER_ADMIN', 'ADMIN')
 WAIVER_ROLES = ('PRINCIPAL', 'DIRECTOR', 'VICE_PRINCIPAL', 'SUPER_ADMIN', 'LIBRARIAN', 'ADMIN')

@@ -676,20 +676,65 @@ export default function Sidebar({ darkMode }) {
     baseGroups = ROLE_MENUS[resolveMenuRole(user?.role, ROLE_MENUS)] || ROLE_MENUS.PRINCIPAL;
   }
 
+const GATED_MODULE_PREFIXES = [
+  { prefix: '/transport', key: 'transport_management' },
+  { prefix: '/hostel', key: 'hostel_management' },
+  { prefix: '/library', key: 'library_management' },
+  { prefix: '/hrms', key: 'hrms_module' },
+  { prefix: '/staff/attendance', key: 'hrms_module' },
+  { prefix: '/ai', key: 'ai_copilot' },
+];
+
+function filterByEntitlements(rawGroups, effectiveModules) {
+  if (!effectiveModules || !Array.isArray(effectiveModules)) return rawGroups;
+  const effSet = new Set(effectiveModules);
+
+  const isItemAllowed = (item) => {
+    const itemPath = (item.path || '').toLowerCase();
+    for (const rule of GATED_MODULE_PREFIXES) {
+      if (itemPath.startsWith(rule.prefix) && !effSet.has(rule.key)) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  return rawGroups
+    .map(group => {
+      const filteredItems = (group.items || [])
+        .filter(isItemAllowed)
+        .map(item => {
+          if (item.children) {
+            const filteredChildren = item.children.filter(isItemAllowed);
+            return { ...item, children: filteredChildren };
+          }
+          return item;
+        });
+      return { ...group, items: filteredItems };
+    })
+    .filter(group => (group.items && group.items.length > 0));
+}
+
   // Super Admin (SaaS platform owner / Developer / CEO) only gets ROLE_MENUS.SUPER_ADMIN.
-  // Principal / Director has full master menu (ROLE_MENUS.PRINCIPAL) without duplicate appended fragments.
+  // Principal / Director has full master menu (ROLE_MENUS.PRINCIPAL) filtered by entitled modules.
   // Other school staff (Teacher, Accountant, etc.) get dynamic permissions merged cleanly.
   const groups = useMemo(
     () => {
+      let raw;
       if ((isCompanyActor && isSuperAdmin) || user?.role === 'SUPER_ADMIN') {
-        return ROLE_MENUS.SUPER_ADMIN;
+        raw = ROLE_MENUS.SUPER_ADMIN;
+      } else if (isSchoolAdmin) {
+        raw = ROLE_MENUS.PRINCIPAL;
+      } else {
+        raw = buildDynamicGroups(baseGroups, user?.permissions);
       }
-      if (isSchoolAdmin) {
-        return ROLE_MENUS.PRINCIPAL;
+
+      if (!isCompanyActor && user?.effective_modules) {
+        return filterByEntitlements(raw, user.effective_modules);
       }
-      return buildDynamicGroups(baseGroups, user?.permissions);
+      return raw;
     },
-    [baseGroups, user?.permissions, isCompanyActor, isSuperAdmin, isSchoolAdmin, user?.role]
+    [baseGroups, user?.permissions, isCompanyActor, isSuperAdmin, isSchoolAdmin, user?.role, user?.effective_modules]
   );
   const [search,   setSearch]   = useState('');
   const [expanded, setExpanded] = useState(() => {

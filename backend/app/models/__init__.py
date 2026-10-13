@@ -30,6 +30,12 @@ from app.models.notification import (
     NotificationTemplate, NotificationRule, NotificationPreference,
     NotificationDeliveryLog, ScheduledNotification,
 )
+from app.models.subscription import (
+    PlatformModule, SubscriptionPlan, SchoolSubscription,
+    SchoolSubscriptionHistory, SchoolModuleGrant,
+    calculate_effective_entitlements, is_school_entitled_to_module,
+    seed_default_subscription_data,
+)
 
 __all__ = [
     'User', 'UserRole', 'School', 'Product',
@@ -47,4 +53,9 @@ __all__ = [
     'MigrationBatch', 'MigrationRecord', 'StudentArrivalEvent',
     'NotificationTemplate', 'NotificationRule', 'NotificationPreference',
     'NotificationDeliveryLog', 'ScheduledNotification',
+    'PlatformModule', 'SubscriptionPlan', 'SchoolSubscription',
+    'SchoolSubscriptionHistory', 'SchoolModuleGrant',
+    'calculate_effective_entitlements', 'is_school_entitled_to_module',
+    'seed_default_subscription_data',
 ]
+

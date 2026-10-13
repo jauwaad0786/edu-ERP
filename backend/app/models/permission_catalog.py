@@ -83,13 +83,30 @@ PERMISSION_CATALOG = [
     {'key': 'audit.retention.manage', 'label': 'Manage Audit Retention Policy', 'module': 'audit'},
     {'key': 'audit.purge',            'label': 'Permanent Audit Purge',         'module': 'audit'},
 
-    # ── Admin ── (used by every @permission_required('admin.user.manage')
-    # decorator in routes/rbac.py -- Role CRUD, Permission Matrix, Delegations
-    # -- but never declared here, so no Permission row existed for it and
-    # EVERY rbac.py route fail-closed for EVERY role, including SUPER_ADMIN.)
+    # ── Admin & RBAC ──
     {'key': 'admin.user.manage',       'label': 'Manage Roles, Permissions & Delegations', 'module': 'admin'},
     {'key': 'admin.school.settings',   'label': 'Manage School Settings',                  'module': 'admin'},
     {'key': 'admin.whatsapp.settings', 'label': 'Manage WhatsApp Integration Settings',     'module': 'admin'},
+
+    # ── Platform SaaS Administration (OnePlatform360 Campus Core) ──
+    {'key': 'schools.view',          'label': 'View Schools & Profiles',                  'module': 'platform'},
+    {'key': 'schools.create',        'label': 'Onboard New Schools',                      'module': 'platform'},
+    {'key': 'schools.update',        'label': 'Update School Configurations',             'module': 'platform'},
+    {'key': 'schools.suspend',       'label': 'Suspend / Activate Schools',               'module': 'platform'},
+    {'key': 'schools.archive',       'label': 'Archive / Restore Schools',                'module': 'platform'},
+    {'key': 'team.view',             'label': 'View Company Team & Organization Chart',   'module': 'platform'},
+    {'key': 'team.invite',           'label': 'Invite / Create Company Employees',        'module': 'platform'},
+    {'key': 'roles.create',          'label': 'Create Dynamic Custom Roles',              'module': 'platform'},
+    {'key': 'roles.assign',          'label': 'Assign Roles to Team & Staff',             'module': 'platform'},
+    {'key': 'permissions.manage',    'label': 'Manage Permission Policies & Matrix',     'module': 'platform'},
+    {'key': 'plans.view',            'label': 'View Subscription Plans Catalogue',        'module': 'platform'},
+    {'key': 'plans.manage',          'label': 'Create & Configure Subscription Plans',    'module': 'platform'},
+    {'key': 'subscriptions.assign',  'label': 'Assign & Change School Subscriptions',     'module': 'platform'},
+    {'key': 'modules.grant',         'label': 'Grant Individual Modules to Schools',      'module': 'platform'},
+    {'key': 'modules.revoke',        'label': 'Revoke Module Grants from Schools',        'module': 'platform'},
+    {'key': 'notifications.publish', 'label': 'Publish Platform-wide Announcements',      'module': 'platform'},
+    {'key': 'audit.view',            'label': 'View Platform Audit & Security Logs',      'module': 'platform'},
+    {'key': 'developer.manage',      'label': 'Manage Error Center & Issue Board',        'module': 'platform'},
  ]
 
 PERMISSION_KEYS = {p['key'] for p in PERMISSION_CATALOG}
@@ -189,8 +206,32 @@ DEFAULT_COMPANY_ROLE_PERMISSIONS = {
         'admin.user.manage', 'admin.school.settings', 'admin.whatsapp.settings',
         'audit.logs.view', 'audit.logs.export', 'audit.logs.delete',
         'audit.retention.manage', 'audit.purge',
+        'schools.view', 'schools.create', 'schools.update', 'schools.suspend', 'schools.archive',
+        'team.view', 'team.invite', 'roles.create', 'roles.assign', 'permissions.manage',
+        'plans.view', 'plans.manage', 'subscriptions.assign', 'modules.grant', 'modules.revoke',
+        'notifications.publish', 'audit.view', 'developer.manage',
+    ],
+    'SUB_ADMIN': [
+        'schools.view', 'schools.create', 'schools.update', 'team.view', 'roles.assign',
+        'plans.view', 'subscriptions.assign', 'modules.grant', 'notifications.publish', 'audit.view',
+    ],
+    'MANAGER': [
+        'schools.view', 'team.view', 'plans.view', 'audit.view',
+    ],
+    'SOFTWARE_ENGINEER': [
+        'developer.manage', 'audit.view',
+    ],
+    'QA': [
+        'developer.manage',
+    ],
+    'CUSTOMER_SUPPORT': [
+        'schools.view', 'notifications.publish', 'audit.view',
+    ],
+    'SALES': [
+        'schools.view', 'plans.view',
     ],
 }
+
 
 
 # ═══════════════════════════════════════════════════════════════════════════

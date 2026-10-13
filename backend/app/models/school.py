@@ -40,18 +40,29 @@ class School(db.Model):
         except Exception:
             return []
 
-    DEFAULT_CORE_FEATURES = {
-        'teacher_management', 'student_management', 'attendance_management',
-        'fee_management', 'exam_management', 'timetable_management',
-        'library_management', 'hostel_management', 'transport_management',
-        'communication_module', 'hrms_module', 'reports_module'
-    }
+    def set_features(self, feature_list):
+        import json
+        self.enabled_features = json.dumps(feature_list or [])
+
+    def get_effective_modules(self):
+        """Single source of truth for effective module entitlements."""
+        try:
+            from app.models.subscription import calculate_effective_entitlements
+            return list(calculate_effective_entitlements(self.id)['effective_modules'])
+        except Exception:
+            return self.get_features()
 
     def has_feature(self, key):
-        features = self.get_features()
-        if not features:
-            return True
-        return key in features or key in self.DEFAULT_CORE_FEATURES
+        """
+        Calculates effective feature entitlement using the subscription engine.
+        Returns False for modules not included in plan or granted individually.
+        """
+        try:
+            from app.models.subscription import is_school_entitled_to_module
+            return is_school_entitled_to_module(self.id, key)
+        except Exception:
+            features = self.get_features()
+            return key in features
 
     
 
@@ -106,4 +117,6 @@ class School(db.Model):
             'director_signature_url':       self.director_signature_url  or None,
             'plan':                         self.plan or 'BASIC',
             'enabled_features':             self.get_features(),
+            'effective_modules':            self.get_effective_modules(),
         }
+

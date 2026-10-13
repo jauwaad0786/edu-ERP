@@ -45,19 +45,15 @@ class Role(db.Model):
     key             = db.Column(db.String(40), nullable=False, index=True)
     name            = db.Column(db.String(100), nullable=False)
 
-    # Lower number = more senior. Used for "can actor manage target" checks
-    # (see can_manage_role below), not for permission resolution directly.
-    hierarchy_level = db.Column(db.Integer, nullable=False, default=99)
+    # Hierarchy and reporting relationships
+    hierarchy_level    = db.Column(db.Integer, nullable=False, default=99)
+    reports_to_role_id = db.Column(db.Integer, db.ForeignKey('platform_roles.id'), nullable=True, index=True)
 
     # CEO-style bypass: this role gets every permission in its accessible
-    # products without needing explicit RolePermission rows. Mirrors the
-    # existing hardcoded PRINCIPAL bypass in permissions.py.resolve_permissions().
+    # products without needing explicit RolePermission rows.
     is_super        = db.Column(db.Boolean, default=False)
 
-    # Roles seeded by the platform (see DEFAULT_COMPANY_ROLES / DEFAULT_SCHOOL_ROLES
-    # below) can never be deleted via the RBAC API, regardless of who's asking.
-    # "Nobody can delete CEO" needs to be an absolute rule, not just a
-    # hierarchy comparison that a bug could get around.
+    # Roles seeded by the platform can never be deleted via the RBAC API
     is_protected    = db.Column(db.Boolean, default=False)
 
     created_at      = db.Column(db.DateTime, default=datetime.utcnow)
@@ -68,15 +64,17 @@ class Role(db.Model):
 
     def to_dict(self):
         return {
-            'id':              self.id,
-            'product_id':      self.product_id,
-            'scope':           self.scope,
-            'key':             self.key,
-            'name':            self.name,
-            'hierarchy_level': self.hierarchy_level,
-            'is_super':        self.is_super,
-            'is_protected':    self.is_protected,
+            'id':                 self.id,
+            'product_id':         self.product_id,
+            'scope':              self.scope,
+            'key':                self.key,
+            'name':               self.name,
+            'hierarchy_level':    self.hierarchy_level,
+            'reports_to_role_id': self.reports_to_role_id,
+            'is_super':           self.is_super,
+            'is_protected':       self.is_protected,
         }
+
 
 
 class Permission(db.Model):
@@ -213,29 +211,44 @@ def get_active_role(user):
 def resolve_platform_permissions(user, school_id=None):
     """
     Returns the full set of permission keys this user effectively has,
-    merged across every role they hold (see UserRoleAssignment docstring
-    for why this is a union, not just the active role).
-
-    Resolution order per permission: user override (if a row exists) wins
-    over every role default. Among role defaults, a school-specific
-    RolePermission row wins over the global (school_id=NULL) template.
-    Any role with is_super=True short-circuits to full access.
+    merged across every role they hold.
+    Resolution order:
+      1. Immutable root platform owner has full access.
+      2. Company super administrator (role.is_super) has platform-wide access.
+      3. School administrators (Principal/Director) bypass permissions for TENANT
+         scope under SCHOOL_ERP, but NOT platform administration.
+      4. Subordinate company employees and staff resolve strictly from their
+         role permissions and user overrides.
     """
-    role_val = getattr(getattr(user, 'role', None), 'value', str(getattr(user, 'role', '')))
-    if role_val in ('PRINCIPAL', 'DIRECTOR', 'SUPER_ADMIN', 'VICE_PRINCIPAL'):
+    if getattr(user, 'is_root_protected', False):
         return {p.key for p in Permission.query.all()}
 
     roles = get_user_roles(user, school_id=school_id)
+    is_company_actor = getattr(user, 'school_id', None) is None
 
-    if roles and any(r.is_super for r in roles):
-        # CEO-style bypass -- full catalog, scoped to products these roles cover.
-        product_ids = {r.product_id for r in roles if r.product_id is not None}
+    # Company super administrator bypass (e.g. Root Super Admin / CEO)
+    if is_company_actor and roles and any(r.is_super for r in roles):
+        return {p.key for p in Permission.query.all()}
+
+    # School leadership bypass: grants all TENANT-scoped permissions for SCHOOL_ERP
+    role_val = getattr(getattr(user, 'role', None), 'value', str(getattr(user, 'role', '')))
+    if not is_company_actor and role_val in ('PRINCIPAL', 'DIRECTOR', 'VICE_PRINCIPAL'):
+        from app.models.platform import Product
+        school_prod = Product.query.filter_by(key='SCHOOL_ERP').first()
         q = Permission.query
-        if product_ids:
-            q = q.filter(db.or_(Permission.product_id.in_(product_ids), Permission.product_id.is_(None)))
+        if school_prod:
+            q = q.filter(Permission.product_id == school_prod.id)
         return {p.key for p in q.all()}
 
+    # Unmapped legacy SUPER_ADMIN without role assignment (bootstrap fallback strictly for root protected)
+    if is_company_actor and role_val == 'SUPER_ADMIN' and not roles:
+        if getattr(user, 'is_root_protected', False):
+            return {p.key for p in Permission.query.all()}
+        from app.models.permission_catalog import DEFAULT_COMPANY_ROLE_PERMISSIONS
+        return set(DEFAULT_COMPANY_ROLE_PERMISSIONS.get('SOFTWARE_ENGINEER', []))
+
     effective = {}
+
 
     if roles:
         role_ids = [r.id for r in roles]

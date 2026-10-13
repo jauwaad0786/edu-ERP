@@ -88,6 +88,10 @@ class User(db.Model):
 
     plain_password_temp = db.Column(db.String(256), nullable=True)
 
+    # Protected Root Admin & Organizational Hierarchy
+    is_root_protected   = db.Column(db.Boolean, default=False, nullable=False, index=True)
+    reports_to_user_id  = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
+
     # Soft-delete & Archive metadata
     is_deleted          = db.Column(db.Boolean, default=False, nullable=False, index=True)
     deleted_at          = db.Column(db.DateTime, nullable=True)
@@ -103,6 +107,7 @@ class User(db.Model):
         db.Index('idx_users_school_active', 'school_id', 'is_active', 'is_deleted'),
         db.Index('idx_users_school_email', 'school_id', 'email'),
     )
+
 
     # Relationships
     school          = db.relationship('School', foreign_keys=[school_id], backref='members')
@@ -144,6 +149,8 @@ class User(db.Model):
             'salary':      self.salary,
             'last_login':  self.last_login.isoformat() if self.last_login else None,
             'created_at':  self.created_at.isoformat() if self.created_at else None,
+            'is_root_protected': getattr(self, 'is_root_protected', False),
+            'reports_to_user_id': getattr(self, 'reports_to_user_id', None),
             'is_deleted':  getattr(self, 'is_deleted', False),
             'deleted_at':  self.deleted_at.isoformat() if getattr(self, 'deleted_at', None) else None,
             'is_anonymized': getattr(self, 'is_anonymized', False),

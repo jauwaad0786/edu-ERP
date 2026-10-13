@@ -47,6 +47,21 @@ from app.utils.payslip_generator import generate_payslip_pdf
 hrms_bp = Blueprint('hrms', __name__)
 
 
+@hrms_bp.before_request
+def check_hrms_entitlement():
+    """Server-enforced module entitlement boundary for HRMS."""
+    user = get_current_user()
+    if user and user.school_id:
+        from app.models.school import School
+        school = School.query.get(user.school_id)
+        if not school or not school.has_feature('hrms_module'):
+            return jsonify({
+                'error': 'module_not_entitled',
+                'module': 'hrms_module',
+                'message': 'HRMS module is not enabled for your school subscription.'
+            }), 403
+
+
 def _school_id():
     return get_current_user().school_id
 

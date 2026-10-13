@@ -118,6 +118,9 @@ def grant_user_permission(user_id):
     if error:
         return error
 
+    if getattr(target, 'is_root_protected', False) and not getattr(actor, 'is_root_protected', False):
+        return jsonify({'error': 'Cannot modify permissions for root protected administrator'}), 403
+
     data = request.get_json() or {}
     permission_key = data.get('permission_key')
     is_enabled = data.get('is_enabled', True)
@@ -128,6 +131,12 @@ def grant_user_permission(user_id):
     perm = Permission.query.filter_by(key=permission_key).first()
     if not perm:
         return jsonify({'error': f"Unknown permission key '{permission_key}'"}), 404
+
+    # Anti-escalation: actor cannot grant permissions exceeding their own held permissions
+    if not getattr(actor, 'is_root_protected', False) and not getattr(actor, 'is_super', False):
+        actor_perms = resolve_platform_permissions(actor, school_id=actor.school_id)
+        if permission_key not in actor_perms:
+            return jsonify({'error': 'Cannot grant a permission you do not possess (self-escalation prohibited)'}), 403
 
     existing = UserPermissionOverride.query.filter_by(
         user_id=user_id, permission_id=perm.id
@@ -170,6 +179,9 @@ def revoke_user_permission_override(user_id, permission_key):
     target, error = _get_target_user_or_403(user_id, actor)
     if error:
         return error
+
+    if getattr(target, 'is_root_protected', False) and not getattr(actor, 'is_root_protected', False):
+        return jsonify({'error': 'Cannot modify permissions for root protected administrator'}), 403
 
     perm = Permission.query.filter_by(key=permission_key).first()
     if not perm:

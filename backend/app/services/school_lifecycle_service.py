@@ -281,16 +281,12 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
     if not school:
         raise ValueError('School not found')
 
-    # Security guard 1: If active and force is enabled, archive it first
+    # Security guard 1: School must be archived before permanent deletion
     if getattr(school, 'status', None) != 'ARCHIVED':
-        if force:
-            archive_school(school_id, actor_user, reason="Archived immediately for permanent deletion")
-            school = School.query.get(school_id)
-        else:
-            raise ValueError(
-                f"Active school '{school.name}' cannot be permanently deleted. "
-                "It must first be archived into the 1-year retention state."
-            )
+        raise ValueError(
+            f"Active school '{school.name}' cannot be permanently deleted. "
+            "It must first be archived into the 1-year retention state."
+        )
 
     # Security guard 2: Explicit confirmation phrase
     expected_confirm = f"DELETE {school.name}".strip().upper()
@@ -348,6 +344,8 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
             table_columns[t_name] = set()
 
     try:
+        actor_id_val = actor_user.id if actor_user else None
+        role_snap = actor_user.role.value if actor_user and getattr(actor_user, 'role', None) else 'SUPER_ADMIN'
         school_users = User.query.filter_by(school_id=school_id).all()
         school_user_ids = [u.id for u in school_users]
         db.session.expunge_all()

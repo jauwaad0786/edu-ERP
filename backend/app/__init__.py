@@ -181,6 +181,8 @@ def create_app(config_name='default'):
     app.register_blueprint(auth_bp,         url_prefix='/api/auth')
     app.register_blueprint(auth_bp,         url_prefix='/api/v1/auth', name='auth_v1_bp')
     app.register_blueprint(admin_bp,        url_prefix='/api/admin')
+    from app.routes.subscription_routes import subscription_bp
+    app.register_blueprint(subscription_bp, url_prefix='/api/admin')
     app.register_blueprint(principal_bp,    url_prefix='/api/principal')
     from app.routes.student_lifecycle import student_lifecycle_bp
     app.register_blueprint(student_lifecycle_bp, url_prefix='/api/principal/students')
@@ -217,7 +219,9 @@ def create_app(config_name='default'):
             from app.models import delegation as delegation_models  # noqa: F401
             from app.models import curriculum as curriculum_models  # noqa: F401
             from app.models import notification as notification_models  # noqa: F401
+            from app.models import subscription as subscription_models  # noqa: F401
             _ensure_school_columns()
+            _ensure_subscription_columns()
             _ensure_user_columns()
             _ensure_teacher_columns()
             _ensure_student_columns()
@@ -285,6 +289,12 @@ def create_app(config_name='default'):
                 app.logger.warning(f'Permission template seed had gaps: {template_result}')
         except Exception as e:
             app.logger.warning(f'Permission catalog seed skipped: {e}')
+
+        try:
+            from app.models.subscription import seed_default_subscription_data
+            seed_default_subscription_data()
+        except Exception as e:
+            app.logger.warning(f'Subscription catalog seed skipped: {e}')
 
         try:
             from app.services.permission_resolver import sync_legacy_role_assignments
@@ -1148,6 +1158,53 @@ def _ensure_school_columns():
                     print(f'[WARN] schools.{col}: {e}')
 
 
+def _ensure_subscription_columns():
+    """Ensure subscription engine tables and columns exist smoothly across DB dialects."""
+    from sqlalchemy import text, inspect
+    try:
+        inspector = inspect(db.engine)
+        table_names = inspector.get_table_names()
+
+        if 'school_subscriptions' in table_names:
+            existing = {c['name'] for c in inspector.get_columns('school_subscriptions')}
+            to_add = {
+                'plan_id':        'INTEGER',
+                'status':         "VARCHAR(20) DEFAULT 'ACTIVE'",
+                'start_date':     'TIMESTAMP',
+                'expiry_date':    'TIMESTAMP NULL',
+                'billing_period': "VARCHAR(20) DEFAULT 'MONTHLY'",
+                'auto_renew':     'BOOLEAN DEFAULT TRUE',
+            }
+            with db.engine.connect() as conn:
+                for col, defn in to_add.items():
+                    if col not in existing:
+                        try:
+                            conn.execute(text(f'ALTER TABLE school_subscriptions ADD COLUMN {col} {defn}'))
+                            conn.commit()
+                            print(f'[OK] Added column school_subscriptions.{col}')
+                        except Exception as e:
+                            print(f'[WARN] school_subscriptions.{col}: {e}')
+
+        if 'school_module_grants' in table_names:
+            existing = {c['name'] for c in inspector.get_columns('school_module_grants')}
+            to_add = {
+                'grant_type': 'VARCHAR(30) DEFAULT \'INDIVIDUAL\'',
+                'is_active':  'BOOLEAN DEFAULT TRUE',
+                'status':     'VARCHAR(20) DEFAULT \'ACTIVE\'',
+            }
+            with db.engine.connect() as conn:
+                for col, defn in to_add.items():
+                    if col not in existing:
+                        try:
+                            conn.execute(text(f'ALTER TABLE school_module_grants ADD COLUMN {col} {defn}'))
+                            conn.commit()
+                            print(f'[OK] Added column school_module_grants.{col}')
+                        except Exception as e:
+                            print(f'[WARN] school_module_grants.{col}: {e}')
+    except Exception as e:
+        print(f'[WARN] _ensure_subscription_columns note: {e}')
+
+
 # ── User columns ──────────────────────────────────────────────────────────────
 
 def _ensure_user_columns():
@@ -1175,6 +1232,8 @@ def _ensure_user_columns():
         'employee_id':         'VARCHAR(30)',
         'account_status':      "VARCHAR(20) DEFAULT 'ACTIVE'",
         'token_version':       'INTEGER DEFAULT 0',
+        'is_root_protected':   'BOOLEAN DEFAULT FALSE',
+        'reports_to_user_id':  'INTEGER NULL',
     }
 
     with db.engine.connect() as conn:
@@ -1208,6 +1267,17 @@ def _ensure_user_columns():
                 conn.commit()
             except Exception:
                 pass
+
+        for r_table in ('platform_roles', 'roles'):
+            if r_table in inspector.get_table_names():
+                role_cols = {c['name'] for c in inspector.get_columns(r_table)}
+                if 'reports_to_role_id' not in role_cols:
+                    try:
+                        conn.execute(text(f'ALTER TABLE {r_table} ADD COLUMN reports_to_role_id INTEGER NULL'))
+                        conn.commit()
+                        print(f'[OK] Added column {r_table}.reports_to_role_id')
+                    except Exception as e:
+                        print(f'[WARN] {r_table}.reports_to_role_id: {e}')
 
     # PostgreSQL only: add new enum values to userrole type
     _ensure_userrole_enum()
@@ -1392,16 +1462,25 @@ def _seed_super_admin():
         )).scalar()
 
     if row and row > 0:
+        # Ensure at least the primary super admin has is_root_protected = True
+        try:
+            primary_admin = User.query.filter(User.role == UserRole.SUPER_ADMIN).order_by(User.id.asc()).first()
+            if primary_admin and not getattr(primary_admin, 'is_root_protected', False):
+                primary_admin.is_root_protected = True
+                db.session.commit()
+                print('[OK] Primary Super Admin marked is_root_protected=True')
+        except Exception as e:
+            print(f'[WARN] Note marking primary super admin root protected: {e}')
         return  # already seeded
 
     email    = os.environ.get('SUPER_ADMIN_EMAIL', 'admin@eduErp.com')
     password = os.environ.get('SUPER_ADMIN_PASSWORD', 'SuperAdmin@123')
 
-    admin = User(name='Super Admin', email=email, role=UserRole.SUPER_ADMIN)
+    admin = User(name='Super Admin', email=email, role=UserRole.SUPER_ADMIN, is_root_protected=True)
     admin.set_password(password, store_plain=False)
     db.session.add(admin)
     db.session.commit()
-    print('[OK] Super Admin seeded')
+    print('[OK] Super Admin seeded with is_root_protected=True')
 
 
 def _ensure_deleted_items_schema():

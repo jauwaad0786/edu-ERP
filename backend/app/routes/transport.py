@@ -15,6 +15,21 @@ from app.services.permission_resolver import ensure_role_assignment_for_user
 transport_bp = Blueprint('transport', __name__, url_prefix='/api/transport')
 
 
+@transport_bp.before_request
+def check_transport_entitlement():
+    """Server-enforced module entitlement boundary for Transport Management."""
+    user = get_current_user()
+    if user and user.school_id:
+        from app.models.school import School
+        school = School.query.get(user.school_id)
+        if not school or not school.has_feature('transport_management'):
+            return jsonify({
+                'error': 'module_not_entitled',
+                'module': 'transport_management',
+                'message': 'Transport Management module is not enabled for your school subscription.'
+            }), 403
+
+
 # ─── Helpers ────────────────────────────────────────────────────────────────
 
 def get_current_school_id():
