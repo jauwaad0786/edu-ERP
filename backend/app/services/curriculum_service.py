@@ -253,8 +253,18 @@ def get_teacher_today_schedule(teacher_id, school_id, target_date=None, session=
         if l.timetable_period_id:
             log_map[f"tp_{l.timetable_period_id}"] = l
 
+    from app.models.financial import PeriodSubstitution
+    substs_covering = PeriodSubstitution.query.filter_by(
+        school_id=school_id, substitute_teacher_id=teacher_id, date=target_date, status='CONFIRMED'
+    ).all()
+    substs_relieved = {
+        s.timetable_period_id: s for s in PeriodSubstitution.query.filter_by(
+            school_id=school_id, original_teacher_id=teacher_id, date=target_date, status='CONFIRMED'
+        ).all()
+    }
+
     schedule_items = []
-    has_timetable = len(periods) > 0
+    has_timetable = len(periods) > 0 or len(substs_covering) > 0
 
     if has_timetable:
         for p in periods:
@@ -264,21 +274,57 @@ def get_teacher_today_schedule(teacher_id, school_id, target_date=None, session=
             sub_code = p.subject.code if p.subject else ''
 
             matched_log = log_map.get(f"tp_{p.id}") or log_map.get(f"{p.period_no}_{p.timetable.class_id}_{p.subject_id}")
+            relieved = substs_relieved.get(p.id)
+            cov_name = relieved.substitute_teacher.user.name if (relieved and relieved.substitute_teacher and relieved.substitute_teacher.user) else ''
 
             schedule_items.append({
-                'source':               'TIMETABLE',
-                'timetable_period_id':  p.id,
-                'period_no':            p.period_no,
-                'start_time':           p.start_time or '',
-                'end_time':             p.end_time or '',
-                'room':                 p.room or '',
-                'class_id':             p.timetable.class_id,
+                'source':                     'TIMETABLE',
+                'timetable_period_id':        p.id,
+                'period_no':                  p.period_no,
+                'start_time':                 p.start_time or '',
+                'end_time':                   p.end_time or '',
+                'room':                       p.room or '',
+                'class_id':                   p.timetable.class_id,
+                'class_name':                 cls_name,
+                'subject_id':                 p.subject_id,
+                'subject_name':               sub_name,
+                'subject_code':               sub_code,
+                'status':                     'COVERED_BY_SUBSTITUTE' if relieved else ('RECORDED' if matched_log else 'PENDING'),
+                'teaching_log':               matched_log.to_dict() if matched_log else None,
+                'is_substituted':             bool(relieved),
+                'is_substitute_duty':         False,
+                'covered_by_substitute_name': cov_name,
+                'substitute_reason':          relieved.reason if relieved else '',
+            })
+
+        for sub in substs_covering:
+            tp = sub.timetable_period
+            if not tp:
+                continue
+            cls = Class.query.get(tp.timetable.class_id) if tp.timetable else None
+            cls_name = f"{cls.name} - {cls.section}" if cls else ''
+            sub_name = tp.subject.name if tp.subject else ''
+            orig_name = sub.original_teacher.user.name if (sub.original_teacher and sub.original_teacher.user) else ''
+            matched_log = log_map.get(f"tp_{tp.id}") or log_map.get(f"{tp.period_no}_{tp.timetable.class_id}_{tp.subject_id}")
+
+            schedule_items.append({
+                'source':               'SUBSTITUTION',
+                'timetable_period_id':  tp.id,
+                'period_no':            tp.period_no,
+                'start_time':           tp.start_time or '',
+                'end_time':             tp.end_time or '',
+                'room':                 tp.room or '',
+                'class_id':             tp.timetable.class_id if tp.timetable else None,
                 'class_name':           cls_name,
-                'subject_id':           p.subject_id,
+                'subject_id':           tp.subject_id,
                 'subject_name':         sub_name,
-                'subject_code':         sub_code,
+                'subject_code':         tp.subject.code if tp.subject else '',
                 'status':               'RECORDED' if matched_log else 'PENDING',
                 'teaching_log':         matched_log.to_dict() if matched_log else None,
+                'is_substituted':       True,
+                'is_substitute_duty':   True,
+                'original_teacher_name': orig_name,
+                'substitute_reason':    sub.reason or 'Teacher Absence',
             })
     else:
         # Fallback: list all subjects assigned to this teacher
@@ -304,12 +350,17 @@ def get_teacher_today_schedule(teacher_id, school_id, target_date=None, session=
                 'subject_code':         s.code or '',
                 'status':               'RECORDED' if sub_logs else 'PENDING',
                 'teaching_log':         sub_logs[0].to_dict() if sub_logs else None,
+                'is_substituted':       False,
+                'is_substitute_duty':   False,
             })
+
+    # Sort schedule by period number
+    schedule_items.sort(key=lambda x: (x.get('period_no') or 0, x.get('start_time') or ''))
 
     # Summary counts
     total_slots = len(schedule_items)
     recorded_count = sum(1 for item in schedule_items if item['status'] == 'RECORDED')
-    pending_count = total_slots - recorded_count
+    pending_count = sum(1 for item in schedule_items if item['status'] == 'PENDING')
 
     return {
         'teacher_id':     teacher.id,
@@ -380,18 +431,23 @@ def record_teaching_log(school_id, teacher_id, user_id, data):
 
     log.chapter_id = chapter_id
     log.topic_id = topic_id
-    log.sub_topic = data.get('sub_topic', '')
+    sub_topic_val = data.get('sub_topic') or data.get('subtopic_title') or ''
+    log.sub_topic = sub_topic_val
     log.timetable_period_id = data.get('timetable_period_id')
-    log.periods_used = int(data.get('periods_used', 1))
+    periods_val = data.get('periods_used', data.get('periods_spent', 1))
+    log.periods_used = int(float(periods_val)) if periods_val else 1
     log.teaching_status = data.get('teaching_status', 'IN_PROGRESS')
     log.topic_completion_status = data.get('topic_completion_status', 'IN_PROGRESS')
-    log.what_was_taught = data.get('what_was_taught', '').strip()
+    log.what_was_taught = (data.get('what_was_taught') or sub_topic_val or data.get('classwork_summary') or 'Lesson delivered').strip()
     log.learning_objectives = data.get('learning_objectives', '')
-    log.teaching_pedagogy = data.get('teaching_pedagogy', 'Explanation / Lecture')
-    log.classwork_done = data.get('classwork_done', '')
+    log.teaching_pedagogy = data.get('teaching_pedagogy') or data.get('teaching_methodology') or 'Explanation / Lecture'
+    log.classwork_done = data.get('classwork_done') or data.get('classwork_summary') or ''
 
     # Homework fields
-    log.homework_given = bool(data.get('homework_given', False))
+    hw_title = data.get('homework_title') or ''
+    has_hw = bool(data.get('homework_given', False) or data.get('has_homework', False) or hw_title)
+    log.homework_given = has_hw
+    log.homework_title = hw_title
     log.homework_description = data.get('homework_description', '')
     log.homework_due_date = parse_d(data.get('homework_due_date'))
     log.homework_attachment_url = data.get('homework_attachment_url', '')
@@ -406,9 +462,17 @@ def record_teaching_log(school_id, teacher_id, user_id, data):
     log.student_understanding_level = data.get('student_understanding_level', 'GOOD')
     log.students_needing_support = data.get('students_needing_support', '')
 
-    # Attachments
     # Approval Status (DRAFT / PENDING / APPROVED / REJECTED)
-    approval_status = data.get('approval_status', 'APPROVED')
+    approval_status = data.get('approval_status')
+    if not approval_status:
+        from app.models.user import User
+        u = User.query.get(user_id) if user_id else None
+        role_val = getattr(u.role, 'value', str(u.role)) if u else ''
+        if role_val in ('PRINCIPAL', 'SUPER_ADMIN', 'ADMIN', 'DIRECTOR', 'VICE_PRINCIPAL'):
+            approval_status = 'APPROVED'
+        else:
+            approval_status = 'PENDING'
+
     log.approval_status = approval_status
     if approval_status == 'APPROVED' and not getattr(log, 'approved_at', None):
         log.approved_at = datetime.utcnow()
@@ -471,6 +535,25 @@ def record_teaching_log(school_id, teacher_id, user_id, data):
         db.session.add(ws)
 
     db.session.commit()
+
+    # Emit notification event if homework was given
+    if log.homework_given:
+        try:
+            from app.services.notification.event_emitter import emit_notification_event
+            emit_notification_event(
+                event_name='homework.assigned',
+                school_id=school_id,
+                payload={
+                    'class_id': class_id,
+                    'subject_name': sub.name if sub else 'Subject',
+                    'homework_title': log.homework_title or 'Homework assignment',
+                    'due_date': log.homework_due_date.isoformat() if log.homework_due_date else 'Upcoming',
+                    'target': {'class_id': class_id, 'include_parents': True}
+                }
+            )
+        except Exception as notif_err:
+            logger.warning(f"Could not emit homework.assigned notification: {notif_err}")
+
     return log
 
 
@@ -876,7 +959,8 @@ def get_academic_dashboard_summary(school_id, session):
         'critical_count':          critical_currs,
         'logs_this_month':         logs_month_count,
         'total_teachers':          total_teachers,
-        'alerts':                  alerts[:10]
+        'alerts':                  alerts[:10],
+        'subjects_breakdown':      get_subject_wise_coverage(school_id, session)
     }
 
 
@@ -937,7 +1021,22 @@ def get_curriculum_overview(school_id, session='2026-27', class_id=None):
     upcoming_pending = q_logs.filter_by(approval_status='PENDING').order_by(TeachingLog.created_at.desc()).limit(5).all()
     upcoming_approvals = [l.to_dict() for l in upcoming_pending]
 
+    kpi_cards = {
+        'total_lesson_plans': total_plans,
+        'approved': approved_plans,
+        'approved_plans': approved_plans,
+        'pending_approval': pending_plans,
+        'pending': pending_plans,
+        'draft': draft_plans,
+        'draft_plans': draft_plans,
+        'rejected': rejected_plans,
+        'rejected_plans': rejected_plans,
+        'coverage_this_month': coverage_this_month,
+        'classes_planned': active_classes,
+    }
+
     return {
+        'kpi_cards': kpi_cards,
         'total_lesson_plans': total_plans,
         'approved_plans': approved_plans,
         'pending_approval': pending_plans,

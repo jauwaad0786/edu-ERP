@@ -21,10 +21,13 @@ logger = logging.getLogger('event_emitter')
 # Default event-to-template fallback mapping
 DEFAULT_EVENT_TEMPLATES = {
     'attendance.absent':     'ATTENDANCE_ABSENT',
+    'attendance.corrected':  'ATTENDANCE_CORRECTION',
     'fees.collected':        'FEE_COLLECTED',
     'fees.reminder':         'FEE_REMINDER',
     'exams.published':       'EXAM_PUBLISHED',
     'results.announced':     'RESULT_ANNOUNCED',
+    'homework.assigned':     'HOMEWORK_ASSIGNED',
+    'timetable.substitution':'TIMETABLE_SUBSTITUTION',
     'hostel.outpass':        'HOSTEL_OUTPASS',
     'transport.delay':       'TRANSPORT_DELAY',
     'payroll.processed':     'PAYROLL_GENERATED',

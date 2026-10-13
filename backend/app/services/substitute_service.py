@@ -65,10 +65,12 @@ def validate_timetable_conflict(school_id, timetable_id, day, period_no, teacher
                 c = Class.query.get(teacher_clash.timetable.class_id)
                 if c:
                     clash_class = f" ({c.name} {c.section})".strip()
+            t_obj = Teacher.query.get(teacher_id)
+            t_name = f" {t_obj.user.name}" if (t_obj and t_obj.user and t_obj.user.name) else ""
             return {
                 'conflict': True,
                 'type': 'TEACHER_COLLISION',
-                'message': f"Teacher is already assigned to a class{clash_class} on {day} during period {period_no}."
+                'message': f"Teacher{t_name} is already assigned to a class{clash_class} on {day} during period {period_no}."
             }
 
     # 3. Room collision
@@ -87,10 +89,10 @@ def validate_timetable_conflict(school_id, timetable_id, day, period_no, teacher
             return {
                 'conflict': True,
                 'type': 'ROOM_COLLISION',
-                'message': f"Room '{room}' is already allocated on {day} during period {period_no}."
+                'message': f"Room {room} is already allocated on {day} during period {period_no}."
             }
 
-    return {'conflict': False}
+    return None
 
 
 def get_absent_teacher_ids(school_id, target_date):
@@ -341,7 +343,7 @@ def assign_substitute(school_id, target_date, timetable_period_id, substitute_te
         teacher_id=substitute_teacher_id,
         exclude_period_id=period.id
     )
-    if conflict.get('conflict') and conflict.get('type') == 'TEACHER_COLLISION':
+    if conflict and conflict.get('conflict') and conflict.get('type') == 'TEACHER_COLLISION':
         raise ValueError(conflict['message'])
 
     # Find or create TimetableSubstitution

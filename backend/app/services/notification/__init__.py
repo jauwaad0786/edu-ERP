@@ -138,6 +138,39 @@ def seed_default_notification_templates():
             'deep_link_template': '/announcements',
             'is_system': True
         },
+        {
+            'code': 'HOMEWORK_ASSIGNED',
+            'name': 'New Homework Assigned',
+            'category': 'ACADEMIC',
+            'title_template': 'Homework: {subject_name}',
+            'body_template': 'New homework assigned for {subject_name}: {homework_title}. Due on {due_date}.',
+            'supported_channels': 'in_app,push',
+            'default_priority': 'MEDIUM',
+            'deep_link_template': '/student/homework',
+            'is_system': True
+        },
+        {
+            'code': 'TIMETABLE_SUBSTITUTION',
+            'name': 'Period Substitution',
+            'category': 'ACADEMIC',
+            'title_template': 'Timetable Update: {class_name}',
+            'body_template': 'Period {period_no} ({subject_name}) on {date} will be taught by {substitute_teacher_name}.',
+            'supported_channels': 'in_app,push',
+            'default_priority': 'MEDIUM',
+            'deep_link_template': '/timetable',
+            'is_system': True
+        },
+        {
+            'code': 'ATTENDANCE_CORRECTION',
+            'name': 'Attendance Record Corrected',
+            'category': 'ATTENDANCE',
+            'title_template': 'Attendance Update: {student_name}',
+            'body_template': 'Attendance for {student_name} on {date} has been updated to {status}.',
+            'supported_channels': 'in_app,push',
+            'default_priority': 'MEDIUM',
+            'deep_link_template': '/attendance',
+            'is_system': True
+        },
     ]
 
     count = 0

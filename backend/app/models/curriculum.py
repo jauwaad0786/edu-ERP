@@ -155,6 +155,23 @@ class CurriculumChapter(db.Model):
         db.Index('idx_chapter_curriculum_status', 'curriculum_id', 'status'),
     )
 
+    def __init__(self, **kwargs):
+        if 'planned_periods' in kwargs and 'estimated_periods' not in kwargs:
+            kwargs['estimated_periods'] = kwargs.pop('planned_periods')
+        super().__init__(**kwargs)
+        if not self.school_id and self.curriculum_id:
+            curr = Curriculum.query.get(self.curriculum_id)
+            if curr:
+                self.school_id = curr.school_id
+
+    @property
+    def planned_periods(self):
+        return self.estimated_periods or 1
+
+    @planned_periods.setter
+    def planned_periods(self, val):
+        self.estimated_periods = val
+
     def to_dict(self, include_topics=False):
         topic_list = self.topics.all() if include_topics else []
         total_topics = len(topic_list) if include_topics else self.topics.count()
@@ -229,6 +246,23 @@ class CurriculumTopic(db.Model):
         db.Index('idx_topic_chapter_status', 'chapter_id', 'status'),
     )
 
+    def __init__(self, **kwargs):
+        if 'planned_periods' in kwargs and 'estimated_periods' not in kwargs:
+            kwargs['estimated_periods'] = kwargs.pop('planned_periods')
+        super().__init__(**kwargs)
+        if not self.school_id and self.chapter_id:
+            ch = CurriculumChapter.query.get(self.chapter_id)
+            if ch:
+                self.school_id = ch.school_id
+
+    @property
+    def planned_periods(self):
+        return self.estimated_periods or 1
+
+    @planned_periods.setter
+    def planned_periods(self, val):
+        self.estimated_periods = val
+
     def to_dict(self):
         logs_count = self.teaching_logs.count()
         periods_spent = sum(log.periods_used or 1 for log in self.teaching_logs.all())
@@ -290,6 +324,7 @@ class TeachingLog(db.Model):
 
     # Homework
     homework_given               = db.Column(db.Boolean, default=False)
+    homework_title               = db.Column(db.String(250), default='')
     homework_description         = db.Column(db.Text, default='')
     homework_due_date            = db.Column(db.Date, nullable=True)
     homework_attachment_url      = db.Column(db.String(500), default='')
@@ -310,7 +345,7 @@ class TeachingLog(db.Model):
     attachment_type              = db.Column(db.String(50), default='')
 
     # Approval Lifecycle (Draft / Pending / Approved / Rejected)
-    approval_status              = db.Column(db.String(20), default='APPROVED', nullable=False, index=True) # DRAFT, PENDING, APPROVED, REJECTED
+    approval_status              = db.Column(db.String(20), default='PENDING', nullable=False, index=True) # DRAFT, PENDING, APPROVED, REJECTED
     approved_by                  = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     approved_at                  = db.Column(db.DateTime, nullable=True)
     approval_remarks             = db.Column(db.String(500), default='')
@@ -367,7 +402,8 @@ class TeachingLog(db.Model):
             'teaching_pedagogy':           self.teaching_pedagogy or 'Explanation / Lecture',
             'classwork_done':              self.classwork_done or '',
             'homework_given':              self.homework_given,
-            'homework_description':      self.homework_description or '',
+            'homework_title':              self.homework_title or '',
+            'homework_description':        self.homework_description or '',
             'homework_due_date':           self.homework_due_date.isoformat() if self.homework_due_date else None,
             'homework_attachment_url':     self.homework_attachment_url or '',
             'worksheet_given':             self.worksheet_given,
@@ -465,3 +501,19 @@ class TeachingWorksheet(db.Model):
             'created_by':        self.created_by,
             'created_at':        self.created_at.isoformat() if self.created_at else None,
         }
+
+
+@db.event.listens_for(CurriculumChapter, 'before_insert')
+def _set_chapter_school_id(mapper, connection, target):
+    if not target.school_id and target.curriculum_id:
+        curr = Curriculum.query.get(target.curriculum_id)
+        if curr:
+            target.school_id = curr.school_id
+
+
+@db.event.listens_for(CurriculumTopic, 'before_insert')
+def _set_topic_school_id(mapper, connection, target):
+    if not target.school_id and target.chapter_id:
+        ch = CurriculumChapter.query.get(target.chapter_id)
+        if ch:
+            target.school_id = ch.school_id

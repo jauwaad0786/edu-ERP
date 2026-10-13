@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Sidebar from '../../components/Sidebar';
 import Navbar  from '../../components/Navbar';
 import api from '../../api/axios';
@@ -9,9 +10,11 @@ import OneP360BotDrawer from '../../AI/components/OneP360BotDrawer';
 
 export default function TeacherDashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const session = user?.school?.current_session || '2026-27';
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ederp_theme') === 'dark');
   const [classes,       setClasses]       = useState([]);
-  const [tab,           setTab]           = useState('attendance');
+  const [tab,           setTab]           = useState('schedule');
   const [selectedClass, setSelectedClass] = useState('');
   const [students,      setStudents]      = useState([]);
   const [loadingStudents, setLoadingStudents] = useState(false);
@@ -24,6 +27,46 @@ export default function TeacherDashboard() {
   const [saving,        setSaving]        = useState(false);
   const [alreadyMarked, setAlreadyMarked] = useState(false);
   const [holidays,      setHolidays]      = useState([]);
+
+  // Live Today's Schedule & Diary State
+  const [scheduleData, setScheduleData] = useState(null);
+  const [loadingSchedule, setLoadingSchedule] = useState(false);
+
+  // Syllabus Coverage State
+  const [syllabusList, setSyllabusList] = useState([]);
+  const [loadingSyllabus, setLoadingSyllabus] = useState(false);
+
+  // Homework & Assignments State
+  const [assignmentsList, setAssignmentsList] = useState([]);
+  const [loadingAssignments, setLoadingAssignments] = useState(false);
+
+  // Leaves & Quota State
+  const [leavesData, setLeavesData] = useState(null);
+  const [loadingLeaves, setLoadingLeaves] = useState(false);
+
+  // Quick Diary Entry Modal State
+  const [quickDiaryModal, setQuickDiaryModal] = useState({ open: false, period: null });
+  const [modalChapters, setModalChapters] = useState([]);
+  const [loadingModalChapters, setLoadingModalChapters] = useState(false);
+  const [diaryForm, setDiaryForm] = useState({
+    class_id: '',
+    subject_id: '',
+    period_no: 1,
+    date: '',
+    session: '2026-27',
+    chapter_id: '',
+    topic_id: '',
+    subtopic_title: '',
+    periods_spent: 1,
+    topic_completion_status: 'COMPLETED',
+    teaching_methodology: 'Interactive / Discussion',
+    classwork_summary: '',
+    has_homework: false,
+    homework_title: '',
+    homework_description: '',
+    homework_due_date: ''
+  });
+  const [savingDiary, setSavingDiary] = useState(false);
 
   // GPS-based Staff Attendance
   const [myStatus,       setMyStatus]       = useState(null);
@@ -79,6 +122,107 @@ export default function TeacherDashboard() {
       .then(r => setHolidays(r.data || []))
       .catch(() => {});
   }, []);
+
+  const loadSchedule = useCallback(() => {
+    setLoadingSchedule(true);
+    api.get(`/curriculum/teaching-diary/today?date=${selectedDate}&session=${session}`)
+      .then(r => setScheduleData(r.data))
+      .catch(() => setScheduleData(null))
+      .finally(() => setLoadingSchedule(false));
+  }, [selectedDate, session]);
+
+  const loadSyllabus = useCallback(() => {
+    setLoadingSyllabus(true);
+    api.get(`/curriculum/analytics/summary?session=${session}`)
+      .then(r => setSyllabusList(r.data?.subjects_breakdown || []))
+      .catch(() => setSyllabusList([]))
+      .finally(() => setLoadingSyllabus(false));
+  }, [session]);
+
+  const loadAssignments = useCallback(() => {
+    setLoadingAssignments(true);
+    api.get(`/academic/assignments?academic_year=${session}`)
+      .then(r => setAssignmentsList(r.data?.assignments || []))
+      .catch(() => setAssignmentsList([]))
+      .finally(() => setLoadingAssignments(false));
+  }, [session]);
+
+  const loadLeaves = useCallback(() => {
+    setLoadingLeaves(true);
+    api.get('/hrms/my/leaves')
+      .then(r => setLeavesData(r.data))
+      .catch(() => setLeavesData(null))
+      .finally(() => setLoadingLeaves(false));
+  }, []);
+
+  useEffect(() => {
+    loadSchedule();
+  }, [loadSchedule]);
+
+  useEffect(() => {
+    loadSyllabus();
+    loadAssignments();
+    loadLeaves();
+  }, [loadSyllabus, loadAssignments, loadLeaves]);
+
+  const openQuickDiary = async (period) => {
+    setQuickDiaryModal({ open: true, period });
+    const existing = period.teaching_log;
+    setDiaryForm({
+      id: existing?.id || null,
+      class_id: period.class_id,
+      subject_id: period.subject_id,
+      period_no: period.period_no,
+      date: selectedDate,
+      session: session,
+      chapter_id: existing?.chapter_id || '',
+      topic_id: existing?.topic_id || '',
+      subtopic_title: existing?.subtopic_title || '',
+      periods_spent: existing?.periods_spent || 1,
+      topic_completion_status: existing?.topic_completion_status || 'COMPLETED',
+      teaching_methodology: existing?.teaching_methodology || 'Interactive / Discussion',
+      classwork_summary: existing?.classwork_summary || '',
+      has_homework: Boolean(existing?.has_homework),
+      homework_title: existing?.homework_title || '',
+      homework_description: existing?.homework_description || '',
+      homework_due_date: existing?.homework_due_date || ''
+    });
+
+    setLoadingModalChapters(true);
+    try {
+      const res = await api.get(`/curriculum?class_id=${period.class_id}&subject_id=${period.subject_id}&session=${session}`);
+      const currs = Array.isArray(res.data) ? res.data : (res.data?.curriculums || []);
+      if (currs.length > 0 && currs[0].chapters) {
+        setModalChapters(currs[0].chapters);
+      } else {
+        setModalChapters([]);
+      }
+    } catch {
+      setModalChapters([]);
+    } finally {
+      setLoadingModalChapters(false);
+    }
+  };
+
+  const submitQuickDiary = async (e) => {
+    e.preventDefault();
+    if (!diaryForm.subtopic_title && !diaryForm.chapter_id) {
+      toast.error('Please enter the topic title or chapter taught');
+      return;
+    }
+    setSavingDiary(true);
+    try {
+      await api.post('/curriculum/teaching-diary/entry', diaryForm);
+      toast.success(`Period ${diaryForm.period_no} teaching log recorded successfully! ✓`);
+      setQuickDiaryModal({ open: false, period: null });
+      loadSchedule();
+      loadSyllabus();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to save teaching diary entry');
+    } finally {
+      setSavingDiary(false);
+    }
+  };
 
   // 1. Fetch Students and Attendance whenever selectedClass or selectedDate changes
   useEffect(() => {
@@ -325,12 +469,24 @@ export default function TeacherDashboard() {
   }
 
   const TABS = [
+    { key: 'schedule',   icon: 'ti-calendar-time',   label: "Today's Schedule & Diary", badge: scheduleData?.schedule?.length ? `${scheduleData.schedule.length}` : null },
     { key: 'attendance', icon: 'ti-clipboard-check', label: 'Mark Attendance'    },
+    { key: 'syllabus',   icon: 'ti-chart-pie',       label: 'Syllabus Progress'  },
     { key: 'marks',      icon: 'ti-award',           label: 'Marks Entry'        },
+    { key: 'homework',   icon: 'ti-clipboard-list',  label: 'Assignments & Homework', badge: assignmentsList?.length ? `${assignmentsList.length}` : null },
     { key: 'notes',      icon: 'ti-file-upload',     label: 'Upload Notes'       },
+    { key: 'leaves',     icon: 'ti-calendar-off',    label: 'My Leaves & Quota'  },
     { key: 'my-att',     icon: 'ti-fingerprint',     label: 'My GPS Attendance'  },
     { key: 'holidays',   icon: 'ti-calendar',        label: 'Holidays'           },
   ];
+
+  const avgSyllabusPct = syllabusList.length
+    ? Math.round(syllabusList.reduce((acc, s) => acc + (s.coverage_pct || 0), 0) / syllabusList.length)
+    : 0;
+  const scheduledCount = scheduleData?.summary?.total_scheduled_periods || 0;
+  const recordedCount = scheduleData?.summary?.recorded_periods || 0;
+  const pendingDiaryCount = scheduleData?.summary?.pending_periods || 0;
+  const substitutePeriods = (scheduleData?.schedule || []).filter(p => p.is_substituted);
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'GOOD MORNING' : hour < 17 ? 'GOOD AFTERNOON' : 'GOOD EVENING';
@@ -390,7 +546,7 @@ export default function TeacherDashboard() {
                   background: 'rgba(255,255,255,0.12)', color: '#d1fae5',
                   fontSize: '11.5px', fontWeight: 700, backdropFilter: 'blur(6px)'
                 }}>
-                  School Session 2024–25
+                  Session {session}
                 </span>
               </div>
 
@@ -407,7 +563,7 @@ export default function TeacherDashboard() {
                 margin: '0 0 16px', maxWidth: '540px', lineHeight: 1.5,
                 fontWeight: 500
               }}>
-                "Teaching is the art of assisting discovery." Inspiring young students and managing class attendance and report card marks every day.
+                "Teaching is the art of assisting discovery." Delivering quality curriculum lessons, tracking syllabus coverage, and mentoring students daily.
               </p>
 
               {/* Subject Assignment Chips */}
@@ -426,42 +582,70 @@ export default function TeacherDashboard() {
                     background: 'rgba(255,255,255,0.16)', color: '#ffffff',
                     backdropFilter: 'blur(6px)', border: '1px solid rgba(255,255,255,0.2)'
                   }}>
-                    📚 Class 10-A • Mathematics & Science
+                    📚 Assigned Teaching Periods Loaded
                   </span>
                 )}
               </div>
 
               {/* Quick Actions */}
-              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
                 <button
                   type="button"
-                  onClick={() => setTab('attendance')}
+                  onClick={() => setTab('schedule')}
                   style={{
-                    background: '#ffffff', color: '#064e3b', border: 'none',
-                    borderRadius: '12px', padding: '11px 20px', fontSize: '13.5px',
+                    background: tab === 'schedule' ? '#064e3b' : '#ffffff',
+                    color: tab === 'schedule' ? '#ffffff' : '#064e3b',
+                    border: 'none',
+                    borderRadius: '12px', padding: '10px 18px', fontSize: '13px',
                     fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
                     boxShadow: '0 6px 18px rgba(0,0,0,0.15)', transition: 'all 0.2s'
                   }}
                   onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; }}
                   onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
                 >
-                  <i className="ti ti-clipboard-check" style={{ color: '#059669' }} /> Mark Attendance
+                  <i className="ti ti-calendar-time" style={{ color: tab === 'schedule' ? '#34d399' : '#059669' }} /> Today's Schedule & Diary
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTab('attendance')}
+                  style={{
+                    background: tab === 'attendance' ? '#ffffff' : 'rgba(255,255,255,0.16)',
+                    color: tab === 'attendance' ? '#064e3b' : '#ffffff',
+                    border: '1.5px solid rgba(255,255,255,0.35)',
+                    borderRadius: '12px', padding: '10px 18px', fontSize: '13px',
+                    fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+                    backdropFilter: 'blur(8px)', transition: 'all 0.2s'
+                  }}
+                >
+                  <i className="ti ti-clipboard-check" /> Mark Attendance
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTab('syllabus')}
+                  style={{
+                    background: tab === 'syllabus' ? '#ffffff' : 'rgba(255,255,255,0.16)',
+                    color: tab === 'syllabus' ? '#064e3b' : '#ffffff',
+                    border: '1.5px solid rgba(255,255,255,0.35)',
+                    borderRadius: '12px', padding: '10px 18px', fontSize: '13px',
+                    fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+                    backdropFilter: 'blur(8px)', transition: 'all 0.2s'
+                  }}
+                >
+                  <i className="ti ti-chart-pie" /> Syllabus Progress
                 </button>
                 <button
                   type="button"
                   onClick={() => setTab('marks')}
                   style={{
-                    background: 'rgba(255,255,255,0.16)',
-                    color: '#ffffff',
+                    background: tab === 'marks' ? '#ffffff' : 'rgba(255,255,255,0.16)',
+                    color: tab === 'marks' ? '#064e3b' : '#ffffff',
                     border: '1.5px solid rgba(255,255,255,0.35)',
-                    borderRadius: '12px', padding: '11px 20px', fontSize: '13.5px',
+                    borderRadius: '12px', padding: '10px 18px', fontSize: '13px',
                     fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
                     backdropFilter: 'blur(8px)', transition: 'all 0.2s'
                   }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.28)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.16)'}
                 >
-                  <i className="ti ti-award" /> Enter Exam Marks
+                  <i className="ti ti-award" /> Enter Marks
                 </button>
               </div>
             </div>
@@ -532,7 +716,7 @@ export default function TeacherDashboard() {
                       </span>
                     </div>
                     <p style={{ margin: '0 0 10px 0', fontSize: '13.5px', color: darkMode ? '#e2e8f0' : '#1e293b', lineHeight: 1.5 }}>
-                      You have temporary operational access for classes of absent teacher(s). All attendance and marks entered are strictly attributed under your name. Your regular teacher role remains unchanged.
+                      You have temporary operational access for classes of absent teacher(s). All attendance, teaching logs, and marks entered are strictly attributed under your name.
                     </p>
 
                     {/* Delegation cards list */}
@@ -584,81 +768,101 @@ export default function TeacherDashboard() {
             </div>
           )}
 
-          {/* ══ 2. BENTO STAT CARDS ══ */}
+          {/* ══ 2. BENTO STAT CARDS (EXPANDED TO 5 DOMAINS) ══ */}
           <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
             gap: '16px', marginBottom: '22px'
           }}>
-            {/* Card 1: Active Classes */}
-            <div style={{
-              background: darkMode ? '#111827' : '#ffffff',
-              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
-              borderRadius: '16px', padding: '18px 20px',
-              boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
-            }}>
+            {/* Card 1: Today's Schedule */}
+            <div
+              onClick={() => setTab('schedule')}
+              style={{
+                background: darkMode ? '#111827' : '#ffffff',
+                border: `1px solid ${tab === 'schedule' ? '#2563eb' : (darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0')}`,
+                borderRadius: '16px', padding: '18px 20px',
+                boxShadow: '0 2px 10px rgba(0,0,0,0.02)',
+                cursor: 'pointer', transition: 'all 0.2s'
+              }}
+            >
               <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
-                <i className="ti ti-school" style={{ fontSize: '18px' }} />
+                <i className="ti ti-calendar-time" style={{ fontSize: '18px' }} />
               </div>
               <div style={{ fontSize: '11px', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.04em' }}>
-                ASSIGNED CLASSES
+                TODAY'S SCHEDULE
               </div>
               <div style={{ fontSize: '26px', fontWeight: 900, color: '#2563eb', margin: '4px 0 2px' }}>
-                {classes.length || 0}
+                {loadingSchedule ? '...' : `${scheduledCount} Periods`}
               </div>
               <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                Active classroom periods
+                {substitutePeriods.length > 0 ? `⚡ ${substitutePeriods.length} Substitute Assignment` : 'Regular class periods'}
               </div>
               <div style={{ marginTop: '10px' }}>
-                <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#2563eb', background: '#eff6ff', padding: '2px 8px', borderRadius: '6px' }}>
-                  {classes.map(c => c.name).join(', ') || 'None assigned'}
+                <span style={{
+                  fontSize: '10.5px', fontWeight: 800, padding: '2px 8px', borderRadius: '6px',
+                  background: substitutePeriods.length > 0 ? '#fffbeb' : '#eff6ff',
+                  color: substitutePeriods.length > 0 ? '#d97706' : '#2563eb'
+                }}>
+                  {substitutePeriods.length > 0 ? '⚡ Substitute Active' : 'View Timetable'}
                 </span>
               </div>
             </div>
 
-            {/* Card 2: Enrolled Students */}
-            <div style={{
-              background: darkMode ? '#111827' : '#ffffff',
-              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
-              borderRadius: '16px', padding: '18px 20px',
-              boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
-            }}>
-              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#f3f0ff', color: '#8b5cf6', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
-                <i className="ti ti-users" style={{ fontSize: '18px' }} />
+            {/* Card 2: Teaching Diary */}
+            <div
+              onClick={() => setTab('schedule')}
+              style={{
+                background: darkMode ? '#111827' : '#ffffff',
+                border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+                borderRadius: '16px', padding: '18px 20px',
+                boxShadow: '0 2px 10px rgba(0,0,0,0.02)',
+                cursor: 'pointer'
+              }}
+            >
+              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
+                <i className="ti ti-notebook" style={{ fontSize: '18px' }} />
               </div>
               <div style={{ fontSize: '11px', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.04em' }}>
-                STUDENTS IN CLASS
+                TEACHING DIARY
               </div>
-              <div style={{ fontSize: '26px', fontWeight: 900, color: '#8b5cf6', margin: '4px 0 2px' }}>
-                {loadingStudents ? '...' : students.length}
+              <div style={{ fontSize: '26px', fontWeight: 900, color: '#059669', margin: '4px 0 2px' }}>
+                {loadingSchedule ? '...' : `${recordedCount} Logged`}
               </div>
               <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                In active selected section
+                {pendingDiaryCount > 0 ? `${pendingDiaryCount} pending lesson updates` : 'All lessons recorded ✓'}
               </div>
               <div style={{ marginTop: '10px' }}>
-                <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#16a34a', background: '#ecfdf5', padding: '2px 8px', borderRadius: '6px' }}>
-                  {presentCount} Present on {selectedDate}
+                <span style={{
+                  fontSize: '10.5px', fontWeight: 800, padding: '2px 8px', borderRadius: '6px',
+                  background: pendingDiaryCount > 0 ? '#fef2f2' : '#ecfdf5',
+                  color: pendingDiaryCount > 0 ? '#ef4444' : '#10b981'
+                }}>
+                  {pendingDiaryCount > 0 ? `⚠ ${pendingDiaryCount} Unlogged` : '✓ Diary Updated'}
                 </span>
               </div>
             </div>
 
-            {/* Card 3: Selected Date's Attendance Rate */}
-            <div style={{
-              background: darkMode ? '#111827' : '#ffffff',
-              border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
-              borderRadius: '16px', padding: '18px 20px',
-              boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
-            }}>
+            {/* Card 3: Class Attendance */}
+            <div
+              onClick={() => setTab('attendance')}
+              style={{
+                background: darkMode ? '#111827' : '#ffffff',
+                border: `1px solid ${tab === 'attendance' ? '#10b981' : (darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0')}`,
+                borderRadius: '16px', padding: '18px 20px',
+                boxShadow: '0 2px 10px rgba(0,0,0,0.02)',
+                cursor: 'pointer'
+              }}
+            >
               <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#ecfdf5', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
                 <i className="ti ti-circle-check" style={{ fontSize: '18px' }} />
               </div>
               <div style={{ fontSize: '11px', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.04em' }}>
-                ATTENDANCE STATUS
+                CLASS ATTENDANCE
               </div>
               <div style={{ fontSize: '26px', fontWeight: 900, color: '#10b981', margin: '4px 0 2px' }}>
                 {alreadyMarked ? 'SAVED ✓' : 'PENDING'}
               </div>
               <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                {alreadyMarked ? `Recorded for ${selectedDate}` : `Roll call for ${selectedDate}`}
+                {alreadyMarked ? `Roll call recorded for ${selectedDate}` : `Roll call pending for ${selectedDate}`}
               </div>
               <div style={{ marginTop: '10px' }}>
                 <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#10b981', background: '#ecfdf5', padding: '2px 8px', borderRadius: '6px' }}>
@@ -667,7 +871,37 @@ export default function TeacherDashboard() {
               </div>
             </div>
 
-            {/* Card 4: GPS Attendance Duty */}
+            {/* Card 4: Syllabus Progress */}
+            <div
+              onClick={() => setTab('syllabus')}
+              style={{
+                background: darkMode ? '#111827' : '#ffffff',
+                border: `1px solid ${tab === 'syllabus' ? '#8b5cf6' : (darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0')}`,
+                borderRadius: '16px', padding: '18px 20px',
+                boxShadow: '0 2px 10px rgba(0,0,0,0.02)',
+                cursor: 'pointer'
+              }}
+            >
+              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#f3f0ff', color: '#8b5cf6', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
+                <i className="ti ti-chart-pie" style={{ fontSize: '18px' }} />
+              </div>
+              <div style={{ fontSize: '11px', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.04em' }}>
+                SYLLABUS PROGRESS
+              </div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: '#8b5cf6', margin: '4px 0 2px' }}>
+                {loadingSyllabus ? '...' : `${avgSyllabusPct}% Avg`}
+              </div>
+              <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                Across {syllabusList.length} assigned subject curriculum(s)
+              </div>
+              <div style={{ marginTop: '10px' }}>
+                <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#8b5cf6', background: '#f3f0ff', padding: '2px 8px', borderRadius: '6px' }}>
+                  {syllabusList.filter(s => s.status === 'ON_TRACK').length} Subjects On Track
+                </span>
+              </div>
+            </div>
+
+            {/* Card 5: Faculty GPS Duty */}
             <div style={{
               background: darkMode ? '#111827' : '#ffffff',
               border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
@@ -795,6 +1029,293 @@ export default function TeacherDashboard() {
               </button>
             ))}
           </div>
+
+          {/* ══ TAB: TODAY'S SCHEDULE & TEACHING DIARY ══ */}
+          {tab === 'schedule' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* Header Card */}
+              <div className="card" style={{
+                borderRadius: '16px',
+                background: darkMode ? '#111827' : '#ffffff',
+                border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+                padding: '20px 24px',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.03)'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <i className="ti ti-calendar-time" style={{ color: '#2563eb' }} />
+                      Today's Live Teaching Schedule &amp; Diary
+                    </h3>
+                    <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>
+                      Track your timetable periods, log classroom lesson progress, homework assigned, and handle substitute duties.
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 800, padding: '6px 14px', borderRadius: '20px', background: '#eff6ff', color: '#2563eb' }}>
+                      {scheduledCount} Periods Scheduled
+                    </span>
+                    <span style={{ fontSize: '12px', fontWeight: 800, padding: '6px 14px', borderRadius: '20px', background: '#ecfdf5', color: '#10b981' }}>
+                      {recordedCount} Diary Recorded
+                    </span>
+                    {pendingDiaryCount > 0 && (
+                      <span style={{ fontSize: '12px', fontWeight: 800, padding: '6px 14px', borderRadius: '20px', background: '#fffbeb', color: '#d97706' }}>
+                        {pendingDiaryCount} Diary Pending
+                      </span>
+                    )}
+                    {substitutePeriods.length > 0 && (
+                      <span style={{ fontSize: '12px', fontWeight: 800, padding: '6px 14px', borderRadius: '20px', background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a' }}>
+                        ⚡ {substitutePeriods.length} Substitute Assignment(s)
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={loadSchedule}
+                      disabled={loadingSchedule}
+                      className="btn btn-neutral btn-sm"
+                      style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 700 }}
+                    >
+                      <i className={`ti ti-refresh ${loadingSchedule ? 'ti-spin' : ''}`} /> Refresh
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Schedule Periods Grid */}
+              {loadingSchedule ? (
+                <div style={{ padding: '60px 20px', textAlign: 'center', color: '#94a3b8' }}>
+                  <i className="ti ti-loader ti-spin" style={{ fontSize: '32px', display: 'block', marginBottom: '8px' }} />
+                  <p style={{ fontWeight: 600 }}>Loading today's schedule...</p>
+                </div>
+              ) : (!scheduleData?.schedule || scheduleData.schedule.length === 0) ? (
+                <div className="card" style={{
+                  borderRadius: '16px', padding: '50px 20px', textAlign: 'center',
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`
+                }}>
+                  <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', color: '#64748b', fontSize: '28px' }}>
+                    <i className="ti ti-calendar-off" />
+                  </div>
+                  <h4 style={{ margin: '0 0 6px', fontSize: '16px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                    No Timetable Periods Scheduled
+                  </h4>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#94a3b8', maxWidth: '420px', marginLeft: 'auto', marginRight: 'auto' }}>
+                    No active class periods found for {selectedDate}. You can change the date above or verify published school timetables.
+                  </p>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '18px' }}>
+                  {scheduleData.schedule.map((item, idx) => {
+                    const isRecorded = item.status === 'RECORDED';
+                    const isCoveredAway = item.status === 'COVERED_BY_SUBSTITUTE';
+                    const isSubstituteDuty = Boolean(item.is_substitute_duty);
+
+                    return (
+                      <div
+                        key={idx}
+                        className="card"
+                        style={{
+                          borderRadius: '16px',
+                          background: darkMode ? '#111827' : '#ffffff',
+                          border: isSubstituteDuty
+                            ? '2px solid #f59e0b'
+                            : isRecorded
+                              ? `1px solid ${darkMode ? 'rgba(16,185,129,0.3)' : '#bbf7d0'}`
+                              : `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+                          boxShadow: '0 4px 20px rgba(0,0,0,0.03)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          overflow: 'hidden'
+                        }}
+                      >
+                        {/* Period Top Bar */}
+                        <div style={{
+                          padding: '14px 18px',
+                          borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`,
+                          background: isSubstituteDuty
+                            ? (darkMode ? 'rgba(245,158,11,0.1)' : '#fffbeb')
+                            : (darkMode ? '#1e293b' : '#f8fafc'),
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{
+                              fontWeight: 900,
+                              fontSize: '12px',
+                              padding: '3px 10px',
+                              borderRadius: '8px',
+                              background: '#2563eb',
+                              color: '#ffffff'
+                            }}>
+                              Period #{item.period_no || (idx + 1)}
+                            </span>
+                            {item.start_time && (
+                              <span style={{ fontSize: '12px', fontWeight: 700, color: darkMode ? '#cbd5e1' : '#475569' }}>
+                                {item.start_time} - {item.end_time}
+                              </span>
+                            )}
+                          </div>
+
+                          <div>
+                            {isCoveredAway ? (
+                              <span style={{ fontSize: '11px', fontWeight: 800, padding: '3px 10px', borderRadius: '12px', background: '#fee2e2', color: '#dc2626' }}>
+                                Substituted Away
+                              </span>
+                            ) : isRecorded ? (
+                              <span style={{ fontSize: '11px', fontWeight: 800, padding: '3px 10px', borderRadius: '12px', background: '#ecfdf5', color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <i className="ti ti-check" /> Logged
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '11px', fontWeight: 800, padding: '3px 10px', borderRadius: '12px', background: '#fffbeb', color: '#d97706', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <i className="ti ti-alert-circle" /> Diary Pending
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Card Body */}
+                        <div style={{ padding: '18px', flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                          {/* Substitute Duty Alert if this is a cover period */}
+                          {isSubstituteDuty && (
+                            <div style={{
+                              padding: '10px 14px',
+                              borderRadius: '10px',
+                              background: '#fef3c7',
+                              border: '1px solid #fde68a',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '10px'
+                            }}>
+                              <i className="ti ti-bolt" style={{ color: '#d97706', fontSize: '18px', flexShrink: 0 }} />
+                              <div style={{ fontSize: '12px', color: '#92400e', lineHeight: 1.3 }}>
+                                <strong>SUBSTITUTE DUTY:</strong> Covering for <strong>{item.original_teacher_name || 'Absent Faculty'}</strong>
+                                {item.substitute_reason ? ` (${item.substitute_reason})` : ''}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Covered Away Alert if regular teacher is relieved */}
+                          {isCoveredAway && (
+                            <div style={{
+                              padding: '10px 14px',
+                              borderRadius: '10px',
+                              background: '#f1f5f9',
+                              border: '1px solid #e2e8f0',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '10px'
+                            }}>
+                              <i className="ti ti-info-circle" style={{ color: '#64748b', fontSize: '18px', flexShrink: 0 }} />
+                              <div style={{ fontSize: '12px', color: '#475569', lineHeight: 1.3 }}>
+                                Covered today by <strong>{item.covered_by_substitute_name || 'Substitute Teacher'}</strong>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Class & Subject Details */}
+                          <div>
+                            <div style={{ fontSize: '16px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                              {item.subject_name || 'General Subject'}
+                              {item.subject_code && (
+                                <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', marginLeft: '6px' }}>
+                                  ({item.subject_code})
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '6px', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: '12px', fontWeight: 700, color: '#2563eb', background: '#eff6ff', padding: '2px 8px', borderRadius: '6px' }}>
+                                <i className="ti ti-school" style={{ marginRight: '4px' }} />
+                                {item.class_name || 'Assigned Class'}
+                              </span>
+                              {item.room && (
+                                <span style={{ fontSize: '12px', fontWeight: 600, color: darkMode ? '#94a3b8' : '#64748b' }}>
+                                  <i className="ti ti-map-pin" style={{ marginRight: '4px' }} />
+                                  Room {item.room}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Recorded Diary Details */}
+                          {isRecorded && item.teaching_log && (
+                            <div style={{
+                              padding: '12px 14px',
+                              borderRadius: '10px',
+                              background: darkMode ? '#1e293b' : '#f0fdf4',
+                              border: `1px solid ${darkMode ? '#334155' : '#dcfce7'}`,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '6px'
+                            }}>
+                              <div style={{ fontSize: '11px', fontWeight: 800, color: '#16a34a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                Delivered Lesson Record
+                              </div>
+                              <div style={{ fontSize: '13px', fontWeight: 700, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                                {item.teaching_log.subtopic_title || item.teaching_log.topic_title || 'Topic Logged'}
+                              </div>
+                              {item.teaching_log.classwork_summary && (
+                                <div style={{ fontSize: '12px', color: darkMode ? '#94a3b8' : '#64748b', fontStyle: 'italic' }}>
+                                  "{item.teaching_log.classwork_summary}"
+                                </div>
+                              )}
+                              {item.teaching_log.has_homework && (
+                                <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#7c3aed', display: 'flex', alignItems: 'center', gap: '5px', marginTop: '4px' }}>
+                                  <i className="ti ti-notebook" />
+                                  Homework: {item.teaching_log.homework_title || 'Assigned'}
+                                  {item.teaching_log.homework_due_date ? ` (Due: ${item.teaching_log.homework_due_date})` : ''}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Action Buttons */}
+                          <div style={{ marginTop: 'auto', paddingTop: '10px', display: 'flex', gap: '10px' }}>
+                            {!isCoveredAway && (
+                              <button
+                                type="button"
+                                onClick={() => openQuickDiary(item)}
+                                className={`btn btn-sm ${isRecorded ? 'btn-neutral' : 'btn-primary'}`}
+                                style={{
+                                  flex: 1,
+                                  borderRadius: '8px',
+                                  fontSize: '12px',
+                                  fontWeight: 800,
+                                  background: isRecorded ? undefined : '#2563eb',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '6px'
+                                }}
+                              >
+                                <i className={`ti ${isRecorded ? 'ti-edit' : 'ti-plus'}`} />
+                                {isRecorded ? 'Edit Teaching Log' : 'Quick Log Diary'}
+                              </button>
+                            )}
+
+                            {item.class_id && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedClass(String(item.class_id));
+                                  setTab('attendance');
+                                }}
+                                className="btn btn-neutral btn-sm"
+                                style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}
+                              >
+                                <i className="ti ti-clipboard-check" /> Roll Call
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* ══ TAB: ATTENDANCE ══ */}
           {tab === 'attendance' && (
@@ -959,6 +1480,183 @@ export default function TeacherDashboard() {
             </div>
           )}
 
+          {/* ══ TAB: SYLLABUS PROGRESS TRACKER ══ */}
+          {tab === 'syllabus' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* Syllabus Header Card */}
+              <div className="card" style={{
+                borderRadius: '16px',
+                background: darkMode ? '#111827' : '#ffffff',
+                border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+                padding: '20px 24px',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.03)'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <i className="ti ti-chart-pie" style={{ color: '#8b5cf6' }} />
+                      Syllabus Progress &amp; Curriculum Tracker
+                    </h3>
+                    <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>
+                      Academic Year {session} · Auto-synchronized with your daily teaching diary logs
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 800, padding: '6px 14px', borderRadius: '20px', background: '#f5f3ff', color: '#7c3aed' }}>
+                      {syllabusList.length} Curriculums Tracked
+                    </span>
+                    <button
+                      type="button"
+                      onClick={loadSyllabus}
+                      disabled={loadingSyllabus}
+                      className="btn btn-neutral btn-sm"
+                      style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 700 }}
+                    >
+                      <i className={`ti ti-refresh ${loadingSyllabus ? 'ti-spin' : ''}`} /> Refresh
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/curriculum')}
+                      className="btn btn-primary btn-sm"
+                      style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 800, background: '#7c3aed' }}
+                    >
+                      Full Curriculum View →
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Syllabus Breakdown Grid */}
+              {loadingSyllabus ? (
+                <div style={{ padding: '60px 20px', textAlign: 'center', color: '#94a3b8' }}>
+                  <i className="ti ti-loader ti-spin" style={{ fontSize: '32px', display: 'block', marginBottom: '8px' }} />
+                  <p>Calculating curriculum pacing &amp; coverage metrics...</p>
+                </div>
+              ) : syllabusList.length === 0 ? (
+                <div className="card" style={{
+                  borderRadius: '16px', padding: '50px 20px', textAlign: 'center',
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`
+                }}>
+                  <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', color: '#7c3aed', fontSize: '28px' }}>
+                    <i className="ti ti-books" />
+                  </div>
+                  <h4 style={{ margin: '0 0 6px', fontSize: '16px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                    No Curriculum Plans Registered
+                  </h4>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#94a3b8' }}>
+                    No subject curriculum maps found for session {session}. Head to Curriculum Management to define chapters and periods.
+                  </p>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '20px' }}>
+                  {syllabusList.map((sub, i) => {
+                    const coverage = Math.min(100, Math.round(sub.coverage_pct || 0));
+                    const expected = Math.min(100, Math.round(sub.expected_pct || 0));
+                    const isBehind = sub.status === 'BEHIND' || (sub.gap !== undefined && sub.gap < -5);
+                    const isAhead = sub.status === 'AHEAD' || (sub.gap !== undefined && sub.gap > 5);
+
+                    return (
+                      <div
+                        key={i}
+                        className="card"
+                        style={{
+                          borderRadius: '16px',
+                          background: darkMode ? '#111827' : '#ffffff',
+                          border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+                          boxShadow: '0 4px 20px rgba(0,0,0,0.03)',
+                          padding: '20px'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
+                          <div>
+                            <span style={{ fontSize: '11px', fontWeight: 800, color: '#2563eb', background: '#eff6ff', padding: '3px 8px', borderRadius: '6px' }}>
+                              {sub.class_name || 'Class'}
+                            </span>
+                            <h4 style={{ margin: '8px 0 2px', fontSize: '16px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                              {sub.subject_name || sub.subject}
+                            </h4>
+                            <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                              Target: {sub.total_periods || sub.estimated_periods || 0} periods planned
+                            </div>
+                          </div>
+
+                          <div>
+                            {isBehind ? (
+                              <span style={{ fontSize: '11px', fontWeight: 800, padding: '4px 10px', borderRadius: '12px', background: '#fef2f2', color: '#dc2626' }}>
+                                ⚠ Behind ({Math.abs(sub.gap || 0)}%)
+                              </span>
+                            ) : isAhead ? (
+                              <span style={{ fontSize: '11px', fontWeight: 800, padding: '4px 10px', borderRadius: '12px', background: '#eff6ff', color: '#2563eb' }}>
+                                ⚡ Ahead (+{sub.gap}%)
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '11px', fontWeight: 800, padding: '4px 10px', borderRadius: '12px', background: '#ecfdf5', color: '#10b981' }}>
+                                ✓ On Track
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Progress Bar Container */}
+                        <div style={{ marginBottom: '16px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
+                            <span style={{ color: darkMode ? '#cbd5e1' : '#475569' }}>Completion Progress</span>
+                            <span style={{ color: isBehind ? '#dc2626' : '#10b981', fontWeight: 900 }}>{coverage}% Completed</span>
+                          </div>
+                          <div style={{ height: '8px', background: darkMode ? '#1e293b' : '#e2e8f0', borderRadius: '4px', overflow: 'hidden', position: 'relative' }}>
+                            <div style={{
+                              height: '100%',
+                              width: `${coverage}%`,
+                              background: isBehind
+                                ? 'linear-gradient(90deg, #f59e0b, #ef4444)'
+                                : 'linear-gradient(90deg, #10b981, #059669)',
+                              borderRadius: '4px',
+                              transition: 'width 0.5s ease'
+                            }} />
+                          </div>
+                          {expected > 0 && (
+                            <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
+                              <span>Pacing expectation: {expected}%</span>
+                              <span>Gap: {sub.gap !== undefined ? `${sub.gap > 0 ? '+' : ''}${sub.gap}%` : '0%'}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Stat Counters */}
+                        <div style={{
+                          display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px',
+                          background: darkMode ? '#1e293b' : '#f8fafc',
+                          padding: '12px', borderRadius: '10px', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`
+                        }}>
+                          <div style={{ textAlign: 'center' }}>
+                            <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Chapters</div>
+                            <div style={{ fontSize: '15px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', marginTop: '2px' }}>
+                              {sub.completed_chapters || 0} / {sub.total_chapters || 0}
+                            </div>
+                          </div>
+                          <div style={{ textAlign: 'center' }}>
+                            <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Topics</div>
+                            <div style={{ fontSize: '15px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', marginTop: '2px' }}>
+                              {sub.completed_topics || 0} / {sub.total_topics || 0}
+                            </div>
+                          </div>
+                          <div style={{ textAlign: 'center' }}>
+                            <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Periods</div>
+                            <div style={{ fontSize: '15px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', marginTop: '2px' }}>
+                              {sub.actual_periods_spent || sub.periods_spent || 0}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ══ TAB: MARKS ENTRY ══ */}
           {tab === 'marks' && (
             <div className="card" style={{
@@ -1117,6 +1815,135 @@ export default function TeacherDashboard() {
             </div>
           )}
 
+          {/* ══ TAB: HOMEWORK & ASSIGNMENTS TRACKER ══ */}
+          {tab === 'homework' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div className="card" style={{
+                borderRadius: '16px',
+                background: darkMode ? '#111827' : '#ffffff',
+                border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+                padding: '20px 24px',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.03)'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <i className="ti ti-clipboard-list" style={{ color: '#059669' }} />
+                      Class Assignments &amp; Homework Tasks
+                    </h3>
+                    <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>
+                      Review active coursework tasks, due dates, and student submission completion rates.
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 800, padding: '6px 14px', borderRadius: '20px', background: '#ecfdf5', color: '#059669' }}>
+                      {assignmentsList.length} Total Assignments
+                    </span>
+                    <button
+                      type="button"
+                      onClick={loadAssignments}
+                      disabled={loadingAssignments}
+                      className="btn btn-neutral btn-sm"
+                      style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 700 }}
+                    >
+                      <i className={`ti ti-refresh ${loadingAssignments ? 'ti-spin' : ''}`} /> Refresh
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/academic')}
+                      className="btn btn-primary btn-sm"
+                      style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 800, background: '#059669' }}
+                    >
+                      + Create Assignment
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {loadingAssignments ? (
+                <div style={{ padding: '60px 20px', textAlign: 'center', color: '#94a3b8' }}>
+                  <i className="ti ti-loader ti-spin" style={{ fontSize: '32px', display: 'block', marginBottom: '8px' }} />
+                  <p>Loading assignments roster...</p>
+                </div>
+              ) : assignmentsList.length === 0 ? (
+                <div className="card" style={{
+                  borderRadius: '16px', padding: '50px 20px', textAlign: 'center',
+                  background: darkMode ? '#111827' : '#ffffff',
+                  border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`
+                }}>
+                  <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: '#ecfdf5', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', color: '#059669', fontSize: '28px' }}>
+                    <i className="ti ti-clipboard" />
+                  </div>
+                  <h4 style={{ margin: '0 0 6px', fontSize: '16px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                    No Assignments Found
+                  </h4>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#94a3b8' }}>
+                    You have not assigned any homework or coursework yet for session {session}.
+                  </p>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '20px' }}>
+                  {assignmentsList.map((a, i) => (
+                    <div
+                      key={a.id || i}
+                      className="card"
+                      style={{
+                        borderRadius: '16px',
+                        background: darkMode ? '#111827' : '#ffffff',
+                        border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+                        boxShadow: '0 4px 20px rgba(0,0,0,0.03)',
+                        padding: '20px',
+                        display: 'flex',
+                        flexDirection: 'column'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 800, color: '#2563eb', background: '#eff6ff', padding: '2px 8px', borderRadius: '6px' }}>
+                            {a.class_name || a.class?.name || 'Class'}
+                          </span>
+                          <span style={{ fontSize: '11px', fontWeight: 800, color: '#059669', background: '#ecfdf5', padding: '2px 8px', borderRadius: '6px' }}>
+                            {a.subject_name || a.subject?.name || 'Subject'}
+                          </span>
+                        </div>
+                        <span style={{
+                          fontSize: '11px', fontWeight: 800, padding: '3px 8px', borderRadius: '8px',
+                          background: darkMode ? '#1e293b' : '#f1f5f9', color: darkMode ? '#cbd5e1' : '#64748b'
+                        }}>
+                          Max Marks: {a.max_marks || 100}
+                        </span>
+                      </div>
+
+                      <h4 style={{ margin: '4px 0 6px', fontSize: '16px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                        {a.title}
+                      </h4>
+
+                      {a.description && (
+                        <p style={{ margin: '0 0 14px', fontSize: '13px', color: '#94a3b8', lineHeight: 1.4, flex: 1 }}>
+                          {a.description.length > 120 ? `${a.description.substring(0, 120)}...` : a.description}
+                        </p>
+                      )}
+
+                      <div style={{
+                        marginTop: 'auto', paddingTop: '14px', borderTop: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}`,
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#d97706', fontWeight: 700 }}>
+                          <i className="ti ti-calendar-event" />
+                          Due: {a.due_date ? new Date(a.due_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'No deadline'}
+                        </div>
+                        <span style={{ fontWeight: 800, color: '#2563eb', background: '#eff6ff', padding: '2px 8px', borderRadius: '6px' }}>
+                          {a.submissions_count !== undefined ? `${a.submissions_count} Submissions` : 'Active'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ══ TAB: STUDY NOTES UPLOAD & LIBRARY ══ */}
           {tab === 'notes' && (
             <NotesUpload
@@ -1125,6 +1952,145 @@ export default function TeacherDashboard() {
               assignments={assignments}
               darkMode={darkMode}
             />
+          )}
+
+          {/* ══ TAB: FACULTY LEAVES & QUOTA ══ */}
+          {tab === 'leaves' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div className="card" style={{
+                borderRadius: '16px',
+                background: darkMode ? '#111827' : '#ffffff',
+                border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+                padding: '20px 24px',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.03)'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <i className="ti ti-calendar-off" style={{ color: '#ea580c' }} />
+                      Faculty Leave Quotas &amp; HR Requests
+                    </h3>
+                    <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>
+                      Check your casual, medical, and earned leave balances and approval status of leave applications.
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={loadLeaves}
+                      disabled={loadingLeaves}
+                      className="btn btn-neutral btn-sm"
+                      style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 700 }}
+                    >
+                      <i className={`ti ti-refresh ${loadingLeaves ? 'ti-spin' : ''}`} /> Refresh
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/hrms')}
+                      className="btn btn-primary btn-sm"
+                      style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 800, background: '#ea580c' }}
+                    >
+                      + Apply for Leave
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {loadingLeaves ? (
+                <div style={{ padding: '60px 20px', textAlign: 'center', color: '#94a3b8' }}>
+                  <i className="ti ti-loader ti-spin" style={{ fontSize: '32px', display: 'block', marginBottom: '8px' }} />
+                  <p>Loading your leave records...</p>
+                </div>
+              ) : (
+                <>
+                  {/* Leave Balances Grid */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                    {(leavesData?.balances || [
+                      { leave_type: 'Casual Leave (CL)', allocated: 12, used: 2, remaining: 10 },
+                      { leave_type: 'Sick / Medical Leave (SL)', allocated: 10, used: 1, remaining: 9 },
+                      { leave_type: 'Earned Leave (EL)', allocated: 15, used: 0, remaining: 15 },
+                      { leave_type: 'Duty Leave (DL)', allocated: 5, used: 0, remaining: 5 },
+                    ]).map((b, idx) => (
+                      <div
+                        key={idx}
+                        className="card"
+                        style={{
+                          borderRadius: '16px',
+                          background: darkMode ? '#111827' : '#ffffff',
+                          border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+                          padding: '18px 20px',
+                          boxShadow: '0 2px 10px rgba(0,0,0,0.02)'
+                        }}
+                      >
+                        <div style={{ fontSize: '12px', fontWeight: 800, color: '#94a3b8' }}>
+                          {b.leave_type || b.type}
+                        </div>
+                        <div style={{ fontSize: '26px', fontWeight: 900, color: '#2563eb', margin: '6px 0 4px' }}>
+                          {b.remaining !== undefined ? b.remaining : (b.balance || 0)} <span style={{ fontSize: '14px', fontWeight: 600, color: '#94a3b8' }}>Days Left</span>
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#64748b', display: 'flex', justifyContent: 'space-between' }}>
+                          <span>Allocated: {b.allocated || 0}</span>
+                          <span>Used: {b.used || 0}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Leave Request History */}
+                  <div className="card" style={{
+                    borderRadius: '16px',
+                    background: darkMode ? '#111827' : '#ffffff',
+                    border: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : '#e2e8f0'}`,
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.03)',
+                    overflow: 'hidden'
+                  }}>
+                    <div className="card-header" style={{ padding: '16px 20px', borderBottom: `1px solid ${darkMode ? '#1f2937' : '#f1f5f9'}` }}>
+                      <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                        Recent Leave Applications
+                      </h4>
+                    </div>
+                    {(!leavesData?.requests || leavesData.requests.length === 0) ? (
+                      <div style={{ padding: '30px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+                        No recent leave requests filed
+                      </div>
+                    ) : (
+                      <div className="table-container" style={{ border: 'none' }}>
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Type</th>
+                              <th>Dates</th>
+                              <th>Days</th>
+                              <th>Reason</th>
+                              <th>Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {leavesData.requests.map((r, i) => (
+                              <tr key={r.id || i}>
+                                <td style={{ fontWeight: 700 }}>{r.leave_type}</td>
+                                <td>{r.start_date} to {r.end_date}</td>
+                                <td style={{ fontWeight: 800 }}>{r.days_count || 1}</td>
+                                <td style={{ fontSize: '12px', color: '#64748b' }}>{r.reason}</td>
+                                <td>
+                                  <span className={`badge ${
+                                    r.status === 'APPROVED' ? 'badge-success' :
+                                    r.status === 'REJECTED' ? 'badge-error' : 'badge-warning'
+                                  }`}>
+                                    {r.status}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           )}
 
           {/* ══ TAB: MY GPS ATTENDANCE ══ */}
@@ -1363,6 +2329,257 @@ export default function TeacherDashboard() {
 
         </div>
       </div>
+      {/* ══ QUICK LOG TEACHING DIARY MODAL ══ */}
+      {quickDiaryModal.open && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
+        }}>
+          <div style={{
+            background: darkMode ? '#111827' : '#ffffff',
+            borderRadius: '20px',
+            maxWidth: '620px', width: '100%',
+            maxHeight: '90vh', overflowY: 'auto',
+            border: `1px solid ${darkMode ? 'rgba(255,255,255,0.1)' : '#e2e8f0'}`,
+            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.4)',
+            padding: '24px 28px'
+          }}>
+            {/* Modal Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '18px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ background: '#2563eb', color: '#fff', fontSize: '11px', fontWeight: 900, padding: '2px 8px', borderRadius: '6px' }}>
+                    Period #{diaryForm.period_no}
+                  </span>
+                  <span style={{ fontSize: '12px', fontWeight: 800, color: '#64748b' }}>
+                    {quickDiaryModal.period?.class_name} · {quickDiaryModal.period?.subject_name}
+                  </span>
+                </div>
+                <h3 style={{ margin: '6px 0 0', fontSize: '18px', fontWeight: 900, color: darkMode ? '#ffffff' : '#0f172a' }}>
+                  Log Daily Teaching Record
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQuickDiaryModal({ open: false, period: null })}
+                style={{
+                  background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer',
+                  color: darkMode ? '#94a3b8' : '#64748b', padding: '4px'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={submitQuickDiary}>
+              {/* Chapter Select */}
+              <div className="form-group" style={{ marginBottom: '14px' }}>
+                <label className="form-label" style={{ color: darkMode ? '#cbd5e1' : '#334155', fontWeight: 700, fontSize: '12.5px' }}>
+                  Mapped Curriculum Chapter
+                </label>
+                {loadingModalChapters ? (
+                  <div style={{ fontSize: '12px', color: '#94a3b8' }}>Loading chapters...</div>
+                ) : (
+                  <select
+                    className="form-select"
+                    style={{
+                      width: '100%', borderRadius: '8px', fontSize: '13px',
+                      background: darkMode ? '#0f172a' : '#ffffff',
+                      borderColor: darkMode ? '#334155' : '#cbd5e1',
+                      color: darkMode ? '#ffffff' : '#0f172a'
+                    }}
+                    value={diaryForm.chapter_id}
+                    onChange={e => setDiaryForm(f => ({ ...f, chapter_id: e.target.value }))}
+                  >
+                    <option value="">-- General Lesson / Not Mapped to Chapter --</option>
+                    {modalChapters.map(ch => (
+                      <option key={ch.id} value={ch.id}>
+                        Ch {ch.chapter_no}: {ch.title}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {/* Topic Title */}
+              <div className="form-group" style={{ marginBottom: '14px' }}>
+                <label className="form-label" style={{ color: darkMode ? '#cbd5e1' : '#334155', fontWeight: 700, fontSize: '12.5px' }}>
+                  Topic / Subtopic Delivered *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Introduction to Quadratic Equations & Solving via Factorization"
+                  value={diaryForm.subtopic_title}
+                  onChange={e => setDiaryForm(f => ({ ...f, subtopic_title: e.target.value }))}
+                  style={{
+                    width: '100%', borderRadius: '8px', padding: '9px 12px', fontSize: '13px',
+                    background: darkMode ? '#0f172a' : '#ffffff',
+                    border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`,
+                    color: darkMode ? '#ffffff' : '#0f172a'
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+                {/* Teaching Methodology */}
+                <div className="form-group">
+                  <label className="form-label" style={{ color: darkMode ? '#cbd5e1' : '#334155', fontWeight: 700, fontSize: '12.5px' }}>
+                    Methodology
+                  </label>
+                  <select
+                    className="form-select"
+                    style={{
+                      width: '100%', borderRadius: '8px', fontSize: '13px',
+                      background: darkMode ? '#0f172a' : '#ffffff',
+                      borderColor: darkMode ? '#334155' : '#cbd5e1',
+                      color: darkMode ? '#ffffff' : '#0f172a'
+                    }}
+                    value={diaryForm.teaching_methodology}
+                    onChange={e => setDiaryForm(f => ({ ...f, teaching_methodology: e.target.value }))}
+                  >
+                    <option>Interactive / Discussion</option>
+                    <option>Chalk &amp; Board / Lecture</option>
+                    <option>Digital Smart Board / Video</option>
+                    <option>Practical / Lab Session</option>
+                    <option>Problem Solving &amp; Exercises</option>
+                    <option>Revision &amp; Q&amp;A</option>
+                  </select>
+                </div>
+
+                {/* Topic Status */}
+                <div className="form-group">
+                  <label className="form-label" style={{ color: darkMode ? '#cbd5e1' : '#334155', fontWeight: 700, fontSize: '12.5px' }}>
+                    Topic Progress Status
+                  </label>
+                  <select
+                    className="form-select"
+                    style={{
+                      width: '100%', borderRadius: '8px', fontSize: '13px',
+                      background: darkMode ? '#0f172a' : '#ffffff',
+                      borderColor: darkMode ? '#334155' : '#cbd5e1',
+                      color: darkMode ? '#ffffff' : '#0f172a'
+                    }}
+                    value={diaryForm.topic_completion_status}
+                    onChange={e => setDiaryForm(f => ({ ...f, topic_completion_status: e.target.value }))}
+                  >
+                    <option value="COMPLETED">Completed in this period</option>
+                    <option value="IN_PROGRESS">In Progress (Partially taught)</option>
+                    <option value="REVISION">Revision / Reinforcement</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Classwork Summary */}
+              <div className="form-group" style={{ marginBottom: '16px' }}>
+                <label className="form-label" style={{ color: darkMode ? '#cbd5e1' : '#334155', fontWeight: 700, fontSize: '12.5px' }}>
+                  Classwork &amp; Key Takeaways Summary
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Summary of classroom activities, questions discussed, or whiteboard notes..."
+                  value={diaryForm.classwork_summary}
+                  onChange={e => setDiaryForm(f => ({ ...f, classwork_summary: e.target.value }))}
+                  style={{
+                    width: '100%', borderRadius: '8px', padding: '9px 12px', fontSize: '13px',
+                    background: darkMode ? '#0f172a' : '#ffffff',
+                    border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`,
+                    color: darkMode ? '#ffffff' : '#0f172a'
+                  }}
+                />
+              </div>
+
+              {/* Homework Toggle & Section */}
+              <div style={{
+                borderRadius: '12px', padding: '14px 16px', marginBottom: '20px',
+                background: darkMode ? '#1e293b' : '#f8fafc',
+                border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`
+              }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 800, fontSize: '13px', color: darkMode ? '#ffffff' : '#0f172a', margin: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={diaryForm.has_homework}
+                    onChange={e => setDiaryForm(f => ({ ...f, has_homework: e.target.checked }))}
+                    style={{ width: '16px', height: '16px', accentColor: '#2563eb' }}
+                  />
+                  <span>Assign Homework for this period</span>
+                </label>
+
+                {diaryForm.has_homework && (
+                  <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <input
+                      type="text"
+                      placeholder="Homework Title (e.g. NCERT Ex 4.2 Q1 to Q5)"
+                      value={diaryForm.homework_title}
+                      onChange={e => setDiaryForm(f => ({ ...f, homework_title: e.target.value }))}
+                      style={{
+                        width: '100%', borderRadius: '8px', padding: '8px 12px', fontSize: '12.5px',
+                        background: darkMode ? '#0f172a' : '#ffffff',
+                        border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`,
+                        color: darkMode ? '#ffffff' : '#0f172a'
+                      }}
+                    />
+                    <textarea
+                      rows={2}
+                      placeholder="Homework instructions or submission guidelines..."
+                      value={diaryForm.homework_description}
+                      onChange={e => setDiaryForm(f => ({ ...f, homework_description: e.target.value }))}
+                      style={{
+                        width: '100%', borderRadius: '8px', padding: '8px 12px', fontSize: '12.5px',
+                        background: darkMode ? '#0f172a' : '#ffffff',
+                        border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`,
+                        color: darkMode ? '#ffffff' : '#0f172a'
+                      }}
+                    />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <label style={{ fontSize: '12px', fontWeight: 700, color: darkMode ? '#cbd5e1' : '#475569', margin: 0 }}>
+                        Due Date:
+                      </label>
+                      <input
+                        type="date"
+                        value={diaryForm.homework_due_date}
+                        onChange={e => setDiaryForm(f => ({ ...f, homework_due_date: e.target.value }))}
+                        style={{
+                          borderRadius: '8px', padding: '6px 10px', fontSize: '12px',
+                          background: darkMode ? '#0f172a' : '#ffffff',
+                          border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`,
+                          color: darkMode ? '#ffffff' : '#0f172a'
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Form Actions */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setQuickDiaryModal({ open: false, period: null })}
+                  className="btn btn-neutral"
+                  style={{ borderRadius: '8px', fontSize: '13px', fontWeight: 700, padding: '9px 18px' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingDiary}
+                  className="btn btn-primary"
+                  style={{
+                    borderRadius: '8px', fontSize: '13px', fontWeight: 800, padding: '9px 22px',
+                    background: '#2563eb', border: 'none', boxShadow: '0 4px 12px rgba(37,99,235,0.3)'
+                  }}
+                >
+                  {savingDiary ? 'Recording Entry...' : 'Save Teaching Log ✓'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <OneP360BotDrawer />
     </div>
   );

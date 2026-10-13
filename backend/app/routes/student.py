@@ -277,7 +277,18 @@ def my_timetable():
     """
     user = get_current_user()
     student_id = request.args.get('student_id', type=int)
-    student = _get_effective_student(user, student_id)
+    role_str = getattr(user.role, 'value', str(user.role))
+    if role_str == 'PARENT' and student_id:
+        target_s = Student.query.get(student_id)
+        if target_s:
+            student = _get_effective_student(user, student_id)
+            if not student:
+                return jsonify({'error': 'Unauthorized child access'}), 403
+        else:
+            return jsonify({'error': 'Student not found'}), 404
+    else:
+        student = _get_effective_student(user, student_id)
+
     if not student or not student.class_id:
         return jsonify({'error': 'Student or class not found'}), 404
 
@@ -322,6 +333,9 @@ def my_timetable():
         res_periods.append(pd)
 
     return jsonify({
+        'student_id': student.id,
+        'student_name': student.user.name if (student.user and student.user.name) else '',
+        'class_id': student.class_id,
         'timetable': tt.to_dict(),
         'periods': res_periods,
         'class_name': f"{student.class_ref.name} {student.class_ref.section}".strip() if student.class_ref else '',
@@ -352,6 +366,7 @@ def my_homework():
         t_name = l.teacher_ref.user.name if (l.teacher_ref and l.teacher_ref.user) else ''
         items.append({
             'id': l.id,
+            'student_id': student.id,
             'subject_name': sub_name,
             'teacher_name': t_name,
             'topic': l.what_was_taught,
@@ -376,27 +391,29 @@ def my_documents():
     role = getattr(user.role, 'value', str(user.role))
 
     if role == 'STUDENT':
-        student = Student.query.filter_by(user_id=user.id).first()
+        student = Student.query.filter_by(user_id=user.id, school_id=user.school_id).first()
         if not student:
             return jsonify({'error': 'Student profile not found'}), 404
         students = [student]
     else:  # PARENT
         student_id = request.args.get('student_id', type=int)
         if student_id:
-            student = Student.query.get(student_id)
-            if not student or (
-                student.parent_email != user.email and
-                student.parent_phone != user.phone and
-                student.user_id != user.id
-            ):
-                return jsonify({'error': 'Unauthorized'}), 403
+            student = _get_effective_student(user, student_id)
+            if not student:
+                return jsonify({'error': 'Unauthorized child access'}), 403
             students = [student]
         else:
-            students = Student.query.filter(
-                (Student.parent_email == user.email) |
-                (Student.parent_phone == user.phone) |
-                (Student.user_id == user.id)
-            ).all()
+            clean_user_phone = _clean_phone(user.phone)
+            user_email = (user.email or '').strip().lower()
+            all_students = Student.query.filter_by(school_id=user.school_id, is_deleted=False).all()
+            students = [
+                s for s in all_students
+                if (s.user_id == user.id or
+                    (getattr(s, 'parent_user_id', None) and s.parent_user_id == user.id) or
+                    (clean_user_phone and _clean_phone(s.parent_phone) == clean_user_phone) or
+                    (clean_user_phone and _clean_phone(s.guardian_phone) == clean_user_phone) or
+                    (user_email and (s.parent_email or '').strip().lower() == user_email))
+            ]
 
     result = []
     for student in students:

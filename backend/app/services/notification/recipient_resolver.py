@@ -152,7 +152,7 @@ class RecipientResolver:
                     if s.user_id:
                         resolved_ids.add(s.user_id)
 
-            if target.get('include_parents', False) or target.get('parents_only', False):
+            if target.get('include_parents', True) or target.get('parents_only', False):
                 for s in students:
                     if getattr(s, 'parent_user_id', None):
                         resolved_ids.add(s.parent_user_id)

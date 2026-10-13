@@ -40,6 +40,7 @@ class TestStudentParentFeatures(unittest.TestCase):
             status="ACTIVE",
             is_active=True
         )
+        self.school.set_features(['hrms_module', 'leave_management', 'student_management'])
         db.session.add(self.school)
         db.session.flush()
 

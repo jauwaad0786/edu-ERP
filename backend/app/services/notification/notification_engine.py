@@ -6,6 +6,7 @@ checks user preferences and quiet hours, logs delivery audit trials, and updates
 
 import json
 import logging
+from datetime import timedelta
 from typing import List, Dict, Any, Optional
 
 from app import db
@@ -53,6 +54,16 @@ class NotificationEngine:
         # 2. In-App Bell Record
         notif_record = None
         if 'in_app' in channels and pref['in_app_allowed']:
+            recent_cutoff = utc_now() - timedelta(seconds=15)
+            duplicate = SupportNotification.query.filter(
+                SupportNotification.user_id == user_id,
+                SupportNotification.title == (title or '').strip()[:200],
+                SupportNotification.created_at >= recent_cutoff
+            ).first()
+            if duplicate:
+                logger.info(f"Deduplication: suppressing duplicate notification '{title}' for user {user_id}")
+                return duplicate
+
             action_json = json.dumps(action_data or {})
             notif_record = SupportNotification(
                 user_id=user_id,

@@ -184,6 +184,7 @@ def create_app(config_name='default'):
     from app.routes.subscription_routes import subscription_bp
     app.register_blueprint(subscription_bp, url_prefix='/api/admin')
     app.register_blueprint(principal_bp,    url_prefix='/api/principal')
+    app.register_blueprint(principal_bp,    url_prefix='/principal', name='principal_root_bp')
     from app.routes.student_lifecycle import student_lifecycle_bp
     app.register_blueprint(student_lifecycle_bp, url_prefix='/api/principal/students')
     from app.routes.migration_routes import migration_bp
@@ -196,7 +197,8 @@ def create_app(config_name='default'):
     from app.routes.delegations import delegations_bp
     app.register_blueprint(delegations_bp, url_prefix='/api')
     from app.routes.curriculum import curriculum_bp
-    app.register_blueprint(curriculum_bp)
+    app.register_blueprint(curriculum_bp, url_prefix='/api')
+    app.register_blueprint(curriculum_bp, url_prefix='', name='curriculum_root_bp')
     from app.routes.arrival import arrival_bp
     app.register_blueprint(arrival_bp, url_prefix='/api/arrivals')
     app.register_blueprint(arrival_bp, url_prefix='/api/principal/arrivals', name='arrival_principal_alias_bp')
@@ -1405,6 +1407,7 @@ def _ensure_curriculum_and_timetable_columns():
             'approved_by':      'INTEGER REFERENCES users(id)',
             'approved_at':      'TIMESTAMP',
             'approval_remarks': "VARCHAR(500) DEFAULT ''",
+            'homework_title':   "VARCHAR(250) DEFAULT ''",
         }
         with db.engine.connect() as conn:
             for col, defn in to_add_tl.items():

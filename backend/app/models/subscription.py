@@ -307,11 +307,10 @@ def calculate_effective_entitlements(school_id):
 
     included_in_plan = set(plan.get_modules()) if plan else set()
 
-    # If no plan row exists in DB yet, pull from school's legacy enabled_features
-    if not included_in_plan:
-        legacy_features = school.get_features()
-        if legacy_features:
-            included_in_plan = set(legacy_features)
+    # Include school-level enabled features alongside plan modules
+    legacy_features = school.get_features()
+    if legacy_features:
+        included_in_plan = included_in_plan | set(legacy_features)
 
     # Core modules that cannot be locked out
     core_modules = {m.code for m in PlatformModule.query.filter_by(is_core=True).all()}

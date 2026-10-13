@@ -5895,9 +5895,13 @@ def assign_substitute_endpoint():
             reason=reason,
             notes=notes
         )
-        return jsonify({'message': 'Substitute assigned successfully', 'substitution': subst.to_dict()}), 201
+        return jsonify({'message': 'Substitute assigned successfully', 'substitution': subst.to_dict()}), 200
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 
 @principal_bp.route('/substitutes/<int:subst_id>', methods=['DELETE'])

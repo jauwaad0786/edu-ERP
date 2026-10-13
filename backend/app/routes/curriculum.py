@@ -18,7 +18,7 @@ from app.services.curriculum_service import (
     get_academic_dashboard_summary, get_curriculum_overview
 )
 
-curriculum_bp = Blueprint('curriculum', __name__, url_prefix='/api')
+curriculum_bp = Blueprint('curriculum', __name__)
 
 
 def _get_active_school_id(user):
@@ -32,6 +32,69 @@ def _get_active_school_id(user):
 # ═══════════════════════════════════════════════════════════════════════════════
 # 1. CURRICULUM SETUP & MANAGEMENT ENDPOINTS
 # ═══════════════════════════════════════════════════════════════════════════════
+
+@curriculum_bp.route('/curriculum/classes', methods=['GET'])
+@jwt_required()
+def list_curriculum_classes():
+    user = get_current_user()
+    school_id = _get_active_school_id(user)
+    if not school_id:
+        return jsonify({'error': 'School context required'}), 400
+
+    if user.role == 'TEACHER':
+        teacher = Teacher.query.filter_by(user_id=user.id).first()
+        if teacher:
+            sub_classes = [s.class_id for s in Subject.query.filter_by(teacher_id=teacher.id).all()]
+            cls_teacher_classes = [c.id for c in Class.query.filter_by(teacher_id=teacher.id).all()]
+            assigned_cls_ids = set(sub_classes + cls_teacher_classes)
+            classes = Class.query.filter(Class.id.in_(assigned_cls_ids), Class.school_id == school_id).all()
+        else:
+            classes = []
+    else:
+        classes = Class.query.filter_by(school_id=school_id).all()
+
+    cls_dicts = [
+        {
+            'id': c.id,
+            'name': c.name,
+            'section': c.section or '',
+            'class_name': f"{c.name} {c.section or ''}".strip()
+        }
+        for c in classes
+    ]
+    return jsonify({'classes': cls_dicts}), 200
+
+
+@curriculum_bp.route('/curriculum/subjects', methods=['GET'])
+@jwt_required()
+def list_curriculum_subjects():
+    user = get_current_user()
+    school_id = _get_active_school_id(user)
+    if not school_id:
+        return jsonify({'error': 'School context required'}), 400
+
+    class_id = request.args.get('class_id', type=int)
+    q = Subject.query.filter_by(school_id=school_id)
+    if class_id:
+        q = q.filter_by(class_id=class_id)
+
+    if user.role == 'TEACHER':
+        teacher = Teacher.query.filter_by(user_id=user.id).first()
+        if teacher:
+            q = q.filter_by(teacher_id=teacher.id)
+
+    subjects = q.all()
+    sub_dicts = [
+        {
+            'id': s.id,
+            'name': s.name,
+            'code': s.code or '',
+            'class_id': s.class_id
+        }
+        for s in subjects
+    ]
+    return jsonify({'subjects': sub_dicts}), 200
+
 
 @curriculum_bp.route('/curriculum', methods=['GET'])
 @jwt_required()
@@ -63,7 +126,8 @@ def list_curriculums():
             q = q.filter(or_(Curriculum.subject_id.in_(assigned_sub_ids), Curriculum.class_id.in_(assigned_cls_ids)))
 
     currs = q.all()
-    return jsonify([c.to_dict(include_chapters=False, include_progress=True) for c in currs]), 200
+    currs_data = [c.to_dict(include_chapters=True, include_progress=True) for c in currs]
+    return jsonify({'curriculums': currs_data, 'count': len(currs_data)}), 200
 
 
 @curriculum_bp.route('/curriculum', methods=['POST'])
@@ -153,7 +217,42 @@ def copy_curriculum_endpoint(curriculum_id):
         return jsonify({'error': str(e)}), 400
 
 
+@curriculum_bp.route('/curriculum/copy-session', methods=['POST'])
+@role_required('PRINCIPAL', 'SUPER_ADMIN', 'ADMIN', 'VICE_PRINCIPAL', 'DIRECTOR')
+def copy_curriculum_by_payload():
+    data = request.get_json() or {}
+    source_id = data.get('source_curriculum_id') or data.get('curriculum_id')
+    if not source_id:
+        return jsonify({'error': 'source_curriculum_id is required'}), 400
+    return copy_curriculum_endpoint(source_id)
+
+
 # ─── Chapter Endpoints ─────────────────────────────────────────────────────────
+
+@curriculum_bp.route('/curriculum/chapter', methods=['POST'])
+@role_required('PRINCIPAL', 'SUPER_ADMIN', 'ADMIN', 'VICE_PRINCIPAL', 'DIRECTOR', 'TEACHER')
+def add_or_update_chapter_by_payload():
+    data = request.get_json() or {}
+    ch_id = data.get('id')
+    if ch_id:
+        return edit_chapter(ch_id)
+    curriculum_id = data.get('curriculum_id')
+    if not curriculum_id:
+        return jsonify({'error': 'curriculum_id is required'}), 400
+    return add_chapter(curriculum_id)
+
+
+@curriculum_bp.route('/curriculum/topic', methods=['POST'])
+@role_required('PRINCIPAL', 'SUPER_ADMIN', 'ADMIN', 'VICE_PRINCIPAL', 'DIRECTOR', 'TEACHER')
+def add_or_update_topic_by_payload():
+    data = request.get_json() or {}
+    t_id = data.get('id')
+    if t_id:
+        return edit_topic(t_id)
+    chapter_id = data.get('chapter_id')
+    if not chapter_id:
+        return jsonify({'error': 'chapter_id is required'}), 400
+    return add_topic(chapter_id)
 
 @curriculum_bp.route('/curriculum/<int:curriculum_id>/chapters', methods=['POST'])
 @role_required('PRINCIPAL', 'SUPER_ADMIN', 'ADMIN', 'VICE_PRINCIPAL', 'DIRECTOR', 'TEACHER')
@@ -401,6 +500,10 @@ def save_teaching_log_endpoint():
         }), 201
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 
 @curriculum_bp.route('/teaching-diary/history', methods=['GET'])
@@ -638,7 +741,7 @@ def approve_teaching_log(log_id):
     log.approval_status = new_status
     log.approved_by = user.id
     log.approved_at = datetime.utcnow()
-    log.approval_remarks = data.get('approval_remarks', '')
+    log.approval_remarks = data.get('remarks') or data.get('approval_remarks') or ''
 
     # If approved and log requested topic completion, apply it now
     if new_status == 'APPROVED' and log.topic_id and log.topic_completion_status == 'COMPLETED':

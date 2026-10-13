@@ -14,7 +14,7 @@ from app.models.user import User, UserRole
 from app.models.academic import (
     Class, Student, StudentEnrollment, Attendance, Marks, Subject
 )
-from app.models.financial import FeeRecord, ExamSchedule
+from app.models.financial import FeeRecord, ExamSchedule, FeeStructure
 from app.models.transport_student import StudentTransport
 from app.models.audit import log_school_action, AuditLog
 from app.utils.decorators import role_required, get_current_user
@@ -59,6 +59,160 @@ def list_lifecycle_sessions():
     }), 200
 
 
+# ─── 0.1 SESSION MANAGEMENT & PROGRESSION MAPPINGS ────────────────────────────
+
+@student_lifecycle_bp.route('/sessions/switch', methods=['POST'])
+@role_required('PRINCIPAL', 'SUPER_ADMIN')
+def switch_active_session():
+    """
+    Switches active academic session for the school (e.g. after rollover completed).
+    """
+    sid = _school_id()
+    data = request.get_json() or {}
+    new_session = (data.get('session') or '').strip()
+
+    if not new_session:
+        return jsonify({'error': 'session is required'}), 400
+
+    school = School.query.get(sid)
+    if not school:
+        return jsonify({'error': 'School not found'}), 404
+
+    old_session = school.current_session
+    school.current_session = new_session
+    db.session.commit()
+
+    current_user_obj = get_current_user()
+    log_school_action(
+        school_id=sid,
+        user=current_user_obj,
+        module='academic',
+        submodule='student_lifecycle',
+        action='SESSION_SWITCHED',
+        remarks=f"Switched current academic session from {old_session} to {new_session}"
+    )
+
+    return jsonify({
+        'success': True,
+        'message': f"Academic session switched to {new_session}",
+        'current_session': new_session,
+        'previous_session': old_session
+    }), 200
+
+
+@student_lifecycle_bp.route('/sessions/create', methods=['POST'])
+@role_required('PRINCIPAL', 'SUPER_ADMIN')
+def create_academic_session():
+    """
+    Registers a new academic session format for the school (e.g. 2026-27).
+    """
+    sid = _school_id()
+    data = request.get_json() or {}
+    session_str = (data.get('session') or '').strip()
+
+    if not session_str:
+        return jsonify({'error': 'Session string is required'}), 400
+
+    import re
+    if not re.match(r'^\d{4}-\d{2,4}$', session_str):
+        return jsonify({'error': 'Invalid session format. Expected format like 2025-26 or 2025-2026'}), 400
+
+    school = School.query.get(sid)
+    curr_session = school.current_session if school and school.current_session else '2024-25'
+    class_sessions = [r[0] for r in db.session.query(Class.session).filter_by(school_id=sid).distinct() if r[0]]
+    enrollment_sessions = [r[0] for r in db.session.query(StudentEnrollment.session).filter_by(school_id=sid).distinct() if r[0]]
+    all_sessions = sorted(list(set(class_sessions + enrollment_sessions + [curr_session, session_str])))
+
+    current_user_obj = get_current_user()
+    log_school_action(
+        school_id=sid,
+        user=current_user_obj,
+        module='academic',
+        submodule='student_lifecycle',
+        action='SESSION_CREATED',
+        remarks=f"Registered new academic session {session_str}"
+    )
+
+    return jsonify({
+        'success': True,
+        'message': f"Academic session {session_str} registered successfully",
+        'session': session_str,
+        'sessions': all_sessions
+    }), 200
+
+
+@student_lifecycle_bp.route('/promote/class-mappings', methods=['GET'])
+@role_required('PRINCIPAL', 'SUPER_ADMIN')
+def get_promotion_class_mappings():
+    """
+    Returns existing classes and automatic mapping suggestions for next academic session.
+    """
+    sid = _school_id()
+    source_session = request.args.get('source_session', '').strip()
+
+    classes = Class.query.filter_by(school_id=sid).order_by(Class.name, Class.section).all()
+    class_name_map = defaultdict(list)
+    for c in classes:
+        class_name_map[c.name.strip().lower()].append(c)
+
+    mappings = []
+    for c in classes:
+        digits = ''.join(ch for ch in c.name if ch.isdigit())
+        suggested_action = 'PROMOTE'
+        next_class_id = None
+        next_class_name = None
+        next_section = c.section or 'A'
+
+        if digits:
+            lvl = int(digits)
+            if lvl >= 12:
+                suggested_action = 'GRADUATE'
+            else:
+                next_lvl = lvl + 1
+                prefix = c.name.replace(digits, '').strip()
+                candidates = [f"{prefix} {next_lvl}".strip().lower(), f"{next_lvl}".lower()]
+                matched = None
+                for cand in candidates:
+                    if cand in class_name_map:
+                        sec_match = next((item for item in class_name_map[cand] if (item.section or '').upper() == (c.section or '').upper()), None)
+                        matched = sec_match or class_name_map[cand][0]
+                        break
+                if matched:
+                    next_class_id = matched.id
+                    next_class_name = matched.name
+                    next_section = matched.section or c.section or 'A'
+
+        q_count = Student.query.filter(
+            Student.school_id == sid,
+            Student.class_id == c.id,
+            Student.is_deleted == False
+        )
+        if source_session:
+            en_count = StudentEnrollment.query.filter_by(
+                school_id=sid, class_id=c.id, session=source_session, enrollment_status='ACTIVE'
+            ).count()
+            student_count = en_count if en_count > 0 else q_count.count()
+        else:
+            student_count = q_count.count()
+
+        mappings.append({
+            'source_class_id': c.id,
+            'source_class_name': c.name,
+            'source_section': c.section,
+            'source_display': f"{c.name} - {c.section}" if c.section else c.name,
+            'student_count': student_count,
+            'suggested_action': suggested_action,
+            'target_class_id': next_class_id,
+            'target_class_name': next_class_name,
+            'target_section': next_section
+        })
+
+    return jsonify({
+        'classes': [c.to_dict() for c in classes],
+        'mappings': mappings
+    }), 200
+
+
 # ─── 1. ANNUAL SESSION ROLLOVER & PROMOTION ───────────────────────────────────
 
 @student_lifecycle_bp.route('/promote/preview', methods=['POST'])
@@ -67,13 +221,14 @@ def preview_promotion():
     """
     Preview promotion/rollover from source_session to target_session.
     Calculates student attendance %, exam performance, default target class,
-    and checks for existing target session enrollment conflicts.
+    financial outstanding dues, missing mappings, and target session enrollment conflicts.
     """
     data = request.get_json() or {}
     sid = _school_id()
     source_session = (data.get('source_session') or '').strip()
     target_session = (data.get('target_session') or '').strip()
-    class_id = data.get('class_id')
+    class_id = data.get('class_id') or data.get('source_class_id')
+    class_mappings = data.get('class_mappings') or {}
 
     if not source_session or not target_session:
         return jsonify({'error': 'source_session and target_session are required'}), 400
@@ -81,7 +236,7 @@ def preview_promotion():
     if source_session == target_session:
         return jsonify({'error': 'Target session must be different from source session'}), 400
 
-    # Query students who have an enrollment in source_session, or fall back to Student.session == source_session
+    # Query students belonging to this school
     q = Student.query.options(
         joinedload(Student.user),
         joinedload(Student.class_ref)
@@ -90,8 +245,12 @@ def preview_promotion():
         Student.is_deleted == False
     )
 
-    if class_id:
-        q = q.filter(Student.class_id == class_id)
+    if class_id and str(class_id).upper() != 'ALL':
+        try:
+            cls_int = int(class_id)
+            q = q.filter(Student.class_id == cls_int)
+        except (ValueError, TypeError):
+            pass
 
     students = q.all()
 
@@ -111,11 +270,31 @@ def preview_promotion():
 
     # Pre-fetch all school classes for target suggestion
     all_classes = Class.query.filter_by(school_id=sid).all()
+    class_by_id = {c.id: c for c in all_classes}
     class_name_map = defaultdict(list)
     for c in all_classes:
         class_name_map[c.name.strip().lower()].append(c)
 
+    # Pre-fetch target fee structures
+    target_fee_structures = FeeStructure.query.filter_by(
+        school_id=sid, session=target_session, status='ACTIVE'
+    ).all()
+
+    # Pre-fetch outstanding fee records for these students
+    student_ids = [s.id for s in students]
+    all_unpaid_fees = FeeRecord.query.filter(
+        FeeRecord.school_id == sid,
+        FeeRecord.student_id.in_(student_ids),
+        FeeRecord.status != 'PAID'
+    ).all() if student_ids else []
+
+    fees_by_student = defaultdict(list)
+    for fr in all_unpaid_fees:
+        fees_by_student[fr.student_id].append(fr)
+
     preview_list = []
+    total_dues_sum = 0.0
+
     for s in students:
         src_enroll = source_enrollment_map.get(s.id)
         active_cls = s.class_ref
@@ -140,37 +319,57 @@ def preview_promotion():
             for m in marks_records if m.max_marks and m.marks_obtained is not None
         )
 
+        # Outstanding fee dues calculation
+        stu_fees = fees_by_student.get(s.id, [])
+        stu_dues = sum(max(0.0, fr.effective_due() - (fr.amount_paid or 0.0)) for fr in stu_fees)
+        total_dues_sum += stu_dues
+
         # Intelligent default action and next class deduction
         rec_action = 'PROMOTE'
         if has_failed and marks_pct is not None and marks_pct < 33:
             rec_action = 'RETAIN'
 
-        # Next class suggestion
         suggested_class_id = s.class_id
         suggested_class_name = cls_name
         suggested_section = cls_sec
+        has_missing_mapping = False
 
-        # Try to parse class level: "Class 5" -> "Class 6"
-        digits = ''.join(ch for ch in cls_name if ch.isdigit())
-        if digits and rec_action == 'PROMOTE':
-            curr_num = int(digits)
-            next_num = curr_num + 1
-            if curr_num >= 12:
-                rec_action = 'GRADUATE'
-            else:
-                prefix = cls_name.replace(digits, '').strip()
-                candidate_names = [f"{prefix} {next_num}".strip().lower(), f"{next_num}".lower()]
-                matched_cls = None
-                for c_cand in candidate_names:
-                    if c_cand in class_name_map:
-                        # Match same section if possible
-                        sec_match = next((c for c in class_name_map[c_cand] if (c.section or '').upper() == cls_sec.upper()), None)
-                        matched_cls = sec_match or class_name_map[c_cand][0]
-                        break
-                if matched_cls:
-                    suggested_class_id = matched_cls.id
-                    suggested_class_name = matched_cls.name
-                    suggested_section = matched_cls.section or cls_sec
+        # Check explicit class_mappings first if provided
+        custom_mapped_id = None
+        if class_mappings:
+            if s.class_id in class_mappings:
+                custom_mapped_id = class_mappings[s.class_id]
+            elif str(s.class_id) in class_mappings:
+                custom_mapped_id = class_mappings[str(s.class_id)]
+
+        if custom_mapped_id and custom_mapped_id in class_by_id:
+            target_cls_obj = class_by_id[custom_mapped_id]
+            suggested_class_id = target_cls_obj.id
+            suggested_class_name = target_cls_obj.name
+            suggested_section = target_cls_obj.section or cls_sec
+        else:
+            # Parse class level: "Class 5" -> "Class 6"
+            digits = ''.join(ch for ch in cls_name if ch.isdigit())
+            if digits and rec_action == 'PROMOTE':
+                curr_num = int(digits)
+                if curr_num >= 12:
+                    rec_action = 'GRADUATE'
+                else:
+                    next_num = curr_num + 1
+                    prefix = cls_name.replace(digits, '').strip()
+                    candidate_names = [f"{prefix} {next_num}".strip().lower(), f"{next_num}".lower()]
+                    matched_cls = None
+                    for c_cand in candidate_names:
+                        if c_cand in class_name_map:
+                            sec_match = next((c for c in class_name_map[c_cand] if (c.section or '').upper() == cls_sec.upper()), None)
+                            matched_cls = sec_match or class_name_map[c_cand][0]
+                            break
+                    if matched_cls:
+                        suggested_class_id = matched_cls.id
+                        suggested_class_name = matched_cls.name
+                        suggested_section = matched_cls.section or cls_sec
+                    else:
+                        has_missing_mapping = True
 
         has_target_conflict = s.id in target_enrollment_map
         conflict_detail = None
@@ -178,10 +377,12 @@ def preview_promotion():
             te = target_enrollment_map[s.id]
             conflict_detail = f"Already enrolled in {te.class_display} ({target_session})"
 
-        preview_list.append({
+        item = {
             'student_id': s.id,
             'name': s.user.name if s.user else 'Student',
+            'student_name': s.user.name if s.user else 'Student',
             'admission_no': s.admission_no or '',
+            'admission_number': s.admission_no or '',
             'original_admission_year': s.original_admission_year or (str(s.admission_date.year) if s.admission_date else ''),
             'gender': s.gender or '',
             'photo_url': s.photo_url,
@@ -192,20 +393,46 @@ def preview_promotion():
             'attendance_pct': att_pct,
             'marks_pct': marks_pct,
             'has_failed': has_failed,
+            'academic_standing': {
+                'percentage': marks_pct,
+                'attendance_pct': att_pct,
+                'passed': not has_failed
+            },
+            'outstanding_dues': round(stu_dues, 2),
             'recommended_action': rec_action,
             'suggested_class_id': suggested_class_id,
             'suggested_class_name': suggested_class_name,
             'suggested_section': suggested_section,
             'suggested_roll_no': roll_no,
+            'has_missing_mapping': has_missing_mapping,
             'has_conflict': has_target_conflict,
+            'conflict_reason': conflict_detail,
             'conflict_detail': conflict_detail,
-        })
+            'is_eligible': not has_target_conflict,
+        }
+        preview_list.append(item)
+
+    summary = {
+        'total_students': len(preview_list),
+        'eligible': len([p for p in preview_list if not p['has_conflict']]),
+        'promoted': len([p for p in preview_list if p['recommended_action'] == 'PROMOTE']),
+        'retained': len([p for p in preview_list if p['recommended_action'] == 'RETAIN']),
+        'graduated': len([p for p in preview_list if p['recommended_action'] in ('GRADUATE', 'PASS_OUT')]),
+        'transferred': len([p for p in preview_list if p['recommended_action'] in ('WITHDRAW', 'TRANSFER', 'LEFT')]),
+        'conflicts': len([p for p in preview_list if p['has_conflict']]),
+        'missing_mappings': len([p for p in preview_list if p['has_missing_mapping']]),
+        'total_outstanding_dues': round(total_dues_sum, 2)
+    }
 
     return jsonify({
         'source_session': source_session,
         'target_session': target_session,
         'total_students': len(preview_list),
-        'students': preview_list
+        'students': preview_list,
+        'preview': preview_list,
+        'classes': [c.to_dict() for c in all_classes],
+        'target_fee_structures': [fs.to_dict() for fs in target_fee_structures],
+        'summary': summary
     }), 200
 
 
@@ -215,6 +442,8 @@ def confirm_promotion():
     """
     Executes rollover/promotion in an atomic database transaction.
     Non-destructive: Previous session enrollments, marks, attendance and fees remain untouched.
+    Idempotent: Re-executing updates destination state without duplicating records.
+    Multi-tenant: Rejects/skips students outside the caller's school.
     """
     data = request.get_json() or {}
     sid = _school_id()
@@ -224,6 +453,7 @@ def confirm_promotion():
     source_session = (data.get('source_session') or '').strip()
     target_session = (data.get('target_session') or '').strip()
     promotions = data.get('promotions') or []
+    generate_target_fees = bool(data.get('generate_target_fees'))
 
     if not source_session or not target_session:
         return jsonify({'error': 'source_session and target_session are required'}), 400
@@ -236,6 +466,8 @@ def confirm_promotion():
     retained_count = 0
     graduated_count = 0
     withdrawn_count = 0
+    fees_generated_count = 0
+    skipped_count = 0
 
     try:
         for item in promotions:
@@ -243,13 +475,15 @@ def confirm_promotion():
             action = (item.get('action') or 'PROMOTE').upper()
             target_class_id = item.get('target_class_id')
             target_section = item.get('target_section') or 'A'
-            target_roll_no = item.get('target_roll_no') or ''
+            target_roll_no = item.get('target_roll_no') or item.get('target_roll_number') or ''
             target_house = item.get('target_house')
             target_stream = item.get('target_stream')
             remarks = item.get('remarks') or f"Annual rollover from {source_session}"
 
+            # Multi-tenant security check: student must belong to caller's school
             student = Student.query.filter_by(id=st_id, school_id=sid, is_deleted=False).first()
             if not student:
+                skipped_count += 1
                 continue
 
             # 1. Update source session enrollment status
@@ -258,7 +492,6 @@ def confirm_promotion():
             ).first()
 
             if not source_enrollment:
-                # Create baseline for source session if not present
                 old_cls = Class.query.get(student.class_id) if student.class_id else None
                 source_enrollment = StudentEnrollment(
                     school_id=sid,
@@ -282,14 +515,14 @@ def confirm_promotion():
                 source_enrollment.enrollment_status = 'PROMOTED'
             elif action == 'RETAIN':
                 source_enrollment.enrollment_status = 'RETAINED'
-            elif action in ('GRADUATE', 'PASS_OUT'):
+            elif action in ('GRADUATE', 'GRADUATED', 'PASS_OUT'):
                 source_enrollment.enrollment_status = 'GRADUATED'
-            elif action in ('WITHDRAW', 'LEFT'):
+            elif action in ('WITHDRAW', 'WITHDRAWN', 'LEFT', 'TRANSFER', 'TRANSFERRED'):
                 source_enrollment.enrollment_status = 'WITHDRAWN'
 
             # 2. Handle Continuing vs Terminal students
             if action in ('PROMOTE', 'RETAIN'):
-                # Ensure target class exists
+                # Ensure target class belongs to current school
                 t_class = Class.query.filter_by(id=target_class_id, school_id=sid).first() if target_class_id else None
                 if not t_class:
                     t_class = student.class_ref
@@ -329,6 +562,7 @@ def confirm_promotion():
                     target_enrollment.stream = target_stream or target_enrollment.stream
                     target_enrollment.house = target_house or target_enrollment.house
                     target_enrollment.enrollment_status = 'ACTIVE'
+                    target_enrollment.enrollment_type = 'PROMOTION' if action == 'PROMOTE' else 'RETENTION'
                     target_enrollment.remarks = remarks
 
                 # Update student's active pointer to target session
@@ -341,17 +575,49 @@ def confirm_promotion():
                 if target_stream:
                     student.stream = target_stream
 
+                # Optional fee generation for new session
+                if generate_target_fees and eff_class_id:
+                    fee_structs = FeeStructure.query.filter_by(
+                        school_id=sid, class_id=eff_class_id, session=target_session, status='ACTIVE'
+                    ).all()
+                    for fs in fee_structs:
+                        existing_fr = FeeRecord.query.filter_by(
+                            school_id=sid, student_id=student.id, fee_type=fs.fee_type, session=target_session
+                        ).first()
+                        if not existing_fr:
+                            new_fr = FeeRecord(
+                                school_id=sid,
+                                student_id=student.id,
+                                fee_type=fs.fee_type,
+                                amount_due=fs.amount,
+                                amount_paid=0.0,
+                                status='PENDING',
+                                billing_frequency=fs.frequency or 'MONTHLY',
+                                session=target_session,
+                                due_date=date.today(),
+                                remarks=f"Annual rollover fee for {target_session}"
+                            )
+                            db.session.add(new_fr)
+                            fees_generated_count += 1
+
                 if action == 'PROMOTE':
                     promoted_count += 1
                 else:
                     retained_count += 1
 
-            elif action in ('GRADUATE', 'PASS_OUT'):
+            elif action in ('GRADUATE', 'GRADUATED', 'PASS_OUT'):
                 student.status = 'GRADUATED'
+                # If target enrollment exists by accident, update to GRADUATED
+                existing_tgt = StudentEnrollment.query.filter_by(school_id=sid, student_id=student.id, session=target_session).first()
+                if existing_tgt:
+                    existing_tgt.enrollment_status = 'GRADUATED'
                 graduated_count += 1
 
-            elif action in ('WITHDRAW', 'LEFT'):
+            elif action in ('WITHDRAW', 'WITHDRAWN', 'LEFT', 'TRANSFER', 'TRANSFERRED'):
                 student.status = 'WITHDRAWN'
+                existing_tgt = StudentEnrollment.query.filter_by(school_id=sid, student_id=student.id, session=target_session).first()
+                if existing_tgt:
+                    existing_tgt.enrollment_status = 'WITHDRAWN'
                 withdrawn_count += 1
 
             processed_count += 1
@@ -368,6 +634,9 @@ def confirm_promotion():
                     'source_session': source_session,
                     'target_session': target_session,
                     'promoted_count': str(promoted_count),
+                    'retained_count': str(retained_count),
+                    'graduated_count': str(graduated_count),
+                    'withdrawn_count': str(withdrawn_count),
                     'roles': ['PARENTS', 'STUDENTS'],
                     'include_parents': True,
                 }
@@ -375,14 +644,14 @@ def confirm_promotion():
         except Exception:
             pass
 
-        # Audit log
+        # Audit log with structured details
         log_school_action(
             school_id=sid,
             user=current_user_obj,
             module='academic',
             submodule='student_lifecycle',
             action='ANNUAL_PROMOTION_ROLLOVER',
-            remarks=f"Processed {processed_count} students: {promoted_count} promoted, {retained_count} retained, {graduated_count} graduated, {withdrawn_count} withdrawn ({source_session} -> {target_session})"
+            remarks=f"Processed {processed_count} students: {promoted_count} promoted, {retained_count} retained, {graduated_count} graduated, {withdrawn_count} withdrawn, {fees_generated_count} fee demands generated ({source_session} -> {target_session})"
         )
 
         return jsonify({
@@ -394,6 +663,8 @@ def confirm_promotion():
                 'retained': retained_count,
                 'graduated': graduated_count,
                 'withdrawn': withdrawn_count,
+                'fees_generated': fees_generated_count,
+                'skipped': skipped_count,
                 'source_session': source_session,
                 'target_session': target_session
             }
@@ -402,6 +673,174 @@ def confirm_promotion():
     except Exception as err:
         db.session.rollback()
         return jsonify({'error': f"Rollover failed: {str(err)}"}), 500
+
+
+@student_lifecycle_bp.route('/promote/correct', methods=['POST'])
+@role_required('PRINCIPAL', 'SUPER_ADMIN')
+def correct_student_promotion():
+    """
+    Controlled correction of an individual student's promotion outcome.
+    Allows changing target class, section, roll number, or status after rollover.
+    Maintains full audit logging.
+    """
+    sid = _school_id()
+    user = get_current_user()
+    data = request.get_json() or {}
+
+    student_id = data.get('student_id')
+    session = (data.get('session') or '').strip()
+    target_class_id = data.get('target_class_id')
+    target_section = data.get('target_section')
+    target_roll_no = data.get('target_roll_no')
+    action = (data.get('action') or '').upper()
+    reason = (data.get('reason') or '').strip()
+
+    if not student_id or not session:
+        return jsonify({'error': 'student_id and session are required'}), 400
+
+    student = Student.query.filter_by(id=student_id, school_id=sid, is_deleted=False).first()
+    if not student:
+        return jsonify({'error': 'Student not found'}), 404
+
+    target_enrollment = StudentEnrollment.query.filter_by(
+        school_id=sid, student_id=student.id, session=session
+    ).first()
+
+    if not target_enrollment:
+        return jsonify({'error': f"No enrollment record found for student in session {session}"}), 404
+
+    old_state = {
+        'class_id': target_enrollment.class_id,
+        'section': target_enrollment.section,
+        'roll_number': target_enrollment.roll_number,
+        'enrollment_status': target_enrollment.enrollment_status,
+        'enrollment_type': target_enrollment.enrollment_type
+    }
+
+    if target_class_id:
+        target_cls = Class.query.filter_by(id=target_class_id, school_id=sid).first()
+        if not target_cls:
+            return jsonify({'error': 'Target class not found in school'}), 404
+        target_enrollment.class_id = target_cls.id
+        student.class_id = target_cls.id
+
+    if target_section:
+        target_enrollment.section = target_section
+
+    if target_roll_no is not None:
+        target_enrollment.roll_number = target_roll_no
+        student.roll_number = target_roll_no
+
+    if action in ('PROMOTE', 'PROMOTED'):
+        target_enrollment.enrollment_type = 'PROMOTION'
+        target_enrollment.enrollment_status = 'ACTIVE'
+        student.status = 'ACTIVE'
+    elif action in ('RETAIN', 'RETAINED'):
+        target_enrollment.enrollment_type = 'RETENTION'
+        target_enrollment.enrollment_status = 'ACTIVE'
+        student.status = 'ACTIVE'
+    elif action in ('GRADUATE', 'GRADUATED'):
+        target_enrollment.enrollment_status = 'GRADUATED'
+        student.status = 'GRADUATED'
+    elif action in ('WITHDRAW', 'WITHDRAWN', 'TRANSFER'):
+        target_enrollment.enrollment_status = 'WITHDRAWN'
+        student.status = 'WITHDRAWN'
+
+    target_enrollment.remarks = f"Corrected: {reason}" if reason else target_enrollment.remarks
+    db.session.commit()
+
+    log_school_action(
+        school_id=sid,
+        user=user,
+        module='academic',
+        submodule='student_lifecycle',
+        action='PROMOTION_CORRECTION',
+        student_id=student.id,
+        class_id=target_enrollment.class_id,
+        old_value=old_state,
+        new_value=target_enrollment.to_dict(),
+        remarks=f"Corrected promotion for {student.admission_no}: {reason or 'Administrative update'}"
+    )
+
+    return jsonify({
+        'success': True,
+        'message': f"Student {student.admission_no} promotion record updated successfully.",
+        'student': student.to_dict(),
+        'enrollment': target_enrollment.to_dict()
+    }), 200
+
+
+@student_lifecycle_bp.route('/promote/revert', methods=['POST'])
+@role_required('PRINCIPAL', 'SUPER_ADMIN')
+def revert_student_promotion():
+    """
+    Safely reverts an individual student's promotion back to the source session state.
+    Deletes the target session enrollment, restores the source enrollment status to ACTIVE,
+    and removes any uncollected rollover fee demands for the target session.
+    """
+    sid = _school_id()
+    user = get_current_user()
+    data = request.get_json() or {}
+
+    student_id = data.get('student_id')
+    source_session = (data.get('source_session') or '').strip()
+    target_session = (data.get('target_session') or '').strip()
+    reason = (data.get('reason') or '').strip()
+
+    if not student_id or not source_session or not target_session:
+        return jsonify({'error': 'student_id, source_session, and target_session are required'}), 400
+
+    student = Student.query.filter_by(id=student_id, school_id=sid, is_deleted=False).first()
+    if not student:
+        return jsonify({'error': 'Student not found'}), 404
+
+    source_enrollment = StudentEnrollment.query.filter_by(
+        school_id=sid, student_id=student.id, session=source_session
+    ).first()
+
+    target_enrollment = StudentEnrollment.query.filter_by(
+        school_id=sid, student_id=student.id, session=target_session
+    ).first()
+
+    if not target_enrollment:
+        return jsonify({'error': f"Target enrollment in session {target_session} not found"}), 404
+
+    # Remove zero-payment fee records created for target session
+    unpaid_target_fees = FeeRecord.query.filter_by(
+        school_id=sid, student_id=student.id, session=target_session
+    ).all()
+    for fr in unpaid_target_fees:
+        if (fr.amount_paid or 0.0) == 0.0:
+            db.session.delete(fr)
+
+    # Delete target enrollment
+    db.session.delete(target_enrollment)
+
+    # Restore source enrollment
+    if source_enrollment:
+        source_enrollment.enrollment_status = 'ACTIVE'
+        student.class_id = source_enrollment.class_id
+        student.roll_number = source_enrollment.roll_number
+    student.session = source_session
+    student.status = 'ACTIVE'
+
+    db.session.commit()
+
+    log_school_action(
+        school_id=sid,
+        user=user,
+        module='academic',
+        submodule='student_lifecycle',
+        action='PROMOTION_REVERT',
+        student_id=student.id,
+        remarks=f"Reverted rollover for {student.admission_no} ({target_session} -> {source_session}). Reason: {reason or 'Administrative revert'}"
+    )
+
+    return jsonify({
+        'success': True,
+        'message': f"Successfully reverted student {student.admission_no} to {source_session}.",
+        'student': student.to_dict()
+    }), 200
 
 
 # ─── 2. ANNUAL RE-REGISTRATION (EXISTING STUDENTS) ──────────────────────────
