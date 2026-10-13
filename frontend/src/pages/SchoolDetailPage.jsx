@@ -1466,6 +1466,8 @@ export default function SchoolDetail() {
             </form>
           </div>
         </div>
+      )}
+
       {/* ── Entitlements Diff Confirmation Modal ── */}
       {showDiffModal && (
         <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && setShowDiffModal(false)}>

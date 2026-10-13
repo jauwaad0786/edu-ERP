@@ -8,13 +8,35 @@ import toast from 'react-hot-toast';
 export default function FinanceDashboard() {
   const navigate = useNavigate();
   const [session, setSession] = useState('2026-27');
+  const [month, setMonth] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [classId, setClassId] = useState('');
+  const [paymentMode, setPaymentMode] = useState('');
+  const [classes, setClasses] = useState([]);
+
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Fetch classes for filter dropdown
+  useEffect(() => {
+    api.get('/principal/classes')
+      .then((r) => setClasses(r.data || []))
+      .catch(() => {});
+  }, []);
 
   const fetchDashboard = async () => {
     try {
       setLoading(true);
-      const res = await api.get(`/fees-finance/dashboard?session=${session}`);
+      const params = new URLSearchParams();
+      if (session) params.append('session', session);
+      if (month) params.append('month', month);
+      if (dateFrom) params.append('date_from', dateFrom);
+      if (dateTo) params.append('date_to', dateTo);
+      if (classId) params.append('class_id', classId);
+      if (paymentMode) params.append('payment_mode', paymentMode);
+
+      const res = await api.get(`/fees-finance/dashboard?${params.toString()}`);
       setData(res.data);
     } catch (err) {
       toast.error('Failed to load finance metrics');
@@ -25,12 +47,25 @@ export default function FinanceDashboard() {
 
   useEffect(() => {
     fetchDashboard();
-  }, [session]);
+  }, [session, month, classId, paymentMode]);
+
+  const handleApplyCustomDates = (e) => {
+    e.preventDefault();
+    fetchDashboard();
+  };
+
+  const handleResetFilters = () => {
+    setMonth('');
+    setDateFrom('');
+    setDateTo('');
+    setClassId('');
+    setPaymentMode('');
+  };
 
   const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 
   const maxMonthValue = Math.max(
-    ...(data?.monthly_summary?.map((m) => Math.max(m.billed, m.collected, m.expenses)) || [10000]),
+    ...(data?.monthly_summary?.map((m) => Math.max(m.billed || 0, m.collected || 0, m.expenses || 0)) || [10000]),
     1000
   );
 
@@ -45,33 +80,22 @@ export default function FinanceDashboard() {
           <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <span className="badge badge-info">Financial Year {session}</span>
-                <span className="text-xs text-muted">Central Ledger System</span>
+                <span className="badge badge-info">Financial Session {session}</span>
+                <span className="text-xs text-muted">Audited School Ledger System</span>
+                {month && <span className="badge badge-neutral">Month: {month}</span>}
               </div>
-              <h2 className="page-title">Finance Executive Dashboard</h2>
+              <h2 className="page-title">Executive Finance Dashboard</h2>
               <p className="page-subtitle">
-                Unified financial ledger, class-wise fee collections, cash flow graphs, and net surplus tracking.
+                Clear financial clarity for Principal, School Owner, and Accountant. Demand billing, real collections, pending fees, and cash flow.
               </p>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span className="text-xs font-semibold text-muted">Session:</span>
-                <select
-                  value={session}
-                  onChange={(e) => setSession(e.target.value)}
-                  className="form-select"
-                  style={{ width: 130, height: 34, fontSize: 13, fontWeight: 700 }}
-                >
-                  <option value="2026-27">2026-27</option>
-                  <option value="2025-26">2025-26</option>
-                  <option value="2024-25">2024-25</option>
-                </select>
-              </div>
-
+            {/* Quick Actions */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <button
                 onClick={() => navigate('/finance/payments/collect')}
                 className="btn btn-primary"
+                title="Record student fee payment"
               >
                 <i className="ti ti-credit-card"></i>
                 Collect Payment
@@ -80,10 +104,148 @@ export default function FinanceDashboard() {
               <button
                 onClick={() => navigate('/finance/bills')}
                 className="btn btn-neutral"
+                title="View & generate demand bills"
               >
                 <i className="ti ti-file-invoice"></i>
-                Fee Bills
+                Demand Bills
               </button>
+
+              <button
+                onClick={() => navigate('/finance/reconciliation')}
+                className="btn btn-neutral"
+                style={{ background: '#e0e7ff', color: '#3730a3', borderColor: '#c7d2fe', fontWeight: 700 }}
+                title="Reconcile bank statements & payments"
+              >
+                <i className="ti ti-building-bank"></i>
+                Bank Reconciliation
+              </button>
+
+              <button
+                onClick={() => navigate('/finance/reports')}
+                className="btn btn-neutral"
+                title="Income & Expense / P&L statement"
+              >
+                <i className="ti ti-report-analytics"></i>
+                P&amp;L Reports
+              </button>
+            </div>
+          </div>
+
+          {/* Multi-Dimensional Filter Bar */}
+          <div className="card mb-6" style={{ padding: '14px 18px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+              {/* Session Filter */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label className="text-xs font-semibold text-muted">Academic Session</label>
+                <select
+                  value={session}
+                  onChange={(e) => setSession(e.target.value)}
+                  className="form-select"
+                  style={{ width: 120, height: 34, fontSize: 13, fontWeight: 700 }}
+                >
+                  <option value="2026-27">2026-27</option>
+                  <option value="2025-26">2025-26</option>
+                  <option value="2024-25">2024-25</option>
+                </select>
+              </div>
+
+              {/* Month Filter */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label className="text-xs font-semibold text-muted">Billing Month</label>
+                <select
+                  value={month}
+                  onChange={(e) => setMonth(e.target.value)}
+                  className="form-select"
+                  style={{ width: 140, height: 34, fontSize: 13 }}
+                >
+                  <option value="">All Months</option>
+                  <option value="2026-04">April 2026</option>
+                  <option value="2026-05">May 2026</option>
+                  <option value="2026-06">June 2026</option>
+                  <option value="2026-07">July 2026</option>
+                  <option value="2026-08">August 2026</option>
+                  <option value="2026-09">September 2026</option>
+                  <option value="2026-10">October 2026</option>
+                  <option value="2026-11">November 2026</option>
+                  <option value="2026-12">December 2026</option>
+                  <option value="2027-01">January 2027</option>
+                  <option value="2027-02">February 2027</option>
+                  <option value="2027-03">March 2027</option>
+                </select>
+              </div>
+
+              {/* Class Filter */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label className="text-xs font-semibold text-muted">Class</label>
+                <select
+                  value={classId}
+                  onChange={(e) => setClassId(e.target.value)}
+                  className="form-select"
+                  style={{ width: 140, height: 34, fontSize: 13 }}
+                >
+                  <option value="">All Classes</option>
+                  {classes.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} {c.section || ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Payment Method */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label className="text-xs font-semibold text-muted">Payment Method</label>
+                <select
+                  value={paymentMode}
+                  onChange={(e) => setPaymentMode(e.target.value)}
+                  className="form-select"
+                  style={{ width: 140, height: 34, fontSize: 13 }}
+                >
+                  <option value="">All Methods</option>
+                  <option value="CASH">Cash</option>
+                  <option value="UPI">UPI</option>
+                  <option value="BANK_TRANSFER">Bank Transfer</option>
+                  <option value="CHEQUE">Cheque</option>
+                  <option value="CARD">Debit/Credit Card</option>
+                  <option value="ONLINE">Online Gateway</option>
+                </select>
+              </div>
+
+              {/* Custom Date Range */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label className="text-xs font-semibold text-muted">From Date</label>
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="form-control"
+                  style={{ height: 34, width: 135, fontSize: 12 }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label className="text-xs font-semibold text-muted">To Date</label>
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="form-control"
+                  style={{ height: 34, width: 135, fontSize: 12 }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, marginTop: 18 }}>
+                {(dateFrom || dateTo) && (
+                  <button onClick={handleApplyCustomDates} className="btn btn-sm btn-primary" style={{ height: 34 }}>
+                    Apply Dates
+                  </button>
+                )}
+                {(month || classId || paymentMode || dateFrom || dateTo) && (
+                  <button onClick={handleResetFilters} className="btn btn-sm btn-neutral" style={{ height: 34 }} title="Clear all filters">
+                    <i className="ti ti-x"></i> Reset
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -94,425 +256,429 @@ export default function FinanceDashboard() {
             </div>
           ) : (
             <>
-              {/* 5 Top KPI Cards */}
-              <div className="grid-4 mb-6" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
-                {/* Total Invoiced */}
-                <div className="stat-card" style={{ borderLeft: '4px solid #0176d3' }}>
+              {/* 6 Executive KPI Cards */}
+              <div className="grid-3 mb-6" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+
+                {/* Card A: Total Fees Billed (Billed) */}
+                <div
+                  className="stat-card"
+                  style={{ borderLeft: '4px solid #0176d3', cursor: 'pointer', transition: 'transform 0.15s ease' }}
+                  onClick={() => navigate('/finance/bills')}
+                >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <div className="stat-label" style={{ margin: 0 }}>Total Invoiced</div>
-                    <div className="stat-icon" style={{ background: '#e8f4fd', color: '#0176d3', margin: 0, width: 32, height: 32 }}>
-                      <i className="ti ti-file-invoice" style={{ fontSize: 16 }}></i>
+                    <div>
+                      <div className="stat-label" style={{ margin: 0, fontWeight: 700 }}>Total Fees Billed</div>
+                      <div className="text-xs text-muted">Demand bills issued</div>
+                    </div>
+                    <div className="stat-icon" style={{ background: '#e8f4fd', color: '#0176d3', margin: 0, width: 36, height: 36, borderRadius: 8 }}>
+                      <i className="ti ti-file-invoice" style={{ fontSize: 18 }}></i>
                     </div>
                   </div>
-                  <div className="stat-value" style={{ fontSize: '1.5rem', color: '#0176d3' }}>
+                  <div className="stat-value" style={{ fontSize: '1.65rem', color: '#0176d3', fontWeight: 800 }}>
                     {fmt(data?.total_billed)}
                   </div>
-                  <div className="stat-sub">{data?.bills_count || 0} student bills issued</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                    <span className="stat-sub text-xs">Total demand from parents</span>
+                    <span className="text-xs font-semibold" style={{ color: '#0176d3' }}>View Bills &rarr;</span>
+                  </div>
                 </div>
 
-                {/* Total Collected */}
-                <div className="stat-card" style={{ borderLeft: '4px solid #2e844a' }}>
+                {/* Card B: Total Fees Collected (Collected) */}
+                <div
+                  className="stat-card"
+                  style={{ borderLeft: '4px solid #059669', cursor: 'pointer' }}
+                  onClick={() => navigate('/finance/payment-logs')}
+                >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <div className="stat-label" style={{ margin: 0 }}>Total Collected</div>
-                    <div className="stat-icon" style={{ background: '#eaf5ea', color: '#2e844a', margin: 0, width: 32, height: 32 }}>
-                      <i className="ti ti-arrow-down-right" style={{ fontSize: 16 }}></i>
+                    <div>
+                      <div className="stat-label" style={{ margin: 0, fontWeight: 700 }}>Total Fees Collected</div>
+                      <div className="text-xs text-muted">Actual cash, bank &amp; UPI received</div>
+                    </div>
+                    <div className="stat-icon" style={{ background: '#ecfdf5', color: '#059669', margin: 0, width: 36, height: 36, borderRadius: 8 }}>
+                      <i className="ti ti-arrow-down-right" style={{ fontSize: 18 }}></i>
                     </div>
                   </div>
-                  <div className="stat-value" style={{ fontSize: '1.5rem', color: '#2e844a' }}>
+                  <div className="stat-value" style={{ fontSize: '1.65rem', color: '#059669', fontWeight: 800 }}>
                     {fmt(data?.total_collected)}
                   </div>
-                  <div className="stat-sub">{data?.payments_count || 0} receipts generated</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                    <span className="badge badge-success" style={{ fontSize: 11 }}>
+                      {data?.collection_percentage || 0}% Realized
+                    </span>
+                    <span className="text-xs font-semibold" style={{ color: '#059669' }}>View Receipts &rarr;</span>
+                  </div>
                 </div>
 
-                {/* Outstanding Dues */}
-                <div className="stat-card" style={{ borderLeft: '4px solid #dd7a01' }}>
+                {/* Card C: Fees Pending (Still to Collect) */}
+                <div
+                  className="stat-card"
+                  style={{ borderLeft: '4px solid #d97706', cursor: 'pointer' }}
+                  onClick={() => navigate('/finance/outstanding')}
+                >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <div className="stat-label" style={{ margin: 0 }}>Outstanding Dues</div>
-                    <div className="stat-icon" style={{ background: '#fef5e4', color: '#dd7a01', margin: 0, width: 32, height: 32 }}>
-                      <i className="ti ti-alert-circle" style={{ fontSize: 16 }}></i>
+                    <div>
+                      <div className="stat-label" style={{ margin: 0, fontWeight: 700 }}>Fees Pending (To Collect)</div>
+                      <div className="text-xs text-muted">Outstanding balance against bills</div>
+                    </div>
+                    <div className="stat-icon" style={{ background: '#fffbeb', color: '#d97706', margin: 0, width: 36, height: 36, borderRadius: 8 }}>
+                      <i className="ti ti-alert-circle" style={{ fontSize: 18 }}></i>
                     </div>
                   </div>
-                  <div className="stat-value" style={{ fontSize: '1.5rem', color: '#dd7a01' }}>
+                  <div className="stat-value" style={{ fontSize: '1.65rem', color: '#d97706', fontWeight: 800 }}>
                     {fmt(data?.outstanding)}
                   </div>
-                  <div className="stat-sub">{data?.pending_bills_count || 0} unpaid balances</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, fontSize: 11 }}>
+                    <span style={{ color: '#059669', fontWeight: 600 }}>Due Soon: {fmt(data?.not_yet_due)}</span>
+                    <span style={{ color: '#dc2626', fontWeight: 700 }}>Overdue: {fmt(data?.overdue)}</span>
+                  </div>
                 </div>
 
-                {/* School Expenses */}
-                <div className="stat-card" style={{ borderLeft: '4px solid #ba0517' }}>
+                {/* Card D: Total Expenses */}
+                <div
+                  className="stat-card"
+                  style={{ borderLeft: '4px solid #dc2626', cursor: 'pointer' }}
+                  onClick={() => navigate('/finance/expenses')}
+                >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <div className="stat-label" style={{ margin: 0 }}>Total Expenses</div>
-                    <div className="stat-icon" style={{ background: '#fef1ee', color: '#ba0517', margin: 0, width: 32, height: 32 }}>
-                      <i className="ti ti-arrow-up-right" style={{ fontSize: 16 }}></i>
+                    <div>
+                      <div className="stat-label" style={{ margin: 0, fontWeight: 700 }}>Total School Expenses</div>
+                      <div className="text-xs text-muted">Salaries &amp; vendor bills</div>
+                    </div>
+                    <div className="stat-icon" style={{ background: '#fef2f2', color: '#dc2626', margin: 0, width: 36, height: 36, borderRadius: 8 }}>
+                      <i className="ti ti-arrow-up-right" style={{ fontSize: 18 }}></i>
                     </div>
                   </div>
-                  <div className="stat-value" style={{ fontSize: '1.5rem', color: '#ba0517' }}>
+                  <div className="stat-value" style={{ fontSize: '1.65rem', color: '#dc2626', fontWeight: 800 }}>
                     {fmt(data?.total_expenses)}
                   </div>
-                  <div className="stat-sub">Salaries & operational bills</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, fontSize: 11 }}>
+                    <span style={{ color: '#475569' }}>Paid: {fmt(data?.paid_expenses || data?.total_expenses)}</span>
+                    <span style={{ color: '#b91c1c' }}>Unpaid Bills: {fmt(data?.unpaid_liabilities || 0)}</span>
+                  </div>
                 </div>
 
-                {/* Net Surplus */}
-                <div className="stat-card" style={{ borderLeft: `4px solid ${(data?.net_surplus ?? 0) >= 0 ? '#1b4d3e' : '#ba0517'}` }}>
+                {/* Card E: Bank / Cash Position */}
+                <div
+                  className="stat-card"
+                  style={{ borderLeft: '4px solid #4f46e5', cursor: 'pointer' }}
+                  onClick={() => navigate('/finance/reconciliation')}
+                >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <div className="stat-label" style={{ margin: 0 }}>Net Surplus</div>
-                    <div className="stat-icon" style={{ background: (data?.net_surplus ?? 0) >= 0 ? '#eaf5ea' : '#fef1ee', color: (data?.net_surplus ?? 0) >= 0 ? '#2e844a' : '#ba0517', margin: 0, width: 32, height: 32 }}>
-                      <i className="ti ti-currency-rupee" style={{ fontSize: 16 }}></i>
+                    <div>
+                      <div className="stat-label" style={{ margin: 0, fontWeight: 700 }}>Actual Cash Available</div>
+                      <div className="text-xs text-muted">Net cash position (Inflows - Outflows)</div>
+                    </div>
+                    <div className="stat-icon" style={{ background: '#eef2ff', color: '#4f46e5', margin: 0, width: 36, height: 36, borderRadius: 8 }}>
+                      <i className="ti ti-building-bank" style={{ fontSize: 18 }}></i>
                     </div>
                   </div>
-                  <div className="stat-value" style={{ fontSize: '1.5rem', color: (data?.net_surplus ?? 0) >= 0 ? '#1b4d3e' : '#ba0517' }}>
+                  <div className="stat-value" style={{ fontSize: '1.65rem', color: '#4f46e5', fontWeight: 800 }}>
+                    {fmt(data?.cash_position !== undefined ? data?.cash_position : data?.net_surplus)}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, fontSize: 11 }}>
+                    <span style={{ color: '#059669' }}>+ Inflows: {fmt(data?.cash_inflows || data?.total_collected)}</span>
+                    <span style={{ color: '#dc2626' }}>- Outflows: {fmt(data?.cash_outflows || data?.total_expenses)}</span>
+                  </div>
+                </div>
+
+                {/* Card F: Net Operating Result */}
+                <div
+                  className="stat-card"
+                  style={{ borderLeft: `4px solid ${(data?.net_surplus ?? 0) >= 0 ? '#059669' : '#dc2626'}`, cursor: 'pointer' }}
+                  onClick={() => navigate('/finance/reports')}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <div>
+                      <div className="stat-label" style={{ margin: 0, fontWeight: 700 }}>Net Operating Result</div>
+                      <div className="text-xs text-muted">Management Operating Surplus/Deficit</div>
+                    </div>
+                    <div
+                      className="stat-icon"
+                      style={{
+                        background: (data?.net_surplus ?? 0) >= 0 ? '#ecfdf5' : '#fef2f2',
+                        color: (data?.net_surplus ?? 0) >= 0 ? '#059669' : '#dc2626',
+                        margin: 0, width: 36, height: 36, borderRadius: 8
+                      }}
+                    >
+                      <i className="ti ti-chart-line" style={{ fontSize: 18 }}></i>
+                    </div>
+                  </div>
+                  <div
+                    className="stat-value"
+                    style={{
+                      fontSize: '1.65rem',
+                      fontWeight: 800,
+                      color: (data?.net_surplus ?? 0) >= 0 ? '#059669' : '#dc2626'
+                    }}
+                  >
                     {fmt(data?.net_surplus)}
                   </div>
-                  <div className="stat-sub">Revenue minus expenses</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                    <span className={`badge ${ (data?.net_surplus ?? 0) >= 0 ? 'badge-success' : 'badge-danger' }`} style={{ fontSize: 11 }}>
+                      {(data?.net_surplus ?? 0) >= 0 ? 'Operating Surplus' : 'Operating Deficit'}
+                    </span>
+                    <span className="text-xs font-semibold" style={{ color: '#0176d3' }}>P&amp;L Breakdown &rarr;</span>
+                  </div>
                 </div>
+
               </div>
 
-              {/* Visual Graph: Monthly Income vs Expenses Chart */}
-              <div className="card mb-6">
-                <div className="card-header">
-                  <div>
-                    <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>Cash Flow Trend & Monthly Comparison</h3>
-                    <p className="text-xs text-muted" style={{ margin: 0 }}>
-                      Comparison of Invoiced Fees, Realized Cash Collections, and Operational Expenses.
-                    </p>
-                  </div>
-                  <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <span style={{ width: 10, height: 10, background: '#2e844a', borderRadius: 2 }}></span>
-                      Collected
-                    </span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <span style={{ width: 10, height: 10, background: '#0176d3', borderRadius: 2 }}></span>
-                      Invoiced
-                    </span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <span style={{ width: 10, height: 10, background: '#ba0517', borderRadius: 2 }}></span>
-                      Expenses
-                    </span>
-                  </div>
-                </div>
+              {/* Monthly Realization Trend & Collection Modes */}
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16, marginBottom: 20 }}>
 
-                <div className="card-body" style={{ padding: '20px 24px' }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', height: 160, gap: 12, borderBottom: '1px solid var(--neutral-2)', paddingBottom: 8 }}>
-                    {data?.monthly_summary?.map((m, idx) => {
-                      const collHeight = maxMonthValue > 0 ? Math.max((m.collected / maxMonthValue) * 140, 4) : 4;
-                      const billedHeight = maxMonthValue > 0 ? Math.max((m.billed / maxMonthValue) * 140, 4) : 4;
-                      const expHeight = maxMonthValue > 0 ? Math.max((m.expenses / maxMonthValue) * 140, 4) : 4;
+                {/* Monthly Billed vs Collected Bar Chart */}
+                <div className="card" style={{ padding: 18 }}>
+                  <div className="card-header" style={{ padding: 0, marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>Monthly Demand vs Realized Collections</h3>
+                      <p className="text-xs text-muted" style={{ margin: '2px 0 0' }}>Billed Demand (Blue), Collected Cash (Green), Expenses (Red)</p>
+                    </div>
+                    <span className="badge badge-neutral">Session {session}</span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {(data?.monthly_summary || []).slice(0, 12).map((m, idx) => {
+                      const billedPct = Math.min(100, Math.round(((m.billed || 0) / maxMonthValue) * 100));
+                      const collPct = Math.min(100, Math.round(((m.collected || 0) / maxMonthValue) * 100));
+                      const expPct = Math.min(100, Math.round(((m.expenses || 0) / maxMonthValue) * 100));
+
                       return (
-                        <div key={idx} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', justifyContent: 'flex-end' }}>
-                          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, width: '100%', justifyContent: 'center' }}>
-                            {/* Invoiced Bar */}
-                            <div
-                              title={`Invoiced: ${fmt(m.billed)}`}
-                              style={{ width: 8, height: `${billedHeight}px`, background: '#0176d3', borderRadius: '3px 3px 0 0', opacity: 0.7 }}
-                            ></div>
-                            {/* Collected Bar */}
-                            <div
-                              title={`Collected: ${fmt(m.collected)}`}
-                              style={{ width: 10, height: `${collHeight}px`, background: '#2e844a', borderRadius: '3px 3px 0 0' }}
-                            ></div>
-                            {/* Expense Bar */}
-                            <div
-                              title={`Expense: ${fmt(m.expenses)}`}
-                              style={{ width: 8, height: `${expHeight}px`, background: '#ba0517', borderRadius: '3px 3px 0 0', opacity: 0.8 }}
-                            ></div>
+                        <div key={idx} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 140px', alignItems: 'center', gap: 10 }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>{m.month_label}</span>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            {/* Billed bar */}
+                            <div style={{ height: 6, background: '#e2e8f0', borderRadius: 3, overflow: 'hidden' }}>
+                              <div style={{ width: `${billedPct}%`, height: '100%', background: '#0176d3', borderRadius: 3 }} title={`Billed: ${fmt(m.billed)}`}></div>
+                            </div>
+                            {/* Collected bar */}
+                            <div style={{ height: 6, background: '#e2e8f0', borderRadius: 3, overflow: 'hidden' }}>
+                              <div style={{ width: `${collPct}%`, height: '100%', background: '#059669', borderRadius: 3 }} title={`Collected: ${fmt(m.collected)}`}></div>
+                            </div>
+                            {/* Expense bar */}
+                            <div style={{ height: 6, background: '#e2e8f0', borderRadius: 3, overflow: 'hidden' }}>
+                              <div style={{ width: `${expPct}%`, height: '100%', background: '#dc2626', borderRadius: 3 }} title={`Expenses: ${fmt(m.expenses)}`}></div>
+                            </div>
                           </div>
-                          <div style={{ fontSize: 10, fontWeight: 700, marginTop: 8, color: 'var(--neutral-6)' }}>
-                            {m.month_label.slice(0, 3)}
+
+                          <div style={{ fontSize: 11, textAlign: 'right', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <span style={{ color: '#0176d3', fontWeight: 600 }}>B: {fmt(m.billed)}</span>
+                            <span style={{ color: '#059669', fontWeight: 700 }}>C: {fmt(m.collected)}</span>
                           </div>
                         </div>
                       );
                     })}
                   </div>
+
+                  <div style={{ display: 'flex', gap: 16, marginTop: 14, paddingTop: 10, borderTop: '1px solid #f1f5f9', fontSize: 11 }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ width: 10, height: 10, background: '#0176d3', borderRadius: 2 }}></span> Demand Billed
+                    </span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ width: 10, height: 10, background: '#059669', borderRadius: 2 }}></span> Money Collected
+                    </span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ width: 10, height: 10, background: '#dc2626', borderRadius: 2 }}></span> Expenses Paid
+                    </span>
+                  </div>
                 </div>
+
+                {/* Collection Method Distribution */}
+                <div className="card" style={{ padding: 18 }}>
+                  <div className="card-header" style={{ padding: 0, marginBottom: 14 }}>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>Collection Channels</h3>
+                    <p className="text-xs text-muted" style={{ margin: '2px 0 0' }}>Distribution of money received</p>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {Object.entries(data?.collection_modes || data?.today_collection?.by_mode || {
+                      CASH: 0, UPI: 0, BANK_TRANSFER: 0, CHEQUE: 0, CARD: 0, ONLINE: 0
+                    }).map(([modeKey, val]) => {
+                      const modeTotal = data?.total_collected || 1;
+                      const pct = Math.round(((val || 0) / modeTotal) * 100);
+
+                      const getModeIcon = (k) => {
+                        if (k === 'CASH') return 'ti-cash';
+                        if (k === 'UPI') return 'ti-qrcode';
+                        if (k === 'BANK_TRANSFER') return 'ti-building-bank';
+                        if (k === 'CHEQUE') return 'ti-file-invoice';
+                        if (k === 'CARD') return 'ti-credit-card';
+                        return 'ti-world';
+                      };
+
+                      return (
+                        <div key={modeKey} style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: '#1e293b' }}>
+                              <i className={`ti ${getModeIcon(modeKey)}`} style={{ color: '#0176d3' }}></i>
+                              {modeKey.replace('_', ' ')}
+                            </span>
+                            <span style={{ fontSize: 13, fontWeight: 800, color: '#059669' }}>{fmt(val)}</span>
+                          </div>
+                          <div style={{ height: 5, background: '#e2e8f0', borderRadius: 3, overflow: 'hidden' }}>
+                            <div style={{ width: `${Math.min(100, pct)}%`, height: '100%', background: '#059669', borderRadius: 3 }}></div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    onClick={() => navigate('/finance/reconciliation')}
+                    className="btn btn-neutral btn-sm w-full mt-4"
+                    style={{ width: '100%', justifyContent: 'center', fontWeight: 700 }}
+                  >
+                    <i className="ti ti-building-bank"></i> Verify with Bank Statement &rarr;
+                  </button>
+                </div>
+
               </div>
 
-              {/* Phase 2: Procurement, Inventory & Assets Command Grid */}
-              <div className="grid-3 mb-6" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-                {/* 1. Consumables & Inventory */}
-                <div
-                  role="button"
-                  tabIndex={0}
-                  className="card"
-                  style={{ padding: 18, borderLeft: '4px solid #0d9488', cursor: 'pointer' }}
-                  onClick={() => navigate('/finance/inventory')}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/finance/inventory'); } }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <span style={{ fontSize: 11, fontWeight: 800, color: '#0d9488' }}>CONSUMABLES &amp; SUPPLIES</span>
-                    <i className="ti ti-package" style={{ fontSize: 18, color: '#0d9488' }} />
+              {/* Service Breakdown & Expense Categorization */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+
+                {/* Service Breakdown */}
+                <div className="card" style={{ padding: 18 }}>
+                  <div className="card-header" style={{ padding: 0, marginBottom: 14 }}>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>Fee Heads Realization</h3>
+                    <p className="text-xs text-muted" style={{ margin: '2px 0 0' }}>Tuition, Transport, Hostel, Library &amp; Exam realizations</p>
                   </div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--neutral-9)' }}>
-                    {fmt(data?.inventory_summary?.total_stock_value)}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--neutral-6)', marginTop: 2 }}>
-                    {data?.inventory_summary?.total_items || 0} active stock items &bull; <strong style={{ color: '#ba0517' }}>{data?.inventory_summary?.low_stock_count || 0} low-stock alerts</strong>
-                  </div>
-                  <div style={{ marginTop: 10, fontSize: 12, fontWeight: 700, color: '#0d9488' }}>
-                    Open Stock Register ➔
+
+                  <div className="table-responsive">
+                    <table className="table" style={{ fontSize: 12 }}>
+                      <thead>
+                        <tr>
+                          <th>Service Head</th>
+                          <th style={{ textAlign: 'right' }}>Billed</th>
+                          <th style={{ textAlign: 'right' }}>Collected</th>
+                          <th style={{ textAlign: 'right' }}>Outstanding</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(data?.service_wise || []).map((s, idx) => (
+                          <tr key={idx}>
+                            <td style={{ fontWeight: 600 }}>{s.name}</td>
+                            <td style={{ textAlign: 'right' }}>{fmt(s.billed)}</td>
+                            <td style={{ textAlign: 'right', color: '#059669', fontWeight: 700 }}>{fmt(s.collected)}</td>
+                            <td style={{ textAlign: 'right', color: (s.outstanding || 0) > 0 ? '#d97706' : '#64748b', fontWeight: 600 }}>
+                              {fmt(s.outstanding)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
 
-                {/* 2. Vendors & Payables */}
-                <div
-                  role="button"
-                  tabIndex={0}
-                  className="card"
-                  style={{ padding: 18, borderLeft: '4px solid #2563eb', cursor: 'pointer' }}
-                  onClick={() => navigate('/finance/purchases')}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/finance/purchases'); } }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <span style={{ fontSize: 11, fontWeight: 800, color: '#2563eb' }}>PURCHASES &amp; PAYABLES</span>
-                    <i className="ti ti-shopping-cart" style={{ fontSize: 18, color: '#2563eb' }} />
+                {/* Expense Categorization */}
+                <div className="card" style={{ padding: 18 }}>
+                  <div className="card-header" style={{ padding: 0, marginBottom: 14 }}>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>Operating Expenses by Category</h3>
+                    <p className="text-xs text-muted" style={{ margin: '2px 0 0' }}>Where school funds were spent during the period</p>
                   </div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: (data?.vendors_summary?.total_payables || 0) > 0 ? '#ba0517' : '#2e844a' }}>
-                    {fmt(data?.vendors_summary?.total_payables)}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--neutral-6)', marginTop: 2 }}>
-                    {data?.vendors_summary?.total_vendors || 0} approved vendors &bull; <strong>{data?.vendors_summary?.pending_bills || 0} bills pending payment</strong>
-                  </div>
-                  <div style={{ marginTop: 10, fontSize: 12, fontWeight: 700, color: '#2563eb' }}>
-                    View Purchases &amp; Bills ➔
+
+                  <div className="table-responsive">
+                    <table className="table" style={{ fontSize: 12 }}>
+                      <thead>
+                        <tr>
+                          <th>Category</th>
+                          <th>Department</th>
+                          <th style={{ textAlign: 'right' }}>Amount Paid</th>
+                          <th style={{ textAlign: 'center' }}>Entries</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(data?.department_expenses || []).map((d, idx) => (
+                          <tr key={idx}>
+                            <td style={{ fontWeight: 600 }}>{d.label}</td>
+                            <td><span className="badge badge-neutral" style={{ fontSize: 10 }}>{d.department}</span></td>
+                            <td style={{ textAlign: 'right', color: '#dc2626', fontWeight: 700 }}>{fmt(d.amount)}</td>
+                            <td style={{ textAlign: 'center', color: '#64748b' }}>{d.count || 0}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
 
-                {/* 3. School Assets */}
-                <div
-                  role="button"
-                  tabIndex={0}
-                  className="card"
-                  style={{ padding: 18, borderLeft: '4px solid #4f46e5', cursor: 'pointer' }}
-                  onClick={() => navigate('/finance/assets')}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/finance/assets'); } }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <span style={{ fontSize: 11, fontWeight: 800, color: '#4f46e5' }}>CAPITAL ASSETS REGISTER</span>
-                    <i className="ti ti-devices" style={{ fontSize: 18, color: '#4f46e5' }} />
-                  </div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--neutral-9)' }}>
-                    {data?.assets_summary?.total_assets || 0} Assets
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--neutral-6)', marginTop: 2 }}>
-                    {data?.assets_summary?.assigned || 0} in active use &bull; <strong style={{ color: '#d97706' }}>{data?.assets_summary?.under_repair || 0} in maintenance</strong>
-                  </div>
-                  <div style={{ marginTop: 10, fontSize: 12, fontWeight: 700, color: '#4f46e5' }}>
-                    Manage Asset Lifecycle ➔
-                  </div>
-                </div>
               </div>
 
-              {/* Class-wise Collection & Defaulter Summary Table */}
-              <div className="card mb-6">
-                <div className="card-header">
+              {/* Class Realization Table */}
+              <div className="card mb-6" style={{ padding: 18 }}>
+                <div className="card-header" style={{ padding: 0, marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
-                    <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>Class-Wise Fee Collection & Dues Status</h3>
-                    <p className="text-xs text-muted" style={{ margin: 0 }}>
-                      Class-wise breakdown of student count, total fees invoiced, fees paid, and pending balance.
-                    </p>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>Class-wise Realization Matrix</h3>
+                    <p className="text-xs text-muted" style={{ margin: '2px 0 0' }}>Student strength, billing, realization rate, and outstanding dues per class</p>
                   </div>
-                  <span className="badge badge-info">{data?.class_wise?.length || 0} Classes</span>
+                  <button onClick={() => navigate('/finance/outstanding')} className="btn btn-sm btn-neutral">
+                    View Detailed Dues &rarr;
+                  </button>
                 </div>
 
-                <div className="table-container" style={{ border: 'none' }}>
-                  <table className="table">
+                <div className="table-responsive">
+                  <table className="table" style={{ fontSize: 12 }}>
                     <thead>
                       <tr>
-                        <th>Class & Section</th>
-                        <th>Students</th>
-                        <th style={{ textAlign: 'right' }}>Total Invoiced</th>
-                        <th style={{ textAlign: 'right' }}>Total Paid</th>
-                        <th style={{ textAlign: 'right' }}>Pending Dues</th>
-                        <th>Collection Rate</th>
-                        <th style={{ textAlign: 'center' }}>Action</th>
+                        <th>Class &amp; Section</th>
+                        <th style={{ textAlign: 'center' }}>Students</th>
+                        <th style={{ textAlign: 'right' }}>Total Demanded</th>
+                        <th style={{ textAlign: 'right' }}>Total Collected</th>
+                        <th style={{ textAlign: 'right' }}>Still to Collect</th>
+                        <th style={{ textAlign: 'center', width: 140 }}>Recovery Rate</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {data?.class_wise?.map((c) => (
-                        <tr key={c.class_id}>
-                          <td style={{ fontWeight: 700, color: 'var(--neutral-9)' }}>{c.class_name}</td>
-                          <td>{c.students_count} students</td>
-                          <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(c.billed)}</td>
-                          <td style={{ textAlign: 'right', fontWeight: 700, color: '#2e844a' }}>{fmt(c.collected)}</td>
-                          <td style={{ textAlign: 'right', fontWeight: 800, color: c.outstanding > 0 ? '#dd7a01' : '#2e844a' }}>
-                            {fmt(c.outstanding)}
-                          </td>
-                          <td style={{ minWidth: 140 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <div className="progress-bar" style={{ flex: 1, height: 6 }}>
-                                <div
-                                  className="progress-fill success"
-                                  style={{ width: `${Math.min(c.collection_pct, 100)}%` }}
-                                ></div>
+                      {(data?.class_wise || []).map((cls) => {
+                        const recRate = cls.collection_pct || 0;
+                        return (
+                          <tr key={cls.class_id}>
+                            <td style={{ fontWeight: 700 }}>{cls.class_name}</td>
+                            <td style={{ textAlign: 'center' }}>{cls.students_count}</td>
+                            <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(cls.billed)}</td>
+                            <td style={{ textAlign: 'right', color: '#059669', fontWeight: 700 }}>{fmt(cls.collected)}</td>
+                            <td style={{ textAlign: 'right', color: (cls.outstanding || 0) > 0 ? '#d97706' : '#64748b', fontWeight: 600 }}>
+                              {fmt(cls.outstanding)}
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <div style={{ flex: 1, height: 6, background: '#e2e8f0', borderRadius: 3, overflow: 'hidden' }}>
+                                  <div style={{ width: `${Math.min(100, recRate)}%`, height: '100%', background: recRate >= 80 ? '#059669' : recRate >= 50 ? '#d97706' : '#dc2626' }}></div>
+                                </div>
+                                <span style={{ fontSize: 11, fontWeight: 700 }}>{recRate}%</span>
                               </div>
-                              <span style={{ fontSize: 11, fontWeight: 700, width: 36, textAlign: 'right' }}>
-                                {c.collection_pct}%
-                              </span>
-                            </div>
-                          </td>
-                          <td style={{ textAlign: 'center' }}>
-                            <button
-                              onClick={() => navigate(`/finance/payments/collect?class_id=${c.class_id}`)}
-                              className="btn btn-neutral btn-sm"
-                            >
-                              Collect Fees
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
               </div>
 
-              {/* Service & Department Distribution Cards */}
-              <div className="card mb-6">
-                <div className="card-header">
+              {/* Today's Cashier Counter Collection & End of Day Reconciliation */}
+              <div className="card" style={{ padding: 18, background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
                   <div>
-                    <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>Service & Department Revenue Breakdown</h3>
-                    <p className="text-xs text-muted" style={{ margin: 0 }}>
-                      Automatic multi-department credit distribution across Accounts, Transport, Hostel, and Library.
+                    <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>Today's Counter Collection &amp; Cashier Reconciliation</h3>
+                    <p className="text-xs text-muted" style={{ margin: '2px 0 0' }}>
+                      Date: {data?.today_collection?.date} &bull; End of day cash drawer audit
                     </p>
                   </div>
-                  <span className="badge badge-neutral">{data?.service_wise?.length || 0} Active Services</span>
-                </div>
-                <div className="card-body" style={{ padding: 16 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
-                    {data?.service_wise?.map((svc, idx) => {
-                      const pct = svc.billed > 0 ? Math.round((svc.collected / svc.billed) * 100) : 0;
-                      return (
-                        <div key={idx} style={{ background: '#fafaf9', border: '1px solid var(--neutral-2)', borderRadius: 8, padding: 14 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                            <div>
-                              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--neutral-9)' }}>{svc.name}</div>
-                              <span className="badge badge-info" style={{ fontSize: 10, padding: '1px 6px' }}>{svc.department}</span>
-                            </div>
-                            <span className="badge badge-success" style={{ fontSize: 11 }}>{pct}%</span>
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
-                            <span className="text-muted">Collected:</span>
-                            <span style={{ fontWeight: 700, color: '#2e844a' }}>{fmt(svc.collected)}</span>
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 8 }}>
-                            <span className="text-muted">Outstanding:</span>
-                            <span style={{ fontWeight: 700, color: '#dd7a01' }}>{fmt(svc.outstanding)}</span>
-                          </div>
-                          <div className="progress-bar" style={{ height: 4 }}>
-                            <div className="progress-fill success" style={{ width: `${Math.min(pct, 100)}%` }}></div>
-                          </div>
-                        </div>
-                      );
-                    })}
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#059669' }}>
+                    Today's Total: {fmt(data?.today_collection?.total_amount)}
                   </div>
                 </div>
-              </div>
 
-              {/* Month-by-Month Financial Progression */}
-              <div className="card mb-6">
-                <div className="card-header">
-                  <div>
-                    <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>Month-By-Month Financial Progression</h3>
-                    <p className="text-xs text-muted" style={{ margin: 0 }}>
-                      Session {session} monthly billing, cash collection, expenditures, and net surplus.
-                    </p>
-                  </div>
-                  <span className="badge badge-info">April to March</span>
-                </div>
-                <div className="table-container" style={{ border: 'none' }}>
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>Calendar Month</th>
-                        <th style={{ textAlign: 'right' }}>Total Invoiced</th>
-                        <th style={{ textAlign: 'right' }}>Collected</th>
-                        <th style={{ textAlign: 'right' }}>Outstanding</th>
-                        <th style={{ textAlign: 'right' }}>Expenses</th>
-                        <th style={{ textAlign: 'right' }}>Net Surplus</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data?.monthly_summary?.map((m, idx) => (
-                        <tr key={idx}>
-                          <td style={{ fontWeight: 700 }}>{m.month_label}</td>
-                          <td style={{ textAlign: 'right' }}>{fmt(m.billed)}</td>
-                          <td style={{ textAlign: 'right', fontWeight: 700, color: '#2e844a' }}>{fmt(m.collected)}</td>
-                          <td style={{ textAlign: 'right', fontWeight: 600, color: m.outstanding > 0 ? '#dd7a01' : 'var(--neutral-6)' }}>
-                            {fmt(m.outstanding)}
-                          </td>
-                          <td style={{ textAlign: 'right', color: '#ba0517' }}>{fmt(m.expenses)}</td>
-                          <td style={{ textAlign: 'right', fontWeight: 800, color: m.net_surplus >= 0 ? '#2e844a' : '#ba0517' }}>
-                            {fmt(m.net_surplus)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Today's Counter Collection Reconciliation */}
-              <div className="card">
-                <div className="card-header">
-                  <div>
-                    <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: 0 }}>Today's Counter Collection & Reconciliation</h3>
-                    <p className="text-xs text-muted" style={{ margin: 0 }}>
-                      Date: {data?.today_collection?.date} • End of day cashier reconciliation.
-                    </p>
-                  </div>
-                  <span className="badge badge-success" style={{ fontSize: 12 }}>
-                    Total: {fmt(data?.today_collection?.total_amount)}
-                  </span>
-                </div>
-                <div className="card-body" style={{ padding: 16 }}>
-                  <div className="grid-2">
-                    {/* By Payment Mode */}
-                    <div>
-                      <div className="stat-label">Payment Mode Breakdown</div>
-                      <div className="table-container" style={{ marginTop: 8 }}>
-                        <table>
-                          <thead>
-                            <tr>
-                              <th>Mode</th>
-                              <th style={{ textAlign: 'right' }}>Amount</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {Object.entries(data?.today_collection?.by_mode || {}).map(([mode, amt]) => (
-                              <tr key={mode}>
-                                <td style={{ fontWeight: 600 }}>{mode}</td>
-                                <td style={{ textAlign: 'right', fontWeight: 700, color: '#2e844a' }}>{fmt(amt)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+                  {Object.entries(data?.today_collection?.by_mode || {}).map(([mode, amt]) => (
+                    <div key={mode} style={{ background: '#fff', padding: '10px 14px', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                      <div className="text-xs text-muted font-semibold">{mode}</div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: '#1e293b', marginTop: 2 }}>{fmt(amt)}</div>
                     </div>
-
-                    {/* By Collector / Cashier */}
-                    <div>
-                      <div className="stat-label">Cashier Collection Summary</div>
-                      <div className="table-container" style={{ marginTop: 8 }}>
-                        <table>
-                          <thead>
-                            <tr>
-                              <th>Cashier / Collector</th>
-                              <th style={{ textAlign: 'right' }}>Collected Amount</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {data?.today_collection?.by_collector?.map((c, i) => (
-                              <tr key={i}>
-                                <td style={{ fontWeight: 600 }}>{c.collector}</td>
-                                <td style={{ textAlign: 'right', fontWeight: 700, color: '#2e844a' }}>{fmt(c.amount)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
+                  ))}
                 </div>
               </div>
+
             </>
           )}
 

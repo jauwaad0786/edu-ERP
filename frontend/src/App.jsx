@@ -136,6 +136,7 @@ import PaymentLogsPage          from './pages/finance/PaymentLogsPage';
 import FinancePayrollPage       from './pages/finance/FinancePayrollPage';
 import FeeServiceGenerationPage from './pages/finance/FeeServiceGenerationPage';
 import FeeCollectionAnalyticsPage from './pages/finance/FeeCollectionAnalyticsPage';
+import ReconciliationPage        from './pages/finance/ReconciliationPage';
 
 // ── Communication Hub Pages ───────────────────────────────────────────────────
 import SupportInbox     from './pages/communication/SupportInbox';
@@ -531,6 +532,11 @@ export default function App() {
                 <FinanceReportsPage />
               </TenantProtectedRoute>
             } />
+            <Route path="/:schoolSlug/:role/finance/reconciliation" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL']}>
+                <ReconciliationPage />
+              </TenantProtectedRoute>
+            } />
             <Route path="/:schoolSlug/:role/finance/payment-logs" element={
               <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR', 'VICE_PRINCIPAL', 'HOSTEL', 'LIBRARIAN']}>
                 <PaymentLogsPage />
@@ -905,6 +911,7 @@ export default function App() {
             <Route path="/finance/setup" element={<LegacyRedirect toService="finance/setup" />} />
             <Route path="/finance/outstanding" element={<LegacyRedirect toService="finance/outstanding" />} />
             <Route path="/finance/reports" element={<LegacyRedirect toService="finance/reports" />} />
+            <Route path="/finance/reconciliation" element={<LegacyRedirect toService="finance/reconciliation" />} />
             <Route path="/finance/payment-logs" element={<LegacyRedirect toService="finance/payment-logs" />} />
             <Route path="/finance/expenses" element={<LegacyRedirect toService="finance/expenses" />} />
             <Route path="/finance/inventory" element={<LegacyRedirect toService="finance/inventory" />} />

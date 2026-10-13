@@ -87,6 +87,8 @@ export default function TenantProtectedRoute({ children, roles, permissions }) {
         />
       );
     }
+  }
+
   // ── 4. Module Entitlement Check ──
   if (!isCompanyActor && !isSuperAdmin && user?.effective_modules) {
     const path = (location.pathname || '').toLowerCase();

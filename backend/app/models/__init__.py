@@ -36,6 +36,7 @@ from app.models.subscription import (
     calculate_effective_entitlements, is_school_entitled_to_module,
     seed_default_subscription_data,
 )
+from app.models.finance import BankStatementBatch, BankTransaction
 
 __all__ = [
     'User', 'UserRole', 'School', 'Product',
@@ -57,5 +58,7 @@ __all__ = [
     'SchoolSubscriptionHistory', 'SchoolModuleGrant',
     'calculate_effective_entitlements', 'is_school_entitled_to_module',
     'seed_default_subscription_data',
+    'BankStatementBatch', 'BankTransaction',
 ]
+
 

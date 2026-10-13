@@ -11,6 +11,7 @@ from app.models.finance import (
     SchoolAsset, AssetAssignmentHistory, AssetConditionLog, AssetMaintenanceRecord,
     ASSET_CATEGORIES, ASSET_CONDITIONS, ASSET_STATUSES,
     Vendor, VENDOR_CATEGORIES,
+    BankStatementBatch, BankTransaction,
 )
 from app.services.procurement_service import (
     create_purchase_order, approve_purchase_order, cancel_purchase_order,
@@ -970,57 +971,175 @@ def report_asset_register():
 @role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT', 'SUPER_ADMIN')
 def profit_summary():
     sid   = _school_id()
-    month = request.args.get('month') or _month_label(date.today())
+    month = request.args.get('month')
+    session = request.args.get('session')
+    basis = request.args.get('basis', 'CASH').upper()
 
-    bounds = _month_bounds(month)
-    if not bounds:
-        return jsonify({'error': 'month format must be like "July 2026"'}), 400
-    year, month_num = bounds
+    from app.services.pnl_service import PnLService
+    pnl = PnLService.get_profit_and_loss_statement(
+        school_id=sid,
+        session=session,
+        month=month,
+        basis=basis
+    )
 
-    from app.models.fee_finance import FeeBill, FeePayment
-
-    fee_rec_revenue = db.session.query(func.sum(FeeRecord.amount_paid))\
-        .filter(
-            FeeRecord.school_id == sid,
-            FeeRecord.paid_date.isnot(None),
-            extract('year',  FeeRecord.paid_date) == year,
-            extract('month', FeeRecord.paid_date) == month_num,
-        ).scalar() or 0.0
-
-    fee_pay_revenue = db.session.query(func.sum(FeePayment.total_paid))\
-        .filter(
-            FeePayment.school_id == sid,
-            FeePayment.status == 'VALID',
-            extract('year',  FeePayment.payment_date) == year,
-            extract('month', FeePayment.payment_date) == month_num,
-        ).scalar() or 0.0
-
-    revenue = round(float(fee_rec_revenue) + float(fee_pay_revenue), 2)
-
-    expenses = db.session.query(func.sum(Expense.amount))\
-        .filter(Expense.school_id == sid, Expense.month == month, Expense.status.in_(['APPROVED', 'PAID'])).scalar() or 0.0
-
-    salary_expense = db.session.query(func.sum(Expense.amount))\
-        .filter(
-            Expense.school_id == sid, Expense.month == month,
-            Expense.category.in_(['TEACHER_SALARY', 'STAFF_SALARY']),
-            Expense.status.in_(['APPROVED', 'PAID'])
-        ).scalar() or 0.0
-
-    profit = round(revenue - expenses, 2)
-
+    salary_exp = sum(c['paid_amount'] for c in pnl['expenses_by_category'] if 'SALARY' in c['category'])
     return jsonify({
-        'month':           month,
-        'revenue':         round(revenue, 2),
-        'total_income':    round(revenue, 2),
-        'expenses':        round(expenses, 2),
-        'total_expense':   round(expenses, 2),
-        'salary_expense':  round(salary_expense, 2),
-        'profit':          profit,
-        'profit_margin_pct': round(profit / revenue * 100, 1) if revenue else 0.0,
-        'expense_ratio_pct': round(expenses / revenue * 100, 1) if revenue else 0.0,
-        'salary_pct_of_expense': round(salary_expense / expenses * 100, 1) if expenses else 0.0,
+        'month':           pnl.get('period_label', month or 'Current Period'),
+        'revenue':         pnl['total_income'],
+        'total_income':    pnl['total_income'],
+        'expenses':        pnl['total_expenses'],
+        'total_expense':   pnl['total_expenses'],
+        'salary_expense':  round(salary_exp, 2),
+        'profit':          pnl['net_operating_result'],
+        'profit_margin_pct': pnl['profit_margin_percentage'],
+        'expense_ratio_pct': round(pnl['total_expenses'] / pnl['total_income'] * 100, 1) if pnl['total_income'] else 0.0,
+        'salary_pct_of_expense': round(salary_exp / pnl['total_expenses'] * 100, 1) if pnl['total_expenses'] else 0.0,
+        'statement':       pnl
     }), 200
+
+
+@finance_bp.route('/reports/profit-loss', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT', 'SUPER_ADMIN')
+def profit_loss_report():
+    sid = _school_id()
+    session = request.args.get('session')
+    month = request.args.get('month')
+    date_from = request.args.get('date_from')
+    date_to = request.args.get('date_to')
+    basis = request.args.get('basis', 'CASH').upper()
+
+    from app.services.pnl_service import PnLService
+    report = PnLService.get_profit_and_loss_statement(
+        school_id=sid,
+        session=session,
+        month=month,
+        date_from=date_from,
+        date_to=date_to,
+        basis=basis
+    )
+    return jsonify(report), 200
+
+
+# ─── Reconciliation Endpoints ───────────────────────────────────────────────
+
+@finance_bp.route('/reconciliation/summary', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT', 'SUPER_ADMIN')
+def reconciliation_summary_endpoint():
+    sid = _school_id()
+    date_from = request.args.get('date_from')
+    date_to = request.args.get('date_to')
+
+    from app.services.reconciliation_service import ReconciliationService
+    res = ReconciliationService.get_reconciliation_summary(sid, date_from=date_from, date_to=date_to)
+    return jsonify(res), 200
+
+
+@finance_bp.route('/reconciliation/batches', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT', 'SUPER_ADMIN')
+def list_reconciliation_batches():
+    sid = _school_id()
+    batches = BankStatementBatch.query.filter_by(school_id=sid).order_by(BankStatementBatch.id.desc()).all()
+    return jsonify([b.to_dict() for b in batches]), 200
+
+
+@finance_bp.route('/reconciliation/batches', methods=['POST'])
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT', 'SUPER_ADMIN')
+def upload_reconciliation_statement():
+    sid = _school_id()
+    user = get_current_user()
+
+    bank_name = request.form.get('bank_name') or 'Primary Bank Account'
+    source = request.form.get('statement_source') or 'BANK_STATEMENT'
+
+    if 'file' not in request.files:
+        return jsonify({'error': 'No statement file provided'}), 400
+
+    file = request.files['file']
+    if not file.filename:
+        return jsonify({'error': 'No selected file'}), 400
+
+    file_bytes = file.read()
+    if not file_bytes:
+        return jsonify({'error': 'Statement file is empty'}), 400
+
+    from app.services.reconciliation_service import ReconciliationService
+    try:
+        batch = ReconciliationService.create_batch_and_transactions(
+            school_id=sid,
+            file_bytes=file_bytes,
+            filename=file.filename,
+            bank_name=bank_name,
+            statement_source=source,
+            user_id=user.id if user else None
+        )
+        return jsonify({
+            'message': f'Bank statement imported and reconciled successfully. {batch.matched_count} matches found.',
+            'batch': batch.to_dict()
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+
+
+@finance_bp.route('/reconciliation/batches/<int:batch_id>/transactions', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT', 'SUPER_ADMIN')
+def get_batch_transactions(batch_id):
+    sid = _school_id()
+    batch = BankStatementBatch.query.filter_by(id=batch_id, school_id=sid).first_or_404()
+
+    status_filter = request.args.get('match_status')
+    q = BankTransaction.query.filter_by(batch_id=batch.id, school_id=sid)
+    if status_filter and status_filter != 'ALL':
+        q = q.filter_by(match_status=status_filter.upper())
+
+    txns = q.order_by(BankTransaction.txn_date.asc(), BankTransaction.id.asc()).all()
+    return jsonify({
+        'batch': batch.to_dict(),
+        'transactions': [t.to_dict() for t in txns]
+    }), 200
+
+
+@finance_bp.route('/reconciliation/transactions/<int:txn_id>/resolve', methods=['POST'])
+@role_required('PRINCIPAL', 'ACCOUNTANT', 'SUPER_ADMIN')
+def resolve_reconciliation_txn(txn_id):
+    sid = _school_id()
+    user = get_current_user()
+    data = request.get_json() or {}
+
+    action = data.get('action', 'CONFIRM_MATCH')
+    notes = data.get('notes', '')
+    fee_adj = float(data.get('fee_adjustment_amount', 0.0))
+
+    from app.services.reconciliation_service import ReconciliationService
+    try:
+        updated_tx = ReconciliationService.resolve_transaction(
+            school_id=sid,
+            txn_id=txn_id,
+            action=action,
+            user_id=user.id if user else None,
+            notes=notes,
+            fee_adjustment_amount=fee_adj
+        )
+        return jsonify({
+            'message': 'Transaction resolved successfully',
+            'transaction': updated_tx.to_dict()
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+
+
+@finance_bp.route('/reconciliation/erp-unmatched', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER', 'ACCOUNTANT', 'SUPER_ADMIN')
+def get_erp_unmatched():
+    sid = _school_id()
+    date_from = request.args.get('date_from')
+    date_to = request.args.get('date_to')
+
+    from app.services.reconciliation_service import ReconciliationService
+    unmatched = ReconciliationService.get_erp_unmatched_payments(sid, date_from=date_from, date_to=date_to)
+    return jsonify(unmatched), 200
 
 
 @finance_bp.route('/meta', methods=['GET'])

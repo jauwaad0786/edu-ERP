@@ -1795,12 +1795,13 @@ def process_fee_refund(student_id, amount, refund_mode, reason, authorized_by, p
 #  6. EXECUTIVE FINANCE DASHBOARD & METRICS
 # ═══════════════════════════════════════════════════════════════════════
 
-def get_finance_dashboard_metrics(school_id, session=None, month=None):
+def get_finance_dashboard_metrics(school_id, session=None, month=None, date_from=None, date_to=None, class_id=None, payment_mode=None):
     """
     Calculates executive financial metrics:
-    - Total Billed, Total Collected, Outstanding, Expenses, Net Surplus
-    - Service-wise breakdown (Tuition, Transport, Hostel, Library, Exam, Other)
-    - Month-by-month financial progression
+    - Total Billed, Total Collected, Outstanding (Not-yet-due vs Overdue)
+    - Total Expenses (Paid vs Unpaid liabilities), Net Operating Surplus
+    - Bank/Cash Position (Inflows - Outflows)
+    - Service-wise and Month-by-month financial progression
     - Today's collection summary & payment mode distribution
     """
     ensure_default_fee_heads(school_id)
@@ -1811,6 +1812,29 @@ def get_finance_dashboard_metrics(school_id, session=None, month=None):
     except Exception:
         pass
 
+    today = date.today()
+
+    # Parse Date Range
+    if date_from and isinstance(date_from, str):
+        try:
+            date_from = datetime.strptime(date_from, '%Y-%m-%d').date()
+        except Exception:
+            date_from = None
+    if date_to and isinstance(date_to, str):
+        try:
+            date_to = datetime.strptime(date_to, '%Y-%m-%d').date()
+        except Exception:
+            date_to = None
+
+    if month and not (date_from and date_to):
+        try:
+            yr, mo = map(int, month.split('-'))
+            last_day = calendar.monthrange(yr, mo)[1]
+            date_from = date(yr, mo, 1)
+            date_to = date(yr, mo, last_day)
+        except Exception:
+            pass
+
     # Base Queries
     bill_query = FeeBill.query.filter_by(school_id=school_id, session=session).filter(FeeBill.status != BillStatus.CANCELLED.value)
     pay_query  = FeePayment.query.filter_by(school_id=school_id, session=session, status=PaymentStatus.VALID.value)
@@ -1818,16 +1842,22 @@ def get_finance_dashboard_metrics(school_id, session=None, month=None):
 
     if month:
         bill_query = bill_query.filter_by(bill_month=month)
-        try:
-            yr, mo = map(int, month.split('-'))
-            last_day = calendar.monthrange(yr, mo)[1]
-            pay_query = pay_query.filter(FeePayment.payment_date >= date(yr, mo, 1), FeePayment.payment_date <= date(yr, mo, last_day))
-            exp_query = exp_query.filter(Expense.payment_date >= date(yr, mo, 1), Expense.payment_date <= date(yr, mo, last_day))
-        except Exception:
-            pass
+    elif date_from and date_to:
+        bill_query = bill_query.filter(FeeBill.due_date >= date_from, FeeBill.due_date <= date_to)
+
+    if date_from and date_to:
+        pay_query = pay_query.filter(FeePayment.payment_date >= date_from, FeePayment.payment_date <= date_to)
+        exp_query = exp_query.filter(Expense.payment_date >= date_from, Expense.payment_date <= date_to)
+
+    if class_id:
+        bill_query = bill_query.join(Student, FeeBill.student_id == Student.id).filter(Student.class_id == int(class_id))
+        pay_query  = pay_query.join(Student, FeePayment.student_id == Student.id).filter(Student.class_id == int(class_id))
+
+    if payment_mode:
+        pay_query = pay_query.filter(FeePayment.payment_mode == payment_mode.upper())
 
     bills_in_session_count = bill_query.count()
-    if bills_in_session_count == 0 and not month:
+    if bills_in_session_count == 0 and not month and not date_from:
         try:
             from app.models.financial import FeeRecord
             if FeeRecord.query.filter_by(school_id=school_id, session=session).count() > 0:
@@ -1837,18 +1867,60 @@ def get_finance_dashboard_metrics(school_id, session=None, month=None):
         except Exception:
             db.session.rollback()
 
-    total_billed = bill_query.with_entities(func.coalesce(func.sum(FeeBill.total_payable), 0.0)).scalar() or 0.0
-    total_collected = pay_query.with_entities(func.coalesce(func.sum(FeePayment.total_paid), 0.0)).scalar() or 0.0
-    outstanding = bill_query.with_entities(func.coalesce(func.sum(FeeBill.balance_due), 0.0)).scalar() or 0.0
+    total_billed = float(bill_query.with_entities(func.coalesce(func.sum(FeeBill.total_payable), 0.0)).scalar() or 0.0)
+    total_collected = float(pay_query.with_entities(func.coalesce(func.sum(FeePayment.total_paid), 0.0)).scalar() or 0.0)
+    outstanding = float(bill_query.with_entities(func.coalesce(func.sum(FeeBill.balance_due), 0.0)).scalar() or 0.0)
 
-    total_billed = float(total_billed)
-    total_collected = float(total_collected)
-    # Strict financial integrity: Outstanding must always equal Total Billed - Total Collected
-    outstanding = round(max(0.0, total_billed - total_collected), 2)
+    # Distinguish not-yet-due vs overdue
+    not_yet_due = float(bill_query.filter(FeeBill.due_date >= today, FeeBill.balance_due > 0).with_entities(
+        func.coalesce(func.sum(FeeBill.balance_due), 0.0)
+    ).scalar() or 0.0)
 
-    total_expenses = float(exp_query.with_entities(func.coalesce(func.sum(Expense.amount), 0.0)).scalar() or 0.0)
+    overdue = float(bill_query.filter(FeeBill.due_date < today, FeeBill.balance_due > 0).with_entities(
+        func.coalesce(func.sum(FeeBill.balance_due), 0.0)
+    ).scalar() or 0.0)
+
+    paid_expenses = float(exp_query.filter(Expense.status == 'PAID').with_entities(
+        func.coalesce(func.sum(Expense.amount), 0.0)
+    ).scalar() or 0.0)
+
+    unpaid_expenses = float(exp_query.filter(Expense.status != 'PAID').with_entities(
+        func.coalesce(func.sum(Expense.amount), 0.0)
+    ).scalar() or 0.0)
+
+    # Add unpaid vendor bills
+    try:
+        from app.models.finance import VendorBill
+        vb_q = VendorBill.query.filter_by(school_id=school_id).filter(VendorBill.status.in_(['PENDING', 'PARTIAL']))
+        if date_from and date_to:
+            vb_q = vb_q.filter(VendorBill.bill_date >= date_from, VendorBill.bill_date <= date_to)
+        unpaid_vb = float(vb_q.with_entities(func.coalesce(func.sum(VendorBill.balance_amount), 0.0)).scalar() or 0.0)
+    except Exception:
+        unpaid_vb = 0.0
+
+    total_unpaid_liabilities = round(unpaid_expenses + unpaid_vb, 2)
+    total_expenses = round(paid_expenses, 2) # Realized paid expenses
     net_surplus = round(total_collected - total_expenses, 2)
     collection_pct = round((total_collected / total_billed * 100.0), 1) if total_billed > 0 else 0.0
+
+    # Bank / Cash Position
+    cash_inflows = round(total_collected, 2)
+    cash_outflows = round(paid_expenses, 2)
+    net_cash_position = round(cash_inflows - cash_outflows, 2)
+
+    # Collection method breakdown
+    modes_agg = dict(
+        pay_query.with_entities(
+            FeePayment.payment_mode,
+            func.coalesce(func.sum(FeePayment.total_paid), 0.0)
+        ).group_by(FeePayment.payment_mode).all()
+    )
+    all_modes = ['CASH', 'UPI', 'BANK_TRANSFER', 'CHEQUE', 'CARD', 'ONLINE']
+    collection_mode_breakdown = {m: round(float(modes_agg.get(m, 0.0)), 2) for m in all_modes}
+    for m, v in modes_agg.items():
+        if m and m not in collection_mode_breakdown:
+            collection_mode_breakdown[m] = round(float(v), 2)
+
 
     # ── Service-wise Breakdown (Direct SQL Aggregation) ──────────────────
     service_stats = {
@@ -2157,12 +2229,25 @@ def get_finance_dashboard_metrics(school_id, session=None, month=None):
     return {
         'session':               session,
         'filter_month':          month,
+        'date_from':             str(date_from) if date_from else None,
+        'date_to':               str(date_to) if date_to else None,
+        'class_id':              class_id,
+        'payment_mode':          payment_mode,
         'total_billed':          round(total_billed, 2),
         'total_collected':       round(total_collected, 2),
         'outstanding':           round(outstanding, 2),
+        'not_yet_due':           round(not_yet_due, 2),
+        'overdue':               round(overdue, 2),
         'total_expenses':        round(total_expenses, 2),
+        'paid_expenses':         round(paid_expenses, 2),
+        'unpaid_liabilities':    round(total_unpaid_liabilities, 2),
+        'cash_inflows':          cash_inflows,
+        'cash_outflows':         cash_outflows,
+        'cash_position':         net_cash_position,
         'net_surplus':           net_surplus,
+        'net_operating_result':  net_surplus,
         'collection_percentage': collection_pct,
+        'collection_modes':      collection_mode_breakdown,
         'service_wise':          list(service_stats.values()),
         'department_expenses':   list(dept_expenses.values()),
         'class_wise':            class_stats,

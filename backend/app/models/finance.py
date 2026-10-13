@@ -861,3 +861,128 @@ class AssetMaintenanceRecord(db.Model):
             'expense_id':       self.expense_id,
             'created_at':       self.created_at.isoformat() if self.created_at else None,
         }
+
+
+# ─── 10. Bank, Gateway & UPI Statement Reconciliation ────────────────────────
+
+class BankStatementBatch(db.Model):
+    """
+    Imported bank statement, payment gateway settlement, or UPI export batch.
+    """
+    __tablename__ = 'bank_statement_batches'
+
+    id                 = db.Column(db.Integer, primary_key=True)
+    school_id          = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    batch_no           = db.Column(db.String(60), unique=True, index=True, nullable=False)
+
+    bank_name          = db.Column(db.String(120), nullable=False) # e.g. HDFC Bank, SBI, Razorpay, Cash Register
+    account_number     = db.Column(db.String(60), default='')
+    statement_source   = db.Column(db.String(40), default='BANK_STATEMENT') # BANK_STATEMENT, PAYMENT_GATEWAY, UPI_EXPORT, CASHBOOK
+    file_name          = db.Column(db.String(250), default='')
+
+    date_from          = db.Column(db.Date, nullable=True)
+    date_to            = db.Column(db.Date, nullable=True)
+
+    opening_balance    = db.Column(db.Float, default=0.0)
+    closing_balance    = db.Column(db.Float, default=0.0)
+
+    total_credits      = db.Column(db.Float, default=0.0)
+    total_debits       = db.Column(db.Float, default=0.0)
+    total_transactions = db.Column(db.Integer, default=0)
+    matched_count      = db.Column(db.Integer, default=0)
+    unmatched_count    = db.Column(db.Integer, default=0)
+
+    status             = db.Column(db.String(30), default='PENDING') # PENDING, PARTIALLY_RECONCILED, RECONCILED
+
+    uploaded_by        = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    created_at         = db.Column(db.DateTime, default=datetime.utcnow)
+
+    uploader           = db.relationship('User', foreign_keys=[uploaded_by], lazy='select')
+    transactions       = db.relationship('BankTransaction', backref='batch', lazy='dynamic', cascade='all, delete-orphan')
+
+    def to_dict(self):
+        return {
+            'id':                 self.id,
+            'batch_no':           self.batch_no,
+            'bank_name':          self.bank_name,
+            'account_number':     self.account_number or '',
+            'statement_source':   self.statement_source or 'BANK_STATEMENT',
+            'file_name':          self.file_name or '',
+            'date_from':          str(self.date_from) if self.date_from else None,
+            'date_to':            str(self.date_to) if self.date_to else None,
+            'opening_balance':    self.opening_balance or 0.0,
+            'closing_balance':    self.closing_balance or 0.0,
+            'total_credits':      self.total_credits or 0.0,
+            'total_debits':       self.total_debits or 0.0,
+            'total_transactions': self.total_transactions or 0,
+            'matched_count':      self.matched_count or 0,
+            'unmatched_count':    self.unmatched_count or 0,
+            'status':             self.status or 'PENDING',
+            'uploaded_by':        self.uploaded_by,
+            'uploaded_by_name':   self.uploader.name if self.uploader else 'System',
+            'created_at':         self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class BankTransaction(db.Model):
+    """
+    Individual line item from bank statement / payment gateway report with matching status.
+    """
+    __tablename__ = 'bank_transactions'
+
+    id                  = db.Column(db.Integer, primary_key=True)
+    batch_id            = db.Column(db.Integer, db.ForeignKey('bank_statement_batches.id'), nullable=False, index=True)
+    school_id           = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+
+    txn_date            = db.Column(db.Date, nullable=False, index=True)
+    value_date          = db.Column(db.Date, nullable=True)
+    narration           = db.Column(db.Text, default='')
+    reference_no        = db.Column(db.String(100), default='', index=True) # UTR / Cheque / Txn ID
+
+    txn_type            = db.Column(db.String(20), nullable=False) # CREDIT, DEBIT
+    amount              = db.Column(db.Float, nullable=False, default=0.0)
+    running_balance     = db.Column(db.Float, default=0.0)
+
+    match_status        = db.Column(db.String(40), default='NEEDS_REVIEW', index=True)
+    # MATCHED, POSSIBLE_MATCH, MISSING_IN_BANK, MISSING_IN_ERP, AMOUNT_MISMATCH, DUPLICATE, NEEDS_REVIEW
+
+    match_confidence    = db.Column(db.Float, default=0.0) # 0 to 100
+    matched_entity_type = db.Column(db.String(40), nullable=True) # FEE_PAYMENT, EXPENSE, VENDOR_PAYMENT
+    matched_entity_id   = db.Column(db.Integer, nullable=True)
+    difference_amount   = db.Column(db.Float, default=0.0)
+    explanation         = db.Column(db.Text, default='')
+
+    resolution_status   = db.Column(db.String(30), default='UNRESOLVED') # UNRESOLVED, CONFIRMED, ADJUSTED, IGNORED
+    resolved_by         = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    resolved_at         = db.Column(db.DateTime, nullable=True)
+    resolution_notes    = db.Column(db.String(500), default='')
+
+    created_at          = db.Column(db.DateTime, default=datetime.utcnow)
+
+    resolver            = db.relationship('User', foreign_keys=[resolved_by], lazy='select')
+
+    def to_dict(self):
+        return {
+            'id':                  self.id,
+            'batch_id':            self.batch_id,
+            'txn_date':            str(self.txn_date) if self.txn_date else None,
+            'value_date':          str(self.value_date) if self.value_date else None,
+            'narration':           self.narration or '',
+            'reference_no':        self.reference_no or '',
+            'txn_type':            self.txn_type,
+            'amount':              self.amount or 0.0,
+            'running_balance':     self.running_balance or 0.0,
+            'match_status':        self.match_status or 'NEEDS_REVIEW',
+            'match_confidence':    self.match_confidence or 0.0,
+            'matched_entity_type': self.matched_entity_type or '',
+            'matched_entity_id':   self.matched_entity_id,
+            'difference_amount':   self.difference_amount or 0.0,
+            'explanation':         self.explanation or '',
+            'resolution_status':   self.resolution_status or 'UNRESOLVED',
+            'resolved_by':         self.resolved_by,
+            'resolved_by_name':    self.resolver.name if self.resolver else '',
+            'resolved_at':         self.resolved_at.isoformat() if self.resolved_at else None,
+            'resolution_notes':    self.resolution_notes or '',
+            'created_at':          self.created_at.isoformat() if self.created_at else None,
+        }
+

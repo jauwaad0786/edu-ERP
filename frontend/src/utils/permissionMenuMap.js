@@ -48,6 +48,7 @@ export const PERMISSION_MENU_ITEMS = {
   'fees.discount.apply':       { group: 'Finance & Fees', item: { icon: 'ti-credit-card',      label: 'Collect Payment',   path: '/finance/payments/collect' } },
   'fees.receipt.view':         { group: 'Finance & Fees', item: { icon: 'ti-receipt',          label: 'Receipts',          path: '/finance/receipts' } },
   'fees.reports.view':         { group: 'Finance & Fees', item: { icon: 'ti-report-analytics', label: 'Finance Reports',   path: '/finance/reports' } },
+  'fees.reconciliation.view':  { group: 'Finance & Fees', item: { icon: 'ti-arrows-diff',      label: 'Reconciliation',    path: '/finance/reconciliation' } },
 
   'exams.schedule.manage':     { group: 'Examinations', item: { icon: 'ti-pencil',    label: 'Exam Schedule', path: '/exams' } },
   'exams.timetable.manage':    { group: 'Examinations', item: { icon: 'ti-pencil',    label: 'Exam Schedule', path: '/exams' } },

@@ -131,9 +131,21 @@ def get_dashboard():
 
     session = request.args.get('session') or get_current_academic_session(user.school_id)
     month   = request.args.get('month', None) # e.g. "2026-09"
+    date_from = request.args.get('date_from', None)
+    date_to = request.args.get('date_to', None)
+    class_id = request.args.get('class_id', None)
+    payment_mode = request.args.get('payment_mode', None)
 
     try:
-        data = get_finance_dashboard_metrics(user.school_id, session=session, month=month)
+        data = get_finance_dashboard_metrics(
+            user.school_id,
+            session=session,
+            month=month,
+            date_from=date_from,
+            date_to=date_to,
+            class_id=class_id,
+            payment_mode=payment_mode
+        )
         return jsonify(data), 200
     except Exception as e:
         db.session.rollback()
