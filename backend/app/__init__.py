@@ -61,6 +61,9 @@ def create_app(config_name='default'):
 
     bcrypt.init_app(app)
     migrate.init_app(app, db)
+    limiter_storage = os.environ.get('RATELIMIT_STORAGE_URI') or os.environ.get('REDIS_URL')
+    if limiter_storage and 'RATELIMIT_STORAGE_URI' not in app.config:
+        app.config['RATELIMIT_STORAGE_URI'] = limiter_storage
     limiter.init_app(app)
     from app.utils.security_headers import is_cors_origin_allowed, apply_security_headers, get_allowed_origins
 

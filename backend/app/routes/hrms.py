@@ -1056,7 +1056,13 @@ def pay_payroll_run_all_route(run_id):
 @jwt_required()
 def download_payslip_pdf(slip_id):
     current_u = get_current_user()
+    if not current_u:
+        return jsonify({'error': 'Unauthorized'}), 401
     slip = PayrollSlip.query.get_or_404(slip_id)
+
+    # Multi-tenant isolation: Super Admin has cross-school access; all others must belong to the same school
+    if current_u.role != UserRole.SUPER_ADMIN and slip.school_id != current_u.school_id:
+        return jsonify({'error': 'Unauthorized: Slip belongs to a different school'}), 403
 
     # Permission check: Self or Principal/HR/Accountant
     if slip.user_id != current_u.id and current_u.role not in (UserRole.PRINCIPAL, UserRole.HR, UserRole.SUPER_ADMIN, UserRole.ACCOUNTANT):

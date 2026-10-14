@@ -190,7 +190,7 @@ def upload_note():
     if not teacher_id and teacher_id_req:
         teacher_id = teacher_id_req
     elif not teacher_id and subject_id:
-        sub = Subject.query.get(subject_id)
+        sub = Subject.query.filter_by(id=subject_id, school_id=sid).first()
         if sub and sub.teacher_id:
             teacher_id = sub.teacher_id
 
@@ -668,7 +668,7 @@ def get_internal_marks():
         ).all()
     }
 
-    subject = Subject.query.get(subject_id)
+    subject = Subject.query.filter_by(id=subject_id, school_id=sid).first()
     default_max = 20.0
 
     items = []
@@ -714,6 +714,11 @@ def batch_save_internal_marks():
     if not class_id or not subject_id:
         return jsonify({'error': 'Class and Subject are required'}), 400
 
+    cls_obj = Class.query.filter_by(id=class_id, school_id=sid).first()
+    sub_obj = Subject.query.filter_by(id=subject_id, school_id=sid).first()
+    if not cls_obj or not sub_obj:
+        return jsonify({'error': 'Unauthorized: Class or Subject does not belong to your school'}), 403
+
     teacher = Teacher.query.filter_by(user_id=curr.id).first()
     teacher_id = teacher.id if teacher else None
 
@@ -721,6 +726,10 @@ def batch_save_internal_marks():
     for entry in marks_list:
         st_id = entry.get('student_id')
         if not st_id:
+            continue
+
+        student_obj = Student.query.filter_by(id=st_id, school_id=sid, class_id=class_id, is_deleted=False).first()
+        if not student_obj:
             continue
 
         try:

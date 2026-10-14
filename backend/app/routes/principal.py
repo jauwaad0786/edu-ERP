@@ -731,12 +731,19 @@ def add_staff_salary_record(user_id):
 @principal_bp.route('/students', methods=['GET'])
 @role_required('PRINCIPAL', 'TEACHER')
 def list_students():
-    class_id = request.args.get('class_id')
-    search   = (request.args.get('search') or '').strip()
+    class_id        = request.args.get('class_id')
+    section_param   = (request.args.get('section') or '').strip()
+    session_param   = (request.args.get('session') or '').strip()
+    adm_date_param  = (request.args.get('admission_date') or '').strip()
+    search          = (request.args.get('search') or '').strip()
+    sort_by         = (request.args.get('sort_by') or 'id').strip().lower()
+    sort_order      = (request.args.get('sort_order') or 'asc').strip().lower()
+
     q = Student.query.options(
         joinedload(Student.user),
         joinedload(Student.class_ref)
     ).filter_by(school_id=_school_id()).filter(Student.is_deleted == False)
+
     status_param = (request.args.get('status') or '').strip().upper()
     if status_param == 'PROVISIONAL':
         q = q.filter(Student.status == 'PROVISIONAL')
@@ -749,16 +756,49 @@ def list_students():
         q = q.filter(Student.status != 'PROVISIONAL')
 
     if class_id:
-        q = q.filter_by(class_id=class_id)
+        q = q.filter(Student.class_id == class_id)
+    if session_param:
+        q = q.filter(Student.session == session_param)
+    if adm_date_param:
+        try:
+            q = q.filter(Student.admission_date == date.fromisoformat(adm_date_param))
+        except Exception:
+            pass
+
+    has_user_joined = False
     if search:
-        q = q.join(User, Student.user_id == User.id).filter(db.or_(
+        q = q.join(User, Student.user_id == User.id)
+        has_user_joined = True
+        q = q.filter(db.or_(
             User.name.ilike(f'%{search}%'),
             Student.roll_number.ilike(f'%{search}%'),
             Student.admission_no.ilike(f'%{search}%'),
         ))
+
+    if section_param:
+        q = q.join(Class, Student.class_id == Class.id).filter(Class.section == section_param)
+
+    # Dynamic sorting
+    order_col = Student.id
+    if sort_by == 'name':
+        if not has_user_joined:
+            q = q.join(User, Student.user_id == User.id)
+        order_col = User.name
+    elif sort_by in ('admission_no', 'admission_number'):
+        order_col = Student.admission_no
+    elif sort_by == 'roll_number':
+        order_col = Student.roll_number
+    elif sort_by == 'admission_date':
+        order_col = Student.admission_date
+
+    if sort_order == 'desc':
+        q = q.order_by(order_col.desc())
+    else:
+        q = q.order_by(order_col.asc())
+
     page     = request.args.get('page', 1, type=int)
     per_page = min(request.args.get('per_page', 50, type=int), 100)
-    paginated = q.order_by(Student.id).paginate(page=page, per_page=per_page, error_out=False)
+    paginated = q.paginate(page=page, per_page=per_page, error_out=False)
     return jsonify({
         'data':     [s.to_dict() for s in paginated.items],
         'total':    paginated.total,
@@ -2905,20 +2945,38 @@ def delete_fee_structure(fs_id):
 def attendance_summary():
     """
     School-wide attendance summary.
-    Query params: date (YYYY-MM-DD), month (YYYY-MM)
+    Query params: date (YYYY-MM-DD), month (YYYY-MM), class_id, session
     """
-    sid        = _school_id()
-    date_param = request.args.get('date')
-    month_param= request.args.get('month')  # e.g. "2024-04"
+    sid         = _school_id()
+    date_param  = request.args.get('date')
+    month_param = request.args.get('month')  # e.g. "2024-04"
+    class_id    = request.args.get('class_id', type=int)
+    session_str = request.args.get('session')
 
-    # All students in this school
-    total_students = Student.query.filter_by(school_id=sid).count()
+    # Students base query
+    sq = Student.query.filter_by(school_id=sid, is_deleted=False).filter(
+        Student.status.notin_(['WITHDRAWN', 'LEFT', 'GRADUATED', 'TRANSFERRED', 'ARCHIVED', 'PROVISIONAL'])
+    )
+    if class_id:
+        sq = sq.filter(Student.class_id == class_id)
+    if session_str:
+        sq = sq.filter(Student.session == session_str)
+
+    total_students = sq.count()
 
     q = Attendance.query.join(Student, Attendance.student_id == Student.id)\
-                        .filter(Student.school_id == sid)
+                        .filter(Student.school_id == sid, Student.is_deleted == False)
+
+    if class_id:
+        q = q.filter(Attendance.class_id == class_id)
+    if session_str:
+        q = q.filter(Student.session == session_str)
 
     if date_param:
-        target = date.fromisoformat(date_param)
+        try:
+            target = date.fromisoformat(date_param)
+        except Exception:
+            target = date.today()
         q = q.filter(Attendance.date == target)
     elif month_param:
         year, month = map(int, month_param.split('-'))
@@ -2928,7 +2986,6 @@ def attendance_summary():
             extract('month', Attendance.date) == month
         )
     else:
-        # Default: today
         target = date.today()
         q = q.filter(Attendance.date == target)
 
@@ -2936,7 +2993,11 @@ def attendance_summary():
     present   = sum(1 for r in records if r.status == 'PRESENT')
     absent    = sum(1 for r in records if r.status == 'ABSENT')
     late      = sum(1 for r in records if r.status == 'LATE')
+    half_day  = sum(1 for r in records if r.status == 'HALF_DAY')
+    on_leave  = sum(1 for r in records if r.status in ('ON_LEAVE', 'EXCUSED'))
     marked    = len(records)
+
+    effective_present = present + (0.5 * half_day) + late
 
     return jsonify({
         'total_students': total_students,
@@ -2944,8 +3005,101 @@ def attendance_summary():
         'present':        present,
         'absent':         absent,
         'late':           late,
-        'not_marked':     total_students - marked,
-        'present_pct':    round(present / total_students * 100, 1) if total_students else 0,
+        'half_day':       half_day,
+        'on_leave':       on_leave,
+        'not_marked':     max(0, total_students - marked),
+        'present_pct':    round(effective_present / total_students * 100, 1) if total_students else 0,
+    }), 200
+
+
+@principal_bp.route('/attendance/low-attendance', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER')
+def low_attendance_report():
+    """
+    Returns students with attendance below threshold (default 75%).
+    Query params: class_id, session, threshold
+    """
+    sid = _school_id()
+    class_id = request.args.get('class_id', type=int)
+    session_str = request.args.get('session')
+    threshold = request.args.get('threshold', 75.0, type=float)
+
+    from app.services.student_attendance_service import get_low_attendance_students
+    low_students = get_low_attendance_students(
+        school_id=sid,
+        class_id=class_id,
+        session_str=session_str,
+        threshold=threshold
+    )
+    return jsonify({
+        'threshold': threshold,
+        'total_low_attendance': len(low_students),
+        'students': low_students
+    }), 200
+
+
+@principal_bp.route('/attendance/missing', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER')
+def missing_attendance_report():
+    """
+    Returns classes that have not submitted attendance for a given date.
+    Query params: date (YYYY-MM-DD) [default: today]
+    """
+    sid = _school_id()
+    date_param = request.args.get('date')
+    try:
+        target_date = date.fromisoformat(date_param) if date_param else date.today()
+    except Exception:
+        target_date = date.today()
+
+    from app.services.student_attendance_service import get_missing_attendance_classes
+    missing_classes = get_missing_attendance_classes(sid, target_date)
+    return jsonify({
+        'date': str(target_date),
+        'total_missing': len(missing_classes),
+        'classes': missing_classes
+    }), 200
+
+
+@principal_bp.route('/attendance/corrections', methods=['GET'])
+@role_required('PRINCIPAL', 'TEACHER')
+def attendance_corrections_log():
+    """
+    Audit log of all attendance corrections.
+    Query params: class_id, student_id, start_date, end_date, limit
+    """
+    sid = _school_id()
+    class_id = request.args.get('class_id', type=int)
+    student_id = request.args.get('student_id', type=int)
+    start_date_param = request.args.get('start_date')
+    end_date_param = request.args.get('end_date')
+    limit = request.args.get('limit', 100, type=int)
+
+    start_date = None
+    end_date = None
+    if start_date_param:
+        try:
+            start_date = date.fromisoformat(start_date_param)
+        except Exception:
+            pass
+    if end_date_param:
+        try:
+            end_date = date.fromisoformat(end_date_param)
+        except Exception:
+            pass
+
+    from app.services.student_attendance_service import get_attendance_corrections_log
+    corrections = get_attendance_corrections_log(
+        school_id=sid,
+        class_id=class_id,
+        student_id=student_id,
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit
+    )
+    return jsonify({
+        'total': len(corrections),
+        'corrections': corrections
     }), 200
 @principal_bp.route('/fees/batches/<int:batch_id>/bulk-adjust', methods=['POST'])
 @permission_required('fees.discount.apply')
@@ -3073,72 +3227,31 @@ def attendance_class_summary():
 def mark_attendance():
     """
     Mark attendance for multiple students.
-    Body: { class_id, date, records: [{student_id, status}] }
+    Body: { class_id, date, records: [{student_id, status}], reason? }
     """
-    data      = request.get_json()
-    class_id  = data.get('class_id')
-    att_date  = date.fromisoformat(data.get('date', str(date.today())))
-    records   = data.get('records', [])
-    marker_id = get_current_user().id
+    data     = request.get_json() or {}
+    class_id = data.get('class_id')
+    raw_date = data.get('date', str(date.today()))
+    records  = data.get('records', [])
+    user     = get_current_user()
 
-    for rec in records:
-        existing = Attendance.query.filter_by(
-            student_id=rec['student_id'], date=att_date
-        ).first()
-        if existing:
-            existing.status    = rec['status']
-            existing.marked_by = marker_id
-        else:
-            att = Attendance(
-                student_id=rec['student_id'],
-                class_id=class_id,
-                date=att_date,
-                status=rec['status'],
-                marked_by=marker_id,
-                remarks=rec.get('remarks', '')
-            )
-            db.session.add(att)
-
-    db.session.commit()
+    if not class_id or not records:
+        return jsonify({'error': 'class_id and records are required'}), 400
 
     try:
-        from app.services.audit_service import record_audit_event
-        record_audit_event(
-            school_id=_school_id(),
-            actor_user_id=marker_id,
-            action='ATTENDANCE_MARKED',
-            module='attendance',
-            entity_type='Attendance',
-            class_id=class_id,
-            remarks=f"Marked attendance for {len(records)} students on {att_date}",
-            status='SUCCESS',
-            severity='LOW'
-        )
-    except Exception as audit_err:
-        print(f"[AUDIT] Attendance mark logging failed: {audit_err}")
+        att_date = date.fromisoformat(raw_date)
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Invalid date format'}), 400
 
-    # Notification Event Trigger for Absent Students
-    try:
-        from app.services.notification import emit_notification_event
-        absent_student_ids = [r.get('student_id') for r in records if (r.get('status') or '').upper() == 'ABSENT']
-        if absent_student_ids:
-            absent_students = Student.query.filter(Student.id.in_(absent_student_ids)).all()
-            for s in absent_students:
-                emit_notification_event(
-                    event_name='attendance.absent',
-                    school_id=_school_id(),
-                    payload={
-                        'student_name': s.user.name if s.user else f"Student #{s.id}",
-                        'student_id': s.id,
-                        'user_id': s.user_id,
-                        'date': str(att_date),
-                        'created_by': marker_id
-                    }
-                )
-    except Exception as notif_err:
-        print(f"[NOTIF] Principal attendance notification trigger note: {notif_err}")
-
-    return jsonify({'message': f'{len(records)} attendance records saved'}), 200
+    from app.services.student_attendance_service import process_attendance_submission
+    res, status_code = process_attendance_submission(
+        user=user,
+        class_id=class_id,
+        att_date=att_date,
+        records=records,
+        default_reason=data.get('reason')
+    )
+    return jsonify(res), status_code
 @principal_bp.route('/teachers/attendance/today', methods=['GET'])
 @role_required('PRINCIPAL', 'TEACHER')
 def teacher_attendance_today():
@@ -4833,9 +4946,11 @@ def dashboard():
     s_present = s_att_counts.get('PRESENT', 0)
     s_absent  = s_att_counts.get('ABSENT', 0)
     s_late    = s_att_counts.get('LATE', 0)
+    s_marked  = sum(s_att_counts.values())
 
     # Today's teacher attendance aggregated in SQL
     total_teachers = Teacher.query.filter_by(school_id=sid).count()
+    t_att_today = TeacherAttendance.query.filter_by(school_id=sid, date=today).all()
     t_att_counts = dict(
         db.session.query(TeacherAttendance.status, func.count(TeacherAttendance.id))
         .filter(TeacherAttendance.school_id == sid, TeacherAttendance.date == today)
@@ -5352,7 +5467,7 @@ def dashboard():
         'students_present':        s_present,
         'students_absent':         s_absent,
         'students_late':           s_late,
-        'students_marked':         len(att_today),
+        'students_marked':         s_marked,
         # teacher attendance today
         'teachers_present':        t_present,
         'teachers_absent':         t_absent,

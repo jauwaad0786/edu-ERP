@@ -4,7 +4,7 @@ Provides REST API endpoints for Student School Arrival Notifications and Parent 
 """
 
 from flask import Blueprint, request, jsonify
-from app import db
+from app import db, limiter
 from app.services.arrival_service import ArrivalService
 from app.models.arrival import StudentArrivalEvent
 from app.utils.decorators import role_required, get_current_user
@@ -197,6 +197,7 @@ def respond_arrival(event_id):
 
 # ─── 7. Public / Direct UUID Response (From SMS / WhatsApp / Push link) ──────
 @arrival_bp.route('/uuid/<string:event_uuid>/respond', methods=['POST'])
+@limiter.limit("30 per minute")
 def respond_arrival_by_uuid(event_uuid):
     """
     POST /api/arrivals/uuid/<event_uuid>/respond
@@ -237,6 +238,7 @@ def respond_arrival_by_uuid(event_uuid):
 
 # ─── 8. Query Event by UUID ──────────────────────────────────────────────────
 @arrival_bp.route('/uuid/<string:event_uuid>', methods=['GET'])
+@limiter.limit("30 per minute")
 def get_arrival_by_uuid(event_uuid):
     """
     GET /api/arrivals/uuid/<event_uuid>

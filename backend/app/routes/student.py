@@ -92,14 +92,27 @@ def my_attendance():
     student = _get_effective_student(user, student_id)
     if not student:
         return jsonify({'error': 'Student attendance not found'}), 404
-    records = Attendance.query.filter_by(student_id=student.id).order_by(Attendance.date.desc()).all()
-    total   = len(records)
-    present = sum(1 for r in records if r.status == 'PRESENT')
-    return jsonify({
-        'total_days': total, 'present': present, 'absent': total - present,
-        'percentage': round(present / total * 100, 1) if total else 0,
-        'records': [r.to_dict() for r in records[:30]]  # last 30 days
-    }), 200
+
+    month = request.args.get('month')
+    session_param = request.args.get('session')
+
+    q = Attendance.query.filter_by(student_id=student.id)
+
+    if session_param:
+        from app.models.academic import StudentEnrollment
+        enr = StudentEnrollment.query.filter_by(student_id=student.id, session=session_param).first()
+        if enr:
+            q = q.filter_by(class_id=enr.class_id)
+
+    records = q.order_by(Attendance.date.desc()).all()
+    if month:
+        records = [r for r in records if str(r.date).startswith(month)]
+
+    from app.services.student_attendance_service import calculate_attendance_metrics
+    metrics = calculate_attendance_metrics(records)
+    metrics['records'] = [r.to_dict() for r in records[:30]]
+    metrics['session'] = session_param or getattr(student, 'session', '2024-25')
+    return jsonify(metrics), 200
 
 
 def _class_result_is_published(exam_id, class_id):

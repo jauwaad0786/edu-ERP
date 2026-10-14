@@ -463,10 +463,14 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
             # ── Phase 2: User-linked sub-table cleanup ──
             if school_user_ids:
                 uid_tuple = tuple(school_user_ids)
+                ALLOWED_USER_SUBTABLES = {
+                    'user_role_assignments', 'user_permission_overrides', 'session_history',
+                    'user_devices', 'otp_verifications', 'login_history'
+                }
                 for u_tab in ['user_role_assignments', 'user_permission_overrides', 'session_history',
                                'user_devices', 'otp_verifications', 'login_history']:
-                    if u_tab in all_tables and 'user_id' in table_columns.get(u_tab, set()):
-                        _exec(f"DELETE FROM {u_tab} WHERE user_id IN %s", (uid_tuple,))
+                    if u_tab in ALLOWED_USER_SUBTABLES and u_tab in all_tables and 'user_id' in table_columns.get(u_tab, set()):
+                        _exec(f"DELETE FROM {u_tab} WHERE user_id IN %s", (uid_tuple,))  # nosec B608
 
                 _exec("DELETE FROM temporary_role_delegations WHERE delegator_user_id IN %s OR delegatee_user_id IN %s", (uid_tuple, uid_tuple))
                 _exec("DELETE FROM employee_documents WHERE user_id IN %s", (uid_tuple,))
@@ -576,13 +580,13 @@ def permanently_delete_school(school_id: int, actor_user, confirm_name: str, for
             ]
 
             for t_name in ordered_tables:
-                if t_name in tables_with_school_id:
-                    _exec(f"DELETE FROM {t_name} WHERE school_id=%s", (sid,))
+                if t_name in tables_with_school_id and re.match(r'^[a-z0-9_]+$', t_name):
+                    _exec(f"DELETE FROM {t_name} WHERE school_id=%s", (sid,))  # nosec B608
 
             # Catch any remaining tables with school_id not in the explicit list
             for t_name in tables_with_school_id:
-                if t_name not in ordered_tables and t_name not in ('schools', 'company_activity_logs'):
-                    _exec(f"DELETE FROM {t_name} WHERE school_id=%s", (sid,))
+                if t_name not in ordered_tables and t_name not in ('schools', 'company_activity_logs') and re.match(r'^[a-z0-9_]+$', t_name):
+                    _exec(f"DELETE FROM {t_name} WHERE school_id=%s", (sid,))  # nosec B608
 
             # ── Phase 5: Delete school users (never SUPER_ADMIN) ──
             _exec("DELETE FROM users WHERE school_id=%s AND (role != 'SUPER_ADMIN' OR role IS NULL)", (sid,))

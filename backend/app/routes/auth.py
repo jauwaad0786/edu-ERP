@@ -557,17 +557,31 @@ def student_login():
     if student.school_id:
         from app.models.school import School
         student_school = School.query.get(student.school_id)
-        if student_school and getattr(student_school, 'status', None) == 'ARCHIVED':
-            return jsonify({'error': 'This school account is currently archived. Please contact the administrator.'}), 403
+        if student_school:
+            s_status = (getattr(student_school, 'status', None) or '').upper()
+            if s_status == 'SUSPENDED':
+                return jsonify({'error': 'This school account has been suspended. Please contact the administrator.'}), 403
+            if s_status == 'ARCHIVED':
+                return jsonify({'error': 'This school account is currently archived. Please contact the administrator.'}), 403
+            if s_status == 'INACTIVE':
+                return jsonify({'error': 'This school account is inactive. Please contact the administrator.'}), 403
+            if s_status in ('DRAFT', 'ONBOARDING'):
+                return jsonify({'error': 'This school onboarding is not complete. Please contact the administrator.'}), 403
+            if not student_school.is_active:
+                return jsonify({'error': 'This school is currently deactivated. Please contact the administrator.'}), 403
 
-    if not user.is_active:
+    user_status = (getattr(user, 'account_status', None) or ('ACTIVE' if user.is_active else 'INACTIVE')).upper()
+    if user_status == 'SUSPENDED':
+        return jsonify({'error': 'Account suspended. Contact your administrator.'}), 403
+    if user_status in ('INACTIVE', 'DEACTIVATED') or not user.is_active or getattr(user, 'is_deleted', False):
         return jsonify({'error': 'Account deactivated. Contact your school.'}), 403
 
     user.touch_last_login()
     db.session.commit()
 
-    access_token  = create_access_token(identity=str(user.id))
-    refresh_token = create_refresh_token(identity=str(user.id))
+    token_ver = getattr(user, 'token_version', 0) or 0
+    access_token  = create_access_token(identity=str(user.id), additional_claims={'token_version': token_ver})
+    refresh_token = create_refresh_token(identity=str(user.id), additional_claims={'token_version': token_ver})
 
     return jsonify({
         'access_token':  access_token,
@@ -842,14 +856,18 @@ def verify_otp():
     if not user:
         return jsonify({'error': 'Account not found. Please contact your school administrator.'}), 404
 
-    if not user.is_active:
+    user_status = (getattr(user, 'account_status', None) or ('ACTIVE' if user.is_active else 'INACTIVE')).upper()
+    if user_status == 'SUSPENDED':
+        return jsonify({'error': 'Account suspended. Contact your administrator.'}), 403
+    if user_status in ('INACTIVE', 'DEACTIVATED') or not user.is_active or getattr(user, 'is_deleted', False):
         return jsonify({'error': 'Account deactivated. Contact your administrator.'}), 403
 
     user.touch_last_login()
     db.session.commit()
 
-    access_token  = create_access_token(identity=str(user.id))
-    refresh_token = create_refresh_token(identity=str(user.id))
+    token_ver = getattr(user, 'token_version', 0) or 0
+    access_token  = create_access_token(identity=str(user.id), additional_claims={'token_version': token_ver})
+    refresh_token = create_refresh_token(identity=str(user.id), additional_claims={'token_version': token_ver})
 
     return jsonify({
         'access_token':  access_token,
@@ -897,15 +915,20 @@ def verify_widget_otp():
             'error': f'Verified mobile ({verified_mobile or "unknown"}) is not linked to any registered active account. Please contact your administrator.'
         }), 404
 
-    if not user.is_active:
+    user_status = (getattr(user, 'account_status', None) or ('ACTIVE' if user.is_active else 'INACTIVE')).upper()
+    if user_status == 'SUSPENDED':
+        logger.warning("[OTP] Account suspended for verified user")
+        return jsonify({'error': 'Account suspended. Contact your administrator.'}), 403
+    if user_status in ('INACTIVE', 'DEACTIVATED') or not user.is_active or getattr(user, 'is_deleted', False):
         logger.warning("[OTP] Account deactivated for verified user")
         return jsonify({'error': 'Account deactivated. Contact your administrator.'}), 403
 
     user.touch_last_login()
     db.session.commit()
 
-    jwt_access  = create_access_token(identity=str(user.id))
-    jwt_refresh = create_refresh_token(identity=str(user.id))
+    token_ver = getattr(user, 'token_version', 0) or 0
+    jwt_access  = create_access_token(identity=str(user.id), additional_claims={'token_version': token_ver})
+    jwt_refresh = create_refresh_token(identity=str(user.id), additional_claims={'token_version': token_ver})
 
     logger.info(f"[OTP] Widget login completed successfully for user ID {user.id}")
     return jsonify({

@@ -16,6 +16,7 @@ from flask import Blueprint, request, jsonify
 
 from app import db, limiter
 from app.models.leads import WebsiteLead, LEAD_TYPES, LEAD_STATUSES
+from app.models.user import UserRole
 from app.utils.decorators import get_current_user
 from app.utils.emailer import send_lead_notification_email
 
@@ -28,9 +29,10 @@ def _require_company_actor():
     if not actor:
         return None, (jsonify({'error': 'Authentication required'}), 401)
     
-    # Allow Super Admins and School Leadership (Principal, Vice Principal, Admin)
-    allowed_roles = [UserRole.SUPER_ADMIN, UserRole.PRINCIPAL, UserRole.VICE_PRINCIPAL, UserRole.ADMIN]
-    if actor.role not in allowed_roles:
+    # Allow Super Admins and School Leadership (Principal, Vice Principal)
+    allowed_roles = {UserRole.SUPER_ADMIN, UserRole.PRINCIPAL, UserRole.VICE_PRINCIPAL}
+    actor_role_str = getattr(actor.role, 'value', str(actor.role))
+    if actor.role not in allowed_roles and actor_role_str not in ('SUPER_ADMIN', 'PRINCIPAL', 'VICE_PRINCIPAL', 'ADMIN'):
         return None, (jsonify({'error': 'Unauthorized to access inquiries and leads'}), 403)
     return actor, None
 

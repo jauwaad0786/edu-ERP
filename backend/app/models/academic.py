@@ -336,6 +336,8 @@ class Attendance(db.Model):
     marked_by  = db.Column(db.Integer, db.ForeignKey('users.id'))
     remarks    = db.Column(db.String(200))
 
+    corrections = db.relationship('AttendanceCorrection', backref='attendance_ref', lazy='dynamic', cascade='all, delete-orphan')
+
     __table_args__ = (
         db.UniqueConstraint('student_id', 'date', name='uq_attendance'),
         db.Index('idx_attendance_class_date', 'class_id', 'date'),
@@ -346,8 +348,67 @@ class Attendance(db.Model):
         return {
             'id':         self.id,
             'student_id': self.student_id,
+            'class_id':   self.class_id,
             'date':       str(self.date),
             'status':     self.status,
+            'marked_by':  self.marked_by,
+            'remarks':    self.remarks or '',
+        }
+
+
+class AttendanceCorrection(db.Model):
+    __tablename__ = 'attendance_corrections'
+
+    id              = db.Column(db.Integer, primary_key=True)
+    attendance_id   = db.Column(db.Integer, db.ForeignKey('attendance.id', ondelete='CASCADE'), nullable=False, index=True)
+    student_id      = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
+    school_id       = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    date            = db.Column(db.Date, nullable=False)
+    previous_status = db.Column(db.String(20), nullable=False)
+    new_status      = db.Column(db.String(20), nullable=False)
+    reason          = db.Column(db.String(255), nullable=True)
+    corrected_by    = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    corrected_at    = db.Column(db.DateTime, default=datetime.utcnow)
+
+    student_ref     = db.relationship('Student', backref=db.backref('attendance_corrections', lazy='dynamic'))
+    corrector_ref   = db.relationship('User', foreign_keys=[corrected_by])
+
+    __table_args__ = (
+        db.Index('idx_att_corr_school_date', 'school_id', 'date'),
+        db.Index('idx_att_corr_student', 'student_id'),
+    )
+
+    def to_dict(self):
+        student_name = ''
+        adm_no = ''
+        try:
+            if self.student_ref:
+                student_name = self.student_ref.user.name if self.student_ref.user else ''
+                adm_no = self.student_ref.admission_no or ''
+        except Exception:
+            pass
+
+        corrector_name = ''
+        try:
+            if self.corrector_ref:
+                corrector_name = self.corrector_ref.name or ''
+        except Exception:
+            pass
+
+        return {
+            'id':                self.id,
+            'attendance_id':     self.attendance_id,
+            'student_id':        self.student_id,
+            'student_name':      student_name,
+            'admission_no':      adm_no,
+            'school_id':         self.school_id,
+            'date':              str(self.date),
+            'previous_status':   self.previous_status,
+            'new_status':        self.new_status,
+            'reason':            self.reason or '',
+            'corrected_by':      self.corrected_by,
+            'corrected_by_name': corrector_name,
+            'corrected_at':      self.corrected_at.isoformat() if self.corrected_at else '',
         }
 
 

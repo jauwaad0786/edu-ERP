@@ -25,77 +25,20 @@ def mark_attendance():
     if not class_id or not raw_date or not records:
         return jsonify({'error': 'class_id, date, and records are required'}), 400
 
-    # Multi-tenant scoping: verify class belongs to teacher's school
-    cls = Class.query.filter_by(id=class_id, school_id=user.school_id).first()
-    if not cls:
-        return jsonify({'error': 'Class not found or unauthorized'}), 403
-
     try:
         att_date = date.fromisoformat(raw_date)
     except (ValueError, TypeError):
         return jsonify({'error': 'Invalid date format'}), 400
 
-    marked_count = 0
-    for rec in records:
-        s_id = rec.get('student_id')
-        if not s_id:
-            continue
-        # Verify student belongs to this school
-        student = Student.query.filter_by(id=s_id, school_id=user.school_id).first()
-        if not student:
-            return jsonify({'error': f'Student ID {s_id} does not belong to this school'}), 400
-
-        existing = Attendance.query.filter_by(student_id=s_id, date=att_date).first()
-        if existing:
-            existing.status = rec.get('status', 'PRESENT')
-        else:
-            a = Attendance(student_id=s_id, class_id=class_id,
-                           date=att_date, status=rec.get('status', 'PRESENT'), marked_by=user.id,
-                           remarks=rec.get('remarks', ''))
-            db.session.add(a)
-        marked_count += 1
-
-    db.session.commit()
-
-    try:
-        from app.services.audit_service import record_audit_event
-        record_audit_event(
-            school_id=user.school_id,
-            actor_user_id=user.id,
-            action='ATTENDANCE_MARKED',
-            module='attendance',
-            entity_type='Attendance',
-            class_id=class_id,
-            remarks=f"Teacher marked attendance for {marked_count} students in {cls.name}-{cls.section} on {att_date}",
-            status='SUCCESS',
-            severity='LOW'
-        )
-    except Exception as audit_err:
-        print(f"[AUDIT] Teacher attendance mark logging failed: {audit_err}")
-
-    # Notification Event Trigger for Absent Students
-    try:
-        from app.services.notification import emit_notification_event
-        absent_student_ids = [r.get('student_id') for r in records if (r.get('status') or '').upper() == 'ABSENT']
-        if absent_student_ids:
-            absent_students = Student.query.filter(Student.id.in_(absent_student_ids)).all()
-            for s in absent_students:
-                emit_notification_event(
-                    event_name='attendance.absent',
-                    school_id=user.school_id,
-                    payload={
-                        'student_name': s.user.name if s.user else f"Student #{s.id}",
-                        'student_id': s.id,
-                        'user_id': s.user_id,
-                        'class_name': f"{cls.name} {cls.section or ''}".strip(),
-                        'date': str(att_date),
-                        'created_by': user.id
-                    }
-                )
-    except Exception as notif_err:
-        print(f"[NOTIF] Teacher attendance notification trigger note: {notif_err}")
-
-    return jsonify({'message': f'Attendance marked for {marked_count} students'}), 200
+    from app.services.student_attendance_service import process_attendance_submission
+    res, status_code = process_attendance_submission(
+        user=user,
+        class_id=class_id,
+        att_date=att_date,
+        records=records,
+        default_reason=data.get('reason')
+    )
+    return jsonify(res), status_code
 
 
 @teacher_bp.route('/attendance/<int:class_id>', methods=['GET'])
@@ -105,6 +48,11 @@ def get_attendance(class_id):
     cls = Class.query.filter_by(id=class_id, school_id=user.school_id).first()
     if not cls:
         return jsonify({'error': 'Class not found or unauthorized'}), 403
+
+    from app.services.student_attendance_service import validate_teacher_class_assignment
+    is_auth, auth_err = validate_teacher_class_assignment(user, cls)
+    if not is_auth:
+        return jsonify({'error': auth_err or 'Unauthorized'}), 403
 
     att_date = request.args.get('date', str(date.today()))
     records = Attendance.query.filter_by(class_id=class_id, date=att_date).all()
@@ -123,14 +71,27 @@ def monthly_attendance(student_id):
     records = Attendance.query.filter_by(student_id=student_id).all()
     if month:
         records = [r for r in records if str(r.date).startswith(month)]
-    total   = len(records)
-    present = sum(1 for r in records if r.status == 'PRESENT')
-    return jsonify({
-        'total_days': total, 'present': present,
-        'absent': total - present,
-        'percentage': round(present / total * 100, 1) if total else 0,
-        'records': [r.to_dict() for r in records]
-    }), 200
+
+    from app.services.student_attendance_service import calculate_attendance_metrics
+    metrics = calculate_attendance_metrics(records)
+    metrics['records'] = [r.to_dict() for r in records]
+    return jsonify(metrics), 200
+
+
+@teacher_bp.route('/attendance/corrections', methods=['GET'])
+@role_required('TEACHER', 'PRINCIPAL')
+def get_attendance_corrections():
+    user = get_current_user()
+    class_id = request.args.get('class_id', type=int)
+    student_id = request.args.get('student_id', type=int)
+
+    from app.services.student_attendance_service import get_attendance_corrections_log
+    corrections = get_attendance_corrections_log(
+        school_id=user.school_id,
+        class_id=class_id,
+        student_id=student_id
+    )
+    return jsonify(corrections), 200
 
 
 # ─── Marks ────────────────────────────────────────────────────────────────────
@@ -326,9 +287,31 @@ def list_notes():
 
 
 @teacher_bp.route('/notes/download/<path:filename>', methods=['GET'])
+@role_required('TEACHER', 'STUDENT', 'PRINCIPAL', 'PARENT', 'SUPER_ADMIN', 'ADMIN', 'VICE_PRINCIPAL', 'DIRECTOR')
 def download_note_file(filename):
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    safe_filename = os.path.basename(filename)
+
+    # Check note ownership by finding the Note in the database or parsing school_id prefix
+    note = Note.query.filter(
+        (Note.file_url.endswith(safe_filename)) | (Note.file_name == safe_filename)
+    ).first()
+
+    target_school_id = note.school_id if note else None
+    if target_school_id is None and '_' in safe_filename:
+        prefix = safe_filename.split('_', 1)[0]
+        if prefix.isdigit():
+            target_school_id = int(prefix)
+
+    role_str = getattr(user.role, 'value', str(user.role))
+    if role_str != 'SUPER_ADMIN' and target_school_id and user.school_id != target_school_id:
+        return jsonify({'error': 'Access denied: note belongs to a different school'}), 403
+
     upload_folder = os.path.join(current_app.root_path, 'uploads', 'notes')
-    return send_from_directory(upload_folder, filename)
+    return send_from_directory(upload_folder, safe_filename)
 
 
 def _grade(marks, max_marks):
