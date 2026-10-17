@@ -431,7 +431,9 @@ class FeeBill(db.Model):
         self.total_current_charges = round(sum(it.original_amount or 0.0 for it in self.items), 2)
         self.total_discount = round(sum(it.discount_amount or 0.0 for it in self.items), 2)
         self.total_late_fine = round(sum(it.fine_amount or 0.0 for it in self.items), 2)
-        self.total_payable = round(curr + (self.previous_dues or 0.0), 2)
+        # Decoupled Mathematical Architecture: total_payable is strictly the net current demand of this bill.
+        # previous_dues is preserved as an informational summary attribute and never compounded into demand.
+        self.total_payable = round(curr, 2)
         self.balance_due = round(max(0.0, self.total_payable - (self.amount_paid or 0.0)), 2)
 
         if self.balance_due <= 0.0 and self.total_payable > 0:
@@ -468,6 +470,7 @@ class FeeBill(db.Model):
             'total_discount':        self.total_discount,
             'total_late_fine':       self.total_late_fine,
             'total_payable':         self.total_payable,
+            'total_due_with_arrears': round((self.balance_due or 0.0) + (self.previous_dues or 0.0), 2),
             'amount_paid':           self.amount_paid or 0.0,
             'balance_due':           self.balance_due,
             'status':                self.status,
@@ -739,3 +742,175 @@ class FinancialAuditLog(db.Model):
             'reason':     self.reason or '',
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  10. FAMILY GROUP ENTITY (DYNAMIC SIBLING ENGINE - SECTION 23)
+# ═══════════════════════════════════════════════════════════════════════
+
+class FamilyGroup(db.Model):
+    """
+    Family Group entity linking siblings together for dynamic multi-child policies (Section 23).
+    Enforces automatic progressive tuition discounts:
+    - 1st Child (Eldest / Earliest Admitted): 0%
+    - 2nd Child: 25% Tuition Waiver (configurable)
+    - 3rd+ Child: 50% Tuition Waiver (configurable)
+    """
+    __tablename__ = 'family_groups'
+
+    id                     = db.Column(db.Integer, primary_key=True)
+    school_id              = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    family_code            = db.Column(db.String(50), unique=True, nullable=False, index=True) # e.g. FAM-2026-0001
+    primary_guardian_name  = db.Column(db.String(150), nullable=False)
+    primary_guardian_phone = db.Column(db.String(30), nullable=False, index=True)
+    primary_guardian_email = db.Column(db.String(120), nullable=True)
+    parent_aadhar_no       = db.Column(db.String(30), nullable=True)
+    address                = db.Column(db.String(300), nullable=True)
+
+    # Configurable progressive discount tiers for this family (defaults to school standards: 0%, 25%, 50%)
+    first_child_discount_pct  = db.Column(db.Float, default=0.0)
+    second_child_discount_pct = db.Column(db.Float, default=25.0)
+    third_child_discount_pct  = db.Column(db.Float, default=50.0)
+
+    notes                  = db.Column(db.String(500), nullable=True)
+    is_active              = db.Column(db.Boolean, default=True)
+    created_by             = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    created_at             = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at             = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    students               = db.relationship('Student', backref='family_group', lazy='dynamic')
+
+    def to_dict(self, include_students=True):
+        data = {
+            'id':                        self.id,
+            'school_id':                 self.school_id,
+            'family_code':               self.family_code,
+            'primary_guardian_name':     self.primary_guardian_name,
+            'primary_guardian_phone':    self.primary_guardian_phone,
+            'primary_guardian_email':    self.primary_guardian_email or '',
+            'parent_aadhar_no':          self.parent_aadhar_no or '',
+            'address':                   self.address or '',
+            'first_child_discount_pct':  self.first_child_discount_pct or 0.0,
+            'second_child_discount_pct': self.second_child_discount_pct if self.second_child_discount_pct is not None else 25.0,
+            'third_child_discount_pct':  self.third_child_discount_pct if self.third_child_discount_pct is not None else 50.0,
+            'notes':                     self.notes or '',
+            'is_active':                 self.is_active,
+            'created_at':                self.created_at.isoformat() if self.created_at else None,
+            'students_count':            self.students.count() if hasattr(self.students, 'count') else 0,
+        }
+        if include_students:
+            s_list = []
+            try:
+                active_s = self.students.filter_by(is_deleted=False).order_by(db.text('admission_date ASC NULLS LAST, id ASC')).all() if hasattr(self.students, 'filter_by') else []
+            except Exception:
+                try:
+                    active_s = self.students.filter_by(is_deleted=False).all()
+                except Exception:
+                    active_s = []
+
+            for idx, st in enumerate(active_s):
+                if idx == 0:
+                    tier_disc = self.first_child_discount_pct or 0.0
+                    tier_label = "1st Child (0%)"
+                elif idx == 1:
+                    tier_disc = self.second_child_discount_pct if self.second_child_discount_pct is not None else 25.0
+                    tier_label = f"2nd Child ({tier_disc:.0f}%)"
+                else:
+                    tier_disc = self.third_child_discount_pct if self.third_child_discount_pct is not None else 50.0
+                    tier_label = f"3rd+ Child ({tier_disc:.0f}%)"
+
+                c_name = st.class_ref.name if getattr(st, 'class_ref', None) else ''
+                c_sec = st.class_ref.section if getattr(st, 'class_ref', None) else ''
+                s_list.append({
+                    'id': st.id,
+                    'name': st.user.name if (st.user and hasattr(st.user, 'name')) else '',
+                    'admission_no': st.admission_no or '',
+                    'class_name': c_name,
+                    'section': c_sec,
+                    'class_display': f"{c_name} {c_sec}".strip(),
+                    'admission_date': str(st.admission_date) if st.admission_date else '',
+                    'sibling_index': idx,
+                    'sibling_tier_label': tier_label,
+                    'applicable_discount_pct': tier_disc,
+                })
+            data['students'] = s_list
+        return data
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  11. CAUTION MONEY ESCROW & CLEARANCE SUBLEDGER (SECTION 21)
+# ═══════════════════════════════════════════════════════════════════════
+
+class CautionMoneyDeposit(db.Model):
+    """
+    Caution Money / Security Deposit Escrow Subledger (Section 21).
+    Classified as a Balance Sheet Current Liability (Escrow), NOT Operating Revenue.
+    Enforces Graduation / Leaving Clearance Settlement:
+    - Offset held deposit against outstanding AR debts (Tuition, Hostel, Transport, Library).
+    - Disburse net remaining balance via Bank/Cash and record cash outflow.
+    """
+    __tablename__ = 'caution_money_deposits'
+
+    id               = db.Column(db.Integer, primary_key=True)
+    school_id        = db.Column(db.Integer, db.ForeignKey('schools.id'), nullable=False, index=True)
+    student_id       = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
+    receipt_no       = db.Column(db.String(50), unique=True, index=True, nullable=False) # e.g. CAUT-2026-0001
+    
+    deposit_amount   = db.Column(db.Float, nullable=False, default=0.0)
+    deposit_date     = db.Column(db.Date, default=date.today, nullable=False)
+    payment_mode     = db.Column(db.String(30), default='CASH') # CASH, UPI, BANK_TRANSFER, CHEQUE
+    transaction_ref  = db.Column(db.String(100), default='')
+    
+    # Settlement & Clearance Status: HELD, PARTIALLY_SETTLED, FULLY_SETTLED, REFUNDED
+    status           = db.Column(db.String(30), default='HELD', index=True)
+    offset_amount    = db.Column(db.Float, default=0.0)   # Amount applied towards outstanding dues
+    refunded_amount  = db.Column(db.Float, default=0.0)   # Net cash/bank payout disbursed to parent
+    
+    settlement_date  = db.Column(db.Date, nullable=True)
+    settlement_mode  = db.Column(db.String(30), nullable=True) # BANK_TRANSFER, CHEQUE, CASH
+    refund_ref_no    = db.Column(db.String(100), nullable=True)
+    settlement_notes = db.Column(db.String(500), default='')
+    settled_by       = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    
+    created_by       = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    created_at       = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at       = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    student          = db.relationship('Student', foreign_keys=[student_id])
+    settler          = db.relationship('User', foreign_keys=[settled_by])
+
+    def to_dict(self):
+        held_balance = max(0.0, round(self.deposit_amount - (self.offset_amount or 0.0) - (self.refunded_amount or 0.0), 2))
+        st_name = ''
+        adm_no = ''
+        c_disp = ''
+        if self.student:
+            st_name = self.student.user.name if self.student.user else ''
+            adm_no = self.student.admission_no or ''
+            if getattr(self.student, 'class_ref', None):
+                c_disp = f"{self.student.class_ref.name} {self.student.class_ref.section or ''}".strip()
+
+        return {
+            'id':               self.id,
+            'school_id':        self.school_id,
+            'student_id':       self.student_id,
+            'student_name':     st_name,
+            'admission_no':     adm_no,
+            'class_display':    c_disp,
+            'receipt_no':       self.receipt_no,
+            'deposit_amount':   self.deposit_amount,
+            'held_balance':     held_balance,
+            'deposit_date':     str(self.deposit_date) if self.deposit_date else None,
+            'payment_mode':     self.payment_mode,
+            'transaction_ref':  self.transaction_ref or '',
+            'status':           self.status,
+            'offset_amount':    self.offset_amount or 0.0,
+            'refunded_amount':  self.refunded_amount or 0.0,
+            'settlement_date':  str(self.settlement_date) if self.settlement_date else None,
+            'settlement_mode':  self.settlement_mode or '',
+            'refund_ref_no':    self.refund_ref_no or '',
+            'settlement_notes': self.settlement_notes or '',
+            'settled_by_name':  self.settler.name if self.settler else None,
+            'created_at':       self.created_at.isoformat() if self.created_at else None,
+        }
+

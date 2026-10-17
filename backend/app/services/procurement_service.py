@@ -345,12 +345,24 @@ def record_vendor_bill_payment(bill_id, school_id, amount, payment_mode='BANK_TR
     db.session.add(v_pay)
     db.session.flush()
 
+    # Determine proper accounting classification: CAPEX (Asset) vs OPEX (Inventory)
+    exp_category = 'INVENTORY_PURCHASE'
+    if bill.purchase_order_id:
+        po = PurchaseOrder.query.get(bill.purchase_order_id)
+        if po and po.items:
+            po_items_list = list(po.items)
+            asset_items = [it for it in po_items_list if it.is_asset]
+            if len(asset_items) == len(po_items_list):
+                exp_category = 'ASSET_PURCHASE'
+            elif len(asset_items) > 0:
+                exp_category = 'CAPEX_EQUIPMENT'
+
     # Automatically post Expense to Central Finance
     exp_count = Expense.query.filter_by(school_id=school_id).count() + 1
     expense = Expense(
         school_id=school_id,
         expense_number=f"EXP-{year}-{exp_count:05d}",
-        category='INVENTORY_PURCHASE',
+        category=exp_category,
         title=f"Vendor Bill Payment — {bill.vendor.name} ({bill.bill_number})",
         vendor_name=bill.vendor.name if bill.vendor else '',
         department='ACCOUNTS',

@@ -1170,6 +1170,45 @@ def waive_fine(fine_id):
             linked_rec.status = 'PAID' if linked_rec.amount_paid > 0 else 'CANCELLED'
             linked_rec.remarks = (linked_rec.remarks or '') + f' [Waiver: ₹{waive_amt:.0f} - {reason}]'
 
+    # ── Canonical Student Ledger & FeeBillItem Sync ──
+    member = fine.member or LibraryMember.query.get(fine.member_id)
+    student = Student.query.filter_by(user_id=member.user_id).first() if member else None
+    if student:
+        try:
+            from app.models.fee_finance import FeeHead, FeeBillItem, StudentLedger, FeeBill
+            lib_fh = FeeHead.query.filter_by(school_id=fine.school_id, code='LIBRARY_FINE').first()
+            if lib_fh:
+                b_item = FeeBillItem.query.filter_by(fee_head_id=lib_fh.id).join(FeeBill).filter(
+                    FeeBill.student_id == student.id
+                ).order_by(FeeBillItem.id.desc()).first()
+                if b_item:
+                    b_item.discount_amount = round((b_item.discount_amount or 0.0) + waive_amt, 2)
+                    b_item.net_amount = round(max(0.0, b_item.original_amount - b_item.discount_amount), 2)
+                    b_item.balance_amount = round(max(0.0, b_item.net_amount - (b_item.paid_amount or 0.0)), 2)
+                    b_item.status = 'PAID' if b_item.balance_amount <= 0 else 'PARTIALLY_PAID'
+                    b_item.bill.calculate_totals()
+
+            last_ledger = StudentLedger.query.filter_by(student_id=student.id).order_by(StudentLedger.id.desc()).first()
+            prev_balance = float(last_ledger.balance_after or 0.0) if (last_ledger and last_ledger.balance_after is not None) else 0.0
+            new_running_balance = round(max(0.0, prev_balance - waive_amt), 2)
+
+            waiver_ledger = StudentLedger(
+                school_id=fine.school_id,
+                student_id=student.id,
+                fee_head_id=lib_fh.id if lib_fh else None,
+                department='LIBRARY',
+                entry_type='CREDIT',
+                entry_date=date.today(),
+                period_label=f"Library Waiver {date.today().strftime('%b %Y')}",
+                amount=waive_amt,
+                balance_after=new_running_balance,
+                description=f"Library Fine Waiver: ₹{waive_amt:.2f} ({reason})",
+                created_by=fine.waived_by,
+            )
+            db.session.add(waiver_ledger)
+        except Exception as sync_err:
+            print(f"[Library] Error syncing fine waiver to StudentLedger: {sync_err}")
+
     db.session.commit()
     log_activity(_school_id(), get_current_user().id, 'FINE_WAIVED',
                  f'Fine #{fine.id} — Waived ₹{waive_amt:.0f} ({reason})')

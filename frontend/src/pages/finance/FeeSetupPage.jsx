@@ -4,9 +4,12 @@ import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../context/AuthContext';
+import { resolveTenantPath } from '../../utils/routeBuilder';
 
 export default function FeeSetupPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [selectedSession, setSelectedSession] = useState('2026-27');
   const [activeTab, setActiveTab] = useState('structures'); // structures | plans | heads | concessions | services
   const [heads, setHeads] = useState([]);
@@ -724,6 +727,23 @@ export default function FeeSetupPage() {
                     </button>
                   );
                 })}
+
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => navigate(resolveTenantPath(user, '/finance/family-groups'))}
+                    className="btn btn-neutral btn-sm"
+                    style={{ fontWeight: 700, fontSize: '0.82rem', color: '#1d4ed8', border: '1px solid #bfdbfe', background: '#eff6ff', borderRadius: 8 }}
+                  >
+                    <i className="ti ti-users-group" style={{ marginRight: 5 }} /> Family & Sibling Engine
+                  </button>
+                  <button
+                    onClick={() => navigate(resolveTenantPath(user, '/finance/caution-money'))}
+                    className="btn btn-neutral btn-sm"
+                    style={{ fontWeight: 700, fontSize: '0.82rem', color: '#047857', border: '1px solid #a7f3d0', background: '#ecfdf5', borderRadius: 8 }}
+                  >
+                    <i className="ti ti-shield-dollar" style={{ marginRight: 5 }} /> Caution Money Escrow
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1013,6 +1033,40 @@ export default function FeeSetupPage() {
             {/* ─── TAB 4: CONCESSIONS & SCHOLARSHIPS ───────────────────────── */}
             {activeTab === 'concessions' && (
               <div className="card-body" style={{ padding: 20 }}>
+                {/* Sibling Engine Announcement Banner */}
+                <div style={{
+                  background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+                  border: '1px solid #bfdbfe',
+                  borderRadius: 10,
+                  padding: '14px 18px',
+                  marginBottom: 16,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: 12
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ width: 38, height: 38, borderRadius: 8, background: '#2563eb', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <i className="ti ti-users-group" style={{ fontSize: 20 }} />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: 13.5, color: '#1e40af' }}>
+                        Automated Progressive Sibling Discounts (Section 23 Architecture)
+                      </div>
+                      <div style={{ fontSize: 12, color: '#3b82f6', marginTop: 2 }}>
+                        No manual vouchers needed! 1st Child (0%), 2nd Child (25%), and 3rd+ Child (50%) discounts are automatically evaluated and applied from Family Groups.
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => navigate(resolveTenantPath(user, '/finance/family-groups'))}
+                    className="btn btn-primary btn-sm"
+                    style={{ fontWeight: 700, fontSize: 12 }}
+                  >
+                    <i className="ti ti-arrow-right" style={{ marginRight: 6 }} /> Open Family Groups & Siblings
+                  </button>
+                </div>
                 {concessions.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
                     <i className="ti ti-percentage" style={{ fontSize: 36, color: '#cbd5e1' }} />

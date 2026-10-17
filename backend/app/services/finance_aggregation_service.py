@@ -49,10 +49,6 @@ class FinanceAggregationService:
         """
         if not session:
             session = get_current_academic_session(school_id)
-        try:
-            reconcile_school_fee_balances(school_id, session=session)
-        except Exception:
-            pass
 
         # ── 1. Modern Engine: FeeBill & FeePayment Aggregates ─────────────────
         bq = FeeBill.query.filter(
@@ -97,7 +93,7 @@ class FinanceAggregationService:
             func.coalesce(func.sum(case((FeeBill.status == 'OVERDUE', 1), else_=0)), 0).label('overdue_count'),
         ).first()
 
-        # FeePayment total paid in session
+        # FeePayment total paid in session / month bounds
         pq = FeePayment.query.filter(
             FeePayment.school_id == school_id,
             FeePayment.status == 'VALID'
@@ -106,12 +102,38 @@ class FinanceAggregationService:
             pq = pq.filter(FeePayment.session == session)
         if class_id:
             pq = pq.join(Student, FeePayment.student_id == Student.id).filter(Student.class_id == class_id)
-        if date_from:
-            pq = pq.filter(FeePayment.payment_date >= date_from)
-        if date_to:
-            pq = pq.filter(FeePayment.payment_date <= date_to)
+
+        # Derive month date boundaries for FeePayment query when month is provided
+        pq_date_from = date_from
+        pq_date_to = date_to
+        if month and not pq_date_from:
+            try:
+                if '-' in str(month):
+                    parts = str(month).strip().split('-')
+                    yr, mo = int(parts[0]), int(parts[1])
+                else:
+                    dt = datetime.strptime(str(month).strip(), '%B %Y')
+                    yr, mo = dt.year, dt.month
+                pq_date_from = date(yr, mo, 1)
+                pq_date_to = date(yr, mo, calendar.monthrange(yr, mo)[1])
+            except Exception:
+                pass
+
+        if pq_date_from:
+            pq = pq.filter(FeePayment.payment_date >= pq_date_from)
+        if pq_date_to:
+            pq = pq.filter(FeePayment.payment_date <= pq_date_to)
 
         total_pay_collected = pq.with_entities(func.coalesce(func.sum(FeePayment.total_paid), 0.0)).scalar() or 0.0
+
+        # Subtract processed fee refunds to reflect net collections accurately
+        rf_q = FeeRefund.query.filter_by(school_id=school_id, status='PROCESSED')
+        if pq_date_from:
+            rf_q = rf_q.filter(FeeRefund.refund_date >= pq_date_from)
+        if pq_date_to:
+            rf_q = rf_q.filter(FeeRefund.refund_date <= pq_date_to)
+        total_refunds = rf_q.with_entities(func.coalesce(func.sum(FeeRefund.amount), 0.0)).scalar() or 0.0
+        total_pay_collected = max(0.0, total_pay_collected - total_refunds)
 
         # ── 2. Legacy Engine: FeeRecord Aggregates ───────────────────────────
         q = FeeRecord.query.filter(
@@ -293,19 +315,34 @@ class FinanceAggregationService:
         ).all()
         today_pay_sum = sum(p.total_paid or 0.0 for p in today_payments)
 
-        # Legacy transactions today
+        # FeePayment is Single Source of Truth; count legacy FeeTransaction only if orphan (not linked to a FeePayment)
+        today_pay_receipts = {p.receipt_no for p in today_payments if p.receipt_no}
         today_txns = FeeTransaction.query.filter(
             FeeTransaction.school_id == school_id,
-            FeeTransaction.transaction_date == today
+            FeeTransaction.transaction_date == today,
+            FeeTransaction.status != 'CANCELLED'
         ).all()
-        today_tx_sum = sum(t.amount or 0.0 for t in today_txns)
+        orphan_today_txns = [t for t in today_txns if (t.receipt_no not in today_pay_receipts)]
+        today_tx_sum = sum(t.amount or 0.0 for t in orphan_today_txns)
 
-        today_collection = round_curr(today_pay_sum + today_tx_sum)
+        # Net today collection
+        today_refunds = FeeRefund.query.filter_by(
+            school_id=school_id,
+            refund_date=today,
+            status='PROCESSED'
+        ).with_entities(func.coalesce(func.sum(FeeRefund.amount), 0.0)).scalar() or 0.0
+
+        today_collection = round_curr(max(0.0, today_pay_sum + today_tx_sum - today_refunds))
 
         # Month collection
         this_month_label = month or today.strftime('%Y-%m')
         try:
-            yr, mo = map(int, this_month_label.split('-'))
+            if '-' in str(this_month_label):
+                parts = str(this_month_label).split('-')
+                yr, mo = int(parts[0]), int(parts[1])
+            else:
+                dt = datetime.strptime(str(this_month_label).strip(), '%B %Y')
+                yr, mo = dt.year, dt.month
             start_m = date(yr, mo, 1)
             end_m = date(yr, mo, calendar.monthrange(yr, mo)[1])
         except Exception:
@@ -320,14 +357,24 @@ class FinanceAggregationService:
         ).all()
         month_pay_sum = sum(p.total_paid or 0.0 for p in month_payments)
 
+        month_pay_receipts = {p.receipt_no for p in month_payments if p.receipt_no}
         month_txns = FeeTransaction.query.filter(
             FeeTransaction.school_id == school_id,
             FeeTransaction.transaction_date >= start_m,
-            FeeTransaction.transaction_date <= end_m
+            FeeTransaction.transaction_date <= end_m,
+            FeeTransaction.status != 'CANCELLED'
         ).all()
-        month_tx_sum = sum(t.amount or 0.0 for t in month_txns)
+        orphan_month_txns = [t for t in month_txns if (t.receipt_no not in month_pay_receipts)]
+        month_tx_sum = sum(t.amount or 0.0 for t in orphan_month_txns)
 
-        month_collection = round_curr(month_pay_sum + month_tx_sum)
+        month_refunds = FeeRefund.query.filter(
+            FeeRefund.school_id == school_id,
+            FeeRefund.refund_date >= start_m,
+            FeeRefund.refund_date <= end_m,
+            FeeRefund.status == 'PROCESSED'
+        ).with_entities(func.coalesce(func.sum(FeeRefund.amount), 0.0)).scalar() or 0.0
+
+        month_collection = round_curr(max(0.0, month_pay_sum + month_tx_sum - month_refunds))
 
         mode_breakdown = {'CASH': 0.0, 'UPI': 0.0, 'ONLINE': 0.0, 'CHEQUE': 0.0, 'CARD': 0.0, 'BANK_TRANSFER': 0.0, 'OTHER': 0.0}
         for p in month_payments:
@@ -336,7 +383,7 @@ class FinanceAggregationService:
                 mode_breakdown[m] = 0.0
             mode_breakdown[m] = round_curr(mode_breakdown[m] + (p.total_paid or 0.0))
 
-        for t in month_txns:
+        for t in orphan_month_txns:
             m = (t.payment_mode or 'CASH').upper()
             if m not in mode_breakdown:
                 mode_breakdown[m] = 0.0

@@ -58,21 +58,45 @@ class PnLService:
         prev_date_to = None
 
         if month:
-            try:
-                yr, mo = map(int, month.split('-'))
-                date_from = date(yr, mo, 1)
-                last_day = calendar.monthrange(yr, mo)[1]
-                date_to = date(yr, mo, last_day)
-                period_label = f"{calendar.month_name[mo]} {yr}"
+            parsed = False
+            # Format 1: "2026-10" or "2026-9"
+            if '-' in str(month):
+                try:
+                    parts = str(month).strip().split('-')
+                    yr, mo = int(parts[0]), int(parts[1])
+                    date_from = date(yr, mo, 1)
+                    last_day = calendar.monthrange(yr, mo)[1]
+                    date_to = date(yr, mo, last_day)
+                    period_label = f"{calendar.month_name[mo]} {yr}"
+                    parsed = True
+                except Exception:
+                    pass
 
+            # Format 2: "October 2026", "Oct 2026", etc.
+            if not parsed:
+                try:
+                    for fmt in ('%B %Y', '%b %Y', '%Y %B', '%Y %b'):
+                        try:
+                            dt = datetime.strptime(str(month).strip(), fmt)
+                            yr, mo = dt.year, dt.month
+                            date_from = date(yr, mo, 1)
+                            last_day = calendar.monthrange(yr, mo)[1]
+                            date_to = date(yr, mo, last_day)
+                            period_label = f"{calendar.month_name[mo]} {yr}"
+                            parsed = True
+                            break
+                        except ValueError:
+                            continue
+                except Exception:
+                    pass
+
+            if parsed:
                 # Previous Month Bounds
                 prev_yr = yr if mo > 1 else yr - 1
                 prev_mo = mo - 1 if mo > 1 else 12
                 prev_last_day = calendar.monthrange(prev_yr, prev_mo)[1]
                 prev_date_from = date(prev_yr, prev_mo, 1)
                 prev_date_to = date(prev_yr, prev_mo, prev_last_day)
-            except Exception:
-                pass
         elif date_from and date_to:
             if isinstance(date_from, str):
                 date_from = datetime.strptime(date_from, '%Y-%m-%d').date()
@@ -185,13 +209,19 @@ class PnLService:
         total_paid_expenses = 0.0
         total_unpaid_liabilities = 0.0
 
+        capex_categories = {'ASSET_PURCHASE', 'CAPEX_EQUIPMENT', 'CAPEX', 'CAPITAL_EXPENDITURE'}
+        total_paid_opex = 0.0
+        total_paid_capex = 0.0
+
         for exp in all_expenses:
             cat = (exp.category or 'OTHER').upper()
+            is_capex = cat in capex_categories
             if cat not in expense_categories:
                 display_name = cat.replace('_', ' ').title()
                 expense_categories[cat] = {
                     'category': cat,
                     'name': display_name,
+                    'is_capex': is_capex,
                     'paid_amount': 0.0,
                     'unpaid_amount': 0.0,
                     'total_amount': 0.0,
@@ -206,6 +236,10 @@ class PnLService:
             if exp.status == 'PAID':
                 expense_categories[cat]['paid_amount'] = _round_curr(expense_categories[cat]['paid_amount'] + amt)
                 total_paid_expenses += amt
+                if is_capex:
+                    total_paid_capex += amt
+                else:
+                    total_paid_opex += amt
             else:
                 expense_categories[cat]['unpaid_amount'] = _round_curr(expense_categories[cat]['unpaid_amount'] + amt)
                 total_unpaid_liabilities += amt
@@ -224,6 +258,7 @@ class PnLService:
                     expense_categories['VENDOR_LIABILITIES'] = {
                         'category': 'VENDOR_LIABILITIES',
                         'name': 'Outstanding Vendor Invoices',
+                        'is_capex': False,
                         'paid_amount': 0.0,
                         'unpaid_amount': 0.0,
                         'total_amount': 0.0,
@@ -235,11 +270,16 @@ class PnLService:
                 expense_categories['VENDOR_LIABILITIES']['count'] += 1
 
         total_expenses = _round_curr(total_paid_expenses) if basis == 'CASH' else _round_curr(total_paid_expenses + total_unpaid_liabilities)
+        total_capex = _round_curr(sum(ec['paid_amount'] if basis == 'CASH' else ec['total_amount'] for ec in expense_categories.values() if ec.get('is_capex')))
+        total_opex = _round_curr(max(0.0, total_expenses - total_capex))
+
         for ec in expense_categories.values():
             val = ec['paid_amount'] if basis == 'CASH' else ec['total_amount']
             ec['percentage'] = round((val / total_expenses * 100.0), 1) if total_expenses > 0 else 0.0
 
         # ── 4. Net Operating Surplus / Deficit ───────────────────────────
+        operating_surplus = _round_curr(total_income - total_opex)
+        operating_margin_pct = round((operating_surplus / total_income * 100.0), 1) if total_income > 0 else 0.0
         net_result = _round_curr(total_income - total_expenses)
         profit_margin = round((net_result / total_income * 100.0), 1) if total_income > 0 else 0.0
 
@@ -286,6 +326,10 @@ class PnLService:
             'total_billed_demand': _round_curr(total_billed_demand),
             'total_realized_collections': _round_curr(total_realized_income),
             'total_expenses': total_expenses,
+            'operating_expenses': total_opex,
+            'capital_expenditures': total_capex,
+            'operating_surplus': operating_surplus,
+            'operating_margin_percentage': operating_margin_pct,
             'total_paid_expenses': _round_curr(total_paid_expenses),
             'total_unpaid_liabilities': _round_curr(total_unpaid_liabilities),
             'net_operating_result': net_result,

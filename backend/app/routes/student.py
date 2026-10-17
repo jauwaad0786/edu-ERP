@@ -262,10 +262,33 @@ def my_fees():
         return jsonify({'error': 'Unauthorized child access or student not found'}), 403
 
     session = request.args.get('session')
-    q = FeeRecord.query.filter_by(student_id=student.id).filter(FeeRecord.status != 'DRAFT')
+    from app.services.fee_ledger_service import get_student_ledger
+    ledger = get_student_ledger(student.id, session=session)
+
+    # Legacy FeeRecord fallback if no modern bills exist
+    legacy_records = FeeRecord.query.filter_by(student_id=student.id).filter(FeeRecord.status != 'DRAFT')
     if session:
-        q = q.filter_by(session=session)
-    records = q.order_by(FeeRecord.created_at.desc()).all()
+        legacy_records = legacy_records.filter_by(session=session)
+    records = legacy_records.order_by(FeeRecord.created_at.desc()).all()
+
+    if ledger and (ledger.get('bills') or ledger.get('payments')):
+        total_gross = ledger.get('total_billed', 0.0)
+        total_due = ledger.get('total_billed', 0.0)
+        total_paid = ledger.get('total_paid', 0.0)
+        balance = ledger.get('outstanding', 0.0)
+        return jsonify({
+            'gross_due': total_gross,
+            'total_due': total_due,
+            'total_paid': total_paid,
+            'balance': balance,
+            'outstanding': balance,
+            'advance_credit': ledger.get('advance_credit', 0.0),
+            'bills': ledger.get('bills', []),
+            'pending_bills': ledger.get('pending_bills', []),
+            'payments': ledger.get('payments', []),
+            'ledger_entries': ledger.get('ledger_entries', []),
+            'records': [r.to_dict() for r in records]
+        }), 200
 
     total_gross = sum(r.amount_due for r in records if r.status != 'CANCELLED')
     total_due   = sum(r.effective_due() for r in records if r.status != 'CANCELLED')
@@ -278,6 +301,11 @@ def my_fees():
         'total_paid': total_paid,
         'balance': balance,
         'outstanding': balance,
+        'advance_credit': 0.0,
+        'bills': [],
+        'pending_bills': [],
+        'payments': [],
+        'ledger_entries': [],
         'records': [r.to_dict() for r in records]
     }), 200
 

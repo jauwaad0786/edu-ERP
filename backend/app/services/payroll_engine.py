@@ -459,13 +459,27 @@ def pay_payroll_slip(slip_id, payment_mode='BANK_TRANSFER', transaction_ref='', 
         source_ref_id=slip.id
     ).first()
 
+    # Deduplication fallback: check if a prior salary expense exists for this user and month
+    if not exp:
+        exp = Expense.query.filter_by(
+            school_id=slip.school_id,
+            month=slip.payroll_run.month_name
+        ).filter(
+            Expense.category.in_(['TEACHER_SALARY', 'STAFF_SALARY', 'TRANSPORT_STAFF_SALARY', 'HOSTEL_STAFF_SALARY', 'LIBRARY_STAFF_SALARY']),
+            Expense.vendor_name == slip.user.name
+        ).first()
+
+    # Double-entry standard: Gross Salary is recognized as operational payroll expenditure
+    gross_amt = round(float(slip.gross_salary if (slip.gross_salary is not None and float(slip.gross_salary) > 0) else slip.net_salary), 2)
+    expense_remarks = remarks or f"Gross: ₹{slip.gross_salary:,.2f}, Net Paid: ₹{slip.net_salary:,.2f}, Deductions: ₹{slip.total_deductions:,.2f} | Paid by {paid_by_user.name if paid_by_user else 'Accounts'}"
+
     if not exp:
         exp = Expense(
             school_id=slip.school_id,
             category=category,
             title=f"Salary Payment — {slip.user.name} ({slip.payroll_run.month_name})",
             vendor_name=slip.user.name,
-            amount=round(float(slip.net_salary), 2),
+            amount=gross_amt,
             payment_method=payment_mode or 'BANK_TRANSFER',
             payment_date=date.today(),
             month=slip.payroll_run.month_name,
@@ -473,16 +487,20 @@ def pay_payroll_slip(slip_id, payment_mode='BANK_TRANSFER', transaction_ref='', 
             source='HRMS_PAYROLL',
             source_ref_id=slip.id,
             invoice_number=inv_no,
-            remarks=remarks or f"Net: ₹{slip.net_salary:,.2f}, Gross: ₹{slip.gross_salary:,.2f}, Deductions: ₹{slip.total_deductions:,.2f} | Paid by {paid_by_user.name if paid_by_user else 'Accounts'}",
+            remarks=expense_remarks,
             created_by=paid_by_user.id if paid_by_user else None,
         )
         db.session.add(exp)
     else:
-        exp.amount = round(float(slip.net_salary), 2)
+        exp.amount = gross_amt
+        exp.category = category
         exp.payment_method = payment_mode or 'BANK_TRANSFER'
         exp.payment_date = date.today()
         exp.invoice_number = inv_no
         exp.status = 'PAID'
+        exp.source = 'HRMS_PAYROLL'
+        exp.source_ref_id = slip.id
+        exp.remarks = expense_remarks
 
     # Update PayrollSlip
     slip.payment_status = 'PAID'

@@ -575,22 +575,40 @@ def add_salary_record(teacher_id):
     db.session.flush()   # rec.id chahiye Expense link karne ke liye, commit se pehle
 
     teacher_name = t.user.name if t.user else 'Teacher'
-    exp = Expense(
-        school_id      = _school_id(),
-        category        = 'TEACHER_SALARY',
-        title           = f'Salary — {teacher_name} — {rec.month or pay_date.strftime("%B %Y")}',
-        vendor_name     = teacher_name,
-        amount          = amount,
-        payment_method  = 'BANK_TRANSFER',
-        payment_date    = pay_date,
-        month           = pay_date.strftime('%B %Y'),
-        status          = 'PAID' if status == 'PAID' else 'PENDING',
-        source          = 'SALARY_AUTO',
-        source_ref_id   = rec.id,
-        remarks         = data.get('note', ''),
-        created_by      = get_current_user().id,
-    )
-    db.session.add(exp)
+    salary_month = rec.month or pay_date.strftime("%B %Y")
+
+    # Deduplication check: check if an Expense already exists for this teacher & month
+    existing_exp = Expense.query.filter_by(
+        school_id=_school_id(),
+        month=salary_month
+    ).filter(
+        Expense.category.in_(['TEACHER_SALARY', 'STAFF_SALARY']),
+        Expense.vendor_name == teacher_name
+    ).first()
+
+    if existing_exp:
+        existing_exp.amount = amount
+        existing_exp.payment_date = pay_date
+        existing_exp.status = 'PAID' if status == 'PAID' else 'PENDING'
+        existing_exp.source_ref_id = rec.id
+        exp = existing_exp
+    else:
+        exp = Expense(
+            school_id      = _school_id(),
+            category       = 'TEACHER_SALARY',
+            title          = f'Salary — {teacher_name} — {salary_month}',
+            vendor_name    = teacher_name,
+            amount         = amount,
+            payment_method = 'BANK_TRANSFER',
+            payment_date   = pay_date,
+            month          = salary_month,
+            status         = 'PAID' if status == 'PAID' else 'PENDING',
+            source         = 'SALARY_AUTO',
+            source_ref_id  = rec.id,
+            remarks        = data.get('note', ''),
+            created_by     = get_current_user().id,
+        )
+        db.session.add(exp)
     db.session.commit()
 
     return jsonify({
@@ -703,22 +721,41 @@ def add_staff_salary_record(user_id):
     db.session.add(rec)
     db.session.flush()
 
-    exp = Expense(
-        school_id      = _school_id(),
-        category       = 'STAFF_SALARY',
-        title          = f'Salary — {u.name} — {rec.month or pay_date.strftime("%B %Y")}',
-        vendor_name    = u.name,
-        amount         = amount,
-        payment_method = 'BANK_TRANSFER',
-        payment_date   = pay_date,
-        month          = pay_date.strftime('%B %Y'),
-        status         = 'PAID' if status == 'PAID' else 'PENDING',
-        source         = 'SALARY_AUTO',
-        source_ref_id  = rec.id,
-        remarks        = data.get('note', ''),
-        created_by     = get_current_user().id,
-    )
-    db.session.add(exp)
+    staff_name = u.name
+    salary_month = rec.month or pay_date.strftime("%B %Y")
+
+    # Deduplication check: check if an Expense already exists for this staff member & month
+    existing_exp = Expense.query.filter_by(
+        school_id=_school_id(),
+        month=salary_month
+    ).filter(
+        Expense.category.in_(['STAFF_SALARY', 'TEACHER_SALARY', 'TRANSPORT_STAFF_SALARY', 'HOSTEL_STAFF_SALARY', 'LIBRARY_STAFF_SALARY']),
+        Expense.vendor_name == staff_name
+    ).first()
+
+    if existing_exp:
+        existing_exp.amount = amount
+        existing_exp.payment_date = pay_date
+        existing_exp.status = 'PAID' if status == 'PAID' else 'PENDING'
+        existing_exp.source_ref_id = rec.id
+        exp = existing_exp
+    else:
+        exp = Expense(
+            school_id      = _school_id(),
+            category       = 'STAFF_SALARY',
+            title          = f'Salary — {staff_name} — {salary_month}',
+            vendor_name    = staff_name,
+            amount         = amount,
+            payment_method = 'BANK_TRANSFER',
+            payment_date   = pay_date,
+            month          = salary_month,
+            status         = 'PAID' if status == 'PAID' else 'PENDING',
+            source         = 'SALARY_AUTO',
+            source_ref_id  = rec.id,
+            remarks        = data.get('note', ''),
+            created_by     = get_current_user().id,
+        )
+        db.session.add(exp)
     db.session.commit()
 
     return jsonify({
@@ -4059,9 +4096,29 @@ def admit_card_pdf(student_id, exam_id):
                 return jsonify({'error': 'Unauthorized'}), 403
     elif not getattr(curr, 'is_super', False) and curr.school_id and student.school_id != curr.school_id:
         return jsonify({'error': 'Unauthorized'}), 403
-    exam = ExamSchedule.query.get_or_404(exam_id)
+
     from app.models.school import School
     school = School.query.get(student.school_id)
+
+    # ── Financial Clearance Gating for Exam Admit Cards ──
+    is_student_parent = curr and getattr(curr.role, 'value', str(curr.role)) in ('STUDENT', 'PARENT')
+    if is_student_parent:
+        try:
+            from app.services.fee_ledger_service import get_student_ledger
+            ledger = get_student_ledger(student.id)
+            outstanding = float(ledger.get('outstanding', 0.0)) if ledger else 0.0
+            threshold = getattr(school, 'exam_fee_clearance_threshold', 500.0) or 500.0
+            if outstanding > threshold:
+                return jsonify({
+                    'error': 'fee_clearance_required',
+                    'message': f"Admit card locked: You have outstanding fee dues of ₹{outstanding:,.2f}. Please clear your pending dues to unlock your exam admit card.",
+                    'outstanding_amount': outstanding,
+                    'threshold': threshold
+                }), 403
+        except Exception:
+            pass
+
+    exam = ExamSchedule.query.get_or_404(exam_id)
     timetable = ExamTimetable.query.filter_by(
         exam_id=exam_id, class_id=student.class_id
     ).order_by(ExamTimetable.exam_date.asc()).all()

@@ -1053,9 +1053,20 @@ def pay_payroll_run_all_route(run_id):
 
 
 @hrms_bp.route('/payroll/slips/<int:slip_id>/pdf', methods=['GET'])
-@jwt_required()
+@jwt_required(optional=True)
 def download_payslip_pdf(slip_id):
     current_u = get_current_user()
+    if not current_u:
+        token = request.args.get('token')
+        if token:
+            from flask_jwt_extended import decode_token
+            try:
+                decoded = decode_token(token)
+                identity = decoded.get('sub')
+                if identity:
+                    current_u = User.query.get(int(identity))
+            except Exception:
+                pass
     if not current_u:
         return jsonify({'error': 'Unauthorized'}), 401
     slip = PayrollSlip.query.get_or_404(slip_id)

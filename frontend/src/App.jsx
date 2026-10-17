@@ -137,6 +137,8 @@ import FinancePayrollPage       from './pages/finance/FinancePayrollPage';
 import FeeServiceGenerationPage from './pages/finance/FeeServiceGenerationPage';
 import FeeCollectionAnalyticsPage from './pages/finance/FeeCollectionAnalyticsPage';
 import ReconciliationPage        from './pages/finance/ReconciliationPage';
+import FamilyGroupsPage          from './pages/finance/FamilyGroupsPage';
+import CautionMoneyPage          from './pages/finance/CautionMoneyPage';
 
 // ── Communication Hub Pages ───────────────────────────────────────────────────
 import SupportInbox     from './pages/communication/SupportInbox';
@@ -520,6 +522,16 @@ export default function App() {
             <Route path="/:schoolSlug/:role/finance/setup" element={
               <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR']}>
                 <FeeSetupPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/finance/family-groups" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR']}>
+                <FamilyGroupsPage />
+              </TenantProtectedRoute>
+            } />
+            <Route path="/:schoolSlug/:role/finance/caution-money" element={
+              <TenantProtectedRoute roles={['PRINCIPAL', 'SUPER_ADMIN', 'ACCOUNTANT', 'DIRECTOR']}>
+                <CautionMoneyPage />
               </TenantProtectedRoute>
             } />
             <Route path="/:schoolSlug/:role/finance/outstanding" element={
@@ -909,6 +921,8 @@ export default function App() {
             <Route path="/finance/payments/collect" element={<LegacyRedirect toService="finance/payments/collect" />} />
             <Route path="/finance/receipts" element={<LegacyRedirect toService="finance/receipts" />} />
             <Route path="/finance/setup" element={<LegacyRedirect toService="finance/setup" />} />
+            <Route path="/finance/family-groups" element={<LegacyRedirect toService="finance/family-groups" />} />
+            <Route path="/finance/caution-money" element={<LegacyRedirect toService="finance/caution-money" />} />
             <Route path="/finance/outstanding" element={<LegacyRedirect toService="finance/outstanding" />} />
             <Route path="/finance/reports" element={<LegacyRedirect toService="finance/reports" />} />
             <Route path="/finance/reconciliation" element={<LegacyRedirect toService="finance/reconciliation" />} />

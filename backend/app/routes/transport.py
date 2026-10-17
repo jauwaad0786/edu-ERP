@@ -1070,6 +1070,42 @@ def update_maintenance(record_id):
                 if v and v.status == 'MAINTENANCE':
                     v.status = 'ACTIVE'
 
+            # Auto-post to Central Finance Expense if cost > 0
+            repair_cost = float(data.get('cost') or m.cost or 0.0)
+            if repair_cost > 0:
+                try:
+                    from app.models.finance import Expense
+                    v_rec = Vehicle.query.get(m.vehicle_id)
+                    v_plate = v_rec.license_plate if v_rec else f"Vehicle #{m.vehicle_id}"
+                    exp = Expense.query.filter_by(
+                        school_id=school_id,
+                        source='TRANSPORT_MAINTENANCE',
+                        source_ref_id=m.id
+                    ).first()
+                    if not exp:
+                        exp = Expense(
+                            school_id=school_id,
+                            category='TRANSPORT_MAINTENANCE',
+                            title=f"Vehicle Repair — {v_plate} ({m.problem or 'Maintenance'})",
+                            vendor_name=f"Garage / {v_plate}",
+                            department='TRANSPORT',
+                            amount=repair_cost,
+                            payment_method='BANK_TRANSFER',
+                            payment_date=m.completed_date,
+                            month=m.completed_date.strftime('%B %Y'),
+                            status='PAID',
+                            source='TRANSPORT_MAINTENANCE',
+                            source_ref_id=m.id,
+                            remarks=m.remarks or f"Automated expense from completed vehicle maintenance #{m.id}",
+                            created_by=get_current_user().id if get_current_user() else None,
+                        )
+                        db.session.add(exp)
+                    else:
+                        exp.amount = repair_cost
+                        exp.status = 'PAID'
+                except Exception as exp_err:
+                    print(f"[Transport] Error auto-posting Expense for maintenance: {exp_err}")
+
     for field in ['problem', 'expected_completion', 'cost', 'remarks', 'photo_url']:
         if field in data:
             if field == 'expected_completion':

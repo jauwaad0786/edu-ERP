@@ -25,7 +25,8 @@ from app.models.fee_finance import (
     FeeHead, FeeStructureV2, FeeStructureItemV2, StudentFeeAssignment,
     StudentConcession, FeeBill, FeeBillItem, StudentLedger, FeePayment,
     FeePaymentAllocation, FeeRefund, FinancialAuditLog,
-    FeeCategory, FeeDepartment, FeeFrequency, BillStatus, PaymentMode, PaymentStatus
+    FeeCategory, FeeDepartment, FeeFrequency, BillStatus, PaymentMode, PaymentStatus,
+    FamilyGroup, CautionMoneyDeposit
 )
 from app.models.academic import Student, Class
 from app.models.school import School
@@ -359,6 +360,71 @@ def get_student_services_status(student_id):
 
 
 # ═══════════════════════════════════════════════════════════════════════
+#  2C. DYNAMIC SIBLING DISCOUNT ENGINE (SECTION 23)
+# ═══════════════════════════════════════════════════════════════════════
+
+def evaluate_sibling_discount(student_id):
+    """
+    Evaluates dynamic progressive sibling tuition concession (Section 23):
+    - 1st Child (Eldest / Earliest Admitted): 0%
+    - 2nd Child: 25% (or family configured %)
+    - 3rd+ Child: 50% (or family configured %)
+    Returns dict with eligibility, tier index, tier label, discount percentage, and family details.
+    """
+    student = Student.query.get(student_id)
+    if not student:
+        return {'eligible': False, 'discount_pct': 0.0, 'reason': 'Student not found'}
+
+    if not getattr(student, 'family_group_id', None):
+        return {'eligible': False, 'discount_pct': 0.0, 'reason': 'No Family Group linked'}
+
+    fg = FamilyGroup.query.get(student.family_group_id)
+    if not fg or not fg.is_active:
+        return {'eligible': False, 'discount_pct': 0.0, 'reason': 'Family Group inactive'}
+
+    # Fetch all active siblings ordered chronologically by admission date
+    try:
+        siblings = Student.query.filter(
+            Student.family_group_id == fg.id,
+            Student.is_deleted == False
+        ).order_by(db.text('admission_date ASC NULLS LAST, id ASC')).all()
+    except Exception:
+        siblings = Student.query.filter_by(family_group_id=fg.id, is_deleted=False).all()
+
+    if not siblings:
+        return {'eligible': False, 'discount_pct': 0.0, 'reason': 'No siblings found'}
+
+    sibling_index = 0
+    for idx, s in enumerate(siblings):
+        if s.id == student.id:
+            sibling_index = idx
+            break
+
+    if sibling_index == 0:
+        disc_pct = fg.first_child_discount_pct or 0.0
+        tier_label = "1st Child (0%)"
+    elif sibling_index == 1:
+        disc_pct = fg.second_child_discount_pct if fg.second_child_discount_pct is not None else 25.0
+        tier_label = f"2nd Child ({disc_pct:.0f}%)"
+    else:
+        disc_pct = fg.third_child_discount_pct if fg.third_child_discount_pct is not None else 50.0
+        tier_label = f"3rd+ Child ({disc_pct:.0f}%)"
+
+    return {
+        'eligible': disc_pct > 0,
+        'student_id': student.id,
+        'family_group_id': fg.id,
+        'family_code': fg.family_code,
+        'guardian_name': fg.primary_guardian_name,
+        'sibling_index': sibling_index,
+        'sibling_tier_label': tier_label,
+        'discount_pct': disc_pct,
+        'total_siblings': len(siblings),
+        'reason': f"Sibling Policy: {tier_label}" if disc_pct > 0 else "1st Child Standard Tuition",
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════
 #  3. APPLICABLE CHARGES CALCULATOR (DYNAMIC MULTI-SERVICE ENGINE)
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -437,6 +503,15 @@ def get_student_applicable_charges(student_id, session=None, bill_month=None):
                     else:
                         disc += conc.discount_value
 
+            # Dynamic Sibling Concession Engine (Section 23):
+            # If Tuition / Academic fee head, automatically evaluate progressive multi-child discount
+            if fh.category == 'ACADEMIC' or 'TUITION' in (fh.code or '').upper():
+                sib_eval = evaluate_sibling_discount(student_id)
+                if sib_eval.get('eligible') and float(sib_eval.get('discount_pct', 0)) > 0:
+                    sib_pct = float(sib_eval['discount_pct'])
+                    sib_disc = round(base_amt * (sib_pct / 100.0), 2)
+                    disc = max(disc, sib_disc)
+
             disc = min(disc, base_amt)
             net_amt = round(max(0.0, base_amt - disc), 2)
 
@@ -464,6 +539,13 @@ def get_student_applicable_charges(student_id, session=None, bill_month=None):
                             disc += (base_amt * conc.discount_value / 100.0)
                         else:
                             disc += conc.discount_value
+
+                sib_eval = evaluate_sibling_discount(student_id)
+                if sib_eval.get('eligible') and float(sib_eval.get('discount_pct', 0)) > 0:
+                    sib_pct = float(sib_eval['discount_pct'])
+                    sib_disc = round(base_amt * (sib_pct / 100.0), 2)
+                    disc = max(disc, sib_disc)
+
                 disc = min(disc, base_amt)
                 charges.append({
                     'fee_head_id':     tuition_head.id,
@@ -776,7 +858,11 @@ def register_or_sync_service_charge(
 
     bill.calculate_totals()
 
-    # Post Debit entry to Student Ledger
+    # Post Debit entry to Student Ledger with cumulative running balance
+    last_ledger = StudentLedger.query.filter_by(student_id=student_id).order_by(StudentLedger.id.desc()).first()
+    prev_balance = float(last_ledger.balance_after or 0.0) if last_ledger and last_ledger.balance_after is not None else 0.0
+    new_running_balance = round(prev_balance + float(amount), 2)
+
     ledger_period = coverage_label or f"{department} {date.today().strftime('%b %Y')}"
     ledger_entry = StudentLedger(
         school_id=school_id,
@@ -788,6 +874,7 @@ def register_or_sync_service_charge(
         period_label=ledger_period,
         session=session,
         amount=amount,
+        balance_after=new_running_balance,
         bill_id=bill.id,
         reference_no=bill.bill_no,
         description=f"{department} {source_type}: ₹{amount:.2f} ({description or fh.name})",
@@ -922,6 +1009,10 @@ def generate_fee_bill(student_id, bill_month, due_date, actor_user, session=None
     db.session.flush()
 
     # Post Debit Ledger Entry for the bill
+    last_ledger = StudentLedger.query.filter_by(student_id=student_id).order_by(StudentLedger.id.desc()).first()
+    prev_balance = float(last_ledger.balance_after or 0.0) if last_ledger else 0.0
+    new_running_balance = round(prev_balance + float(bill.total_payable), 2)
+
     ledger_entry = StudentLedger(
         school_id=student.school_id,
         student_id=student_id,
@@ -932,7 +1023,7 @@ def generate_fee_bill(student_id, bill_month, due_date, actor_user, session=None
         period_label=month_label,
         session=session,
         amount=bill.total_payable,
-        balance_after=bill.total_payable,
+        balance_after=new_running_balance,
         bill_id=bill.id,
         reference_no=bill.bill_no,
         description=f"Fee Bill Generated for {month_label}",
@@ -1288,6 +1379,19 @@ def collect_fee_payment(
 
     # ── Case B: Auto-allocate against unpaid bills ────────────────────────
     else:
+        def _get_item_priority(bi):
+            cat = (bi.fee_head.category if bi.fee_head and bi.fee_head.category else '').upper()
+            code = (bi.fee_head.code if bi.fee_head and bi.fee_head.code else '').upper()
+            if 'TUITION' in code or cat == 'ACADEMIC':
+                return 1
+            if 'TRANSPORT' in code or cat == 'TRANSPORT':
+                return 2
+            if 'HOSTEL' in code or cat == 'HOSTEL':
+                return 3
+            if cat in ('EXAM', 'ACTIVITY'):
+                return 4
+            return 5
+
         unpaid_bills = FeeBill.query.filter(
             FeeBill.student_id == student_id,
             FeeBill.status.in_([BillStatus.ISSUED.value, BillStatus.PARTIALLY_PAID.value, BillStatus.OVERDUE.value])
@@ -1297,7 +1401,8 @@ def collect_fee_payment(
             if remaining_to_allocate <= 0:
                 break
 
-            for item in bill.items:
+            sorted_items = sorted(bill.items, key=_get_item_priority)
+            for item in sorted_items:
                 if remaining_to_allocate <= 0:
                     break
 
@@ -1359,6 +1464,10 @@ def collect_fee_payment(
         payment.advance_credited = round(remaining_to_allocate, 2)
 
     # Post Credit Ledger Entry
+    last_ledger = StudentLedger.query.filter_by(student_id=student_id).order_by(StudentLedger.id.desc()).first()
+    prev_balance = float(last_ledger.balance_after or 0.0) if last_ledger else 0.0
+    new_running_balance = round(max(0.0, prev_balance - float(amount_paid)), 2)
+
     ledger_entry = StudentLedger(
         school_id=student.school_id,
         student_id=student_id,
@@ -1369,7 +1478,7 @@ def collect_fee_payment(
         period_label=f"Payment {date.today().strftime('%b %Y')}",
         session=session,
         amount=amount_paid,
-        balance_after=0.0, # Computed on read
+        balance_after=new_running_balance,
         payment_id=payment.id,
         reference_no=payment.receipt_no,
         description=f"Fee Payment Collected ({payment_mode}) - Receipt #{payment.receipt_no}",
@@ -1571,34 +1680,53 @@ def apply_concession_and_adjust_bills(
     db.session.add(conc)
     db.session.flush()
 
-    # 2. Immediately Apply to Open/Pending Bills
+    # 2. Immediately Apply to Open/Pending Bills (Pool-based depletion for fixed discounts)
     open_bills = FeeBill.query.filter(
         FeeBill.student_id == student_id,
         FeeBill.school_id == school_id,
         FeeBill.status.in_([BillStatus.ISSUED.value, BillStatus.PARTIALLY_PAID.value, BillStatus.OVERDUE.value])
-    ).order_by(FeeBill.bill_month.desc(), FeeBill.id.desc()).all()
+    ).order_by(FeeBill.bill_month.asc(), FeeBill.id.asc()).all()
 
     total_actual_deduction = 0.0
+    remaining_fixed_pool = round(discount_value, 2) if discount_type != 'PERCENTAGE' else 0.0
 
     for bill in open_bills:
+        bill_modified = False
         for itm in bill.items:
             # Check if this item matches the target fee head or applies to all
             if fee_head_id is None or itm.fee_head_id == fee_head_id:
-                base_amt = itm.original_amount or itm.net_amount
+                base_amt = itm.balance_amount if (itm.balance_amount and itm.balance_amount > 0) else (itm.original_amount or itm.net_amount)
+                if base_amt <= 0:
+                    continue
+
                 if discount_type == 'PERCENTAGE':
-                    disc_amt = round(base_amt * (discount_value / 100.0), 2)
+                    disc_amt = round((itm.original_amount or itm.net_amount) * (discount_value / 100.0), 2)
+                    disc_amt = min(disc_amt, base_amt)
                 else:
-                    disc_amt = round(discount_value, 2)
+                    if remaining_fixed_pool <= 0:
+                        break
+                    disc_amt = min(remaining_fixed_pool, base_amt)
+                    remaining_fixed_pool = round(remaining_fixed_pool - disc_amt, 2)
 
-                disc_amt = min(disc_amt, base_amt)
-                itm.discount_amount = round((itm.discount_amount or 0.0) + disc_amt, 2)
-                itm.net_amount = round(max(0.0, itm.original_amount - itm.discount_amount), 2)
-                itm.balance_amount = round(max(0.0, itm.net_amount - (itm.paid_amount or 0.0)), 2)
-                total_actual_deduction += disc_amt
+                if disc_amt > 0:
+                    itm.discount_amount = round((itm.discount_amount or 0.0) + disc_amt, 2)
+                    itm.net_amount = round(max(0.0, itm.original_amount - itm.discount_amount), 2)
+                    itm.balance_amount = round(max(0.0, itm.net_amount - (itm.paid_amount or 0.0)), 2)
+                    total_actual_deduction += disc_amt
+                    bill_modified = True
 
-        bill.calculate_totals()
+        if bill_modified:
+            bill.calculate_totals()
 
-    # 3. Post Credit Ledger Movement for the Granted Maafi / Discount
+        if discount_type != 'PERCENTAGE' and remaining_fixed_pool <= 0:
+            break
+
+    # 3. Post Credit Ledger Movement for the Granted Maafi / Discount with accurate running balance
+    credit_amount = total_actual_deduction if total_actual_deduction > 0 else (discount_value if discount_type != 'PERCENTAGE' else 0.0)
+    last_ledger = StudentLedger.query.filter_by(student_id=student_id).order_by(StudentLedger.id.desc()).first()
+    prev_balance = float(last_ledger.balance_after or 0.0) if last_ledger else 0.0
+    new_running_balance = round(max(0.0, prev_balance - credit_amount), 2)
+
     ledger_entry = StudentLedger(
         school_id=school_id,
         student_id=student_id,
@@ -1607,7 +1735,8 @@ def apply_concession_and_adjust_bills(
         entry_type='CREDIT',
         entry_date=date.today(),
         period_label=f"Waiver {date.today().strftime('%b %Y')}",
-        amount=discount_value,
+        amount=credit_amount,
+        balance_after=new_running_balance,
         reference_no=f"MAAFI-{conc.id}",
         description=f"Fee Waiver / Maafi ({concession_type}): {discount_value}{'%' if discount_type == 'PERCENTAGE' else ' INR'}. Reason: {reason}",
         created_by=actor_user.id if actor_user else None,
@@ -1650,7 +1779,8 @@ def cancel_payment_receipt(payment_id, actor_user, cancel_reason):
     payment.cancelled_at = utc_now()
     payment.cancel_reason = cancel_reason
 
-    # Reverse bill items
+    # Reverse bill items and collect affected bills
+    affected_bills = set()
     for alc in payment.allocations:
         if alc.bill_item_id:
             bi = FeeBillItem.query.get(alc.bill_item_id)
@@ -1658,10 +1788,35 @@ def cancel_payment_receipt(payment_id, actor_user, cancel_reason):
                 bi.paid_amount = round(max(0.0, (bi.paid_amount or 0.0) - alc.allocated_amount), 2)
                 bi.balance_amount = round(bi.net_amount - bi.paid_amount, 2)
                 if bi.bill:
-                    bi.bill.amount_paid = round(max(0.0, (bi.bill.amount_paid or 0.0) - alc.allocated_amount), 2)
-                    bi.bill.calculate_totals()
+                    affected_bills.add(bi.bill)
 
-    # Post Reversal Entry in Ledger
+    for b in affected_bills:
+        total_valid_paid = db.session.query(
+            func.coalesce(func.sum(FeePaymentAllocation.allocated_amount), 0.0)
+        ).join(FeePayment, FeePaymentAllocation.payment_id == FeePayment.id).filter(
+            FeePaymentAllocation.bill_id == b.id,
+            FeePayment.status == PaymentStatus.VALID.value
+        ).scalar() or 0.0
+        b.amount_paid = round(float(total_valid_paid), 2)
+        b.calculate_totals()
+
+    # Cancel corresponding legacy FeeTransaction so it does not persist in legacy reports
+    try:
+        from app.models.financial import FeeTransaction
+        legacy_txns = FeeTransaction.query.filter_by(
+            receipt_no=payment.receipt_no,
+            school_id=payment.school_id
+        ).all()
+        for tx in legacy_txns:
+            tx.status = 'CANCELLED'
+    except Exception as tx_err:
+        logger.warning(f"Error cancelling legacy FeeTransaction: {tx_err}")
+
+    # Post Reversal Entry in Ledger with accurate running balance
+    last_ledger = StudentLedger.query.filter_by(student_id=payment.student_id).order_by(StudentLedger.id.desc()).first()
+    prev_balance = float(last_ledger.balance_after or 0.0) if last_ledger else 0.0
+    new_running_balance = round(prev_balance + float(payment.total_paid), 2)
+
     ledger_entry = StudentLedger(
         school_id=payment.school_id,
         student_id=payment.student_id,
@@ -1672,7 +1827,7 @@ def cancel_payment_receipt(payment_id, actor_user, cancel_reason):
         period_label=f"Reversal {date.today().strftime('%b %Y')}",
         session=payment.session,
         amount=payment.total_paid,
-        balance_after=0.0,
+        balance_after=new_running_balance,
         payment_id=payment.id,
         reference_no=payment.receipt_no,
         description=f"Reversal of Cancelled Receipt #{payment.receipt_no}. Reason: {cancel_reason}",
@@ -1741,7 +1896,19 @@ def process_fee_refund(student_id, amount, refund_mode, reason, authorized_by, p
     db.session.add(refund)
     db.session.flush()
 
-    # Post Debit adjustment into student ledger
+    # Adjust linked FeePayment if provided
+    if payment_id:
+        payment = FeePayment.query.get(payment_id)
+        if payment and payment.total_paid:
+            payment.total_paid = round(max(0.0, float(payment.total_paid) - amount), 2)
+            if payment.total_paid <= 0.0:
+                payment.status = 'REFUNDED'
+
+    # Post Debit adjustment into student ledger with running balance
+    last_ledger = StudentLedger.query.filter_by(student_id=student_id).order_by(StudentLedger.id.desc()).first()
+    prev_balance = float(last_ledger.balance_after or 0.0) if last_ledger else 0.0
+    new_running_balance = round(prev_balance + amount, 2)
+
     ledger_entry = StudentLedger(
         school_id=student.school_id,
         student_id=student_id,
@@ -1751,12 +1918,36 @@ def process_fee_refund(student_id, amount, refund_mode, reason, authorized_by, p
         entry_date=date.today(),
         period_label=f"Refund {date.today().strftime('%b %Y')}",
         amount=amount,
+        balance_after=new_running_balance,
         refund_id=refund.id,
         reference_no=reference_no or f"REF-{refund.id}",
         description=f"Fee Refund Issued: ₹{amount:.2f}. Reason: {reason}",
         created_by=authorized_by.id if authorized_by else None,
     )
     db.session.add(ledger_entry)
+
+    # Auto-generate Expense record for cash outflow consistency in P&L and Cashflow
+    try:
+        from app.models.finance import Expense
+        exp = Expense(
+            school_id=student.school_id,
+            category='FEE_REFUND',
+            title=f"Fee Refund — {student.user.name if student.user else student.admission_no}",
+            vendor_name=student.user.name if student.user else student.admission_no,
+            amount=amount,
+            payment_method=refund_mode or 'BANK_TRANSFER',
+            payment_date=date.today(),
+            month=date.today().strftime('%B %Y'),
+            status='PAID',
+            source='FEE_REFUND',
+            source_ref_id=refund.id,
+            invoice_number=reference_no or f"REF-{refund.id}",
+            remarks=f"Authorized fee refund. Reason: {reason}",
+            created_by=authorized_by.id if authorized_by else None,
+        )
+        db.session.add(exp)
+    except Exception as exp_err:
+        logger.warning(f"Error creating Expense for fee refund: {exp_err}")
 
     audit = FinancialAuditLog(
         school_id=student.school_id,
@@ -1789,6 +1980,191 @@ def process_fee_refund(student_id, amount, refund_mode, reason, authorized_by, p
     db.session.commit()
 
     return refund
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  5B. CAUTION MONEY ESCROW & CLEARANCE SETTLEMENT ENGINE (SECTION 21)
+# ═══════════════════════════════════════════════════════════════════════
+
+def preview_caution_money_clearance(student_id):
+    """
+    Evaluates Caution Money Escrow Settlement & No-Dues Clearance (Section 21):
+    1. Total held deposit in Caution Money escrow.
+    2. Total outstanding AR debt across all unpaid bills (Tuition, Hostel, Library, Transport, Fines).
+    3. Mathematical offset required and net cash/bank refundable amount or remaining shortfall.
+    """
+    student = Student.query.get(student_id)
+    if not student:
+        raise ValueError(f"Student #{student_id} not found.")
+
+    deposits = CautionMoneyDeposit.query.filter_by(
+        student_id=student_id,
+        school_id=student.school_id
+    ).filter(CautionMoneyDeposit.status.in_(['HELD', 'PARTIALLY_SETTLED'])).all()
+
+    total_held_deposit = round(sum(
+        max(0.0, float(d.deposit_amount) - float(d.offset_amount or 0.0) - float(d.refunded_amount or 0.0))
+        for d in deposits
+    ), 2)
+
+    # Fetch all unpaid fee bills
+    unpaid_bills = FeeBill.query.filter(
+        FeeBill.student_id == student_id,
+        FeeBill.school_id == student.school_id,
+        FeeBill.status.in_([BillStatus.ISSUED.value, BillStatus.PARTIALLY_PAID.value, BillStatus.OVERDUE.value])
+    ).order_by(FeeBill.bill_month.asc(), FeeBill.id.asc()).all()
+
+    total_outstanding_dues = round(sum(float(b.balance_due or 0.0) for b in unpaid_bills), 2)
+
+    offset_amount = round(min(total_held_deposit, total_outstanding_dues), 2)
+    net_refundable = round(max(0.0, total_held_deposit - offset_amount), 2)
+    remaining_dues = round(max(0.0, total_outstanding_dues - offset_amount), 2)
+
+    clearance_status = 'CLEARABLE' if remaining_dues <= 0 else 'SHORTFALL'
+
+    bills_summary = []
+    for b in unpaid_bills:
+        bills_summary.append({
+            'bill_id': b.id,
+            'bill_no': b.bill_no,
+            'bill_month': b.bill_month,
+            'bill_period_label': b.bill_period_label,
+            'total_payable': float(b.total_payable or 0.0),
+            'amount_paid': float(b.amount_paid or 0.0),
+            'balance_due': float(b.balance_due or 0.0),
+            'status': b.status,
+        })
+
+    return {
+        'student_id': student.id,
+        'student_name': student.user.name if student.user else '',
+        'admission_no': student.admission_no or '',
+        'class_display': f"{student.class_ref.name} {student.class_ref.section or ''}".strip() if student.class_ref else '',
+        'deposits_count': len(deposits),
+        'deposits': [d.to_dict() for d in deposits],
+        'total_held_deposit': total_held_deposit,
+        'total_outstanding_dues': total_outstanding_dues,
+        'offset_amount': offset_amount,
+        'net_refundable': net_refundable,
+        'remaining_dues': remaining_dues,
+        'clearance_status': clearance_status,
+        'can_clear_immediately': remaining_dues <= 0,
+        'unpaid_bills': bills_summary,
+    }
+
+
+def execute_caution_money_settlement(student_id, payment_mode='BANK_TRANSFER', refund_ref_no='', notes='', actor_user=None):
+    """
+    Executes graduation / leaving clearance settlement (Section 21):
+    1. Offsets held caution deposit against outstanding dues via collect_fee_payment(mode='CAUTION_MONEY_OFFSET').
+    2. Refunds net remaining balance to student/parent via Expense(category='CAUTION_MONEY_REFUND').
+    3. Closes caution deposit as FULLY_SETTLED.
+    4. Posts double-entry closing to StudentLedger.
+    """
+    student = Student.query.get(student_id)
+    if not student:
+        raise ValueError(f"Student #{student_id} not found.")
+
+    preview = preview_caution_money_clearance(student_id)
+    total_held = preview['total_held_deposit']
+    if total_held <= 0:
+        raise ValueError(f"No active caution money deposit held in escrow for student #{student.admission_no or student_id}.")
+
+    offset_amt = preview['offset_amount']
+    net_refund = preview['net_refundable']
+
+    deposits = CautionMoneyDeposit.query.filter_by(
+        student_id=student_id,
+        school_id=student.school_id
+    ).filter(CautionMoneyDeposit.status.in_(['HELD', 'PARTIALLY_SETTLED'])).all()
+
+    # Step 1: Execute Offset against outstanding AR bills
+    offset_payment = None
+    if offset_amt > 0:
+        offset_payment = collect_fee_payment(
+            student_id=student_id,
+            amount_paid=offset_amt,
+            payment_mode='CAUTION_MONEY_OFFSET',
+            transaction_ref=refund_ref_no or f"ESCROW-OFFSET-{date.today().year}",
+            remarks=f"Caution Money Escrow Offset against Outstanding Dues ({notes or 'Graduation Clearance'})",
+            collected_by=actor_user,
+            department='ACCOUNTS'
+        )
+
+    # Step 2: If net remaining refund exists, book cash outflow Expense
+    refund_expense = None
+    if net_refund > 0:
+        year = date.today().year
+        exp_count = Expense.query.filter_by(school_id=student.school_id).count() + 1
+        st_name = student.user.name if student.user else 'Student'
+        refund_expense = Expense(
+            school_id=student.school_id,
+            expense_number=f"EXP-{year}-{exp_count:05d}",
+            category='CAUTION_MONEY_REFUND',
+            title=f"Caution Money Refund — {st_name} ({student.admission_no or student.id})",
+            vendor_name=student.parent_name or st_name,
+            department='ACCOUNTS',
+            amount=net_refund,
+            invoice_number=refund_ref_no or f"REF-CAUT-{student.id}",
+            payment_method=payment_mode or 'BANK_TRANSFER',
+            payment_date=date.today(),
+            month=date.today().strftime('%B %Y'),
+            status='PAID',
+            source='CAUTION_MONEY_REFUND',
+            source_ref_id=deposits[0].id if deposits else None,
+            remarks=f"Caution Money Net Refund upon Clearance. Ref: {refund_ref_no}. {notes}".strip(),
+            created_by=actor_user.id if actor_user else None,
+        )
+        db.session.add(refund_expense)
+
+    # Step 3: Update CautionMoneyDeposit records
+    rem_offset_to_distribute = offset_amt
+    rem_refund_to_distribute = net_refund
+    for dep in deposits:
+        dep_held = max(0.0, float(dep.deposit_amount) - float(dep.offset_amount or 0.0) - float(dep.refunded_amount or 0.0))
+        if dep_held <= 0:
+            dep.status = 'FULLY_SETTLED'
+            continue
+
+        take_offset = min(rem_offset_to_distribute, dep_held)
+        dep.offset_amount = round((dep.offset_amount or 0.0) + take_offset, 2)
+        rem_offset_to_distribute = round(rem_offset_to_distribute - take_offset, 2)
+        dep_held -= take_offset
+
+        take_refund = min(rem_refund_to_distribute, dep_held)
+        dep.refunded_amount = round((dep.refunded_amount or 0.0) + take_refund, 2)
+        rem_refund_to_distribute = round(rem_refund_to_distribute - take_refund, 2)
+
+        dep.settlement_date = date.today()
+        dep.settlement_mode = payment_mode
+        dep.refund_ref_no = refund_ref_no
+        dep.settlement_notes = notes
+        dep.settled_by = actor_user.id if actor_user else None
+        dep.status = 'FULLY_SETTLED'
+
+    # Step 4: Audit Log
+    audit = FinancialAuditLog(
+        school_id=student.school_id,
+        student_id=student_id,
+        action='CAUTION_MONEY_SETTLED',
+        actor_id=actor_user.id if actor_user else None,
+        old_value=f"Held Escrow: ₹{total_held:.2f}",
+        new_value=f"Offset: ₹{offset_amt:.2f}, Refunded: ₹{net_refund:.2f}",
+        reason=f"Caution Money Clearance Settlement ({payment_mode}): {notes}".strip()
+    )
+    db.session.add(audit)
+    db.session.commit()
+
+    return {
+        'success': True,
+        'student_id': student_id,
+        'total_settled': total_held,
+        'offset_amount': offset_amt,
+        'net_refunded': net_refund,
+        'offset_receipt_no': offset_payment.receipt_no if offset_payment else None,
+        'expense_id': refund_expense.id if refund_expense else None,
+        'message': f"Settled ₹{total_held:,.2f} Caution Money (₹{offset_amt:,.2f} offset against dues, ₹{net_refund:,.2f} refunded via {payment_mode}).",
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════

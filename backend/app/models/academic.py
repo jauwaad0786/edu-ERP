@@ -180,6 +180,7 @@ class Student(db.Model):
     pending_admission_no    = db.Column(db.String(50), nullable=True)
     house                   = db.Column(db.String(50))
     stream                  = db.Column(db.String(50))
+    family_group_id         = db.Column(db.Integer, db.ForeignKey('family_groups.id'), nullable=True, index=True)
 
     attendance  = db.relationship('Attendance', backref='student', lazy='dynamic')
     marks       = db.relationship('Marks', backref='student', lazy='dynamic')
@@ -193,6 +194,7 @@ class Student(db.Model):
         db.Index('idx_students_school_deleted', 'school_id', 'is_deleted'),
         db.Index('idx_students_school_status', 'school_id', 'status'),
         db.Index('idx_students_school_parent_user', 'school_id', 'parent_user_id'),
+        db.Index('idx_students_school_family_group', 'school_id', 'family_group_id'),
     )
 
     def to_dict(self):
@@ -208,6 +210,8 @@ class Student(db.Model):
             'id':                      self.id,
             'user_id':                 self.user_id,
             'parent_user_id':          self.parent_user_id,
+            'family_group_id':         self.family_group_id,
+            'family_code':             self.family_group.family_code if getattr(self, 'family_group', None) else '',
             'roll_number':             self.roll_number or '',
             'admission_no':            self.admission_no or '',
             'admission_number':        self.admission_no or '',

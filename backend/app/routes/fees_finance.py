@@ -29,7 +29,8 @@ from app.models.fee_finance import (
     FeeHead, FeeStructureV2, FeeStructureItemV2, StudentFeeAssignment,
     StudentConcession, FeeBill, FeeBillItem, StudentLedger, FeePayment,
     FeePaymentAllocation, FeeRefund, FinancialAuditLog,
-    BillStatus, PaymentStatus, FeePaymentPlan
+    BillStatus, PaymentStatus, FeePaymentPlan,
+    FamilyGroup, CautionMoneyDeposit
 )
 from app.services.fee_ledger_service import (
     get_student_ledger, get_student_applicable_charges,
@@ -37,7 +38,8 @@ from app.services.fee_ledger_service import (
     collect_fee_payment, cancel_payment_receipt,
     process_fee_refund, get_finance_dashboard_metrics,
     ensure_default_fee_heads, apply_concession_and_adjust_bills,
-    reconcile_school_fee_balances, get_current_academic_session
+    reconcile_school_fee_balances, get_current_academic_session,
+    evaluate_sibling_discount, preview_caution_money_clearance, execute_caution_money_settlement
 )
 from app.services import payroll_engine as p_svc
 from app.utils.fee_pdf_generator import (
@@ -1159,6 +1161,10 @@ def get_student_financial_ledger(student_id):
     if not user or not user.school_id:
         return jsonify({'error': 'Unauthorized'}), 401
 
+    student, err = _verify_student_access(user, student_id)
+    if err:
+        return jsonify({'error': err[0]}), err[1]
+
     session = request.args.get('session', None)
     ledger_data = get_student_ledger(student_id, session=session)
     if not ledger_data:
@@ -1198,8 +1204,9 @@ def download_student_ledger_pdf(student_id):
 @jwt_required()
 def get_applicable_charges(student_id):
     user = _get_current_user()
-    if not user or not user.school_id:
-        return jsonify({'error': 'Unauthorized'}), 401
+    student, err = _verify_student_access(user, student_id)
+    if err:
+        return jsonify({'error': err[0]}), err[1]
 
     session = request.args.get('session') or get_current_academic_session(user.school_id)
     charges = get_student_applicable_charges(student_id, session=session)
@@ -2577,4 +2584,431 @@ def get_class_wise_dues():
         month=month
     )
     return jsonify(result), 200
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  14. FAMILY GROUP ENTITY & AUTO SIBLING DISCOUNT ENGINE (SECTION 23)
+# ═══════════════════════════════════════════════════════════════════════
+
+@fees_finance_bp.route('/family-groups', methods=['GET'])
+@jwt_required()
+def list_family_groups():
+    """List all family groups in the school with linked siblings and discount tiers."""
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    search = (request.args.get('search') or '').strip()
+    query = FamilyGroup.query.filter_by(school_id=user.school_id, is_active=True)
+    if search:
+        query = query.filter(
+            or_(
+                FamilyGroup.family_code.ilike(f"%{search}%"),
+                FamilyGroup.primary_guardian_name.ilike(f"%{search}%"),
+                FamilyGroup.primary_guardian_phone.ilike(f"%{search}%"),
+                FamilyGroup.parent_aadhar_no.ilike(f"%{search}%")
+            )
+        )
+
+    groups = query.order_by(FamilyGroup.id.desc()).all()
+    return jsonify([g.to_dict(include_students=True) for g in groups]), 200
+
+
+@fees_finance_bp.route('/family-groups', methods=['POST'])
+@jwt_required()
+def create_family_group():
+    """Create a new family group and link siblings."""
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    data = request.get_json() or {}
+    guardian_name = (data.get('primary_guardian_name') or '').strip()
+    guardian_phone = (data.get('primary_guardian_phone') or '').strip()
+    if not guardian_name or not guardian_phone:
+        return jsonify({'error': 'Guardian Name and Phone Number are required.'}), 400
+
+    student_ids = data.get('student_ids') or []
+
+    # Generate sequential unique family code
+    seq = FamilyGroup.query.filter_by(school_id=user.school_id).count() + 1
+    while True:
+        candidate_code = f"FAM-{date.today().year}-{seq:04d}"
+        if not FamilyGroup.query.filter_by(school_id=user.school_id, family_code=candidate_code).first():
+            family_code = candidate_code
+            break
+        seq += 1
+
+    fg = FamilyGroup(
+        school_id=user.school_id,
+        family_code=family_code,
+        primary_guardian_name=guardian_name,
+        primary_guardian_phone=guardian_phone,
+        primary_guardian_email=(data.get('primary_guardian_email') or '').strip(),
+        parent_aadhar_no=(data.get('parent_aadhar_no') or '').strip(),
+        address=(data.get('address') or '').strip(),
+        first_child_discount_pct=float(data.get('first_child_discount_pct', 0.0)),
+        second_child_discount_pct=float(data.get('second_child_discount_pct', 25.0)),
+        third_child_discount_pct=float(data.get('third_child_discount_pct', 50.0)),
+        notes=(data.get('notes') or '').strip(),
+        created_by=user.id,
+    )
+    db.session.add(fg)
+    db.session.flush()
+
+    # Link selected students
+    linked_count = 0
+    for sid in student_ids:
+        st = Student.query.filter_by(id=sid, school_id=user.school_id, is_deleted=False).first()
+        if st:
+            st.family_group_id = fg.id
+            linked_count += 1
+
+    db.session.commit()
+    return jsonify({
+        'message': f"Family Group {fg.family_code} created successfully with {linked_count} linked siblings.",
+        'family_group': fg.to_dict(include_students=True)
+    }), 201
+
+
+@fees_finance_bp.route('/family-groups/<int:group_id>', methods=['GET'])
+@jwt_required()
+def get_family_group_detail(group_id):
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    fg = FamilyGroup.query.filter_by(id=group_id, school_id=user.school_id).first_or_404()
+    data = fg.to_dict(include_students=True)
+
+    # Attach live outstanding dues per student
+    for st_dict in data.get('students', []):
+        try:
+            ledg = get_student_ledger(st_dict['id'])
+            st_dict['outstanding_balance'] = ledg.get('outstanding', 0.0) if ledg else 0.0
+            st_dict['total_paid'] = ledg.get('total_paid', 0.0) if ledg else 0.0
+        except Exception:
+            st_dict['outstanding_balance'] = 0.0
+            st_dict['total_paid'] = 0.0
+
+    return jsonify(data), 200
+
+
+@fees_finance_bp.route('/family-groups/<int:group_id>', methods=['PATCH', 'PUT'])
+@jwt_required()
+def update_family_group(group_id):
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    fg = FamilyGroup.query.filter_by(id=group_id, school_id=user.school_id).first_or_404()
+    data = request.get_json() or {}
+
+    if 'primary_guardian_name' in data:
+        fg.primary_guardian_name = data['primary_guardian_name'].strip()
+    if 'primary_guardian_phone' in data:
+        fg.primary_guardian_phone = data['primary_guardian_phone'].strip()
+    if 'primary_guardian_email' in data:
+        fg.primary_guardian_email = data['primary_guardian_email'].strip()
+    if 'parent_aadhar_no' in data:
+        fg.parent_aadhar_no = data['parent_aadhar_no'].strip()
+    if 'address' in data:
+        fg.address = data['address'].strip()
+    if 'first_child_discount_pct' in data:
+        fg.first_child_discount_pct = float(data['first_child_discount_pct'])
+    if 'second_child_discount_pct' in data:
+        fg.second_child_discount_pct = float(data['second_child_discount_pct'])
+    if 'third_child_discount_pct' in data:
+        fg.third_child_discount_pct = float(data['third_child_discount_pct'])
+    if 'notes' in data:
+        fg.notes = data['notes'].strip()
+
+    db.session.commit()
+    return jsonify(fg.to_dict(include_students=True)), 200
+
+
+@fees_finance_bp.route('/family-groups/<int:group_id>/students', methods=['POST'])
+@jwt_required()
+def add_student_to_family_group(group_id):
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    fg = FamilyGroup.query.filter_by(id=group_id, school_id=user.school_id).first_or_404()
+    data = request.get_json() or {}
+    student_id = data.get('student_id')
+    if not student_id:
+        return jsonify({'error': 'Student ID is required.'}), 400
+
+    student = Student.query.filter_by(id=student_id, school_id=user.school_id, is_deleted=False).first_or_404()
+    student.family_group_id = fg.id
+    db.session.commit()
+
+    return jsonify({
+        'message': f"Student {student.user.name if student.user else student.admission_no} linked to Family Group {fg.family_code}.",
+        'family_group': fg.to_dict(include_students=True)
+    }), 200
+
+
+@fees_finance_bp.route('/family-groups/<int:group_id>/students/<int:student_id>', methods=['DELETE'])
+@jwt_required()
+def remove_student_from_family_group(group_id, student_id):
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    fg = FamilyGroup.query.filter_by(id=group_id, school_id=user.school_id).first_or_404()
+    student = Student.query.filter_by(id=student_id, school_id=user.school_id, family_group_id=fg.id).first_or_404()
+    student.family_group_id = None
+    db.session.commit()
+
+    return jsonify({
+        'message': f"Student unlinked from Family Group {fg.family_code}.",
+        'family_group': fg.to_dict(include_students=True)
+    }), 200
+
+
+@fees_finance_bp.route('/family-groups/<int:group_id>', methods=['DELETE'])
+@jwt_required()
+def delete_family_group(group_id):
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    fg = FamilyGroup.query.filter_by(id=group_id, school_id=user.school_id).first_or_404()
+    Student.query.filter_by(family_group_id=fg.id).update({'family_group_id': None})
+    fg.is_active = False
+    db.session.commit()
+
+    return jsonify({'message': f"Family Group {fg.family_code} removed successfully."}), 200
+
+
+@fees_finance_bp.route('/family-groups/auto-detect', methods=['GET'])
+@jwt_required()
+def auto_detect_siblings():
+    """Scans all active unlinked students and groups potential siblings by parent phone or aadhar."""
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    students = Student.query.filter_by(school_id=user.school_id, is_deleted=False).all()
+    phone_map = {}
+    for st in students:
+        p_phone = ''.join(c for c in str(st.parent_phone or st.guardian_phone or '') if c.isdigit())[-10:]
+        if len(p_phone) >= 10:
+            if p_phone not in phone_map:
+                phone_map[p_phone] = []
+            phone_map[p_phone].append(st)
+
+    sibling_clusters = []
+    for ph, st_list in phone_map.items():
+        if len(st_list) > 1:
+            already_grouped = any(s.family_group_id is not None for s in st_list)
+            first_s = st_list[0]
+            c_info = []
+            for s in st_list:
+                c_name = s.class_ref.name if s.class_ref else ''
+                c_sec = s.class_ref.section if s.class_ref else ''
+                c_info.append({
+                    'id': s.id,
+                    'name': s.user.name if s.user else '',
+                    'admission_no': s.admission_no or '',
+                    'class_display': f"{c_name} {c_sec}".strip(),
+                    'family_group_id': s.family_group_id,
+                    'family_code': s.family_group.family_code if s.family_group else None,
+                })
+            sibling_clusters.append({
+                'match_phone': ph,
+                'guardian_name': first_s.parent_name or first_s.guardian_name or first_s.father_name or 'Parent',
+                'students_count': len(st_list),
+                'already_grouped': already_grouped,
+                'students': c_info,
+                'suggested_family_code': f"FAM-{ph[-4:]}",
+            })
+
+    return jsonify({
+        'total_detected_clusters': len(sibling_clusters),
+        'unlinked_clusters_count': sum(1 for c in sibling_clusters if not c['already_grouped']),
+        'clusters': sibling_clusters
+    }), 200
+
+
+@fees_finance_bp.route('/students/<int:student_id>/sibling-discount', methods=['GET'])
+@jwt_required()
+def get_student_sibling_discount(student_id):
+    user = _get_current_user()
+    student, err = _verify_student_access(user, student_id)
+    if err:
+        return jsonify({'error': err[0]}), err[1]
+
+    eval_result = evaluate_sibling_discount(student_id)
+    return jsonify(eval_result), 200
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  15. CAUTION MONEY ESCROW & CLEARANCE SUBLEDGER (SECTION 21)
+# ═══════════════════════════════════════════════════════════════════════
+
+@fees_finance_bp.route('/caution-money', methods=['GET'])
+@jwt_required()
+def list_caution_money_deposits():
+    """List caution money deposits with escrow KPI balances."""
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    status_filter = request.args.get('status')
+    search = (request.args.get('search') or '').strip()
+
+    query = CautionMoneyDeposit.query.filter_by(school_id=user.school_id)
+    if status_filter and status_filter != 'ALL':
+        query = query.filter_by(status=status_filter)
+
+    deposits = query.order_by(CautionMoneyDeposit.deposit_date.desc(), CautionMoneyDeposit.id.desc()).all()
+
+    # Calculate summary KPIs across school
+    all_school_deps = CautionMoneyDeposit.query.filter_by(school_id=user.school_id).all()
+    total_held = round(sum(
+        max(0.0, float(d.deposit_amount) - float(d.offset_amount or 0.0) - float(d.refunded_amount or 0.0))
+        for d in all_school_deps if d.status in ('HELD', 'PARTIALLY_SETTLED')
+    ), 2)
+    total_offset = round(sum(float(d.offset_amount or 0.0) for d in all_school_deps), 2)
+    total_refunded = round(sum(float(d.refunded_amount or 0.0) for d in all_school_deps), 2)
+
+    deposit_dicts = [d.to_dict() for d in deposits]
+    if search:
+        search_lower = search.lower()
+        deposit_dicts = [
+            d for d in deposit_dicts
+            if search_lower in (d['student_name'] or '').lower() or
+               search_lower in (d['admission_no'] or '').lower() or
+               search_lower in (d['receipt_no'] or '').lower()
+        ]
+
+    return jsonify({
+        'kpis': {
+            'total_held_in_escrow': total_held,
+            'total_offset_against_dues': total_offset,
+            'total_refunded_to_parents': total_refunded,
+            'active_held_count': sum(1 for d in all_school_deps if d.status in ('HELD', 'PARTIALLY_SETTLED')),
+            'fully_settled_count': sum(1 for d in all_school_deps if d.status == 'FULLY_SETTLED'),
+        },
+        'count': len(deposit_dicts),
+        'deposits': deposit_dicts,
+    }), 200
+
+
+@fees_finance_bp.route('/caution-money/collect', methods=['POST'])
+@jwt_required()
+def collect_caution_money_deposit():
+    """Collects and records a refundable Caution Money deposit into Escrow Liability."""
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    data = request.get_json() or {}
+    student_id = data.get('student_id')
+    amount = float(data.get('amount') or data.get('deposit_amount') or 0.0)
+    if not student_id or amount <= 0:
+        return jsonify({'error': 'Student ID and positive deposit amount are required.'}), 400
+
+    student = Student.query.filter_by(id=student_id, school_id=user.school_id, is_deleted=False).first_or_404()
+
+    payment_mode = (data.get('payment_mode') or 'CASH').upper()
+    transaction_ref = data.get('transaction_ref') or ''
+    deposit_date_str = data.get('deposit_date')
+    dep_date = date.fromisoformat(deposit_date_str) if deposit_date_str else date.today()
+
+    # Generate sequential unique receipt number
+    seq = CautionMoneyDeposit.query.filter_by(school_id=user.school_id).count() + 1
+    while True:
+        candidate_receipt = f"CAUT-{date.today().year}-{seq:05d}"
+        if not CautionMoneyDeposit.query.filter_by(receipt_no=candidate_receipt).first():
+            receipt_no = candidate_receipt
+            break
+        seq += 1
+
+    dep = CautionMoneyDeposit(
+        school_id=user.school_id,
+        student_id=student.id,
+        receipt_no=receipt_no,
+        deposit_amount=round(amount, 2),
+        deposit_date=dep_date,
+        payment_mode=payment_mode,
+        transaction_ref=transaction_ref,
+        status='HELD',
+        created_by=user.id,
+    )
+    db.session.add(dep)
+    db.session.flush()
+
+    # Post informational entry to StudentLedger
+    last_ledger = StudentLedger.query.filter_by(student_id=student.id).order_by(StudentLedger.id.desc()).first()
+    prev_balance = float(last_ledger.balance_after or 0.0) if last_ledger and last_ledger.balance_after is not None else 0.0
+
+    ledger_entry = StudentLedger(
+        school_id=user.school_id,
+        student_id=student.id,
+        fee_head_id=None,
+        department='ACCOUNTS',
+        entry_type='CREDIT',
+        entry_date=dep_date,
+        period_label="Caution Escrow",
+        session=getattr(student, 'session', None) or get_current_academic_session(user.school_id),
+        amount=amount,
+        balance_after=prev_balance, # Escrow deposit does not decrement regular tuition AR dues until clearance
+        reference_no=receipt_no,
+        description=f"Caution Money Escrow Deposit: ₹{amount:,.2f} ({payment_mode} - Refundable on Graduation Clearance)",
+        created_by=user.id,
+    )
+    db.session.add(ledger_entry)
+    db.session.commit()
+
+    return jsonify({
+        'message': f"Caution Money Deposit of ₹{amount:,.2f} recorded in Escrow (Receipt #{receipt_no}).",
+        'deposit': dep.to_dict()
+    }), 201
+
+
+@fees_finance_bp.route('/caution-money/students/<int:student_id>/clearance-preview', methods=['GET'])
+@jwt_required()
+def get_caution_money_clearance_preview(student_id):
+    """Calculates clearance math: total escrow held vs outstanding fee dues vs net refund."""
+    user = _get_current_user()
+    student, err = _verify_student_access(user, student_id)
+    if err:
+        return jsonify({'error': err[0]}), err[1]
+
+    try:
+        preview = preview_caution_money_clearance(student_id)
+        return jsonify(preview), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@fees_finance_bp.route('/caution-money/students/<int:student_id>/settle', methods=['POST'])
+@jwt_required()
+def settle_caution_money(student_id):
+    """Executes atomic graduation clearance settlement, offsetting dues and refunding net balance."""
+    user = _get_current_user()
+    if not user or not user.school_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    data = request.get_json() or {}
+    payment_mode = (data.get('payment_mode') or 'BANK_TRANSFER').upper()
+    refund_ref_no = (data.get('refund_ref_no') or '').strip()
+    notes = (data.get('notes') or '').strip()
+
+    try:
+        result = execute_caution_money_settlement(
+            student_id=student_id,
+            payment_mode=payment_mode,
+            refund_ref_no=refund_ref_no,
+            notes=notes,
+            actor_user=user
+        )
+        return jsonify(result), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
 
