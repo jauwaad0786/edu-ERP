@@ -26,7 +26,6 @@ import AnnualRegisterPage from './pages/students/AnnualRegisterPage';
 import StudentImportPage  from './pages/students/StudentImportPage';
 import TeachersPage     from './pages/TeachersPage';
 import ClassesPage      from './pages/ClassesPage';
-import FeesPage         from './pages/FeesPage';
 import ExamsPage        from './pages/ExamsPage';
 import SchoolsPage      from './pages/SchoolsPage';
 import SchoolDetailPage from './pages/SchoolDetailPage';
