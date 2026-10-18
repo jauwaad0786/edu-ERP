@@ -1977,7 +1977,7 @@ def download_receipt_pdf(payment_id):
     ledger_data = get_student_ledger(payment.student_id, session=payment.session)
     rem_bal = ledger_data['outstanding'] if ledger_data else 0.0
 
-    pdf_buffer = generate_fee_receipt_pdf(payment, school, ledger_balance=rem_bal)
+    pdf_buffer = generate_fee_receipt_pdf(payment, school, student=student, ledger_balance=rem_bal)
     return send_file(
         pdf_buffer,
         mimetype='application/pdf',

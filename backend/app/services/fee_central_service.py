@@ -612,7 +612,13 @@ class FeeCentralService:
             bill.amount_paid = round_curr(sum(i.paid_amount or 0.0 for i in bill.items))
             bill.calculate_totals()
 
-        # 4. Post StudentLedger CREDIT entry
+        # 4. Post StudentLedger CREDIT entry with true running balance
+        last_ledger = StudentLedger.query.filter_by(student_id=student_id).order_by(
+            StudentLedger.entry_date.desc(), StudentLedger.id.desc()
+        ).first()
+        prev_balance = float(last_ledger.balance_after) if last_ledger and last_ledger.balance_after is not None else 0.0
+        running_bal = round(max(0.0, prev_balance - float(amount_paid)), 2)
+
         ledger_credit = StudentLedger(
             school_id=school_id,
             student_id=student_id,
@@ -622,7 +628,7 @@ class FeeCentralService:
             period_label=f"Payment {p_date.strftime('%b %Y')}",
             session=session,
             amount=amount_paid,
-            balance_after=0.0,
+            balance_after=running_bal,
             payment_id=central_payment.id,
             reference_no=receipt_no,
             description=f"Fee Payment Collected ({payment_mode}) - Receipt #{receipt_no}",

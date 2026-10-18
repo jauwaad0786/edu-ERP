@@ -667,8 +667,14 @@ def _check_student_financial_history(student_id):
 def _check_teacher_payroll_history(teacher_id):
     """Checks if teacher has historical payroll records."""
     def _chk_salary():
-        from app.models.financial import TeacherSalaryRecord
-        return TeacherSalaryRecord.query.filter_by(teacher_id=teacher_id).first() is not None
+        from app.models.financial import SalaryRecord
+        from app.models.hrms import PayrollSlip
+        from app.models.academic import Teacher
+        teacher = Teacher.query.get(teacher_id)
+        has_v1 = SalaryRecord.query.filter_by(teacher_id=teacher_id).first() is not None
+        u_id = teacher.user_id if teacher else teacher_id
+        has_hrms = PayrollSlip.query.filter_by(user_id=u_id).first() is not None
+        return has_v1 or has_hrms
     result = _safe_exec(_chk_salary, 'teacher_payroll_check')
     return bool(result)
 
@@ -677,7 +683,7 @@ def _check_staff_financial_history(user_id):
     """Checks if staff user collected fees or has payroll records."""
     def _chk_fee_collected():
         from app.models.fee_finance import FeePayment
-        return FeePayment.query.filter_by(collected_by_id=user_id).first() is not None
+        return FeePayment.query.filter_by(collected_by=user_id).first() is not None
     result = _safe_exec(_chk_fee_collected, 'staff_financial_check')
     return bool(result)
 
