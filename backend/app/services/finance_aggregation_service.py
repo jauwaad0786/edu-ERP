@@ -315,12 +315,17 @@ class FinanceAggregationService:
         ).all()
         today_pay_sum = sum(p.total_paid or 0.0 for p in today_payments)
 
-        # Legacy transactions today
+        # Legacy transactions today (deduplicate against modern payments sharing the same receipt_no)
+        today_receipts = {p.receipt_no.strip().upper() for p in today_payments if p.receipt_no}
         today_txns = FeeTransaction.query.filter(
             FeeTransaction.school_id == school_id,
             FeeTransaction.transaction_date == today
         ).all()
-        today_tx_sum = sum(t.amount or 0.0 for t in today_txns)
+        orphan_today_txns = [
+            t for t in today_txns
+            if not (t.receipt_no and t.receipt_no.strip().upper() in today_receipts)
+        ]
+        today_tx_sum = sum(t.amount or 0.0 for t in orphan_today_txns)
 
         today_collection = round_curr(today_pay_sum + today_tx_sum)
 
@@ -342,12 +347,17 @@ class FinanceAggregationService:
         ).all()
         month_pay_sum = sum(p.total_paid or 0.0 for p in month_payments)
 
+        month_receipts = {p.receipt_no.strip().upper() for p in month_payments if p.receipt_no}
         month_txns = FeeTransaction.query.filter(
             FeeTransaction.school_id == school_id,
             FeeTransaction.transaction_date >= start_m,
             FeeTransaction.transaction_date <= end_m
         ).all()
-        month_tx_sum = sum(t.amount or 0.0 for t in month_txns)
+        orphan_month_txns = [
+            t for t in month_txns
+            if not (t.receipt_no and t.receipt_no.strip().upper() in month_receipts)
+        ]
+        month_tx_sum = sum(t.amount or 0.0 for t in orphan_month_txns)
 
         month_collection = round_curr(month_pay_sum + month_tx_sum)
 
@@ -358,7 +368,7 @@ class FinanceAggregationService:
                 mode_breakdown[m] = 0.0
             mode_breakdown[m] = round_curr(mode_breakdown[m] + (p.total_paid or 0.0))
 
-        for t in month_txns:
+        for t in orphan_month_txns:
             m = (t.payment_mode or 'CASH').upper()
             if m not in mode_breakdown:
                 mode_breakdown[m] = 0.0
@@ -399,7 +409,7 @@ class FinanceAggregationService:
                 else:
                     today_by_dept['academic'] += amt
 
-        for t in today_txns:
+        for t in orphan_today_txns:
             rec = t.fee_record
             src = (rec.source if rec and rec.source else 'ACADEMIC').upper()
             amt = float(t.amount or 0.0)

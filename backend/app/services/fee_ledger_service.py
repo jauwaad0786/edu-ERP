@@ -411,6 +411,12 @@ def get_student_applicable_charges(student_id, session=None, bill_month=None):
             school_id=student.school_id, class_id=None, is_active=True
         ).first()
 
+    global_flat_pool = {
+        conc.id: float(conc.discount_value or 0.0)
+        for conc in concessions
+        if conc.fee_head_id is None and conc.discount_type != 'PERCENTAGE'
+    }
+
     if struct and struct.items:
         for itm in struct.items:
             fh = fee_heads_by_id.get(itm.fee_head_id)
@@ -431,11 +437,20 @@ def get_student_applicable_charges(student_id, session=None, bill_month=None):
             # Calculate concession for this specific head
             disc = 0.0
             for conc in concessions:
-                if conc.fee_head_id is None or conc.fee_head_id == itm.fee_head_id:
+                if conc.fee_head_id == itm.fee_head_id:
                     if conc.discount_type == 'PERCENTAGE':
                         disc += (base_amt * conc.discount_value / 100.0)
                     else:
                         disc += conc.discount_value
+                elif conc.fee_head_id is None:
+                    if conc.discount_type == 'PERCENTAGE':
+                        disc += (base_amt * conc.discount_value / 100.0)
+                    else:
+                        avail = global_flat_pool.get(conc.id, 0.0)
+                        if avail > 0:
+                            take = min(avail, max(0.0, base_amt - disc))
+                            disc += take
+                            global_flat_pool[conc.id] = round(avail - take, 2)
 
             disc = min(disc, base_amt)
             net_amt = round(max(0.0, base_amt - disc), 2)
@@ -459,11 +474,20 @@ def get_student_applicable_charges(student_id, session=None, bill_month=None):
                 base_amt = ca.custom_amount if (ca and ca.custom_amount is not None) else 3000.0
                 disc = 0.0
                 for conc in concessions:
-                    if conc.fee_head_id is None or conc.fee_head_id == tuition_head.id:
+                    if conc.fee_head_id == tuition_head.id:
                         if conc.discount_type == 'PERCENTAGE':
                             disc += (base_amt * conc.discount_value / 100.0)
                         else:
                             disc += conc.discount_value
+                    elif conc.fee_head_id is None:
+                        if conc.discount_type == 'PERCENTAGE':
+                            disc += (base_amt * conc.discount_value / 100.0)
+                        else:
+                            avail = global_flat_pool.get(conc.id, 0.0)
+                            if avail > 0:
+                                take = min(avail, max(0.0, base_amt - disc))
+                                disc += take
+                                global_flat_pool[conc.id] = round(avail - take, 2)
                 disc = min(disc, base_amt)
                 charges.append({
                     'fee_head_id':     tuition_head.id,
@@ -530,26 +554,36 @@ def get_student_applicable_charges(student_id, session=None, bill_month=None):
                         'net_amount':      round(max(0.0, trans_amt - disc), 2),
                     })
 
-                # Check pending transport fines
+                # Check pending transport fines (deduplicating already-billed fines on open bills)
                 try:
                     from app.models.transport_student import TransportFineRecord
                     t_fines = TransportFineRecord.query.filter(
                         TransportFineRecord.student_id == student_id,
                         TransportFineRecord.status.in_(['OUTSTANDING', 'PARTIALLY_PAID'])
                     ).all()
-                    tot_t_fine = sum(tf.outstanding_amount for tf in t_fines)
+                    prior_billed_fine_labels = set(
+                        r[0] for r in db.session.query(FeeBillItem.coverage_label).join(
+                            FeeBill, FeeBillItem.bill_id == FeeBill.id
+                        ).filter(
+                            FeeBill.student_id == student_id,
+                            FeeBill.status.notin_([BillStatus.CANCELLED.value])
+                        ).all() if r[0]
+                    )
+                    unbilled_t_fines = [tf for tf in t_fines if f"TFINE-{tf.id}" not in prior_billed_fine_labels]
+                    tot_t_fine = sum(tf.outstanding_amount for tf in unbilled_t_fines)
                     if tot_t_fine > 0:
                         t_fine_head = fee_heads.get('TRANSPORT_FINE') or trans_head
                         if t_fine_head:
                             charges.append({
                                 'fee_head_id':     t_fine_head.id,
-                                'fee_head_name':   f"Transport Fine ({len(t_fines)} pending)",
+                                'fee_head_name':   f"Transport Fine ({len(unbilled_t_fines)} pending)",
                                 'fee_head_code':   t_fine_head.code,
                                 'department':      'TRANSPORT',
                                 'original_amount': round(tot_t_fine, 2),
                                 'discount_amount': 0.0,
-                                'fine_amount':     round(tot_t_fine, 2),
+                                'fine_amount':     0.0,
                                 'net_amount':      round(tot_t_fine, 2),
+                                'coverage_label':  ','.join(f"TFINE-{tf.id}" for tf in unbilled_t_fines),
                             })
                 except Exception:
                     pass
@@ -592,21 +626,31 @@ def get_student_applicable_charges(student_id, session=None, bill_month=None):
                         'net_amount':      round(max(0.0, h_amt - disc), 2),
                     })
 
-            # Check pending hostel fines
+            # Check pending hostel fines (deduplicating already-billed fines)
             h_fines = HostelFineRecord.query.filter_by(student_id=student_id, status='PENDING').all()
-            tot_h_fine = sum(hf.outstanding() for hf in h_fines)
+            prior_billed_fine_labels = set(
+                r[0] for r in db.session.query(FeeBillItem.coverage_label).join(
+                    FeeBill, FeeBillItem.bill_id == FeeBill.id
+                ).filter(
+                    FeeBill.student_id == student_id,
+                    FeeBill.status.notin_([BillStatus.CANCELLED.value])
+                ).all() if r[0]
+            )
+            unbilled_h_fines = [hf for hf in h_fines if f"HFINE-{hf.id}" not in prior_billed_fine_labels]
+            tot_h_fine = sum(hf.outstanding() for hf in unbilled_h_fines)
             if tot_h_fine > 0:
                 h_fine_head = fee_heads.get('HOSTEL_FINE') or hostel_head
                 if h_fine_head:
                     charges.append({
                         'fee_head_id':     h_fine_head.id,
-                        'fee_head_name':   f"Hostel Disciplinary Fine ({len(h_fines)} pending)",
+                        'fee_head_name':   f"Hostel Disciplinary Fine ({len(unbilled_h_fines)} pending)",
                         'fee_head_code':   h_fine_head.code,
                         'department':      'HOSTEL',
                         'original_amount': round(tot_h_fine, 2),
                         'discount_amount': 0.0,
-                        'fine_amount':     round(tot_h_fine, 2),
+                        'fine_amount':     0.0,
                         'net_amount':      round(tot_h_fine, 2),
+                        'coverage_label':  ','.join(f"HFINE-{hf.id}" for hf in unbilled_h_fines),
                     })
     except Exception:
         pass
@@ -636,11 +680,20 @@ def get_student_applicable_charges(student_id, session=None, bill_month=None):
                         'net_amount':      round(lib_amt, 2),
                     })
 
-            # 4b. Unpaid Book Late Fines
+            # 4b. Unpaid Book Late Fines (deduplicating already-billed fines)
             unpaid_fines = lib_member.fines.filter(
                 FineTransaction.status.in_(['OUTSTANDING', 'PENDING', 'PARTIAL', 'PARTIALLY_PAID'])
             ).all()
-            tot_fine = sum(f.outstanding_amount for f in unpaid_fines)
+            prior_billed_fine_labels = set(
+                r[0] for r in db.session.query(FeeBillItem.coverage_label).join(
+                    FeeBill, FeeBillItem.bill_id == FeeBill.id
+                ).filter(
+                    FeeBill.student_id == student_id,
+                    FeeBill.status.notin_([BillStatus.CANCELLED.value])
+                ).all() if r[0]
+            )
+            unbilled_l_fines = [lf for lf in unpaid_fines if f"LFINE-{lf.id}" not in prior_billed_fine_labels]
+            tot_fine = sum(f.outstanding_amount for f in unbilled_l_fines)
             if tot_fine > 0:
                 fine_head = fee_heads.get('LIBRARY_FINE') or lib_head
                 if fine_head:
@@ -653,6 +706,7 @@ def get_student_applicable_charges(student_id, session=None, bill_month=None):
                         'discount_amount': 0.0,
                         'fine_amount':     0.0,
                         'net_amount':      round(tot_fine, 2),
+                        'coverage_label':  ','.join(f"LFINE-{lf.id}" for lf in unbilled_l_fines),
                     })
     except Exception:
         pass
@@ -939,6 +993,7 @@ def generate_fee_bill(student_id, bill_month, due_date, actor_user, session=None
             net_amount=ch['net_amount'],
             paid_amount=0.0,
             balance_amount=ch['net_amount'],
+            coverage_label=ch.get('coverage_label'),
         )
         db.session.add(item)
 
@@ -1757,6 +1812,13 @@ def cancel_payment_receipt(payment_id, actor_user, cancel_reason):
                     bi.bill.amount_paid = round(max(0.0, (bi.bill.amount_paid or 0.0) - alc.allocated_amount), 2)
                     bi.bill.calculate_totals()
 
+    # Calculate running balance for student ledger
+    last_ledger = StudentLedger.query.filter_by(student_id=payment.student_id).order_by(
+        StudentLedger.entry_date.desc(), StudentLedger.id.desc()
+    ).first()
+    prev_balance = float(last_ledger.balance_after) if last_ledger and last_ledger.balance_after is not None else 0.0
+    running_bal = round(prev_balance + float(payment.total_paid), 2)
+
     # Post Reversal Entry in Ledger
     ledger_entry = StudentLedger(
         school_id=payment.school_id,
@@ -1768,7 +1830,7 @@ def cancel_payment_receipt(payment_id, actor_user, cancel_reason):
         period_label=f"Reversal {date.today().strftime('%b %Y')}",
         session=payment.session,
         amount=payment.total_paid,
-        balance_after=0.0,
+        balance_after=running_bal,
         payment_id=payment.id,
         reference_no=payment.receipt_no,
         description=f"Reversal of Cancelled Receipt #{payment.receipt_no}. Reason: {cancel_reason}",
@@ -1837,6 +1899,13 @@ def process_fee_refund(student_id, amount, refund_mode, reason, authorized_by, p
     db.session.add(refund)
     db.session.flush()
 
+    # Calculate running balance for student ledger
+    last_ledger = StudentLedger.query.filter_by(student_id=student_id).order_by(
+        StudentLedger.entry_date.desc(), StudentLedger.id.desc()
+    ).first()
+    prev_balance = float(last_ledger.balance_after) if last_ledger and last_ledger.balance_after is not None else 0.0
+    running_bal = round(prev_balance + float(amount), 2)
+
     # Post Debit adjustment into student ledger
     ledger_entry = StudentLedger(
         school_id=student.school_id,
@@ -1847,6 +1916,7 @@ def process_fee_refund(student_id, amount, refund_mode, reason, authorized_by, p
         entry_date=date.today(),
         period_label=f"Refund {date.today().strftime('%b %Y')}",
         amount=amount,
+        balance_after=running_bal,
         refund_id=refund.id,
         reference_no=reference_no or f"REF-{refund.id}",
         description=f"Fee Refund Issued: ₹{amount:.2f}. Reason: {reason}",

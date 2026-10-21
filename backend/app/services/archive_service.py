@@ -652,8 +652,8 @@ def _check_student_financial_history(student_id):
     checks.append(('transport_fee', _chk_transport_fee))
 
     def _chk_hostel_fine():
-        from app.models.hostel import HostelFineTransaction
-        return HostelFineTransaction.query.filter_by(student_id=student_id).first() is not None
+        from app.models.hostel import HostelFineRecord
+        return HostelFineRecord.query.filter_by(student_id=student_id).first() is not None
     checks.append(('hostel_fine', _chk_hostel_fine))
 
     for name, fn in checks:
@@ -708,8 +708,8 @@ def _cleanup_student_operational_records(student, user):
         from app.models.academic import AssignmentSubmission
         AssignmentSubmission.query.filter_by(student_id=sid).delete(synchronize_session=False)
         try:
-            from app.models.academic_resources import InternalMark
-            InternalMark.query.filter_by(student_id=sid).delete(synchronize_session=False)
+            from app.models.academic import InternalMarks
+            InternalMarks.query.filter_by(student_id=sid).delete(synchronize_session=False)
         except Exception:
             pass
     _safe_exec(_clean_academic_logs, 'academic_logs')

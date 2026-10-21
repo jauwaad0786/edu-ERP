@@ -122,11 +122,14 @@ export function resolveTenantPath(rawPath, user) {
   const isCompanyActor = user && user.school_id == null;
   const isSuperAdmin = user?.role === 'SUPER_ADMIN' || user?.active_role?.key === 'SUPER_ADMIN' || !!user?.is_super;
 
-  if (isCompanyActor && isSuperAdmin) {
-    if (rawPath.startsWith('/developer/') || rawPath.startsWith('/schools') || rawPath.startsWith('/users') || rawPath.startsWith('/admin')) {
-      return rawPath;
-    }
-    if (rawPath === '/dashboard') return '/admin/dashboard';
+  if (isCompanyActor) {
+    if (rawPath === '/schools') return '/admin/schools';
+    if (rawPath === '/users') return '/admin/users';
+    if (rawPath.startsWith('/admin')) return rawPath;
+    if (rawPath.startsWith('/developer/')) return rawPath;
+    if (rawPath === '/audit/company/logs') return '/audit/company/logs';
+    if (rawPath === '/support/kb') return '/help-center';
+    if (isSuperAdmin && rawPath === '/dashboard') return '/admin/dashboard';
   }
 
   const schoolSlug = getCanonicalSchoolSlug(user);

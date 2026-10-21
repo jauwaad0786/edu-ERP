@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 
 import { AuthProvider }          from './context/AuthContext';
@@ -163,6 +163,11 @@ import CompanyAuditLogs   from './pages/audit/CompanyAuditLogs';
 import AIChat             from './AI/pages/AIChat';
 import AIManagement       from './pages/developer/AIManagement';
 
+function LegacySchoolDetailRedirect() {
+  const { id } = useParams();
+  return <Navigate to={`/admin/schools/${id}`} replace />;
+}
+
 export default function App() {
   return (
     <AuthProvider>
@@ -186,6 +191,12 @@ export default function App() {
             <Route path="/admin/schools" element={<ProtectedRoute roles={['SUPER_ADMIN']}><SchoolsPage /></ProtectedRoute>} />
             <Route path="/admin/schools/:id" element={<ProtectedRoute roles={['SUPER_ADMIN']}><SchoolDetailPage /></ProtectedRoute>} />
             <Route path="/admin/users" element={<ProtectedRoute roles={['SUPER_ADMIN']}><UsersPage /></ProtectedRoute>} />
+            
+            {/* Legacy Admin Aliases to prevent 404s */}
+            <Route path="/schools" element={<Navigate to="/admin/schools" replace />} />
+            <Route path="/schools/:id" element={<LegacySchoolDetailRedirect />} />
+            <Route path="/users" element={<Navigate to="/admin/users" replace />} />
+
             <Route path="/developer/support" element={<ProtectedRoute roles={['SUPER_ADMIN']}><SupportDashboard /></ProtectedRoute>} />
             <Route path="/developer/errors" element={<ProtectedRoute roles={['SUPER_ADMIN']}><ErrorDashboard /></ProtectedRoute>} />
             <Route path="/developer/issues" element={<ProtectedRoute roles={['SUPER_ADMIN']}><IssueBoard /></ProtectedRoute>} />

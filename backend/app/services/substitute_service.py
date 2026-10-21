@@ -13,7 +13,7 @@ from sqlalchemy import or_, and_
 from app import db
 from app.models.academic import Teacher, Subject, Class
 from app.models.user import User
-from app.models.financial import Timetable, TimetablePeriod, TimetableSubstitution
+from app.models.timetable import Timetable, TimetablePeriod, TimetableSubstitution
 from app.models.staff_attendance import StaffAttendance
 from app.models.hrms import LeaveRequest
 from app.services.notification import emit_notification_event

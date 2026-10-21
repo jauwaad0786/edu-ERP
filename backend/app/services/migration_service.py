@@ -588,6 +588,12 @@ def execute_school_migration(
                         sync_fee_record_to_bill(ob_rec)
                     except Exception as sync_err:
                         print(f"[MigrationService] Error syncing opening balance FeeRecord to FeeBill: {sync_err}")
+
+                    # Ensure canonical StudentLedger debit entry is logged for opening balance
+                    ledger_exists = StudentLedger.query.filter_by(
+                        school_id=school_id, student_id=st_id, reference_no=f"OB-{batch_no}"
+                    ).first()
+                    if not ledger_exists:
                         ledger_entry = StudentLedger(
                             school_id=school_id,
                             student_id=st_id,

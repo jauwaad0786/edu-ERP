@@ -149,7 +149,7 @@ export default function AIManagement() {
           onToggleDark={() => setDarkMode(d => !d)}
         />
 
-        <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto' }}>
+        <div className="page-body">
           {/* Header Banner */}
           <div style={{
             background: darkMode ? 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' : '#ffffff',

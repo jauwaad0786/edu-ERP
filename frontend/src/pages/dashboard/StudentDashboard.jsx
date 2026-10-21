@@ -73,8 +73,9 @@ export default function StudentDashboard() {
   const [compDesc,          setCompDesc]          = useState('');
   const [submittingComp,    setSubmittingComp]    = useState(false);
 
-  const fetchHostelData = () => {
-    api.get('/student/hostel').then(r => setHostelData(r.data)).catch(() => {});
+  const fetchHostelData = (childId) => {
+    const url = childId ? `/student/hostel?student_id=${childId}` : '/student/hostel';
+    api.get(url).then(r => setHostelData(r.data)).catch(() => {});
   };
 
   // Multi-Child & Parent Portal State
@@ -192,8 +193,9 @@ export default function StudentDashboard() {
     fetchNotes();
     api.get('/principal/exams?status=PUBLISHED').then(r => setExams(r.data || [])).catch(() => {});
     api.get('/principal/holidays').then(r => setHolidays(r.data || [])).catch(() => {});
-    api.get('/student/library').then(r => setLibraryData(r.data)).catch(() => {});
-    fetchHostelData();
+    const libUrl = selectedChildId ? `/student/library?student_id=${selectedChildId}` : '/student/library';
+    api.get(libUrl).then(r => setLibraryData(r.data)).catch(() => {});
+    fetchHostelData(selectedChildId);
   }, [selectedChildId]);
 
   useEffect(() => {
@@ -1893,18 +1895,18 @@ export default function StudentDashboard() {
                           target="_blank"
                           rel="noreferrer"
                           className="btn btn-primary btn-sm"
-                          style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 700, background: '#2563eb' }}
+                          style={{ borderRadius: '4px', fontSize: '12px', fontWeight: 600, background: 'var(--blue-60)', borderColor: 'var(--blue-60)' }}
                         >
                           <i className="ti ti-download" /> Download
                         </a>
                       ) : (
-                        <button
-                          onClick={() => alert('Download link not available')}
-                          className="btn btn-secondary btn-sm"
-                          style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 700 }}
+                        <span
+                          className="badge badge-neutral"
+                          style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600 }}
+                          title="No file attachment provided for this item"
                         >
-                          <i className="ti ti-file" /> Document
-                        </button>
+                          <i className="ti ti-file-off" style={{ marginRight: 4 }} /> No File
+                        </span>
                       )}
                     </div>
                   </div>
@@ -2530,6 +2532,7 @@ export default function StudentDashboard() {
                   try {
                     setSubmittingPass(true);
                     await api.post('/hostel/out-passes', {
+                      student_id: selectedChildId || profile?.id,
                       pass_type: passType,
                       reason: passReason,
                       destination: passDest,
@@ -2538,7 +2541,7 @@ export default function StudentDashboard() {
                     });
                     toast.success('Gate pass requested successfully! Awaiting Warden approval.');
                     setStudentPassModal(false);
-                    fetchHostelData();
+                    fetchHostelData(selectedChildId);
                   } catch (err) {
                     toast.error(err.response?.data?.error || 'Failed to submit gate pass request');
                   } finally {
@@ -2647,6 +2650,7 @@ export default function StudentDashboard() {
                   try {
                     setSubmittingComp(true);
                     await api.post('/hostel/complaints', {
+                      student_id: selectedChildId || profile?.id,
                       category: compCategory,
                       title: compTitle,
                       description: compDesc,
@@ -2656,7 +2660,7 @@ export default function StudentDashboard() {
                     setStudentCompModal(false);
                     setCompTitle('');
                     setCompDesc('');
-                    fetchHostelData();
+                    fetchHostelData(selectedChildId);
                   } catch (err) {
                     toast.error(err.response?.data?.error || 'Failed to submit complaint');
                   } finally {

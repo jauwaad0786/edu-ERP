@@ -17,12 +17,22 @@ from app.models.academic import Student, Class
 from app.models.financial import FeeRecord, FeeTransaction, SalaryRecord
 from app.models.fee_finance import (
     FeeHead, FeeStructureV2, FeeStructureItemV2,
-    FeeBill, FeePayment, BillStatus, PaymentStatus, StudentLedger
+    FeeBill, FeePayment, BillStatus, PaymentStatus, StudentLedger, FeeRefund
+)
+from app.models.finance import (
+    Expense, Vendor, PurchaseOrder, PurchaseOrderItem, BankStatementBatch, BankTransaction
 )
 from app.services.fee_ledger_service import (
     ensure_default_fee_heads, generate_fee_bill, collect_fee_payment,
-    get_student_applicable_charges, get_student_ledger
+    get_student_applicable_charges, get_student_ledger,
+    cancel_payment_receipt, process_fee_refund
 )
+from app.services.pnl_service import PnLService
+from app.services.procurement_service import (
+    create_purchase_order, approve_purchase_order, process_goods_receipt
+)
+from app.services.reconciliation_service import ReconciliationService
+from app.utils.fee_pdf_generator import generate_fee_receipt_pdf
 from app.services.archive_service import _check_teacher_payroll_history, _check_staff_financial_history
 
 
@@ -273,3 +283,213 @@ class ForensicFinanceFixesTestCase(unittest.TestCase):
         )
         res_s = _check_staff_financial_history(self.admin.id)
         self.assertTrue(res_s)
+
+    def test_06_cancellation_and_refund_ledger_balance(self):
+        """6. Verify receipt cancellation and refund accurately update student ledger balance_after."""
+        bill, _ = generate_fee_bill(
+            student_id=self.student.id,
+            bill_month="2026-09",
+            due_date=date(2026, 9, 10),
+            actor_user=self.admin,
+            session="2026-27"
+        )
+        payment = collect_fee_payment(
+            student_id=self.student.id,
+            amount_paid=1000.0,
+            payment_mode="CASH",
+            collected_by=self.admin,
+            session="2026-27"
+        )
+        # Prior balance became 0.0 after paying 1000.0
+        last_l = StudentLedger.query.filter_by(student_id=self.student.id).order_by(StudentLedger.id.desc()).first()
+        self.assertEqual(last_l.balance_after, 0.0)
+
+        # Cancel receipt
+        cancel_payment_receipt(payment.id, self.admin, "Bounced Cheque / Error")
+        rev_ledger = StudentLedger.query.filter_by(student_id=self.student.id).order_by(StudentLedger.id.desc()).first()
+        self.assertEqual(rev_ledger.entry_type, 'DEBIT')
+        # Balance after reversal must be 1000.0, NOT 0.0!
+        self.assertEqual(rev_ledger.balance_after, 1000.0)
+
+        # Process a refund of 200.0
+        ref = process_fee_refund(
+            student_id=self.student.id,
+            amount=200.0,
+            refund_mode='CASH',
+            reason='Security deposit refund',
+            authorized_by=self.admin
+        )
+        ref_ledger = StudentLedger.query.filter_by(student_id=self.student.id).order_by(StudentLedger.id.desc()).first()
+        self.assertEqual(ref_ledger.entry_type, 'DEBIT')
+        # Balance after refund must increase by 200.0 -> 1200.0
+        self.assertEqual(ref_ledger.balance_after, 1200.0)
+
+    def test_07_pnl_refunds_and_capex_isolation(self):
+        """7. Verify PnLService deducts processed refunds and isolates CAPITAL_EXPENDITURE from operating expenses."""
+        bill, _ = generate_fee_bill(
+            student_id=self.student.id,
+            bill_month="2026-10",
+            due_date=date(2026, 10, 10),
+            actor_user=self.admin,
+            session="2026-27"
+        )
+        collect_fee_payment(
+            student_id=self.student.id,
+            amount_paid=5000.0,
+            payment_mode="CASH",
+            collected_by=self.admin,
+            session="2026-27"
+        )
+        # Process a refund of 500
+        process_fee_refund(
+            student_id=self.student.id,
+            amount=500.0,
+            refund_mode='BANK_TRANSFER',
+            reason='Excess fee paid refund',
+            authorized_by=self.admin
+        )
+        # Add operating expense
+        op_exp = Expense(
+            title="Office Stationery",
+            category="STATIONERY",
+            amount=1000.0,
+            status="PAID",
+            payment_date=date(2026, 10, 15),
+            month="2026-10",
+            school_id=self.school.id
+        )
+        # Add capital expenditure (school bus / lab computers)
+        cap_exp = Expense(
+            title="School Bus Downpayment",
+            category="CAPITAL_EXPENDITURE",
+            amount=50000.0,
+            status="PAID",
+            payment_date=date(2026, 10, 15),
+            month="2026-10",
+            school_id=self.school.id
+        )
+        db.session.add_all([op_exp, cap_exp])
+        db.session.commit()
+
+        pnl = PnLService.get_profit_and_loss_statement(
+            school_id=self.school.id,
+            session="2026-27",
+            month="2026-10",
+            accounting_policy="CASH"
+        )
+        # Realized collections: 5000 - 500 refund = 4500
+        self.assertEqual(pnl['total_income'], 4500.0)
+        self.assertEqual(pnl['total_refunds'], 500.0)
+        # Operating expenses: 1000 (CapEx of 50,000 must NOT be counted as OPEX!)
+        self.assertEqual(pnl['total_expenses'], 1000.0)
+        # Net operating surplus: 4500 - 1000 = 3500 (NOT negative 46500!)
+        self.assertEqual(pnl['net_operating_result'], 3500.0)
+        self.assertTrue(pnl['is_surplus'])
+        # CapEx isolated in dedicated summary
+        self.assertEqual(pnl['capital_expenditure']['total_capex'], 50000.0)
+
+    def test_08_procurement_goods_receipt_tax_preservation(self):
+        """8. Verify process_goods_receipt correctly populates subtotal and tax_amount without zeroing tax."""
+        vendor = Vendor(
+            school_id=self.school.id,
+            name="Apex Scientific Supplies",
+            category="LABORATORY",
+            contact_person="R. Sharma",
+            phone="9876543210"
+        )
+        db.session.add(vendor)
+        db.session.commit()
+
+        po = create_purchase_order(
+            school_id=self.school.id,
+            vendor_id=vendor.id,
+            items_data=[{
+                'item_name': 'Microscope Lens Pack',
+                'category': 'LAB_CONSUMABLES',
+                'sku': 'MIC-001',
+                'unit': 'SETS',
+                'ordered_qty': 10,
+                'unit_price': 1000.0,
+                'tax_pct': 18.0,
+                'is_asset': False,
+            }],
+            target_type='INVENTORY',
+            user=self.admin
+        )
+        approve_purchase_order(po.id, self.school.id, self.admin)
+        po_item = po.items.first()
+
+        grn, vbill = process_goods_receipt(
+            po_id=po.id,
+            school_id=self.school.id,
+            received_items=[{
+                'po_item_id': po_item.id,
+                'received_qty': 10,
+                'rejected_qty': 0,
+            }],
+            challan_no="CH-LAB-01",
+            user=self.admin
+        )
+        # Subtotal: 10 * 1000 = 10,000.0
+        self.assertEqual(vbill.subtotal, 10000.0)
+        # Tax: 18% of 10,000 = 1,800.0 (NOT 0.0!)
+        self.assertEqual(vbill.tax_amount, 1800.0)
+        # Total: 11,800.0
+        self.assertEqual(vbill.total_amount, 11800.0)
+        self.assertEqual(vbill.balance_amount, 11800.0)
+
+    def test_09_fee_receipt_pdf_advance_deduplication(self):
+        """9. Verify 100% advance payment PDF does not duplicate fallback row."""
+        payment = FeePayment(
+            school_id=self.school.id,
+            student_id=self.student.id,
+            session="2026-27",
+            receipt_no="RCPT-ADV-TEST-001",
+            payment_date=date.today(),
+            payment_mode="UPI",
+            total_paid=3000.0,
+            advance_credited=3000.0,
+            status="VALID"
+        )
+        db.session.add(payment)
+        db.session.commit()
+
+        pdf_buffer = generate_fee_receipt_pdf(payment, self.school, self.student)
+        self.assertIsNotNone(pdf_buffer)
+        pdf_bytes = pdf_buffer.getvalue() if hasattr(pdf_buffer, 'getvalue') else pdf_buffer
+        self.assertGreater(len(pdf_bytes), 1000)
+        self.assertTrue(pdf_bytes.startswith(b'%PDF'))
+
+    def test_10_reconciliation_standalone_fee_transaction_matching(self):
+        """10. Verify bank reconciliation matches standalone FeeTransaction records."""
+        rec = FeeRecord(student_id=self.student.id, school_id=self.school.id, session="2026-27", month="August", amount_due=1500.0, status='PENDING')
+        db.session.add(rec)
+        db.session.flush()
+
+        # Standalone FeeTransaction without a FeePayment parent
+        ft = FeeTransaction(
+            school_id=self.school.id,
+            student_id=self.student.id,
+            fee_record_id=rec.id,
+            amount=1500.0,
+            payment_mode="CASH",
+            transaction_date=date(2026, 8, 15),
+            txn_month="August 2026",
+            receipt_no="TXN-COUNTER-888"
+        )
+        db.session.add(ft)
+        db.session.commit()
+
+        # Bank statement batch with matching receipt narration
+        csv_bytes = "Date,Description,Credit,Reference\n2026-08-15,CASH DEPOSIT TXN-COUNTER-888,1500.00,REF888\n".encode('utf-8')
+        batch = ReconciliationService.create_batch_and_transactions(
+            school_id=self.school.id,
+            file_bytes=csv_bytes,
+            filename="reconcile_test.csv",
+            bank_name="Test Bank"
+        )
+        ReconciliationService.run_auto_matching(self.school.id, batch_id=batch.id)
+        tx = BankTransaction.query.filter_by(batch_id=batch.id).first()
+        self.assertEqual(tx.match_status, 'MATCHED')
+        self.assertEqual(tx.matched_entity_type, 'FEE_TRANSACTION')
+        self.assertEqual(tx.matched_entity_id, ft.id)

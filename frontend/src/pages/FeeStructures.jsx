@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { resolveTenantPath } from '../utils/routeBuilder';
 
 /**
  * FeeStructures (Deprecated / Legacy V1)
@@ -13,9 +14,8 @@ export default function FeeStructures() {
   const { user } = useAuth();
 
   useEffect(() => {
-    const slug = user?.school_slug || 'school';
-    const role = (user?.role || 'principal').toLowerCase();
-    navigate(`/${slug}/${role}/finance/setup${location.search}`, { replace: true });
+    const target = resolveTenantPath(`/finance/setup${location.search}`, user);
+    navigate(target, { replace: true });
   }, [navigate, location.search, user]);
 
   return (

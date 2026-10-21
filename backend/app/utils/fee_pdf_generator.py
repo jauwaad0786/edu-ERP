@@ -460,12 +460,15 @@ def generate_fee_receipt_pdf(payment, school, student=None, ledger_balance=0.0):
                 Paragraph(f"<b>{alc.allocated_amount:,.2f}</b>", ParagraphStyle('TD4', fontName='Helvetica-Bold', fontSize=8, alignment=TA_RIGHT, textColor=DARK_TEXT)),
             ])
     else:
-        item_rows.append([
-            Paragraph("1", ParagraphStyle('TD1', fontName='Helvetica', fontSize=8, alignment=TA_CENTER)),
-            Paragraph(f"Combined Fee Payment <font color='#64748B'>— {payment.session}</font>", ParagraphStyle('TD2', fontName='Helvetica', fontSize=8)),
-            Paragraph(payment.department or 'ACCOUNTS', ParagraphStyle('TD3', fontName='Helvetica', fontSize=7.5, alignment=TA_CENTER, textColor=MUTED_TEXT)),
-            Paragraph(f"<b>{payment.total_paid:,.2f}</b>", ParagraphStyle('TD4', fontName='Helvetica-Bold', fontSize=8, alignment=TA_RIGHT, textColor=DARK_TEXT)),
-        ])
+        adv_credited = float(getattr(payment, 'advance_credited', 0) or 0.0)
+        unallocated_amt = round(float(payment.total_paid or 0.0) - adv_credited, 2)
+        if unallocated_amt > 0:
+            item_rows.append([
+                Paragraph("1", ParagraphStyle('TD1', fontName='Helvetica', fontSize=8, alignment=TA_CENTER)),
+                Paragraph(f"Combined Fee Payment <font color='#64748B'>— {payment.session}</font>", ParagraphStyle('TD2', fontName='Helvetica', fontSize=8)),
+                Paragraph(payment.department or 'ACCOUNTS', ParagraphStyle('TD3', fontName='Helvetica', fontSize=7.5, alignment=TA_CENTER, textColor=MUTED_TEXT)),
+                Paragraph(f"<b>{unallocated_amt:,.2f}</b>", ParagraphStyle('TD4', fontName='Helvetica-Bold', fontSize=8, alignment=TA_RIGHT, textColor=DARK_TEXT)),
+            ])
 
     if getattr(payment, 'advance_credited', 0) and payment.advance_credited > 0:
         item_rows.append([

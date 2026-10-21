@@ -408,6 +408,7 @@ def delete_topic(topic_id):
 # 2. TEACHING DIARY ENDPOINTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+@curriculum_bp.route('/curriculum/teaching-diary/today', methods=['GET'])
 @curriculum_bp.route('/teaching-diary/today', methods=['GET'])
 @jwt_required()
 def get_today_schedule():
@@ -506,6 +507,7 @@ def save_teaching_log_endpoint():
         return jsonify({'error': str(e)}), 500
 
 
+@curriculum_bp.route('/curriculum/teaching-diary/history', methods=['GET'])
 @curriculum_bp.route('/teaching-diary/history', methods=['GET'])
 @jwt_required()
 def list_teaching_history():
@@ -556,6 +558,7 @@ def list_teaching_history():
     return jsonify([l.to_dict() for l in logs]), 200
 
 
+@curriculum_bp.route('/curriculum/teaching-diary/<int:log_id>', methods=['GET'])
 @curriculum_bp.route('/teaching-diary/<int:log_id>', methods=['GET'])
 @jwt_required()
 def get_teaching_log_detail(log_id):
@@ -565,6 +568,7 @@ def get_teaching_log_detail(log_id):
     return jsonify(log.to_dict()), 200
 
 
+@curriculum_bp.route('/curriculum/teaching-diary/<int:log_id>', methods=['DELETE'])
 @curriculum_bp.route('/teaching-diary/<int:log_id>', methods=['DELETE'])
 @role_required('TEACHER', 'PRINCIPAL', 'SUPER_ADMIN', 'ADMIN', 'VICE_PRINCIPAL')
 def delete_teaching_log(log_id):
@@ -587,6 +591,7 @@ def delete_teaching_log(log_id):
 # 3. WORKSHEETS & CLASS ACTIVITIES ENDPOINTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+@curriculum_bp.route('/curriculum/teaching-diary/worksheets', methods=['GET'])
 @curriculum_bp.route('/teaching-diary/worksheets', methods=['GET'])
 @jwt_required()
 def list_worksheets():
@@ -609,6 +614,7 @@ def list_worksheets():
     return jsonify([w.to_dict() for w in worksheets]), 200
 
 
+@curriculum_bp.route('/curriculum/teaching-diary/worksheets', methods=['POST'])
 @curriculum_bp.route('/teaching-diary/worksheets', methods=['POST'])
 @role_required('TEACHER', 'PRINCIPAL', 'SUPER_ADMIN', 'ADMIN')
 def create_standalone_worksheet():

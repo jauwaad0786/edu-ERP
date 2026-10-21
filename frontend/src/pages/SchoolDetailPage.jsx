@@ -72,7 +72,7 @@ export default function SchoolDetail() {
     setLoading(true);
     api.get(`/admin/schools/${id}`)
       .then(r => { setSchool(r.data); setEditForm(r.data); })
-      .catch(() => navigate('/schools'))
+      .catch(() => navigate('/admin/schools'))
       .finally(() => setLoading(false));
   };
 
@@ -263,7 +263,7 @@ export default function SchoolDetail() {
         }
       });
       setShowPermanent(false);
-      navigate('/schools');
+      navigate('/admin/schools');
     } catch (err) {
       setMsg(`❌ ${err.response?.data?.error || 'Failed to permanently delete school.'}`);
     } finally {

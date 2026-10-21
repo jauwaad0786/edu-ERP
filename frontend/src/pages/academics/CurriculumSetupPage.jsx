@@ -262,7 +262,7 @@ export default function CurriculumSetupPage() {
       <div className="main-content">
         <Navbar title="Curriculum & Syllabus Setup" />
 
-        <div className="page-body" style={{ maxWidth: '1440px', margin: '0 auto', padding: '24px 28px' }}>
+        <div className="page-body">
           {/* ══ HEADER & ACTIONS ══ */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '22px' }}>
             <div>

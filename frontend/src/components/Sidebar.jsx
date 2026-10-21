@@ -16,8 +16,8 @@ const ROLE_MENUS = {
     {
       group: 'Management',
       items: [
-        { icon: 'ti-building-school', label: 'Schools', path: '/schools' },
-        { icon: 'ti-users', label: 'Users', path: '/users' },
+        { icon: 'ti-building-school', label: 'Schools', path: '/admin/schools' },
+        { icon: 'ti-users', label: 'Users', path: '/admin/users' },
       ],
     },
     {
@@ -51,7 +51,7 @@ const ROLE_MENUS = {
             { icon: 'ti-ticket',           label: 'Support Inbox',  path: '/support/tickets' },
             { icon: 'ti-video',            label: 'Meetings',       path: '/support/meetings' },
             { icon: 'ti-speakerphone',     label: 'Announcements',  path: '/support/announcements' },
-            { icon: 'ti-books',            label: 'Knowledge Base', path: '/support/kb' },
+            { icon: 'ti-books',            label: 'Knowledge Base', path: '/help-center' },
           ],
         },
         { icon: 'ti-user-plus', label: 'Demo Requests & Messages', path: '/developer/leads' },
@@ -95,6 +95,7 @@ const ROLE_MENUS = {
         {
           icon: 'ti-books', label: 'Academics', path: '/classes',
           children: [
+            { icon: 'ti-chalkboard',    label: 'Teachers Directory', path: '/teachers' },
             { icon: 'ti-list',          label: 'Classes & Sections', path: '/classes' },
             { icon: 'ti-bookmark',      label: 'Subject Management', path: '/subjects' },
             { icon: 'ti-calendar-time', label: 'Timetable',          path: '/timetable' },
@@ -339,6 +340,7 @@ const ROLE_MENUS = {
       items: [
         { icon: 'ti-books',           label: 'Book Master',    path: '/library/books' },
         { icon: 'ti-arrows-exchange', label: 'Issue / Return',  path: '/library/issue-return' },
+        { icon: 'ti-clipboard-check', label: 'Library Attendance', path: '/library/attendance' },
         { icon: 'ti-clock',           label: 'Reservations',    path: '/library/reservations' },
         { icon: 'ti-users',           label: 'Members',         path: '/library/members' },
         { icon: 'ti-currency-rupee',  label: 'Fines & Dues',    path: '/library/fines' },
@@ -397,11 +399,18 @@ const ROLE_MENUS = {
     {
       group: 'Hostel Management',
       items: [
-        { icon: 'ti-layout-grid',      label: 'Room Map',         path: '/hostel/room-map' },
-        { icon: 'ti-currency-rupee',   label: 'Fee Structures',   path: '/hostel/fee-structures' },
-        { icon: 'ti-user-plus',        label: 'Admission',        path: '/hostel/admission' },
-        { icon: 'ti-arrows-exchange',  label: 'Transfer / Vacate',path: '/hostel/transfers' },
-        { icon: 'ti-report',           label: 'Reports',          path: '/hostel/reports' },
+        { icon: 'ti-layout-grid',      label: 'Room Map & Beds',    path: '/hostel/room-map' },
+        { icon: 'ti-user-plus',        label: 'Admissions',         path: '/hostel/admission' },
+        { icon: 'ti-clipboard-check',  label: 'Night Roll Call',    path: '/hostel/attendance' },
+        { icon: 'ti-ticket',           label: 'Gate Pass / Out',    path: '/hostel/out-pass' },
+        { icon: 'ti-arrows-exchange',  label: 'Transfers & Vacate', path: '/hostel/transfers' },
+        { icon: 'ti-tool',             label: 'Room Complaints',    path: '/hostel/complaints' },
+        { icon: 'ti-users',            label: 'Visitor Log',        path: '/hostel/visitors' },
+        { icon: 'ti-currency-rupee',   label: 'Fee Structures',     path: '/hostel/fee-structures' },
+        { icon: 'ti-receipt-2',        label: 'Monthly Fees',       path: '/hostel/fees' },
+        { icon: 'ti-alert-triangle',   label: 'Fines & Waivers',    path: '/hostel/fines' },
+        { icon: 'ti-box',              label: 'Room Assets',        path: '/hostel/inventory' },
+        { icon: 'ti-report',           label: 'Reports',            path: '/hostel/reports' },
       ],
     },
     {
@@ -739,6 +748,27 @@ function filterByEntitlements(rawGroups, effectiveModules) {
     [baseGroups, user?.permissions, isCompanyActor, isSuperAdmin, isSchoolAdmin, user?.role, user?.effective_modules]
   );
   const [search,   setSearch]   = useState('');
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('ederp_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleCollapse = () => {
+    setCollapsed(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('ederp_sidebar_collapsed', String(next));
+      } catch {}
+      window.dispatchEvent(new CustomEvent('sidebar-collapse-change', { detail: { collapsed: next } }));
+      return next;
+    });
+  };
+
+  const sidebarWidth = collapsed ? 72 : 240;
+
   const [expanded, setExpanded] = useState(() => {
     try {
       const saved = localStorage.getItem('ederp_sidebar_expanded');
@@ -860,7 +890,7 @@ function filterByEntitlements(rawGroups, effectiveModules) {
   return (
     <>
       <aside style={{
-        width: 232, minWidth: 232,
+        width: sidebarWidth, minWidth: sidebarWidth,
         position: 'fixed', top: 0, left: 0,
         height: '100vh',
         background: NAV.bg,
@@ -869,62 +899,113 @@ function filterByEntitlements(rawGroups, effectiveModules) {
         overflow: 'hidden',
         borderRight: `1px solid ${NAV.border}`,
         boxShadow: '2px 0 16px rgba(0,0,0,0.4)',
+        transition: 'width 0.25s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
       }}>
 
         {/* Brand */}
         <div style={{
           background: NAV.bgDeep, borderBottom: `1px solid ${NAV.border}`,
-          padding: '14px 14px 12px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
+          padding: collapsed ? '14px 10px 12px' : '14px 14px 12px',
+          display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'space-between',
+          gap: 10, flexShrink: 0,
         }}>
-          <div style={{
-            width: 40, height: 40, borderRadius: 10, background: schoolColor,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexShrink: 0, boxShadow: `0 2px 10px ${schoolColor}66`,
-          }}>
-            <span style={{ color: '#fff', fontSize: 17, fontWeight: 800 }}>{initial}</span>
-          </div>
-          <div style={{ minWidth: 0, overflow: 'hidden', flex: 1 }}>
-            <div style={{
-              color: '#ffffff', fontWeight: 800, fontSize: 14, lineHeight: 1.2,
-              letterSpacing: '-0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>{schoolName}</div>
-            <div style={{
-              color: NAV.groupLabel, fontSize: 10, fontWeight: 500, marginTop: 3,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {[schoolCode, schoolCity].filter(Boolean).join(' | ') || (isCompanyActor && user?.active_role?.name) || ROLE_LABELS[user?.role] || ''}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: collapsed ? 0 : 1 }}>
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={collapsed ? toggleCollapse : undefined}
+              title={collapsed ? "Click to expand sidebar" : schoolName}
+              style={{
+                width: 40, height: 40, borderRadius: 10, background: schoolColor,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0, boxShadow: `0 2px 10px ${schoolColor}66`,
+                cursor: collapsed ? 'pointer' : 'default',
+              }}
+            >
+              <span style={{ color: '#fff', fontSize: 17, fontWeight: 800 }}>{initial}</span>
             </div>
-            <div style={{
-              color: NAV.accent, fontSize: 9, fontWeight: 700,
-              letterSpacing: '0.08em', textTransform: 'uppercase', marginTop: 2, opacity: 0.9,
-            }}>POWERED BY 1P360</div>
+            {!collapsed && (
+              <div style={{ minWidth: 0, overflow: 'hidden', flex: 1 }}>
+                <div style={{
+                  color: '#ffffff', fontWeight: 800, fontSize: 14, lineHeight: 1.2,
+                  letterSpacing: '-0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>{schoolName}</div>
+                <div style={{
+                  color: NAV.groupLabel, fontSize: 10, fontWeight: 500, marginTop: 3,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {[schoolCode, schoolCity].filter(Boolean).join(' | ') || (isCompanyActor && user?.active_role?.name) || ROLE_LABELS[user?.role] || ''}
+                </div>
+                <div style={{
+                  color: NAV.accent, fontSize: 9, fontWeight: 700,
+                  letterSpacing: '0.08em', textTransform: 'uppercase', marginTop: 2, opacity: 0.9,
+                }}>POWERED BY 1P360</div>
+              </div>
+            )}
           </div>
+
+          {/* Collapse/Expand Toggle Button */}
+          <button
+            type="button"
+            onClick={toggleCollapse}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            style={{
+              background: 'rgba(255, 255, 255, 0.08)',
+              border: `1px solid ${NAV.border}`,
+              color: NAV.textBase,
+              width: 28, height: 28, borderRadius: 6,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', flexShrink: 0,
+              transition: 'background 0.15s, color 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = NAV.bgHover; e.currentTarget.style.color = '#fff'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'; e.currentTarget.style.color = NAV.textBase; }}
+          >
+            <i className={`ti ${collapsed ? 'ti-layout-sidebar-left-expand' : 'ti-layout-sidebar-left-collapse'}`} style={{ fontSize: 15 }} />
+          </button>
         </div>
 
         {/* Search */}
-        <div style={{ padding: '10px 12px 4px', flexShrink: 0, background: NAV.bg }}>
-          <div style={{ position: 'relative' }}>
-            <i className="ti ti-search" style={{
-              position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)',
-              fontSize: 13, color: NAV.textMuted, pointerEvents: 'none',
-            }} aria-hidden="true" />
-            <input
-              value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Search modules..."
-              style={{
-                width: '100%', padding: '7px 10px 7px 30px', fontSize: 12,
-                background: NAV.searchBg, border: `1px solid ${NAV.searchBorder}`,
-                borderRadius: 8, color: '#c8dff5', outline: 'none',
-                boxSizing: 'border-box', caretColor: NAV.accent,
-              }}
-              onFocus={e => { e.target.style.borderColor = NAV.accentBar; e.target.style.boxShadow = '0 0 0 2px rgba(59,130,246,0.2)'; }}
-              onBlur={e => { e.target.style.borderColor = NAV.searchBorder; e.target.style.boxShadow = 'none'; }}
-            />
+        {!collapsed ? (
+          <div style={{ padding: '10px 12px 4px', flexShrink: 0, background: NAV.bg }}>
+            <div style={{ position: 'relative' }}>
+              <i className="ti ti-search" style={{
+                position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)',
+                fontSize: 13, color: NAV.textMuted, pointerEvents: 'none',
+              }} aria-hidden="true" />
+              <input
+                value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Search modules..."
+                style={{
+                  width: '100%', padding: '7px 10px 7px 30px', fontSize: 12,
+                  background: NAV.searchBg, border: `1px solid ${NAV.searchBorder}`,
+                  borderRadius: 8, color: '#c8dff5', outline: 'none',
+                  boxSizing: 'border-box', caretColor: NAV.accent,
+                }}
+                onFocus={e => { e.target.style.borderColor = NAV.accentBar; e.target.style.boxShadow = '0 0 0 2px rgba(59,130,246,0.2)'; }}
+                onBlur={e => { e.target.style.borderColor = NAV.searchBorder; e.target.style.boxShadow = 'none'; }}
+              />
+            </div>
           </div>
-        </div>
+        ) : (
+          <div style={{ padding: '8px 0', display: 'flex', justifyContent: 'center' }}>
+            <button
+              type="button"
+              onClick={toggleCollapse}
+              title="Search modules (Click to expand)"
+              style={{
+                background: NAV.searchBg, border: `1px solid ${NAV.searchBorder}`,
+                borderRadius: 8, width: 36, height: 32, color: NAV.textMuted,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+              }}
+            >
+              <i className="ti ti-search" style={{ fontSize: 15 }} />
+            </button>
+          </div>
+        )}
 
         {/* Nav */}
-        <nav ref={navRef} style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '4px 8px 8px' }}>
+        <nav ref={navRef} style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: collapsed ? '4px 6px 8px' : '4px 8px 8px' }}>
           <style>{`
             aside nav::-webkit-scrollbar { width: 3px; }
             aside nav::-webkit-scrollbar-track { background: transparent; }
@@ -933,18 +1014,21 @@ function filterByEntitlements(rawGroups, effectiveModules) {
 
           {filteredGroups.length === 0 && (
             <div style={{ padding: '24px 12px', textAlign: 'center', color: NAV.textMuted, fontSize: 12 }}>
-              No matching modules
+              {collapsed ? '—' : 'No matching modules'}
             </div>
           )}
 
           {filteredGroups.map((group, gi) => (
             <div key={gi} style={{ marginBottom: 2 }}>
-              {group.group && (
+              {group.group && !collapsed && (
                 <div style={{
                   fontSize: 10, fontWeight: 700, letterSpacing: '0.09em', color: NAV.groupLabel,
                   padding: gi === 0 ? '6px 8px 3px' : '12px 8px 3px',
                   textTransform: 'uppercase', userSelect: 'none',
                 }}>{group.group}</div>
+              )}
+              {group.group && collapsed && gi !== 0 && (
+                <div style={{ height: 1, background: NAV.border, margin: '6px 4px' }} />
               )}
 
               {group.items.map(item => {
@@ -958,34 +1042,49 @@ function filterByEntitlements(rawGroups, effectiveModules) {
                       <div
                         role="button"
                         tabIndex={0}
-                        onClick={() => toggleExpand(item.path)}
+                        title={item.label}
+                        onClick={() => {
+                          if (collapsed) {
+                            toggleCollapse();
+                            setExpanded(prev => ({ ...prev, [item.path]: true }));
+                          } else {
+                            toggleExpand(item.path);
+                          }
+                        }}
                         onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && toggleExpand(item.path)}
                         style={{
-                        display: 'flex', alignItems: 'center', gap: 8,
-                        padding: '7px 8px', borderRadius: 7,
-                        color:      active ? NAV.textActive : NAV.textBase,
-                        background: active ? NAV.bgActive   : 'transparent',
-                        borderLeft: active ? `3px solid ${NAV.accentBar}` : '3px solid transparent',
-                        fontWeight: active ? 600 : 400, fontSize: 13, marginBottom: 1,
-                        cursor: 'pointer', transition: 'background 0.12s, color 0.12s',
-                        whiteSpace: 'nowrap', userSelect: 'none',
-                      }}
+                          display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'flex-start',
+                          gap: collapsed ? 0 : 8,
+                          padding: collapsed ? '9px 0' : '7px 8px', borderRadius: 7,
+                          color:      active ? NAV.textActive : NAV.textBase,
+                          background: active ? NAV.bgActive   : 'transparent',
+                          borderLeft: collapsed ? 'none' : (active ? `3px solid ${NAV.accentBar}` : '3px solid transparent'),
+                          borderRight: collapsed && active ? `3px solid ${NAV.accentBar}` : 'none',
+                          fontWeight: active ? 600 : 400, fontSize: 13, marginBottom: 1,
+                          cursor: 'pointer', transition: 'background 0.12s, color 0.12s',
+                          whiteSpace: 'nowrap', userSelect: 'none',
+                        }}
                         onMouseEnter={e => { if (!active) { e.currentTarget.style.background = NAV.bgHover; e.currentTarget.style.color = '#d8ecff'; } }}
                         onMouseLeave={e => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = NAV.textBase; } }}
                       >
-                        <i className={`ti ${item.icon}`} style={{ fontSize: 16, flexShrink: 0, width: 18, textAlign: 'center' }} aria-hidden="true" />
-                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</span>
-                        <i className={`ti ${isOpen ? 'ti-chevron-up' : 'ti-chevron-down'}`}
-                          style={{ fontSize: 12, color: NAV.groupLabel, flexShrink: 0 }} aria-hidden="true" />
+                        <i className={`ti ${item.icon}`} style={{ fontSize: collapsed ? 18 : 16, flexShrink: 0, width: collapsed ? 24 : 18, textAlign: 'center' }} aria-hidden="true" />
+                        {!collapsed && <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</span>}
+                        {!collapsed && (
+                          <i className={`ti ${isOpen ? 'ti-chevron-up' : 'ti-chevron-down'}`}
+                            style={{ fontSize: 12, color: NAV.groupLabel, flexShrink: 0 }} aria-hidden="true" />
+                        )}
                       </div>
                     ) : (
                       <NavLink to={resolvedItemPath}
+                        title={item.label}
                         style={({ isActive }) => ({
-                          display: 'flex', alignItems: 'center', gap: 8,
-                          padding: '7px 8px', borderRadius: 7,
+                          display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'flex-start',
+                          gap: collapsed ? 0 : 8,
+                          padding: collapsed ? '9px 0' : '7px 8px', borderRadius: 7,
                           color:      (active || isActive) ? NAV.textActive : NAV.textBase,
                           background: (active || isActive) ? NAV.bgActive   : 'transparent',
-                          borderLeft: (active || isActive) ? `3px solid ${NAV.accentBar}` : '3px solid transparent',
+                          borderLeft: collapsed ? 'none' : ((active || isActive) ? `3px solid ${NAV.accentBar}` : '3px solid transparent'),
+                          borderRight: collapsed && (active || isActive) ? `3px solid ${NAV.accentBar}` : 'none',
                           fontWeight: (active || isActive) ? 600 : 400, fontSize: 13, marginBottom: 1,
                           textDecoration: 'none', whiteSpace: 'nowrap',
                           transition: 'background 0.12s, color 0.12s',
@@ -993,9 +1092,9 @@ function filterByEntitlements(rawGroups, effectiveModules) {
                         onMouseEnter={e => { if (!e.currentTarget.getAttribute('aria-current')) { e.currentTarget.style.background = NAV.bgHover; e.currentTarget.style.color = '#d8ecff'; } }}
                         onMouseLeave={e => { if (!e.currentTarget.getAttribute('aria-current')) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = NAV.textBase; } }}
                       >
-                        <i className={`ti ${item.icon}`} style={{ fontSize: 16, flexShrink: 0, width: 18, textAlign: 'center' }} aria-hidden="true" />
-                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</span>
-                        {item.badge && (
+                        <i className={`ti ${item.icon}`} style={{ fontSize: collapsed ? 18 : 16, flexShrink: 0, width: collapsed ? 24 : 18, textAlign: 'center' }} aria-hidden="true" />
+                        {!collapsed && <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</span>}
+                        {!collapsed && item.badge && (
                           <span style={{
                             fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 99,
                             background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
@@ -1005,7 +1104,7 @@ function filterByEntitlements(rawGroups, effectiveModules) {
                       </NavLink>
                     )}
 
-                    {hasKids && isOpen && (
+                    {hasKids && isOpen && !collapsed && (
                       <div style={{
                         background: NAV.subBg, borderRadius: 6,
                         margin: '0 0 2px 8px', padding: '2px 0',
@@ -1016,6 +1115,7 @@ function filterByEntitlements(rawGroups, effectiveModules) {
                           const resolvedChildPath = resolveTenantPath(child.path, user);
                           return (
                             <NavLink key={child.path} to={resolvedChildPath}
+                              title={child.label}
                               style={{
                                 display: 'flex', alignItems: 'center', gap: 8,
                                 padding: '6px 10px 6px 12px',
@@ -1042,60 +1142,76 @@ function filterByEntitlements(rawGroups, effectiveModules) {
           ))}
         </nav>
 
-        {/* Footer: Attractive School Campus on green grass */}
+        {/* Footer */}
         <div style={{
-          padding: '8px 10px 10px', borderTop: `1px solid ${NAV.border}`,
+          padding: collapsed ? '10px 4px' : '8px 10px 10px',
+          borderTop: `1px solid ${NAV.border}`,
           background: NAV.footerBg, flexShrink: 0,
         }}>
-          <div style={{
-            position: 'relative', borderRadius: 8, overflow: 'hidden',
-            border: '1px solid rgba(255,255,255,0.1)',
-            boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
-            marginBottom: 7,
-          }}>
-            <img
-              src="/school_campus.jpg"
-              alt="School Campus"
-              style={{
-                width: '100%', height: 60, objectFit: 'cover', display: 'block',
-              }}
-            />
+          {!collapsed && (
             <div style={{
-              position: 'absolute', bottom: 0, left: 0, right: 0,
-              background: 'linear-gradient(transparent, rgba(10, 30, 54, 0.94))',
-              padding: '6px 8px 3px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              position: 'relative', borderRadius: 8, overflow: 'hidden',
+              border: '1px solid rgba(255,255,255,0.1)',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
+              marginBottom: 7,
             }}>
-              <span style={{
-                color: '#ffffff', fontSize: 9.5, fontWeight: 800,
-                letterSpacing: '0.02em', textShadow: '0 1px 3px rgba(0,0,0,0.9)',
-              }}>Campus 360°</span>
-              <span style={{
-                fontSize: 8, fontWeight: 700, color: '#38bdf8',
-                background: 'rgba(15, 23, 42, 0.75)', padding: '1px 5px', borderRadius: 4,
-              }}>ACTIVE</span>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2px' }}>
-            <div style={{ minWidth: 0, overflow: 'hidden' }}>
+              <img
+                src="/school_campus.jpg"
+                alt="School Campus"
+                style={{
+                  width: '100%', height: 60, objectFit: 'cover', display: 'block',
+                }}
+              />
               <div style={{
-                fontSize: 11.5, fontWeight: 700, color: '#e8f4ff',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>{user?.name || 'School Principal'}</div>
-              <div style={{ fontSize: 9, color: NAV.groupLabel, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                {(isCompanyActor && user?.active_role?.name) || ROLE_LABELS[user?.role] || user?.role || 'Principal'}
+                position: 'absolute', bottom: 0, left: 0, right: 0,
+                background: 'linear-gradient(transparent, rgba(10, 30, 54, 0.94))',
+                padding: '6px 8px 3px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              }}>
+                <span style={{
+                  color: '#ffffff', fontSize: 9.5, fontWeight: 800,
+                  letterSpacing: '0.02em', textShadow: '0 1px 3px rgba(0,0,0,0.9)',
+                }}>Campus 360°</span>
+                <span style={{
+                  fontSize: 8, fontWeight: 700, color: '#38bdf8',
+                  background: 'rgba(15, 23, 42, 0.75)', padding: '1px 5px', borderRadius: 4,
+                }}>ACTIVE</span>
               </div>
             </div>
-            <div style={{
-              fontSize: 9.5, color: '#60a5fa', fontWeight: 700, letterSpacing: '0.02em'
-            }}>
-              {user?.school?.current_session || user?.current_session || '2026-27'}
+          )}
+
+          {!collapsed ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2px' }}>
+              <div style={{ minWidth: 0, overflow: 'hidden' }}>
+                <div style={{
+                  fontSize: 11.5, fontWeight: 700, color: '#e8f4ff',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>{user?.name || 'School Principal'}</div>
+                <div style={{ fontSize: 9, color: NAV.groupLabel, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  {(isCompanyActor && user?.active_role?.name) || ROLE_LABELS[user?.role] || user?.role || 'Principal'}
+                </div>
+              </div>
+              <div style={{
+                fontSize: 9.5, color: '#60a5fa', fontWeight: 700, letterSpacing: '0.02em'
+              }}>
+                {user?.school?.current_session || user?.current_session || '2026-27'}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <div style={{
+                width: 32, height: 32, borderRadius: 8, background: '#1e3a5f',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#60a5fa', fontWeight: 700, fontSize: 12,
+              }} title={user?.name || 'User'}>
+                {userInitials}
+              </div>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e' }} title="Online" />
+            </div>
+          )}
         </div>
       </aside>
 
-      <style>{`:root { --sidebar-w: 232px; }`}</style>
+      <style>{`:root { --sidebar-w: ${sidebarWidth}px; }`}</style>
     </>
   );
 }

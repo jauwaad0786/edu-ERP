@@ -19,7 +19,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from sqlalchemy import func, or_, and_
 
 from app import db
-from app.models.fee_finance import FeeBill, FeeBillItem, FeePayment, FeePaymentAllocation, FeeHead
+from app.models.fee_finance import FeeBill, FeeBillItem, FeePayment, FeePaymentAllocation, FeeHead, FeeRefund
 from app.models.finance import Expense, VendorBill, VendorPayment, StaffSalaryRecord
 from app.services.fee_ledger_service import get_current_academic_session
 
@@ -167,6 +167,26 @@ class PnLService:
             income_categories['OTHER']['amount'] = _round_curr(income_categories['OTHER']['amount'] + unalloc)
             total_realized_income = _round_curr(total_pay_collected)
 
+        # Query Processed Refunds to deduct from realized collections
+        refund_q = FeeRefund.query.filter_by(school_id=school_id, status='PROCESSED')
+        if date_from:
+            refund_q = refund_q.filter(FeeRefund.refund_date >= date_from)
+        if date_to:
+            refund_q = refund_q.filter(FeeRefund.refund_date <= date_to)
+        elif not month and session and '-' in session:
+            try:
+                parts = session.split('-')
+                start_yr = int(parts[0])
+                end_yr = int(str(start_yr)[:2] + parts[1]) if len(parts[1]) == 2 else int(parts[1])
+                refund_q = refund_q.filter(FeeRefund.refund_date >= date(start_yr, 4, 1), FeeRefund.refund_date <= date(end_yr, 3, 31))
+            except Exception:
+                pass
+        total_refunds = _round_curr(refund_q.with_entities(func.coalesce(func.sum(FeeRefund.amount), 0.0)).scalar() or 0.0)
+
+        # In CASH basis, realized collections are net of refunds
+        if total_refunds > 0:
+            total_realized_income = _round_curr(max(0.0, total_realized_income - total_refunds))
+
         total_income = total_realized_income if basis == 'CASH' else total_billed_demand
         for c in income_categories.values():
             val = c['amount'] if basis == 'CASH' else c['billed']
@@ -178,15 +198,58 @@ class PnLService:
             exp_q = exp_q.filter(Expense.payment_date >= date_from)
         if date_to:
             exp_q = exp_q.filter(Expense.payment_date <= date_to)
+        elif not month and session and '-' in session:
+            try:
+                parts = session.split('-')
+                start_yr = int(parts[0])
+                end_yr = int(str(start_yr)[:2] + parts[1]) if len(parts[1]) == 2 else int(parts[1])
+                s_from = date(start_yr, 4, 1)
+                s_to = date(end_yr, 3, 31)
+                exp_q = exp_q.filter(
+                    or_(
+                        and_(Expense.payment_date >= s_from, Expense.payment_date <= s_to),
+                        Expense.payment_date.is_(None)
+                    )
+                )
+            except Exception:
+                pass
 
         all_expenses = exp_q.all()
 
         expense_categories = {}
         total_paid_expenses = 0.0
         total_unpaid_liabilities = 0.0
+        total_capex = 0.0
+        total_paid_capex = 0.0
 
         for exp in all_expenses:
             cat = (exp.category or 'OTHER').upper()
+            amt = float(exp.amount or 0.0)
+
+            # Isolate Capital Expenditure (CapEx) from Operating Expenses (OpEx)
+            if cat == 'CAPITAL_EXPENDITURE':
+                total_capex = _round_curr(total_capex + amt)
+                if exp.status == 'PAID':
+                    total_paid_capex = _round_curr(total_paid_capex + amt)
+                if 'CAPITAL_EXPENDITURE' not in expense_categories:
+                    expense_categories['CAPITAL_EXPENDITURE'] = {
+                        'category': 'CAPITAL_EXPENDITURE',
+                        'name': 'Capital Expenditure (Fixed Assets)',
+                        'paid_amount': 0.0,
+                        'unpaid_amount': 0.0,
+                        'total_amount': 0.0,
+                        'percentage': 0.0,
+                        'count': 0,
+                        'is_capex': True,
+                    }
+                expense_categories['CAPITAL_EXPENDITURE']['count'] += 1
+                expense_categories['CAPITAL_EXPENDITURE']['total_amount'] = _round_curr(expense_categories['CAPITAL_EXPENDITURE']['total_amount'] + amt)
+                if exp.status == 'PAID':
+                    expense_categories['CAPITAL_EXPENDITURE']['paid_amount'] = _round_curr(expense_categories['CAPITAL_EXPENDITURE']['paid_amount'] + amt)
+                else:
+                    expense_categories['CAPITAL_EXPENDITURE']['unpaid_amount'] = _round_curr(expense_categories['CAPITAL_EXPENDITURE']['unpaid_amount'] + amt)
+                continue
+
             if cat not in expense_categories:
                 display_name = cat.replace('_', ' ').title()
                 expense_categories[cat] = {
@@ -196,10 +259,10 @@ class PnLService:
                     'unpaid_amount': 0.0,
                     'total_amount': 0.0,
                     'percentage': 0.0,
-                    'count': 0
+                    'count': 0,
+                    'is_capex': False,
                 }
 
-            amt = float(exp.amount or 0.0)
             expense_categories[cat]['count'] += 1
             expense_categories[cat]['total_amount'] = _round_curr(expense_categories[cat]['total_amount'] + amt)
 
@@ -228,7 +291,8 @@ class PnLService:
                         'unpaid_amount': 0.0,
                         'total_amount': 0.0,
                         'percentage': 0.0,
-                        'count': 0
+                        'count': 0,
+                        'is_capex': False,
                     }
                 expense_categories['VENDOR_LIABILITIES']['unpaid_amount'] = _round_curr(expense_categories['VENDOR_LIABILITIES']['unpaid_amount'] + vbal)
                 expense_categories['VENDOR_LIABILITIES']['total_amount'] = _round_curr(expense_categories['VENDOR_LIABILITIES']['total_amount'] + vbal)
@@ -237,7 +301,7 @@ class PnLService:
         total_expenses = _round_curr(total_paid_expenses) if basis == 'CASH' else _round_curr(total_paid_expenses + total_unpaid_liabilities)
         for ec in expense_categories.values():
             val = ec['paid_amount'] if basis == 'CASH' else ec['total_amount']
-            ec['percentage'] = round((val / total_expenses * 100.0), 1) if total_expenses > 0 else 0.0
+            ec['percentage'] = round((val / total_expenses * 100.0), 1) if total_expenses > 0 and not ec.get('is_capex') else 0.0
 
         # ── 4. Net Operating Surplus / Deficit ───────────────────────────
         net_result = _round_curr(total_income - total_expenses)
@@ -267,7 +331,7 @@ class PnLService:
 
         # ── 6. Cash Flow Position (Money In vs Money Out) ───────────────
         cash_inflows = total_realized_income
-        cash_outflows = _round_curr(total_paid_expenses)
+        cash_outflows = _round_curr(total_paid_expenses + total_paid_capex)
         net_cash_flow = _round_curr(cash_inflows - cash_outflows)
 
         return {
@@ -285,6 +349,7 @@ class PnLService:
             'total_income': total_income,
             'total_billed_demand': _round_curr(total_billed_demand),
             'total_realized_collections': _round_curr(total_realized_income),
+            'total_refunds': total_refunds,
             'total_expenses': total_expenses,
             'total_paid_expenses': _round_curr(total_paid_expenses),
             'total_unpaid_liabilities': _round_curr(total_unpaid_liabilities),
@@ -295,6 +360,13 @@ class PnLService:
             # Categorized Breakdown
             'income_by_category': list(income_categories.values()),
             'expenses_by_category': sorted(list(expense_categories.values()), key=lambda x: x['total_amount'], reverse=True),
+
+            # Capital Expenditure Summary (Non-Operating)
+            'capital_expenditure': {
+                'total_capex': total_capex,
+                'paid_capex': total_paid_capex,
+                'unpaid_capex': _round_curr(total_capex - total_paid_capex),
+            },
 
             # Cash Flow Position
             'cash_flow': {

@@ -1517,7 +1517,7 @@ export default function TeacherDashboard() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => navigate('/curriculum')}
+                      onClick={() => navigate('/curriculum/coverage')}
                       className="btn btn-primary btn-sm"
                       style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 800, background: '#7c3aed' }}
                     >
@@ -1718,6 +1718,15 @@ export default function TeacherDashboard() {
                   >
                     {saving ? 'Saving...' : 'Save Marks'}
                   </button>
+                  <button
+                    type="button"
+                    className="btn btn-neutral btn-sm"
+                    style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 800 }}
+                    onClick={() => navigate('/mark-entry')}
+                    title="Open official exam marks evaluation grid with moderation and report card publishing"
+                  >
+                    <i className="ti ti-chart-bar" /> Official Exam Evaluation →
+                  </button>
                 </div>
               </div>
 
@@ -1851,7 +1860,7 @@ export default function TeacherDashboard() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => navigate('/academic')}
+                      onClick={() => navigate('/assignments')}
                       className="btn btn-primary btn-sm"
                       style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 800, background: '#059669' }}
                     >
@@ -1987,7 +1996,7 @@ export default function TeacherDashboard() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => navigate('/hrms')}
+                      onClick={() => navigate('/my-hr')}
                       className="btn btn-primary btn-sm"
                       style={{ borderRadius: '8px', fontSize: '12px', fontWeight: 800, background: '#ea580c' }}
                     >
