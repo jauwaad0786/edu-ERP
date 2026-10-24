@@ -235,7 +235,7 @@ export default function FeeServiceGenerationPage() {
       <Sidebar />
       <div className="main-content">
         <Navbar title="Service Fee Generation Intelligence" />
-        <div className="page-body" style={{ maxWidth: '1440px', margin: '0 auto', padding: '24px 28px' }}>
+        <div className="page-body">
 
           {/* ══ 1. HEADER & TOP BANNER ══ */}
           <div style={{

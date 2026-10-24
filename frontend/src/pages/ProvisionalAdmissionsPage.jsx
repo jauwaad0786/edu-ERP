@@ -448,7 +448,7 @@ export default function ProvisionalAdmissionsPage() {
       <div className="main-content">
         <Navbar title="Provisional Admissions & Confirmation" />
 
-        <div className="page-body" style={{ maxWidth: 1400, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+        <div className="page-body">
           
           {/* Header Banner */}
           <div style={{

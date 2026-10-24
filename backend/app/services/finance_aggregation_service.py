@@ -186,7 +186,29 @@ class FinanceAggregationService:
             gross_due = round_curr(bagg.gross_due if bagg else 0.0)
             total_discount = round_curr(bagg.total_discount if bagg else 0.0)
             total_fine = round_curr(bagg.total_fine if bagg else 0.0)
-            total_due = round_curr(bagg.total_due if bagg else 0.0)
+            if month:
+                total_due = round_curr(bagg.total_due if bagg else 0.0)
+            else:
+                # When aggregating across multiple months or whole session:
+                # Avoid compounding rolled-over previous_dues across bills.
+                earliest_dues_subq = bq.with_entities(
+                    FeeBill.student_id,
+                    func.min(FeeBill.bill_month).label('min_month')
+                ).group_by(FeeBill.student_id).subquery()
+
+                init_dues = db.session.query(
+                    func.coalesce(func.sum(FeeBill.previous_dues), 0.0)
+                ).join(
+                    earliest_dues_subq,
+                    and_(
+                        FeeBill.student_id == earliest_dues_subq.c.student_id,
+                        FeeBill.bill_month == earliest_dues_subq.c.min_month
+                    )
+                ).scalar() or 0.0
+
+                net_demand = round_curr(gross_due - total_discount + total_fine + float(init_dues))
+                total_due = net_demand if bagg and bagg.total_count > 1 else round_curr(bagg.total_due if bagg else 0.0)
+
             total_paid = round_curr(max(float(bagg.total_paid if bagg else 0.0), float(total_pay_collected)))
             outstanding = round_curr(max(0.0, total_due - total_paid))
             total_count = int(bagg.total_count if bagg else 0)
@@ -315,14 +337,17 @@ class FinanceAggregationService:
         ).all()
         today_pay_sum = sum(p.total_paid or 0.0 for p in today_payments)
 
-        # FeePayment is Single Source of Truth; count legacy FeeTransaction only if orphan (not linked to a FeePayment)
-        today_pay_receipts = {p.receipt_no for p in today_payments if p.receipt_no}
+        # Deduplicate legacy transactions against modern payments sharing receipt_no
+        today_receipts = {p.receipt_no.strip().upper() for p in today_payments if p.receipt_no}
         today_txns = FeeTransaction.query.filter(
             FeeTransaction.school_id == school_id,
             FeeTransaction.transaction_date == today,
             FeeTransaction.status != 'CANCELLED'
         ).all()
-        orphan_today_txns = [t for t in today_txns if (t.receipt_no not in today_pay_receipts)]
+        orphan_today_txns = [
+            t for t in today_txns
+            if not (t.receipt_no and t.receipt_no.strip().upper() in today_receipts)
+        ]
         today_tx_sum = sum(t.amount or 0.0 for t in orphan_today_txns)
 
         # Net today collection
@@ -357,14 +382,17 @@ class FinanceAggregationService:
         ).all()
         month_pay_sum = sum(p.total_paid or 0.0 for p in month_payments)
 
-        month_pay_receipts = {p.receipt_no for p in month_payments if p.receipt_no}
+        month_receipts = {p.receipt_no.strip().upper() for p in month_payments if p.receipt_no}
         month_txns = FeeTransaction.query.filter(
             FeeTransaction.school_id == school_id,
             FeeTransaction.transaction_date >= start_m,
             FeeTransaction.transaction_date <= end_m,
             FeeTransaction.status != 'CANCELLED'
         ).all()
-        orphan_month_txns = [t for t in month_txns if (t.receipt_no not in month_pay_receipts)]
+        orphan_month_txns = [
+            t for t in month_txns
+            if not (t.receipt_no and t.receipt_no.strip().upper() in month_receipts)
+        ]
         month_tx_sum = sum(t.amount or 0.0 for t in orphan_month_txns)
 
         month_refunds = FeeRefund.query.filter(
@@ -424,7 +452,7 @@ class FinanceAggregationService:
                 else:
                     today_by_dept['academic'] += amt
 
-        for t in today_txns:
+        for t in orphan_today_txns:
             rec = t.fee_record
             src = (rec.source if rec and rec.source else 'ACADEMIC').upper()
             amt = float(t.amount or 0.0)

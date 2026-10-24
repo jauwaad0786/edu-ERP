@@ -25,7 +25,7 @@ def generate_official_admission_no(school_id: int, session_str: str = '2026-27')
     """
     year_prefix = session_str[:4] if session_str else '2026'
     count_active = Student.query.filter_by(school_id=school_id).filter(
-        Student.status != 'PROVISIONAL'
+        Student.admission_no.like(f"ADM-{year_prefix}-%")
     ).count()
     seq = count_active + 1
     candidate = f"ADM-{year_prefix}-{seq:04d}"
@@ -77,4 +77,5 @@ def promote_provisional_student(student) -> str:
     except Exception as e:
         print(f"[WARN] Error updating enrollment status on confirmation: {e}")
 
+    db.session.flush()
     return new_adm_no

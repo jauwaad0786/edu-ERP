@@ -429,7 +429,7 @@ export default function SchoolsPage() {
                           </td>
                           <td>
                             <span
-                              onClick={() => navigate(`/schools/${s.id}`)}
+                              onClick={() => navigate(`/admin/schools/${s.id}`)}
                               style={{
                                 fontWeight: 600,
                                 color: '#0176d3',
@@ -464,7 +464,7 @@ export default function SchoolsPage() {
                           </td>
                           <td style={{ textAlign: 'right' }}>
                             <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                              <button className="btn btn-neutral btn-sm" onClick={() => navigate(`/schools/${s.id}`)}>
+                              <button className="btn btn-neutral btn-sm" onClick={() => navigate(`/admin/schools/${s.id}`)}>
                                 View
                               </button>
                               <button className="btn btn-neutral btn-sm" onClick={() => openEdit(s)}>
@@ -561,8 +561,8 @@ export default function SchoolsPage() {
                               <span
                                 role="button"
                                 tabIndex={0}
-                                onClick={() => navigate(`/schools/${s.id}`)}
-                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/schools/${s.id}`); } }}
+                                onClick={() => navigate(`/admin/schools/${s.id}`)}
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/admin/schools/${s.id}`); } }}
                                 style={{ fontWeight: 600, color: '#1e293b', cursor: 'pointer' }}
                               >
                                 {s.name}
@@ -596,7 +596,7 @@ export default function SchoolsPage() {
                               <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                                 <button
                                   className="btn btn-neutral btn-sm"
-                                  onClick={() => navigate(`/schools/${s.id}`)}
+                                  onClick={() => navigate(`/admin/schools/${s.id}`)}
                                 >
                                   Details
                                 </button>
@@ -1571,7 +1571,7 @@ export default function SchoolsPage() {
                       className="btn btn-primary"
                       onClick={() => {
                         setShowOnboardModal(false);
-                        navigate(`/schools/${onboardResult.school?.id}`);
+                        navigate(`/admin/schools/${onboardResult.school?.id}`);
                       }}
                     >
                       🏫 Open School Details
@@ -1580,7 +1580,7 @@ export default function SchoolsPage() {
                       className="btn btn-neutral"
                       onClick={() => {
                         setShowOnboardModal(false);
-                        navigate('/users');
+                        navigate('/admin/users');
                       }}
                     >
                       👥 View Staff & Principal

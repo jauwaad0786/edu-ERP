@@ -88,7 +88,7 @@ def record_audit_event(
     delegation_id=None,
     status='SUCCESS', severity='INFO',
     remarks=None, user=None, school_id=None,
-    actor_user_id=None, **kwargs
+    actor_user_id=None, commit=True, **kwargs
 ):
     """
     Primary API to record any auditable operation in the ERP.
@@ -143,36 +143,39 @@ def record_audit_event(
             meta = {}
 
     try:
-        row = log_school_action(
-            school_id=school_id,
-            user=user,
-            module=str(module).upper(),
-            submodule=submodule,
-            action=str(action).upper(),
-            entity_type=entity_type,
-            entity_id=entity_id,
-            student_id=student_id,
-            teacher_id=teacher_id,
-            class_id=class_id,
-            subject_id=subject_id,
-            delegation_id=delegation_id,
-            is_delegated=is_delegated,
-            old_value=safe_old,
-            new_value=safe_new,
-            changed_fields=changed_fields,
-            status=status,
-            severity=severity,
-            request_meta=meta,
-            remarks=remarks,
-        )
-        db.session.commit()
+        with db.session.begin_nested():
+            row = log_school_action(
+                school_id=school_id,
+                user=user,
+                module=str(module).upper(),
+                submodule=submodule,
+                action=str(action).upper(),
+                entity_type=entity_type,
+                entity_id=entity_id,
+                student_id=student_id,
+                teacher_id=teacher_id,
+                class_id=class_id,
+                subject_id=subject_id,
+                delegation_id=delegation_id,
+                is_delegated=is_delegated,
+                old_value=safe_old,
+                new_value=safe_new,
+                changed_fields=changed_fields,
+                status=status,
+                severity=severity,
+                request_meta=meta,
+                remarks=remarks,
+            )
+        if commit:
+            db.session.commit()
+        else:
+            db.session.flush()
 
         # Mark request context so audit_middleware avoids duplicate generic rows
         g.audit_already_logged = True
-        g.audit_row_id = row.id
+        g.audit_row_id = getattr(row, 'id', None)
         return row
     except Exception as e:
-        db.session.rollback()
         logger.warning(f"Failed to record audit event: {e}")
         return None
 

@@ -27,7 +27,7 @@ from app.models.hrms import (
     PayrollRunStatus, EmployeeProfile, LeaveRequest, LeaveStatus
 )
 from app.models.staff_attendance import StaffAttendance, StaffAttendanceSettings
-from app.models.financial import Holiday
+from app.models.timetable import Holiday
 from app.models.finance import Expense
 from app.services.hrms_service import log_hrms_audit
 

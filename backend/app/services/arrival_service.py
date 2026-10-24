@@ -32,25 +32,33 @@ def _find_linked_parent(student, school_id):
     """
     Finds linked parent User account for the student within the school.
     Matches by:
-    1. Parent phone (exact or last 10 digits)
-    2. Parent email
-    3. Student's own user account if assigned role PARENT
+    1. Parent email
+    2. Parent phone (exact or trailing 10 digits)
     """
+    if not student:
+        return None
+
     clean_p_phone = _clean_phone(student.parent_phone)
     p_email = (student.parent_email or '').strip().lower()
 
-    parent_users = User.query.filter(
+    base_q = User.query.filter(
         User.school_id == school_id,
         User.role == UserRole.PARENT,
         User.is_active == True,
         User.is_deleted == False
-    ).all()
+    )
 
-    for u in parent_users:
-        if p_email and u.email and u.email.strip().lower() == p_email:
+    if p_email:
+        u = base_q.filter(func.lower(User.email) == p_email).first()
+        if u:
             return u
-        u_clean_phone = _clean_phone(u.phone)
-        if clean_p_phone and u_clean_phone and clean_p_phone == u_clean_phone:
+
+    if clean_p_phone:
+        u = base_q.filter(or_(
+            User.phone == clean_p_phone,
+            User.phone.like(f"%{clean_p_phone}")
+        )).first()
+        if u:
             return u
 
     return None

@@ -311,7 +311,6 @@ export default function NotificationsScreen({ navigation }) {
           }
           showsVerticalScrollIndicator={false}
         >
-<<<<<<< HEAD
           {/* ══════════════════════════════════════════════════════════════
               SPECIAL FEATURE: SCHOOL ARRIVAL CONFIRMATION WITH YES/NO BUTTONS
              ══════════════════════════════════════════════════════════════ */}

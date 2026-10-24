@@ -579,8 +579,63 @@ def upload_my_document():
 @role_required('STUDENT', 'PARENT')
 def my_student_library():
     """Returns the student's active library loans, overdue books, penalties, and history."""
-    from app.routes.library import my_library
-    return my_library()
+    from app.models.library import LibraryMember, BookIssue
+    from app.routes.library import _get_or_create_settings, _calc_overdue_fine
+    from datetime import date
+
+    user = get_current_user()
+    student_id = request.args.get('student_id', type=int)
+    student = _get_effective_student(user, student_id)
+    if not student:
+        return jsonify({'error': 'Student record not found'}), 404
+
+    sid = student.school_id
+    member = LibraryMember.query.filter_by(school_id=sid, user_id=student.user_id).first()
+    if not member:
+        return jsonify({
+            'member': None,
+            'currently_issued': [],
+            'history': [],
+            'fines': [],
+            'reservations': [],
+            'summary': {
+                'issued_count': 0,
+                'overdue_count': 0,
+                'total_fines': 0.0,
+                'paid_fines': 0.0,
+                'waived_fines': 0.0,
+                'outstanding_fines': 0.0,
+            }
+        }), 200
+
+    settings = _get_or_create_settings(sid)
+    today = date.today()
+
+    all_issues = BookIssue.query.filter_by(member_id=member.id).order_by(BookIssue.issue_date.desc()).all()
+    currently_issued = []
+    history = []
+
+    for issue in all_issues:
+        d = issue.to_dict()
+        d['estimated_fine'] = _calc_overdue_fine(issue, settings, today) if d.get('overdue_days', 0) > 0 else 0.0
+        if issue.status == 'ISSUED':
+            currently_issued.append(d)
+        else:
+            history.append(d)
+
+    return jsonify({
+        'member': member.to_dict(),
+        'currently_issued': currently_issued,
+        'history': history,
+        'summary': {
+            'issued_count': len(currently_issued),
+            'overdue_count': sum(1 for i in currently_issued if i.get('is_overdue')),
+            'total_fines': float(member.total_fine_accrued or 0),
+            'paid_fines': float(member.total_fine_paid or 0),
+            'waived_fines': float(member.total_fine_waived or 0),
+            'outstanding_fines': float(member.outstanding_fine or 0),
+        }
+    }), 200
 
 
 @student_bp.route('/hostel', methods=['GET'])
@@ -596,18 +651,11 @@ def my_student_hostel():
         HostelOutPass, HostelAttendance
     )
     user = get_current_user()
-    student_id = request.args.get('student_id')
+    student_id = request.args.get('student_id', type=int)
 
-    if user.role.value == 'PARENT':
-        if not student_id:
-            return jsonify({'error': 'student_id is required for parent'}), 400
-        student = Student.query.get_or_404(student_id)
-        if student.school_id != user.school_id:
-            return jsonify({'error': 'Unauthorized'}), 403
-    else:
-        student = Student.query.filter_by(user_id=user.id).first()
-        if not student:
-            return jsonify({'error': 'Student record not found'}), 404
+    student = _get_effective_student(user, student_id)
+    if not student:
+        return jsonify({'error': 'Student record not found'}), 404
 
     sid = student.school_id
     active_alloc = HostelBedAllocation.query.filter_by(

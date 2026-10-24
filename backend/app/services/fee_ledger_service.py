@@ -477,6 +477,12 @@ def get_student_applicable_charges(student_id, session=None, bill_month=None):
             school_id=student.school_id, class_id=None, is_active=True
         ).first()
 
+    global_flat_pool = {
+        conc.id: float(conc.discount_value or 0.0)
+        for conc in concessions
+        if conc.fee_head_id is None and conc.discount_type != 'PERCENTAGE'
+    }
+
     if struct and struct.items:
         for itm in struct.items:
             fh = fee_heads_by_id.get(itm.fee_head_id)
@@ -497,11 +503,20 @@ def get_student_applicable_charges(student_id, session=None, bill_month=None):
             # Calculate concession for this specific head
             disc = 0.0
             for conc in concessions:
-                if conc.fee_head_id is None or conc.fee_head_id == itm.fee_head_id:
+                if conc.fee_head_id == itm.fee_head_id:
                     if conc.discount_type == 'PERCENTAGE':
                         disc += (base_amt * conc.discount_value / 100.0)
                     else:
                         disc += conc.discount_value
+                elif conc.fee_head_id is None:
+                    if conc.discount_type == 'PERCENTAGE':
+                        disc += (base_amt * conc.discount_value / 100.0)
+                    else:
+                        avail = global_flat_pool.get(conc.id, 0.0)
+                        if avail > 0:
+                            take = min(avail, max(0.0, base_amt - disc))
+                            disc += take
+                            global_flat_pool[conc.id] = round(avail - take, 2)
 
             # Dynamic Sibling Concession Engine (Section 23):
             # If Tuition / Academic fee head, automatically evaluate progressive multi-child discount
@@ -534,18 +549,26 @@ def get_student_applicable_charges(student_id, session=None, bill_month=None):
                 base_amt = ca.custom_amount if (ca and ca.custom_amount is not None) else 3000.0
                 disc = 0.0
                 for conc in concessions:
-                    if conc.fee_head_id is None or conc.fee_head_id == tuition_head.id:
+                    if conc.fee_head_id == tuition_head.id:
                         if conc.discount_type == 'PERCENTAGE':
                             disc += (base_amt * conc.discount_value / 100.0)
                         else:
                             disc += conc.discount_value
+                    elif conc.fee_head_id is None:
+                        if conc.discount_type == 'PERCENTAGE':
+                            disc += (base_amt * conc.discount_value / 100.0)
+                        else:
+                            avail = global_flat_pool.get(conc.id, 0.0)
+                            if avail > 0:
+                                take = min(avail, max(0.0, base_amt - disc))
+                                disc += take
+                                global_flat_pool[conc.id] = round(avail - take, 2)
 
                 sib_eval = evaluate_sibling_discount(student_id)
                 if sib_eval.get('eligible') and float(sib_eval.get('discount_pct', 0)) > 0:
                     sib_pct = float(sib_eval['discount_pct'])
                     sib_disc = round(base_amt * (sib_pct / 100.0), 2)
                     disc = max(disc, sib_disc)
-
                 disc = min(disc, base_amt)
                 charges.append({
                     'fee_head_id':     tuition_head.id,
@@ -611,6 +634,40 @@ def get_student_applicable_charges(student_id, session=None, bill_month=None):
                         'fine_amount':     0.0,
                         'net_amount':      round(max(0.0, trans_amt - disc), 2),
                     })
+
+                # Check pending transport fines (deduplicating already-billed fines on open bills)
+                try:
+                    from app.models.transport_student import TransportFineRecord
+                    t_fines = TransportFineRecord.query.filter(
+                        TransportFineRecord.student_id == student_id,
+                        TransportFineRecord.status.in_(['OUTSTANDING', 'PARTIALLY_PAID'])
+                    ).all()
+                    prior_billed_fine_labels = set(
+                        r[0] for r in db.session.query(FeeBillItem.coverage_label).join(
+                            FeeBill, FeeBillItem.bill_id == FeeBill.id
+                        ).filter(
+                            FeeBill.student_id == student_id,
+                            FeeBill.status.notin_([BillStatus.CANCELLED.value])
+                        ).all() if r[0]
+                    )
+                    unbilled_t_fines = [tf for tf in t_fines if f"TFINE-{tf.id}" not in prior_billed_fine_labels]
+                    tot_t_fine = sum(tf.outstanding_amount for tf in unbilled_t_fines)
+                    if tot_t_fine > 0:
+                        t_fine_head = fee_heads.get('TRANSPORT_FINE') or trans_head
+                        if t_fine_head:
+                            charges.append({
+                                'fee_head_id':     t_fine_head.id,
+                                'fee_head_name':   f"Transport Fine ({len(unbilled_t_fines)} pending)",
+                                'fee_head_code':   t_fine_head.code,
+                                'department':      'TRANSPORT',
+                                'original_amount': round(tot_t_fine, 2),
+                                'discount_amount': 0.0,
+                                'fine_amount':     0.0,
+                                'net_amount':      round(tot_t_fine, 2),
+                                'coverage_label':  ','.join(f"TFINE-{tf.id}" for tf in unbilled_t_fines),
+                            })
+                except Exception:
+                    pass
     except Exception:
         pass
 
@@ -650,21 +707,31 @@ def get_student_applicable_charges(student_id, session=None, bill_month=None):
                         'net_amount':      round(max(0.0, h_amt - disc), 2),
                     })
 
-            # Check pending hostel fines
+            # Check pending hostel fines (deduplicating already-billed fines)
             h_fines = HostelFineRecord.query.filter_by(student_id=student_id, status='PENDING').all()
-            tot_h_fine = sum(hf.outstanding() for hf in h_fines)
+            prior_billed_fine_labels = set(
+                r[0] for r in db.session.query(FeeBillItem.coverage_label).join(
+                    FeeBill, FeeBillItem.bill_id == FeeBill.id
+                ).filter(
+                    FeeBill.student_id == student_id,
+                    FeeBill.status.notin_([BillStatus.CANCELLED.value])
+                ).all() if r[0]
+            )
+            unbilled_h_fines = [hf for hf in h_fines if f"HFINE-{hf.id}" not in prior_billed_fine_labels]
+            tot_h_fine = sum(hf.outstanding() for hf in unbilled_h_fines)
             if tot_h_fine > 0:
                 h_fine_head = fee_heads.get('HOSTEL_FINE') or hostel_head
                 if h_fine_head:
                     charges.append({
                         'fee_head_id':     h_fine_head.id,
-                        'fee_head_name':   f"Hostel Disciplinary Fine ({len(h_fines)} pending)",
+                        'fee_head_name':   f"Hostel Disciplinary Fine ({len(unbilled_h_fines)} pending)",
                         'fee_head_code':   h_fine_head.code,
                         'department':      'HOSTEL',
                         'original_amount': round(tot_h_fine, 2),
                         'discount_amount': 0.0,
-                        'fine_amount':     round(tot_h_fine, 2),
+                        'fine_amount':     0.0,
                         'net_amount':      round(tot_h_fine, 2),
+                        'coverage_label':  ','.join(f"HFINE-{hf.id}" for hf in unbilled_h_fines),
                     })
     except Exception:
         pass
@@ -694,11 +761,20 @@ def get_student_applicable_charges(student_id, session=None, bill_month=None):
                         'net_amount':      round(lib_amt, 2),
                     })
 
-            # 4b. Unpaid Book Late Fines
+            # 4b. Unpaid Book Late Fines (deduplicating already-billed fines)
             unpaid_fines = lib_member.fines.filter(
                 FineTransaction.status.in_(['OUTSTANDING', 'PENDING', 'PARTIAL', 'PARTIALLY_PAID'])
             ).all()
-            tot_fine = sum(f.outstanding_amount for f in unpaid_fines)
+            prior_billed_fine_labels = set(
+                r[0] for r in db.session.query(FeeBillItem.coverage_label).join(
+                    FeeBill, FeeBillItem.bill_id == FeeBill.id
+                ).filter(
+                    FeeBill.student_id == student_id,
+                    FeeBill.status.notin_([BillStatus.CANCELLED.value])
+                ).all() if r[0]
+            )
+            unbilled_l_fines = [lf for lf in unpaid_fines if f"LFINE-{lf.id}" not in prior_billed_fine_labels]
+            tot_fine = sum(f.outstanding_amount for f in unbilled_l_fines)
             if tot_fine > 0:
                 fine_head = fee_heads.get('LIBRARY_FINE') or lib_head
                 if fine_head:
@@ -711,6 +787,7 @@ def get_student_applicable_charges(student_id, session=None, bill_month=None):
                         'discount_amount': 0.0,
                         'fine_amount':     0.0,
                         'net_amount':      round(tot_fine, 2),
+                        'coverage_label':  ','.join(f"LFINE-{lf.id}" for lf in unbilled_l_fines),
                     })
     except Exception:
         pass
@@ -935,16 +1012,16 @@ def generate_fee_bill(student_id, bill_month, due_date, actor_user, session=None
     if isinstance(due_date, str):
         due_date = datetime.strptime(due_date, '%Y-%m-%d').date()
 
-    # Calculate Previous Dues (sum of balance_due of previous bills)
-    prev_bills = FeeBill.query.filter(
+    # Calculate Previous Dues (immediate previous chronological bill's balance_due)
+    last_bill = FeeBill.query.filter(
         FeeBill.student_id == student_id,
         FeeBill.bill_month < bill_month,
         FeeBill.status != BillStatus.CANCELLED.value
-    ).all()
-    previous_dues = sum(b.balance_due for b in prev_bills)
+    ).order_by(FeeBill.bill_month.desc(), FeeBill.id.desc()).first()
+    previous_dues = float(last_bill.balance_due or 0.0) if last_bill else 0.0
 
     # Incorporate unbilled legacy Opening Balance from FeeRecord if not already settled or billed
-    if not prev_bills:
+    if not last_bill:
         from app.models.financial import FeeRecord
         ob_records = FeeRecord.query.filter_by(
             student_id=student_id,
@@ -1002,6 +1079,7 @@ def generate_fee_bill(student_id, bill_month, due_date, actor_user, session=None
             net_amount=ch['net_amount'],
             paid_amount=0.0,
             balance_amount=ch['net_amount'],
+            coverage_label=ch.get('coverage_label'),
         )
         db.session.add(item)
 
@@ -1452,7 +1530,7 @@ def collect_fee_payment(
         ).order_by(FeeBill.bill_month.asc(), FeeBill.id.asc()).all()
         for idx, b_sub in enumerate(student_bills):
             if idx > 0:
-                p_dues = sum(float(pb.balance_due or 0.0) for pb in student_bills[:idx])
+                p_dues = float(student_bills[idx - 1].balance_due or 0.0)
                 if abs(float(b_sub.previous_dues or 0.0) - p_dues) > 0.001:
                     b_sub.previous_dues = round(p_dues, 2)
                     b_sub.calculate_totals()
@@ -1464,9 +1542,11 @@ def collect_fee_payment(
         payment.advance_credited = round(remaining_to_allocate, 2)
 
     # Post Credit Ledger Entry
-    last_ledger = StudentLedger.query.filter_by(student_id=student_id).order_by(StudentLedger.id.desc()).first()
-    prev_balance = float(last_ledger.balance_after or 0.0) if last_ledger else 0.0
-    new_running_balance = round(max(0.0, prev_balance - float(amount_paid)), 2)
+    last_ledger = StudentLedger.query.filter_by(student_id=student_id).order_by(
+        StudentLedger.entry_date.desc(), StudentLedger.id.desc()
+    ).first()
+    prev_balance = float(last_ledger.balance_after) if last_ledger and last_ledger.balance_after is not None else 0.0
+    running_bal = round(max(0.0, prev_balance - float(amount_paid)), 2)
 
     ledger_entry = StudentLedger(
         school_id=student.school_id,
@@ -1478,7 +1558,7 @@ def collect_fee_payment(
         period_label=f"Payment {date.today().strftime('%b %Y')}",
         session=session,
         amount=amount_paid,
-        balance_after=new_running_balance,
+        balance_after=running_bal,
         payment_id=payment.id,
         reference_no=payment.receipt_no,
         description=f"Fee Payment Collected ({payment_mode}) - Receipt #{payment.receipt_no}",
@@ -1488,7 +1568,7 @@ def collect_fee_payment(
 
     # ── Bi-Directional Cross-Department Sync ──────────────────────────────
     try:
-        # Determine allocated amount towards Hostel and Library from this payment
+        # Determine allocated amount towards Hostel, Library and Transport from this payment
         hostel_allocated = sum(
             a.allocated_amount for a in payment.allocations if (a.department == 'HOSTEL' or (a.fee_head and a.fee_head.code == 'HOSTEL_FINE'))
         ) if payment.allocations else (amount_paid if department == 'HOSTEL' else 0.0)
@@ -1496,6 +1576,10 @@ def collect_fee_payment(
         library_allocated = sum(
             a.allocated_amount for a in payment.allocations if (a.department == 'LIBRARY' or (a.fee_head and a.fee_head.code == 'LIBRARY_FINE'))
         ) if payment.allocations else (amount_paid if department == 'LIBRARY' else 0.0)
+
+        transport_allocated = sum(
+            a.allocated_amount for a in payment.allocations if (a.department == 'TRANSPORT' or (a.fee_head and a.fee_head.code in ('TRANSPORT', 'BUS', 'TRANSPORT_FINE')))
+        ) if payment.allocations else (amount_paid if department == 'TRANSPORT' else 0.0)
 
         # 1. Sync Hostel Fines only if payment was allocated to Hostel
         if hostel_allocated > 0:
@@ -1549,27 +1633,88 @@ def collect_fee_payment(
                         lf.status = 'PARTIALLY_PAID'
                     l_rem = round(l_rem - settle_amt, 2)
 
-        # 3. Sync Legacy FeeRecord if present
+        # 3. Sync Transport Department (Fines and Records)
+        if transport_allocated > 0:
+            try:
+                from app.models.transport_student import TransportFineRecord, TransportFeeRecord, TransportFeeTransaction
+                t_fines = TransportFineRecord.query.filter(
+                    TransportFineRecord.student_id == student_id,
+                    TransportFineRecord.status.in_(['OUTSTANDING', 'PARTIALLY_PAID'])
+                ).order_by(TransportFineRecord.id.asc()).all()
+                t_rem = transport_allocated
+                for tf in t_fines:
+                    if t_rem <= 0:
+                        break
+                    due = tf.outstanding_amount
+                    if due <= 0:
+                        continue
+                    settle_amt = min(t_rem, due)
+                    tf.amount_paid = round((tf.amount_paid or 0.0) + settle_amt, 2)
+                    tf.collected_at = utc_now()
+                    tf.receipt_no = payment.receipt_no
+                    tf.payment_mode = payment_mode
+                    tf.collected_by = collected_by.id if (collected_by and hasattr(collected_by, 'id')) else None
+                    if tf.outstanding_amount <= 0:
+                        tf.status = 'PAID'
+                    else:
+                        tf.status = 'PARTIALLY_PAID'
+                    t_rem = round(t_rem - settle_amt, 2)
+
+                t_records = TransportFeeRecord.query.filter(
+                    TransportFeeRecord.student_id == student_id,
+                    TransportFeeRecord.status.in_(['PENDING', 'PARTIAL', 'PARTIALLY_PAID'])
+                ).order_by(TransportFeeRecord.id.asc()).all()
+                for tr in t_records:
+                    if t_rem <= 0:
+                        break
+                    due = tr.balance()
+                    if due <= 0:
+                        continue
+                    settle_amt = min(t_rem, due)
+                    tr.paid_amount = round((tr.paid_amount or 0.0) + settle_amt, 2)
+                    if tr.balance() <= 0:
+                        tr.status = 'PAID'
+                    else:
+                        tr.status = 'PARTIAL'
+                    t_tx = TransportFeeTransaction(
+                        school_id=student.school_id,
+                        fee_record_id=tr.id,
+                        amount_paid=settle_amt,
+                        payment_mode=payment_mode,
+                        transaction_ref=payment.transaction_ref or payment.receipt_no,
+                        receipt_number=payment.receipt_no,
+                        collected_by=collected_by.id if (collected_by and hasattr(collected_by, 'id')) else None
+                    )
+                    db.session.add(t_tx)
+                    t_rem = round(t_rem - settle_amt, 2)
+            except Exception as t_sync_err:
+                logger.warning(f"Error syncing transport department records: {t_sync_err}")
+
+        # 4. Sync Legacy FeeRecord with FIFO cash decrement
         from app.models.financial import FeeRecord
         legacy_recs = FeeRecord.query.filter(
             FeeRecord.student_id == student_id,
             FeeRecord.status.in_(['PENDING', 'PARTIAL', 'PARTIALLY_PAID'])
-        ).all()
+        ).order_by(FeeRecord.id.asc()).all()
+        rem_legacy_cash = float(amount_paid or 0.0)
         for lr in legacy_recs:
             if skip_record_id and lr.id == skip_record_id:
                 continue
+            if rem_legacy_cash <= 0:
+                break
             rem_due = max(0.0, round(lr.effective_due() - (lr.amount_paid or 0.0), 2))
-            if rem_due > 0 and amount_paid >= rem_due:
-                lr.amount_paid = lr.effective_due()
-                lr.status = 'PAID'
-            elif (lr.amount_paid or 0.0) >= lr.effective_due():
-                lr.status = 'PAID'
-            elif (lr.amount_paid or 0.0) > 0:
-                lr.status = 'PARTIAL'
-            lr.paid_date = date.today()
-            lr.receipt_no = payment.receipt_no
-            lr.payment_mode = payment_mode
-            lr.collected_by = collected_by.id if collected_by else None
+            if rem_due > 0:
+                settle_slice = min(rem_legacy_cash, rem_due)
+                lr.amount_paid = round((lr.amount_paid or 0.0) + settle_slice, 2)
+                rem_legacy_cash = round(rem_legacy_cash - settle_slice, 2)
+                if lr.amount_paid >= lr.effective_due():
+                    lr.status = 'PAID'
+                else:
+                    lr.status = 'PARTIAL'
+                lr.paid_date = date.today()
+                lr.receipt_no = payment.receipt_no
+                lr.payment_mode = payment_mode
+                lr.collected_by = collected_by.id if collected_by else None
 
         # 4. Auto-Confirm Student Admission if currently PROVISIONAL
         if student.status == 'PROVISIONAL':
@@ -1813,9 +1958,11 @@ def cancel_payment_receipt(payment_id, actor_user, cancel_reason):
         logger.warning(f"Error cancelling legacy FeeTransaction: {tx_err}")
 
     # Post Reversal Entry in Ledger with accurate running balance
-    last_ledger = StudentLedger.query.filter_by(student_id=payment.student_id).order_by(StudentLedger.id.desc()).first()
-    prev_balance = float(last_ledger.balance_after or 0.0) if last_ledger else 0.0
-    new_running_balance = round(prev_balance + float(payment.total_paid), 2)
+    last_ledger = StudentLedger.query.filter_by(student_id=payment.student_id).order_by(
+        StudentLedger.entry_date.desc(), StudentLedger.id.desc()
+    ).first()
+    prev_balance = float(last_ledger.balance_after) if last_ledger and last_ledger.balance_after is not None else 0.0
+    running_bal = round(prev_balance + float(payment.total_paid), 2)
 
     ledger_entry = StudentLedger(
         school_id=payment.school_id,
@@ -1827,7 +1974,7 @@ def cancel_payment_receipt(payment_id, actor_user, cancel_reason):
         period_label=f"Reversal {date.today().strftime('%b %Y')}",
         session=payment.session,
         amount=payment.total_paid,
-        balance_after=new_running_balance,
+        balance_after=running_bal,
         payment_id=payment.id,
         reference_no=payment.receipt_no,
         description=f"Reversal of Cancelled Receipt #{payment.receipt_no}. Reason: {cancel_reason}",
@@ -1905,9 +2052,11 @@ def process_fee_refund(student_id, amount, refund_mode, reason, authorized_by, p
                 payment.status = 'REFUNDED'
 
     # Post Debit adjustment into student ledger with running balance
-    last_ledger = StudentLedger.query.filter_by(student_id=student_id).order_by(StudentLedger.id.desc()).first()
-    prev_balance = float(last_ledger.balance_after or 0.0) if last_ledger else 0.0
-    new_running_balance = round(prev_balance + amount, 2)
+    last_ledger = StudentLedger.query.filter_by(student_id=student_id).order_by(
+        StudentLedger.entry_date.desc(), StudentLedger.id.desc()
+    ).first()
+    prev_balance = float(last_ledger.balance_after) if last_ledger and last_ledger.balance_after is not None else 0.0
+    running_bal = round(prev_balance + float(amount), 2)
 
     ledger_entry = StudentLedger(
         school_id=student.school_id,
@@ -1918,7 +2067,7 @@ def process_fee_refund(student_id, amount, refund_mode, reason, authorized_by, p
         entry_date=date.today(),
         period_label=f"Refund {date.today().strftime('%b %Y')}",
         amount=amount,
-        balance_after=new_running_balance,
+        balance_after=running_bal,
         refund_id=refund.id,
         reference_no=reference_no or f"REF-{refund.id}",
         description=f"Fee Refund Issued: ₹{amount:.2f}. Reason: {reason}",

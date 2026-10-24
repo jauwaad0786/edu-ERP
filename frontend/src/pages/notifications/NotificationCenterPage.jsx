@@ -297,7 +297,7 @@ export default function NotificationCenterPage() {
       <Sidebar darkMode={darkMode} />
       <div className="main-content">
         <Navbar title="Notification Management Center" darkMode={darkMode} onToggleDark={() => {}} />
-        <div className="page-body" style={{ padding: '24px', maxWidth: '1440px', margin: '0 auto' }}>
+        <div className="page-body">
 
           {/* Header Banner */}
           <div style={{

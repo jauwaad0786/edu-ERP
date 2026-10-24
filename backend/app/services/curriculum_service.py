@@ -6,7 +6,7 @@ from app.models.curriculum import (
     TeachingLog, TeachingWorksheet
 )
 from app.models.academic import Class, Subject, Teacher
-from app.models.financial import Timetable, TimetablePeriod
+from app.models.timetable import Timetable, TimetablePeriod, TimetableSubstitution
 from app.models.user import User
 
 
@@ -253,12 +253,11 @@ def get_teacher_today_schedule(teacher_id, school_id, target_date=None, session=
         if l.timetable_period_id:
             log_map[f"tp_{l.timetable_period_id}"] = l
 
-    from app.models.financial import PeriodSubstitution
-    substs_covering = PeriodSubstitution.query.filter_by(
+    substs_covering = TimetableSubstitution.query.filter_by(
         school_id=school_id, substitute_teacher_id=teacher_id, date=target_date, status='CONFIRMED'
     ).all()
     substs_relieved = {
-        s.timetable_period_id: s for s in PeriodSubstitution.query.filter_by(
+        s.timetable_period_id: s for s in TimetableSubstitution.query.filter_by(
             school_id=school_id, original_teacher_id=teacher_id, date=target_date, status='CONFIRMED'
         ).all()
     }

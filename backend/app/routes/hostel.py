@@ -1991,7 +1991,7 @@ def list_complaints():
 
 
 @hostel_bp.route('/complaints', methods=['POST'])
-@role_required('PRINCIPAL', 'HOSTEL', 'STUDENT')
+@role_required('PRINCIPAL', 'HOSTEL', 'STUDENT', 'PARENT')
 def create_complaint():
     sid  = _school_id()
     user = get_current_user()
@@ -2001,6 +2001,18 @@ def create_complaint():
     if user.role.value == 'STUDENT':
         student = Student.query.filter_by(user_id=user.id).first()
         student_id = student.id if student else None
+    elif user.role.value == 'PARENT':
+        if not student_id:
+            st = Student.query.filter(
+                (Student.parent_user_id == user.id) |
+                (Student.parent_email == user.email) |
+                (Student.parent_phone == user.phone)
+            ).first()
+            student_id = st.id if st else None
+        else:
+            st = Student.query.get(student_id)
+            if not st or st.school_id != sid:
+                return jsonify({'error': 'Unauthorized child access'}), 403
 
     if not student_id:
         return jsonify({'error': 'student_id is required'}), 400
@@ -2083,7 +2095,7 @@ def list_out_passes():
 
 
 @hostel_bp.route('/out-passes', methods=['POST'])
-@role_required('PRINCIPAL', 'HOSTEL', 'STUDENT')
+@role_required('PRINCIPAL', 'HOSTEL', 'STUDENT', 'PARENT')
 def request_out_pass():
     sid  = _school_id()
     user = get_current_user()
@@ -2093,6 +2105,18 @@ def request_out_pass():
     if user.role.value == 'STUDENT':
         student = Student.query.filter_by(user_id=user.id).first()
         student_id = student.id if student else None
+    elif user.role.value == 'PARENT':
+        if not student_id:
+            st = Student.query.filter(
+                (Student.parent_user_id == user.id) |
+                (Student.parent_email == user.email) |
+                (Student.parent_phone == user.phone)
+            ).first()
+            student_id = st.id if st else None
+        else:
+            st = Student.query.get(student_id)
+            if not st or st.school_id != sid:
+                return jsonify({'error': 'Unauthorized child access'}), 403
 
     if not student_id:
         return jsonify({'error': 'student_id is required'}), 400

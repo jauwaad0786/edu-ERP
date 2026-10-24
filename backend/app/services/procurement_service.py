@@ -154,7 +154,8 @@ def process_goods_receipt(po_id, school_id, received_items, challan_no='', notes
     db.session.add(grn)
     db.session.flush()
 
-    total_bill_amount = 0.0
+    total_bill_subtotal = 0.0
+    total_bill_tax = 0.0
     all_completed = True
 
     po_items_by_id = {item.id: item for item in po.items}
@@ -176,9 +177,10 @@ def process_goods_receipt(po_id, school_id, received_items, challan_no='', notes
         if po_item.received_qty < po_item.ordered_qty:
             all_completed = False
 
-        val_sub = round(r_qty * po_item.unit_price, 2)
+        val_sub = round(r_qty * (po_item.unit_price or 0.0), 2)
         val_tax = round(val_sub * ((po_item.tax_pct or 0.0) / 100.0), 2)
-        total_bill_amount += round(val_sub + val_tax, 2)
+        total_bill_subtotal += val_sub
+        total_bill_tax += val_tax
 
         # 1. Consumable Inventory Item flow
         inv_item = None
@@ -276,6 +278,10 @@ def process_goods_receipt(po_id, school_id, received_items, challan_no='', notes
     po.status = 'RECEIVED' if all_completed else 'PARTIALLY_RECEIVED'
 
     # Create VendorBill for received goods
+    total_bill_subtotal = round(total_bill_subtotal, 2)
+    total_bill_tax = round(total_bill_tax, 2)
+    total_bill_amount = round(total_bill_subtotal + total_bill_tax, 2)
+
     bill_count = VendorBill.query.filter_by(school_id=school_id).count() + 1
     bill_number = f"VBILL-{year}-{bill_count:04d}"
 
@@ -287,8 +293,8 @@ def process_goods_receipt(po_id, school_id, received_items, challan_no='', notes
         grn_id=grn.id,
         bill_date=date.today(),
         due_date=date.today(),
-        subtotal=total_bill_amount,
-        tax_amount=0.0,
+        subtotal=total_bill_subtotal,
+        tax_amount=total_bill_tax,
         total_amount=total_bill_amount,
         paid_amount=0.0,
         balance_amount=total_bill_amount,
@@ -345,19 +351,16 @@ def record_vendor_bill_payment(bill_id, school_id, amount, payment_mode='BANK_TR
     db.session.add(v_pay)
     db.session.flush()
 
-    # Determine proper accounting classification: CAPEX (Asset) vs OPEX (Inventory)
-    exp_category = 'INVENTORY_PURCHASE'
-    if bill.purchase_order_id:
-        po = PurchaseOrder.query.get(bill.purchase_order_id)
-        if po and po.items:
-            po_items_list = list(po.items)
-            asset_items = [it for it in po_items_list if it.is_asset]
-            if len(asset_items) == len(po_items_list):
-                exp_category = 'ASSET_PURCHASE'
-            elif len(asset_items) > 0:
-                exp_category = 'CAPEX_EQUIPMENT'
+    # Automatically post Expense to Central Finance with proper CapEx vs OpEx classification
+    is_asset_purchase = False
+    po = getattr(bill, 'order', None) or (PurchaseOrder.query.get(bill.purchase_order_id) if bill.purchase_order_id else None)
+    if po:
+        if getattr(po, 'target_type', None) == 'ASSET':
+            is_asset_purchase = True
+        elif any(getattr(item, 'is_asset', False) for item in (po.items or [])):
+            is_asset_purchase = True
 
-    # Automatically post Expense to Central Finance
+    exp_category = 'CAPITAL_EXPENDITURE' if is_asset_purchase else 'INVENTORY_PURCHASE'
     exp_count = Expense.query.filter_by(school_id=school_id).count() + 1
     expense = Expense(
         school_id=school_id,

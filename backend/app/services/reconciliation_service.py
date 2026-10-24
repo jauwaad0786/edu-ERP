@@ -28,6 +28,7 @@ from sqlalchemy import func, or_, and_
 from app import db
 from app.models.finance import BankStatementBatch, BankTransaction, Expense
 from app.models.fee_finance import FeePayment, FeePaymentAllocation, FeeBill
+from app.models.financial import FeeTransaction
 from app.models.academic import Student
 
 
@@ -327,6 +328,15 @@ class ReconciliationService:
             if p.receipt_no:
                 pay_by_receipt[p.receipt_no.strip().upper()] = p
 
+        # Pre-fetch standalone FeeTransactions (counter payments not linked to FeePayment)
+        standalone_txns = FeeTransaction.query.filter_by(school_id=school_id).all()
+        txn_by_receipt = {}
+        for stx in standalone_txns:
+            if stx.receipt_no:
+                r_upper = stx.receipt_no.strip().upper()
+                if r_upper not in pay_by_receipt:
+                    txn_by_receipt[r_upper] = stx
+
         # Pre-fetch Paid Expenses
         expenses = Expense.query.filter_by(school_id=school_id, status='PAID').all()
         exp_by_ref = {}
@@ -411,6 +421,37 @@ class ReconciliationService:
                         tx.explanation = (
                             f"Reference matches Receipt #{matched_pay.receipt_no}, but Bank credit is ₹{amt:.2f} "
                             f"vs ERP receipt ₹{pay_amt:.2f} (Difference: ₹{diff:.2f}, likely gateway commission or settlement fee)"
+                        )
+                    continue
+
+                # Check standalone FeeTransactions before fuzzy search
+                matched_ft = None
+                if ref_norm and ref_norm in txn_by_receipt:
+                    matched_ft = txn_by_receipt[ref_norm]
+                elif tx.narration:
+                    for r_key, ft_obj in txn_by_receipt.items():
+                        if r_key in tx.narration.upper():
+                            matched_ft = ft_obj
+                            break
+
+                if matched_ft:
+                    ft_amt = float(matched_ft.amount or 0.0)
+                    tx.matched_entity_type = 'FEE_TRANSACTION'
+                    tx.matched_entity_id = matched_ft.id
+                    if abs(amt - ft_amt) < 0.01:
+                        tx.match_status = 'MATCHED'
+                        tx.match_confidence = 100.0
+                        tx.difference_amount = 0.0
+                        tx.explanation = f"Exact match with Fee Transaction Receipt #{matched_ft.receipt_no} (Collected: ₹{ft_amt:.2f})"
+                        matched_count += 1
+                    else:
+                        diff = _round_curr(ft_amt - amt)
+                        tx.match_status = 'AMOUNT_MISMATCH'
+                        tx.match_confidence = 90.0
+                        tx.difference_amount = diff
+                        tx.explanation = (
+                            f"Reference matches Transaction Receipt #{matched_ft.receipt_no}, but Bank credit is ₹{amt:.2f} "
+                            f"vs ERP transaction ₹{ft_amt:.2f} (Difference: ₹{diff:.2f})"
                         )
                     continue
 

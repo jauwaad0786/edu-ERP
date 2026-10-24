@@ -111,7 +111,7 @@ export default function TeacherSyllabusCoveragePage() {
       <div className="main-content">
         <Navbar title="My Syllabus Coverage" />
 
-        <div className="page-body" style={{ maxWidth: '1440px', margin: '0 auto', padding: '24px 28px' }}>
+        <div className="page-body">
           {/* ══ HEADER ══ */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '22px' }}>
             <div>

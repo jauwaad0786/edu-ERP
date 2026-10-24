@@ -35,6 +35,7 @@ const BREADCRUMB_MAP = {
   '/support/announcements': 'Announcements',
   '/support/chat':          'Messages',
   '/support/help':          'Help Center',
+  '/help-center':           'Help Center & Knowledge Base',
   '/support/kb':            'Knowledge Base',
   '/notifications/center':  'Notification Center',
   '/developer/support':     'Support Dashboard',
@@ -43,6 +44,7 @@ const BREADCRUMB_MAP = {
   '/rbac/permissions':      'Permission Matrix',
   '/rbac/delegations':      'Delegations',
   '/delegations':           'Staff Delegation',
+  '/teachers':              'Teachers Directory',
   '/audit/school/logs':     'Audit Logs',
   '/audit/company/logs':    'Company Audit Logs',
 };
@@ -203,15 +205,30 @@ export default function Navbar({ title, darkMode, onToggleDark }) {
         padding: '0 20px', position: 'sticky', top: 0, zIndex: 50,
       }}>
 
-        {/* ── Left: Back + Breadcrumb ── */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {/* ── Left: Sidebar Toggle + Back + Breadcrumb ── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => {
+              const current = localStorage.getItem('ederp_sidebar_collapsed') === 'true';
+              const next = !current;
+              localStorage.setItem('ederp_sidebar_collapsed', String(next));
+              window.dispatchEvent(new CustomEvent('sidebar-collapse-change', { detail: { collapsed: next } }));
+              document.documentElement.style.setProperty('--sidebar-w', next ? '72px' : '240px');
+            }}
+            title="Toggle Sidebar (Expand/Collapse)"
+            style={navIconBtn(surfaceBg, border, textSub)}
+            {...iconHover}
+          >
+            <i className="ti ti-menu-2" style={{ fontSize: 16 }} aria-hidden="true" />
+          </button>
           <button onClick={() => navigate(-1)} title="Go back"
             style={navIconBtn(surfaceBg, border, textSub)}
             {...iconHover}>
             <i className="ti ti-arrow-left" style={{ fontSize: 15 }} aria-hidden="true" />
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 13, fontWeight: 800, color: '#2563eb', letterSpacing: '0.04em' }}>1P360</span>
+            <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--blue-60)', letterSpacing: '0.04em' }}>1P360</span>
             {user?.school_name && (
               <>
                 <i className="ti ti-chevron-right" style={{ fontSize: 10, color: textMuted }} aria-hidden="true" />
